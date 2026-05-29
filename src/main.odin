@@ -3,6 +3,8 @@ package main
 import "core:flags"
 import "core:fmt"
 import "core:os"
+import "core:strings"
+import "lib:tb2"
 
 print_help :: proc() {
 	fmt.println("Usage: qed [FILE]")
@@ -19,9 +21,14 @@ main :: proc() {
 	if len(os.args) == 2 {
 		path = os.args[1]
 	}
-	editor := editor_new(path)
+	editor := editor_init(path)
+	defer editor_shutdown(&editor)
 
-	for line in editor.buffer.lines {
-		fmt.println(string(line.text[:]))
+
+	ev: tb2.Event
+	for {
+	    editor_render(&editor)
+		tb2.poll_event(&ev)
+		break
 	}
 }

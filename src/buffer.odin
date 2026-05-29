@@ -23,22 +23,22 @@ buffer_new :: proc() -> Buffer {
 	return {file = nil, lines = make([dynamic]Line, 0, 64), cursor = {0, 0}}
 }
 
-Buffer_Open_Error :: enum {
+BufferOpenError :: enum {
 	None,
-	File_Open_Error,
-	File_Read_Error,
+	FileOpenError,
+	FileReadError,
 }
 
-buffer_open :: proc(buffer: ^Buffer, path: string) -> Buffer_Open_Error {
+buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	file, err := os.open(path, flags = {.Read, .Create})
 	if err != nil {
-		return .File_Open_Error
+		return .FileOpenError
 	}
 
 	data: []u8
 	data, err = os.read_entire_file(file, context.allocator)
 	if err != nil {
-		return .File_Read_Error
+		return .FileReadError
 	}
 
 	for &line in buffer.lines {
