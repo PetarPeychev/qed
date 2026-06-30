@@ -7,8 +7,19 @@ backwards-compatibility obligations**. Everything is hardcoded; we just keep the
 knobs in one place.
 
 This file is the durable guide loaded every session. The detailed architecture
-and the phased roadmap live in [docs/DESIGN.md](docs/DESIGN.md). Read it before
-implementing a new subsystem.
+and the working TODO list live in [docs/DESIGN.md](docs/DESIGN.md).
+
+> **Start here, every session:** before doing any work, (1) read **both** this
+> file (`CLAUDE.md`) and **[docs/DESIGN.md](docs/DESIGN.md)** in full — CLAUDE.md
+> is auto-loaded, DESIGN.md is not, so open it yourself; and (2) skim the `src/`
+> source files to see the current state of the code. The codebase is
+> intentionally small, so reading all of it is cheap and expected.
+
+**Task workflow:** work is tracked as the TODO list in `docs/DESIGN.md §10`.
+Pick one unchecked task, implement it, and report when done (with how it was
+verified). A task is only ticked off `[x]` **after Petar verifies it** — never
+self-check on completion. If you discover work that warrants its own task while
+developing, add it to that list as a new unchecked item.
 
 ## Build & run
 

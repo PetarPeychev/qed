@@ -1,4 +1,4 @@
-# qed — Design & Roadmap
+# qed — Design & TODO
 
 This is the detailed design behind the decisions summarized in
 [../CLAUDE.md](../CLAUDE.md). It describes *how* the pieces fit and *in what
@@ -125,7 +125,7 @@ lives as hardcoded 24-bit hex constants in `config.odin`:
 | Selection            | **inverted**: `#181818` text on `#f4f4ff` background |
 
 Syntax colors (keywords/types `#ffdd33`, comments `#cc8c3c`, strings `#73c936`,
-etc.) are recorded for when highlighting arrives but unused in Phase 1. The
+etc.) are recorded for when highlighting arrives but unused for now. The
 `rgb`/`gray`/`style` helpers in `editor.odin` move to a `color.odin` once color
 handling grows.
 
@@ -308,42 +308,53 @@ Likely later splits, each created when its file earns it:
 
 ---
 
-## 10. Roadmap
+## 10. TODO
 
-### Phase 0 — done
-Vendored termbox2 build; basic buffer open; basic line rendering.
+This is the working task list. **Workflow:**
 
-### Phase 1 — Core editing MVP
-The editor becomes genuinely usable for editing a single file.
+- Pick one unchecked task, implement it, and report when it's done — including
+  how it was verified (tests, a manual run).
+- A task is ticked off (`[x]`) **only after Petar has verified it's done.** Do
+  not check it off yourself on completion; leave it `[ ]` until then.
+- If during development you find work that belongs in its own task, **add it
+  here** as a new unchecked item rather than silently expanding the current one.
 
-- Real main loop: poll → dispatch → render → quit; clean shutdown.
-- Ensure `lines` is never empty.
-- Cursor movement + goal column; viewport vertical & horizontal scroll with
+Order is a rough suggestion, not a mandate — pick whatever makes sense next with
+no outstanding dependencies.
+
+### Done
+- [x] Vendored termbox2 build; static lib via `build.sh`.
+- [x] Basic buffer open (naive line split).
+- [x] Basic line rendering.
+
+### Core editing
+- [ ] `buffer_insert` / `buffer_delete` primitives + unit tests.
+- [ ] Ensure `lines` is never empty.
+- [ ] Real main loop: poll → dispatch → render → quit; clean shutdown.
+- [ ] Cursor movement + goal column; viewport vertical & horizontal scroll with
   scroll margins.
-- `buffer_insert` / `buffer_delete` primitives; printable input, Enter,
-  Backspace/Delete (incl. line join), Tab → 4 spaces.
-- Undo/redo via the grouped inverse-op log (atomic compound actions + coalesced
-  typing).
-- Selection (shift-movement, select-all) and selection-aware editing.
-- Clipboard copy/cut/paste via external tool (+ in-process fallback).
-- Atomic save, line-ending & final-newline preservation.
-- Startup handling: file vs directory vs none (welcome screen).
-- Status bar: path + modified flag.
-- Mouse: click-to-position, drag-select, wheel-scroll.
-- Quit guard for unsaved changes.
-- Unit tests for buffer/edit/cursor/undo.
+- [ ] Printable input, Enter, Backspace/Delete (incl. line join), Tab → 4 spaces.
+- [ ] Undo/redo via the grouped inverse-op log (atomic compound actions +
+  coalesced typing).
+- [ ] Selection (shift-movement, select-all) and selection-aware editing.
+- [ ] Clipboard copy/cut/paste via external tool (+ in-process fallback).
+- [ ] Atomic save, line-ending & final-newline preservation.
+- [ ] Startup handling: file vs directory vs none (welcome screen).
+- [ ] Status bar: path + modified flag.
+- [ ] Mouse: click-to-position, drag-select, wheel-scroll.
+- [ ] Quit guard for unsaved changes.
 
-### Phase 2+ — Future (no abstraction built ahead of need)
+### Later (no abstraction built ahead of need)
 Each item is concrete on arrival; the **pane/floating-window model is designed
-only once 2–3 of these coexist** and a shared pattern is visible:
+only once 2–3 of these coexist** and a shared pattern is visible.
 
-- Floating command palette (VSCode-style) for commands.
-- In-buffer find, then find/replace.
-- File-tree pane (uses the working root).
-- Project-wide search overlay (rg + fzf).
-- Rune-aware cursor/width (UTF-8 correctness).
-- Syntax highlighting via tree-sitter.
-- LSP integration (completion dropdown, diagnostics, hover, go-to-def).
-- Inline diagnostics/hints rendered between lines.
-- Git diff gutter.
-- Permission-preserving saves.
+- [ ] Floating command palette (VSCode-style) for commands.
+- [ ] In-buffer find, then find/replace.
+- [ ] File-tree pane (uses the working root).
+- [ ] Project-wide search overlay (rg + fzf).
+- [ ] Rune-aware cursor/width (UTF-8 correctness).
+- [ ] Syntax highlighting via tree-sitter.
+- [ ] LSP integration (completion dropdown, diagnostics, hover, go-to-def).
+- [ ] Inline diagnostics/hints rendered between lines.
+- [ ] Git diff gutter.
+- [ ] Permission-preserving saves.

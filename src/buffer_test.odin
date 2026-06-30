@@ -1,0 +1,150 @@
+package main
+
+import "core:strings"
+import "core:testing"
+
+@(private = "file")
+test_buffer :: proc(lines: ..string) -> Buffer {
+	b: Buffer
+	b.lines = make([dynamic]Line, 0, len(lines))
+	for l in lines {
+		line: Line
+		append(&line.text, ..transmute([]u8)l)
+		append(&b.lines, line)
+	}
+	if len(b.lines) == 0 {
+		append(&b.lines, Line{})
+	}
+	return b
+}
+
+@(private = "file")
+buffer_string :: proc(b: ^Buffer) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for line, i in b.lines {
+		if i > 0 {
+			strings.write_byte(&sb, '\n')
+		}
+		strings.write_bytes(&sb, line.text[:])
+	}
+	return strings.to_string(sb)
+}
+
+@(test)
+test_insert_within_line :: proc(t: ^testing.T) {
+	b := test_buffer("hello world")
+	defer buffer_destroy(&b)
+
+	end := buffer_insert(&b, {0, 5}, " there")
+
+	testing.expect_value(t, buffer_string(&b), "hello there world")
+	testing.expect_value(t, end, Cursor{0, 11})
+}
+
+@(test)
+test_insert_at_end :: proc(t: ^testing.T) {
+	b := test_buffer("abc")
+	defer buffer_destroy(&b)
+
+	end := buffer_insert(&b, {0, 3}, "def")
+
+	testing.expect_value(t, buffer_string(&b), "abcdef")
+	testing.expect_value(t, end, Cursor{0, 6})
+}
+
+@(test)
+test_insert_empty_is_noop :: proc(t: ^testing.T) {
+	b := test_buffer("abc")
+	defer buffer_destroy(&b)
+
+	end := buffer_insert(&b, {0, 2}, "")
+
+	testing.expect_value(t, buffer_string(&b), "abc")
+	testing.expect_value(t, end, Cursor{0, 2})
+}
+
+@(test)
+test_insert_newline_splits_line :: proc(t: ^testing.T) {
+	b := test_buffer("hello world")
+	defer buffer_destroy(&b)
+
+	end := buffer_insert(&b, {0, 5}, "\n")
+
+	testing.expect_value(t, buffer_string(&b), "hello\n world")
+	testing.expect_value(t, len(b.lines), 2)
+	testing.expect_value(t, end, Cursor{1, 0})
+}
+
+@(test)
+test_insert_multiline :: proc(t: ^testing.T) {
+	b := test_buffer("ac")
+	defer buffer_destroy(&b)
+
+	end := buffer_insert(&b, {0, 1}, "1\n22\n333")
+
+	testing.expect_value(t, buffer_string(&b), "a1\n22\n333c")
+	testing.expect_value(t, len(b.lines), 3)
+	testing.expect_value(t, end, Cursor{2, 3})
+}
+
+@(test)
+test_insert_into_empty_buffer :: proc(t: ^testing.T) {
+	b := buffer_new()
+	defer buffer_destroy(&b)
+
+	end := buffer_insert(&b, {0, 0}, "first\nsecond")
+
+	testing.expect_value(t, buffer_string(&b), "first\nsecond")
+	testing.expect_value(t, end, Cursor{1, 6})
+}
+
+@(test)
+test_delete_within_line :: proc(t: ^testing.T) {
+	b := test_buffer("hello there world")
+	defer buffer_destroy(&b)
+
+	removed := buffer_delete(&b, {0, 5}, {0, 11})
+	defer delete(removed)
+
+	testing.expect_value(t, removed, " there")
+	testing.expect_value(t, buffer_string(&b), "hello world")
+}
+
+@(test)
+test_delete_joins_lines :: proc(t: ^testing.T) {
+	b := test_buffer("hello", " world")
+	defer buffer_destroy(&b)
+
+	removed := buffer_delete(&b, {0, 5}, {1, 0})
+	defer delete(removed)
+
+	testing.expect_value(t, removed, "\n")
+	testing.expect_value(t, buffer_string(&b), "hello world")
+	testing.expect_value(t, len(b.lines), 1)
+}
+
+@(test)
+test_delete_multiline :: proc(t: ^testing.T) {
+	b := test_buffer("a1", "22", "333c")
+	defer buffer_destroy(&b)
+
+	removed := buffer_delete(&b, {0, 1}, {2, 3})
+	defer delete(removed)
+
+	testing.expect_value(t, removed, "1\n22\n333")
+	testing.expect_value(t, buffer_string(&b), "ac")
+	testing.expect_value(t, len(b.lines), 1)
+}
+
+@(test)
+test_insert_delete_roundtrip :: proc(t: ^testing.T) {
+	b := test_buffer("ac")
+	defer buffer_destroy(&b)
+
+	end := buffer_insert(&b, {0, 1}, "1\n22\n333")
+	removed := buffer_delete(&b, {0, 1}, end)
+	defer delete(removed)
+
+	testing.expect_value(t, removed, "1\n22\n333")
+	testing.expect_value(t, buffer_string(&b), "ac")
+}

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Project onboarding for qed: before doing any work, (1) read BOTH CLAUDE.md and docs/DESIGN.md in full — CLAUDE.md is auto-loaded each session but docs/DESIGN.md is NOT, so open it now with the Read tool; and (2) skim the src/ source files to see the current state of the code (the codebase is intentionally small). The working TODO list and task workflow live in docs/DESIGN.md section 10.\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
