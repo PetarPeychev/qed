@@ -23,7 +23,8 @@ editor_shutdown :: proc(editor: ^Editor) {
 
 editor_render :: proc(editor: ^Editor) {
     for line, i in editor.buffer.lines {
-        tb2.print(0, i32(i), gray(20), .Default, strings.clone_to_cstring(string(line.text[:])))
+        cstr := strings.clone_to_cstring(string(line.text[:]), context.temp_allocator)
+        tb2.print(0, i32(i), gray(20), .Default, cstr)
     }
     tb2.present()
 }

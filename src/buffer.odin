@@ -5,7 +5,7 @@ import "core:slice"
 import "core:strings"
 
 Buffer :: struct {
-	file:   ^os.File,
+	path:   string,
 	lines:  [dynamic]Line,
 	cursor: Cursor,
 }
@@ -20,7 +20,7 @@ Cursor :: struct {
 }
 
 buffer_new :: proc() -> Buffer {
-	return {file = nil, lines = make([dynamic]Line, 0, 64), cursor = {0, 0}}
+	return {file = "", lines = make([dynamic]Line, 0, 64), cursor = {0, 0}}
 }
 
 BufferOpenError :: enum {

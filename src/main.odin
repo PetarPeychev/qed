@@ -28,6 +28,7 @@ main :: proc() {
 	ev: tb2.Event
 	for {
 	    editor_render(&editor)
+        free_all(context.temp_allocator)
 		tb2.poll_event(&ev)
 		break
 	}
