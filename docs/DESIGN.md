@@ -18,6 +18,7 @@ Buffer :: struct {
     lines:       [dynamic]Line, // never empty: an empty file is one empty line
     cursor:      Cursor,
     selection:   Maybe(Cursor), // anchor; cursor is the moving end
+    goal_col:    int,           // remembered x-position for vertical moves (§5)
     line_ending: LineEnding,    // .LF or .CRLF, detected on open
     final_newline: bool,        // did the file end with a trailing newline?
     modified:    bool,          // dirty flag for the status bar
@@ -331,7 +332,7 @@ no outstanding dependencies.
 - [x] `buffer_insert` / `buffer_delete` primitives + unit tests.
 - [ ] Ensure `lines` is never empty.
 - [x] Real main loop: poll → dispatch → render → quit; clean shutdown.
-- [ ] Cursor movement + goal column; viewport vertical & horizontal scroll with
+- [x] Cursor movement + goal column; viewport vertical & horizontal scroll with
   scroll margins.
 - [ ] Printable input, Enter, Backspace/Delete (incl. line join), Tab → 4 spaces.
 - [ ] Undo/redo via the grouped inverse-op log (atomic compound actions +
@@ -340,7 +341,10 @@ no outstanding dependencies.
 - [ ] Clipboard copy/cut/paste via external tool (+ in-process fallback).
 - [ ] Atomic save, line-ending & final-newline preservation.
 - [ ] Startup handling: file vs directory vs none (welcome screen).
-- [ ] Status bar: path + modified flag.
+- [ ] Status bar: path + modified flag (+ message line). Shrink the text area to
+  `height - 2` in `editor_viewport`; it currently returns the full screen height.
+- [ ] Left line-number gutter (current line emphasized); fold its width into the
+  screen↔buffer column mapping used by cursor placement and mouse.
 - [ ] Mouse: click-to-position, drag-select, wheel-scroll.
 - [ ] Quit guard for unsaved changes.
 

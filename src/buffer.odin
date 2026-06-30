@@ -5,9 +5,10 @@ import "core:slice"
 import "core:strings"
 
 Buffer :: struct {
-	path:   string,
-	lines:  [dynamic]Line,
-	cursor: Cursor,
+	path:     string,
+	lines:    [dynamic]Line,
+	cursor:   Cursor,
+	goal_col: int,
 }
 
 
@@ -67,6 +68,7 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 
 	buffer.path = path
 	buffer.cursor = {0, 0}
+	buffer.goal_col = 0
 
 	return .None
 }
