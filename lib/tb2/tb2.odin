@@ -96,6 +96,7 @@ Output_Mode :: enum u8 {
 	O256      = 2,
 	O216      = 3,
 	Grayscale = 4,
+	Truecolor = 5,
 }
 
 Mod :: enum u8 {

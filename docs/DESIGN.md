@@ -342,7 +342,7 @@ no outstanding dependencies.
 - [ ] Clipboard copy/cut/paste via external tool (+ in-process fallback).
 - [ ] Atomic save, line-ending & final-newline preservation.
 - [ ] Startup handling: file vs directory vs none (welcome screen).
-- [ ] Status bar: path + modified flag (+ message line). Shrink the text area to
+- [x] Status bar: path + modified flag (+ message line). Shrink the text area to
   `height - 2` in `editor_viewport`; it currently returns the full screen height.
 - [ ] Left line-number gutter (current line emphasized); fold its width into the
   screen↔buffer column mapping used by cursor placement and mouse.

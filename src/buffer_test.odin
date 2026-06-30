@@ -248,6 +248,22 @@ test_insert_tab_aligns_to_next_stop :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_modified_clears_when_content_reverts :: proc(t: ^testing.T) {
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	testing.expect(t, !b.modified)
+
+	buffer_insert_text(&b, "hello")
+	testing.expect(t, b.modified)
+
+	buffer_insert_text(&b, "\nworld")
+	testing.expect(t, b.modified)
+
+	delete(buffer_delete(&b, {0, 0}, b.cursor))
+	testing.expect(t, !b.modified)
+}
+
+@(test)
 test_insert_delete_roundtrip :: proc(t: ^testing.T) {
 	b := test_buffer("ac")
 	defer buffer_destroy(&b)

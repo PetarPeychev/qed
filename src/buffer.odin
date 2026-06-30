@@ -10,6 +10,8 @@ Buffer :: struct {
 	lines:    [dynamic]Line,
 	cursor:   Cursor,
 	goal_col: int,
+	saved:    string,
+	modified: bool,
 }
 
 
@@ -24,7 +26,12 @@ Cursor :: struct {
 buffer_new :: proc() -> Buffer {
 	lines := make([dynamic]Line, 0, 64)
 	append(&lines, Line{})
-	return {path = "", lines = lines, cursor = {0, 0}}
+	buffer := Buffer {
+		lines  = lines,
+		cursor = {0, 0},
+	}
+	buffer.saved = buffer_snapshot(&buffer)
+	return buffer
 }
 
 buffer_destroy :: proc(buffer: ^Buffer) {
@@ -32,6 +39,39 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 		delete(line.text)
 	}
 	delete(buffer.lines)
+	delete(buffer.saved)
+}
+
+buffer_snapshot :: proc(buffer: ^Buffer) -> string {
+	sb := strings.builder_make()
+	for line, i in buffer.lines {
+		if i > 0 {
+			strings.write_byte(&sb, '\n')
+		}
+		strings.write_bytes(&sb, line.text[:])
+	}
+	return strings.to_string(sb)
+}
+
+buffer_recompute_modified :: proc(buffer: ^Buffer) {
+	saved := buffer.saved
+	pos := 0
+	for line, i in buffer.lines {
+		if i > 0 {
+			if pos >= len(saved) || saved[pos] != '\n' {
+				buffer.modified = true
+				return
+			}
+			pos += 1
+		}
+		t := line.text[:]
+		if pos + len(t) > len(saved) || saved[pos:pos + len(t)] != string(t) {
+			buffer.modified = true
+			return
+		}
+		pos += len(t)
+	}
+	buffer.modified = pos != len(saved)
 }
 
 BufferOpenError :: enum {
@@ -70,6 +110,9 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	buffer.path = path
 	buffer.cursor = {0, 0}
 	buffer.goal_col = 0
+	delete(buffer.saved)
+	buffer.saved = buffer_snapshot(buffer)
+	buffer.modified = false
 
 	return .None
 }
@@ -109,6 +152,7 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	}
 
 	append(&buffer.lines[end.row].text, ..tail)
+	buffer_recompute_modified(buffer)
 	return end
 }
 
@@ -186,5 +230,6 @@ buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 		remove_range(&buffer.lines, from.row + 1, to.row + 1)
 	}
 
+	buffer_recompute_modified(buffer)
 	return strings.to_string(sb)
 }

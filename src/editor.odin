@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:strings"
 import "lib:tb2"
 
@@ -7,12 +8,14 @@ Editor :: struct {
 	buffer:     Buffer,
 	scroll_row: int,
 	scroll_col: int,
+	message:    string,
 	quit:       bool,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
 	tb2.init()
-	tb2.set_output_mode(.O256)
+	tb2.set_output_mode(.Truecolor)
+	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	editor := Editor {
 		buffer = buffer_new(),
 	}
@@ -28,7 +31,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 }
 
 editor_viewport :: proc() -> (w, h: int) {
-	return int(tb2.width()), int(tb2.height())
+	return int(tb2.width()), max(0, int(tb2.height()) - 2)
 }
 
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -41,6 +44,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 }
 
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
+	editor.message = ""
 	b := &editor.buffer
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
 	_, h := editor_viewport()
@@ -132,9 +136,17 @@ editor_render :: proc(editor: ^Editor) {
 			end := min(editor.scroll_col + w, len(text))
 			visible := string(text[editor.scroll_col:end])
 			cstr := strings.clone_to_cstring(visible, context.temp_allocator)
-			tb2.print(0, i32(screen_y), gray(20), .Default, cstr)
+			tb2.print(0, i32(screen_y), COLOR_FG, COLOR_BG, cstr)
 		}
 	}
+
+	name := editor.buffer.path if editor.buffer.path != "" else "[No Name]"
+	status := name
+	if editor.buffer.modified {
+		status = fmt.tprintf("%s [*]", name)
+	}
+	editor_render_row(h, w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
+	editor_render_row(h + 1, w, editor.message, COLOR_FG, COLOR_BG)
 
 	cx := editor.buffer.cursor.col - editor.scroll_col
 	cy := editor.buffer.cursor.row - editor.scroll_row
@@ -142,16 +154,16 @@ editor_render :: proc(editor: ^Editor) {
 	tb2.present()
 }
 
-rgb :: proc(r, g, b: u8) -> tb2.Color {
-	return tb2.Color(16 + 36 * u64(r) + 6 * u64(g) + u64(b))
-}
-
-gray :: proc(level: u8) -> tb2.Color {
-	return tb2.Color(232 + u64(level))
-}
-
-style :: proc(c: tb2.Color, attrs: ..tb2.Color) -> tb2.Color {
-	v := u64(c)
-	for a in attrs do v |= u64(a)
-	return tb2.Color(v)
+editor_render_row :: proc(y, w: int, text: string, fg, bg: tb2.Color) {
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, text)
+	for _ in len(text) ..< w {
+		strings.write_byte(&sb, ' ')
+	}
+	row := strings.to_string(sb)
+	if len(row) > w {
+		row = row[:w]
+	}
+	cstr := strings.clone_to_cstring(row, context.temp_allocator)
+	tb2.print(0, i32(y), fg, bg, cstr)
 }
