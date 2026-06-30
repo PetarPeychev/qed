@@ -4,7 +4,8 @@ import "core:strings"
 import "lib:tb2"
 
 Editor :: struct {
-    buffer: Buffer
+    buffer: Buffer,
+    quit:   bool,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -18,10 +19,22 @@ editor_init :: proc(path: string = "") -> Editor {
 }
 
 editor_shutdown :: proc(editor: ^Editor) {
+    buffer_destroy(&editor.buffer)
     tb2.shutdown()
 }
 
+editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
+    #partial switch ev.type {
+    case .Key:
+        #partial switch ev.key {
+        case .Ctrl_Q:
+            editor.quit = true
+        }
+    }
+}
+
 editor_render :: proc(editor: ^Editor) {
+    tb2.clear()
     for line, i in editor.buffer.lines {
         cstr := strings.clone_to_cstring(string(line.text[:]), context.temp_allocator)
         tb2.print(0, i32(i), gray(20), .Default, cstr)

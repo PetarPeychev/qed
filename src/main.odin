@@ -26,10 +26,10 @@ main :: proc() {
 
 
 	ev: tb2.Event
-	for {
-	    editor_render(&editor)
-        free_all(context.temp_allocator)
+	for !editor.quit {
+		editor_render(&editor)
 		tb2.poll_event(&ev)
-		break
+		editor_dispatch(&editor, ev)
+		free_all(context.temp_allocator)
 	}
 }

@@ -328,9 +328,9 @@ no outstanding dependencies.
 - [x] Basic line rendering.
 
 ### Core editing
-- [ ] `buffer_insert` / `buffer_delete` primitives + unit tests.
+- [x] `buffer_insert` / `buffer_delete` primitives + unit tests.
 - [ ] Ensure `lines` is never empty.
-- [ ] Real main loop: poll → dispatch → render → quit; clean shutdown.
+- [x] Real main loop: poll → dispatch → render → quit; clean shutdown.
 - [ ] Cursor movement + goal column; viewport vertical & horizontal scroll with
   scroll margins.
 - [ ] Printable input, Enter, Backspace/Delete (incl. line join), Tab → 4 spaces.
