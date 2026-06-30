@@ -3,15 +3,19 @@ package main
 import "core:os"
 import "core:slice"
 import "core:strings"
-import "core:unicode/utf8"
 
 Buffer :: struct {
-	path:     string,
-	lines:    [dynamic]Line,
-	cursor:   Cursor,
-	goal_col: int,
-	saved:    string,
-	modified: bool,
+	path:      string,
+	lines:     [dynamic]Line,
+	cursor:    Cursor,
+	goal_col:  int,
+	saved:     string,
+	modified:  bool,
+	undo:      [dynamic]EditGroup,
+	redo:      [dynamic]EditGroup,
+	open:      EditGroup,
+	has_open:  bool,
+	open_kind: Coalesce,
 }
 
 
@@ -40,6 +44,16 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	}
 	delete(buffer.lines)
 	delete(buffer.saved)
+
+	for &group in buffer.undo {
+		group_destroy(&group)
+	}
+	delete(buffer.undo)
+	for &group in buffer.redo {
+		group_destroy(&group)
+	}
+	delete(buffer.redo)
+	group_destroy(&buffer.open)
 }
 
 buffer_snapshot :: proc(buffer: ^Buffer) -> string {
@@ -154,50 +168,6 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	append(&buffer.lines[end.row].text, ..tail)
 	buffer_recompute_modified(buffer)
 	return end
-}
-
-buffer_insert_text :: proc(buffer: ^Buffer, text: string) {
-	buffer.cursor = buffer_insert(buffer, buffer.cursor, text)
-	buffer.goal_col = buffer.cursor.col
-}
-
-buffer_insert_rune :: proc(buffer: ^Buffer, r: rune) {
-	bytes, n := utf8.encode_rune(r)
-	buffer_insert_text(buffer, string(bytes[:n]))
-}
-
-buffer_insert_tab :: proc(buffer: ^Buffer) {
-	n := TAB_WIDTH - buffer.cursor.col % TAB_WIDTH
-	buffer_insert_text(buffer, strings.repeat(" ", n, context.temp_allocator))
-}
-
-buffer_backspace :: proc(buffer: ^Buffer) {
-	c := buffer.cursor
-	from := c
-	if c.col > 0 {
-		from = {c.row, c.col - 1}
-	} else if c.row > 0 {
-		from = {c.row - 1, len(buffer.lines[c.row - 1].text)}
-	} else {
-		return
-	}
-	delete(buffer_delete(buffer, from, c))
-	buffer.cursor = from
-	buffer.goal_col = from.col
-}
-
-buffer_delete_forward :: proc(buffer: ^Buffer) {
-	c := buffer.cursor
-	to := c
-	if c.col < len(buffer.lines[c.row].text) {
-		to = {c.row, c.col + 1}
-	} else if c.row < len(buffer.lines) - 1 {
-		to = {c.row + 1, 0}
-	} else {
-		return
-	}
-	delete(buffer_delete(buffer, c, to))
-	buffer.goal_col = c.col
 }
 
 buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {

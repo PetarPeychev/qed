@@ -336,7 +336,7 @@ no outstanding dependencies.
 - [x] Cursor movement + goal column; viewport vertical & horizontal scroll with
   scroll margins.
 - [x] Printable input, Enter, Backspace/Delete (incl. line join), Tab → 4 spaces.
-- [ ] Undo/redo via the grouped inverse-op log (atomic compound actions +
+- [x] Undo/redo via the grouped inverse-op log (atomic compound actions +
   coalesced typing).
 - [ ] Selection (shift-movement, select-all) and selection-aware editing.
 - [ ] Clipboard copy/cut/paste via external tool (+ in-process fallback).

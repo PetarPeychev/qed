@@ -52,46 +52,54 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	#partial switch ev.key {
 	case .Ctrl_Q:
 		editor.quit = true
-	case .Arrow_Left:
-		if ctrl {
-			cursor_move_word_left(b)
-		} else {
-			cursor_move_left(b)
-		}
-	case .Arrow_Right:
-		if ctrl {
-			cursor_move_word_right(b)
-		} else {
-			cursor_move_right(b)
-		}
-	case .Arrow_Up:
-		cursor_move_up_n(b, 1)
-	case .Arrow_Down:
-		cursor_move_down_n(b, 1)
-	case .Home:
-		if ctrl {
-			cursor_move_buffer_start(b)
-		} else {
-			cursor_move_home(b)
-		}
-	case .End:
-		if ctrl {
-			cursor_move_buffer_end(b)
-		} else {
-			cursor_move_end(b)
-		}
-	case .Pgup:
-		cursor_move_up_n(b, h)
-	case .Pgdn:
-		cursor_move_down_n(b, h)
+	case .Ctrl_Z:
+		buffer_undo(b)
+	case .Ctrl_Y:
+		buffer_redo(b)
 	case .Enter:
-		buffer_insert_text(b, "\n")
+		buffer_newline(b)
 	case .Tab:
 		buffer_insert_tab(b)
 	case .Backspace, .Backspace2:
 		buffer_backspace(b)
 	case .Delete:
 		buffer_delete_forward(b)
+	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down, .Home, .End, .Pgup, .Pgdn:
+		buffer_undo_commit(b)
+		#partial switch ev.key {
+		case .Arrow_Left:
+			if ctrl {
+				cursor_move_word_left(b)
+			} else {
+				cursor_move_left(b)
+			}
+		case .Arrow_Right:
+			if ctrl {
+				cursor_move_word_right(b)
+			} else {
+				cursor_move_right(b)
+			}
+		case .Arrow_Up:
+			cursor_move_up_n(b, 1)
+		case .Arrow_Down:
+			cursor_move_down_n(b, 1)
+		case .Home:
+			if ctrl {
+				cursor_move_buffer_start(b)
+			} else {
+				cursor_move_home(b)
+			}
+		case .End:
+			if ctrl {
+				cursor_move_buffer_end(b)
+			} else {
+				cursor_move_end(b)
+			}
+		case .Pgup:
+			cursor_move_up_n(b, h)
+		case .Pgdn:
+			cursor_move_down_n(b, h)
+		}
 	case:
 		if ev.ch == 0 {
 			return
