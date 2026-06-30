@@ -17,9 +17,18 @@ and the working TODO list live in [docs/DESIGN.md](docs/DESIGN.md).
 
 **Task workflow:** work is tracked as the TODO list in `docs/DESIGN.md §10`.
 Pick one unchecked task, implement it, and report when done (with how it was
-verified). A task is only ticked off `[x]` **after Petar verifies it** — never
-self-check on completion. If you discover work that warrants its own task while
-developing, add it to that list as a new unchecked item.
+verified). If you discover work that warrants its own task while developing, add
+it to that list as a new unchecked item.
+
+Finishing a ticket has a fixed close-out sequence:
+
+1. Run `./build.sh` so the `qed` binary is fresh — Petar should only ever need
+   to run `./qed` to test, never rebuild himself.
+2. Tell him exactly what to **test manually** in the running editor (a concrete
+   checklist), then explicitly prompt him to confirm it works.
+3. A task is ticked off `[x]` **only after Petar verifies it** — never
+   self-check before his confirmation. Once he confirms, *you* edit the
+   `[ ]` → `[x]` in `docs/DESIGN.md`, then commit & push (direct to `master`).
 
 ## Build & run
 
