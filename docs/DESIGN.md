@@ -193,10 +193,11 @@ clears `redo`.
   "goal column" preserves the intended x-position across vertical moves over
   short lines.
 - **Word boundaries** (for Ctrl+Left/Right): characters fall into three classes —
-  alphanumeric (incl. `_`), punctuation, and whitespace. A word move skips over a
-  run of one class and stops at the start of the next non-whitespace run, so
-  punctuation and identifiers are separated as most IDEs do (not just
-  whitespace-delimited).
+  alphanumeric (incl. `_`), punctuation, and whitespace. A word move stops at
+  every boundary between two classes: one press advances to the end of the
+  current run (i.e. the start of the next), so a whitespace gap and an adjacent
+  word are never crossed in a single move, and punctuation and identifiers are
+  separated.
 - **Selection:** holding Shift with any movement sets `selection` (anchor) if
   unset and extends it. Any non-shift movement clears it. Editing while a
   selection exists replaces it — **except Tab/Shift+Tab**, which block-indent
@@ -334,7 +335,7 @@ no outstanding dependencies.
 - [x] Real main loop: poll → dispatch → render → quit; clean shutdown.
 - [x] Cursor movement + goal column; viewport vertical & horizontal scroll with
   scroll margins.
-- [ ] Printable input, Enter, Backspace/Delete (incl. line join), Tab → 4 spaces.
+- [x] Printable input, Enter, Backspace/Delete (incl. line join), Tab → 4 spaces.
 - [ ] Undo/redo via the grouped inverse-op log (atomic compound actions +
   coalesced typing).
 - [ ] Selection (shift-movement, select-all) and selection-aware editing.

@@ -84,14 +84,9 @@ cursor_move_word_left :: proc(b: ^Buffer) {
 	}
 
 	text := b.lines[c.row].text[:]
-	for c.col > 0 && char_class(text[c.col - 1]) == .Whitespace {
+	cls := char_class(text[c.col - 1])
+	for c.col > 0 && char_class(text[c.col - 1]) == cls {
 		c.col -= 1
-	}
-	if c.col > 0 {
-		cls := char_class(text[c.col - 1])
-		for c.col > 0 && char_class(text[c.col - 1]) == cls {
-			c.col -= 1
-		}
 	}
 	b.goal_col = c.col
 }
@@ -110,9 +105,6 @@ cursor_move_word_right :: proc(b: ^Buffer) {
 
 	cls := char_class(text[c.col])
 	for c.col < len(text) && char_class(text[c.col]) == cls {
-		c.col += 1
-	}
-	for c.col < len(text) && char_class(text[c.col]) == .Whitespace {
 		c.col += 1
 	}
 	b.goal_col = c.col

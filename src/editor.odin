@@ -80,8 +80,19 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		cursor_move_up_n(b, h)
 	case .Pgdn:
 		cursor_move_down_n(b, h)
+	case .Enter:
+		buffer_insert_text(b, "\n")
+	case .Tab:
+		buffer_insert_tab(b)
+	case .Backspace, .Backspace2:
+		buffer_backspace(b)
+	case .Delete:
+		buffer_delete_forward(b)
 	case:
-		return
+		if ev.ch == 0 {
+			return
+		}
+		buffer_insert_rune(b, ev.ch)
 	}
 	editor_scroll(editor)
 }

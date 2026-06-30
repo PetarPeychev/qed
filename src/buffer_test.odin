@@ -137,6 +137,117 @@ test_delete_multiline :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_insert_rune_advances_cursor :: proc(t: ^testing.T) {
+	b := test_buffer("ac")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 1}
+
+	buffer_insert_rune(&b, 'b')
+
+	testing.expect_value(t, buffer_string(&b), "abc")
+	testing.expect_value(t, b.cursor, Cursor{0, 2})
+	testing.expect_value(t, b.goal_col, 2)
+}
+
+@(test)
+test_insert_text_newline_moves_to_next_row :: proc(t: ^testing.T) {
+	b := test_buffer("ab")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 1}
+
+	buffer_insert_text(&b, "\n")
+
+	testing.expect_value(t, buffer_string(&b), "a\nb")
+	testing.expect_value(t, b.cursor, Cursor{1, 0})
+}
+
+@(test)
+test_backspace_within_line :: proc(t: ^testing.T) {
+	b := test_buffer("abc")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 2}
+
+	buffer_backspace(&b)
+
+	testing.expect_value(t, buffer_string(&b), "ac")
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+}
+
+@(test)
+test_backspace_joins_lines :: proc(t: ^testing.T) {
+	b := test_buffer("ab", "cd")
+	defer buffer_destroy(&b)
+	b.cursor = {1, 0}
+
+	buffer_backspace(&b)
+
+	testing.expect_value(t, buffer_string(&b), "abcd")
+	testing.expect_value(t, len(b.lines), 1)
+	testing.expect_value(t, b.cursor, Cursor{0, 2})
+}
+
+@(test)
+test_backspace_at_buffer_start_is_noop :: proc(t: ^testing.T) {
+	b := test_buffer("abc")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 0}
+
+	buffer_backspace(&b)
+
+	testing.expect_value(t, buffer_string(&b), "abc")
+	testing.expect_value(t, b.cursor, Cursor{0, 0})
+}
+
+@(test)
+test_delete_forward_joins_lines :: proc(t: ^testing.T) {
+	b := test_buffer("ab", "cd")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 2}
+
+	buffer_delete_forward(&b)
+
+	testing.expect_value(t, buffer_string(&b), "abcd")
+	testing.expect_value(t, len(b.lines), 1)
+	testing.expect_value(t, b.cursor, Cursor{0, 2})
+}
+
+@(test)
+test_delete_forward_at_buffer_end_is_noop :: proc(t: ^testing.T) {
+	b := test_buffer("abc")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 3}
+
+	buffer_delete_forward(&b)
+
+	testing.expect_value(t, buffer_string(&b), "abc")
+	testing.expect_value(t, b.cursor, Cursor{0, 3})
+}
+
+@(test)
+test_insert_tab_at_stop_inserts_full_width :: proc(t: ^testing.T) {
+	b := test_buffer("x")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 0}
+
+	buffer_insert_tab(&b)
+
+	testing.expect_value(t, buffer_string(&b), "    x")
+	testing.expect_value(t, b.cursor, Cursor{0, 4})
+}
+
+@(test)
+test_insert_tab_aligns_to_next_stop :: proc(t: ^testing.T) {
+	b := test_buffer("ab")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 2}
+
+	buffer_insert_tab(&b)
+
+	testing.expect_value(t, buffer_string(&b), "ab  ")
+	testing.expect_value(t, b.cursor, Cursor{0, 4})
+}
+
+@(test)
 test_insert_delete_roundtrip :: proc(t: ^testing.T) {
 	b := test_buffer("ac")
 	defer buffer_destroy(&b)

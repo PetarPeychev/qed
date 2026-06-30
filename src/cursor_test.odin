@@ -95,6 +95,9 @@ test_move_word_right :: proc(t: ^testing.T) {
 	b.cursor = {0, 0}
 
 	cursor_move_word_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 3})
+
+	cursor_move_word_right(&b)
 	testing.expect_value(t, b.cursor, Cursor{0, 6})
 
 	cursor_move_word_right(&b)
@@ -131,6 +134,9 @@ test_move_word_left :: proc(t: ^testing.T) {
 
 	cursor_move_word_left(&b)
 	testing.expect_value(t, b.cursor, Cursor{0, 6})
+
+	cursor_move_word_left(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 3})
 
 	cursor_move_word_left(&b)
 	testing.expect_value(t, b.cursor, Cursor{0, 0})
