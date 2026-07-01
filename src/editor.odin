@@ -31,8 +31,20 @@ editor_shutdown :: proc(editor: ^Editor) {
 	tb2.shutdown()
 }
 
-editor_viewport :: proc() -> (w, h: int) {
-	return int(tb2.width()), max(0, int(tb2.height()) - 2)
+editor_gutter_width :: proc(editor: ^Editor) -> int {
+	n := len(editor.buffer.lines)
+	digits := 1
+	for n >= 10 {
+		digits += 1
+		n /= 10
+	}
+	return digits + 1
+}
+
+editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
+	w = max(0, int(tb2.width()) - editor_gutter_width(editor))
+	h = max(0, int(tb2.height()) - 2)
+	return
 }
 
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -49,7 +61,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor.message_error = false
 	b := &editor.buffer
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
-	_, h := editor_viewport()
+	_, h := editor_viewport(editor)
 
 	#partial switch ev.key {
 	case .Ctrl_Q:
@@ -127,7 +139,7 @@ editor_save :: proc(editor: ^Editor) {
 }
 
 editor_scroll :: proc(editor: ^Editor) {
-	w, h := editor_viewport()
+	w, h := editor_viewport(editor)
 	cur := editor.buffer.cursor
 
 	if cur.row < editor.scroll_row + SCROLL_MARGIN {
@@ -150,19 +162,26 @@ editor_scroll :: proc(editor: ^Editor) {
 
 editor_render :: proc(editor: ^Editor) {
 	tb2.clear()
-	w, h := editor_viewport()
+	full_w := int(tb2.width())
+	gutter := editor_gutter_width(editor)
+	w, h := editor_viewport(editor)
+
 	for screen_y in 0 ..< h {
 		row := editor.scroll_row + screen_y
 		if row >= len(editor.buffer.lines) {
 			break
 		}
+		current := row == editor.buffer.cursor.row
+		editor_render_gutter(screen_y, gutter, row + 1, current)
+
 		text := editor.buffer.lines[row].text
+		visible := ""
 		if editor.scroll_col < len(text) {
 			end := min(editor.scroll_col + w, len(text))
-			visible := string(text[editor.scroll_col:end])
-			cstr := strings.clone_to_cstring(visible, context.temp_allocator)
-			tb2.print(0, i32(screen_y), COLOR_FG, COLOR_BG, cstr)
+			visible = string(text[editor.scroll_col:end])
 		}
+		text_bg := COLOR_CURRENT_LINE_BG if current else COLOR_BG
+		editor_render_row(gutter, screen_y, w, visible, COLOR_FG, text_bg)
 	}
 
 	name := editor.buffer.path if editor.buffer.path != "" else "[No Name]"
@@ -170,17 +189,30 @@ editor_render :: proc(editor: ^Editor) {
 	if editor.buffer.modified {
 		status = fmt.tprintf("%s [*]", name)
 	}
-	editor_render_row(h, w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
+	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
 	message_fg := COLOR_ERROR_FG if editor.message_error else COLOR_FG
-	editor_render_row(h + 1, w, editor.message, message_fg, COLOR_BG)
+	editor_render_row(0, h + 1, full_w, editor.message, message_fg, COLOR_BG)
 
-	cx := editor.buffer.cursor.col - editor.scroll_col
+	cx := gutter + editor.buffer.cursor.col - editor.scroll_col
 	cy := editor.buffer.cursor.row - editor.scroll_row
 	tb2.set_cursor(i32(cx), i32(cy))
 	tb2.present()
 }
 
-editor_render_row :: proc(y, w: int, text: string, fg, bg: tb2.Color) {
+editor_render_gutter :: proc(y, width, number: int, current: bool) {
+	label := fmt.tprintf("%d", number)
+	sb := strings.builder_make(context.temp_allocator)
+	for _ in 0 ..< width - 1 - len(label) {
+		strings.write_byte(&sb, ' ')
+	}
+	strings.write_string(&sb, label)
+	strings.write_byte(&sb, ' ')
+	fg := COLOR_CURRENT_LINE_FG if current else COLOR_GUTTER_FG
+	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
+	tb2.print(0, i32(y), fg, COLOR_GUTTER_BG, cstr)
+}
+
+editor_render_row :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
 	sb := strings.builder_make(context.temp_allocator)
 	strings.write_string(&sb, text)
 	for _ in len(text) ..< w {
@@ -191,5 +223,5 @@ editor_render_row :: proc(y, w: int, text: string, fg, bg: tb2.Color) {
 		row = row[:w]
 	}
 	cstr := strings.clone_to_cstring(row, context.temp_allocator)
-	tb2.print(0, i32(y), fg, bg, cstr)
+	tb2.print(i32(x), i32(y), fg, bg, cstr)
 }

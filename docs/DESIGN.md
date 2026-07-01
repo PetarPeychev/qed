@@ -344,7 +344,7 @@ no outstanding dependencies.
 - [ ] Startup handling: file vs directory vs none (welcome screen).
 - [x] Status bar: path + modified flag (+ message line). Shrink the text area to
   `height - 2` in `editor_viewport`; it currently returns the full screen height.
-- [ ] Left line-number gutter (current line emphasized); fold its width into the
+- [x] Left line-number gutter (current line emphasized); fold its width into the
   screen↔buffer column mapping used by cursor placement and mouse.
 - [ ] Mouse: click-to-position, drag-select, wheel-scroll.
 - [ ] Quit guard for unsaved changes.
