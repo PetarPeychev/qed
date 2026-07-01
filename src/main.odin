@@ -1,9 +1,7 @@
 package main
 
-import "core:flags"
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import "lib:tb2"
 
 print_help :: proc() {

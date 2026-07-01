@@ -104,13 +104,7 @@ editor_paste_commit :: proc(editor: ^Editor) {
 	if len(editor.paste_buf) == 0 {
 		return
 	}
-	b := &editor.buffer
-	text := string(editor.paste_buf[:])
-	if selection_active(b) {
-		buffer_replace_selection(b, text)
-	} else {
-		buffer_insert_text(b, text, .Atomic)
-	}
+	buffer_paste(&editor.buffer, string(editor.paste_buf[:]))
 	clear(&editor.paste_buf)
 	editor_scroll(editor)
 }
@@ -244,29 +238,21 @@ editor_copy :: proc(editor: ^Editor) {
 }
 
 editor_cut :: proc(editor: ^Editor) {
+	editor_copy(editor)
 	b := &editor.buffer
 	if selection_active(b) {
-		from, to, _ := selection_range(b)
-		clipboard_set(buffer_text_range(b, from, to))
 		buffer_delete_selection(b)
 	} else {
-		line := b.lines[b.cursor.row].text[:]
-		clipboard_set(strings.concatenate({string(line), "\n"}, context.temp_allocator))
 		buffer_delete_line(b)
 	}
 }
 
 editor_paste :: proc(editor: ^Editor) {
-	b := &editor.buffer
 	text := clipboard_get(context.temp_allocator)
 	if len(text) == 0 {
 		return
 	}
-	if selection_active(b) {
-		buffer_replace_selection(b, text)
-	} else {
-		buffer_insert_text(b, text, .Atomic)
-	}
+	buffer_paste(&editor.buffer, text)
 }
 
 editor_save :: proc(editor: ^Editor) {

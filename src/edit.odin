@@ -165,6 +165,14 @@ buffer_replace_selection :: proc(b: ^Buffer, text: string) {
 	b.selection = nil
 }
 
+buffer_paste :: proc(b: ^Buffer, text: string) {
+	if selection_active(b) {
+		buffer_replace_selection(b, text)
+	} else {
+		buffer_insert_text(b, text, .Atomic)
+	}
+}
+
 buffer_delete_selection :: proc(b: ^Buffer) {
 	from, to, ok := selection_range(b)
 	if !ok {
