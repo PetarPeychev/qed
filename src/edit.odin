@@ -93,7 +93,37 @@ buffer_insert_rune :: proc(b: ^Buffer, r: rune) {
 }
 
 buffer_newline :: proc(b: ^Buffer) {
-	buffer_insert_text(b, "\n", .Atomic)
+	row := b.cursor.row
+	line := b.lines[row].text[:]
+	indent_len := 0
+	for indent_len < len(line) && (line[indent_len] == ' ' || line[indent_len] == '\t') {
+		indent_len += 1
+	}
+	indent_len = min(indent_len, b.cursor.col)
+	text := strings.concatenate({"\n", string(line[:indent_len])}, context.temp_allocator)
+
+	edit_open(b, .Atomic)
+	end := buffer_insert(b, b.cursor, text)
+	append(&b.open.edits, Edit{.Delete, b.cursor, strings.clone(text)})
+
+	prev := b.lines[row].text[:]
+	if len(prev) > 0 && line_is_blank(prev) {
+		removed := buffer_delete(b, {row, 0}, {row, len(prev)})
+		append(&b.open.edits, Edit{.Insert, {row, 0}, removed})
+	}
+	buffer_undo_commit(b)
+
+	b.cursor = end
+	b.goal_col = end.col
+}
+
+line_is_blank :: proc(text: []u8) -> bool {
+	for c in text {
+		if c != ' ' && c != '\t' {
+			return false
+		}
+	}
+	return true
 }
 
 buffer_insert_tab :: proc(b: ^Buffer) {
