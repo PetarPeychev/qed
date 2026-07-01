@@ -4,6 +4,8 @@ import "lib:tb2"
 
 SCROLL_MARGIN :: 3
 TAB_WIDTH :: 4
+WHEEL_SCROLL_LINES :: 3
+DOUBLE_CLICK_MS :: 400
 
 COLOR_FG :: tb2.Color(0xf4f4ff)
 COLOR_BG :: tb2.Color(0x181818)

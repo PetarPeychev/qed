@@ -46,6 +46,31 @@ cursor_select_all :: proc(b: ^Buffer) {
 	b.goal_col = b.cursor.col
 }
 
+word_range_at :: proc(b: ^Buffer, at: Cursor) -> (from, to: Cursor) {
+	text := b.lines[at.row].text[:]
+	if len(text) == 0 {
+		return at, at
+	}
+	col := min(at.col, len(text) - 1)
+	cls := char_class(text[col])
+	start := col
+	for start > 0 && char_class(text[start - 1]) == cls {
+		start -= 1
+	}
+	end := col
+	for end < len(text) && char_class(text[end]) == cls {
+		end += 1
+	}
+	return {at.row, start}, {at.row, end}
+}
+
+line_range_at :: proc(b: ^Buffer, row: int) -> (from, to: Cursor) {
+	if row < len(b.lines) - 1 {
+		return {row, 0}, {row + 1, 0}
+	}
+	return {row, 0}, {row, len(b.lines[row].text)}
+}
+
 cursor_move_left :: proc(b: ^Buffer) {
 	c := &b.cursor
 	if c.col > 0 {

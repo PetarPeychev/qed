@@ -362,7 +362,8 @@ no outstanding dependencies.
   `height - 2` in `editor_viewport`; it currently returns the full screen height.
 - [x] Left line-number gutter (current line emphasized); fold its width into the
   screen↔buffer column mapping used by cursor placement and mouse.
-- [ ] Mouse: click-to-position, drag-select, wheel-scroll.
+- [x] Mouse: click-to-position, drag-select, wheel-scroll, double/triple-click
+  word/line select.
 - [x] Quit guard for unsaved changes.
 
 ### Later (no abstraction built ahead of need)

@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:strings"
+import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
 
@@ -16,11 +17,15 @@ Editor :: struct {
 	pasting:       bool,
 	paste_buf:     [dynamic]u8,
 	paste_last_cr: bool,
+	last_click_tick: time.Tick,
+	last_click_pos:  Cursor,
+	click_count:     int,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
 	tb2.init()
 	tb2.set_output_mode(.Truecolor)
+	tb2.set_input_mode(.Mouse)
 	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	editor := Editor {
 		buffer = buffer_new(),
@@ -70,8 +75,76 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		clear(&editor.paste_buf)
 	case .Paste_End:
 		editor_paste_commit(editor)
+	case .Mouse:
+		if !editor.pasting {
+			editor_dispatch_mouse(editor, ev)
+		}
 	case .Resize:
 		editor_scroll(editor)
+	}
+}
+
+editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
+	gutter := editor_gutter_width(editor)
+	_, h := editor_viewport(editor)
+	row := clamp(editor.scroll_row + min(y, h - 1), 0, len(editor.buffer.lines) - 1)
+	col := clamp(editor.scroll_col + max(0, x - gutter), 0, len(editor.buffer.lines[row].text))
+	return {row, col}
+}
+
+editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	if editor.confirm_quit {
+		return
+	}
+	editor.message = ""
+	editor.message_error = false
+	b := &editor.buffer
+
+	#partial switch ev.key {
+	case .Mouse_Left:
+		buffer_undo_commit(b)
+		pos := editor_mouse_cursor(editor, int(ev.x), int(ev.y))
+		if (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0 {
+			selection_set_anchor(b)
+			b.cursor = pos
+			b.goal_col = pos.col
+			editor_scroll(editor)
+			return
+		}
+		recent :=
+			editor.click_count > 0 &&
+			time.duration_milliseconds(time.tick_since(editor.last_click_tick)) <= DOUBLE_CLICK_MS &&
+			pos == editor.last_click_pos
+		editor.click_count = editor.click_count + 1 if recent else 1
+		if editor.click_count > 3 {
+			editor.click_count = 1
+		}
+		editor.last_click_tick = time.tick_now()
+		editor.last_click_pos = pos
+
+		switch editor.click_count {
+		case 2:
+			from, to := word_range_at(b, pos)
+			b.selection = from
+			b.cursor = to
+			b.goal_col = to.col
+		case 3:
+			from, to := line_range_at(b, pos.row)
+			b.selection = from
+			b.cursor = to
+			b.goal_col = to.col
+		case:
+			b.selection = nil
+			b.cursor = pos
+			b.goal_col = pos.col
+		}
+		editor_scroll(editor)
+	case .Mouse_Wheel_Up:
+		editor.scroll_row = max(0, editor.scroll_row - WHEEL_SCROLL_LINES)
+	case .Mouse_Wheel_Down:
+		_, h := editor_viewport(editor)
+		max_scroll := max(0, len(b.lines) - h)
+		editor.scroll_row = min(max_scroll, editor.scroll_row + WHEEL_SCROLL_LINES)
 	}
 }
 
@@ -178,20 +251,28 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down, .Home, .End, .Pgup, .Pgdn:
 		buffer_undo_commit(b)
+		sel_from, sel_to, had_sel := selection_range(b)
 		if shift {
 			selection_set_anchor(b)
 		} else {
 			b.selection = nil
 		}
+		collapse := had_sel && !shift && !ctrl
 		#partial switch ev.key {
 		case .Arrow_Left:
-			if ctrl {
+			if collapse {
+				b.cursor = sel_from
+				b.goal_col = sel_from.col
+			} else if ctrl {
 				cursor_move_word_left(b)
 			} else {
 				cursor_move_left(b)
 			}
 		case .Arrow_Right:
-			if ctrl {
+			if collapse {
+				b.cursor = sel_to
+				b.goal_col = sel_to.col
+			} else if ctrl {
 				cursor_move_word_right(b)
 			} else {
 				cursor_move_right(b)
