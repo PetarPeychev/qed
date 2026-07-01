@@ -204,10 +204,12 @@ clears `redo`.
   instead (below). Selected cells render **inverted** — the text and background
   colors swap (`#181818` text on `#f4f4ff`).
 - **Tab with a selection** indents every line the selection touches by one
-  `TAB_WIDTH`; **Shift+Tab** dedents, removing leading spaces back to the
-  previous tab stop (i.e. down to the previous multiple of `TAB_WIDTH`, 1–4
-  spaces). With no selection, Tab inserts `TAB_WIDTH` spaces as usual and
-  Shift+Tab dedents the current line. A block indent/dedent is one undo group.
+  `TAB_WIDTH`; **Shift+Tab** dedents, removing up to `TAB_WIDTH` leading spaces
+  from each line (fewer only if the line has fewer), so indent and dedent are
+  exact inverses even when lines start unaligned. A line whose selection ends at
+  column 0 is not counted as touched. With no selection, Tab inserts `TAB_WIDTH`
+  spaces as usual and Shift+Tab dedents the current line. A block indent/dedent
+  is one undo group.
 - **Viewport:** `scroll_row`/`scroll_col` track the top-left visible cell. After
   any cursor move, scroll the minimum amount to keep the cursor visible, honoring
   a `SCROLL_MARGIN` (config) of context rows/cols. Horizontal scrolling follows
@@ -339,7 +341,7 @@ no outstanding dependencies.
 - [x] Printable input, Enter, Backspace/Delete (incl. line join), Tab → 4 spaces.
 - [x] Undo/redo via the grouped inverse-op log (atomic compound actions +
   coalesced typing).
-- [ ] Selection (shift-movement, select-all) and selection-aware editing.
+- [x] Selection (shift-movement, select-all) and selection-aware editing.
 - [ ] Clipboard copy/cut/paste via external tool (+ in-process fallback).
 - [x] Atomic save, line-ending & final-newline preservation.
 - [ ] Startup handling: file vs directory vs none (welcome screen).

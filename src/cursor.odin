@@ -17,6 +17,35 @@ char_class :: proc(c: u8) -> CharClass {
 	}
 }
 
+selection_active :: proc(b: ^Buffer) -> bool {
+	anchor, has := b.selection.?
+	return has && anchor != b.cursor
+}
+
+selection_range :: proc(b: ^Buffer) -> (from, to: Cursor, ok: bool) {
+	anchor, has := b.selection.?
+	if !has || anchor == b.cursor {
+		return {}, {}, false
+	}
+	if anchor.row < b.cursor.row || (anchor.row == b.cursor.row && anchor.col < b.cursor.col) {
+		return anchor, b.cursor, true
+	}
+	return b.cursor, anchor, true
+}
+
+selection_set_anchor :: proc(b: ^Buffer) {
+	if _, has := b.selection.?; !has {
+		b.selection = b.cursor
+	}
+}
+
+cursor_select_all :: proc(b: ^Buffer) {
+	last := len(b.lines) - 1
+	b.selection = Cursor{0, 0}
+	b.cursor = {last, len(b.lines[last].text)}
+	b.goal_col = b.cursor.col
+}
+
 cursor_move_left :: proc(b: ^Buffer) {
 	c := &b.cursor
 	if c.col > 0 {

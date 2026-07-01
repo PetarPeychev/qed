@@ -77,6 +77,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor.message_error = false
 	b := &editor.buffer
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
+	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
 	_, h := editor_viewport(editor)
 
 	#partial switch ev.key {
@@ -93,16 +94,37 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		buffer_undo(b)
 	case .Ctrl_Y:
 		buffer_redo(b)
+	case .Ctrl_A:
+		cursor_select_all(b)
 	case .Enter:
-		buffer_newline(b)
+		if selection_active(b) {
+			buffer_replace_selection(b, "\n")
+		} else {
+			buffer_newline(b)
+		}
 	case .Tab:
-		buffer_insert_tab(b)
+		buffer_indent(b)
+	case .Back_Tab:
+		buffer_dedent(b)
 	case .Backspace, .Backspace2:
-		buffer_backspace(b)
+		if selection_active(b) {
+			buffer_delete_selection(b)
+		} else {
+			buffer_backspace(b)
+		}
 	case .Delete:
-		buffer_delete_forward(b)
+		if selection_active(b) {
+			buffer_delete_selection(b)
+		} else {
+			buffer_delete_forward(b)
+		}
 	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down, .Home, .End, .Pgup, .Pgdn:
 		buffer_undo_commit(b)
+		if shift {
+			selection_set_anchor(b)
+		} else {
+			b.selection = nil
+		}
 		#partial switch ev.key {
 		case .Arrow_Left:
 			if ctrl {
@@ -141,7 +163,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if ev.ch == 0 {
 			return
 		}
-		buffer_insert_rune(b, ev.ch)
+		buffer_type_rune(b, ev.ch)
 	}
 	editor_scroll(editor)
 }
@@ -187,6 +209,8 @@ editor_render :: proc(editor: ^Editor) {
 	gutter := editor_gutter_width(editor)
 	w, h := editor_viewport(editor)
 
+	sel_from, sel_to, sel_ok := selection_range(&editor.buffer)
+
 	for screen_y in 0 ..< h {
 		row := editor.scroll_row + screen_y
 		if row >= len(editor.buffer.lines) {
@@ -196,13 +220,12 @@ editor_render :: proc(editor: ^Editor) {
 		editor_render_gutter(screen_y, gutter, row + 1, current)
 
 		text := editor.buffer.lines[row].text
-		visible := ""
-		if editor.scroll_col < len(text) {
-			end := min(editor.scroll_col + w, len(text))
-			visible = string(text[editor.scroll_col:end])
+		row_sel_from, row_sel_to := -1, -1
+		if sel_ok && row >= sel_from.row && row <= sel_to.row {
+			row_sel_from = sel_from.col if row == sel_from.row else 0
+			row_sel_to = sel_to.col if row == sel_to.row else len(text) + 1
 		}
-		text_bg := COLOR_CURRENT_LINE_BG if current else COLOR_BG
-		editor_render_row(gutter, screen_y, w, visible, COLOR_FG, text_bg)
+		editor_render_text_row(gutter, screen_y, w, text[:], editor.scroll_col, current, row_sel_from, row_sel_to)
 	}
 
 	name := editor.buffer.path if editor.buffer.path != "" else "[No Name]"
@@ -231,6 +254,30 @@ editor_render_gutter :: proc(y, width, number: int, current: bool) {
 	fg := COLOR_CURRENT_LINE_FG if current else COLOR_GUTTER_FG
 	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
 	tb2.print(0, i32(y), fg, COLOR_GUTTER_BG, cstr)
+}
+
+editor_render_text_row :: proc(
+	gutter, y, w: int,
+	text: []u8,
+	scroll_col: int,
+	current: bool,
+	sel_from, sel_to: int,
+) {
+	bg_normal := COLOR_CURRENT_LINE_BG if current else COLOR_BG
+	for sx in 0 ..< w {
+		col := scroll_col + sx
+		ch := rune(' ')
+		if col < len(text) {
+			ch = rune(text[col])
+		}
+		fg := COLOR_FG
+		bg := bg_normal
+		if sel_from >= 0 && col >= sel_from && col < sel_to {
+			fg = COLOR_BG
+			bg = COLOR_FG
+		}
+		tb2.set_cell(i32(gutter + sx), i32(y), ch, fg, bg)
+	}
 }
 
 editor_render_row :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {

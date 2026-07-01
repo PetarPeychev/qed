@@ -139,6 +139,137 @@ buffer_delete_forward :: proc(b: ^Buffer) {
 	b.goal_col = c.col
 }
 
+buffer_type_rune :: proc(b: ^Buffer, r: rune) {
+	if selection_active(b) {
+		bytes, n := utf8.encode_rune(r)
+		buffer_replace_selection(b, string(bytes[:n]))
+	} else {
+		buffer_insert_rune(b, r)
+	}
+}
+
+buffer_replace_selection :: proc(b: ^Buffer, text: string) {
+	from, to, ok := selection_range(b)
+	if !ok {
+		buffer_insert_text(b, text, .Atomic)
+		return
+	}
+	edit_open(b, .Atomic)
+	removed := buffer_delete(b, from, to)
+	append(&b.open.edits, Edit{.Insert, from, removed})
+	end := buffer_insert(b, from, text)
+	append(&b.open.edits, Edit{.Delete, from, strings.clone(text)})
+	buffer_undo_commit(b)
+	b.cursor = end
+	b.goal_col = end.col
+	b.selection = nil
+}
+
+buffer_delete_selection :: proc(b: ^Buffer) {
+	from, to, ok := selection_range(b)
+	if !ok {
+		return
+	}
+	buffer_delete_range(b, from, to, .Atomic)
+	b.cursor = from
+	b.goal_col = from.col
+	b.selection = nil
+}
+
+buffer_indent :: proc(b: ^Buffer) {
+	from, to, ok := selection_range(b)
+	if !ok {
+		buffer_insert_tab(b)
+		return
+	}
+	last_row := to.row
+	if to.col == 0 && to.row > from.row {
+		last_row -= 1
+	}
+	indent := strings.repeat(" ", TAB_WIDTH, context.temp_allocator)
+
+	edit_open(b, .Atomic)
+	for row in from.row ..= last_row {
+		at := Cursor{row, 0}
+		buffer_insert(b, at, indent)
+		append(&b.open.edits, Edit{.Delete, at, strings.clone(indent)})
+	}
+	buffer_undo_commit(b)
+
+	anchor, _ := b.selection.?
+	if anchor.row >= from.row && anchor.row <= last_row {
+		anchor.col += TAB_WIDTH
+	}
+	b.selection = anchor
+	if b.cursor.row >= from.row && b.cursor.row <= last_row {
+		b.cursor.col += TAB_WIDTH
+	}
+	b.goal_col = b.cursor.col
+}
+
+dedent_count :: proc(text: []u8) -> int {
+	lead := 0
+	for lead < len(text) && text[lead] == ' ' {
+		lead += 1
+	}
+	return min(lead, TAB_WIDTH)
+}
+
+buffer_dedent :: proc(b: ^Buffer) {
+	from, to, ok := selection_range(b)
+	first_row, last_row: int
+	if ok {
+		first_row = from.row
+		last_row = to.row
+		if to.col == 0 && to.row > from.row {
+			last_row -= 1
+		}
+	} else {
+		first_row = b.cursor.row
+		last_row = b.cursor.row
+	}
+
+	any := false
+	for row in first_row ..= last_row {
+		if dedent_count(b.lines[row].text[:]) > 0 {
+			any = true
+			break
+		}
+	}
+	if !any {
+		return
+	}
+
+	anchor, _ := b.selection.?
+	cursor_removed := 0
+	anchor_removed := 0
+
+	edit_open(b, .Atomic)
+	for row in first_row ..= last_row {
+		n := dedent_count(b.lines[row].text[:])
+		if n == 0 {
+			continue
+		}
+		at := Cursor{row, 0}
+		removed := buffer_delete(b, at, {row, n})
+		append(&b.open.edits, Edit{.Insert, at, removed})
+		if row == b.cursor.row {
+			cursor_removed = n
+		}
+		if row == anchor.row {
+			anchor_removed = n
+		}
+	}
+	buffer_undo_commit(b)
+
+	b.cursor.col = max(0, b.cursor.col - cursor_removed)
+	b.goal_col = b.cursor.col
+	if ok {
+		anchor.col = max(0, anchor.col - anchor_removed)
+		b.selection = anchor
+	}
+}
+
 buffer_apply_inverse :: proc(b: ^Buffer, group: EditGroup) -> EditGroup {
 	result := EditGroup {
 		cursor = b.cursor,
@@ -165,6 +296,7 @@ buffer_undo :: proc(b: ^Buffer) {
 	if len(b.undo) == 0 {
 		return
 	}
+	b.selection = nil
 	group := pop(&b.undo)
 	append(&b.redo, buffer_apply_inverse(b, group))
 }
@@ -174,6 +306,7 @@ buffer_redo :: proc(b: ^Buffer) {
 	if len(b.redo) == 0 {
 		return
 	}
+	b.selection = nil
 	group := pop(&b.redo)
 	append(&b.undo, buffer_apply_inverse(b, group))
 }
