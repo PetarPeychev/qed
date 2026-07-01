@@ -331,7 +331,7 @@ no outstanding dependencies.
 
 ### Core editing
 - [x] `buffer_insert` / `buffer_delete` primitives + unit tests.
-- [ ] Ensure `lines` is never empty.
+- [x] Ensure `lines` is never empty.
 - [x] Real main loop: poll → dispatch → render → quit; clean shutdown.
 - [x] Cursor movement + goal column; viewport vertical & horizontal scroll with
   scroll margins.

@@ -138,6 +138,19 @@ test_delete_multiline :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_delete_all_keeps_one_empty_line :: proc(t: ^testing.T) {
+	b := test_buffer("first", "second", "third")
+	defer buffer_destroy(&b)
+
+	removed := buffer_delete(&b, {0, 0}, {2, 5})
+	defer delete(removed)
+
+	testing.expect_value(t, buffer_string(&b), "")
+	testing.expect_value(t, len(b.lines), 1)
+	testing.expect_value(t, len(b.lines[0].text), 0)
+}
+
+@(test)
 test_insert_rune_advances_cursor :: proc(t: ^testing.T) {
 	b := test_buffer("ac")
 	defer buffer_destroy(&b)

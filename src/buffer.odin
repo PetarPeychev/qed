@@ -269,6 +269,10 @@ buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 		remove_range(&buffer.lines, from.row + 1, to.row + 1)
 	}
 
+	if len(buffer.lines) == 0 {
+		append(&buffer.lines, Line{})
+	}
+
 	buffer_recompute_modified(buffer)
 	return strings.to_string(sb)
 }
