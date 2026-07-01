@@ -1,5 +1,6 @@
 package main
 
+import "core:os"
 import "core:strings"
 import "core:testing"
 
@@ -274,4 +275,67 @@ test_insert_delete_roundtrip :: proc(t: ^testing.T) {
 
 	testing.expect_value(t, removed, "1\n22\n333")
 	testing.expect_value(t, buffer_string(&b), "ac")
+}
+
+@(private = "file")
+save_roundtrip :: proc(t: ^testing.T, path: string, content: string) {
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)content) == nil)
+	defer os.remove(path)
+
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
+
+	testing.expect_value(t, buffer_save(&b), BufferSaveError.None)
+
+	written, read_err := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, read_err == nil)
+	testing.expect_value(t, string(written), content)
+}
+
+@(test)
+test_open_detects_lf_no_final_newline :: proc(t: ^testing.T) {
+	path := "/tmp/qed-test-lf"
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string("a\nb")) == nil)
+	defer os.remove(path)
+
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
+
+	testing.expect_value(t, len(b.lines), 2)
+	testing.expect_value(t, buffer_string(&b), "a\nb")
+	testing.expect_value(t, b.line_ending, LineEnding.LF)
+	testing.expect(t, !b.final_newline)
+}
+
+@(test)
+test_open_detects_crlf_final_newline :: proc(t: ^testing.T) {
+	path := "/tmp/qed-test-crlf"
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string("a\r\nb\r\n")) == nil)
+	defer os.remove(path)
+
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
+
+	testing.expect_value(t, len(b.lines), 2)
+	testing.expect_value(t, buffer_string(&b), "a\nb")
+	testing.expect_value(t, b.line_ending, LineEnding.CRLF)
+	testing.expect(t, b.final_newline)
+}
+
+@(test)
+test_save_preserves_lf :: proc(t: ^testing.T) {
+	save_roundtrip(t, "/tmp/qed-test-save-lf", "a\nb\n")
+}
+
+@(test)
+test_save_preserves_lf_no_final_newline :: proc(t: ^testing.T) {
+	save_roundtrip(t, "/tmp/qed-test-save-lf-nonl", "a\nb")
+}
+
+@(test)
+test_save_preserves_crlf :: proc(t: ^testing.T) {
+	save_roundtrip(t, "/tmp/qed-test-save-crlf", "a\r\nb\r\n")
 }

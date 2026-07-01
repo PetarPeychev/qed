@@ -6,10 +6,11 @@ import "lib:tb2"
 
 Editor :: struct {
 	buffer:     Buffer,
-	scroll_row: int,
-	scroll_col: int,
-	message:    string,
-	quit:       bool,
+	scroll_row:    int,
+	scroll_col:    int,
+	message:       string,
+	message_error: bool,
+	quit:          bool,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -45,6 +46,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor.message = ""
+	editor.message_error = false
 	b := &editor.buffer
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
 	_, h := editor_viewport()
@@ -52,6 +54,8 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	#partial switch ev.key {
 	case .Ctrl_Q:
 		editor.quit = true
+	case .Ctrl_S:
+		editor_save(editor)
 	case .Ctrl_Z:
 		buffer_undo(b)
 	case .Ctrl_Y:
@@ -109,6 +113,19 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor_scroll(editor)
 }
 
+editor_save :: proc(editor: ^Editor) {
+	switch buffer_save(&editor.buffer) {
+	case .None:
+		editor.message = "Saved"
+	case .NoPath:
+		editor.message = "No file name"
+		editor.message_error = true
+	case .WriteError, .RenameError:
+		editor.message = "Save failed"
+		editor.message_error = true
+	}
+}
+
 editor_scroll :: proc(editor: ^Editor) {
 	w, h := editor_viewport()
 	cur := editor.buffer.cursor
@@ -154,7 +171,8 @@ editor_render :: proc(editor: ^Editor) {
 		status = fmt.tprintf("%s [*]", name)
 	}
 	editor_render_row(h, w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
-	editor_render_row(h + 1, w, editor.message, COLOR_FG, COLOR_BG)
+	message_fg := COLOR_ERROR_FG if editor.message_error else COLOR_FG
+	editor_render_row(h + 1, w, editor.message, message_fg, COLOR_BG)
 
 	cx := editor.buffer.cursor.col - editor.scroll_col
 	cy := editor.buffer.cursor.row - editor.scroll_row

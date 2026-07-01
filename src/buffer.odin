@@ -5,17 +5,19 @@ import "core:slice"
 import "core:strings"
 
 Buffer :: struct {
-	path:      string,
-	lines:     [dynamic]Line,
-	cursor:    Cursor,
-	goal_col:  int,
-	saved:     string,
-	modified:  bool,
-	undo:      [dynamic]EditGroup,
-	redo:      [dynamic]EditGroup,
-	open:      EditGroup,
-	has_open:  bool,
-	open_kind: Coalesce,
+	path:          string,
+	lines:         [dynamic]Line,
+	cursor:        Cursor,
+	goal_col:      int,
+	saved:         string,
+	modified:      bool,
+	line_ending:   LineEnding,
+	final_newline: bool,
+	undo:          [dynamic]EditGroup,
+	redo:          [dynamic]EditGroup,
+	open:          EditGroup,
+	has_open:      bool,
+	open_kind:     Coalesce,
 }
 
 
@@ -27,12 +29,19 @@ Cursor :: struct {
 	row, col: int,
 }
 
+LineEnding :: enum {
+	LF,
+	CRLF,
+}
+
 buffer_new :: proc() -> Buffer {
 	lines := make([dynamic]Line, 0, 64)
 	append(&lines, Line{})
 	buffer := Buffer {
-		lines  = lines,
-		cursor = {0, 0},
+		lines         = lines,
+		cursor        = {0, 0},
+		line_ending   = .LF,
+		final_newline = true,
 	}
 	buffer.saved = buffer_snapshot(&buffer)
 	return buffer
@@ -113,9 +122,20 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	}
 	clear(&buffer.lines)
 
-	it := string(data)
-	for line in strings.split_lines_iterator(&it) {
-		append(&buffer.lines, Line{text = slice.clone_to_dynamic(transmute([]u8)line)})
+	text := string(data)
+	buffer.line_ending = .CRLF if strings.contains(text, "\r\n") else .LF
+	buffer.final_newline = len(text) > 0 && text[len(text) - 1] == '\n'
+
+	segments := strings.split(text, "\n", context.temp_allocator)
+	if buffer.final_newline {
+		segments = segments[:len(segments) - 1]
+	}
+	for segment in segments {
+		s := segment
+		if len(s) > 0 && s[len(s) - 1] == '\r' {
+			s = s[:len(s) - 1]
+		}
+		append(&buffer.lines, Line{text = slice.clone_to_dynamic(transmute([]u8)s)})
 	}
 	if len(buffer.lines) == 0 {
 		append(&buffer.lines, Line{})
@@ -124,6 +144,55 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	buffer.path = path
 	buffer.cursor = {0, 0}
 	buffer.goal_col = 0
+	delete(buffer.saved)
+	buffer.saved = buffer_snapshot(buffer)
+	buffer.modified = false
+
+	return .None
+}
+
+BufferSaveError :: enum {
+	None,
+	NoPath,
+	WriteError,
+	RenameError,
+}
+
+buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
+	if buffer.path == "" {
+		return .NoPath
+	}
+
+	ending := "\r\n" if buffer.line_ending == .CRLF else "\n"
+	sb := strings.builder_make(context.temp_allocator)
+	for line, i in buffer.lines {
+		if i > 0 {
+			strings.write_string(&sb, ending)
+		}
+		strings.write_bytes(&sb, line.text[:])
+	}
+	if buffer.final_newline {
+		strings.write_string(&sb, ending)
+	}
+	data := strings.to_string(sb)
+
+	tmp := strings.concatenate({buffer.path, ".qed-tmp"}, context.temp_allocator)
+	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, os.perm(0o644))
+	if open_err != nil {
+		return .WriteError
+	}
+	_, write_err := os.write(fd, transmute([]u8)data)
+	os.close(fd)
+	if write_err != nil {
+		os.remove(tmp)
+		return .WriteError
+	}
+	if os.rename(tmp, buffer.path) != nil {
+		os.remove(tmp)
+		return .RenameError
+	}
+
+	buffer_undo_commit(buffer)
 	delete(buffer.saved)
 	buffer.saved = buffer_snapshot(buffer)
 	buffer.modified = false
