@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
@@ -8,6 +9,8 @@ import "lib:tb2"
 
 Editor :: struct {
 	buffer:     Buffer,
+	working_root:  string,
+	welcome:       bool,
 	scroll_row:    int,
 	scroll_col:    int,
 	message:       string,
@@ -30,14 +33,22 @@ editor_init :: proc(path: string = "") -> Editor {
 	editor := Editor {
 		buffer = buffer_new(),
 	}
-	if path != "" {
+	if path != "" && !os.is_dir(path) {
 		buffer_open(&editor.buffer, path)
+	} else {
+		editor.welcome = true
+		if path != "" {
+			editor.working_root = strings.clone(path)
+		} else {
+			editor.working_root, _ = os.get_working_directory(context.allocator)
+		}
 	}
 	return editor
 }
 
 editor_shutdown :: proc(editor: ^Editor) {
 	buffer_destroy(&editor.buffer)
+	delete(editor.working_root)
 	delete(editor.paste_buf)
 	clipboard_shutdown()
 	tb2.shutdown()
@@ -60,6 +71,12 @@ editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
 }
 
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
+	if editor.welcome {
+		if ev.type == .Key && ev.key == .Ctrl_Q {
+			editor.quit = true
+		}
+		return
+	}
 	#partial switch ev.type {
 	case .Key:
 		if editor.pasting {
@@ -372,6 +389,10 @@ editor_scroll :: proc(editor: ^Editor) {
 }
 
 editor_render :: proc(editor: ^Editor) {
+	if editor.welcome {
+		editor_render_welcome(editor)
+		return
+	}
 	tb2.clear()
 	full_w := int(tb2.width())
 	gutter := editor_gutter_width(editor)
@@ -409,6 +430,64 @@ editor_render :: proc(editor: ^Editor) {
 	cy := editor.buffer.cursor.row - editor.scroll_row
 	tb2.set_cursor(i32(cx), i32(cy))
 	tb2.present()
+}
+
+editor_render_welcome :: proc(editor: ^Editor) {
+	tb2.clear()
+	tb2.hide_cursor()
+	w := int(tb2.width())
+	h := int(tb2.height())
+
+	art := [?]string {
+		"  .g8\"\"8q. `7MM\"\"YMMM`7MM\"\"\"Yb.   ",
+		".dP'    `YM. MM    `7  MM    `Yb. ",
+		"dM'      `MM MM   d    MM     `Mb ",
+		"MM        MM MMmmMM    MM      MM ",
+		"MM.      ,MP MM   Y ,  MM     ,MP ",
+		"`Mb.    ,dP' MM    ,M  MM    ,dP' ",
+		"  `\"bmmd\"' .JMMmmmMMM.JMMmmmdP'   ",
+		"      MMb                          ",
+		"       `bood'                      ",
+	}
+	hints := [?]string {
+		"Ctrl+S             Save",
+		"Ctrl+Q             Quit",
+		"Ctrl+Z / Ctrl+Y    Undo / redo",
+		"Ctrl+X / C / V     Cut / copy / paste",
+		"Ctrl+A             Select all",
+		"Tab / Shift+Tab    Indent / dedent",
+		"Arrows             Move  (+Ctrl by word)",
+		"Home / End         Line start / end",
+		"PgUp / PgDn        Page up / down",
+		"Shift + move       Extend selection",
+		"Mouse              Click, drag, wheel",
+	}
+
+	hint_w := 0
+	for line in hints {
+		hint_w = max(hint_w, len(line))
+	}
+	hint_x := max(0, (w - hint_w) / 2)
+
+	y := max(0, h / 2 - (len(art) + 1 + len(hints)) / 2)
+	for line in art {
+		editor_render_welcome_line(max(0, (w - len(line)) / 2), y, line)
+		y += 1
+	}
+	y += 1
+	for line in hints {
+		editor_render_welcome_line(hint_x, y, line)
+		y += 1
+	}
+	tb2.present()
+}
+
+editor_render_welcome_line :: proc(x, y: int, text: string) {
+	if y < 0 || y >= int(tb2.height()) {
+		return
+	}
+	cstr := strings.clone_to_cstring(text, context.temp_allocator)
+	tb2.print(i32(x), i32(y), COLOR_FG, COLOR_BG, cstr)
 }
 
 editor_render_gutter :: proc(y, width, number: int, current: bool) {

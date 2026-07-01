@@ -357,7 +357,7 @@ no outstanding dependencies.
 - [x] Selection (shift-movement, select-all) and selection-aware editing.
 - [x] Clipboard copy/cut/paste via external tool (+ in-process fallback).
 - [x] Atomic save, line-ending & final-newline preservation.
-- [ ] Startup handling: file vs directory vs none (welcome screen).
+- [x] Startup handling: file vs directory vs none (welcome screen).
 - [x] Status bar: path + modified flag (+ message line). Shrink the text area to
   `height - 2` in `editor_viewport`; it currently returns the full screen height.
 - [x] Left line-number gutter (current line emphasized); fold its width into the
