@@ -335,15 +335,23 @@ This is the working task list. **Workflow:**
 - If during development you find work that belongs in its own task, **add it
   here** as a new unchecked item rather than silently expanding the current one.
 
-Order is a rough suggestion, not a mandate — pick whatever makes sense next with
-no outstanding dependencies.
+This is **one ordered list**, roughly sequenced so each item unlocks the ones
+below it; completed core work stays at the top as history. Order is a guide, not
+a mandate — items marked *(independent)* have no dependencies and can be pulled
+forward whenever. The big lever is the **floating pane**: the command palette,
+in-buffer find, fuzzy file-open, the file-tree, and a later autocomplete dropdown
+are all consumers of one rectangular overlay layer, so that primitive is built
+early — concretely, as the first step of the command palette — rather than
+retrofitted. That's a deliberate, Petar-approved exception to "wait for 2–3
+users": the users are already enumerated, so the substrate is earned, not
+speculative. Keep it minimal (no compositor); let it accrete as those features
+land.
 
-### Done
+**Done — core editor** (built and verified):
+
 - [x] Vendored termbox2 build; static lib via `build.sh`.
 - [x] Basic buffer open (naive line split).
 - [x] Basic line rendering.
-
-### Core editing
 - [x] `buffer_insert` / `buffer_delete` primitives + unit tests.
 - [x] Ensure `lines` is never empty.
 - [x] Real main loop: poll → dispatch → render → quit; clean shutdown.
@@ -358,25 +366,46 @@ no outstanding dependencies.
 - [x] Clipboard copy/cut/paste via external tool (+ in-process fallback).
 - [x] Atomic save, line-ending & final-newline preservation.
 - [x] Startup handling: file vs directory vs none (welcome screen).
-- [x] Status bar: path + modified flag (+ message line). Shrink the text area to
-  `height - 2` in `editor_viewport`; it currently returns the full screen height.
-- [x] Left line-number gutter (current line emphasized); fold its width into the
-  screen↔buffer column mapping used by cursor placement and mouse.
+- [x] Status bar: path + modified flag (+ message line).
+- [x] Left line-number gutter (current line emphasized); gutter width folded into
+  the screen↔buffer column mapping used by cursor placement and mouse.
 - [x] Mouse: click-to-position, drag-select, wheel-scroll, double/triple-click
   word/line select.
 - [x] Quit guard for unsaved changes.
 
-### Later (no abstraction built ahead of need)
-Each item is concrete on arrival; the **pane/floating-window model is designed
-only once 2–3 of these coexist** and a shared pattern is visible.
+**Next — build order:**
 
-- [ ] Floating command palette (VSCode-style) for commands.
-- [ ] In-buffer find, then find/replace.
-- [ ] File-tree pane (uses the working root).
-- [ ] Project-wide search overlay (rg + fzf).
-- [ ] Rune-aware cursor/width (UTF-8 correctness).
-- [ ] Syntax highlighting via tree-sitter.
-- [ ] LSP integration (completion dropdown, diagnostics, hover, go-to-def).
-- [ ] Inline diagnostics/hints rendered between lines.
-- [ ] Git diff gutter.
-- [ ] Permission-preserving saves.
+- [ ] **Floating pane primitive.** A rectangular overlay layer drawn over the
+  buffer: position/size, background/border, focus, and its own captured input.
+  First step of the command palette below, but shaped knowing find, fuzzy
+  file-open, the file-tree, and a later autocomplete dropdown all reuse it. Keep
+  it to exactly what the palette needs.
+- [ ] **Command palette.** VSCode-style fuzzy command list in a floating pane;
+  the first pane consumer. Establishes the editable text-input line (the
+  "prompt"/minibuffer) that find, go-to-line, and save-as later reuse. Routes the
+  existing actions (save, quit, undo, …) through a command list.
+- [ ] **In-buffer find**, then find & replace. Incremental search driven by the
+  palette's prompt input: next/prev, wrap, match highlight; then replace one/all.
+- [ ] **Fuzzy file-open.** Open a file into the buffer via a floating fuzzy picker
+  rooted at the working root (reuses the pane + prompt).
+- [ ] **File-tree pane.** A persistent browser pane over the working root
+  (navigate, open files). Second structural use of the pane layer.
+- [ ] **Project-wide search overlay** (rg + fzf): query, results list in a
+  floating pane, jump to a hit.
+- [ ] **Tab-character display.** *(independent)* Render a literal `\t` out to the
+  next tab stop and map screen↔buffer columns through it; today each byte is one
+  cell, so opened files and pastes containing tabs misrender and mis-place the
+  cursor.
+- [ ] **Drag-select auto-scroll.** *(independent)* Scroll the viewport when a
+  mouse drag-selection reaches the top or bottom edge (the target row is
+  currently clamped into view, so a selection can't extend past what's visible).
+- [ ] **Rune-aware cursor & display width (UTF-8).** *(independent)* Step whole
+  runes on horizontal movement and compute display width in the renderer; data
+  stays raw bytes — only `col` interpretation and the advance logic change.
+- [ ] **Permission/ownership-preserving saves.** *(independent)* Carry the
+  original file's mode/owner onto the atomically-written replacement.
+- [ ] **Syntax highlighting** via tree-sitter.
+- [ ] **LSP integration**: completion dropdown (reuses the floating pane),
+  diagnostics, hover, go-to-definition.
+- [ ] **Inline diagnostics/hints** rendered between lines.
+- [ ] **Git diff gutter.**
