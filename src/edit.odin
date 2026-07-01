@@ -176,6 +176,24 @@ buffer_delete_selection :: proc(b: ^Buffer) {
 	b.selection = nil
 }
 
+buffer_delete_line :: proc(b: ^Buffer) {
+	r := b.cursor.row
+	col := b.cursor.col
+	if len(b.lines) == 1 {
+		buffer_delete_range(b, {r, 0}, {r, len(b.lines[r].text)}, .Atomic)
+		b.cursor = {0, 0}
+	} else if r < len(b.lines) - 1 {
+		buffer_delete_range(b, {r, 0}, {r + 1, 0}, .Atomic)
+		b.cursor = {r, min(col, len(b.lines[r].text))}
+	} else {
+		prev_len := len(b.lines[r - 1].text)
+		buffer_delete_range(b, {r - 1, prev_len}, {r, len(b.lines[r].text)}, .Atomic)
+		b.cursor = {r - 1, min(col, len(b.lines[r - 1].text))}
+	}
+	b.goal_col = b.cursor.col
+	b.selection = nil
+}
+
 buffer_indent :: proc(b: ^Buffer) {
 	from, to, ok := selection_range(b)
 	if !ok {

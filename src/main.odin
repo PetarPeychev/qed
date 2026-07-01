@@ -27,7 +27,9 @@ main :: proc() {
 
 	ev: tb2.Event
 	for !editor.quit {
-		editor_render(&editor)
+		if !editor.pasting {
+			editor_render(&editor)
+		}
 		tb2.poll_event(&ev)
 		editor_dispatch(&editor, ev)
 		free_all(context.temp_allocator)

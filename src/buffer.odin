@@ -202,6 +202,22 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	return .None
 }
 
+buffer_text_range :: proc(buffer: ^Buffer, from, to: Cursor, allocator := context.temp_allocator) -> string {
+	sb := strings.builder_make(allocator)
+	if from.row == to.row {
+		strings.write_bytes(&sb, buffer.lines[from.row].text[from.col:to.col])
+	} else {
+		strings.write_bytes(&sb, buffer.lines[from.row].text[from.col:])
+		strings.write_byte(&sb, '\n')
+		for r in from.row + 1 ..< to.row {
+			strings.write_bytes(&sb, buffer.lines[r].text[:])
+			strings.write_byte(&sb, '\n')
+		}
+		strings.write_bytes(&sb, buffer.lines[to.row].text[:to.col])
+	}
+	return strings.to_string(sb)
+}
+
 buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	line := &buffer.lines[at.row]
 	tail := slice.clone(line.text[at.col:])

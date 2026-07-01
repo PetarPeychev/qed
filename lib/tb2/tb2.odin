@@ -78,9 +78,11 @@ Key :: enum u16 {
 }
 
 Event_Kind :: enum u8 {
-	Key    = 1,
-	Resize = 2,
-	Mouse  = 3,
+	Key         = 1,
+	Resize      = 2,
+	Mouse       = 3,
+	Paste_Begin = 4,
+	Paste_End   = 5,
 }
 
 Input_Mode :: enum u8 {

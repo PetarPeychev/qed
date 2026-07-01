@@ -250,6 +250,9 @@ extern "C" {
 /* Some hard-coded caps */
 #define TB_HARDCAP_ENTER_MOUSE  "\x1b[?1000h\x1b[?1002h\x1b[?1015h\x1b[?1006h"
 #define TB_HARDCAP_EXIT_MOUSE   "\x1b[?1006l\x1b[?1015l\x1b[?1002l\x1b[?1000l"
+/* qed patch: bracketed paste enable/disable (see lib/tb2/PATCHES.md) */
+#define TB_HARDCAP_ENTER_BRACKETED_PASTE "\x1b[?2004h"
+#define TB_HARDCAP_EXIT_BRACKETED_PASTE  "\x1b[?2004l"
 #define TB_HARDCAP_STRIKEOUT    "\x1b[9m"
 #define TB_HARDCAP_UNDERLINE_2  "\x1b[21m"
 #define TB_HARDCAP_OVERLINE     "\x1b[53m"
@@ -304,6 +307,10 @@ extern "C" {
 #define TB_EVENT_KEY        1
 #define TB_EVENT_RESIZE     2
 #define TB_EVENT_MOUSE      3
+/* qed patch: bracketed paste (see lib/tb2/PATCHES.md). The paste content
+ * arrives as ordinary key events between these two bracketing events. */
+#define TB_EVENT_PASTE_BEGIN 4
+#define TB_EVENT_PASTE_END   5
 
 /* Key modifiers (bitwise) (`tb_event.mod`) */
 #define TB_MOD_ALT          1
@@ -2303,6 +2310,7 @@ static int get_terminfo_int16(int offset, int16_t *val);
 static int wait_event(struct tb_event *event, int timeout);
 static int extract_event(struct tb_event *event);
 static int extract_esc(struct tb_event *event);
+static int extract_esc_paste(struct tb_event *event);
 static int extract_esc_user(struct tb_event *event, int is_post);
 static int extract_esc_cap(struct tb_event *event);
 static int extract_esc_mouse(struct tb_event *event);
@@ -3075,6 +3083,9 @@ static int send_init_escape_codes(void) {
         bytebuf_puts(&global.out, global.caps[TB_CAP_ENTER_KEYPAD]));
     if_err_return(rv,
         bytebuf_puts(&global.out, global.caps[TB_CAP_HIDE_CURSOR]));
+    /* qed patch: enable bracketed paste (see lib/tb2/PATCHES.md) */
+    if_err_return(rv,
+        bytebuf_puts(&global.out, TB_HARDCAP_ENTER_BRACKETED_PASTE));
     return TB_OK;
 }
 
@@ -3179,6 +3190,8 @@ static int tb_deinit(void) {
         bytebuf_puts(&global.out, global.caps[TB_CAP_EXIT_CA]);
         bytebuf_puts(&global.out, global.caps[TB_CAP_EXIT_KEYPAD]);
         bytebuf_puts(&global.out, TB_HARDCAP_EXIT_MOUSE);
+        /* qed patch: disable bracketed paste (see lib/tb2/PATCHES.md) */
+        bytebuf_puts(&global.out, TB_HARDCAP_EXIT_BRACKETED_PASTE);
         bytebuf_flush(&global.out, global.wfd);
     }
     if (global.ttyfd >= 0) {
@@ -3567,10 +3580,33 @@ static int extract_event(struct tb_event *event) {
 static int extract_esc(struct tb_event *event) {
     int rv;
     if_ok_or_need_more_return(rv, extract_esc_user(event, 0));
+    if_ok_or_need_more_return(rv, extract_esc_paste(event));
     if_ok_or_need_more_return(rv, extract_esc_cap(event));
     if_ok_or_need_more_return(rv, extract_esc_mouse(event));
     if_ok_or_need_more_return(rv, extract_esc_user(event, 1));
     return TB_ERR;
+}
+
+/* qed patch: recognize bracketed paste markers (see lib/tb2/PATCHES.md).
+ * ESC[200~ -> TB_EVENT_PASTE_BEGIN, ESC[201~ -> TB_EVENT_PASTE_END. The bytes
+ * between the markers stay in the buffer and are parsed as ordinary events. */
+static int extract_esc_paste(struct tb_event *event) {
+    static const char begin[] = "\x1b[200~";
+    static const char end[]   = "\x1b[201~";
+    struct bytebuf *in = &global.in;
+
+    size_t n = in->len < 6 ? in->len : 6;
+    int maybe_begin = memcmp(in->buf, begin, n) == 0;
+    int maybe_end = memcmp(in->buf, end, n) == 0;
+    if (!maybe_begin && !maybe_end) return TB_ERR;
+    if (in->len < 6) return TB_ERR_NEED_MORE;
+
+    event->type = maybe_begin ? TB_EVENT_PASTE_BEGIN : TB_EVENT_PASTE_END;
+    event->mod = 0;
+    event->key = 0;
+    event->ch = 0;
+    bytebuf_shift(in, 6);
+    return TB_OK;
 }
 
 static int extract_esc_user(struct tb_event *event, int is_post) {

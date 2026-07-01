@@ -291,6 +291,17 @@ On an unmodified buffer Ctrl+Q quits outright.
 
 No keybind *table* abstraction until the switch is genuinely painful.
 
+**Bracketed paste.** A terminal (or Windows Terminal / tmux) paste arrives as a
+stream of individual keystrokes, which would land as many undo groups (one per
+line) instead of one. To make a paste a single atomic action, the vendored
+termbox2 is patched to enable bracketed-paste mode and surface `Paste_Begin` /
+`Paste_End` events; qed accumulates the keys between them and inserts the whole
+paste as one undo group (`editor_paste_accumulate` / `editor_paste_commit`). The
+termbox2 modifications are documented in
+[../lib/tb2/PATCHES.md](../lib/tb2/PATCHES.md). This is independent of the
+in-app `Ctrl+C/X/V` clipboard, which many terminals never deliver because they
+bind `Ctrl+V` to their own paste.
+
 ---
 
 ## 9. Suggested file layout
@@ -342,7 +353,7 @@ no outstanding dependencies.
 - [x] Undo/redo via the grouped inverse-op log (atomic compound actions +
   coalesced typing).
 - [x] Selection (shift-movement, select-all) and selection-aware editing.
-- [ ] Clipboard copy/cut/paste via external tool (+ in-process fallback).
+- [x] Clipboard copy/cut/paste via external tool (+ in-process fallback).
 - [x] Atomic save, line-ending & final-newline preservation.
 - [ ] Startup handling: file vs directory vs none (welcome screen).
 - [x] Status bar: path + modified flag (+ message line). Shrink the text area to
