@@ -282,9 +282,10 @@ clearly and retune in one place. Indicative default bindings (all CTRL-based):
 
 **Unsaved-quit guard:** if the buffer is modified, Ctrl+Q does not quit
 immediately. It writes an interactive confirmation to the message line (§3) —
-e.g. "Unsaved changes. Quit? (y/n)" — and the next keypress resolves it: `y`
-quits, anything else cancels and clears the line. On an unmodified buffer Ctrl+Q
-quits outright.
+"Save before quitting? (y/n/esc)" — and the next keypress resolves it: `y` saves
+and then quits (staying open with the error shown if the save fails), `n` quits
+and discards the changes, `esc` (or any other key) cancels and clears the line.
+On an unmodified buffer Ctrl+Q quits outright.
 
 No keybind *table* abstraction until the switch is genuinely painful.
 
@@ -347,7 +348,7 @@ no outstanding dependencies.
 - [x] Left line-number gutter (current line emphasized); fold its width into the
   screen↔buffer column mapping used by cursor placement and mouse.
 - [ ] Mouse: click-to-position, drag-select, wheel-scroll.
-- [ ] Quit guard for unsaved changes.
+- [x] Quit guard for unsaved changes.
 
 ### Later (no abstraction built ahead of need)
 Each item is concrete on arrival; the **pane/floating-window model is designed

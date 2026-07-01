@@ -10,6 +10,7 @@ Editor :: struct {
 	scroll_col:    int,
 	message:       string,
 	message_error: bool,
+	confirm_quit:  bool,
 	quit:          bool,
 }
 
@@ -57,6 +58,21 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 }
 
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
+	if editor.confirm_quit {
+		editor.confirm_quit = false
+		editor.message = ""
+		switch ev.ch {
+		case 'y', 'Y':
+			editor_save(editor)
+			if !editor.buffer.modified {
+				editor.quit = true
+			}
+		case 'n', 'N':
+			editor.quit = true
+		}
+		return
+	}
+
 	editor.message = ""
 	editor.message_error = false
 	b := &editor.buffer
@@ -65,7 +81,12 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	#partial switch ev.key {
 	case .Ctrl_Q:
-		editor.quit = true
+		if editor.buffer.modified {
+			editor.message = "Save before quitting? (y/n/esc)"
+			editor.confirm_quit = true
+		} else {
+			editor.quit = true
+		}
 	case .Ctrl_S:
 		editor_save(editor)
 	case .Ctrl_Z:
