@@ -1,10 +1,12 @@
 package main
 
+import "core:fmt"
 import "core:path/filepath"
 import "core:strings"
 import "lib:tb2"
 
 quit_actions := [?]string{"Save All", "Discard All", "Cancel"}
+close_actions := [?]string{"Save", "Discard", "Cancel"}
 
 QuitDialog :: struct {
 	active:   bool,
@@ -80,25 +82,84 @@ quit_dialog_question :: proc(editor: ^Editor) -> string {
 }
 
 quit_dialog_render :: proc(editor: ^Editor) {
-	d := &editor.quit_dialog
-	question := quit_dialog_question(editor)
+	dialog_render(editor, quit_dialog_question(editor), quit_actions[:], editor.quit_dialog.selected)
+}
+
+CloseDialog :: struct {
+	active:   bool,
+	selected: int,
+}
+
+close_dialog_open :: proc(editor: ^Editor) {
+	editor.close_dialog.active = true
+	editor.close_dialog.selected = 0
+	editor.message = ""
+	editor.message_error = false
+}
+
+close_dialog_close :: proc(editor: ^Editor) {
+	editor.close_dialog.active = false
+}
+
+close_dialog_execute :: proc(editor: ^Editor) {
+	switch editor.close_dialog.selected {
+	case 0:
+		b := editor_buffer(editor)
+		buffer_save(b)
+		close_dialog_close(editor)
+		if b.modified {
+			editor.message = "Save failed"
+			editor.message_error = true
+		} else {
+			editor_close_current(editor)
+		}
+	case 1:
+		close_dialog_close(editor)
+		editor_close_current(editor)
+	case 2:
+		close_dialog_close(editor)
+	}
+}
+
+close_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
+	d := &editor.close_dialog
+	#partial switch ev.key {
+	case .Esc:
+		close_dialog_close(editor)
+	case .Enter:
+		close_dialog_execute(editor)
+	case .Arrow_Down:
+		d.selected = (d.selected + 1) % len(close_actions)
+	case .Arrow_Up:
+		d.selected = (d.selected - 1 + len(close_actions)) % len(close_actions)
+	}
+}
+
+close_dialog_render :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	name := filepath.base(b.path) if b.path != "" else "[No Name]"
+	question := fmt.tprintf("Save changes to %s?", name)
+	dialog_render(editor, question, close_actions[:], editor.close_dialog.selected)
+}
+
+dialog_render :: proc(editor: ^Editor, question: string, actions: []string, selected: int) {
 	content_w := len(question)
-	for a in quit_actions {
+	for a in actions {
 		content_w = max(content_w, len(a))
 	}
 	content_w += 2
 	content_w = min(content_w, int(tb2.width()) - 4)
-	content_h := 2 + len(quit_actions)
+	content_h := 2 + len(actions)
 
 	box := pane_center(editor, content_w, content_h)
 	inner := pane_draw_box(box)
 
 	pane_text(inner.x + 1, inner.y, inner.w - 2, question, COLOR_PANE_FG, COLOR_PANE_BG)
 	pane_hline(box, inner.y + 1)
-	for a, i in quit_actions {
+	for a, i in actions {
 		y := inner.y + 2 + i
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		if i == d.selected {
+		if i == selected {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
 			pane_fill_row(inner.x, y, inner.w, fg, bg)
 		}

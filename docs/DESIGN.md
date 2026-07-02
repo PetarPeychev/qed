@@ -413,7 +413,7 @@ land.
       cells (currently plain `head` text); best done alongside syntax highlighting.
     - [ ] **Per-buffer viewport memory.** Remember each buffer's scroll position
       across switches (scroll currently re-centers on the cursor on switch).
-    - [ ] **Close buffer (Ctrl+W).** Close the current buffer; if it's modified,
+    - [x] **Close buffer (Ctrl+W).** Close the current buffer; if it's modified,
       guard with a save/discard/cancel prompt first. Switch to an adjacent buffer
       afterward, falling back to the welcome screen when the last one closes.
 - [ ] **File-tree pane.** A persistent browser pane over the working root

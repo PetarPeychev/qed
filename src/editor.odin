@@ -18,6 +18,7 @@ Editor :: struct {
 	message:         string,
 	message_error:   bool,
 	quit_dialog:     QuitDialog,
+	close_dialog:    CloseDialog,
 	quit:            bool,
 	pasting:         bool,
 	paste_buf:       [dynamic]u8,
@@ -127,6 +128,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		#partial switch ev.type {
 		case .Key:
 			quit_dialog_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
+		}
+		return
+	}
+	if editor.close_dialog.active {
+		#partial switch ev.type {
+		case .Key:
+			close_dialog_dispatch_key(editor, ev)
 		case .Resize:
 			editor_scroll(editor)
 		}
@@ -383,6 +393,32 @@ editor_switch_to :: proc(editor: ^Editor, idx: int) {
 	editor_scroll(editor)
 }
 
+editor_close_buffer :: proc(editor: ^Editor) {
+	if editor.welcome {
+		return
+	}
+	if editor_buffer(editor).modified {
+		close_dialog_open(editor)
+	} else {
+		editor_close_current(editor)
+	}
+}
+
+editor_close_current :: proc(editor: ^Editor) {
+	idx := editor.current
+	buffer_destroy(&editor.buffers[idx])
+	ordered_remove(&editor.buffers, idx)
+	if len(editor.buffers) == 0 {
+		append(&editor.buffers, buffer_new())
+		editor.current = 0
+		editor.welcome = true
+		editor.scroll_row = 0
+		editor.scroll_col = 0
+	} else {
+		editor_switch_to(editor, min(idx, len(editor.buffers) - 1))
+	}
+}
+
 editor_open_path :: proc(editor: ^Editor, path: string) {
 	abs, err := filepath.abs(path, context.temp_allocator)
 	if err != nil {
@@ -488,6 +524,8 @@ editor_render :: proc(editor: ^Editor) {
 		picker_render(editor)
 	case editor.quit_dialog.active:
 		quit_dialog_render(editor)
+	case editor.close_dialog.active:
+		close_dialog_render(editor)
 	case editor.welcome:
 		tb2.hide_cursor()
 	case:
