@@ -75,6 +75,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
 	jump_destroy(&editor.jumps)
+	syntax_shutdown()
 	clipboard_shutdown()
 	tb2.shutdown()
 }
@@ -595,6 +596,7 @@ editor_render :: proc(editor: ^Editor) {
 	if editor.welcome {
 		editor_render_welcome(editor)
 	} else {
+		highlight_update(editor_buffer(editor))
 		editor_render_buffer(editor)
 	}
 
@@ -646,7 +648,8 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			row_sel_from = sel_from.col if row == sel_from.row else 0
 			row_sel_to = sel_to.col if row == sel_to.row else len(text) + 1
 		}
-		editor_render_text_row(gutter, screen_y, w, text[:], editor.scroll_col, current, row_sel_from, row_sel_to)
+		colors := highlight_colors(b, row)
+		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, row_sel_from, row_sel_to)
 	}
 
 	name := b.path if b.path != "" else "[No Name]"
@@ -728,6 +731,7 @@ editor_render_gutter :: proc(y, width, number: int, current: bool) {
 editor_render_text_row :: proc(
 	gutter, y, w: int,
 	text: []u8,
+	colors: []tb2.Color,
 	scroll_col: int,
 	current: bool,
 	sel_from, sel_to: int,
@@ -737,11 +741,11 @@ editor_render_text_row :: proc(
 		tb2.set_cell(i32(gutter + sx), i32(y), ' ', COLOR_FG, bg_normal)
 	}
 
-	draw :: proc(gutter, y, sx, w: int, ch: rune, selected: bool, bg_normal: tb2.Color) {
+	draw :: proc(gutter, y, sx, w: int, ch: rune, selected: bool, fg_base, bg_normal: tb2.Color) {
 		if sx < 0 || sx >= w {
 			return
 		}
-		fg, bg := COLOR_FG, bg_normal
+		fg, bg := fg_base, bg_normal
 		if selected {
 			fg, bg = COLOR_BG, COLOR_FG
 		}
@@ -753,19 +757,19 @@ editor_render_text_row :: proc(
 		cluster: []u8,
 		vcol, scroll_col: int,
 		selected: bool,
-		bg_normal: tb2.Color,
+		fg_base, bg_normal: tb2.Color,
 	) -> int {
 		if cluster[0] == '\t' {
 			next := (vcol / TAB_WIDTH + 1) * TAB_WIDTH
 			for v in vcol ..< next {
-				draw(gutter, y, v - scroll_col, w, ' ', selected, bg_normal)
+				draw(gutter, y, v - scroll_col, w, ' ', selected, fg_base, bg_normal)
 			}
 			return next
 		}
 		sx := vcol - scroll_col
 		if sx >= 0 && sx < w {
 			r, n := utf8.decode_rune(cluster)
-			draw(gutter, y, sx, w, r, selected, bg_normal)
+			draw(gutter, y, sx, w, r, selected, fg_base, bg_normal)
 			rest := cluster[n:]
 			for len(rest) > 0 {
 				rr, m := utf8.decode_rune(rest)
@@ -779,19 +783,21 @@ editor_render_text_row :: proc(
 	vcol := 0
 	pstart := -1
 	psel := false
+	pfg := COLOR_FG
 	it := utf8.decode_grapheme_iterator_make(string(text))
 	for _, g in utf8.decode_grapheme_iterate(&it) {
 		if pstart >= 0 {
-			vcol = draw_cluster(gutter, y, w, text[pstart:g.byte_index], vcol, scroll_col, psel, bg_normal)
+			vcol = draw_cluster(gutter, y, w, text[pstart:g.byte_index], vcol, scroll_col, psel, pfg, bg_normal)
 		}
 		pstart = g.byte_index
 		psel = sel_from >= 0 && g.byte_index >= sel_from && g.byte_index < sel_to
+		pfg = colors[pstart] if colors != nil && pstart < len(colors) else COLOR_FG
 	}
 	if pstart >= 0 {
-		vcol = draw_cluster(gutter, y, w, text[pstart:], vcol, scroll_col, psel, bg_normal)
+		vcol = draw_cluster(gutter, y, w, text[pstart:], vcol, scroll_col, psel, pfg, bg_normal)
 	}
 	if sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
-		draw(gutter, y, vcol - scroll_col, w, ' ', true, bg_normal)
+		draw(gutter, y, vcol - scroll_col, w, ' ', true, COLOR_FG, bg_normal)
 	}
 }
 

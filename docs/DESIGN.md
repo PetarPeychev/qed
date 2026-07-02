@@ -480,6 +480,26 @@ accrete as those features land.
   cleanly, like `Alt+f`). Go-to-definition and future find features push entries
   once they exist.
 
+- [x] **Syntax highlighting — Odin (tree-sitter).** Vendored the tree-sitter C
+  runtime (`v0.26.10`) + the tree-sitter-odin grammar and a highlight query under
+  `lib/tree_sitter/` (compiled into `libtreesitter.a` by `build.sh`, FFI in
+  `lib/tree_sitter/ts.odin`, engine in `src/highlight.odin`); exact pins and
+  query patches documented in `lib/tree_sitter/PATCHES.md`. Gated to `.odin`
+  files via a per-buffer `rev` counter (bumped in `buffer_insert`/`buffer_delete`)
+  so a **full reparse runs only when the buffer changed**; a query cursor then
+  paints per-line, per-byte `tb2.Color` arrays that the one draw path
+  (`editor_render_text_row`) looks up, with selection inversion still winning.
+  **Structural-only**: the query is patched predicate-free — the tree-sitter C
+  core can't evaluate Neovim's `#lua-match?`/`#not-has-parent?`/`#any-of?`, so an
+  unevaluated gate would match unconditionally — meaning coloring comes from real
+  syntax-tree facts (keywords, declared/annotated types, strings, comments,
+  numbers/booleans, directives), not name-shape guessing; precise type/constant
+  *usage* coloring is deferred to LSP semantic tokens. Palette (`COLOR_SYN_*` in
+  `config.odin`): keywords & directives yellow, types niagara-blue, strings
+  green, comments brown, numbers/constants quartz; procedures, operators,
+  punctuation, and plain identifiers stay default text. The span model supports
+  per-capture bold/italic but sets none for Odin — those attach when markdown
+  lands. Non-`.odin` buffers render exactly as before.
 - [x] **Drag-select auto-scroll.** During a drag (`Motion`) the target row is no
   longer clamped into view: at the top edge (`y <= 0`) or bottom edge (`y >= h-1`)
   the cursor aims one row beyond the viewport and `editor_scroll` brings it in
@@ -502,17 +522,17 @@ _(none open)_
   `TAB_WIDTH` (4). Support other widths (1/2/3/4 spaces) and auto-detect the width
   from the file's existing indentation on open, the way tabs-vs-spaces is already
   detected. Surface it in the status bar alongside the indent style.
+- [ ] **Toggle line comment** (`Ctrl+/`). Comment / uncomment the current line —
+  or every line a selection touches — using the language's line-comment token
+  (`//` for Odin). Toggle semantics: if every touched non-blank line is already
+  commented, strip the leading token; otherwise add it (aligned at the least
+  indent). One undo group.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
 
 **Syntax highlighting** (tree-sitter). The palette already reserves syntax colors
 in `config.odin` (§3); the work is parse → map captures to those colors → render.
 
-- [ ] **Highlight Odin files.** Vendor tree-sitter (C lib) + the Odin grammar,
-  parse the buffer, map capture names to the reserved palette colors, render
-  colored spans. Start with a **full reparse each edit** — tree-sitter is fast
-  from scratch, so this is very likely fine for our file sizes. First colored
-  language, end to end.
 - [ ] **More languages.** Extension→grammar dispatch; add grammars in batches
   (shell, Python, JS/TS, JSON, Markdown, C, Lua).
 - [ ] **Incremental re-parse.** *(optional — only if the full reparse ever

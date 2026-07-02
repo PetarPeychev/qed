@@ -20,6 +20,8 @@ Buffer :: struct {
 	open:          EditGroup,
 	has_open:      bool,
 	open_kind:     Coalesce,
+	rev:           u64,
+	hl:            Highlight,
 }
 
 
@@ -71,6 +73,7 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	}
 	delete(buffer.redo)
 	group_destroy(&buffer.open)
+	highlight_destroy(&buffer.hl)
 }
 
 buffer_snapshot :: proc(buffer: ^Buffer) -> string {
@@ -271,6 +274,7 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 
 	append(&buffer.lines[end.row].text, ..tail)
 	buffer_recompute_modified(buffer)
+	buffer.rev += 1
 	return end
 }
 
@@ -309,5 +313,6 @@ buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 	}
 
 	buffer_recompute_modified(buffer)
+	buffer.rev += 1
 	return strings.to_string(sb)
 }
