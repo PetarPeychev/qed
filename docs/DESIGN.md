@@ -56,7 +56,7 @@ the justification to revisit — not before.
 
 ---
 
-## 2. Text encoding (bytes now, runes later)
+## 2. Text encoding (bytes now, grapheme clusters later)
 
 Columns are **byte offsets** for now. This is correct for ASCII and keeps every
 movement/edit operation trivial. It is knowingly wrong for multibyte UTF-8:
@@ -64,10 +64,14 @@ moving the cursor across a multibyte rune will land mid-rune, and display width 
 wide characters is ignored.
 
 When we actually need to edit non-ASCII files, we upgrade in one place: cursor
-horizontal movement decodes runes (`utf8.decode_rune`) to step whole runes, and
-the renderer computes display width. The data stays raw bytes; only the
-*interpretation* of `col` and the *advance* logic change. This is documented as a
-known limitation rather than worked around prematurely.
+horizontal movement (and word-motion) steps whole **grapheme clusters** and the
+renderer computes **display width**, using `core:unicode/utf8`'s grapheme iterator
+(UAX #29 — combining marks, ZWJ emoji, regional-indicator flags, Indic conjuncts —
+with a per-grapheme `width` from `unicode.normalized_east_asian_width`). No
+external library is needed. The data stays raw bytes; only the *interpretation* of
+`col`, the *advance* logic, and the screen↔buffer width mapping change. Tracked as
+one task in §10 and done in a single piece; documented as a known limitation
+rather than worked around prematurely.
 
 ---
 
@@ -389,10 +393,20 @@ accrete as those features land.
 - [ ] **Drag-select auto-scroll.** Scroll the viewport when a mouse drag-selection
   reaches the top or bottom edge (the target row is currently clamped into view,
   so a selection can't extend past what's visible).
-- [ ] **Rune-aware cursor & display width (UTF-8).** Step whole runes on
-  horizontal movement and compute display width in the renderer; data stays raw
-  bytes — only `col` interpretation and the advance logic change. (Currently the
-  cursor can land mid-rune on multibyte text.)
+- [ ] **Full Unicode support (grapheme clusters + display width).** Replace
+  byte-indexed cursor logic with **extended grapheme clusters** so combining
+  marks, ZWJ emoji (families, professions), regional-indicator flags, and Indic
+  conjuncts each behave as one character. Odin core already has the machinery —
+  `core:unicode/utf8`'s grapheme iterator (`decode_grapheme_iterate`, UAX #29,
+  each grapheme carrying a `width` in monospace cells) — so **no external library
+  is needed**. Deliberately done as **one piece, not sliced**: horizontal cursor
+  movement and word-motion step whole graphemes; the renderer advances by each
+  grapheme's display width so wide CJK and 2-cell emoji occupy the right cells;
+  and every screen↔buffer column mapping (cursor placement, mouse click, home/end,
+  horizontal scroll, selection) goes through display width — folding into the same
+  screen↔buffer column machinery the tab-display work already introduced. The
+  buffer stays raw bytes; only `col` interpretation, the advance logic, and width
+  mapping change. Resolves the byte-offset limitation documented in §2.
 
 ### Features
 

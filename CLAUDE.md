@@ -109,7 +109,7 @@ Concretely, this means:
 |-----------------|----------|
 | Platform        | Linux + macOS; OS-specific bits isolated. CTRL-based keybinds. |
 | Core structure  | `Buffer` = `[dynamic]Line`; `Line` = `[dynamic]u8`. |
-| Text/columns    | Byte offsets now; rune-awareness later (known limitation). |
+| Text/columns    | Byte offsets now; full Unicode (grapheme cluster) awareness later, in one piece (known limitation). |
 | Long lines      | Horizontal scroll, no wrap. 1 buffer line = 1 screen row. |
 | Cursor          | Single cursor + optional selection anchor (shift-select). |
 | Undo/redo       | Inverse-op edit log, grouped into undo steps; all edits go through primitive ops. |
