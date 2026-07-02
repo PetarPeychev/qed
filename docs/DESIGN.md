@@ -389,6 +389,11 @@ land.
       exceeds the visible rows the selection can move below the window and vanish.
       Track a scroll offset that follows the selection (as the picker already
       does).
+    - [ ] **Context-filter the command list.** Some commands don't apply in
+      every state — e.g. on the welcome screen (no open buffer) Save, Toggle
+      Indent, Undo/Redo, Cut/Copy/Paste, Select All are meaningless. Filter the
+      palette's command list by the current context so only applicable commands
+      show.
 - [ ] **In-buffer find**, then find & replace. Incremental search driven by the
   palette's prompt input: next/prev, wrap, match highlight; then replace one/all.
 - [x] **Fuzzy file-open + multiple buffers.** Ctrl+O opens a near-fullscreen
@@ -420,6 +425,11 @@ land.
   cell, so opened files and pastes containing tabs misrender and mis-place the
   cursor. Also auto-detects tabs-vs-spaces indent per file, shows it in the status
   bar, and adds a Ctrl+~ "Toggle Indent" command.
+- [ ] **Configurable indent width + detection.** *(independent)* Today indent
+  is hardcoded to `TAB_WIDTH` (4). Support other widths (1/2/3/4 spaces) and
+  auto-detect the width from the file's existing indentation on open, the way
+  tabs-vs-spaces is already detected. Surface it in the status bar alongside the
+  indent style.
 - [ ] **Drag-select auto-scroll.** *(independent)* Scroll the viewport when a
   mouse drag-selection reaches the top or bottom edge (the target row is
   currently clamped into view, so a selection can't extend past what's visible).
