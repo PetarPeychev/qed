@@ -74,6 +74,12 @@ Concretely, this means:
   `buffer_open`, `buffer_insert`, `editor_render`, `cursor_move_left`. The first
   parameter is the thing being acted on, usually a pointer for mutation
   (`buffer: ^Buffer`).
+- **Procedure size:** a longer procedure that reads top-to-bottom (without deeply
+  nested control flow) beats scattering the same logic across many small helpers
+  called only once or twice. Don't extract a one-shot helper just to shorten a
+  proc — having to jump between functions to follow one logical block is worse
+  than reading it inline. Extract when logic is genuinely reused, or to flatten
+  deep nesting, not by reflex.
 - **Memory:**
   - Per-frame / per-render scratch goes through `context.temp_allocator` and is
     released with `free_all(context.temp_allocator)` once per main-loop

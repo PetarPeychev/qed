@@ -54,6 +54,7 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	}
 	delete(buffer.lines)
 	delete(buffer.saved)
+	delete(buffer.path)
 
 	for &group in buffer.undo {
 		group_destroy(&group)
@@ -142,7 +143,8 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 		append(&buffer.lines, Line{})
 	}
 
-	buffer.path = path
+	delete(buffer.path)
+	buffer.path = strings.clone(path)
 	buffer.cursor = {0, 0}
 	buffer.selection = nil
 	buffer.goal_col = 0

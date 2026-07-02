@@ -386,8 +386,26 @@ land.
   existing actions (save, quit, undo, …) through a command list.
 - [ ] **In-buffer find**, then find & replace. Incremental search driven by the
   palette's prompt input: next/prev, wrap, match highlight; then replace one/all.
-- [ ] **Fuzzy file-open.** Open a file into the buffer via a floating fuzzy picker
-  rooted at the working root (reuses the pane + prompt).
+- [x] **Fuzzy file-open + multiple buffers.** Ctrl+O opens a near-fullscreen
+  floating picker (file list on top, plain-text preview of the selected file on
+  the bottom) rooted at the working root. The file list is walked once on open
+  (`fd`/`fdfind`, falling back to `find`, gitignore-aware) and filtered per
+  keystroke through the shared `fuzzy_rank` (prefers `fzf --filter`, falls back to
+  the built-in matcher — the command palette uses the same path). Enter opens the
+  file into a **new buffer**, keeping the old one open so unsaved edits survive
+  switching; re-picking an already-open file switches to its live buffer instead
+  of reloading. Files with unsaved changes are marked `[*]` in the list. Quit
+  (Ctrl+Q) guards **every** modified buffer via a combined Save-All / Discard-All
+  / Cancel dialog. Follow-ups discovered while building this, each its own task:
+    - [ ] **Picker mouse support.** Click a list row to select/open; wheel to
+      scroll the list. Keyboard-only for now.
+    - [ ] **Colored file preview.** Parse `bat --color=always` ANSI into pane
+      cells (currently plain `head` text); best done alongside syntax highlighting.
+    - [ ] **Per-buffer viewport memory.** Remember each buffer's scroll position
+      across switches (scroll currently re-centers on the cursor on switch).
+    - [ ] **Close buffer (Ctrl+W).** Close the current buffer; if it's modified,
+      guard with a save/discard/cancel prompt first. Switch to an adjacent buffer
+      afterward, falling back to the welcome screen when the last one closes.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
 - [ ] **Project-wide search overlay** (rg + fzf): query, results list in a

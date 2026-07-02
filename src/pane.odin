@@ -7,9 +7,12 @@ Rect :: struct {
 	x, y, w, h: int,
 }
 
-pane_center :: proc(content_w, content_h: int) -> Rect {
+pane_center :: proc(editor: ^Editor, content_w, content_h: int) -> Rect {
 	sw := int(tb2.width())
 	sh := int(tb2.height())
+	if !editor.welcome {
+		sh -= STATUS_ROWS
+	}
 	w := min(content_w + 2, sw)
 	h := content_h + 2
 	x := max(0, (sw - w) / 2)

@@ -1,28 +1,38 @@
 package main
 
-import "core:slice"
 import "core:unicode/utf8"
 import "lib:tb2"
 
 Command :: struct {
 	name:     string,
 	shortcut: string,
+	key:      tb2.Key,
 	run:      proc(editor: ^Editor),
 }
 
-cmd_undo :: proc(editor: ^Editor) {buffer_undo(&editor.buffer)}
-cmd_redo :: proc(editor: ^Editor) {buffer_redo(&editor.buffer)}
-cmd_select_all :: proc(editor: ^Editor) {cursor_select_all(&editor.buffer)}
+cmd_undo :: proc(editor: ^Editor) {buffer_undo(editor_buffer(editor))}
+cmd_redo :: proc(editor: ^Editor) {buffer_redo(editor_buffer(editor))}
+cmd_select_all :: proc(editor: ^Editor) {cursor_select_all(editor_buffer(editor))}
 
 commands := [?]Command {
-	{"Save", "Ctrl+S", editor_save},
-	{"Quit", "Ctrl+Q", editor_request_quit},
-	{"Undo", "Ctrl+Z", cmd_undo},
-	{"Redo", "Ctrl+Y", cmd_redo},
-	{"Cut", "Ctrl+X", editor_cut},
-	{"Copy", "Ctrl+C", editor_copy},
-	{"Paste", "Ctrl+V", editor_paste},
-	{"Select All", "Ctrl+A", cmd_select_all},
+	{"Open File", "Ctrl+O", .Ctrl_O, picker_open},
+	{"Save", "Ctrl+S", .Ctrl_S, editor_save},
+	{"Quit", "Ctrl+Q", .Ctrl_Q, editor_request_quit},
+	{"Undo", "Ctrl+Z", .Ctrl_Z, cmd_undo},
+	{"Redo", "Ctrl+Y", .Ctrl_Y, cmd_redo},
+	{"Cut", "Ctrl+X", .Ctrl_X, editor_cut},
+	{"Copy", "Ctrl+C", .Ctrl_C, editor_copy},
+	{"Paste", "Ctrl+V", .Ctrl_V, editor_paste},
+	{"Select All", "Ctrl+A", .Ctrl_A, cmd_select_all},
+}
+
+command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
+	for cmd in commands {
+		if cmd.key == key {
+			return cmd, true
+		}
+	}
+	return {}, false
 }
 
 Palette :: struct {
@@ -30,11 +40,15 @@ Palette :: struct {
 	query:    [dynamic]u8,
 	matches:  [dynamic]int,
 	selected: int,
+	fuzzy:    Fuzzy,
+	names:    [dynamic]string,
 }
 
 palette_destroy :: proc(p: ^Palette) {
+	fuzzy_end(&p.fuzzy)
 	delete(p.query)
 	delete(p.matches)
+	delete(p.names)
 }
 
 palette_open :: proc(editor: ^Editor) {
@@ -44,72 +58,26 @@ palette_open :: proc(editor: ^Editor) {
 	p.selected = 0
 	editor.message = ""
 	editor.message_error = false
+	clear(&p.names)
+	for cmd in commands {
+		append(&p.names, cmd.name)
+	}
+	p.fuzzy = fuzzy_begin(p.names[:])
 	palette_filter(editor)
 }
 
 palette_close :: proc(editor: ^Editor) {
 	editor.palette.active = false
-}
-
-ascii_lower :: proc(c: u8) -> u8 {
-	if c >= 'A' && c <= 'Z' {
-		return c + 32
-	}
-	return c
-}
-
-fuzzy_separator :: proc(c: u8) -> bool {
-	return char_class(c) != .Word
-}
-
-fuzzy_match :: proc(pattern, text: string) -> (score: int, ok: bool) {
-	if len(pattern) == 0 {
-		return 0, true
-	}
-	pi := 0
-	prev_match := -2
-	for ti := 0; ti < len(text) && pi < len(pattern); ti += 1 {
-		if ascii_lower(text[ti]) != ascii_lower(pattern[pi]) {
-			continue
-		}
-		score += 1
-		if ti == prev_match + 1 {
-			score += 3
-		}
-		if ti == 0 || fuzzy_separator(text[ti - 1]) {
-			score += 5
-		}
-		prev_match = ti
-		pi += 1
-	}
-	return score, pi == len(pattern)
-}
-
-ScoreIdx :: struct {
-	score: int,
-	idx:   int,
+	fuzzy_end(&editor.palette.fuzzy)
 }
 
 palette_filter :: proc(editor: ^Editor) {
 	p := &editor.palette
 	clear(&p.matches)
 	p.selected = 0
-	q := string(p.query[:])
-
-	entries := make([dynamic]ScoreIdx, 0, len(commands), context.temp_allocator)
-	for cmd, i in commands {
-		if score, ok := fuzzy_match(q, cmd.name); ok {
-			append(&entries, ScoreIdx{score, i})
-		}
-	}
-	slice.sort_by(entries[:], proc(a, b: ScoreIdx) -> bool {
-		if a.score != b.score {
-			return a.score > b.score
-		}
-		return a.idx < b.idx
-	})
-	for e in entries {
-		append(&p.matches, e.idx)
+	ranked := fuzzy_rank(&p.fuzzy, string(p.query[:]))
+	for idx in ranked {
+		append(&p.matches, idx)
 	}
 }
 
@@ -156,7 +124,7 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 palette_render :: proc(editor: ^Editor) {
 	p := &editor.palette
 	rows := min(len(p.matches), PALETTE_MAX_ROWS)
-	box := pane_center(PALETTE_WIDTH, 2 + rows)
+	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
 	inner := pane_draw_box(box)
 
 	pane_text(inner.x + 1, inner.y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
