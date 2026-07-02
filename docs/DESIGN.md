@@ -137,10 +137,8 @@ lives as hardcoded 24-bit hex constants in `config.odin`:
 | Message line — error | `#D2A8A1`                      |
 | Selection            | **inverted**: `#181818` text on `#f4f4ff` background |
 
-Syntax colors (keywords/types `#ffdd33`, comments `#cc8c3c`, strings `#73c936`,
-etc.) are recorded for when highlighting arrives but unused for now. The
-`rgb`/`gray`/`style` helpers in `editor.odin` move to a `color.odin` once color
-handling grows.
+Syntax colors (`COLOR_SYN_*` in `config.odin`) drive tree-sitter highlighting for
+`.odin` files (§10 Done); other languages will reuse them as grammars land.
 
 ---
 
@@ -361,11 +359,11 @@ This is the working task list. **Workflow:**
 Open work is grouped by **category** below (bugs, features, polish); completed
 work stays under **Done** as history. Categories are not a strict build order —
 pick by priority; where a real dependency exists it's noted inline. One structural
-thread to keep in mind: in-buffer find, the file-tree, the project-wide search
-overlay, and several LSP consumers (completion, find-references, symbol search)
-all draw on the one rectangular **floating pane** already built for the command
-palette and fuzzy file-open. Keep that layer minimal (no compositor) and let it
-accrete as those features land.
+thread to keep in mind: in-buffer find, the file-tree, and several LSP consumers
+(completion, find-references, symbol search) all draw on the one rectangular
+**floating pane** already built for the palette, fuzzy file-open, line-jump, and
+project search. Keep that layer minimal (no compositor) and let it accrete as
+those features land.
 
 ### Done (built and verified)
 
@@ -407,106 +405,48 @@ accrete as those features land.
   screen↔buffer column mapping; auto-detect tabs-vs-spaces per file, show it in
   the status bar, add a Ctrl+~ "Toggle Indent" command.
 - [x] **Full Unicode support (grapheme clusters + display width).** `col` stays a
-  byte offset; movement, word-motion, and backspace/delete step whole **extended
-  grapheme clusters** (UAX #29 via `core:unicode/utf8`), and all screen↔buffer
-  column mapping goes through per-cluster display width. Width is a port of
-  termbox2's `tb_cluster_width` (`cluster_width` in `cursor.odin`) so the renderer
-  and termbox's `present()` agree; multi-rune clusters render as one cell via
-  `tb_extend_cell` (EGC enabled in `build.sh`). CJK, combining Latin, simple/ZWJ
-  emoji, and Indic conjuncts behave as one character. Known caveat (§2): some
-  terminals (Windows Terminal) draw ZWJ-flags / keycaps at a non-Unicode width, so
-  those specific glyphs flicker — a terminal limitation, not qed.
-- [x] **Fuzzy line jump** (`Alt+f`, "Find Line"). A near-fullscreen picker over
-  the current buffer's lines (reusing the file-picker pane + `fuzzy_rank`): a match
-  list of `<lineno> <line text>` on top, a context preview below showing the
-  selected line and its neighbours. Enter moves the cursor to that line's first
-  non-blank column and centres the line in the viewport; Esc cancels leaving the
-  cursor put. Navigation only — distinct from incremental find and not a path to
-  replace (no exact match positions).
+  byte offset; movement, word-motion, and backspace/delete step whole extended
+  grapheme clusters (UAX #29 via `core:unicode/utf8`); all screen↔buffer column
+  mapping goes through per-cluster display width, a port of termbox2's
+  `tb_cluster_width` (`cluster_width` in `cursor.odin`) so the renderer and
+  `present()` agree. See §2 for the ZWJ-flag / keycap terminal caveat.
+- [x] **Fuzzy line jump** (`Alt+f`, "Find Line"). Near-fullscreen picker over the
+  current buffer's lines (reuses the picker pane + `fuzzy_rank`); Enter jumps to
+  the line's first non-blank column and centres it. Navigation only.
 - [x] **Project-wide search** (`Alt+F`, "Find in Files"). Telescope `live_grep`
-  style: a near-fullscreen picker whose prompt drives `rg --vimgrep -F -S`
-  (literal, smart-case) live per keystroke over the working root, once the query
-  is ≥ `PROJSEARCH_MIN_QUERY` chars and capped at `PROJSEARCH_MAX` hits. A match
-  list of `<path>:<lineno>  <text>` on top, a `sed`-fetched file-context preview
-  below (matched line emphasised). Enter opens the file into a buffer (switching
-  to a live one if already open) and jumps to the exact `row`+`col`, centred; Esc
-  / `Alt+F` cancels. Deliberately a content grep, **not** fuzzy-over-all-lines
-  (tried; too noisy and it overlapped Find Line) — precise loose-word→symbol jump
-  is a later LSP symbol-search job. `Alt+f`/`Alt+F` are distinguishable (unlike
-  `Ctrl+F`/`Ctrl+Shift+F`, which the terminal collapses to one byte). See the ALT
-  input note in §8.
+  picker driving `rg --vimgrep -F -S` live per keystroke over the working root
+  (≥ `PROJSEARCH_MIN_QUERY` chars, capped at `PROJSEARCH_MAX`); Enter opens the
+  file and jumps to the exact row+col. A content grep, not fuzzy-over-all-lines.
+  `Alt+f`/`Alt+F` are distinguishable (see §8).
 - [x] **Line / file / paragraph motion keybinds.** `Alt+Left` smart-home
-  (`cursor_move_home_smart`, toggles first-non-blank ↔ column 0), `Alt+Right` end
-  of line, `Alt+{` / `Alt+}` buffer start / end (added as `Go to Start/End of File`
-  commands so they also appear in the palette), and `Ctrl+Up` / `Ctrl+Down`
-  previous / next paragraph (`cursor_paragraph_prev`/`_next`; a paragraph is a run
-  of non-blank lines bounded by blank/whitespace-only lines, falling through to
-  buffer start/end at the extremes). Shift extends the selection on the arrow-based
-  binds via termbox's combo-caps table (`\x1b[1;N…`). **Terminal caveat:** Windows
-  Terminal swallows `Ctrl+Shift+Up`/`Down` (unlike `Ctrl+Shift+Left`/`Right`, which
-  arrive as `1;6D`/`1;6C`), so those two are supplied by `sendInput` keybindings in
-  WT's `settings.json` emitting `^[[1;6A` / `^[[1;6B`, which tmux forwards and
-  termbox parses. `Alt+{`/`}` can't carry a separate Shift (the Shift is consumed
-  producing the brace glyph), so they move-and-clear — shift-extend to the buffer
-  ends stays on `Ctrl+Shift+Home`/`End`.
-
-- [x] **Move lines up / down** (`Alt+Up` / `Alt+Down`). `buffer_move_lines(b, delta)`
-  moves the current line — or every line a selection touches (a trailing endpoint at
-  column 0 doesn't count its line) — up or down one row, carrying the cursor and
-  selection with it. Implemented as one atomic delete+insert of the reordered
-  line-span, so it's a single undo group and the trailing-newline edge (moving into
-  or out of the last line) is handled by choosing the span's delete range. Bound
-  directly in `editor_dispatch_key` (not the command table, since `Alt+Arrow` fits
-  neither `key` nor `alt_ch`). **Terminal caveat:** if Windows Terminal swallows
-  `Alt+Up`/`Down`, supply them via `sendInput` in WT `settings.json` emitting
-  `^[[1;3A` / `^[[1;3B`, as with the `Ctrl+Shift` arrows.
-
-- [x] **Jump back / forward (navigation history)** (`Alt+,` back / `Alt+.` forward,
-  also "Jump Back" / "Jump Forward" in the palette). A global browser-style jump
-  list (`src/jump.odin`): each entry is `(path, row, col)` — the buffer is keyed by
-  path so entries survive buffer reordering and jump-back reopens a closed file via
-  `editor_open_path`. Recording is centralised: `editor_dispatch` captures the
-  cursor on entry and a trailing `defer jump_record` pushes a new entry only when
-  the destination changes buffer or moves the row by more than `JUMP_THRESHOLD`
-  (10) lines — one rule that covers PgUp/PgDn, buffer start/end, far mouse clicks,
-  and Find Line / Find in Files / Open File landings, while ordinary typing and
-  single-line steps stay below the bar. Sub-threshold moves instead *update the
-  current entry in place*, so it tracks the live cursor and back/forward bracket
-  where you actually are, not a stale landing spot. A new jump after stepping back
-  truncates the forward history (browser-style); a `jump_lock` flag suppresses
-  recording during the back/forward navigation itself and during buffer-close.
-  Binds are `Alt+,`/`Alt+.` rather than micro's `Alt+[`/`Alt+]` because `ESC[`/`ESC]`
-  collide with the terminal's CSI/OSC intro bytes (`,`/`.` reconstruct as ALT
-  cleanly, like `Alt+f`). Go-to-definition and future find features push entries
-  once they exist.
-
+  (first-non-blank ↔ column 0), `Alt+Right` end of line, `Alt+{` / `Alt+}` buffer
+  start / end (also palette commands), `Ctrl+Up` / `Ctrl+Down` prev / next
+  paragraph. Shift extends on the arrow binds; `Alt+{`/`}` move-and-clear.
+- [x] **Move lines up / down** (`Alt+Up` / `Alt+Down`). `buffer_move_lines`
+  reorders the current line — or every line a selection touches — as one atomic
+  delete+insert (single undo group), carrying cursor and selection.
+- [x] **Jump back / forward (navigation history)** (`Alt+,` / `Alt+.`, also
+  palette). Browser-style global jump list (`src/jump.odin`) of `(path, row, col)`
+  entries; `editor_dispatch` records a new entry when the destination changes
+  buffer or moves the row by more than `JUMP_THRESHOLD` (10), and updates the
+  current entry in place otherwise. A new jump truncates forward history; a
+  `jump_lock` flag suppresses recording during navigation and buffer-close.
 - [x] **Syntax highlighting — Odin (tree-sitter).** Vendored the tree-sitter C
-  runtime (`v0.26.10`) + the tree-sitter-odin grammar and a highlight query under
-  `lib/tree_sitter/` (compiled into `libtreesitter.a` by `build.sh`, FFI in
-  `lib/tree_sitter/ts.odin`, engine in `src/highlight.odin`); exact pins and
-  query patches documented in `lib/tree_sitter/PATCHES.md`. Gated to `.odin`
-  files via a per-buffer `rev` counter (bumped in `buffer_insert`/`buffer_delete`)
-  so a **full reparse runs only when the buffer changed**; a query cursor then
-  paints per-line, per-byte `tb2.Color` arrays that the one draw path
-  (`editor_render_text_row`) looks up, with selection inversion still winning.
-  **Structural-only**: the query is patched predicate-free — the tree-sitter C
-  core can't evaluate Neovim's `#lua-match?`/`#not-has-parent?`/`#any-of?`, so an
-  unevaluated gate would match unconditionally — meaning coloring comes from real
-  syntax-tree facts (keywords, declared/annotated types, strings, comments,
-  numbers/booleans, directives), not name-shape guessing; precise type/constant
-  *usage* coloring is deferred to LSP semantic tokens. Palette (`COLOR_SYN_*` in
-  `config.odin`): keywords & directives yellow, types niagara-blue, strings
-  green, comments brown, numbers/constants quartz; procedures, operators,
-  punctuation, and plain identifiers stay default text. The span model supports
-  per-capture bold/italic but sets none for Odin — those attach when markdown
-  lands. Non-`.odin` buffers render exactly as before.
-- [x] **Drag-select auto-scroll.** During a drag (`Motion`) the target row is no
-  longer clamped into view: at the top edge (`y <= 0`) or bottom edge (`y >= h-1`)
-  the cursor aims one row beyond the viewport and `editor_scroll` brings it in
-  (carrying the same `SCROLL_MARGIN` step as keyboard movement), so a selection
-  can extend past what's on screen. No timers (§3), so holding still at the edge
-  doesn't auto-repeat — nudging the mouse advances each step, the terminal-editor
-  norm.
+  runtime + tree-sitter-odin grammar/query under `lib/tree_sitter/` (built into
+  `libtreesitter.a`, FFI in `ts.odin`, engine in `src/highlight.odin`; pins and
+  query patches in `lib/tree_sitter/PATCHES.md`). Gated to `.odin`; a per-buffer
+  `rev` counter triggers a full reparse only on change, painting per-line
+  `tb2.Color` arrays that `editor_render_text_row` looks up (selection inversion
+  wins). Structural-only (predicate-free query); precise type/constant *usage*
+  coloring deferred to LSP semantic tokens. Colors in `COLOR_SYN_*`.
+- [x] **Drag-select auto-scroll.** During a drag, at the top/bottom viewport edge
+  the cursor aims one row beyond the viewport and `editor_scroll` brings it in, so
+  a selection can extend past the screen. No timers, so each nudge advances a step.
+
+**Terminal caveat (WT):** Windows Terminal swallows some `Ctrl+Shift`/`Alt`
+arrow combos (`Ctrl+Shift+Up`/`Down`, `Alt+Up`/`Down`); they're supplied by
+`sendInput` keybindings in WT's `settings.json` emitting the CSI bytes
+(`^[[1;6A/B`, `^[[1;3A/B`), which tmux forwards and termbox parses.
 
 ### Bugs / correctness
 
@@ -530,8 +470,7 @@ _(none open)_
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
 
-**Syntax highlighting** (tree-sitter). The palette already reserves syntax colors
-in `config.odin` (§3); the work is parse → map captures to those colors → render.
+**Syntax highlighting** (tree-sitter). Odin shipped (§10 Done); what remains:
 
 - [ ] **More languages.** Extension→grammar dispatch; add grammars in batches
   (shell, Python, JS/TS, JSON, Markdown, C, Lua).
