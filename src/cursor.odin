@@ -235,6 +235,16 @@ cursor_move_home :: proc(b: ^Buffer) {
 	cursor_goal_sync(b)
 }
 
+cursor_move_home_smart :: proc(b: ^Buffer) {
+	text := b.lines[b.cursor.row].text[:]
+	first := 0
+	for first < len(text) && (text[first] == ' ' || text[first] == '\t') {
+		first += 1
+	}
+	b.cursor.col = 0 if b.cursor.col == first else first
+	cursor_goal_sync(b)
+}
+
 cursor_move_end :: proc(b: ^Buffer) {
 	b.cursor.col = len(b.lines[b.cursor.row].text)
 	cursor_goal_sync(b)
@@ -249,6 +259,32 @@ cursor_move_buffer_end :: proc(b: ^Buffer) {
 	b.cursor.row = len(b.lines) - 1
 	b.cursor.col = len(b.lines[b.cursor.row].text)
 	cursor_goal_sync(b)
+}
+
+cursor_paragraph_prev :: proc(b: ^Buffer) {
+	r := b.cursor.row - 1
+	for r > 0 {
+		if line_is_blank(b.lines[r].text[:]) {
+			b.cursor = {r, 0}
+			cursor_goal_sync(b)
+			return
+		}
+		r -= 1
+	}
+	cursor_move_buffer_start(b)
+}
+
+cursor_paragraph_next :: proc(b: ^Buffer) {
+	r := b.cursor.row + 1
+	for r < len(b.lines) {
+		if line_is_blank(b.lines[r].text[:]) {
+			b.cursor = {r, 0}
+			cursor_goal_sync(b)
+			return
+		}
+		r += 1
+	}
+	cursor_move_buffer_end(b)
 }
 
 cursor_move_word_left :: proc(b: ^Buffer) {

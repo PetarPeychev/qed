@@ -345,10 +345,12 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		} else {
 			b.selection = nil
 		}
-		collapse := had_sel && !shift && !ctrl
+		collapse := had_sel && !shift && !ctrl && !alt
 		#partial switch ev.key {
 		case .Arrow_Left:
-			if collapse {
+			if alt {
+				cursor_move_home_smart(b)
+			} else if collapse {
 				b.cursor = sel_from
 				cursor_goal_sync(b)
 			} else if ctrl {
@@ -357,7 +359,9 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 				cursor_move_left(b)
 			}
 		case .Arrow_Right:
-			if collapse {
+			if alt {
+				cursor_move_end(b)
+			} else if collapse {
 				b.cursor = sel_to
 				cursor_goal_sync(b)
 			} else if ctrl {
@@ -366,9 +370,17 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 				cursor_move_right(b)
 			}
 		case .Arrow_Up:
-			cursor_move_up_n(b, 1)
+			if ctrl {
+				cursor_paragraph_prev(b)
+			} else {
+				cursor_move_up_n(b, 1)
+			}
 		case .Arrow_Down:
-			cursor_move_down_n(b, 1)
+			if ctrl {
+				cursor_paragraph_next(b)
+			} else {
+				cursor_move_down_n(b, 1)
+			}
 		case .Home:
 			if ctrl {
 				cursor_move_buffer_start(b)

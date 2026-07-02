@@ -435,6 +435,20 @@ accrete as those features land.
   is a later LSP symbol-search job. `Alt+f`/`Alt+F` are distinguishable (unlike
   `Ctrl+F`/`Ctrl+Shift+F`, which the terminal collapses to one byte). See the ALT
   input note in §8.
+- [x] **Line / file / paragraph motion keybinds.** `Alt+Left` smart-home
+  (`cursor_move_home_smart`, toggles first-non-blank ↔ column 0), `Alt+Right` end
+  of line, `Alt+{` / `Alt+}` buffer start / end (added as `Go to Start/End of File`
+  commands so they also appear in the palette), and `Ctrl+Up` / `Ctrl+Down`
+  previous / next paragraph (`cursor_paragraph_prev`/`_next`; a paragraph is a run
+  of non-blank lines bounded by blank/whitespace-only lines, falling through to
+  buffer start/end at the extremes). Shift extends the selection on the arrow-based
+  binds via termbox's combo-caps table (`\x1b[1;N…`). **Terminal caveat:** Windows
+  Terminal swallows `Ctrl+Shift+Up`/`Down` (unlike `Ctrl+Shift+Left`/`Right`, which
+  arrive as `1;6D`/`1;6C`), so those two are supplied by `sendInput` keybindings in
+  WT's `settings.json` emitting `^[[1;6A` / `^[[1;6B`, which tmux forwards and
+  termbox parses. `Alt+{`/`}` can't carry a separate Shift (the Shift is consumed
+  producing the brace glyph), so they move-and-clear — shift-extend to the buffer
+  ends stays on `Ctrl+Shift+Home`/`End`.
 
 ### Bugs / correctness
 
@@ -454,15 +468,6 @@ accrete as those features land.
   detected. Surface it in the status bar alongside the indent style.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
-- [ ] **Reachable line / file / paragraph motion keybinds.** Bind these to keys
-  that don't need the nav cluster, matching the micro config: `Alt+Left` start of
-  line — a **toggle** between the first non-blank column and column 0 (micro's
-  `StartOfTextToggle`) — and `Alt+Right` end of line; `Alt+{` / `Alt+}` buffer
-  start / end; `Ctrl+Up` / `Ctrl+Down` previous / next paragraph. Paragraph motion
-  is the only new behavior (a paragraph is a run of non-blank lines bounded by
-  blank lines); the line/file procs already exist (`cursor_move_home`/`_end`,
-  `cursor_move_buffer_start`/`_end`) — this adds the binds plus the smart-home
-  toggle. Shift extends the selection on all of them, as the arrows do today.
 - [ ] **Move lines up / down.** `Alt+Up` / `Alt+Down` move the current line (or
   every line the selection touches) up or down one row, carrying the cursor and
   selection. One undo group per move. (Micro's `MoveLinesUp`/`MoveLinesDown`.)

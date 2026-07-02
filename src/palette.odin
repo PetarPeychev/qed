@@ -16,6 +16,18 @@ cmd_undo :: proc(editor: ^Editor) {buffer_undo(editor_buffer(editor))}
 cmd_redo :: proc(editor: ^Editor) {buffer_redo(editor_buffer(editor))}
 cmd_select_all :: proc(editor: ^Editor) {cursor_select_all(editor_buffer(editor))}
 
+cmd_buffer_start :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	b.selection = nil
+	cursor_move_buffer_start(b)
+}
+
+cmd_buffer_end :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	b.selection = nil
+	cursor_move_buffer_end(b)
+}
+
 cmd_toggle_indent :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.indent = .Spaces if b.indent == .Tabs else .Tabs
@@ -26,6 +38,8 @@ commands := [?]Command {
 	{name = "Open File", shortcut = "Ctrl+O", key = .Ctrl_O, run = picker_open},
 	{name = "Find Line", shortcut = "Alt+f", alt_ch = 'f', run = linefind_open},
 	{name = "Find in Files", shortcut = "Alt+F", alt_ch = 'F', run = projsearch_open},
+	{name = "Go to Start of File", shortcut = "Alt+{", alt_ch = '{', run = cmd_buffer_start},
+	{name = "Go to End of File", shortcut = "Alt+}", alt_ch = '}', run = cmd_buffer_end},
 	{name = "Close Buffer", shortcut = "Ctrl+W", key = .Ctrl_W, run = editor_close_buffer},
 	{name = "Save", shortcut = "Ctrl+S", key = .Ctrl_S, run = editor_save},
 	{name = "Quit", shortcut = "Ctrl+Q", key = .Ctrl_Q, run = editor_request_quit},
