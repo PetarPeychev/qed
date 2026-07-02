@@ -12,6 +12,7 @@ Buffer :: struct {
 	goal_col:      int,
 	saved:         string,
 	modified:      bool,
+	indent:        IndentStyle,
 	line_ending:   LineEnding,
 	final_newline: bool,
 	undo:          [dynamic]EditGroup,
@@ -33,6 +34,11 @@ Cursor :: struct {
 LineEnding :: enum {
 	LF,
 	CRLF,
+}
+
+IndentStyle :: enum {
+	Spaces,
+	Tabs,
 }
 
 buffer_new :: proc() -> Buffer {
@@ -141,6 +147,15 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	}
 	if len(buffer.lines) == 0 {
 		append(&buffer.lines, Line{})
+	}
+
+	buffer.indent = .Spaces
+	for line in buffer.lines {
+		if len(line.text) == 0 || (line.text[0] != ' ' && line.text[0] != '\t') {
+			continue
+		}
+		buffer.indent = .Tabs if line.text[0] == '\t' else .Spaces
+		break
 	}
 
 	delete(buffer.path)

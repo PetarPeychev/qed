@@ -151,3 +151,49 @@ test_move_word_left_crosses_line :: proc(t: ^testing.T) {
 	cursor_move_word_left(&b)
 	testing.expect_value(t, b.cursor, Cursor{0, 2})
 }
+
+@(test)
+test_visual_col_expands_tabs :: proc(t: ^testing.T) {
+	text := transmute([]u8)string("\tab\tc")
+	testing.expect_value(t, visual_col(text, 0), 0)
+	testing.expect_value(t, visual_col(text, 1), 4)
+	testing.expect_value(t, visual_col(text, 2), 5)
+	testing.expect_value(t, visual_col(text, 3), 6)
+	testing.expect_value(t, visual_col(text, 4), 8)
+	testing.expect_value(t, visual_col(text, 5), 9)
+	testing.expect_value(t, visual_width(text), 9)
+}
+
+@(test)
+test_visual_col_no_tabs :: proc(t: ^testing.T) {
+	text := transmute([]u8)string("hello")
+	testing.expect_value(t, visual_col(text, 3), 3)
+	testing.expect_value(t, visual_width(text), 5)
+}
+
+@(test)
+test_col_at_visual_snaps_across_tabs :: proc(t: ^testing.T) {
+	text := transmute([]u8)string("\tab\tc")
+	testing.expect_value(t, col_at_visual(text, 0), 0)
+	testing.expect_value(t, col_at_visual(text, 1), 0)
+	testing.expect_value(t, col_at_visual(text, 3), 1)
+	testing.expect_value(t, col_at_visual(text, 4), 1)
+	testing.expect_value(t, col_at_visual(text, 5), 2)
+	testing.expect_value(t, col_at_visual(text, 8), 4)
+	testing.expect_value(t, col_at_visual(text, 100), 5)
+}
+
+@(test)
+test_goal_col_is_visual_across_tabs :: proc(t: ^testing.T) {
+	b := test_buffer("\tabc", "xyzwvu")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 1}
+	cursor_goal_sync(&b)
+	testing.expect_value(t, b.goal_col, 4)
+
+	cursor_move_down_n(&b, 1)
+	testing.expect_value(t, b.cursor, Cursor{1, 4})
+
+	cursor_move_up_n(&b, 1)
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+}

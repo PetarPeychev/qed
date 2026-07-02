@@ -384,6 +384,11 @@ land.
   the first pane consumer. Establishes the editable text-input line (the
   "prompt"/minibuffer) that find, go-to-line, and save-as later reuse. Routes the
   existing actions (save, quit, undo, …) through a command list.
+    - [ ] **Palette list scrolling (bug).** The palette renders only the first
+      `PALETTE_MAX_ROWS` matches with no scroll offset, so once the command list
+      exceeds the visible rows the selection can move below the window and vanish.
+      Track a scroll offset that follows the selection (as the picker already
+      does).
 - [ ] **In-buffer find**, then find & replace. Incremental search driven by the
   palette's prompt input: next/prev, wrap, match highlight; then replace one/all.
 - [x] **Fuzzy file-open + multiple buffers.** Ctrl+O opens a near-fullscreen
@@ -410,10 +415,11 @@ land.
   (navigate, open files). Second structural use of the pane layer.
 - [ ] **Project-wide search overlay** (rg + fzf): query, results list in a
   floating pane, jump to a hit.
-- [ ] **Tab-character display.** *(independent)* Render a literal `\t` out to the
+- [x] **Tab-character display.** *(independent)* Render a literal `\t` out to the
   next tab stop and map screen↔buffer columns through it; today each byte is one
   cell, so opened files and pastes containing tabs misrender and mis-place the
-  cursor.
+  cursor. Also auto-detects tabs-vs-spaces indent per file, shows it in the status
+  bar, and adds a Ctrl+~ "Toggle Indent" command.
 - [ ] **Drag-select auto-scroll.** *(independent)* Scroll the viewport when a
   mouse drag-selection reaches the top or bottom edge (the target row is
   currently clamped into view, so a selection can't extend past what's visible).

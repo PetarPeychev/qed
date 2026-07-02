@@ -68,8 +68,16 @@ pane_text :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
 	i := 0
 	for i < len(text) && col < w {
 		r, sz := utf8.decode_rune(text[i:])
-		tb2.set_cell(i32(x + col), i32(y), r, fg, bg)
+		if r == '\t' {
+			next := (col / TAB_WIDTH + 1) * TAB_WIDTH
+			for col < next && col < w {
+				tb2.set_cell(i32(x + col), i32(y), ' ', fg, bg)
+				col += 1
+			}
+		} else {
+			tb2.set_cell(i32(x + col), i32(y), r, fg, bg)
+			col += 1
+		}
 		i += sz
-		col += 1
 	}
 }

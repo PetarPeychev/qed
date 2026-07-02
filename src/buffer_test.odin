@@ -262,6 +262,32 @@ test_insert_tab_aligns_to_next_stop :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_insert_tab_tabs_mode_inserts_tab :: proc(t: ^testing.T) {
+	b := test_buffer("x")
+	defer buffer_destroy(&b)
+	b.indent = .Tabs
+	b.cursor = {0, 0}
+
+	buffer_insert_tab(&b)
+
+	testing.expect_value(t, buffer_string(&b), "\tx")
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+}
+
+@(test)
+test_dedent_tabs_mode_removes_one_tab :: proc(t: ^testing.T) {
+	b := test_buffer("\t\tx")
+	defer buffer_destroy(&b)
+	b.indent = .Tabs
+	b.cursor = {0, 3}
+
+	buffer_dedent(&b)
+
+	testing.expect_value(t, buffer_string(&b), "\tx")
+	testing.expect_value(t, b.cursor, Cursor{0, 2})
+}
+
+@(test)
 test_modified_clears_when_content_reverts :: proc(t: ^testing.T) {
 	b := buffer_new()
 	defer buffer_destroy(&b)

@@ -161,7 +161,7 @@ editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 	gutter := editor_gutter_width(editor)
 	_, h := editor_viewport(editor)
 	row := clamp(editor.scroll_row + min(y, h - 1), 0, len(b.lines) - 1)
-	col := clamp(editor.scroll_col + max(0, x - gutter), 0, len(b.lines[row].text))
+	col := col_at_visual(b.lines[row].text[:], editor.scroll_col + max(0, x - gutter))
 	return {row, col}
 }
 
@@ -177,7 +177,7 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		if (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0 {
 			selection_set_anchor(b)
 			b.cursor = pos
-			b.goal_col = pos.col
+			cursor_goal_sync(b)
 			editor_scroll(editor)
 			return
 		}
@@ -197,16 +197,16 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 			from, to := word_range_at(b, pos)
 			b.selection = from
 			b.cursor = to
-			b.goal_col = to.col
+			cursor_goal_sync(b)
 		case 3:
 			from, to := line_range_at(b, pos.row)
 			b.selection = from
 			b.cursor = to
-			b.goal_col = to.col
+			cursor_goal_sync(b)
 		case:
 			b.selection = nil
 			b.cursor = pos
-			b.goal_col = pos.col
+			cursor_goal_sync(b)
 		}
 		editor_scroll(editor)
 	case .Mouse_Wheel_Up:
@@ -304,7 +304,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		case .Arrow_Left:
 			if collapse {
 				b.cursor = sel_from
-				b.goal_col = sel_from.col
+				cursor_goal_sync(b)
 			} else if ctrl {
 				cursor_move_word_left(b)
 			} else {
@@ -313,7 +313,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		case .Arrow_Right:
 			if collapse {
 				b.cursor = sel_to
-				b.goal_col = sel_to.col
+				cursor_goal_sync(b)
 			} else if ctrl {
 				cursor_move_word_right(b)
 			} else {
@@ -463,11 +463,12 @@ editor_scroll :: proc(editor: ^Editor) {
 	max_scroll_row := max(0, len(b.lines) - h)
 	editor.scroll_row = clamp(editor.scroll_row, 0, max_scroll_row)
 
-	if cur.col < editor.scroll_col + SCROLL_MARGIN {
-		editor.scroll_col = cur.col - SCROLL_MARGIN
+	cur_vcol := visual_col(b.lines[cur.row].text[:], cur.col)
+	if cur_vcol < editor.scroll_col + SCROLL_MARGIN {
+		editor.scroll_col = cur_vcol - SCROLL_MARGIN
 	}
-	if cur.col > editor.scroll_col + w - 1 - SCROLL_MARGIN {
-		editor.scroll_col = cur.col - w + 1 + SCROLL_MARGIN
+	if cur_vcol > editor.scroll_col + w - 1 - SCROLL_MARGIN {
+		editor.scroll_col = cur_vcol - w + 1 + SCROLL_MARGIN
 	}
 	editor.scroll_col = max(0, editor.scroll_col)
 }
@@ -492,7 +493,8 @@ editor_render :: proc(editor: ^Editor) {
 	case:
 		b := editor_buffer(editor)
 		gutter := editor_gutter_width(editor)
-		cx := gutter + b.cursor.col - editor.scroll_col
+		vcol := visual_col(b.lines[b.cursor.row].text[:], b.cursor.col)
+		cx := gutter + vcol - editor.scroll_col
 		cy := b.cursor.row - editor.scroll_row
 		tb2.set_cursor(i32(cx), i32(cy))
 	}
@@ -533,6 +535,9 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
 	}
 	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
+	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", TAB_WIDTH)
+	indent_cstr := strings.clone_to_cstring(indent, context.temp_allocator)
+	tb2.print(i32(max(0, full_w - len(indent) - 1)), i32(h), COLOR_STATUS_FG, COLOR_STATUS_BG, indent_cstr)
 	message_fg := COLOR_ERROR_FG if editor.message_error else COLOR_FG
 	editor_render_row(0, h + 1, full_w, editor.message, message_fg, COLOR_BG)
 }
@@ -606,18 +611,36 @@ editor_render_text_row :: proc(
 ) {
 	bg_normal := COLOR_CURRENT_LINE_BG if current else COLOR_BG
 	for sx in 0 ..< w {
-		col := scroll_col + sx
-		ch := rune(' ')
-		if col < len(text) {
-			ch = rune(text[col])
+		tb2.set_cell(i32(gutter + sx), i32(y), ' ', COLOR_FG, bg_normal)
+	}
+
+	draw :: proc(gutter, y, sx, w: int, ch: rune, selected: bool, bg_normal: tb2.Color) {
+		if sx < 0 || sx >= w {
+			return
 		}
-		fg := COLOR_FG
-		bg := bg_normal
-		if sel_from >= 0 && col >= sel_from && col < sel_to {
-			fg = COLOR_BG
-			bg = COLOR_FG
+		fg, bg := COLOR_FG, bg_normal
+		if selected {
+			fg, bg = COLOR_BG, COLOR_FG
 		}
 		tb2.set_cell(i32(gutter + sx), i32(y), ch, fg, bg)
+	}
+
+	vcol := 0
+	for i in 0 ..< len(text) {
+		selected := sel_from >= 0 && i >= sel_from && i < sel_to
+		if text[i] == '\t' {
+			next := (vcol / TAB_WIDTH + 1) * TAB_WIDTH
+			for v in vcol ..< next {
+				draw(gutter, y, v - scroll_col, w, ' ', selected, bg_normal)
+			}
+			vcol = next
+		} else {
+			draw(gutter, y, vcol - scroll_col, w, rune(text[i]), selected, bg_normal)
+			vcol += 1
+		}
+	}
+	if sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
+		draw(gutter, y, vcol - scroll_col, w, ' ', true, bg_normal)
 	}
 }
 

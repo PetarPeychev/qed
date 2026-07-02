@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:unicode/utf8"
 import "lib:tb2"
 
@@ -14,6 +15,12 @@ cmd_undo :: proc(editor: ^Editor) {buffer_undo(editor_buffer(editor))}
 cmd_redo :: proc(editor: ^Editor) {buffer_redo(editor_buffer(editor))}
 cmd_select_all :: proc(editor: ^Editor) {cursor_select_all(editor_buffer(editor))}
 
+cmd_toggle_indent :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	b.indent = .Spaces if b.indent == .Tabs else .Tabs
+	editor.message = fmt.tprintf("Indent: %s", "Tabs" if b.indent == .Tabs else "Spaces")
+}
+
 commands := [?]Command {
 	{"Open File", "Ctrl+O", .Ctrl_O, picker_open},
 	{"Save", "Ctrl+S", .Ctrl_S, editor_save},
@@ -24,11 +31,12 @@ commands := [?]Command {
 	{"Copy", "Ctrl+C", .Ctrl_C, editor_copy},
 	{"Paste", "Ctrl+V", .Ctrl_V, editor_paste},
 	{"Select All", "Ctrl+A", .Ctrl_A, cmd_select_all},
+	{"Toggle Indent (Tabs/Spaces)", "", .Ctrl_Tilde, cmd_toggle_indent},
 }
 
 command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
 	for cmd in commands {
-		if cmd.key == key {
+		if cmd.shortcut != "" && cmd.key == key {
 			return cmd, true
 		}
 	}

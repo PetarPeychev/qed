@@ -84,7 +84,7 @@ buffer_insert_text :: proc(b: ^Buffer, text: string, kind: Coalesce = .Insert) {
 		buffer_undo_commit(b)
 	}
 	b.cursor = end
-	b.goal_col = end.col
+	cursor_goal_sync(b)
 }
 
 buffer_insert_rune :: proc(b: ^Buffer, r: rune) {
@@ -114,7 +114,7 @@ buffer_newline :: proc(b: ^Buffer) {
 	buffer_undo_commit(b)
 
 	b.cursor = end
-	b.goal_col = end.col
+	cursor_goal_sync(b)
 }
 
 line_is_blank :: proc(text: []u8) -> bool {
@@ -127,6 +127,10 @@ line_is_blank :: proc(text: []u8) -> bool {
 }
 
 buffer_insert_tab :: proc(b: ^Buffer) {
+	if b.indent == .Tabs {
+		buffer_insert_text(b, "\t", .Atomic)
+		return
+	}
 	n := TAB_WIDTH - b.cursor.col % TAB_WIDTH
 	buffer_insert_text(b, strings.repeat(" ", n, context.temp_allocator), .Atomic)
 }
@@ -152,7 +156,7 @@ buffer_backspace :: proc(b: ^Buffer) {
 	}
 	buffer_delete_range(b, from, c, .Delete)
 	b.cursor = from
-	b.goal_col = from.col
+	cursor_goal_sync(b)
 }
 
 buffer_delete_forward :: proc(b: ^Buffer) {
@@ -166,7 +170,7 @@ buffer_delete_forward :: proc(b: ^Buffer) {
 		return
 	}
 	buffer_delete_range(b, c, to, .Delete)
-	b.goal_col = c.col
+	cursor_goal_sync(b)
 }
 
 buffer_type_rune :: proc(b: ^Buffer, r: rune) {
@@ -191,7 +195,7 @@ buffer_replace_selection :: proc(b: ^Buffer, text: string) {
 	append(&b.open.edits, Edit{.Delete, from, strings.clone(text)})
 	buffer_undo_commit(b)
 	b.cursor = end
-	b.goal_col = end.col
+	cursor_goal_sync(b)
 	b.selection = nil
 }
 
@@ -210,7 +214,7 @@ buffer_delete_selection :: proc(b: ^Buffer) {
 	}
 	buffer_delete_range(b, from, to, .Atomic)
 	b.cursor = from
-	b.goal_col = from.col
+	cursor_goal_sync(b)
 	b.selection = nil
 }
 
@@ -228,7 +232,7 @@ buffer_delete_line :: proc(b: ^Buffer) {
 		buffer_delete_range(b, {r - 1, prev_len}, {r, len(b.lines[r].text)}, .Atomic)
 		b.cursor = {r - 1, min(col, len(b.lines[r - 1].text))}
 	}
-	b.goal_col = b.cursor.col
+	cursor_goal_sync(b)
 	b.selection = nil
 }
 
@@ -242,7 +246,8 @@ buffer_indent :: proc(b: ^Buffer) {
 	if to.col == 0 && to.row > from.row {
 		last_row -= 1
 	}
-	indent := strings.repeat(" ", TAB_WIDTH, context.temp_allocator)
+	indent := "\t" if b.indent == .Tabs else strings.repeat(" ", TAB_WIDTH, context.temp_allocator)
+	shift := len(indent)
 
 	edit_open(b, .Atomic)
 	for row in from.row ..= last_row {
@@ -254,16 +259,19 @@ buffer_indent :: proc(b: ^Buffer) {
 
 	anchor, _ := b.selection.?
 	if anchor.row >= from.row && anchor.row <= last_row {
-		anchor.col += TAB_WIDTH
+		anchor.col += shift
 	}
 	b.selection = anchor
 	if b.cursor.row >= from.row && b.cursor.row <= last_row {
-		b.cursor.col += TAB_WIDTH
+		b.cursor.col += shift
 	}
-	b.goal_col = b.cursor.col
+	cursor_goal_sync(b)
 }
 
 dedent_count :: proc(text: []u8) -> int {
+	if len(text) > 0 && text[0] == '\t' {
+		return 1
+	}
 	lead := 0
 	for lead < len(text) && text[lead] == ' ' {
 		lead += 1
@@ -319,7 +327,7 @@ buffer_dedent :: proc(b: ^Buffer) {
 	buffer_undo_commit(b)
 
 	b.cursor.col = max(0, b.cursor.col - cursor_removed)
-	b.goal_col = b.cursor.col
+	cursor_goal_sync(b)
 	if ok {
 		anchor.col = max(0, anchor.col - anchor_removed)
 		b.selection = anchor
@@ -342,7 +350,7 @@ buffer_apply_inverse :: proc(b: ^Buffer, group: EditGroup) -> EditGroup {
 		}
 	}
 	b.cursor = group.cursor
-	b.goal_col = group.cursor.col
+	cursor_goal_sync(b)
 	delete(group.edits)
 	return result
 }
