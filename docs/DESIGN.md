@@ -384,7 +384,7 @@ land.
   the first pane consumer. Establishes the editable text-input line (the
   "prompt"/minibuffer) that find, go-to-line, and save-as later reuse. Routes the
   existing actions (save, quit, undo, …) through a command list.
-    - [ ] **Palette list scrolling (bug).** The palette renders only the first
+    - [x] **Palette list scrolling (bug).** The palette renders only the first
       `PALETTE_MAX_ROWS` matches with no scroll offset, so once the command list
       exceeds the visible rows the selection can move below the window and vanish.
       Track a scroll offset that follows the selection (as the picker already

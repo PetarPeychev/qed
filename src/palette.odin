@@ -48,6 +48,7 @@ Palette :: struct {
 	query:    [dynamic]u8,
 	matches:  [dynamic]int,
 	selected: int,
+	scroll:   int,
 	fuzzy:    Fuzzy,
 	names:    [dynamic]string,
 }
@@ -64,6 +65,7 @@ palette_open :: proc(editor: ^Editor) {
 	p.active = true
 	clear(&p.query)
 	p.selected = 0
+	p.scroll = 0
 	editor.message = ""
 	editor.message_error = false
 	clear(&p.names)
@@ -83,9 +85,25 @@ palette_filter :: proc(editor: ^Editor) {
 	p := &editor.palette
 	clear(&p.matches)
 	p.selected = 0
+	p.scroll = 0
 	ranked := fuzzy_rank(&p.fuzzy, string(p.query[:]))
 	for idx in ranked {
 		append(&p.matches, idx)
+	}
+}
+
+palette_move :: proc(editor: ^Editor, delta: int) {
+	p := &editor.palette
+	n := len(p.matches)
+	if n == 0 {
+		return
+	}
+	p.selected = (p.selected + delta + n) % n
+	if p.selected < p.scroll {
+		p.scroll = p.selected
+	}
+	if p.selected >= p.scroll + PALETTE_MAX_ROWS {
+		p.scroll = p.selected - PALETTE_MAX_ROWS + 1
 	}
 }
 
@@ -108,13 +126,9 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Enter:
 		palette_execute(editor)
 	case .Arrow_Down:
-		if len(p.matches) > 0 {
-			p.selected = (p.selected + 1) % len(p.matches)
-		}
+		palette_move(editor, 1)
 	case .Arrow_Up:
-		if len(p.matches) > 0 {
-			p.selected = (p.selected - 1 + len(p.matches)) % len(p.matches)
-		}
+		palette_move(editor, -1)
 	case .Backspace, .Backspace2:
 		if len(p.query) > 0 {
 			resize(&p.query, len(p.query) - 1)
@@ -140,11 +154,12 @@ palette_render :: proc(editor: ^Editor) {
 	pane_hline(box, inner.y + 1)
 
 	for i in 0 ..< rows {
-		cmd := commands[p.matches[i]]
+		idx := p.scroll + i
+		cmd := commands[p.matches[idx]]
 		y := inner.y + 2 + i
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		sc_fg := COLOR_PANE_SHORTCUT_FG
-		if i == p.selected {
+		if idx == p.selected {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
 			sc_fg = COLOR_PANE_SEL_FG
 			pane_fill_row(inner.x, y, inner.w, fg, bg)
