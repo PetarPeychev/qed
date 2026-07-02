@@ -335,19 +335,16 @@ This is the working task list. **Workflow:**
 - If during development you find work that belongs in its own task, **add it
   here** as a new unchecked item rather than silently expanding the current one.
 
-This is **one ordered list**, roughly sequenced so each item unlocks the ones
-below it; completed core work stays at the top as history. Order is a guide, not
-a mandate — items marked *(independent)* have no dependencies and can be pulled
-forward whenever. The big lever is the **floating pane**: the command palette,
-in-buffer find, fuzzy file-open, the file-tree, and a later autocomplete dropdown
-are all consumers of one rectangular overlay layer, so that primitive is built
-early — concretely, as the first step of the command palette — rather than
-retrofitted. That's a deliberate, Petar-approved exception to "wait for 2–3
-users": the users are already enumerated, so the substrate is earned, not
-speculative. Keep it minimal (no compositor); let it accrete as those features
-land.
+Open work is grouped by **category** below (bugs, features, polish); completed
+work stays under **Done** as history. Categories are not a strict build order —
+pick by priority; where a real dependency exists it's noted inline. One structural
+thread to keep in mind: in-buffer find, the file-tree, the project-wide search
+overlay, and several LSP consumers (completion, find-references, symbol search)
+all draw on the one rectangular **floating pane** already built for the command
+palette and fuzzy file-open. Keep that layer minimal (no compositor) and let it
+accrete as those features land.
 
-**Done — core editor** (built and verified):
+### Done (built and verified)
 
 - [x] Vendored termbox2 build; static lib via `build.sh`.
 - [x] Basic buffer open (naive line split).
@@ -372,74 +369,131 @@ land.
 - [x] Mouse: click-to-position, drag-select, wheel-scroll, double/triple-click
   word/line select.
 - [x] Quit guard for unsaved changes.
+- [x] **Floating pane primitive** — rectangular overlay layer (position/size,
+  background/border, focus, captured input).
+- [x] **Command palette** — VSCode-style fuzzy command list in a floating pane;
+  establishes the editable prompt/minibuffer; routes existing actions through a
+  command list. Includes the palette-list scroll-offset fix.
+- [x] **Fuzzy file-open + multiple buffers** — Ctrl+O near-fullscreen picker
+  (file list + preview) rooted at the working root; opens each file into a new
+  buffer, switches to an already-open file's live buffer, marks modified files
+  `[*]`, and guards quit across every modified buffer.
+- [x] **Close buffer (Ctrl+W)** — close current buffer with a save/discard/cancel
+  guard when modified; switch to an adjacent buffer, else the welcome screen.
+- [x] **Tab-character display** — render `\t` to the next tab stop with
+  screen↔buffer column mapping; auto-detect tabs-vs-spaces per file, show it in
+  the status bar, add a Ctrl+~ "Toggle Indent" command.
 
-**Next — build order:**
+### Bugs / correctness
 
-- [x] **Floating pane primitive.** A rectangular overlay layer drawn over the
-  buffer: position/size, background/border, focus, and its own captured input.
-  First step of the command palette below, but shaped knowing find, fuzzy
-  file-open, the file-tree, and a later autocomplete dropdown all reuse it. Keep
-  it to exactly what the palette needs.
-- [x] **Command palette.** VSCode-style fuzzy command list in a floating pane;
-  the first pane consumer. Establishes the editable text-input line (the
-  "prompt"/minibuffer) that find, go-to-line, and save-as later reuse. Routes the
-  existing actions (save, quit, undo, …) through a command list.
-    - [x] **Palette list scrolling (bug).** The palette renders only the first
-      `PALETTE_MAX_ROWS` matches with no scroll offset, so once the command list
-      exceeds the visible rows the selection can move below the window and vanish.
-      Track a scroll offset that follows the selection (as the picker already
-      does).
-    - [ ] **Context-filter the command list.** Some commands don't apply in
-      every state — e.g. on the welcome screen (no open buffer) Save, Toggle
-      Indent, Undo/Redo, Cut/Copy/Paste, Select All are meaningless. Filter the
-      palette's command list by the current context so only applicable commands
-      show.
+- [ ] **Drag-select auto-scroll.** Scroll the viewport when a mouse drag-selection
+  reaches the top or bottom edge (the target row is currently clamped into view,
+  so a selection can't extend past what's visible).
+- [ ] **Rune-aware cursor & display width (UTF-8).** Step whole runes on
+  horizontal movement and compute display width in the renderer; data stays raw
+  bytes — only `col` interpretation and the advance logic change. (Currently the
+  cursor can land mid-rune on multibyte text.)
+
+### Features
+
 - [ ] **In-buffer find**, then find & replace. Incremental search driven by the
   palette's prompt input: next/prev, wrap, match highlight; then replace one/all.
-- [x] **Fuzzy file-open + multiple buffers.** Ctrl+O opens a near-fullscreen
-  floating picker (file list on top, plain-text preview of the selected file on
-  the bottom) rooted at the working root. The file list is walked once on open
-  (`fd`/`fdfind`, falling back to `find`, gitignore-aware) and filtered per
-  keystroke through the shared `fuzzy_rank` (prefers `fzf --filter`, falls back to
-  the built-in matcher — the command palette uses the same path). Enter opens the
-  file into a **new buffer**, keeping the old one open so unsaved edits survive
-  switching; re-picking an already-open file switches to its live buffer instead
-  of reloading. Files with unsaved changes are marked `[*]` in the list. Quit
-  (Ctrl+Q) guards **every** modified buffer via a combined Save-All / Discard-All
-  / Cancel dialog. Follow-ups discovered while building this, each its own task:
-    - [ ] **Picker mouse support.** Click a list row to select/open; wheel to
-      scroll the list. Keyboard-only for now.
-    - [ ] **Colored file preview.** Parse `bat --color=always` ANSI into pane
-      cells (currently plain `head` text); best done alongside syntax highlighting.
-    - [ ] **Per-buffer viewport memory.** Remember each buffer's scroll position
-      across switches (scroll currently re-centers on the cursor on switch).
-    - [x] **Close buffer (Ctrl+W).** Close the current buffer; if it's modified,
-      guard with a save/discard/cancel prompt first. Switch to an adjacent buffer
-      afterward, falling back to the welcome screen when the last one closes.
+  (Reuses the floating pane.) Binds match the micro config: `Ctrl+F` opens find,
+  `Alt+n` / `Alt+m` step to the previous / next match.
+- [ ] **Configurable indent width + detection.** Today indent is hardcoded to
+  `TAB_WIDTH` (4). Support other widths (1/2/3/4 spaces) and auto-detect the width
+  from the file's existing indentation on open, the way tabs-vs-spaces is already
+  detected. Surface it in the status bar alongside the indent style.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
 - [ ] **Project-wide search overlay** (rg + fzf): query, results list in a
   floating pane, jump to a hit.
-- [x] **Tab-character display.** *(independent)* Render a literal `\t` out to the
-  next tab stop and map screen↔buffer columns through it; today each byte is one
-  cell, so opened files and pastes containing tabs misrender and mis-place the
-  cursor. Also auto-detects tabs-vs-spaces indent per file, shows it in the status
-  bar, and adds a Ctrl+~ "Toggle Indent" command.
-- [ ] **Configurable indent width + detection.** *(independent)* Today indent
-  is hardcoded to `TAB_WIDTH` (4). Support other widths (1/2/3/4 spaces) and
-  auto-detect the width from the file's existing indentation on open, the way
-  tabs-vs-spaces is already detected. Surface it in the status bar alongside the
-  indent style.
-- [ ] **Drag-select auto-scroll.** *(independent)* Scroll the viewport when a
-  mouse drag-selection reaches the top or bottom edge (the target row is
-  currently clamped into view, so a selection can't extend past what's visible).
-- [ ] **Rune-aware cursor & display width (UTF-8).** *(independent)* Step whole
-  runes on horizontal movement and compute display width in the renderer; data
-  stays raw bytes — only `col` interpretation and the advance logic change.
-- [ ] **Permission/ownership-preserving saves.** *(independent)* Carry the
-  original file's mode/owner onto the atomically-written replacement.
-- [ ] **Syntax highlighting** via tree-sitter.
-- [ ] **LSP integration**: completion dropdown (reuses the floating pane),
-  diagnostics, hover, go-to-definition.
-- [ ] **Inline diagnostics/hints** rendered between lines.
-- [ ] **Git diff gutter.**
+- [ ] **Reachable line / file / paragraph motion keybinds.** Bind these to keys
+  that don't need the nav cluster, matching the micro config: `Alt+Left` start of
+  line — a **toggle** between the first non-blank column and column 0 (micro's
+  `StartOfTextToggle`) — and `Alt+Right` end of line; `Alt+{` / `Alt+}` buffer
+  start / end; `Ctrl+Up` / `Ctrl+Down` previous / next paragraph. Paragraph motion
+  is the only new behavior (a paragraph is a run of non-blank lines bounded by
+  blank lines); the line/file procs already exist (`cursor_move_home`/`_end`,
+  `cursor_move_buffer_start`/`_end`) — this adds the binds plus the smart-home
+  toggle. Shift extends the selection on all of them, as the arrows do today.
+- [ ] **Move lines up / down.** `Alt+Up` / `Alt+Down` move the current line (or
+  every line the selection touches) up or down one row, carrying the cursor and
+  selection. One undo group per move. (Micro's `MoveLinesUp`/`MoveLinesDown`.)
+- [ ] **Jump back / forward (navigation history).** Keep a history of cursor
+  positions and step through it with `Alt+[` (back) / `Alt+]` (forward), matching
+  micro's history binds. (Feasibility check when building: `Alt+[` transmits
+  `ESC [`, the same CSI prefix that begins arrow-key sequences, so termbox2 may
+  need help disambiguating it — fall back to another pair if it can't. `Ctrl+[` is
+  out entirely: indistinguishable from ESC.) A position is pushed on a *large*
+  move, not ordinary edit-time stepping: opening or switching to a different
+  buffer, a single motion that displaces the cursor by more than `JUMP_THRESHOLD`
+  lines (PgUp/PgDn, buffer start/end, a far mouse click), jump-to-definition, and
+  jumping to an in-file or project-wide search hit. Each entry is
+  `(buffer, row, col)`, so jumping back can switch buffers; a new jump after
+  stepping back truncates the forward history (browser-style). Standalone now —
+  go-to-definition and the find features push entries once they exist.
+
+**Syntax highlighting** (tree-sitter). The palette already reserves syntax colors
+in `config.odin` (§3); the work is parse → map captures to those colors → render.
+
+- [ ] **Highlight Odin files.** Vendor tree-sitter (C lib) + the Odin grammar,
+  parse the buffer, map capture names to the reserved palette colors, render
+  colored spans. Start with a **full reparse each edit** — tree-sitter is fast
+  from scratch, so this is very likely fine for our file sizes. First colored
+  language, end to end.
+- [ ] **More languages.** Extension→grammar dispatch; add grammars in batches
+  (shell, Python, JS/TS, JSON, Markdown, C, Lua).
+- [ ] **Incremental re-parse.** *(optional — only if the full reparse ever
+  stutters.)* Tree-sitter's intended mode: feed each buffer edit as an `InputEdit`
+  (byte + row/col ranges) so it reuses unchanged subtrees. The added work is
+  translating our edits into that format and holding the old tree per buffer.
+
+**LSP.** The client plumbing (spawn a server, initialize, `didOpen`/`didChange`
+sync) ships with the initial integration below; each capability after that is its
+own slice. Ordered by how much they get used.
+
+- [ ] **LSP integration + diagnostics.** Stand up the client (spawn e.g. `ols`
+  for Odin, initialize, sync buffer changes) and render its diagnostics: gutter
+  marks / underlines, the full message on the message line for the diagnostic
+  under the cursor, and inline end-of-line virtual text as a fast-follow. (This is
+  the merged producer + inline-render feature.)
+- [ ] **Go-to-definition.** Jump, opening into a buffer.
+- [ ] **Find references.** Reference sites listed in a floating pane / picker.
+- [ ] **Rename symbol.** Workspace-wide rename driven from the prompt.
+- [ ] **Hover.** Type/docs popup on a key (or mouse).
+- [ ] **Completion dropdown.** Reuses the floating pane; incremental requests as
+  you type.
+- [ ] **Symbol search (fuzzy).** Document/workspace symbols surfaced through the
+  fuzzy picker (reuses `fuzzy_rank`), not plaintext — jump to a symbol by fuzzy
+  query.
+- [ ] **Signature help.** *(later)* Parameter hints while typing a call.
+- [ ] **Inlay hints.** *(later)* Inline type/param-name hints (`inlayHint` — a
+  distinct request from diagnostics).
+
+**Git diff gutter.** No LSP/tree-sitter dependency, so it can come early.
+
+- [ ] **Change marks (live).** Added/modified/deleted vs `HEAD`, recomputed per
+  edit (diff against the git blob), shown in the gutter.
+- [ ] **Hunk navigation.** Jump to next/prev change (palette commands / keybind).
+- [ ] **Hunk preview + revert.** Show a hunk's old text and revert it.
+- [ ] **Stage / unstage hunks.** *(later)* Stage or unstage an individual hunk
+  from the gutter.
+- *Undecided idea:* reuse the same gutter mechanism to mark lines changed since
+  the last **save** (buffer vs the on-disk file), independent of git. Revisit once
+  the git gutter exists.
+
+### Polish
+
+- [ ] **Context-filter the command list.** Some commands don't apply in every
+  state — e.g. on the welcome screen (no open buffer) Save, Toggle Indent,
+  Undo/Redo, Cut/Copy/Paste, Select All are meaningless. Filter the palette's
+  command list by the current context so only applicable commands show.
+- [ ] **Picker mouse support.** Click a list row to select/open; wheel to scroll
+  the list. Keyboard-only for now.
+- [ ] **Colored file preview.** Parse `bat --color=always` ANSI into pane cells
+  (currently plain `head` text); best done alongside syntax highlighting.
+- [ ] **Per-buffer viewport memory.** Remember each buffer's scroll position
+  across switches (scroll currently re-centers on the cursor on switch).
+- [ ] **Permission/ownership-preserving saves.** Carry the original file's
+  mode/owner onto the atomically-written replacement.
