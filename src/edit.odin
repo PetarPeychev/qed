@@ -148,7 +148,7 @@ buffer_backspace :: proc(b: ^Buffer) {
 	c := b.cursor
 	from := c
 	if c.col > 0 {
-		from = {c.row, c.col - 1}
+		from = {c.row, grapheme_prev(b.lines[c.row].text[:], c.col)}
 	} else if c.row > 0 {
 		from = {c.row - 1, len(b.lines[c.row - 1].text)}
 	} else {
@@ -163,7 +163,7 @@ buffer_delete_forward :: proc(b: ^Buffer) {
 	c := b.cursor
 	to := c
 	if c.col < len(b.lines[c.row].text) {
-		to = {c.row, c.col + 1}
+		to = {c.row, grapheme_next(b.lines[c.row].text[:], c.col)}
 	} else if c.row < len(b.lines) - 1 {
 		to = {c.row + 1, 0}
 	} else {

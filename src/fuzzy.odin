@@ -125,7 +125,7 @@ ascii_lower :: proc(c: u8) -> u8 {
 }
 
 fuzzy_separator :: proc(c: u8) -> bool {
-	return char_class(c) != .Word
+	return char_class(rune(c)) != .Word
 }
 
 fuzzy_match :: proc(pattern, text: string) -> (score: int, ok: bool) {

@@ -663,19 +663,47 @@ editor_render_text_row :: proc(
 		tb2.set_cell(i32(gutter + sx), i32(y), ch, fg, bg)
 	}
 
-	vcol := 0
-	for i in 0 ..< len(text) {
-		selected := sel_from >= 0 && i >= sel_from && i < sel_to
-		if text[i] == '\t' {
+	draw_cluster :: proc(
+		gutter, y, w: int,
+		cluster: []u8,
+		vcol, scroll_col: int,
+		selected: bool,
+		bg_normal: tb2.Color,
+	) -> int {
+		if cluster[0] == '\t' {
 			next := (vcol / TAB_WIDTH + 1) * TAB_WIDTH
 			for v in vcol ..< next {
 				draw(gutter, y, v - scroll_col, w, ' ', selected, bg_normal)
 			}
-			vcol = next
-		} else {
-			draw(gutter, y, vcol - scroll_col, w, rune(text[i]), selected, bg_normal)
-			vcol += 1
+			return next
 		}
+		sx := vcol - scroll_col
+		if sx >= 0 && sx < w {
+			r, n := utf8.decode_rune(cluster)
+			draw(gutter, y, sx, w, r, selected, bg_normal)
+			rest := cluster[n:]
+			for len(rest) > 0 {
+				rr, m := utf8.decode_rune(rest)
+				tb2.extend_cell(i32(gutter + sx), i32(y), rr)
+				rest = rest[m:]
+			}
+		}
+		return vcol + cluster_width(cluster)
+	}
+
+	vcol := 0
+	pstart := -1
+	psel := false
+	it := utf8.decode_grapheme_iterator_make(string(text))
+	for _, g in utf8.decode_grapheme_iterate(&it) {
+		if pstart >= 0 {
+			vcol = draw_cluster(gutter, y, w, text[pstart:g.byte_index], vcol, scroll_col, psel, bg_normal)
+		}
+		pstart = g.byte_index
+		psel = sel_from >= 0 && g.byte_index >= sel_from && g.byte_index < sel_to
+	}
+	if pstart >= 0 {
+		vcol = draw_cluster(gutter, y, w, text[pstart:], vcol, scroll_col, psel, bg_normal)
 	}
 	if sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
 		draw(gutter, y, vcol - scroll_col, w, ' ', true, bg_normal)

@@ -184,6 +184,85 @@ test_col_at_visual_snaps_across_tabs :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_move_left_right_across_emoji :: proc(t: ^testing.T) {
+	b := test_buffer("a😀b")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 0}
+
+	cursor_move_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+	cursor_move_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 5})
+	cursor_move_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 6})
+	cursor_move_left(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 5})
+	cursor_move_left(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+}
+
+@(test)
+test_move_across_combining_mark :: proc(t: ^testing.T) {
+	b := test_buffer("éx")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 0}
+
+	cursor_move_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 3})
+	cursor_move_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 4})
+	cursor_move_left(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 3})
+	cursor_move_left(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 0})
+}
+
+@(test)
+test_backspace_removes_whole_cluster :: proc(t: ^testing.T) {
+	b := test_buffer("a😀")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 5}
+
+	buffer_backspace(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+	testing.expect_value(t, string(b.lines[0].text[:]), "a")
+}
+
+@(test)
+test_visual_col_wide_cjk :: proc(t: ^testing.T) {
+	text := transmute([]u8)string("你好")
+	testing.expect_value(t, visual_col(text, 0), 0)
+	testing.expect_value(t, visual_col(text, 3), 2)
+	testing.expect_value(t, visual_col(text, 6), 4)
+	testing.expect_value(t, visual_width(text), 4)
+}
+
+@(test)
+test_col_at_visual_wide_cjk :: proc(t: ^testing.T) {
+	text := transmute([]u8)string("你好")
+	testing.expect_value(t, col_at_visual(text, 0), 0)
+	testing.expect_value(t, col_at_visual(text, 1), 0)
+	testing.expect_value(t, col_at_visual(text, 2), 3)
+	testing.expect_value(t, col_at_visual(text, 3), 3)
+	testing.expect_value(t, col_at_visual(text, 4), 6)
+	testing.expect_value(t, col_at_visual(text, 100), 6)
+}
+
+@(test)
+test_move_word_right_across_cjk :: proc(t: ^testing.T) {
+	b := test_buffer("你好 foo")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 0}
+
+	cursor_move_word_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 6})
+	cursor_move_word_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 7})
+	cursor_move_word_right(&b)
+	testing.expect_value(t, b.cursor, Cursor{0, 10})
+}
+
+@(test)
 test_goal_col_is_visual_across_tabs :: proc(t: ^testing.T) {
 	b := test_buffer("\tabc", "xyzwvu")
 	defer buffer_destroy(&b)

@@ -1,30 +1,105 @@
 package main
 
+import "core:unicode/utf8"
+import "lib:tb2"
+
 CharClass :: enum {
 	Whitespace,
 	Word,
 	Punct,
 }
 
-char_class :: proc(c: u8) -> CharClass {
-	switch c {
+char_class :: proc(r: rune) -> CharClass {
+	switch r {
 	case ' ', '\t':
 		return .Whitespace
 	case '_', 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9':
 		return .Word
 	case:
-		return .Punct
+		return .Word if r >= 0x80 else .Punct
 	}
+}
+
+grapheme_class :: proc(text: []u8, at: int) -> CharClass {
+	r, _ := utf8.decode_rune(text[at:])
+	return char_class(r)
+}
+
+grapheme_next :: proc(text: []u8, col: int) -> int {
+	it := utf8.decode_grapheme_iterator_make(string(text))
+	for _, g in utf8.decode_grapheme_iterate(&it) {
+		if g.byte_index > col {
+			return g.byte_index
+		}
+	}
+	return len(text)
+}
+
+grapheme_prev :: proc(text: []u8, col: int) -> int {
+	prev := 0
+	it := utf8.decode_grapheme_iterator_make(string(text))
+	for _, g in utf8.decode_grapheme_iterate(&it) {
+		if g.byte_index >= col {
+			break
+		}
+		prev = g.byte_index
+	}
+	return prev
+}
+
+cluster_width :: proc(cluster: []u8) -> int {
+	wmax := -1
+	vs15, vs16, ri, zwj := 0, 0, 0, 0
+	rest := cluster
+	for len(rest) > 0 {
+		r, n := utf8.decode_rune(rest)
+		rest = rest[n:]
+		switch r {
+		case 0xfe0e:
+			vs15 += 1
+		case 0xfe0f:
+			vs16 += 1
+		case 0x200d:
+			zwj += 1
+		case:
+			if r >= 0x1f1e6 && r <= 0x1f1ff {
+				ri += 1
+			}
+		}
+		w := int(tb2.wcwidth(r))
+		if w > wmax {
+			wmax = w
+		}
+	}
+	if wmax >= 1 {
+		if vs15 > 0 {
+			return 1
+		} else if vs16 > 0 || zwj > 0 || ri >= 2 {
+			return 2
+		}
+	}
+	return max(wmax, 1)
+}
+
+seg_width :: proc(text: []u8, start, end, v: int) -> int {
+	if text[start] == '\t' {
+		return (v / TAB_WIDTH + 1) * TAB_WIDTH - v
+	}
+	return cluster_width(text[start:end])
 }
 
 visual_col :: proc(text: []u8, col: int) -> int {
 	v := 0
-	for i in 0 ..< col {
-		if text[i] == '\t' {
-			v = (v / TAB_WIDTH + 1) * TAB_WIDTH
-		} else {
-			v += 1
+	start := -1
+	it := utf8.decode_grapheme_iterator_make(string(text))
+	for _, g in utf8.decode_grapheme_iterate(&it) {
+		if start >= 0 && start < col {
+			v += seg_width(text, start, g.byte_index, v)
 		}
+		start = g.byte_index
+	}
+	if start >= 0 && start < col {
+		v += seg_width(text, start, len(text), v)
 	}
 	return v
 }
@@ -38,15 +113,23 @@ col_at_visual :: proc(text: []u8, target: int) -> int {
 		return 0
 	}
 	v := 0
-	for i in 0 ..< len(text) {
-		width := 1
-		if text[i] == '\t' {
-			width = (v / TAB_WIDTH + 1) * TAB_WIDTH - v
+	start := -1
+	it := utf8.decode_grapheme_iterator_make(string(text))
+	for _, g in utf8.decode_grapheme_iterate(&it) {
+		if start >= 0 {
+			w := seg_width(text, start, g.byte_index, v)
+			if target < v + w {
+				return start if target - v <= v + w - target else g.byte_index
+			}
+			v += w
 		}
-		if target < v + width {
-			return i if target - v <= v + width - target else i + 1
+		start = g.byte_index
+	}
+	if start >= 0 {
+		w := seg_width(text, start, len(text), v)
+		if target < v + w {
+			return start if target - v <= v + w - target else len(text)
 		}
-		v += width
 	}
 	return len(text)
 }
@@ -89,15 +172,19 @@ word_range_at :: proc(b: ^Buffer, at: Cursor) -> (from, to: Cursor) {
 	if len(text) == 0 {
 		return at, at
 	}
-	col := min(at.col, len(text) - 1)
-	cls := char_class(text[col])
+	col := at.col if at.col < len(text) else grapheme_prev(text, len(text))
+	cls := grapheme_class(text, col)
 	start := col
-	for start > 0 && char_class(text[start - 1]) == cls {
-		start -= 1
+	for start > 0 {
+		p := grapheme_prev(text, start)
+		if grapheme_class(text, p) != cls {
+			break
+		}
+		start = p
 	}
-	end := col
-	for end < len(text) && char_class(text[end]) == cls {
-		end += 1
+	end := grapheme_next(text, col)
+	for end < len(text) && grapheme_class(text, end) == cls {
+		end = grapheme_next(text, end)
 	}
 	return {at.row, start}, {at.row, end}
 }
@@ -112,7 +199,7 @@ line_range_at :: proc(b: ^Buffer, row: int) -> (from, to: Cursor) {
 cursor_move_left :: proc(b: ^Buffer) {
 	c := &b.cursor
 	if c.col > 0 {
-		c.col -= 1
+		c.col = grapheme_prev(b.lines[c.row].text[:], c.col)
 	} else if c.row > 0 {
 		c.row -= 1
 		c.col = len(b.lines[c.row].text)
@@ -123,7 +210,7 @@ cursor_move_left :: proc(b: ^Buffer) {
 cursor_move_right :: proc(b: ^Buffer) {
 	c := &b.cursor
 	if c.col < len(b.lines[c.row].text) {
-		c.col += 1
+		c.col = grapheme_next(b.lines[c.row].text[:], c.col)
 	} else if c.row < len(b.lines) - 1 {
 		c.row += 1
 		c.col = 0
@@ -176,9 +263,15 @@ cursor_move_word_left :: proc(b: ^Buffer) {
 	}
 
 	text := b.lines[c.row].text[:]
-	cls := char_class(text[c.col - 1])
-	for c.col > 0 && char_class(text[c.col - 1]) == cls {
-		c.col -= 1
+	prev := grapheme_prev(text, c.col)
+	cls := grapheme_class(text, prev)
+	c.col = prev
+	for c.col > 0 {
+		p := grapheme_prev(text, c.col)
+		if grapheme_class(text, p) != cls {
+			break
+		}
+		c.col = p
 	}
 	cursor_goal_sync(b)
 }
@@ -195,9 +288,9 @@ cursor_move_word_right :: proc(b: ^Buffer) {
 		return
 	}
 
-	cls := char_class(text[c.col])
-	for c.col < len(text) && char_class(text[c.col]) == cls {
-		c.col += 1
+	cls := grapheme_class(text, c.col)
+	for c.col < len(text) && grapheme_class(text, c.col) == cls {
+		c.col = grapheme_next(text, c.col)
 	}
 	cursor_goal_sync(b)
 }

@@ -33,3 +33,13 @@ bracketed-paste support, so we added it:
 The matching Odin side is `Event_Kind.Paste_Begin` / `Paste_End` in
 `lib/tb2/tb2.odin`; the editor-side handling is `editor_paste_accumulate` /
 `editor_paste_commit` in `src/editor.odin`.
+
+## Build-time options
+
+`build.sh` compiles the impl with `-DTB_OPT_EGC`. This turns on termbox2's
+extended-grapheme-cluster cells (`tb_extend_cell`, the `ech`/`nech` cell fields,
+and `tb_cluster_width` in `present`), which qed's renderer relies on to draw a
+multi-rune grapheme (combining marks, ZWJ emoji, regional-indicator flags) as a
+single cell. Without it those clusters would render as their base rune only.
+This is a compile flag, not a source edit, so re-vendoring keeps it — but the
+renderer in `src/editor.odin` assumes it is on.

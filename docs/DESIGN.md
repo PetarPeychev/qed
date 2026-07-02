@@ -56,22 +56,30 @@ the justification to revisit — not before.
 
 ---
 
-## 2. Text encoding (bytes now, grapheme clusters later)
+## 2. Text encoding (bytes + grapheme clusters)
 
-Columns are **byte offsets** for now. This is correct for ASCII and keeps every
-movement/edit operation trivial. It is knowingly wrong for multibyte UTF-8:
-moving the cursor across a multibyte rune will land mid-rune, and display width of
-wide characters is ignored.
+`col` is a **byte offset** into `Line.text` — this keeps every buffer mutation
+(`buffer_insert`/`buffer_delete`, which slice by byte) trivial and correct. The
+*interpretation* of that offset is Unicode-aware: cursor horizontal movement and
+word-motion step whole **extended grapheme clusters** (UAX #29), backspace/delete
+remove a whole cluster, and every screen↔buffer column mapping goes through
+**display width**. This uses `core:unicode/utf8`'s grapheme iterator to find
+cluster boundaries; no external library.
 
-When we actually need to edit non-ASCII files, we upgrade in one place: cursor
-horizontal movement (and word-motion) steps whole **grapheme clusters** and the
-renderer computes **display width**, using `core:unicode/utf8`'s grapheme iterator
-(UAX #29 — combining marks, ZWJ emoji, regional-indicator flags, Indic conjuncts —
-with a per-grapheme `width` from `unicode.normalized_east_asian_width`). No
-external library is needed. The data stays raw bytes; only the *interpretation* of
-`col`, the *advance* logic, and the screen↔buffer width mapping change. Tracked as
-one task in §10 and done in a single piece; documented as a known limitation
-rather than worked around prematurely.
+Display width is the one subtlety. termbox2 recomputes each cell's width in
+`present()` via its own `tb_cluster_width`, so qed must advance by the *same*
+value or the terminal cursor and termbox's cell model drift (corrupting the row).
+So `cluster_width` in `cursor.odin` is a direct port of `tb_cluster_width` (max
+rune `tb_wcwidth`, with VS16 / ZWJ / regional-indicator-pair → 2), used by both
+the renderer and all column mapping. Multi-rune clusters render as one cell via
+`tb_set_cell` + `tb_extend_cell` (EGC mode, enabled in `build.sh`).
+
+**Known limitation:** a few emoji sequences (ZWJ-flags like 🏳️‍🌈, keycaps) flicker
+or misalign because some terminals — notably Windows Terminal — render them at a
+width that contradicts the Unicode/`tb_wcwidth` width. There is no width qed can
+assign that satisfies both termbox and such a terminal; every terminal editor
+shows the same. CJK, combining Latin, simple emoji, composed ZWJ emoji, and Indic
+conjuncts all work.
 
 ---
 
@@ -387,26 +395,22 @@ accrete as those features land.
 - [x] **Tab-character display** — render `\t` to the next tab stop with
   screen↔buffer column mapping; auto-detect tabs-vs-spaces per file, show it in
   the status bar, add a Ctrl+~ "Toggle Indent" command.
+- [x] **Full Unicode support (grapheme clusters + display width).** `col` stays a
+  byte offset; movement, word-motion, and backspace/delete step whole **extended
+  grapheme clusters** (UAX #29 via `core:unicode/utf8`), and all screen↔buffer
+  column mapping goes through per-cluster display width. Width is a port of
+  termbox2's `tb_cluster_width` (`cluster_width` in `cursor.odin`) so the renderer
+  and termbox's `present()` agree; multi-rune clusters render as one cell via
+  `tb_extend_cell` (EGC enabled in `build.sh`). CJK, combining Latin, simple/ZWJ
+  emoji, and Indic conjuncts behave as one character. Known caveat (§2): some
+  terminals (Windows Terminal) draw ZWJ-flags / keycaps at a non-Unicode width, so
+  those specific glyphs flicker — a terminal limitation, not qed.
 
 ### Bugs / correctness
 
 - [ ] **Drag-select auto-scroll.** Scroll the viewport when a mouse drag-selection
   reaches the top or bottom edge (the target row is currently clamped into view,
   so a selection can't extend past what's visible).
-- [ ] **Full Unicode support (grapheme clusters + display width).** Replace
-  byte-indexed cursor logic with **extended grapheme clusters** so combining
-  marks, ZWJ emoji (families, professions), regional-indicator flags, and Indic
-  conjuncts each behave as one character. Odin core already has the machinery —
-  `core:unicode/utf8`'s grapheme iterator (`decode_grapheme_iterate`, UAX #29,
-  each grapheme carrying a `width` in monospace cells) — so **no external library
-  is needed**. Deliberately done as **one piece, not sliced**: horizontal cursor
-  movement and word-motion step whole graphemes; the renderer advances by each
-  grapheme's display width so wide CJK and 2-cell emoji occupy the right cells;
-  and every screen↔buffer column mapping (cursor placement, mouse click, home/end,
-  horizontal scroll, selection) goes through display width — folding into the same
-  screen↔buffer column machinery the tab-display work already introduced. The
-  buffer stays raw bytes; only `col` interpretation, the advance logic, and width
-  mapping change. Resolves the byte-offset limitation documented in §2.
 
 ### Features
 

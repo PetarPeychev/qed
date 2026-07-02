@@ -208,6 +208,7 @@ foreign termboxlib {
 	print :: proc(x, y: i32, fg, bg: Color, str: cstring) -> Status ---
 	printf :: proc(x, y: i32, fg, bg: Color, fmt: cstring, #c_vararg args: ..any) -> Status ---
 	utf8_char_length :: proc(c: rune) -> Status ---
+	wcwidth :: proc(ch: rune) -> i32 ---
 	last_errno :: proc() -> Status ---
 	strerror :: proc(err: Status) -> cstring ---
 	attr_width :: proc() -> Status ---
