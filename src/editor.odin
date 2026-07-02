@@ -23,6 +23,7 @@ Editor :: struct {
 	last_click_tick: time.Tick,
 	last_click_pos:  Cursor,
 	click_count:     int,
+	palette:         Palette,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -50,6 +51,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	buffer_destroy(&editor.buffer)
 	delete(editor.working_root)
 	delete(editor.paste_buf)
+	palette_destroy(&editor.palette)
 	clipboard_shutdown()
 	tb2.shutdown()
 }
@@ -74,6 +76,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	if editor.welcome {
 		if ev.type == .Key && ev.key == .Ctrl_Q {
 			editor.quit = true
+		}
+		return
+	}
+	if editor.palette.active {
+		#partial switch ev.type {
+		case .Key:
+			palette_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
 		}
 		return
 	}
@@ -224,12 +235,9 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	#partial switch ev.key {
 	case .Ctrl_Q:
-		if editor.buffer.modified {
-			editor.message = "Save before quitting? (y/n/esc)"
-			editor.confirm_quit = true
-		} else {
-			editor.quit = true
-		}
+		editor_request_quit(editor)
+	case .Ctrl_P:
+		palette_open(editor)
 	case .Ctrl_S:
 		editor_save(editor)
 	case .Ctrl_Z:
@@ -322,6 +330,15 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		buffer_type_rune(b, ev.ch)
 	}
 	editor_scroll(editor)
+}
+
+editor_request_quit :: proc(editor: ^Editor) {
+	if editor.buffer.modified {
+		editor.message = "Save before quitting? (y/n/esc)"
+		editor.confirm_quit = true
+	} else {
+		editor.quit = true
+	}
 }
 
 editor_copy :: proc(editor: ^Editor) {
@@ -426,9 +443,13 @@ editor_render :: proc(editor: ^Editor) {
 	message_fg := COLOR_ERROR_FG if editor.message_error else COLOR_FG
 	editor_render_row(0, h + 1, full_w, editor.message, message_fg, COLOR_BG)
 
-	cx := gutter + editor.buffer.cursor.col - editor.scroll_col
-	cy := editor.buffer.cursor.row - editor.scroll_row
-	tb2.set_cursor(i32(cx), i32(cy))
+	if editor.palette.active {
+		palette_render(editor)
+	} else {
+		cx := gutter + editor.buffer.cursor.col - editor.scroll_col
+		cy := editor.buffer.cursor.row - editor.scroll_row
+		tb2.set_cursor(i32(cx), i32(cy))
+	}
 	tb2.present()
 }
 

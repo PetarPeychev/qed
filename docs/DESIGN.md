@@ -375,12 +375,12 @@ land.
 
 **Next — build order:**
 
-- [ ] **Floating pane primitive.** A rectangular overlay layer drawn over the
+- [x] **Floating pane primitive.** A rectangular overlay layer drawn over the
   buffer: position/size, background/border, focus, and its own captured input.
   First step of the command palette below, but shaped knowing find, fuzzy
   file-open, the file-tree, and a later autocomplete dropdown all reuse it. Keep
   it to exactly what the palette needs.
-- [ ] **Command palette.** VSCode-style fuzzy command list in a floating pane;
+- [x] **Command palette.** VSCode-style fuzzy command list in a floating pane;
   the first pane consumer. Establishes the editable text-input line (the
   "prompt"/minibuffer) that find, go-to-line, and save-as later reuse. Routes the
   existing actions (save, quit, undo, …) through a command list.
