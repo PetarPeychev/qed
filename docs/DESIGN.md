@@ -74,7 +74,7 @@ rune `tb_wcwidth`, with VS16 / ZWJ / regional-indicator-pair → 2), used by bot
 the renderer and all column mapping. Multi-rune clusters render as one cell via
 `tb_set_cell` + `tb_extend_cell` (EGC mode, enabled in `build.sh`).
 
-**Known limitation:** a few emoji sequences (ZWJ-flags like 🏳️‍🌈, keycaps) flicker
+**Known limitation:** a few emoji sequences (ZWJ-flags, keycaps) flicker
 or misalign because some terminals — notably Windows Terminal — render them at a
 width that contradicts the Unicode/`tb_wcwidth` width. There is no width qed can
 assign that satisfies both termbox and such a terminal; every terminal editor
