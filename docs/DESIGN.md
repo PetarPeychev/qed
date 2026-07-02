@@ -461,11 +461,17 @@ accrete as those features land.
   `Alt+Up`/`Down`, supply them via `sendInput` in WT `settings.json` emitting
   `^[[1;3A` / `^[[1;3B`, as with the `Ctrl+Shift` arrows.
 
+- [x] **Drag-select auto-scroll.** During a drag (`Motion`) the target row is no
+  longer clamped into view: at the top edge (`y <= 0`) or bottom edge (`y >= h-1`)
+  the cursor aims one row beyond the viewport and `editor_scroll` brings it in
+  (carrying the same `SCROLL_MARGIN` step as keyboard movement), so a selection
+  can extend past what's on screen. No timers (§3), so holding still at the edge
+  doesn't auto-repeat — nudging the mouse advances each step, the terminal-editor
+  norm.
+
 ### Bugs / correctness
 
-- [ ] **Drag-select auto-scroll.** Scroll the viewport when a mouse drag-selection
-  reaches the top or bottom edge (the target row is currently clamped into view,
-  so a selection can't extend past what's visible).
+_(none open)_
 
 ### Features
 

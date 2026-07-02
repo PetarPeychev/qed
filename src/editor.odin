@@ -210,14 +210,28 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	#partial switch ev.key {
 	case .Mouse_Left:
 		buffer_undo_commit(b)
-		pos := editor_mouse_cursor(editor, int(ev.x), int(ev.y))
 		if (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0 {
 			selection_set_anchor(b)
-			b.cursor = pos
+			_, h := editor_viewport(editor)
+			gutter := editor_gutter_width(editor)
+			y := int(ev.y)
+			row: int
+			switch {
+			case y <= 0:
+				row = editor.scroll_row - 1
+			case y >= h - 1:
+				row = editor.scroll_row + h
+			case:
+				row = editor.scroll_row + y
+			}
+			row = clamp(row, 0, len(b.lines) - 1)
+			col := col_at_visual(b.lines[row].text[:], editor.scroll_col + max(0, int(ev.x) - gutter))
+			b.cursor = {row, col}
 			cursor_goal_sync(b)
 			editor_scroll(editor)
 			return
 		}
+		pos := editor_mouse_cursor(editor, int(ev.x), int(ev.y))
 		recent :=
 			editor.click_count > 0 &&
 			time.duration_milliseconds(time.tick_since(editor.last_click_tick)) <= DOUBLE_CLICK_MS &&
