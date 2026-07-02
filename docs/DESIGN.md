@@ -461,6 +461,25 @@ accrete as those features land.
   `Alt+Up`/`Down`, supply them via `sendInput` in WT `settings.json` emitting
   `^[[1;3A` / `^[[1;3B`, as with the `Ctrl+Shift` arrows.
 
+- [x] **Jump back / forward (navigation history)** (`Alt+,` back / `Alt+.` forward,
+  also "Jump Back" / "Jump Forward" in the palette). A global browser-style jump
+  list (`src/jump.odin`): each entry is `(path, row, col)` — the buffer is keyed by
+  path so entries survive buffer reordering and jump-back reopens a closed file via
+  `editor_open_path`. Recording is centralised: `editor_dispatch` captures the
+  cursor on entry and a trailing `defer jump_record` pushes a new entry only when
+  the destination changes buffer or moves the row by more than `JUMP_THRESHOLD`
+  (10) lines — one rule that covers PgUp/PgDn, buffer start/end, far mouse clicks,
+  and Find Line / Find in Files / Open File landings, while ordinary typing and
+  single-line steps stay below the bar. Sub-threshold moves instead *update the
+  current entry in place*, so it tracks the live cursor and back/forward bracket
+  where you actually are, not a stale landing spot. A new jump after stepping back
+  truncates the forward history (browser-style); a `jump_lock` flag suppresses
+  recording during the back/forward navigation itself and during buffer-close.
+  Binds are `Alt+,`/`Alt+.` rather than micro's `Alt+[`/`Alt+]` because `ESC[`/`ESC]`
+  collide with the terminal's CSI/OSC intro bytes (`,`/`.` reconstruct as ALT
+  cleanly, like `Alt+f`). Go-to-definition and future find features push entries
+  once they exist.
+
 - [x] **Drag-select auto-scroll.** During a drag (`Motion`) the target row is no
   longer clamped into view: at the top edge (`y <= 0`) or bottom edge (`y >= h-1`)
   the cursor aims one row beyond the viewport and `editor_scroll` brings it in
@@ -485,19 +504,6 @@ _(none open)_
   detected. Surface it in the status bar alongside the indent style.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
-- [ ] **Jump back / forward (navigation history).** Keep a history of cursor
-  positions and step through it with `Alt+[` (back) / `Alt+]` (forward), matching
-  micro's history binds. (Feasibility check when building: `Alt+[` transmits
-  `ESC [`, the same CSI prefix that begins arrow-key sequences, so termbox2 may
-  need help disambiguating it — fall back to another pair if it can't. `Ctrl+[` is
-  out entirely: indistinguishable from ESC.) A position is pushed on a *large*
-  move, not ordinary edit-time stepping: opening or switching to a different
-  buffer, a single motion that displaces the cursor by more than `JUMP_THRESHOLD`
-  lines (PgUp/PgDn, buffer start/end, a far mouse click), jump-to-definition, and
-  jumping to an in-file or project-wide search hit. Each entry is
-  `(buffer, row, col)`, so jumping back can switch buffers; a new jump after
-  stepping back truncates the forward history (browser-style). Standalone now —
-  go-to-definition and the find features push entries once they exist.
 
 **Syntax highlighting** (tree-sitter). The palette already reserves syntax colors
 in `config.odin` (§3); the work is parse → map captures to those colors → render.

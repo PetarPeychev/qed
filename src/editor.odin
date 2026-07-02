@@ -30,6 +30,8 @@ Editor :: struct {
 	picker:          Picker,
 	linefind:        LineFind,
 	projsearch:      ProjSearch,
+	jumps:           JumpList,
+	jump_lock:       bool,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -72,6 +74,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	picker_destroy(&editor.picker)
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
+	jump_destroy(&editor.jumps)
 	clipboard_shutdown()
 	tb2.shutdown()
 }
@@ -97,6 +100,8 @@ editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
 }
 
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
+	origin := jump_here(editor)
+	defer jump_record(editor, origin)
 	if editor.palette.active {
 		#partial switch ev.type {
 		case .Key:
@@ -480,6 +485,7 @@ editor_close_buffer :: proc(editor: ^Editor) {
 }
 
 editor_close_current :: proc(editor: ^Editor) {
+	editor.jump_lock = true
 	idx := editor.current
 	buffer_destroy(&editor.buffers[idx])
 	ordered_remove(&editor.buffers, idx)

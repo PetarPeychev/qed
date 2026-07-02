@@ -40,6 +40,8 @@ commands := [?]Command {
 	{name = "Find in Files", shortcut = "Alt+F", alt_ch = 'F', run = projsearch_open},
 	{name = "Go to Start of File", shortcut = "Alt+{", alt_ch = '{', run = cmd_buffer_start},
 	{name = "Go to End of File", shortcut = "Alt+}", alt_ch = '}', run = cmd_buffer_end},
+	{name = "Jump Back", shortcut = "Alt+,", alt_ch = ',', run = jump_back},
+	{name = "Jump Forward", shortcut = "Alt+.", alt_ch = '.', run = jump_forward},
 	{name = "Close Buffer", shortcut = "Ctrl+W", key = .Ctrl_W, run = editor_close_buffer},
 	{name = "Save", shortcut = "Ctrl+S", key = .Ctrl_S, run = editor_save},
 	{name = "Quit", shortcut = "Ctrl+Q", key = .Ctrl_Q, run = editor_request_quit},
