@@ -7,13 +7,13 @@ Rect :: struct {
 	x, y, w, h: int,
 }
 
-pane_bottom_center :: proc(content_w, content_h: int) -> Rect {
+pane_center :: proc(content_w, content_h: int) -> Rect {
 	sw := int(tb2.width())
 	sh := int(tb2.height())
 	w := min(content_w + 2, sw)
 	h := content_h + 2
 	x := max(0, (sw - w) / 2)
-	y := max(0, sh - h - PALETTE_BOTTOM_MARGIN)
+	y := max(0, (sh - h) / 2)
 	return {x, y, w, h}
 }
 
@@ -42,6 +42,16 @@ pane_draw_box :: proc(r: Rect) -> Rect {
 	tb2.set_cell(i32(right), i32(bottom), '┘', COLOR_PANE_BORDER, COLOR_PANE_BG)
 
 	return {r.x + 1, r.y + 1, r.w - 2, r.h - 2}
+}
+
+pane_hline :: proc(box: Rect, y: int) {
+	left := box.x
+	right := box.x + box.w - 1
+	for x in left + 1 ..< right {
+		tb2.set_cell(i32(x), i32(y), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	}
+	tb2.set_cell(i32(left), i32(y), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	tb2.set_cell(i32(right), i32(y), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
 }
 
 pane_fill_row :: proc(x, y, w: int, fg, bg: tb2.Color) {

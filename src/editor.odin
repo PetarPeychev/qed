@@ -15,7 +15,7 @@ Editor :: struct {
 	scroll_col:    int,
 	message:       string,
 	message_error: bool,
-	confirm_quit:  bool,
+	quit_dialog:   QuitDialog,
 	quit:          bool,
 	pasting:       bool,
 	paste_buf:     [dynamic]u8,
@@ -88,6 +88,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		return
 	}
+	if editor.quit_dialog.active {
+		#partial switch ev.type {
+		case .Key:
+			quit_dialog_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
+		}
+		return
+	}
 	#partial switch ev.type {
 	case .Key:
 		if editor.pasting {
@@ -121,9 +130,6 @@ editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 }
 
 editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	if editor.confirm_quit {
-		return
-	}
 	editor.message = ""
 	editor.message_error = false
 	b := &editor.buffer
@@ -211,21 +217,6 @@ editor_paste_commit :: proc(editor: ^Editor) {
 }
 
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	if editor.confirm_quit {
-		editor.confirm_quit = false
-		editor.message = ""
-		switch ev.ch {
-		case 'y', 'Y':
-			editor_save(editor)
-			if !editor.buffer.modified {
-				editor.quit = true
-			}
-		case 'n', 'N':
-			editor.quit = true
-		}
-		return
-	}
-
 	editor.message = ""
 	editor.message_error = false
 	b := &editor.buffer
@@ -334,8 +325,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 editor_request_quit :: proc(editor: ^Editor) {
 	if editor.buffer.modified {
-		editor.message = "Save before quitting? (y/n/esc)"
-		editor.confirm_quit = true
+		quit_dialog_open(editor)
 	} else {
 		editor.quit = true
 	}
@@ -445,6 +435,8 @@ editor_render :: proc(editor: ^Editor) {
 
 	if editor.palette.active {
 		palette_render(editor)
+	} else if editor.quit_dialog.active {
+		quit_dialog_render(editor)
 	} else {
 		cx := gutter + editor.buffer.cursor.col - editor.scroll_col
 		cy := editor.buffer.cursor.row - editor.scroll_row

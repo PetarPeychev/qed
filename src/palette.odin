@@ -131,11 +131,11 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		palette_close(editor)
 	case .Enter:
 		palette_execute(editor)
-	case .Arrow_Up:
+	case .Arrow_Down:
 		if len(p.matches) > 0 {
 			p.selected = (p.selected + 1) % len(p.matches)
 		}
-	case .Arrow_Down:
+	case .Arrow_Up:
 		if len(p.matches) > 0 {
 			p.selected = (p.selected - 1 + len(p.matches)) % len(p.matches)
 		}
@@ -156,13 +156,16 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 palette_render :: proc(editor: ^Editor) {
 	p := &editor.palette
 	rows := min(len(p.matches), PALETTE_MAX_ROWS)
-	box := pane_bottom_center(PALETTE_WIDTH, 1 + rows)
+	box := pane_center(PALETTE_WIDTH, 2 + rows)
 	inner := pane_draw_box(box)
-	prompt_y := inner.y + inner.h - 1
+
+	pane_text(inner.x + 1, inner.y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	pane_text(inner.x + 3, inner.y, inner.w - 4, string(p.query[:]), COLOR_PANE_FG, COLOR_PANE_BG)
+	pane_hline(box, inner.y + 1)
 
 	for i in 0 ..< rows {
 		cmd := commands[p.matches[i]]
-		y := prompt_y - 1 - i
+		y := inner.y + 2 + i
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		sc_fg := COLOR_PANE_SHORTCUT_FG
 		if i == p.selected {
@@ -175,9 +178,6 @@ palette_render :: proc(editor: ^Editor) {
 		pane_text(sx, y, len(cmd.shortcut), cmd.shortcut, sc_fg, bg)
 	}
 
-	pane_text(inner.x + 1, prompt_y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_text(inner.x + 3, prompt_y, inner.w - 4, string(p.query[:]), COLOR_PANE_FG, COLOR_PANE_BG)
-
 	cx := min(inner.x + 3 + len(p.query), inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(prompt_y))
+	tb2.set_cursor(i32(cx), i32(inner.y))
 }
