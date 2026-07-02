@@ -28,6 +28,7 @@ Editor :: struct {
 	click_count:     int,
 	palette:         Palette,
 	picker:          Picker,
+	linefind:        LineFind,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -68,6 +69,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.paste_buf)
 	palette_destroy(&editor.palette)
 	picker_destroy(&editor.picker)
+	linefind_destroy(&editor.linefind)
 	clipboard_shutdown()
 	tb2.shutdown()
 }
@@ -106,6 +108,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		#partial switch ev.type {
 		case .Key:
 			picker_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
+		}
+		return
+	}
+	if editor.linefind.active {
+		#partial switch ev.type {
+		case .Key:
+			linefind_dispatch_key(editor, ev)
 		case .Resize:
 			editor_scroll(editor)
 		}
@@ -522,6 +533,8 @@ editor_render :: proc(editor: ^Editor) {
 		palette_render(editor)
 	case editor.picker.active:
 		picker_render(editor)
+	case editor.linefind.active:
+		linefind_render(editor)
 	case editor.quit_dialog.active:
 		quit_dialog_render(editor)
 	case editor.close_dialog.active:

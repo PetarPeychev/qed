@@ -23,6 +23,7 @@ cmd_toggle_indent :: proc(editor: ^Editor) {
 
 commands := [?]Command {
 	{"Open File", "Ctrl+O", .Ctrl_O, picker_open},
+	{"Find Line", "Ctrl+F", .Ctrl_F, linefind_open},
 	{"Close Buffer", "Ctrl+W", .Ctrl_W, editor_close_buffer},
 	{"Save", "Ctrl+S", .Ctrl_S, editor_save},
 	{"Quit", "Ctrl+Q", .Ctrl_Q, editor_request_quit},

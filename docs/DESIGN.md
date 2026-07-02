@@ -405,6 +405,13 @@ accrete as those features land.
   emoji, and Indic conjuncts behave as one character. Known caveat (§2): some
   terminals (Windows Terminal) draw ZWJ-flags / keycaps at a non-Unicode width, so
   those specific glyphs flicker — a terminal limitation, not qed.
+- [x] **Fuzzy line jump** (`Ctrl+F`, "Find Line"). A near-fullscreen picker over
+  the current buffer's lines (reusing the file-picker pane + `fuzzy_rank`): a match
+  list of `<lineno> <line text>` on top, a context preview below showing the
+  selected line and its neighbours. Enter moves the cursor to that line's first
+  non-blank column and centres the line in the viewport; Esc cancels leaving the
+  cursor put. Navigation only — distinct from incremental find and not a path to
+  replace (no exact match positions).
 
 ### Bugs / correctness
 
