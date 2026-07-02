@@ -8,6 +8,7 @@ Command :: struct {
 	name:     string,
 	shortcut: string,
 	key:      tb2.Key,
+	alt_ch:   rune,
 	run:      proc(editor: ^Editor),
 }
 
@@ -22,23 +23,33 @@ cmd_toggle_indent :: proc(editor: ^Editor) {
 }
 
 commands := [?]Command {
-	{"Open File", "Ctrl+O", .Ctrl_O, picker_open},
-	{"Find Line", "Ctrl+F", .Ctrl_F, linefind_open},
-	{"Close Buffer", "Ctrl+W", .Ctrl_W, editor_close_buffer},
-	{"Save", "Ctrl+S", .Ctrl_S, editor_save},
-	{"Quit", "Ctrl+Q", .Ctrl_Q, editor_request_quit},
-	{"Undo", "Ctrl+Z", .Ctrl_Z, cmd_undo},
-	{"Redo", "Ctrl+Y", .Ctrl_Y, cmd_redo},
-	{"Cut", "Ctrl+X", .Ctrl_X, editor_cut},
-	{"Copy", "Ctrl+C", .Ctrl_C, editor_copy},
-	{"Paste", "Ctrl+V", .Ctrl_V, editor_paste},
-	{"Select All", "Ctrl+A", .Ctrl_A, cmd_select_all},
-	{"Toggle Indent (Tabs/Spaces)", "", .Ctrl_Tilde, cmd_toggle_indent},
+	{name = "Open File", shortcut = "Ctrl+O", key = .Ctrl_O, run = picker_open},
+	{name = "Find Line", shortcut = "Alt+f", alt_ch = 'f', run = linefind_open},
+	{name = "Find in Files", shortcut = "Alt+F", alt_ch = 'F', run = projsearch_open},
+	{name = "Close Buffer", shortcut = "Ctrl+W", key = .Ctrl_W, run = editor_close_buffer},
+	{name = "Save", shortcut = "Ctrl+S", key = .Ctrl_S, run = editor_save},
+	{name = "Quit", shortcut = "Ctrl+Q", key = .Ctrl_Q, run = editor_request_quit},
+	{name = "Undo", shortcut = "Ctrl+Z", key = .Ctrl_Z, run = cmd_undo},
+	{name = "Redo", shortcut = "Ctrl+Y", key = .Ctrl_Y, run = cmd_redo},
+	{name = "Cut", shortcut = "Ctrl+X", key = .Ctrl_X, run = editor_cut},
+	{name = "Copy", shortcut = "Ctrl+C", key = .Ctrl_C, run = editor_copy},
+	{name = "Paste", shortcut = "Ctrl+V", key = .Ctrl_V, run = editor_paste},
+	{name = "Select All", shortcut = "Ctrl+A", key = .Ctrl_A, run = cmd_select_all},
+	{name = "Toggle Indent (Tabs/Spaces)", key = .Ctrl_Tilde, run = cmd_toggle_indent},
 }
 
 command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
 	for cmd in commands {
-		if cmd.shortcut != "" && cmd.key == key {
+		if cmd.alt_ch == 0 && cmd.shortcut != "" && cmd.key == key {
+			return cmd, true
+		}
+	}
+	return {}, false
+}
+
+command_for_alt :: proc(ch: rune) -> (Command, bool) {
+	for cmd in commands {
+		if cmd.alt_ch != 0 && cmd.alt_ch == ch {
 			return cmd, true
 		}
 	}

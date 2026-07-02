@@ -118,8 +118,13 @@ linefind_execute :: proc(editor: ^Editor) {
 
 linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
+	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
+	if alt && ev.ch == 'f' {
+		linefind_close(editor)
+		return
+	}
 	#partial switch ev.key {
-	case .Esc, .Ctrl_F:
+	case .Esc:
 		linefind_close(editor)
 	case .Enter:
 		linefind_execute(editor)
@@ -137,7 +142,7 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			linefind_filter(editor)
 		}
 	case:
-		if ev.ch >= 0x20 {
+		if ev.ch >= 0x20 && !alt {
 			bytes, n := utf8.encode_rune(ev.ch)
 			append(&p.query, ..bytes[:n])
 			linefind_filter(editor)

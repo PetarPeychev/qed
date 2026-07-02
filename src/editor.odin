@@ -29,6 +29,7 @@ Editor :: struct {
 	palette:         Palette,
 	picker:          Picker,
 	linefind:        LineFind,
+	projsearch:      ProjSearch,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -70,6 +71,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	palette_destroy(&editor.palette)
 	picker_destroy(&editor.picker)
 	linefind_destroy(&editor.linefind)
+	projsearch_destroy(&editor.projsearch)
 	clipboard_shutdown()
 	tb2.shutdown()
 }
@@ -122,8 +124,22 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		return
 	}
+	if editor.projsearch.active {
+		#partial switch ev.type {
+		case .Key:
+			projsearch_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
+		}
+		return
+	}
 	if editor.welcome {
 		if ev.type == .Key {
+			alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
+			if alt && ev.ch == 'F' {
+				projsearch_open(editor)
+				return
+			}
 			#partial switch ev.key {
 			case .Ctrl_Q:
 				editor_request_quit(editor)
@@ -279,7 +295,16 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	b := editor_buffer(editor)
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
 	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
+	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
 	_, h := editor_viewport(editor)
+
+	if alt && ev.ch != 0 {
+		if cmd, ok := command_for_alt(ev.ch); ok {
+			cmd.run(editor)
+			editor_scroll(editor)
+		}
+		return
+	}
 
 	if cmd, ok := command_for_key(ev.key); ok {
 		cmd.run(editor)
@@ -535,6 +560,8 @@ editor_render :: proc(editor: ^Editor) {
 		picker_render(editor)
 	case editor.linefind.active:
 		linefind_render(editor)
+	case editor.projsearch.active:
+		projsearch_render(editor)
 	case editor.quit_dialog.active:
 		quit_dialog_render(editor)
 	case editor.close_dialog.active:

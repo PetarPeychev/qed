@@ -303,6 +303,17 @@ On an unmodified buffer Ctrl+Q quits outright.
 
 No keybind *table* abstraction until the switch is genuinely painful.
 
+**ALT keybinds.** `Ctrl+letter` reaches the terminal as a single control byte
+(`letter & 0x1f`) with no Shift bit, so `Ctrl+F` and `Ctrl+Shift+F` are
+indistinguishable — but `Alt+letter` arrives as `ESC`+the literal letter, so
+`Alt+f` and `Alt+F` *are* distinct. termbox's native ALT input mode is unusable
+here (it withholds a lone `Esc` until the next key), so qed stays in `ESC` input
+mode and reconstructs ALT itself in the main loop: after a bare `Esc` event it
+`peek_event`s for `ALT_ESC_TIMEOUT_MS`; a printable key already buffered from the
+same `ESC <ch>` burst is re-tagged with `Mod.Alt`, while a real lone `Esc` peeks
+nothing and dispatches normally. ALT commands live in the same `commands` table
+via an `alt_ch` field (`command_for_alt`), so they also show in the palette.
+
 **Bracketed paste.** A terminal (or Windows Terminal / tmux) paste arrives as a
 stream of individual keystrokes, which would land as many undo groups (one per
 line) instead of one. To make a paste a single atomic action, the vendored
@@ -405,13 +416,25 @@ accrete as those features land.
   emoji, and Indic conjuncts behave as one character. Known caveat (§2): some
   terminals (Windows Terminal) draw ZWJ-flags / keycaps at a non-Unicode width, so
   those specific glyphs flicker — a terminal limitation, not qed.
-- [x] **Fuzzy line jump** (`Ctrl+F`, "Find Line"). A near-fullscreen picker over
+- [x] **Fuzzy line jump** (`Alt+f`, "Find Line"). A near-fullscreen picker over
   the current buffer's lines (reusing the file-picker pane + `fuzzy_rank`): a match
   list of `<lineno> <line text>` on top, a context preview below showing the
   selected line and its neighbours. Enter moves the cursor to that line's first
   non-blank column and centres the line in the viewport; Esc cancels leaving the
   cursor put. Navigation only — distinct from incremental find and not a path to
   replace (no exact match positions).
+- [x] **Project-wide search** (`Alt+F`, "Find in Files"). Telescope `live_grep`
+  style: a near-fullscreen picker whose prompt drives `rg --vimgrep -F -S`
+  (literal, smart-case) live per keystroke over the working root, once the query
+  is ≥ `PROJSEARCH_MIN_QUERY` chars and capped at `PROJSEARCH_MAX` hits. A match
+  list of `<path>:<lineno>  <text>` on top, a `sed`-fetched file-context preview
+  below (matched line emphasised). Enter opens the file into a buffer (switching
+  to a live one if already open) and jumps to the exact `row`+`col`, centred; Esc
+  / `Alt+F` cancels. Deliberately a content grep, **not** fuzzy-over-all-lines
+  (tried; too noisy and it overlapped Find Line) — precise loose-word→symbol jump
+  is a later LSP symbol-search job. `Alt+f`/`Alt+F` are distinguishable (unlike
+  `Ctrl+F`/`Ctrl+Shift+F`, which the terminal collapses to one byte). See the ALT
+  input note in §8.
 
 ### Bugs / correctness
 
@@ -431,8 +454,6 @@ accrete as those features land.
   detected. Surface it in the status bar alongside the indent style.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
-- [ ] **Project-wide search overlay** (rg + fzf): query, results list in a
-  floating pane, jump to a hit.
 - [ ] **Reachable line / file / paragraph motion keybinds.** Bind these to keys
   that don't need the nav cluster, matching the micro config: `Alt+Left` start of
   line — a **toggle** between the first non-blank column and column 0 (micro's
