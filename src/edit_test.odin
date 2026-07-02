@@ -133,6 +133,95 @@ test_undo_empty_is_noop :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_move_line_down_single :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b", "c")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 1}
+
+	buffer_move_lines(&b, +1)
+	testing.expect_value(t, buffer_string(&b), "b\na\nc")
+	testing.expect_value(t, b.cursor, Cursor{1, 1})
+
+	buffer_undo(&b)
+	testing.expect_value(t, buffer_string(&b), "a\nb\nc")
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+}
+
+@(test)
+test_move_line_up_single :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b", "c")
+	defer buffer_destroy(&b)
+	b.cursor = {2, 1}
+
+	buffer_move_lines(&b, -1)
+	testing.expect_value(t, buffer_string(&b), "a\nc\nb")
+	testing.expect_value(t, b.cursor, Cursor{1, 1})
+}
+
+@(test)
+test_move_line_up_at_top_is_noop :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 0}
+
+	buffer_move_lines(&b, -1)
+	testing.expect_value(t, buffer_string(&b), "a\nb")
+	testing.expect_value(t, len(b.undo), 0)
+}
+
+@(test)
+test_move_line_down_at_bottom_is_noop :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b")
+	defer buffer_destroy(&b)
+	b.cursor = {1, 0}
+
+	buffer_move_lines(&b, +1)
+	testing.expect_value(t, buffer_string(&b), "a\nb")
+	testing.expect_value(t, len(b.undo), 0)
+}
+
+@(test)
+test_move_line_down_into_last :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b", "c")
+	defer buffer_destroy(&b)
+	b.cursor = {1, 0}
+
+	buffer_move_lines(&b, +1)
+	testing.expect_value(t, buffer_string(&b), "a\nc\nb")
+
+	buffer_undo(&b)
+	testing.expect_value(t, buffer_string(&b), "a\nb\nc")
+}
+
+@(test)
+test_move_lines_block_selection :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b", "c", "d")
+	defer buffer_destroy(&b)
+	b.selection = Cursor{1, 0}
+	b.cursor = {2, 1}
+
+	buffer_move_lines(&b, -1)
+	testing.expect_value(t, buffer_string(&b), "b\nc\na\nd")
+	testing.expect_value(t, b.cursor, Cursor{1, 1})
+	anchor, _ := b.selection.?
+	testing.expect_value(t, anchor, Cursor{0, 0})
+
+	buffer_undo(&b)
+	testing.expect_value(t, buffer_string(&b), "a\nb\nc\nd")
+}
+
+@(test)
+test_move_lines_selection_trailing_col_zero :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b", "c", "d")
+	defer buffer_destroy(&b)
+	b.selection = Cursor{0, 0}
+	b.cursor = {2, 0}
+
+	buffer_move_lines(&b, +1)
+	testing.expect_value(t, buffer_string(&b), "c\na\nb\nd")
+}
+
+@(test)
 test_undo_redo_multiline :: proc(t: ^testing.T) {
 	b := test_buffer("ac")
 	defer buffer_destroy(&b)

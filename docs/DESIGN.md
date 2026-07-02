@@ -450,6 +450,17 @@ accrete as those features land.
   producing the brace glyph), so they move-and-clear — shift-extend to the buffer
   ends stays on `Ctrl+Shift+Home`/`End`.
 
+- [x] **Move lines up / down** (`Alt+Up` / `Alt+Down`). `buffer_move_lines(b, delta)`
+  moves the current line — or every line a selection touches (a trailing endpoint at
+  column 0 doesn't count its line) — up or down one row, carrying the cursor and
+  selection with it. Implemented as one atomic delete+insert of the reordered
+  line-span, so it's a single undo group and the trailing-newline edge (moving into
+  or out of the last line) is handled by choosing the span's delete range. Bound
+  directly in `editor_dispatch_key` (not the command table, since `Alt+Arrow` fits
+  neither `key` nor `alt_ch`). **Terminal caveat:** if Windows Terminal swallows
+  `Alt+Up`/`Down`, supply them via `sendInput` in WT `settings.json` emitting
+  `^[[1;3A` / `^[[1;3B`, as with the `Ctrl+Shift` arrows.
+
 ### Bugs / correctness
 
 - [ ] **Drag-select auto-scroll.** Scroll the viewport when a mouse drag-selection
@@ -468,9 +479,6 @@ accrete as those features land.
   detected. Surface it in the status bar alongside the indent style.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
-- [ ] **Move lines up / down.** `Alt+Up` / `Alt+Down` move the current line (or
-  every line the selection touches) up or down one row, carrying the cursor and
-  selection. One undo group per move. (Micro's `MoveLinesUp`/`MoveLinesDown`.)
 - [ ] **Jump back / forward (navigation history).** Keep a history of cursor
   positions and step through it with `Alt+[` (back) / `Alt+]` (forward), matching
   micro's history binds. (Feasibility check when building: `Alt+[` transmits

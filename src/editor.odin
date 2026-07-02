@@ -312,6 +312,19 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	}
 
+	if alt {
+		#partial switch ev.key {
+		case .Arrow_Up:
+			buffer_move_lines(b, -1)
+			editor_scroll(editor)
+			return
+		case .Arrow_Down:
+			buffer_move_lines(b, +1)
+			editor_scroll(editor)
+			return
+		}
+	}
+
 	#partial switch ev.key {
 	case .Ctrl_P:
 		palette_open(editor)

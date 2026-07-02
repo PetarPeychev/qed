@@ -334,6 +334,72 @@ buffer_dedent :: proc(b: ^Buffer) {
 	}
 }
 
+buffer_move_lines :: proc(b: ^Buffer, delta: int) {
+	from, to, sel := selection_range(b)
+	top := b.cursor.row
+	bot := b.cursor.row
+	if sel {
+		top = from.row
+		bot = to.row
+		if to.col == 0 && to.row > from.row {
+			bot -= 1
+		}
+	}
+	if delta < 0 && top == 0 {
+		return
+	}
+	if delta > 0 && bot >= len(b.lines) - 1 {
+		return
+	}
+
+	span_top, span_bot: int
+	sb := strings.builder_make(context.temp_allocator)
+	if delta < 0 {
+		span_top = top - 1
+		span_bot = bot
+		for r in top ..= bot {
+			strings.write_bytes(&sb, b.lines[r].text[:])
+			strings.write_byte(&sb, '\n')
+		}
+		strings.write_bytes(&sb, b.lines[top - 1].text[:])
+	} else {
+		span_top = top
+		span_bot = bot + 1
+		strings.write_bytes(&sb, b.lines[bot + 1].text[:])
+		for r in top ..= bot {
+			strings.write_byte(&sb, '\n')
+			strings.write_bytes(&sb, b.lines[r].text[:])
+		}
+	}
+
+	del_from := Cursor{span_top, 0}
+	del_to: Cursor
+	insert_text: string
+	if span_bot < len(b.lines) - 1 {
+		del_to = Cursor{span_bot + 1, 0}
+		insert_text = strings.concatenate({strings.to_string(sb), "\n"}, context.temp_allocator)
+	} else {
+		del_to = Cursor{span_bot, len(b.lines[span_bot].text)}
+		insert_text = strings.to_string(sb)
+	}
+
+	edit_open(b, .Atomic)
+	removed := buffer_delete(b, del_from, del_to)
+	append(&b.open.edits, Edit{.Insert, del_from, removed})
+	buffer_insert(b, del_from, insert_text)
+	append(&b.open.edits, Edit{.Delete, del_from, strings.clone(insert_text)})
+	buffer_undo_commit(b)
+
+	b.cursor.row = clamp(b.cursor.row + delta, 0, len(b.lines) - 1)
+	b.cursor.col = min(b.cursor.col, len(b.lines[b.cursor.row].text))
+	if anchor, has := b.selection.?; has {
+		anchor.row = clamp(anchor.row + delta, 0, len(b.lines) - 1)
+		anchor.col = min(anchor.col, len(b.lines[anchor.row].text))
+		b.selection = anchor
+	}
+	cursor_goal_sync(b)
+}
+
 buffer_apply_inverse :: proc(b: ^Buffer, group: EditGroup) -> EditGroup {
 	result := EditGroup {
 		cursor = b.cursor,
