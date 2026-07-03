@@ -16,6 +16,7 @@ approach as `lib/tb2/`.
 | C grammar | `github.com/tree-sitter/tree-sitter-c` | `7fa1be1b694b6e763686793d97da01f36a0e5c12` (v0.24.1) |
 | JavaScript grammar | `github.com/tree-sitter/tree-sitter-javascript` | `44c892e0be055ac465d5eeddae6d3e194424e7de` (v0.25.0) |
 | TypeScript grammar | `github.com/tree-sitter/tree-sitter-typescript` | `f975a621f4e7f532fe322e13c4f79495e0a7b2e7` (v0.23.2) — provides `typescript`/`tsx` |
+| Markdown grammar | `github.com/tree-sitter-grammars/tree-sitter-markdown` | `f969cd3ae3f9fbd4e43205431d0ae286014c05b5` (v0.5.3) — provides `markdown` (block) + `markdown_inline` |
 
 Each grammar's `src/parser.c` (Odin's is ~15 MB) and `src/scanner.c` (Odin,
 Python; JSON and C have none) are **generated** artifacts committed upstream; we
@@ -37,6 +38,8 @@ javascript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used f
 typescript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used for .ts and .tsx)
 tsx/              parser.c, scanner.c, tree_sitter/*.h                    (.tsx grammar; shares typescript's query)
 common/           scanner.h                  shared TS/TSX external scanner (from the TS repo)
+markdown/         parser.c, scanner.c, tree_sitter/*.h, highlights.scm, injections.scm   (block)
+markdown_inline/  parser.c, scanner.c, tree_sitter/*.h, highlights.scm    (inline, injection-only)
 ts.odin           Odin FFI bindings          the ~15 procs qed calls
 ```
 
@@ -135,6 +138,40 @@ predicate-gated identifier heuristics:
 Kept predicate-free: `(type_identifier) @type`, `(predefined_type) @type.builtin`,
 type-argument brackets, parameter identifiers (unmapped → plain), and the TS
 keyword set (`interface`, `type`, `enum`, `readonly`, …).
+
+### `markdown/` + `markdown_inline/` (block + inline, injected)
+
+Markdown is qed's one **injected** language: the block grammar parses structure,
+and `highlight.odin`'s injection pass re-parses `(inline)` nodes with the
+`markdown_inline` grammar and fenced code blocks with the language named by their
+info string (`language_of_name`). See DESIGN.md §"Multiple servers / grammars".
+
+Both `highlights.scm` are predicate-free upstream (nvim-flavored `@text.*` capture
+names) and vendored near-verbatim; the capture→color choices are Petar's taste,
+made by re-labeling captures to qed's vocabulary rather than by touching shared
+code:
+- Headings, list/heading/quote markers, thematic breaks → `@keyword` (yellow).
+- `@text.strong` → attribute (yellow), `@text.emphasis` → comment (orange).
+- Links: real `[text](url)` brackets + text + destination/label → blue
+  (`@text.uri`/`@text.reference`). A bare `shortcut_link` `[text]` is left
+  **uncolored** so stray brackets and malformed checkboxes don't read as links.
+- GFM task checkboxes: `(task_list_marker_unchecked)` → `@keyword` (yellow),
+  `(task_list_marker_checked)` → `@string` (green).
+- Inline `code_span` + its backticks, and the `fenced_code_block_delimiter` +
+  `info_string` (```lang) → `@text.code`, mapped to `COLOR_SYN_CODE`.
+- `fenced_code_block`/`code_fence_content` stay unmapped so the injected language
+  paints the body.
+
+`injections.scm` is **rewritten** (not vendored): upstream encodes the target with
+`(#set! injection.language …)` predicates the C core doesn't evaluate, so qed
+can't read them. Instead the target is encoded by **capture name** — `@inline`
+means the `markdown_inline` grammar, `@language`+`@content` means the language
+named by `@language`'s text. Only `(paragraph (inline))` is injected (not
+`atx_heading` inlines, so headings keep their solid title color); the html/yaml/
+toml metadata injections are dropped (no grammar for them).
+
+The new `@text.*` / `@text.code` capture names are mapped in
+`src/highlight.odin`'s `syntax_capture_color` (see below).
 
 ### `odin/highlights.scm`
 

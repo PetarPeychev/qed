@@ -31,13 +31,16 @@ highlight_record_edit :: proc(hl: ^Highlight, edit: ts.InputEdit) {
 }
 
 Syntax :: struct {
-	tried:  bool,
-	ready:  bool,
-	parser: ^ts.Parser,
-	query:  ^ts.Query,
-	cursor: ^ts.QueryCursor,
-	colors: [dynamic]tb2.Color,
-	paint:  [dynamic]bool,
+	tried:      bool,
+	ready:      bool,
+	parser:     ^ts.Parser,
+	query:      ^ts.Query,
+	cursor:     ^ts.QueryCursor,
+	colors:     [dynamic]tb2.Color,
+	paint:      [dynamic]bool,
+	inj_query:  ^ts.Query,
+	inj_cursor: ^ts.QueryCursor,
+	inj_names:  [dynamic]string,
 }
 
 @(private = "file")
@@ -79,6 +82,23 @@ syntax_ensure :: proc(language: Language) -> bool {
 		append(&s.paint, ok)
 	}
 
+	// Optional injection query (currently markdown). Failure to compile just
+	// disables injection; the host highlights still work.
+	if info.injections != nil {
+		off: u32
+		et: ts.QueryError
+		s.inj_query = ts.query_new(lang, raw_data(info.injections), u32(len(info.injections)), &off, &et)
+		if s.inj_query != nil {
+			s.inj_cursor = ts.query_cursor_new()
+			m := ts.query_capture_count(s.inj_query)
+			for id in 0 ..< m {
+				length: u32
+				name_ptr := ts.query_capture_name_for_id(s.inj_query, id, &length)
+				append(&s.inj_names, string(name_ptr[:length]))
+			}
+		}
+	}
+
 	s.ready = true
 	return true
 }
@@ -91,11 +111,18 @@ syntax_shutdown :: proc() {
 		if s.query != nil {
 			ts.query_delete(s.query)
 		}
+		if s.inj_cursor != nil {
+			ts.query_cursor_delete(s.inj_cursor)
+		}
+		if s.inj_query != nil {
+			ts.query_delete(s.inj_query)
+		}
 		if s.parser != nil {
 			ts.parser_delete(s.parser)
 		}
 		delete(s.colors)
 		delete(s.paint)
+		delete(s.inj_names)
 	}
 }
 
@@ -120,6 +147,17 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 		return COLOR_SYN_CONSTANT, true
 	case name == "attribute", strings.has_prefix(name, "preproc"):
 		return COLOR_SYN_ATTRIBUTE, true
+	// Markdown (block + inline) uses nvim-flavored @text.* capture names.
+	case name == "text.title":
+		return COLOR_SYN_KEYWORD, true
+	case name == "text.code":
+		return COLOR_SYN_CODE, true
+	case name == "text.uri", name == "text.reference":
+		return COLOR_SYN_TYPE, true
+	case name == "text.strong":
+		return COLOR_SYN_ATTRIBUTE, true
+	case name == "text.emphasis":
+		return COLOR_SYN_COMMENT, true
 	}
 	return COLOR_FG, false
 }
@@ -214,11 +252,124 @@ highlight_query_paint :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
 		}
 	}
 
+	highlight_inject(b, s, vtop, vbot)
+
 	b.hl.valid = true
 	b.hl.computed = true
 	b.hl.rev = b.rev
 	b.hl.top = vtop
 	b.hl.bot = vbot
+}
+
+// Re-parse embedded languages inside the host tree and paint their colors over
+// the just-painted host colors. Concrete for markdown: (inline) nodes get the
+// markdown_inline grammar, fenced code blocks get the language named by their
+// info string. Injection regions are re-parsed fresh (synchronous, viewport
+// -scoped) each paint — cheap because paint only reruns when the tree or viewport
+// changed and the regions are small. A grammar without an injection query
+// (everything but markdown) returns immediately.
+highlight_inject :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
+	if s.inj_query == nil || b.hl.tree == nil {
+		return
+	}
+	ts.query_cursor_set_point_range(s.inj_cursor, {u32(vtop), 0}, {u32(vbot) + 1, 0})
+	ts.query_cursor_exec(s.inj_cursor, s.inj_query, ts.tree_root_node(b.hl.tree))
+	match: ts.QueryMatch
+	for ts.query_cursor_next_match(s.inj_cursor, &match) {
+		content_ok := false
+		sr, sc, er, ec: int
+		target := Language.Plain
+		lang_name := ""
+		for i in 0 ..< int(match.capture_count) {
+			cap := match.captures[i]
+			if int(cap.index) >= len(s.inj_names) {
+				continue
+			}
+			sp := ts.node_start_point(cap.node)
+			ep := ts.node_end_point(cap.node)
+			switch s.inj_names[cap.index] {
+			case "inline":
+				sr, sc, er, ec = int(sp.row), int(sp.column), int(ep.row), int(ep.column)
+				content_ok = true
+				target = .MarkdownInline
+			case "content":
+				sr, sc, er, ec = int(sp.row), int(sp.column), int(ep.row), int(ep.column)
+				content_ok = true
+			case "language":
+				lang_name = buffer_text_span(b, int(sp.row), int(sp.column), int(ep.row), int(ep.column))
+			}
+		}
+		if !content_ok {
+			continue
+		}
+		if target == .Plain {
+			target = language_of_name(lang_name)
+		}
+		if target == .Plain {
+			continue
+		}
+		highlight_inject_region(b, target, sr, sc, er, ec)
+	}
+}
+
+highlight_inject_region :: proc(b: ^Buffer, target: Language, sr, sc, er, ec: int) {
+	if !syntax_ensure(target) {
+		return
+	}
+	t := &g_syntaxes[target]
+	slice := buffer_text_span(b, sr, sc, er, ec)
+	if len(slice) == 0 {
+		return
+	}
+	tree := ts.parser_parse_string(t.parser, nil, raw_data(slice), u32(len(slice)))
+	if tree == nil {
+		return
+	}
+	defer ts.tree_delete(tree)
+
+	// The target cursor may carry a stale point range from a prior main-buffer
+	// paint of this language; widen it so the whole slice is queried.
+	ts.query_cursor_set_point_range(t.cursor, {0, 0}, {max(u32), 0})
+	ts.query_cursor_exec(t.cursor, t.query, ts.tree_root_node(tree))
+	match: ts.QueryMatch
+	for ts.query_cursor_next_match(t.cursor, &match) {
+		for i in 0 ..< int(match.capture_count) {
+			cap := match.captures[i]
+			if int(cap.index) >= len(t.paint) || !t.paint[cap.index] {
+				continue
+			}
+			sp := ts.node_start_point(cap.node)
+			ep := ts.node_end_point(cap.node)
+			r0 := sr + int(sp.row)
+			c0 := int(sp.column) + (sc if sp.row == 0 else 0)
+			r1 := sr + int(ep.row)
+			c1 := int(ep.column) + (sc if ep.row == 0 else 0)
+			highlight_paint(&b.hl, r0, c0, r1, c1, t.colors[cap.index])
+		}
+	}
+}
+
+// Concatenate the buffer bytes spanning [sr:sc .. er:ec], newline-joined — the
+// source text of an injection region, for a one-shot sub-parse. Temp-allocated.
+buffer_text_span :: proc(b: ^Buffer, sr, sc, er, ec: int) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for r in sr ..= er {
+		if r < 0 || r >= len(b.lines) {
+			continue
+		}
+		line := b.lines[r].text[:]
+		lo := sc if r == sr else 0
+		hi := ec if r == er else len(line)
+		lo = clamp(lo, 0, len(line))
+		hi = clamp(hi, 0, len(line))
+		if hi > lo {
+			strings.write_bytes(&sb, line[lo:hi])
+		}
+		if r < er {
+			strings.write_byte(&sb, '\n')
+		}
+	}
+	return strings.to_string(sb)
 }
 
 // Reparse the buffer on the main thread, reusing the retained tree when present

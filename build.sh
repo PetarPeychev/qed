@@ -22,6 +22,10 @@ cc -c -w -O2 -I "$TS/typescript" "$TS/typescript/parser.c" -o "$TS/typescript-pa
 cc -c -w -O2 -I "$TS/typescript" "$TS/typescript/scanner.c" -o "$TS/typescript-scanner.o"
 cc -c -w -O2 -I "$TS/tsx" "$TS/tsx/parser.c" -o "$TS/tsx-parser.o"
 cc -c -w -O2 -I "$TS/tsx" "$TS/tsx/scanner.c" -o "$TS/tsx-scanner.o"
+cc -c -w -O2 -I "$TS/markdown" "$TS/markdown/parser.c" -o "$TS/markdown-parser.o"
+cc -c -w -O2 -I "$TS/markdown" "$TS/markdown/scanner.c" -o "$TS/markdown-scanner.o"
+cc -c -w -O2 -I "$TS/markdown_inline" "$TS/markdown_inline/parser.c" -o "$TS/markdown_inline-parser.o"
+cc -c -w -O2 -I "$TS/markdown_inline" "$TS/markdown_inline/scanner.c" -o "$TS/markdown_inline-scanner.o"
 ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/odin-parser.o" "$TS/odin-scanner.o" \
    "$TS/json-parser.o" \
@@ -29,7 +33,9 @@ ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/c-parser.o" \
    "$TS/javascript-parser.o" "$TS/javascript-scanner.o" \
    "$TS/typescript-parser.o" "$TS/typescript-scanner.o" \
-   "$TS/tsx-parser.o" "$TS/tsx-scanner.o"
+   "$TS/tsx-parser.o" "$TS/tsx-scanner.o" \
+   "$TS/markdown-parser.o" "$TS/markdown-scanner.o" \
+   "$TS/markdown_inline-parser.o" "$TS/markdown_inline-scanner.o"
 
 # Build the editor, exposing vendor/ as a collection
 odin build src -collection:lib=lib -out:qed

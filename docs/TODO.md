@@ -21,7 +21,6 @@ _(none open)_
 
 ## Syntax highlighting (tree-sitter)
 
-- [ ] Markdown (split block/inline grammar).
 - [ ] Shell (bash)
 - [ ] SQL
 - [ ] Lua

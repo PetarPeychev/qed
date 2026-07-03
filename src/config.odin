@@ -57,6 +57,7 @@ COLOR_SYN_STRING := tb2.Color(0x73c936)
 COLOR_SYN_COMMENT := tb2.Color(0xcc8c3c)
 COLOR_SYN_CONSTANT := tb2.Color(0x95a99f)
 COLOR_SYN_ATTRIBUTE := tb2.Color(0xffdd33)
+COLOR_SYN_CODE := tb2.Color(0x95a99f)
 
 COLOR_GIT_ADD := tb2.Color(0x73c936)
 COLOR_GIT_MOD := tb2.Color(0xffdd33)

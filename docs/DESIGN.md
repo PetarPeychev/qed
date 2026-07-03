@@ -128,6 +128,15 @@ documented in `lib/tb2/PATCHES.md`:
   `LANGUAGES` row. Query is structural-only (predicates stripped, see
   `lib/tree_sitter/PATCHES.md`). Parse is incremental + async on big files —
   [notes/perf.md](notes/perf.md).
+- **Injection** (markdown only): a `LANGUAGES` row may carry an `injections` query.
+  After the host paint, `highlight_inject` runs it over the viewport, and for each
+  region freshly re-parses the embedded language (synchronous, viewport-scoped —
+  cheap since paint only reruns on tree/viewport change) and paints its colors over
+  the host at the region's row/col offset. The target language is encoded by
+  capture name (`@inline` → the inline grammar; `@language`+`@content` → the fenced
+  block's named language via `language_of_name`), since qed can't evaluate the
+  upstream `#set!` predicates. `MarkdownInline` is an injection-only `Language`
+  (grammar + query, no file extension).
 - **LSP** (`lsp.odin`): JSON-RPC/stdio, multiple servers concurrent
   (`g_lsps` keyed by server command), one per language; UTF-16 columns converted
   to byte offsets. `didChange` is incremental when the server advertises it.
@@ -155,7 +164,7 @@ multiple buffers, close buffer, fuzzy line jump, project-wide search (`rg`), jum
 list (back/forward), runtime config (`~/.config/qed/config.json`).
 
 Language intelligence: tree-sitter highlight (Odin, JSON, Python, C, JS/JSX,
-TS/TSX); LSP
+TS/TSX, Markdown w/ inline + fenced-code injection); LSP
 diagnostics (ols, pyright, clangd, typescript-language-server) — live syntax +
 on-save semantic, range
 underline, gutter severity, hover pane; git diff gutter (live vs `HEAD`).

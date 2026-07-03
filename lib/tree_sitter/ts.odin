@@ -88,4 +88,6 @@ foreign ts {
 	tree_sitter_javascript :: proc() -> Language ---
 	tree_sitter_typescript :: proc() -> Language ---
 	tree_sitter_tsx :: proc() -> Language ---
+	tree_sitter_markdown :: proc() -> Language ---
+	tree_sitter_markdown_inline :: proc() -> Language ---
 }

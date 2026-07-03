@@ -6,6 +6,7 @@ import "core:strings"
 import "core:testing"
 import "core:thread"
 import "core:time"
+import "lib:tb2"
 
 PERF_FILE :: "lib/tree_sitter/c/parser.c"
 PERF_VIEWPORT :: 60
@@ -18,8 +19,40 @@ HIGHLIGHT_BUDGET_MS :: 50.0
 test_highlight_incremental :: proc(t: ^testing.T) {
 	defer syntax_shutdown()
 	highlight_queries_compile(t)
+	highlight_injection(t)
 	highlight_correctness(t)
 	highlight_perf(t)
+}
+
+// Markdown injection: inline formatting (via the markdown_inline grammar) and
+// fenced-code (via the named language's grammar) must paint their own colors over
+// the host markdown colors, with the correct row/col offset.
+highlight_injection :: proc(t: ^testing.T) {
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	delete(b.path)
+	b.path = strings.clone("test.md")
+	buffer_insert(&b, Cursor{0, 0}, "# Title\n\n- [ ] todo\n- [x] done\n\nSome **bold**, `code`, and a [link](http://x).\n\n```ts\nconst n: number = 1;\n```\n")
+	highlight_update(&b, 0, len(b.lines) - 1)
+
+	row_has :: proc(b: ^Buffer, row: int, color: tb2.Color) -> bool {
+		for c in highlight_colors(b, row) {
+			if c == color {
+				return true
+			}
+		}
+		return false
+	}
+
+	testing.expect(t, row_has(&b, 0, COLOR_SYN_KEYWORD), "heading marker + text should be the title color")
+	testing.expect(t, row_has(&b, 2, COLOR_SYN_KEYWORD), "unchecked [ ] should be the keyword color")
+	testing.expect(t, row_has(&b, 3, COLOR_SYN_STRING), "checked [x] should be the string/green color")
+	testing.expect(t, row_has(&b, 5, COLOR_SYN_ATTRIBUTE), "**bold** should be injected (strong)")
+	testing.expect(t, row_has(&b, 5, COLOR_SYN_CODE), "`code` span should be the subtle code gray")
+	testing.expect(t, row_has(&b, 5, COLOR_SYN_TYPE), "[link](url) should be injected blue")
+	testing.expect(t, row_has(&b, 7, COLOR_SYN_CODE), "```ts fence + info string should be the code gray")
+	testing.expect(t, row_has(&b, 8, COLOR_SYN_KEYWORD), "fenced ts `const` should be injected as a keyword")
+	testing.expect(t, row_has(&b, 8, COLOR_SYN_TYPE), "fenced ts `number` should be injected as a type")
 }
 
 // Every language that declares a grammar must have a query that compiles against
