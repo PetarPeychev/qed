@@ -509,21 +509,61 @@ _(none open)_
   drives comment token, tree-sitter grammar, and LSP server selection, so adding a
   language is one table entry instead of edits across files. Do this once "More
   languages" makes the duplication real (compression rule), not before.
+- [ ] **Open-buffer switcher.** A quick picker over the *currently open buffers*
+  (by name/path), reusing the picker pane + `fuzzy_rank` (like the `Alt+f` line
+  jump). Today the only way to switch buffers is the `Ctrl+O` workspace
+  file-open, which is overkill for hopping between buffers that are already open —
+  and it re-opens rather than jumping. Fuzzy-filter open buffer names, Enter
+  switches to that buffer; show the modified `[*]` flag in the list; optionally
+  order by most-recently-used. (Neovim's buffer picker / `:b`.) Binding TBD — e.g.
+  `Alt+b` (confirm a free key at implementation).
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
 
-**Syntax highlighting** (tree-sitter). Odin shipped (§10 Done); what remains:
+**Syntax highlighting** (tree-sitter). Odin shipped (§10 Done); the highlighter is
+now per-language (`[Language]Syntax` in `src/highlight.odin`), so each new grammar
+is one vendor+wire step. Adding a language = vendor `parser.c` (+`scanner.c`) and
+its `highlights.scm` under `lib/tree_sitter/<lang>/`, add a `tree_sitter_<lang>`
+FFI decl, a `build.sh` compile line, and fill the row in `LANGUAGES`
+(`src/language.odin`) — highlight-only unless an LSP server is also wired. Tick
+each grammar as it lands:
 
-- [ ] **More languages.** Extension→grammar dispatch; add grammars in batches
-  (shell, Python, JS/TS, JSON, Markdown, C, Lua).
+- [x] **JSON** (highlight).
+- [x] **Python** (highlight + `pyright` LSP).
+- [ ] **C / C++**
+- [ ] **Go**
+- [ ] **Rust**
+- [ ] **JavaScript / TypeScript** — heavy (TS is a large, dual grammar).
+- [ ] **Shell** (bash)
+- [ ] **Lua**
+- [ ] **SQL**
+- [ ] **YAML**
+- [ ] **TOML**
+- [ ] **Markdown** — split block/inline grammar (two parsers).
+- [ ] **Query predicate evaluator.** Every vendored `highlights.scm` has its
+  Neovim-flavored predicate-gated rules (`#match?`/`#eq?`/`#any-of?`/`#lua-match?`)
+  *manually stripped* (see `lib/tree_sitter/PATCHES.md`) because qed evaluates no
+  predicates, so those rules would otherwise match unconditionally. Implement
+  predicate evaluation (via `ts_query_predicates_for_pattern`) so upstream queries
+  work unmodified and name-shape heuristics (identifier-as-type / -constant, builtin
+  lists) light up — removing the per-language stripping step entirely.
+- [ ] **Dynamic grammar loading (idea/exploration).** Add a language without
+  vendoring source + rebuilding — e.g. `dlopen` a prebuilt grammar `.so` and load
+  its `.scm` from a config-declared path at runtime. This is in tension with the
+  vendored/reproducible, no-plugins philosophy, so treat it as an exploration:
+  weigh reproducibility and self-containment against the friction of the
+  vendor+rebuild loop before committing to it.
 - [ ] **Incremental re-parse.** *(optional — only if the full reparse ever
   stutters.)* Tree-sitter's intended mode: feed each buffer edit as an `InputEdit`
   (byte + row/col ranges) so it reuses unchanged subtrees. The added work is
   translating our edits into that format and holding the old tree per buffer.
 
 **LSP.** The client plumbing (spawn, initialize, `didOpen`/`didChange` sync)
-shipped with diagnostics (§10 Done); each capability below is its own slice.
-Ordered by how much they get used.
+shipped with diagnostics (§10 Done). It now runs **multiple servers concurrently**
+(`g_lsps: map[string]^Lsp` keyed by the server command in `src/lsp.odin`), one per
+language, each buffer routed to its own — so e.g. `ols` and `pyright` serve their
+buffers side by side; server commands may carry args (`pyright-langserver --stdio`).
+Each capability below is its own slice, ordered by how much they get used.
 
 - [ ] **Inline diagnostic virtual text.** Dimmed end-of-line message text on
   diagnostic lines (the fast-follow split out of the shipped diagnostics ticket).

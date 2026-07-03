@@ -4,8 +4,6 @@ import "core:strings"
 import "lib:tb2"
 import ts "lib:tree_sitter"
 
-HIGHLIGHTS := #load("../lib/tree_sitter/highlights.scm")
-
 Highlight :: struct {
 	computed: bool,
 	valid:    bool,
@@ -24,54 +22,62 @@ Syntax :: struct {
 }
 
 @(private = "file")
-g_syntax: Syntax
+g_syntaxes: [Language]Syntax
 
-syntax_ensure :: proc(grammar: proc "c" () -> ts.Language) -> bool {
-	if g_syntax.tried {
-		return g_syntax.ready
+syntax_ensure :: proc(language: Language) -> bool {
+	s := &g_syntaxes[language]
+	if s.tried {
+		return s.ready
 	}
-	g_syntax.tried = true
+	s.tried = true
 
-	lang := grammar()
-	g_syntax.parser = ts.parser_new()
-	if !ts.parser_set_language(g_syntax.parser, lang) {
+	info := LANGUAGES[language]
+	if info.grammar == nil || info.highlights == nil {
+		return false
+	}
+
+	lang := info.grammar()
+	s.parser = ts.parser_new()
+	if !ts.parser_set_language(s.parser, lang) {
 		return false
 	}
 
 	err_off: u32
 	err_type: ts.QueryError
-	g_syntax.query = ts.query_new(lang, raw_data(HIGHLIGHTS), u32(len(HIGHLIGHTS)), &err_off, &err_type)
-	if g_syntax.query == nil {
+	s.query = ts.query_new(lang, raw_data(info.highlights), u32(len(info.highlights)), &err_off, &err_type)
+	if s.query == nil {
 		return false
 	}
-	g_syntax.cursor = ts.query_cursor_new()
+	s.cursor = ts.query_cursor_new()
 
-	n := ts.query_capture_count(g_syntax.query)
+	n := ts.query_capture_count(s.query)
 	for id in 0 ..< n {
 		length: u32
-		name_ptr := ts.query_capture_name_for_id(g_syntax.query, id, &length)
+		name_ptr := ts.query_capture_name_for_id(s.query, id, &length)
 		name := string(name_ptr[:length])
 		color, ok := syntax_capture_color(name)
-		append(&g_syntax.colors, color)
-		append(&g_syntax.paint, ok)
+		append(&s.colors, color)
+		append(&s.paint, ok)
 	}
 
-	g_syntax.ready = true
+	s.ready = true
 	return true
 }
 
 syntax_shutdown :: proc() {
-	if g_syntax.cursor != nil {
-		ts.query_cursor_delete(g_syntax.cursor)
+	for &s in g_syntaxes {
+		if s.cursor != nil {
+			ts.query_cursor_delete(s.cursor)
+		}
+		if s.query != nil {
+			ts.query_delete(s.query)
+		}
+		if s.parser != nil {
+			ts.parser_delete(s.parser)
+		}
+		delete(s.colors)
+		delete(s.paint)
 	}
-	if g_syntax.query != nil {
-		ts.query_delete(g_syntax.query)
-	}
-	if g_syntax.parser != nil {
-		ts.parser_delete(g_syntax.parser)
-	}
-	delete(g_syntax.colors)
-	delete(g_syntax.paint)
 }
 
 syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
@@ -100,13 +106,14 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 }
 
 highlight_update :: proc(b: ^Buffer) {
-	grammar := language_info(b.path).grammar
-	if grammar == nil || !syntax_ensure(grammar) {
+	language := language_of(b.path)
+	if !syntax_ensure(language) {
 		b.hl.valid = false
 		b.hl.computed = true
 		b.hl.rev = b.rev
 		return
 	}
+	s := &g_syntaxes[language]
 	if b.hl.computed && b.hl.valid && b.hl.rev == b.rev {
 		return
 	}
@@ -128,7 +135,7 @@ highlight_update :: proc(b: ^Buffer) {
 
 	snapshot := buffer_snapshot(b)
 	defer delete(snapshot)
-	tree := ts.parser_parse_string(g_syntax.parser, nil, raw_data(snapshot), u32(len(snapshot)))
+	tree := ts.parser_parse_string(s.parser, nil, raw_data(snapshot), u32(len(snapshot)))
 	if tree == nil {
 		b.hl.valid = false
 		b.hl.computed = true
@@ -137,17 +144,17 @@ highlight_update :: proc(b: ^Buffer) {
 	}
 	defer ts.tree_delete(tree)
 
-	ts.query_cursor_exec(g_syntax.cursor, g_syntax.query, ts.tree_root_node(tree))
+	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(tree))
 	match: ts.QueryMatch
-	for ts.query_cursor_next_match(g_syntax.cursor, &match) {
+	for ts.query_cursor_next_match(s.cursor, &match) {
 		for i in 0 ..< int(match.capture_count) {
 			cap := match.captures[i]
-			if int(cap.index) >= len(g_syntax.paint) || !g_syntax.paint[cap.index] {
+			if int(cap.index) >= len(s.paint) || !s.paint[cap.index] {
 				continue
 			}
 			sp := ts.node_start_point(cap.node)
 			ep := ts.node_end_point(cap.node)
-			highlight_paint(&b.hl, int(sp.row), int(sp.column), int(ep.row), int(ep.column), g_syntax.colors[cap.index])
+			highlight_paint(&b.hl, int(sp.row), int(sp.column), int(ep.row), int(ep.column), s.colors[cap.index])
 		}
 	}
 
