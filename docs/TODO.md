@@ -21,16 +21,11 @@ _(none open)_
 
 ## Syntax highlighting (tree-sitter)
 
-- [ ] C++
-- [ ] Go
-- [ ] Rust
 - [ ] JavaScript / TypeScript (heavy, dual grammar).
-- [ ] Shell (bash)
-- [ ] Lua
-- [ ] SQL
-- [ ] YAML
-- [ ] TOML
 - [ ] Markdown (split block/inline grammar).
+- [ ] Shell (bash)
+- [ ] SQL
+- [ ] Lua
 - [ ] Query predicate evaluator (`#match?`/`#eq?`/…) so upstream `.scm` work unstripped.
 - [ ] Dynamic grammar loading via `dlopen` (exploration — tension with vendored/no-plugins).
 
