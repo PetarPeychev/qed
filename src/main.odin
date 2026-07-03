@@ -19,8 +19,12 @@ main :: proc() {
 	if len(os.args) == 2 {
 		path = os.args[1]
 	}
+	config_message, config_error := config_load()
 	editor := editor_init(path)
 	defer editor_shutdown(&editor)
+
+	editor.message = config_message
+	editor.message_error = config_error
 
 
 	ev: tb2.Event
@@ -32,7 +36,7 @@ main :: proc() {
 		got_event := false
 		for !got_event {
 			if lsp_running() {
-				if tb2.peek_event(&ev, LSP_POLL_MS) == .Ok {
+				if tb2.peek_event(&ev, i32(LSP_POLL_MS)) == .Ok {
 					got_event = true
 				}
 				if lsp_pump(&editor) && !got_event {
@@ -53,7 +57,7 @@ main :: proc() {
 			   ev.ch == 0 &&
 			   u8(ev.mod) == 0 {
 				next: tb2.Event
-				if tb2.peek_event(&next, ALT_ESC_TIMEOUT_MS) == .Ok && next.type == .Key && next.ch != 0 {
+				if tb2.peek_event(&next, i32(ALT_ESC_TIMEOUT_MS)) == .Ok && next.type == .Key && next.ch != 0 {
 					next.mod = tb2.Mod(u8(next.mod) | u8(tb2.Mod.Alt))
 					ev = next
 				}

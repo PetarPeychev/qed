@@ -2,9 +2,10 @@
 
 `qed` is a personal terminal text editor written in Odin, in the spirit of
 micro/nano but with GUI-style keybinds. It targets a single author (Petar) — so
-there are **no plugins, no theming, no configuration files, and no
-backwards-compatibility obligations**. Everything is hardcoded; we just keep the
-knobs in one place.
+there are **no plugins and no backwards-compatibility obligations**. The tunable
+knobs — colors, sizes, timeouts, keybinds — live as compiled-in defaults in
+`config.odin`; a single JSON config file (`~/.config/qed/config.json`) overrides
+them at startup. There is still exactly one place per knob.
 
 This file is the durable guide loaded every session. The detailed architecture
 and the working TODO list live in [docs/DESIGN.md](docs/DESIGN.md).
@@ -119,9 +120,10 @@ Concretely, this means:
 | Line endings    | Detect & preserve LF/CRLF and trailing-newline per file. |
 | Mouse           | Full from the start: click-position, drag-select, wheel-scroll. |
 | Rendering       | Full redraw per event; termbox diffs internally. Truecolor output mode. |
-| Colors          | gruber palette (ported from micro), hardcoded hex in `config.odin`. |
+| Colors          | gruber palette (ported from micro); default hex in `config.odin`, overridable via the config's `theme`. |
 | Gutter          | Left line-number gutter in the text area; current line emphasized. |
-| Commands        | Direct CTRL keybinds now; floating command palette later. |
+| Commands        | Direct CTRL keybinds (rebindable by name in the config); floating command palette. |
+| Config          | `config.odin` = compiled-in defaults; `~/.config/qed/config.json` overrides at startup, auto-materialized with every key. |
 | Status bar      | Filename + modified flag, plus a message line below for errors / prompts / status. |
 | Search          | Deferred entirely (in-buffer and project-wide). |
 | Tests           | `core:testing` unit tests for buffer/edit/cursor/undo. |
@@ -129,7 +131,7 @@ Concretely, this means:
 
 ## Out of scope (deliberately)
 
-Plugin system, configuration files, multiple color schemes, split panes, tabs,
+Plugin system, multiple bundled/switchable color schemes, split panes, tabs,
 multiple visible buffers, backwards compatibility. There is exactly one visible
 text buffer; everything else (file tree, autocomplete, search overlay, inline
 diagnostics) will be an auxiliary pane or floating window layered over it — but

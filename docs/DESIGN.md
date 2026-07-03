@@ -466,27 +466,27 @@ _(none open)_
 
 ### Features
 
-- [ ] **Runtime configuration (load on startup).** Load `~/.config/qed/config.json`
-  (honoring `$XDG_CONFIG_HOME`) at startup so changing colors / tab width / keybinds /
-  etc. no longer needs `./build.sh` — the `config.odin` values become compiled-in
-  *defaults* that the file overrides; a missing file keeps the defaults, a malformed
-  one reports on the message line and falls back to defaults. Format is JSON (via
-  `core:encoding/json`, already vendored for the LSP client). Scope is every
-  non-structural knob in `config.odin` — colors (hex strings), tab width, scroll
-  margin, wheel lines, timeouts, pane sizes, etc. — **and** keybinds. The rebindable
-  surface is the `commands` table (`src/palette.odin`): bind by command *name* →
-  a key string (`"Ctrl+S"`, `"Alt+f"`, `"Ctrl+/"`), parsed into the table's
-  `key: tb2.Key` (Ctrl+letter = the control byte `letter&0x1f`, i.e. `Ctrl_A`=1…) or
-  `alt_ch: rune`. Primitive editing/movement keys (arrows, Enter, Tab, Backspace,
-  Delete, Home/End, PgUp/PgDn and their Ctrl/Shift/Alt behaviors) and the `Ctrl+P`
-  palette launcher stay fixed — they encode modifier-aware editing, not simple action
-  dispatch. Implementation note: the `config.odin` constants must become mutable
-  globals (untyped `::` → typed `:=`); none are used in compile-time-only positions,
-  but a few call sites then need casts — `f64(DOUBLE_CLICK_MS)` and
-  `i32(LSP_POLL_MS)` / `i32(ALT_ESC_TIMEOUT_MS)` for `tb2.peek_event` — and
-  `STATUS_ROWS` can stay `::` (structural). Reverses the "no config files, everything
-  hardcoded" stance, so update CLAUDE.md's Locked-decisions and Out-of-scope tables
-  when it ships.
+- [x] **Runtime configuration (load on startup).** `src/settings.odin` loads
+  `~/.config/qed/config.json` (honoring `$XDG_CONFIG_HOME`) before `editor_init`;
+  the `config.odin` constants became mutable typed globals (`::` → `:=`, except the
+  structural `STATUS_ROWS`), with casts at a few call sites (`f64(DOUBLE_CLICK_MS)`,
+  `i32(LSP_POLL_MS)` / `i32(ALT_ESC_TIMEOUT_MS)`). Scope: every non-structural
+  scalar, all colors, and keybinds. **Always-materialized policy** (chosen over the
+  original "missing file keeps defaults silently"): a missing file is created with
+  every key; missing keys are written back with their defaults so the file always
+  shows every knob; an invalid value (bad type / malformed hex / unparseable
+  keybind) keeps the default at runtime, is named on the message line, and is left
+  untouched in the file (never silently overwritten). A syntactically broken file
+  falls back to defaults and is not rewritten. Colors live under a nested `theme`
+  object with readable names (`foreground`, `background`, `syntax_keyword`,
+  `git_added`, …) as `#rrggbb` strings. Keybinds bind command *name* → key string
+  (`"Ctrl+s"`, `"Alt+f"`, `"Ctrl+/"`); `Ctrl+letter` is case-insensitive and shown
+  lowercase (no Shift is visible to a terminal), `Alt+` case is significant. `""`
+  is a valid binding meaning unbound / palette-only (e.g. Toggle Indent). Primitive
+  editing/movement keys and the `Ctrl+P` palette launcher stay fixed. `commands`
+  (`src/palette.odin`) is the rebindable surface; `parse_keybind` covers
+  `Ctrl+letter`, `Ctrl+/` `~` `\`, and `Alt+<char>` — anything gnarlier is reported
+  invalid and keeps its default.
 - [ ] **In-buffer find**, then find & replace. Incremental search driven by the
   palette's prompt input: next/prev, wrap, match highlight; then replace one/all.
   (Reuses the floating pane.) Binds match the micro config: `Ctrl+F` opens find,

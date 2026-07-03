@@ -241,7 +241,7 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		pos := editor_mouse_cursor(editor, int(ev.x), int(ev.y))
 		recent :=
 			editor.click_count > 0 &&
-			time.duration_milliseconds(time.tick_since(editor.last_click_tick)) <= DOUBLE_CLICK_MS &&
+			time.duration_milliseconds(time.tick_since(editor.last_click_tick)) <= f64(DOUBLE_CLICK_MS) &&
 			pos == editor.last_click_pos
 		editor.click_count = editor.click_count + 1 if recent else 1
 		if editor.click_count > 3 {
