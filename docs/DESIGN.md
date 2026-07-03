@@ -635,7 +635,13 @@ Each capability below is its own slice, ordered by how much they get used.
   latency); git-diff/LSP throttling and a size threshold proved unnecessary once
   highlight was fixed.
 - [ ] **Coalesce feedback-only work off the per-keystroke path.** *(future — only
-  if editing ever stutters again; measured, not urgent.)* After the highlight fix,
+  if editing ever stutters again; measured, not urgent.)* **Update:** largely overtaken by the
+  "Revisit large-file performance" work above — highlight's incremental reparse is now async, the
+  LSP `didChange` is now an incremental diff (near-zero for incremental-capable servers), and both
+  highlight and git are gated off entirely above the 2 MB big-file cutoff. What remains here is
+  `buffer_recompute_modified` (still scans row 0 → first change per edit; a candidate for O(1)
+  incremental dirty tracking) and the git-gutter algorithm for large-but-sub-cutoff files. Original
+  note follows. After the highlight fix,
   the remaining per-keystroke cost on a 118k-line file (~24 ms, editing near EOF)
   is dominated by three *feedback-only* passes that don't need to run on the
   synchronous redraw or on every keystroke of a fast typing burst: `git_gutter_update`
@@ -674,14 +680,34 @@ Each capability below is its own slice, ordered by how much they get used.
   floor (~224 ms: read + `strings.split` + ~118k per-line allocs + redundant `saved` snapshot —
   direction (b): an arena for line storage / lighter dirty-tracking, but it touches the core
   `Buffer`, so measure hard first) is untouched. Both fold into the item below.
-- [ ] **Revisit large-file performance on the 500k-line Odin grammar.** The async-parse work
-  was profiled and tuned on the 118k-line C `lib/tree_sitter/c/parser.c`. The vendored Odin
-  grammar's own generated `lib/tree_sitter/odin/parser.c` is **~516k lines** (~11 MB) — a ~4×
-  larger stress case that also opens with the real `ols` LSP attached. Re-measure the whole
-  open + edit pipeline on it (background cold-parse wall time, per-edit incremental highlight,
-  git diff, `buffer_open` floor, memory) and address whatever dominates. Likely surfaces: the
-  remaining synchronous cold-`git_gutter_update` blocker before first paint; the `buffer_open`
-  per-line-allocation floor (direction (b) above); whether a single 516k-line background parse
-  is fast enough or wants incremental `InputEdit` feeding / chunking; and whether the ~7 ms
-  incremental-edit budget holds at 4× the line count. Measure first, then decide (compression +
-  no-premature-optimization rules).
+- [x] **Revisit large-file performance on huge files (Odin grammar, sqlite).** Re-profiled the
+  full open+edit pipeline on the 515k-line `lib/tree_sitter/odin/parser.c` (~14 MB) and, as a
+  representative *real-code* case, the sqlite3 amalgamation (~260k lines, 9 MB). Findings: the
+  viewport-scoped query is a non-issue (~0.1 ms, size-independent); the per-edit **incremental
+  parse** is the highlight wall (~168 ms mid-file on the generated `parser.c`, a pathological
+  single-giant-node file; ~110 ms position-independent on real sqlite code — sub-linear ~O(log n)
+  with a large constant); and on a C file with clangd attached the true per-keystroke killer was
+  the **LSP full-text `didChange`** (~307 ms of snapshot + JSON-escape + format, before the 14 MB
+  blocking pipe write). Fixed on three axes: **(1) async incremental highlight** — the incremental
+  reparse now runs on the background worker (same `HighlightJob` mechanism as the cold parse) via a
+  cheap `ts_tree_copy` + replayed `pending` edits; `highlight_update` dispatches and returns,
+  keeping the last painted colors (stale-but-colored) until the parse lands, then adopts + repaints,
+  chaining another job if edits arrived meanwhile (converges on typing pause). Small buffers stay
+  synchronous. Thread-safety rests on `ts_tree_copy` making the worker's `tree_edit`/`parse`
+  copy-on-write against the retained tree, and the main thread doing no refcount-affecting op on a
+  shared tree while the worker runs (returns early during a job; `thread.destroy` joins before any
+  delete). Scrolling now requeries without reparsing. **(2) incremental LSP `didChange`** — every
+  primitive edit records an `LspChange` (UTF-16 range + text) at the `buffer_insert`/`buffer_delete`
+  choke points, and `didChange` sends only the batched diff (~100 bytes for a keystroke) instead of
+  the whole file; gated on the server advertising Incremental `textDocumentSync` (parsed from the
+  initialize response), else falls back to full-text. Reconstruction regression test in
+  `src/lsp_test.odin` replays the changes and asserts byte-identity, including astral/surrogate and
+  cross-line-break cases. **(3) big-file cutoff** — files ≥ `BIG_FILE_BYTES` (2 MB, a config knob)
+  open with `buffer.big` set; `editor_render` skips highlight + git-gutter and `lsp_sync` skips the
+  attach, so a monster file is a fast plain-text buffer (status bar shows `big`). Net per-keystroke
+  on the 515k file: ~291 ms → ~82 ms with the fixes on, and ~0 (plain) in big-file mode. Perf test
+  now asserts the async path dispatches without blocking and repaints after settling.
+  **Still open (own items below):** the synchronous cold `git_gutter_update` before first paint and
+  the `buffer_open` per-line-allocation floor are untouched (they only bite files *under* the 2 MB
+  cutoff, so lower urgency now); the git-gutter *algorithm* (whole-buffer hash + Myers, ~45 ms on a
+  14 MB file) is only gated off above the cutoff, not made cheaper for large-but-sub-cutoff files.

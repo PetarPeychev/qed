@@ -600,8 +600,10 @@ editor_render :: proc(editor: ^Editor) {
 		editor_render_welcome(editor)
 	} else {
 		_, vh := editor_viewport(editor)
-		highlight_update(editor_buffer(editor), editor.scroll_row, editor.scroll_row + vh - 1)
-		git_gutter_update(editor_buffer(editor))
+		if !editor_buffer(editor).big {
+			highlight_update(editor_buffer(editor), editor.scroll_row, editor.scroll_row + vh - 1)
+			git_gutter_update(editor_buffer(editor))
+		}
 		editor_render_buffer(editor)
 	}
 
@@ -764,7 +766,9 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
 	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", TAB_WIDTH)
 	right := language_info(b.path).name
-	if lsp := lsp_status_label(b); lsp != "" {
+	if b.big {
+		right = fmt.tprintf("%s  big", right)
+	} else if lsp := lsp_status_label(b); lsp != "" {
 		right = fmt.tprintf("%s  %s", right, lsp)
 	}
 	right = fmt.tprintf("%s  %s", right, indent)

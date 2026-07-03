@@ -27,6 +27,8 @@ Buffer :: struct {
 	diags:         [dynamic]Diagnostic,
 	lsp_open:      bool,
 	lsp_rev:       u64,
+	lsp_changes:   [dynamic]LspChange,
+	big:           bool,
 }
 
 
@@ -82,6 +84,8 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	git_destroy(&buffer.git)
 	buffer_clear_diags(buffer)
 	delete(buffer.diags)
+	buffer_lsp_changes_clear(buffer)
+	delete(buffer.lsp_changes)
 }
 
 buffer_snapshot :: proc(buffer: ^Buffer) -> string {
@@ -150,6 +154,7 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	clear(&buffer.lines)
 
 	text := string(data)
+	buffer.big = len(data) >= BIG_FILE_BYTES
 	buffer.line_ending = .CRLF if strings.contains(text, "\r\n") else .LF
 	buffer.final_newline = len(text) > 0 && text[len(text) - 1] == '\n'
 
@@ -301,6 +306,7 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 		old_end_point = {u32(at.row), u32(at.col)},
 		new_end_point = {u32(end.row), u32(end.col)},
 	})
+	lsp_change_record(buffer, at, at, text)
 
 	buffer_recompute_modified(buffer)
 	buffer.rev += 1
@@ -317,6 +323,7 @@ buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 		old_end_point = {u32(to.row), u32(to.col)},
 		new_end_point = {u32(from.row), u32(from.col)},
 	})
+	lsp_change_record(buffer, from, to, "")
 
 	sb := strings.builder_make()
 

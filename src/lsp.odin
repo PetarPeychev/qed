@@ -33,7 +33,20 @@ Lsp :: struct {
 	next_id:     int,
 	init_id:     int,
 	initialized: bool,
+	sync_kind:   int,
 }
+
+// One entry in a `textDocument/didChange` batch: an LSP range (UTF-16 columns)
+// in pre-change coordinates plus its replacement text. Recorded per primitive
+// edit so large files send only the diff instead of the whole document.
+LspChange :: struct {
+	start_line, start_char: int,
+	end_line, end_char:     int,
+	text:                   string,
+}
+
+LSP_SYNC_FULL :: 1
+LSP_SYNC_INCREMENTAL :: 2
 
 @(private = "file")
 g_lsps: map[string]^Lsp
@@ -174,6 +187,7 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 	for &b in editor.buffers {
 		if language_info(b.path).lsp_server == lsp.server {
 			buffer_clear_diags(&b)
+			buffer_lsp_changes_clear(&b)
 			b.lsp_open = false
 		}
 	}
@@ -193,6 +207,9 @@ lsp_send :: proc(editor: ^Editor, lsp: ^Lsp, body: string) {
 
 lsp_sync :: proc(editor: ^Editor) {
 	for &b in editor.buffers {
+		if b.big {
+			continue
+		}
 		server := language_info(b.path).lsp_server
 		if server == "" {
 			continue
@@ -230,6 +247,7 @@ lsp_did_open :: proc(editor: ^Editor, b: ^Buffer) {
 	lsp_send(editor, lsp, body)
 	b.lsp_open = true
 	b.lsp_rev = b.rev
+	buffer_lsp_changes_clear(b)
 }
 
 lsp_did_change :: proc(editor: ^Editor, b: ^Buffer) {
@@ -237,15 +255,41 @@ lsp_did_change :: proc(editor: ^Editor, b: ^Buffer) {
 	if !ok {
 		return
 	}
-	text := buffer_snapshot(b)
-	defer delete(text)
+
+	changes: string
+	if lsp.sync_kind == LSP_SYNC_INCREMENTAL {
+		sb := strings.builder_make(context.temp_allocator)
+		strings.write_byte(&sb, '[')
+		for ch, i in b.lsp_changes {
+			if i > 0 {
+				strings.write_byte(&sb, ',')
+			}
+			fmt.sbprintf(
+				&sb,
+				`{{"range":{{"start":{{"line":%d,"character":%d}},"end":{{"line":%d,"character":%d}}}},"text":%s}}`,
+				ch.start_line,
+				ch.start_char,
+				ch.end_line,
+				ch.end_char,
+				lsp_json_string(ch.text),
+			)
+		}
+		strings.write_byte(&sb, ']')
+		changes = strings.to_string(sb)
+	} else {
+		text := buffer_snapshot(b)
+		defer delete(text)
+		changes = fmt.tprintf(`[{{"text":%s}}]`, lsp_json_string(text))
+	}
+
 	body := fmt.tprintf(
-		`{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":%s,"version":%d}},"contentChanges":[{{"text":%s}}]}}}}`,
+		`{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":%s,"version":%d}},"contentChanges":%s}}}}`,
 		lsp_json_string(lsp_uri(b.path)),
 		b.rev,
-		lsp_json_string(text),
+		changes,
 	)
 	lsp_send(editor, lsp, body)
+	buffer_lsp_changes_clear(b)
 	b.lsp_rev = b.rev
 }
 
@@ -390,11 +434,36 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 	if id_v, has_id := obj["id"]; has_id {
 		if id, ok := lsp_num(id_v); ok && id == lsp.init_id && !lsp.initialized {
 			lsp.initialized = true
+			lsp.sync_kind = lsp_sync_kind(obj)
 			lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
 			return true
 		}
 	}
 	return false
+}
+
+// The server's `capabilities.textDocumentSync` decides whether we may send
+// range-based (incremental) changes; a Full-only server would misread a ranged
+// change as the whole new document, so anything but an explicit Incremental
+// falls back to full-text sends.
+lsp_sync_kind :: proc(obj: json.Object) -> int {
+	result := obj["result"].(json.Object) or_else nil
+	caps := result["capabilities"].(json.Object) or_else nil
+	sync, has := caps["textDocumentSync"]
+	if !has {
+		return LSP_SYNC_FULL
+	}
+	#partial switch s in sync {
+	case json.Object:
+		if n, ok := lsp_num(s["change"]); ok {
+			return n
+		}
+	case:
+		if n, ok := lsp_num(sync); ok {
+			return n
+		}
+	}
+	return LSP_SYNC_FULL
 }
 
 lsp_handle_diagnostics :: proc(editor: ^Editor, obj: json.Object) -> bool {
@@ -466,6 +535,42 @@ col_from_utf16 :: proc(text: []u8, target: int) -> int {
 		i += n
 	}
 	return len(text)
+}
+
+col_to_utf16 :: proc(text: []u8, byte_col: int) -> int {
+	units := 0
+	end := min(byte_col, len(text))
+	for i := 0; i < end; {
+		r, n := utf8.decode_rune(text[i:])
+		units += 2 if r >= 0x10000 else 1
+		i += n
+	}
+	return units
+}
+
+// Record one edit as an LSP change range (only while the doc is open with a
+// server; otherwise the next `didOpen` full-text send covers it). Coordinates
+// are taken from the current line content, which is the pre-change state for the
+// recorded range: `buffer_insert` records after mutation (its prefix up to `at`
+// is untouched) and `buffer_delete` before.
+lsp_change_record :: proc(b: ^Buffer, start, end: Cursor, text: string) {
+	if !b.lsp_open {
+		return
+	}
+	append(&b.lsp_changes, LspChange{
+		start_line = start.row,
+		start_char = col_to_utf16(b.lines[start.row].text[:], start.col),
+		end_line   = end.row,
+		end_char   = col_to_utf16(b.lines[end.row].text[:], end.col),
+		text       = strings.clone(text),
+	})
+}
+
+buffer_lsp_changes_clear :: proc(b: ^Buffer) {
+	for ch in b.lsp_changes {
+		delete(ch.text)
+	}
+	clear(&b.lsp_changes)
 }
 
 lsp_uri :: proc(path: string) -> string {

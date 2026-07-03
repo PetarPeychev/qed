@@ -20,6 +20,8 @@ Highlight :: struct {
 HighlightJob :: struct {
 	language: Language,
 	snapshot: string,
+	edits:    [dynamic]ts.InputEdit,
+	old_tree: ^ts.Tree,
 	thread:   ^thread.Thread,
 	tree:     ^ts.Tree,
 }
@@ -133,6 +135,9 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 	}
 	s := &g_syntaxes[language]
 
+	// Adopt a finished background parse. A parse still in flight keeps the last
+	// painted colors on screen (stale but colored) rather than blanking them.
+	tree_fresh := false
 	if b.hl.job != nil {
 		if !thread.is_done(b.hl.job.thread) {
 			return
@@ -143,20 +148,42 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 			b.hl.rev = b.rev
 			return
 		}
+		tree_fresh = true
 	}
 
 	vtop := clamp(top, 0, max(0, len(b.lines) - 1))
 	vbot := clamp(bot, 0, max(0, len(b.lines) - 1))
 
-	if b.hl.computed &&
+	// Reparse when the retained tree no longer reflects the buffer (no tree yet,
+	// or edits have accumulated). Large buffers parse on a background thread and
+	// keep showing the previous colors until it lands; small buffers parse inline
+	// (no thread overhead, no uncolored flash).
+	if b.hl.tree == nil || len(b.hl.pending) > 0 {
+		snapshot := buffer_snapshot(b)
+		if len(snapshot) >= HIGHLIGHT_ASYNC_BYTES {
+			highlight_job_start(b, language, snapshot)
+			return
+		}
+		if !highlight_reparse(b, s, snapshot) {
+			return
+		}
+		tree_fresh = true
+	}
+
+	// Requery + repaint only when the tree changed or the viewport moved; a pure
+	// re-render at rest is a no-op.
+	if !tree_fresh &&
+	   b.hl.computed &&
 	   b.hl.valid &&
 	   b.hl.rev == b.rev &&
 	   b.hl.top == vtop &&
-	   b.hl.bot == vbot &&
-	   len(b.hl.pending) == 0 {
+	   b.hl.bot == vbot {
 		return
 	}
+	highlight_query_paint(b, s, vtop, vbot)
+}
 
+highlight_query_paint :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
 	for len(b.hl.colors) < len(b.lines) {
 		append(&b.hl.colors, make([dynamic]tb2.Color))
 	}
@@ -170,18 +197,6 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 		for i in 0 ..< n {
 			b.hl.colors[r][i] = COLOR_FG
 		}
-	}
-
-	if b.hl.tree == nil {
-		snapshot := buffer_snapshot(b)
-		if len(snapshot) >= HIGHLIGHT_ASYNC_BYTES {
-			highlight_job_start(b, language, snapshot)
-			return
-		}
-		delete(snapshot)
-	}
-	if !highlight_reparse(b, s) {
-		return
 	}
 
 	ts.query_cursor_set_point_range(s.cursor, {u32(vtop), 0}, {u32(vbot) + 1, 0})
@@ -207,9 +222,10 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 }
 
 // Reparse the buffer on the main thread, reusing the retained tree when present
-// (incremental). Returns false if the parse failed, having marked the buffer's
-// highlight invalid so the caller aborts.
-highlight_reparse :: proc(b: ^Buffer, s: ^Syntax) -> bool {
+// (incremental). Takes ownership of `snapshot`. Returns false if the parse
+// failed, having marked the buffer's highlight invalid so the caller aborts.
+highlight_reparse :: proc(b: ^Buffer, s: ^Syntax, snapshot: string) -> bool {
+	defer delete(snapshot)
 	if b.hl.tree != nil {
 		for &edit in b.hl.pending {
 			ts.tree_edit(b.hl.tree, &edit)
@@ -217,8 +233,6 @@ highlight_reparse :: proc(b: ^Buffer, s: ^Syntax) -> bool {
 	}
 	clear(&b.hl.pending)
 
-	snapshot := buffer_snapshot(b)
-	defer delete(snapshot)
 	tree := ts.parser_parse_string(s.parser, b.hl.tree, raw_data(snapshot), u32(len(snapshot)))
 	if tree == nil {
 		if b.hl.tree != nil {
@@ -237,15 +251,23 @@ highlight_reparse :: proc(b: ^Buffer, s: ^Syntax) -> bool {
 	return true
 }
 
-// Cold parses of large files run on a background thread so input stays
-// responsive; the buffer shows plain text until the tree is adopted. The job
-// owns `snapshot` (freed on adopt/teardown) and parses with its own parser so it
-// shares no tree-sitter state with the main thread.
+// Parses of large buffers run on a background thread so input stays responsive.
+// A cold parse (no retained tree) shows plain text until adopted; an incremental
+// reparse keeps the previous colors. The job owns `snapshot` and a private
+// `old_tree` copy (freed on adopt/teardown) and parses with its own parser, so it
+// shares no mutable tree-sitter state with the main thread — the copy makes
+// `tree_edit`/`parse` on the worker copy-on-write against the retained tree.
 highlight_job_start :: proc(b: ^Buffer, language: Language, snapshot: string) {
-	clear(&b.hl.pending)
 	job := new(HighlightJob)
 	job.language = language
 	job.snapshot = snapshot
+	if b.hl.tree != nil {
+		job.old_tree = ts.tree_copy(b.hl.tree)
+		for edit in b.hl.pending {
+			append(&job.edits, edit)
+		}
+	}
+	clear(&b.hl.pending)
 	job.thread = thread.create(highlight_job_run)
 	job.thread.data = job
 	b.hl.job = job
@@ -263,7 +285,16 @@ highlight_job_run :: proc(t: ^thread.Thread) {
 	if !ts.parser_set_language(parser, info.grammar()) {
 		return
 	}
-	job.tree = ts.parser_parse_string(parser, nil, raw_data(job.snapshot), u32(len(job.snapshot)))
+	if job.old_tree != nil {
+		for &edit in job.edits {
+			ts.tree_edit(job.old_tree, &edit)
+		}
+	}
+	job.tree = ts.parser_parse_string(parser, job.old_tree, raw_data(job.snapshot), u32(len(job.snapshot)))
+	if job.old_tree != nil {
+		ts.tree_delete(job.old_tree)
+		job.old_tree = nil
+	}
 }
 
 // Take a finished job's tree (called only when the thread is done). Returns
@@ -273,6 +304,10 @@ highlight_job_adopt :: proc(b: ^Buffer) -> bool {
 	thread.destroy(job.thread)
 	tree := job.tree
 	delete(job.snapshot)
+	delete(job.edits)
+	if job.old_tree != nil {
+		ts.tree_delete(job.old_tree)
+	}
 	free(job)
 	b.hl.job = nil
 	if tree == nil {
@@ -322,7 +357,11 @@ highlight_destroy :: proc(hl: ^Highlight) {
 		if hl.job.tree != nil {
 			ts.tree_delete(hl.job.tree)
 		}
+		if hl.job.old_tree != nil {
+			ts.tree_delete(hl.job.old_tree)
+		}
 		delete(hl.job.snapshot)
+		delete(hl.job.edits)
 		free(hl.job)
 		hl.job = nil
 	}

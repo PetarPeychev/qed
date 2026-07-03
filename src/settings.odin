@@ -35,6 +35,7 @@ config_ints := [?]Config_Int {
 	{"diag_pane_max_lines", &DIAG_PANE_MAX_LINES},
 	{"jump_threshold", &JUMP_THRESHOLD},
 	{"git_diff_max_d", &GIT_DIFF_MAX_D},
+	{"big_file_bytes", &BIG_FILE_BYTES},
 }
 
 config_colors := [?]Config_Color {

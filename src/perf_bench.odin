@@ -82,30 +82,43 @@ highlight_perf :: proc(t: ^testing.T) {
 	testing.expect(t, highlight_busy(&b), "a large cold parse should run in the background, not block")
 	highlight_settle(&b, mid, mid + PERF_VIEWPORT)
 
-	painted := false
-	for r in mid ..= mid + PERF_VIEWPORT {
-		for c in highlight_colors(&b, r) {
-			if c != COLOR_FG {
-				painted = true
-			}
-		}
-	}
-	testing.expect(t, painted, "adopted background parse should paint real syntax colors in the viewport")
+	testing.expect(t, highlight_painted(&b, mid), "adopted background parse should paint real syntax colors in the viewport")
 
+	// Each edit on a large buffer must dispatch a background reparse and return
+	// without blocking on the parse itself (the ~hundreds-of-ms cost is off the
+	// keystroke path now).
 	per_edit := bench_avg(20, proc(b: ^Buffer) {
 		bench_touch(b)
 		row := len(b.lines) / 2
 		highlight_update(b, row, row + PERF_VIEWPORT)
 	}, &b)
+	testing.expect(t, highlight_busy(&b), "an edit on a large buffer should reparse in the background, not block")
 
 	testing.expectf(
 		t,
 		per_edit < HIGHLIGHT_BUDGET_MS,
-		"highlight_update per edit on %d lines was %.2f ms, budget %.2f ms (regression: viewport/incremental path broken?)",
+		"highlight_update per edit on %d lines was %.2f ms, budget %.2f ms (regression: async reparse blocking on the keystroke?)",
 		len(b.lines),
 		per_edit,
 		HIGHLIGHT_BUDGET_MS,
 	)
+
+	// After the edits settle, the async incremental path must adopt its tree and
+	// repaint real colors — not leave the viewport blank.
+	highlight_settle(&b, mid, mid + PERF_VIEWPORT)
+	testing.expect(t, highlight_painted(&b, mid), "async incremental reparse should repaint real colors after edits settle")
+}
+
+@(private = "file")
+highlight_painted :: proc(b: ^Buffer, mid: int) -> bool {
+	for r in mid ..= mid + PERF_VIEWPORT {
+		for c in highlight_colors(b, r) {
+			if c != COLOR_FG {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 @(test)

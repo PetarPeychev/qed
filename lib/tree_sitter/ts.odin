@@ -58,6 +58,7 @@ foreign ts {
 	parser_parse_string :: proc(self: ^Parser, old_tree: ^Tree, str: [^]u8, length: u32) -> ^Tree ---
 
 	tree_root_node :: proc(self: ^Tree) -> Node ---
+	tree_copy :: proc(self: ^Tree) -> ^Tree ---
 	tree_delete :: proc(self: ^Tree) ---
 	tree_edit :: proc(self: ^Tree, edit: ^InputEdit) ---
 
