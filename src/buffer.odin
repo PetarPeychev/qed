@@ -3,6 +3,7 @@ package main
 import "core:os"
 import "core:slice"
 import "core:strings"
+import ts "lib:tree_sitter"
 
 Buffer :: struct {
 	path:          string,
@@ -92,6 +93,14 @@ buffer_snapshot :: proc(buffer: ^Buffer) -> string {
 		strings.write_bytes(&sb, line.text[:])
 	}
 	return strings.to_string(sb)
+}
+
+buffer_byte_offset :: proc(buffer: ^Buffer, at: Cursor) -> int {
+	off := 0
+	for i in 0 ..< at.row {
+		off += len(buffer.lines[i].text) + 1
+	}
+	return off + at.col
 }
 
 buffer_recompute_modified :: proc(buffer: ^Buffer) {
@@ -282,12 +291,33 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	}
 
 	append(&buffer.lines[end.row].text, ..tail)
+
+	start_byte := u32(buffer_byte_offset(buffer, at))
+	highlight_record_edit(&buffer.hl, ts.InputEdit {
+		start_byte    = start_byte,
+		old_end_byte  = start_byte,
+		new_end_byte  = u32(buffer_byte_offset(buffer, end)),
+		start_point   = {u32(at.row), u32(at.col)},
+		old_end_point = {u32(at.row), u32(at.col)},
+		new_end_point = {u32(end.row), u32(end.col)},
+	})
+
 	buffer_recompute_modified(buffer)
 	buffer.rev += 1
 	return end
 }
 
 buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
+	start_byte := u32(buffer_byte_offset(buffer, from))
+	highlight_record_edit(&buffer.hl, ts.InputEdit {
+		start_byte    = start_byte,
+		old_end_byte  = u32(buffer_byte_offset(buffer, to)),
+		new_end_byte  = start_byte,
+		start_point   = {u32(from.row), u32(from.col)},
+		old_end_point = {u32(to.row), u32(to.col)},
+		new_end_point = {u32(from.row), u32(from.col)},
+	})
+
 	sb := strings.builder_make()
 
 	if from.row == to.row {

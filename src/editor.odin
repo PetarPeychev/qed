@@ -599,7 +599,8 @@ editor_render :: proc(editor: ^Editor) {
 	if editor.welcome {
 		editor_render_welcome(editor)
 	} else {
-		highlight_update(editor_buffer(editor))
+		_, vh := editor_viewport(editor)
+		highlight_update(editor_buffer(editor), editor.scroll_row, editor.scroll_row + vh - 1)
 		git_gutter_update(editor_buffer(editor))
 		editor_render_buffer(editor)
 	}

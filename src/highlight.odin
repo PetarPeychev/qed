@@ -8,7 +8,15 @@ Highlight :: struct {
 	computed: bool,
 	valid:    bool,
 	rev:      u64,
+	top:      int,
+	bot:      int,
+	tree:     ^ts.Tree,
+	pending:  [dynamic]ts.InputEdit,
 	colors:   [dynamic][dynamic]tb2.Color,
+}
+
+highlight_record_edit :: proc(hl: ^Highlight, edit: ts.InputEdit) {
+	append(&hl.pending, edit)
 }
 
 Syntax :: struct {
@@ -105,16 +113,26 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 	return COLOR_FG, false
 }
 
-highlight_update :: proc(b: ^Buffer) {
+highlight_update :: proc(b: ^Buffer, top, bot: int) {
 	language := language_of(b.path)
 	if !syntax_ensure(language) {
+		clear(&b.hl.pending)
 		b.hl.valid = false
 		b.hl.computed = true
 		b.hl.rev = b.rev
 		return
 	}
 	s := &g_syntaxes[language]
-	if b.hl.computed && b.hl.valid && b.hl.rev == b.rev {
+
+	vtop := clamp(top, 0, max(0, len(b.lines) - 1))
+	vbot := clamp(bot, 0, max(0, len(b.lines) - 1))
+
+	if b.hl.computed &&
+	   b.hl.valid &&
+	   b.hl.rev == b.rev &&
+	   b.hl.top == vtop &&
+	   b.hl.bot == vbot &&
+	   len(b.hl.pending) == 0 {
 		return
 	}
 
@@ -125,7 +143,7 @@ highlight_update :: proc(b: ^Buffer) {
 		row := pop(&b.hl.colors)
 		delete(row)
 	}
-	for r in 0 ..< len(b.lines) {
+	for r in vtop ..= vbot {
 		n := len(b.lines[r].text)
 		resize(&b.hl.colors[r], n)
 		for i in 0 ..< n {
@@ -133,17 +151,32 @@ highlight_update :: proc(b: ^Buffer) {
 		}
 	}
 
+	if b.hl.tree != nil {
+		for &edit in b.hl.pending {
+			ts.tree_edit(b.hl.tree, &edit)
+		}
+	}
+	clear(&b.hl.pending)
+
 	snapshot := buffer_snapshot(b)
 	defer delete(snapshot)
-	tree := ts.parser_parse_string(s.parser, nil, raw_data(snapshot), u32(len(snapshot)))
+	tree := ts.parser_parse_string(s.parser, b.hl.tree, raw_data(snapshot), u32(len(snapshot)))
 	if tree == nil {
+		if b.hl.tree != nil {
+			ts.tree_delete(b.hl.tree)
+			b.hl.tree = nil
+		}
 		b.hl.valid = false
 		b.hl.computed = true
 		b.hl.rev = b.rev
 		return
 	}
-	defer ts.tree_delete(tree)
+	if b.hl.tree != nil && b.hl.tree != tree {
+		ts.tree_delete(b.hl.tree)
+	}
+	b.hl.tree = tree
 
+	ts.query_cursor_set_point_range(s.cursor, {u32(vtop), 0}, {u32(vbot) + 1, 0})
 	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(tree))
 	match: ts.QueryMatch
 	for ts.query_cursor_next_match(s.cursor, &match) {
@@ -161,6 +194,8 @@ highlight_update :: proc(b: ^Buffer) {
 	b.hl.valid = true
 	b.hl.computed = true
 	b.hl.rev = b.rev
+	b.hl.top = vtop
+	b.hl.bot = vbot
 }
 
 highlight_paint :: proc(hl: ^Highlight, r0, c0, r1, c1: int, color: tb2.Color) {
@@ -187,6 +222,11 @@ highlight_colors :: proc(b: ^Buffer, row: int) -> []tb2.Color {
 }
 
 highlight_destroy :: proc(hl: ^Highlight) {
+	if hl.tree != nil {
+		ts.tree_delete(hl.tree)
+		hl.tree = nil
+	}
+	delete(hl.pending)
 	for &row in hl.colors {
 		delete(row)
 	}

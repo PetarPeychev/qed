@@ -11,6 +11,15 @@ Point :: struct {
 	column: u32,
 }
 
+InputEdit :: struct {
+	start_byte:    u32,
+	old_end_byte:  u32,
+	new_end_byte:  u32,
+	start_point:   Point,
+	old_end_point: Point,
+	new_end_point: Point,
+}
+
 Node :: struct {
 	ctx:  [4]u32,
 	id:   rawptr,
@@ -50,6 +59,7 @@ foreign ts {
 
 	tree_root_node :: proc(self: ^Tree) -> Node ---
 	tree_delete :: proc(self: ^Tree) ---
+	tree_edit :: proc(self: ^Tree, edit: ^InputEdit) ---
 
 	node_start_byte :: proc(node: Node) -> u32 ---
 	node_end_byte :: proc(node: Node) -> u32 ---
@@ -64,6 +74,7 @@ foreign ts {
 	query_cursor_new :: proc() -> ^QueryCursor ---
 	query_cursor_delete :: proc(self: ^QueryCursor) ---
 	query_cursor_exec :: proc(self: ^QueryCursor, query: ^Query, node: Node) ---
+	query_cursor_set_point_range :: proc(self: ^QueryCursor, start_point, end_point: Point) -> bool ---
 	query_cursor_next_match :: proc(self: ^QueryCursor, match: ^QueryMatch) -> bool ---
 }
 

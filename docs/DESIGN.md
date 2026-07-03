@@ -615,15 +615,55 @@ Each capability below is its own slice, ordered by how much they get used.
   mode/owner onto the atomically-written replacement.
 - [ ] **LSP restart.** A crashed or failed-to-start `ols` stays down for the
   session (`.Failed` never retries); add a palette command to restart it.
-- [ ] **Large-file editing performance.** On a very large file (e.g. the vendored
-  `parser.c`, ~100k lines) every keystroke is visibly slow because several
-  subsystems do O(file) work per edit: `highlight_update` (`src/highlight.odin`)
-  snapshots the whole buffer and does a full tree-sitter reparse (no `InputEdit`
-  incremental — see the "Incremental re-parse" item under Syntax highlighting);
-  `git.odin` recomputes a whole-buffer Myers line diff every `rev`; and the LSP
-  sends full-text `didChange` on each edit. Investigate and profile which
-  dominate, then attack the worst first — likely incremental tree-sitter
-  re-parse, throttling/debouncing the git diff and LSP sync off the hot path, and
-  possibly a size threshold that disables the heavy per-edit passes above some
-  line count. Measure before optimizing (per the philosophy) — this is the real
-  usage that justifies it.
+- [x] **Large-file editing performance.** Profiled on the vendored `parser.c`
+  (118k lines): per-keystroke was ~600 ms, of which `highlight_update`
+  (`src/highlight.odin`) was ~98% — a full tree-sitter reparse (~305 ms) plus a
+  whole-tree highlight query (~225 ms) plus a whole-buffer color-grid rebuild
+  (~18 ms) every edit; `git.odin` (~9 ms) and the LSP snapshot (~2.7 ms) were
+  noise. Fixed `highlight_update` on two axes: **incremental parse** — each buffer
+  retains its `^ts.Tree` and `buffer_insert`/`buffer_delete` record a precise
+  `ts.InputEdit` (byte + row/col deltas, via `buffer_byte_offset`) that is fed to
+  `ts_tree_edit` before reparsing with the old tree; and **viewport-scoped query +
+  grid** — the query cursor is range-limited (`ts_query_cursor_set_point_range`) to
+  the visible rows and only those rows' color grid is rebuilt, recomputed on scroll
+  via a visible-range cache key. Result: highlight per edit 585 ms → ~7.8 ms (~75×),
+  combined per-keystroke ~600 ms → ~21 ms. A regression test
+  (`test_highlight_incremental` in `src/perf_bench.odin`) proves the incremental +
+  viewport path paints byte-identical colors to a full parse and asserts a per-edit
+  budget on the 118k-line file; a `QED_BENCH`-gated bench prints the full breakdown.
+  Follow-ups split into their own items below (coalesce feedback-only work; open
+  latency); git-diff/LSP throttling and a size threshold proved unnecessary once
+  highlight was fixed.
+- [ ] **Coalesce feedback-only work off the per-keystroke path.** *(future — only
+  if editing ever stutters again; measured, not urgent.)* After the highlight fix,
+  the remaining per-keystroke cost on a 118k-line file (~24 ms, editing near EOF)
+  is dominated by three *feedback-only* passes that don't need to run on the
+  synchronous redraw or on every keystroke of a fast typing burst: `git_gutter_update`
+  (~11 ms whole-buffer line hash + Myers diff), the LSP `didChange` send (~2.7 ms
+  snapshot + pipe write + server churn — only the *receive* side is currently
+  async), and `buffer_recompute_modified` (`buffer.odin`, ~3 ms; scans from row 0
+  to the first change every edit just to set the `[*]` dirty flag). Idea: defer/coalesce
+  these until input goes idle for ~a frame (single-threaded — cheaper and safer than a
+  worker thread in the full-redraw model; the LSP's existing 30 ms `peek_event` loop is
+  precedent). `buffer_recompute_modified` could alternatively be made incremental (O(1)
+  dirty tracking) rather than deferred. Highlight itself (~7.4 ms) is on the critical
+  path since colors are needed to draw; decoupling it (render stale, recompute async)
+  is lower priority. Per the compression rule the three consumers now justify one small
+  idle-work mechanism — build it when the stutter actually returns, not before.
+- [ ] **Large-file open latency (time to first paint).** *(future — measure, then
+  decide.)* Opening a 118k-line file (`parser.c`) blocks ~700 ms before the first frame
+  appears, even though the text is ready much sooner. The first `editor_render` runs cold
+  `highlight_update` (~432 ms full tree-sitter parse) and cold `git_gutter_update` (~34 ms —
+  `git show HEAD` subprocess + hash + diff) *before* the initial `present()`, so the user
+  sees a blank editor the whole time. `buffer_open` itself is ~230 ms (read 2.5 MB +
+  `strings.split` + ~118k per-line dynamic-array allocations + a redundant full-buffer
+  `saved` snapshot). Two independent directions: **(a) paint first, enrich after** — present
+  the plain (uncolored, no-gutter) text as soon as `buffer_open` returns, then compute
+  highlight / git / LSP on a following frame or idle tick so the file is visible and editable
+  ~450 ms sooner (needs a way to do work after the first `present()` without waiting for a
+  keypress — ties into the idle-work mechanism in the item above, since the main loop
+  otherwise blocks on `poll_event` right after the first render). **(b) lower the
+  `buffer_open` floor** — the ~118k per-line allocations and the redundant `saved` snapshot
+  dominate; an arena/bump allocator for line storage or a lighter dirty-tracking scheme could
+  cut it, but that touches the core `Buffer` data structure, so measure hard before changing
+  it (per the no-premature-optimization rule).
