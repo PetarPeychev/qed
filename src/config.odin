@@ -27,6 +27,8 @@ DIAG_PANE_MAX_LINES :: 8
 
 JUMP_THRESHOLD :: 10
 
+GIT_DIFF_MAX_D :: 2000
+
 COLOR_FG :: tb2.Color(0xf4f4ff)
 COLOR_BG :: tb2.Color(0x181818)
 COLOR_STATUS_FG :: tb2.Color(0xf4f4ff)
@@ -52,3 +54,7 @@ COLOR_SYN_STRING :: tb2.Color(0x73c936)
 COLOR_SYN_COMMENT :: tb2.Color(0xcc8c3c)
 COLOR_SYN_CONSTANT :: tb2.Color(0x95a99f)
 COLOR_SYN_ATTRIBUTE :: tb2.Color(0xffdd33)
+
+COLOR_GIT_ADD :: tb2.Color(0x73c936)
+COLOR_GIT_MOD :: tb2.Color(0xffdd33)
+COLOR_GIT_DEL :: tb2.Color(0xf43841)

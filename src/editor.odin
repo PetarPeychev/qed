@@ -92,7 +92,7 @@ editor_gutter_width :: proc(editor: ^Editor) -> int {
 		digits += 1
 		n /= 10
 	}
-	return digits + 1
+	return digits + 2
 }
 
 editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
@@ -600,6 +600,7 @@ editor_render :: proc(editor: ^Editor) {
 		editor_render_welcome(editor)
 	} else {
 		highlight_update(editor_buffer(editor))
+		git_gutter_update(editor_buffer(editor))
 		editor_render_buffer(editor)
 	}
 
@@ -725,7 +726,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				severity = d.severity
 			}
 		}
-		editor_render_gutter(screen_y, gutter, row + 1, current, severity)
+		editor_render_gutter(screen_y, gutter, row + 1, current, severity, git_mark_at(b, row))
 
 		text := b.lines[row].text
 		row_sel_from, row_sel_to := -1, -1
@@ -814,10 +815,13 @@ editor_render_welcome_line :: proc(x, y: int, text: string) {
 	tb2.print(i32(x), i32(y), COLOR_FG, COLOR_BG, cstr)
 }
 
-editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int) {
+editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int, mark: GitMark) {
+	mark_ch, mark_fg := git_mark_glyph(mark)
+	tb2.set_cell(0, i32(y), mark_ch, mark_fg, COLOR_GUTTER_BG)
+
 	label := fmt.tprintf("%d", number)
 	sb := strings.builder_make(context.temp_allocator)
-	for _ in 0 ..< width - 1 - len(label) {
+	for _ in 0 ..< width - 2 - len(label) {
 		strings.write_byte(&sb, ' ')
 	}
 	strings.write_string(&sb, label)
@@ -831,7 +835,7 @@ editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int
 		fg = diagnostic_color(severity)
 	}
 	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
-	tb2.print(0, i32(y), fg, COLOR_GUTTER_BG, cstr)
+	tb2.print(1, i32(y), fg, COLOR_GUTTER_BG, cstr)
 }
 
 editor_render_text_row :: proc(

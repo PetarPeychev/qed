@@ -512,8 +512,14 @@ Ordered by how much they get used.
 
 **Git diff gutter.** No LSP/tree-sitter dependency, so it can come early.
 
-- [ ] **Change marks (live).** Added/modified/deleted vs `HEAD`, recomputed per
-  edit (diff against the git blob), shown in the gutter.
+- [x] **Change marks (live).** Added/modified/deleted vs `HEAD`, recomputed per
+  edit (diff against the git blob), shown in the gutter. Base `HEAD` blob fetched
+  once per open/save via `git show HEAD:./<file>` (gated by `rev-parse
+  --show-toplevel`, so non-repo files stay unmarked), hashed per line; a
+  per-`rev` in-process Myers line diff (`src/git.odin`) of the live buffer vs
+  that base fills per-line marks. Gutter gains a leftmost mark column: green `▌`
+  added, yellow `▌` modified, red `▁` deletion (on the surviving line above the
+  gap). Colors in `COLOR_GIT_*`.
 - [ ] **Hunk navigation.** Jump to next/prev change (palette commands / keybind).
 - [ ] **Hunk preview + revert.** Show a hunk's old text and revert it.
 - [ ] **Stage / unstage hunks.** *(later)* Stage or unstage an individual hunk

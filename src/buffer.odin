@@ -22,6 +22,7 @@ Buffer :: struct {
 	open_kind:     Coalesce,
 	rev:           u64,
 	hl:            Highlight,
+	git:           GitGutter,
 	diags:         [dynamic]Diagnostic,
 	lsp_open:      bool,
 	lsp_rev:       u64,
@@ -77,6 +78,7 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	delete(buffer.redo)
 	group_destroy(&buffer.open)
 	highlight_destroy(&buffer.hl)
+	git_destroy(&buffer.git)
 	buffer_clear_diags(buffer)
 	delete(buffer.diags)
 }
@@ -174,6 +176,7 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	delete(buffer.saved)
 	buffer.saved = buffer_snapshot(buffer)
 	buffer.modified = false
+	git_invalidate(buffer)
 
 	return .None
 }
@@ -223,6 +226,7 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	delete(buffer.saved)
 	buffer.saved = buffer_snapshot(buffer)
 	buffer.modified = false
+	git_invalidate(buffer)
 
 	return .None
 }
