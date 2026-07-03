@@ -35,11 +35,18 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() {
+			if lsp_running() || highlight_busy(editor_buffer(&editor)) {
 				if tb2.peek_event(&ev, i32(LSP_POLL_MS)) == .Ok {
 					got_event = true
 				}
-				if lsp_pump(&editor) && !got_event {
+				redraw := false
+				if lsp_running() && lsp_pump(&editor) {
+					redraw = true
+				}
+				if highlight_ready(editor_buffer(&editor)) {
+					redraw = true
+				}
+				if redraw && !got_event {
 					break
 				}
 				if !got_event {

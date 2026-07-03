@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:thread"
 import "core:time"
 
 PERF_FILE :: "lib/tree_sitter/c/parser.c"
@@ -77,7 +78,19 @@ highlight_perf :: proc(t: ^testing.T) {
 	testing.expect(t, len(b.lines) > 50_000, "perf fixture should be a large file")
 
 	mid := len(b.lines) / 2
-	highlight_update(&b, mid, mid + PERF_VIEWPORT) // cold: full parse
+	highlight_update(&b, mid, mid + PERF_VIEWPORT) // cold: spawns async parse
+	testing.expect(t, highlight_busy(&b), "a large cold parse should run in the background, not block")
+	highlight_settle(&b, mid, mid + PERF_VIEWPORT)
+
+	painted := false
+	for r in mid ..= mid + PERF_VIEWPORT {
+		for c in highlight_colors(&b, r) {
+			if c != COLOR_FG {
+				painted = true
+			}
+		}
+	}
+	testing.expect(t, painted, "adopted background parse should paint real syntax colors in the viewport")
 
 	per_edit := bench_avg(20, proc(b: ^Buffer) {
 		bench_touch(b)
@@ -148,7 +161,8 @@ bench_large_file :: proc(t: ^testing.T) {
 
 	cold := time.tick_now()
 	highlight_update(&b, mid, mid + PERF_VIEWPORT)
-	fmt.eprintfln("highlight_update COLD (first parse): %.2f ms", ms_since(cold))
+	highlight_settle(&b, mid, mid + PERF_VIEWPORT)
+	fmt.eprintfln("highlight_update COLD (async parse wall time; off the main thread): %.2f ms", ms_since(cold))
 
 	hl_ns := bench_avg(20, proc(b: ^Buffer) {
 		bench_touch(b)
@@ -182,6 +196,14 @@ c_buffer :: proc(content: string) -> Buffer {
 @(private = "file")
 highlight_full :: proc(b: ^Buffer) {
 	highlight_update(b, 0, len(b.lines) - 1)
+}
+
+@(private = "file")
+highlight_settle :: proc(b: ^Buffer, top, bot: int) {
+	for highlight_busy(b) {
+		highlight_update(b, top, bot)
+		thread.yield()
+	}
 }
 
 @(private = "file")

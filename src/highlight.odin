@@ -1,6 +1,7 @@
 package main
 
 import "core:strings"
+import "core:thread"
 import "lib:tb2"
 import ts "lib:tree_sitter"
 
@@ -13,6 +14,14 @@ Highlight :: struct {
 	tree:     ^ts.Tree,
 	pending:  [dynamic]ts.InputEdit,
 	colors:   [dynamic][dynamic]tb2.Color,
+	job:      ^HighlightJob,
+}
+
+HighlightJob :: struct {
+	language: Language,
+	snapshot: string,
+	thread:   ^thread.Thread,
+	tree:     ^ts.Tree,
 }
 
 highlight_record_edit :: proc(hl: ^Highlight, edit: ts.InputEdit) {
@@ -124,6 +133,18 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 	}
 	s := &g_syntaxes[language]
 
+	if b.hl.job != nil {
+		if !thread.is_done(b.hl.job.thread) {
+			return
+		}
+		if !highlight_job_adopt(b) {
+			b.hl.valid = false
+			b.hl.computed = true
+			b.hl.rev = b.rev
+			return
+		}
+	}
+
 	vtop := clamp(top, 0, max(0, len(b.lines) - 1))
 	vbot := clamp(bot, 0, max(0, len(b.lines) - 1))
 
@@ -151,33 +172,20 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 		}
 	}
 
-	if b.hl.tree != nil {
-		for &edit in b.hl.pending {
-			ts.tree_edit(b.hl.tree, &edit)
+	if b.hl.tree == nil {
+		snapshot := buffer_snapshot(b)
+		if len(snapshot) >= HIGHLIGHT_ASYNC_BYTES {
+			highlight_job_start(b, language, snapshot)
+			return
 		}
+		delete(snapshot)
 	}
-	clear(&b.hl.pending)
-
-	snapshot := buffer_snapshot(b)
-	defer delete(snapshot)
-	tree := ts.parser_parse_string(s.parser, b.hl.tree, raw_data(snapshot), u32(len(snapshot)))
-	if tree == nil {
-		if b.hl.tree != nil {
-			ts.tree_delete(b.hl.tree)
-			b.hl.tree = nil
-		}
-		b.hl.valid = false
-		b.hl.computed = true
-		b.hl.rev = b.rev
+	if !highlight_reparse(b, s) {
 		return
 	}
-	if b.hl.tree != nil && b.hl.tree != tree {
-		ts.tree_delete(b.hl.tree)
-	}
-	b.hl.tree = tree
 
 	ts.query_cursor_set_point_range(s.cursor, {u32(vtop), 0}, {u32(vbot) + 1, 0})
-	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(tree))
+	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(b.hl.tree))
 	match: ts.QueryMatch
 	for ts.query_cursor_next_match(s.cursor, &match) {
 		for i in 0 ..< int(match.capture_count) {
@@ -196,6 +204,93 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 	b.hl.rev = b.rev
 	b.hl.top = vtop
 	b.hl.bot = vbot
+}
+
+// Reparse the buffer on the main thread, reusing the retained tree when present
+// (incremental). Returns false if the parse failed, having marked the buffer's
+// highlight invalid so the caller aborts.
+highlight_reparse :: proc(b: ^Buffer, s: ^Syntax) -> bool {
+	if b.hl.tree != nil {
+		for &edit in b.hl.pending {
+			ts.tree_edit(b.hl.tree, &edit)
+		}
+	}
+	clear(&b.hl.pending)
+
+	snapshot := buffer_snapshot(b)
+	defer delete(snapshot)
+	tree := ts.parser_parse_string(s.parser, b.hl.tree, raw_data(snapshot), u32(len(snapshot)))
+	if tree == nil {
+		if b.hl.tree != nil {
+			ts.tree_delete(b.hl.tree)
+			b.hl.tree = nil
+		}
+		b.hl.valid = false
+		b.hl.computed = true
+		b.hl.rev = b.rev
+		return false
+	}
+	if b.hl.tree != nil && b.hl.tree != tree {
+		ts.tree_delete(b.hl.tree)
+	}
+	b.hl.tree = tree
+	return true
+}
+
+// Cold parses of large files run on a background thread so input stays
+// responsive; the buffer shows plain text until the tree is adopted. The job
+// owns `snapshot` (freed on adopt/teardown) and parses with its own parser so it
+// shares no tree-sitter state with the main thread.
+highlight_job_start :: proc(b: ^Buffer, language: Language, snapshot: string) {
+	clear(&b.hl.pending)
+	job := new(HighlightJob)
+	job.language = language
+	job.snapshot = snapshot
+	job.thread = thread.create(highlight_job_run)
+	job.thread.data = job
+	b.hl.job = job
+	thread.start(job.thread)
+}
+
+highlight_job_run :: proc(t: ^thread.Thread) {
+	job := cast(^HighlightJob)t.data
+	info := LANGUAGES[job.language]
+	if info.grammar == nil {
+		return
+	}
+	parser := ts.parser_new()
+	defer ts.parser_delete(parser)
+	if !ts.parser_set_language(parser, info.grammar()) {
+		return
+	}
+	job.tree = ts.parser_parse_string(parser, nil, raw_data(job.snapshot), u32(len(job.snapshot)))
+}
+
+// Take a finished job's tree (called only when the thread is done). Returns
+// false if the background parse failed to produce a tree.
+highlight_job_adopt :: proc(b: ^Buffer) -> bool {
+	job := b.hl.job
+	thread.destroy(job.thread)
+	tree := job.tree
+	delete(job.snapshot)
+	free(job)
+	b.hl.job = nil
+	if tree == nil {
+		return false
+	}
+	if b.hl.tree != nil {
+		ts.tree_delete(b.hl.tree)
+	}
+	b.hl.tree = tree
+	return true
+}
+
+highlight_busy :: proc(b: ^Buffer) -> bool {
+	return b.hl.job != nil
+}
+
+highlight_ready :: proc(b: ^Buffer) -> bool {
+	return b.hl.job != nil && thread.is_done(b.hl.job.thread)
 }
 
 highlight_paint :: proc(hl: ^Highlight, r0, c0, r1, c1: int, color: tb2.Color) {
@@ -222,6 +317,15 @@ highlight_colors :: proc(b: ^Buffer, row: int) -> []tb2.Color {
 }
 
 highlight_destroy :: proc(hl: ^Highlight) {
+	if hl.job != nil {
+		thread.destroy(hl.job.thread)
+		if hl.job.tree != nil {
+			ts.tree_delete(hl.job.tree)
+		}
+		delete(hl.job.snapshot)
+		free(hl.job)
+		hl.job = nil
+	}
 	if hl.tree != nil {
 		ts.tree_delete(hl.tree)
 		hl.tree = nil

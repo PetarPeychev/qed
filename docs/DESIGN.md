@@ -645,25 +645,43 @@ Each capability below is its own slice, ordered by how much they get used.
   to the first change every edit just to set the `[*]` dirty flag). Idea: defer/coalesce
   these until input goes idle for ~a frame (single-threaded — cheaper and safer than a
   worker thread in the full-redraw model; the LSP's existing 30 ms `peek_event` loop is
-  precedent). `buffer_recompute_modified` could alternatively be made incremental (O(1)
+  precedent). **Exception already taken:** the one-shot cold tree-sitter parse *is* now on a
+  worker thread (see the open-latency item below) — but that's a single isolated parse with a
+  handoff, not the recurring per-keystroke feedback passes, which stay single-threaded.
+  `buffer_recompute_modified` could alternatively be made incremental (O(1)
   dirty tracking) rather than deferred. Highlight itself (~7.4 ms) is on the critical
   path since colors are needed to draw; decoupling it (render stale, recompute async)
   is lower priority. Per the compression rule the three consumers now justify one small
   idle-work mechanism — build it when the stutter actually returns, not before.
-- [ ] **Large-file open latency (time to first paint).** *(future — measure, then
-  decide.)* Opening a 118k-line file (`parser.c`) blocks ~700 ms before the first frame
-  appears, even though the text is ready much sooner. The first `editor_render` runs cold
-  `highlight_update` (~432 ms full tree-sitter parse) and cold `git_gutter_update` (~34 ms —
-  `git show HEAD` subprocess + hash + diff) *before* the initial `present()`, so the user
-  sees a blank editor the whole time. `buffer_open` itself is ~230 ms (read 2.5 MB +
-  `strings.split` + ~118k per-line dynamic-array allocations + a redundant full-buffer
-  `saved` snapshot). Two independent directions: **(a) paint first, enrich after** — present
-  the plain (uncolored, no-gutter) text as soon as `buffer_open` returns, then compute
-  highlight / git / LSP on a following frame or idle tick so the file is visible and editable
-  ~450 ms sooner (needs a way to do work after the first `present()` without waiting for a
-  keypress — ties into the idle-work mechanism in the item above, since the main loop
-  otherwise blocks on `poll_event` right after the first render). **(b) lower the
-  `buffer_open` floor** — the ~118k per-line allocations and the redundant `saved` snapshot
-  dominate; an arena/bump allocator for line storage or a lighter dirty-tracking scheme could
-  cut it, but that touches the core `Buffer` data structure, so measure hard before changing
-  it (per the no-premature-optimization rule).
+- [x] **Large-file open latency (time to first paint) — async cold parse.** Opening a
+  118k-line file (`parser.c`) blocked ~700 ms on a blank screen: the first `editor_render` ran
+  the cold `highlight_update` (~417 ms full tree-sitter parse) *before* `present()`. Fixed by
+  moving the **cold parse to a background worker thread** (`src/highlight.odin`): `Highlight`
+  gained a `job: ^HighlightJob` (owned text snapshot + `^thread.Thread` + result tree); on a
+  cold parse of a file `≥ HIGHLIGHT_ASYNC_BYTES` (256 KB) `highlight_update` snapshots the text
+  and spawns `highlight_job_run`, which parses on its **own private parser** (shares no
+  tree-sitter state with the main thread) and returns immediately — the buffer renders as plain
+  text but stays fully interactive. Edits during the parse accumulate as `pending` `InputEdit`s;
+  on completion `highlight_job_adopt` takes the tree and `highlight_reparse` catches up
+  incrementally, then the viewport query paints. Smaller files still parse inline synchronously
+  (no thread overhead, no uncolored flash). The main loop swaps `poll_event` for the existing
+  `LSP_POLL_MS` peek loop while `highlight_busy`, re-rendering when `highlight_ready` fires.
+  Async fires once per large-file open; every reparse after is the ~7 ms synchronous incremental
+  path. `highlight_destroy` joins a running job before freeing (clean close/quit mid-parse).
+  Regression coverage in `src/perf_bench.odin` asserts a large cold parse goes async and paints
+  real colors after adoption. **Still open (own items):** the cold `git_gutter_update` (~56 ms —
+  `git show HEAD` subprocess) still runs synchronously before first paint, and the `buffer_open`
+  floor (~224 ms: read + `strings.split` + ~118k per-line allocs + redundant `saved` snapshot —
+  direction (b): an arena for line storage / lighter dirty-tracking, but it touches the core
+  `Buffer`, so measure hard first) is untouched. Both fold into the item below.
+- [ ] **Revisit large-file performance on the 500k-line Odin grammar.** The async-parse work
+  was profiled and tuned on the 118k-line C `lib/tree_sitter/c/parser.c`. The vendored Odin
+  grammar's own generated `lib/tree_sitter/odin/parser.c` is **~516k lines** (~11 MB) — a ~4×
+  larger stress case that also opens with the real `ols` LSP attached. Re-measure the whole
+  open + edit pipeline on it (background cold-parse wall time, per-edit incremental highlight,
+  git diff, `buffer_open` floor, memory) and address whatever dominates. Likely surfaces: the
+  remaining synchronous cold-`git_gutter_update` blocker before first paint; the `buffer_open`
+  per-line-allocation floor (direction (b) above); whether a single 516k-line background parse
+  is fast enough or wants incremental `InputEdit` feeding / chunking; and whether the ~7 ms
+  incremental-edit budget holds at 4× the line count. Measure first, then decide (compression +
+  no-premature-optimization rules).
