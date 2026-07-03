@@ -15,10 +15,12 @@ cc -c -w -O2 -I "$TS/odin" "$TS/odin/scanner.c" -o "$TS/odin-scanner.o"
 cc -c -w -O2 -I "$TS/json" "$TS/json/parser.c" -o "$TS/json-parser.o"
 cc -c -w -O2 -I "$TS/python" "$TS/python/parser.c" -o "$TS/python-parser.o"
 cc -c -w -O2 -I "$TS/python" "$TS/python/scanner.c" -o "$TS/python-scanner.o"
+cc -c -w -O2 -I "$TS/c" "$TS/c/parser.c" -o "$TS/c-parser.o"
 ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/odin-parser.o" "$TS/odin-scanner.o" \
    "$TS/json-parser.o" \
-   "$TS/python-parser.o" "$TS/python-scanner.o"
+   "$TS/python-parser.o" "$TS/python-scanner.o" \
+   "$TS/c-parser.o"
 
 # Build the editor, exposing vendor/ as a collection
 odin build src -collection:lib=lib -out:qed

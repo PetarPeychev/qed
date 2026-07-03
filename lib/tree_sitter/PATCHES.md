@@ -13,10 +13,11 @@ approach as `lib/tb2/`.
 | Odin grammar | `github.com/tree-sitter-grammars/tree-sitter-odin` | `d2ca8efb4487e156a60d5bd6db2598b872629403` (v1.3.0) |
 | JSON grammar | `github.com/tree-sitter/tree-sitter-json` | `ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24` (v0.24.8) |
 | Python grammar | `github.com/tree-sitter/tree-sitter-python` | `d326e4cad262cf681656e130960e49dfc04c03ea` (v0.25.0) |
+| C grammar | `github.com/tree-sitter/tree-sitter-c` | `7fa1be1b694b6e763686793d97da01f36a0e5c12` (v0.24.1) |
 
 Each grammar's `src/parser.c` (Odin's is ~15 MB) and `src/scanner.c` (Odin,
-Python; JSON has none) are **generated** artifacts committed upstream; we vendor
-them as-is (no `tree-sitter generate` step is needed or run).
+Python; JSON and C have none) are **generated** artifacts committed upstream; we
+vendor them as-is (no `tree-sitter generate` step is needed or run).
 
 ## Layout
 
@@ -29,6 +30,7 @@ runtime/src/      lib.c + the amalgamated .c  compiled into libtreesitter.a
 odin/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (ABI 14)
 json/             parser.c,           tree_sitter/*.h, highlights.scm
 python/           parser.c, scanner.c, tree_sitter/*.h, highlights.scm
+c/                parser.c,           tree_sitter/*.h, highlights.scm
 ts.odin           Odin FFI bindings          the ~15 procs qed calls
 ```
 
@@ -72,6 +74,20 @@ Everything predicate-free is kept: keywords, operators, `(type (identifier)
 @type)`, function/decorator/definition names (`@function`/`@property` are
 unmapped, so they render plain), strings, comments, numbers, `(none)/(true)/
 (false)` constants, escapes.
+
+### `c/highlights.scm`
+
+One `#match?`-gated identifier heuristic removed (it would otherwise match
+*every* identifier):
+
+- `((identifier) @constant (#match? … "^[A-Z][A-Z\d_]*$"))` — **removed** (would
+  paint every identifier in the constant color).
+
+Everything predicate-free is kept: keywords, preproc directives, operators,
+delimiters, strings/system-lib strings, `(null)`/number/char constants, type
+identifiers / primitive & sized types, function-call and declarator names
+(`@function`/`@function.special` are unmapped, so they render plain),
+`(identifier) @variable` (unmapped → plain), comments.
 
 ### `odin/highlights.scm`
 

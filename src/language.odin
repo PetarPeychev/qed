@@ -34,7 +34,7 @@ LanguageInfo :: struct {
 LANGUAGES := [Language]LanguageInfo {
 	.Plain      = {"text", "//", "", "", nil, nil},
 	.Odin       = {"odin", "//", "ols", "odin", ts.tree_sitter_odin, #load("../lib/tree_sitter/odin/highlights.scm")},
-	.C          = {"c", "//", "", "", nil, nil},
+	.C          = {"c", "//", "clangd", "c", ts.tree_sitter_c, #load("../lib/tree_sitter/c/highlights.scm")},
 	.Cpp        = {"c++", "//", "", "", nil, nil},
 	.Go         = {"go", "//", "", "", nil, nil},
 	.Rust       = {"rust", "//", "", "", nil, nil},

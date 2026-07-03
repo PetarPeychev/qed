@@ -530,7 +530,8 @@ each grammar as it lands:
 
 - [x] **JSON** (highlight).
 - [x] **Python** (highlight + `pyright` LSP).
-- [ ] **C / C++**
+- [x] **C** (highlight + `clangd` LSP).
+- [ ] **C++**
 - [ ] **Go**
 - [ ] **Rust**
 - [ ] **JavaScript / TypeScript** — heavy (TS is a large, dual grammar).
@@ -614,3 +615,15 @@ Each capability below is its own slice, ordered by how much they get used.
   mode/owner onto the atomically-written replacement.
 - [ ] **LSP restart.** A crashed or failed-to-start `ols` stays down for the
   session (`.Failed` never retries); add a palette command to restart it.
+- [ ] **Large-file editing performance.** On a very large file (e.g. the vendored
+  `parser.c`, ~100k lines) every keystroke is visibly slow because several
+  subsystems do O(file) work per edit: `highlight_update` (`src/highlight.odin`)
+  snapshots the whole buffer and does a full tree-sitter reparse (no `InputEdit`
+  incremental — see the "Incremental re-parse" item under Syntax highlighting);
+  `git.odin` recomputes a whole-buffer Myers line diff every `rev`; and the LSP
+  sends full-text `didChange` on each edit. Investigate and profile which
+  dominate, then attack the worst first — likely incremental tree-sitter
+  re-parse, throttling/debouncing the git diff and LSP sync off the hot path, and
+  possibly a size threshold that disables the heavy per-edit passes above some
+  line count. Measure before optimizing (per the philosophy) — this is the real
+  usage that justifies it.

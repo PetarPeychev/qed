@@ -72,4 +72,5 @@ foreign ts {
 	tree_sitter_odin :: proc() -> Language ---
 	tree_sitter_json :: proc() -> Language ---
 	tree_sitter_python :: proc() -> Language ---
+	tree_sitter_c :: proc() -> Language ---
 }
