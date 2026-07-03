@@ -762,8 +762,14 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	}
 	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
 	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", TAB_WIDTH)
-	indent_cstr := strings.clone_to_cstring(indent, context.temp_allocator)
-	tb2.print(i32(max(0, full_w - len(indent) - 1)), i32(h), COLOR_STATUS_FG, COLOR_STATUS_BG, indent_cstr)
+	right := language_info(b.path).name
+	if lsp := lsp_status_label(b); lsp != "" {
+		right = fmt.tprintf("%s  %s", right, lsp)
+	}
+	right = fmt.tprintf("%s  %s", right, indent)
+	right_w := visual_width(transmute([]u8)right)
+	right_cstr := strings.clone_to_cstring(right, context.temp_allocator)
+	tb2.print(i32(max(0, full_w - right_w - 1)), i32(h), COLOR_STATUS_FG, COLOR_STATUS_BG, right_cstr)
 	message_fg := COLOR_ERROR_FG if editor.message_error else COLOR_FG
 	editor_render_row(0, h + 1, full_w, editor.message, message_fg, COLOR_BG)
 }
@@ -781,7 +787,7 @@ editor_render_welcome :: proc(editor: ^Editor) {
 		"`Mb.    ,dP' MM    ,M  MM    ,dP' ",
 		"  `\"bmmd\"' .JMMmmmMMM.JMMmmmdP'   ",
 		"      MMb                          ",
-		"       `bood'                      ",
+		"       `bmmd'                      ",
 	}
 	hints := [?]string {
 		"Ctrl+O    Open file",

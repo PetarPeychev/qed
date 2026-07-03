@@ -134,22 +134,6 @@ line_indent_len :: proc(text: []u8) -> int {
 	return n
 }
 
-line_comment_token :: proc(path: string) -> string {
-	switch {
-	case strings.has_suffix(path, ".py"),
-	     strings.has_suffix(path, ".sh"),
-	     strings.has_suffix(path, ".bash"),
-	     strings.has_suffix(path, ".zsh"),
-	     strings.has_suffix(path, ".yaml"),
-	     strings.has_suffix(path, ".yml"),
-	     strings.has_suffix(path, ".toml"):
-		return "#"
-	case strings.has_suffix(path, ".lua"), strings.has_suffix(path, ".sql"):
-		return "--"
-	}
-	return "//"
-}
-
 comment_shift_col :: proc(col, row, target_row, at, delta: int) -> int {
 	if row != target_row {
 		return col
@@ -168,7 +152,10 @@ comment_shift_col :: proc(col, row, target_row, at, delta: int) -> int {
 }
 
 buffer_toggle_comment :: proc(b: ^Buffer) {
-	token := line_comment_token(b.path)
+	token := language_info(b.path).comment
+	if token == "" {
+		return
+	}
 	from, to, sel := selection_range(b)
 	first_row := b.cursor.row
 	last_row := b.cursor.row

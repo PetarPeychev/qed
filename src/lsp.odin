@@ -42,10 +42,26 @@ lsp_running :: proc() -> bool {
 }
 
 lsp_wants :: proc(b: ^Buffer) -> bool {
-	return strings.has_suffix(b.path, ".odin")
+	return language_info(b.path).lsp_server != ""
 }
 
-lsp_start :: proc(editor: ^Editor) {
+lsp_status_label :: proc(b: ^Buffer) -> string {
+	server := language_info(b.path).lsp_server
+	if server == "" {
+		return ""
+	}
+	switch g_lsp.state {
+	case .Running:
+		return server
+	case .Failed:
+		return fmt.tprintf("%s ✗", server)
+	case .Off:
+		return fmt.tprintf("%s …", server)
+	}
+	return server
+}
+
+lsp_start :: proc(editor: ^Editor, server: string) {
 	posix.sigignore(.SIGPIPE)
 
 	in_r, in_w, in_err := os.pipe()
@@ -62,7 +78,7 @@ lsp_start :: proc(editor: ^Editor) {
 	}
 
 	process, err := os.process_start({
-		command     = {LSP_SERVER},
+		command     = {server},
 		working_dir = editor.working_root,
 		stdin       = in_r,
 		stdout      = out_w,
@@ -73,7 +89,7 @@ lsp_start :: proc(editor: ^Editor) {
 		os.close(in_w)
 		os.close(out_r)
 		g_lsp.state = .Failed
-		editor.message = "LSP: failed to start ols"
+		editor.message = fmt.tprintf("LSP: failed to start %s", server)
 		editor.message_error = true
 		return
 	}
@@ -146,7 +162,7 @@ lsp_sync :: proc(editor: ^Editor) {
 	if g_lsp.state == .Off {
 		for &b in editor.buffers {
 			if lsp_wants(&b) {
-				lsp_start(editor)
+				lsp_start(editor, language_info(b.path).lsp_server)
 				break
 			}
 		}
@@ -171,8 +187,9 @@ lsp_did_open :: proc(editor: ^Editor, b: ^Buffer) {
 	text := buffer_snapshot(b)
 	defer delete(text)
 	body := fmt.tprintf(
-		`{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":%s,"languageId":"odin","version":%d,"text":%s}}}}}}`,
+		`{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":%s,"languageId":%s,"version":%d,"text":%s}}}}}}`,
 		lsp_json_string(lsp_uri(b.path)),
+		lsp_json_string(language_info(b.path).lsp_id),
 		b.rev,
 		lsp_json_string(text),
 	)

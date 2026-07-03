@@ -26,13 +26,13 @@ Syntax :: struct {
 @(private = "file")
 g_syntax: Syntax
 
-syntax_ensure :: proc() -> bool {
+syntax_ensure :: proc(grammar: proc "c" () -> ts.Language) -> bool {
 	if g_syntax.tried {
 		return g_syntax.ready
 	}
 	g_syntax.tried = true
 
-	lang := ts.tree_sitter_odin()
+	lang := grammar()
 	g_syntax.parser = ts.parser_new()
 	if !ts.parser_set_language(g_syntax.parser, lang) {
 		return false
@@ -100,8 +100,8 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 }
 
 highlight_update :: proc(b: ^Buffer) {
-	is_odin := strings.has_suffix(b.path, ".odin")
-	if !is_odin || !syntax_ensure() {
+	grammar := language_info(b.path).grammar
+	if grammar == nil || !syntax_ensure(grammar) {
 		b.hl.valid = false
 		b.hl.computed = true
 		b.hl.rev = b.rev
