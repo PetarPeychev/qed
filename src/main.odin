@@ -25,22 +25,41 @@ main :: proc() {
 
 	ev: tb2.Event
 	for !editor.quit {
+		lsp_sync(&editor)
 		if !editor.pasting {
 			editor_render(&editor)
 		}
-		tb2.poll_event(&ev)
-		if !editor.pasting &&
-		   ev.type == .Key &&
-		   ev.key == .Esc &&
-		   ev.ch == 0 &&
-		   u8(ev.mod) == 0 {
-			next: tb2.Event
-			if tb2.peek_event(&next, ALT_ESC_TIMEOUT_MS) == .Ok && next.type == .Key && next.ch != 0 {
-				next.mod = tb2.Mod(u8(next.mod) | u8(tb2.Mod.Alt))
-				ev = next
+		got_event := false
+		for !got_event {
+			if lsp_running() {
+				if tb2.peek_event(&ev, LSP_POLL_MS) == .Ok {
+					got_event = true
+				}
+				if lsp_pump(&editor) && !got_event {
+					break
+				}
+				if !got_event {
+					free_all(context.temp_allocator)
+				}
+			} else {
+				tb2.poll_event(&ev)
+				got_event = true
 			}
 		}
-		editor_dispatch(&editor, ev)
+		if got_event {
+			if !editor.pasting &&
+			   ev.type == .Key &&
+			   ev.key == .Esc &&
+			   ev.ch == 0 &&
+			   u8(ev.mod) == 0 {
+				next: tb2.Event
+				if tb2.peek_event(&next, ALT_ESC_TIMEOUT_MS) == .Ok && next.type == .Key && next.ch != 0 {
+					next.mod = tb2.Mod(u8(next.mod) | u8(tb2.Mod.Alt))
+					ev = next
+				}
+			}
+			editor_dispatch(&editor, ev)
+		}
 		free_all(context.temp_allocator)
 	}
 }

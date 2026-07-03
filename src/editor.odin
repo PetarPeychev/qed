@@ -64,6 +64,7 @@ editor_init :: proc(path: string = "") -> Editor {
 }
 
 editor_shutdown :: proc(editor: ^Editor) {
+	lsp_stop(editor)
 	for &b in editor.buffers {
 		buffer_destroy(&b)
 	}
@@ -488,6 +489,7 @@ editor_close_buffer :: proc(editor: ^Editor) {
 editor_close_current :: proc(editor: ^Editor) {
 	editor.jump_lock = true
 	idx := editor.current
+	lsp_did_close(editor, &editor.buffers[idx])
 	buffer_destroy(&editor.buffers[idx])
 	ordered_remove(&editor.buffers, idx)
 	if len(editor.buffers) == 0 {
@@ -558,6 +560,7 @@ editor_save :: proc(editor: ^Editor) {
 	switch buffer_save(editor_buffer(editor)) {
 	case .None:
 		editor.message = "Saved"
+		lsp_did_save(editor, editor_buffer(editor))
 	case .NoPath:
 		editor.message = "No file name"
 		editor.message_error = true
@@ -622,8 +625,84 @@ editor_render :: proc(editor: ^Editor) {
 		cx := gutter + vcol - editor.scroll_col
 		cy := b.cursor.row - editor.scroll_row
 		tb2.set_cursor(i32(cx), i32(cy))
+		editor_render_diag_pane(editor, cx, cy)
 	}
 	tb2.present()
+}
+
+editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
+	b := editor_buffer(editor)
+	d, ok := diagnostic_at(b, b.cursor)
+	if !ok {
+		return
+	}
+	sw := int(tb2.width())
+	_, h := editor_viewport(editor)
+
+	text_w := sw - 2 * DIAG_PANE_MARGIN_X - 2
+	if text_w < 8 {
+		return
+	}
+	lines := wrap_text(d.message, text_w)
+	content_h := min(len(lines), DIAG_PANE_MAX_LINES)
+	content_w := 0
+	for line in lines[:content_h] {
+		content_w = max(content_w, len(line))
+	}
+	pane_w := content_w + 2
+	pane_h := content_h + 2
+	y := cy + 1
+	if y + pane_h > h {
+		y = cy - pane_h
+	}
+	if y < 0 {
+		return
+	}
+	x := clamp(cx, 0, max(0, sw - pane_w))
+	box := pane_draw_box({x, y, pane_w, pane_h})
+	fg := diagnostic_color(d.severity)
+	for line, i in lines[:content_h] {
+		pane_text(box.x, box.y + i, box.w, line, fg, COLOR_PANE_BG)
+	}
+}
+
+wrap_text :: proc(text: string, width: int, allocator := context.temp_allocator) -> [dynamic]string {
+	lines := make([dynamic]string, allocator)
+	for raw in strings.split(text, "\n", allocator) {
+		words := strings.fields(raw, allocator)
+		if len(words) == 0 {
+			if len(lines) > 0 {
+				append(&lines, "")
+			}
+			continue
+		}
+		sb := strings.builder_make(allocator)
+		for word in words {
+			w := word
+			for {
+				if strings.builder_len(sb) > 0 && strings.builder_len(sb) + 1 + len(w) > width {
+					append(&lines, strings.clone(strings.to_string(sb), allocator))
+					strings.builder_reset(&sb)
+				}
+				if len(w) <= width {
+					break
+				}
+				append(&lines, w[:width])
+				w = w[width:]
+			}
+			if strings.builder_len(sb) > 0 {
+				strings.write_byte(&sb, ' ')
+			}
+			strings.write_string(&sb, w)
+		}
+		if strings.builder_len(sb) > 0 {
+			append(&lines, strings.clone(strings.to_string(sb), allocator))
+		}
+	}
+	for len(lines) > 0 && lines[len(lines) - 1] == "" {
+		pop(&lines)
+	}
+	return lines
 }
 
 editor_render_buffer :: proc(editor: ^Editor) {
@@ -640,7 +719,13 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			break
 		}
 		current := row == b.cursor.row
-		editor_render_gutter(screen_y, gutter, row + 1, current)
+		severity := 0
+		for d in b.diags {
+			if row >= d.from.row && row <= d.to.row && (severity == 0 || d.severity < severity) {
+				severity = d.severity
+			}
+		}
+		editor_render_gutter(screen_y, gutter, row + 1, current, severity)
 
 		text := b.lines[row].text
 		row_sel_from, row_sel_to := -1, -1
@@ -648,8 +733,22 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			row_sel_from = sel_from.col if row == sel_from.row else 0
 			row_sel_to = sel_to.col if row == sel_to.row else len(text) + 1
 		}
+		row_diags := make([dynamic][2]int, context.temp_allocator)
+		for d in b.diags {
+			if row < d.from.row || row > d.to.row {
+				continue
+			}
+			ds := clamp(d.from.col if row == d.from.row else 0, 0, len(text))
+			de := clamp(d.to.col if row == d.to.row else len(text), 0, len(text))
+			if ds == de {
+				de = min(de + 1, len(text))
+			}
+			if ds < de {
+				append(&row_diags, [2]int{ds, de})
+			}
+		}
 		colors := highlight_colors(b, row)
-		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, row_sel_from, row_sel_to)
+		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, row_sel_from, row_sel_to, row_diags[:])
 	}
 
 	name := b.path if b.path != "" else "[No Name]"
@@ -715,15 +814,22 @@ editor_render_welcome_line :: proc(x, y: int, text: string) {
 	tb2.print(i32(x), i32(y), COLOR_FG, COLOR_BG, cstr)
 }
 
-editor_render_gutter :: proc(y, width, number: int, current: bool) {
+editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int) {
 	label := fmt.tprintf("%d", number)
 	sb := strings.builder_make(context.temp_allocator)
 	for _ in 0 ..< width - 1 - len(label) {
 		strings.write_byte(&sb, ' ')
 	}
 	strings.write_string(&sb, label)
-	strings.write_byte(&sb, ' ')
+	if severity > 0 {
+		strings.write_rune(&sb, '●')
+	} else {
+		strings.write_byte(&sb, ' ')
+	}
 	fg := COLOR_CURRENT_LINE_FG if current else COLOR_GUTTER_FG
+	if severity > 0 {
+		fg = diagnostic_color(severity)
+	}
 	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
 	tb2.print(0, i32(y), fg, COLOR_GUTTER_BG, cstr)
 }
@@ -735,6 +841,7 @@ editor_render_text_row :: proc(
 	scroll_col: int,
 	current: bool,
 	sel_from, sel_to: int,
+	diags: [][2]int,
 ) {
 	bg_normal := COLOR_CURRENT_LINE_BG if current else COLOR_BG
 	for sx in 0 ..< w {
@@ -780,6 +887,15 @@ editor_render_text_row :: proc(
 		return vcol + cluster_width(cluster)
 	}
 
+	underlined :: proc(diags: [][2]int, col: int) -> bool {
+		for r in diags {
+			if col >= r[0] && col < r[1] {
+				return true
+			}
+		}
+		return false
+	}
+
 	vcol := 0
 	pstart := -1
 	psel := false
@@ -792,6 +908,9 @@ editor_render_text_row :: proc(
 		pstart = g.byte_index
 		psel = sel_from >= 0 && g.byte_index >= sel_from && g.byte_index < sel_to
 		pfg = colors[pstart] if colors != nil && pstart < len(colors) else COLOR_FG
+		if underlined(diags, pstart) {
+			pfg = tb2.Color(u64(pfg) | u64(tb2.Color.Underline))
+		}
 	}
 	if pstart >= 0 {
 		vcol = draw_cluster(gutter, y, w, text[pstart:], vcol, scroll_col, psel, pfg, bg_normal)

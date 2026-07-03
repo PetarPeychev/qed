@@ -22,6 +22,9 @@ Buffer :: struct {
 	open_kind:     Coalesce,
 	rev:           u64,
 	hl:            Highlight,
+	diags:         [dynamic]Diagnostic,
+	lsp_open:      bool,
+	lsp_rev:       u64,
 }
 
 
@@ -74,6 +77,8 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	delete(buffer.redo)
 	group_destroy(&buffer.open)
 	highlight_destroy(&buffer.hl)
+	buffer_clear_diags(buffer)
+	delete(buffer.diags)
 }
 
 buffer_snapshot :: proc(buffer: ^Buffer) -> string {

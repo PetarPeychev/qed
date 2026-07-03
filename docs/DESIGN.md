@@ -442,6 +442,18 @@ those features land.
 - [x] **Drag-select auto-scroll.** During a drag, at the top/bottom viewport edge
   the cursor aims one row beyond the viewport and `editor_scroll` brings it in, so
   a selection can extend past the screen. No timers, so each nudge advances a step.
+- [x] **LSP integration + diagnostics (ols).** JSON-RPC/stdio client in
+  `src/lsp.odin`: spawns `ols` (rooted at the working root; the `lib` collection
+  is declared in `ols.json` so `odin check` can resolve `lib:tb2`) once an
+  `.odin` buffer exists; full-text `didOpen`/`didChange` per edit, `didSave` on
+  save and once on open — syntax errors publish live while typing, semantic
+  errors refresh on save because ols's checker reads disk. While the server
+  runs, the main loop swaps `poll_event` for a `LSP_POLL_MS` (30ms) `peek_event`,
+  draining the pipe non-blocking and re-rendering only when diagnostics change.
+  Rendering: exact-range underline (syntax colors kept), severity-colored gutter
+  line number + `●`, and an automatic floating pane under the cursor with the
+  full message (word-wrapped to the screen width, `\n` preserved). LSP's UTF-16
+  columns are converted to byte offsets.
 
 **Terminal caveat (WT):** Windows Terminal swallows some `Ctrl+Shift`/`Alt`
 arrow combos (`Ctrl+Shift+Up`/`Down`, `Alt+Up`/`Down`); they're supplied by
@@ -479,15 +491,12 @@ _(none open)_
   (byte + row/col ranges) so it reuses unchanged subtrees. The added work is
   translating our edits into that format and holding the old tree per buffer.
 
-**LSP.** The client plumbing (spawn a server, initialize, `didOpen`/`didChange`
-sync) ships with the initial integration below; each capability after that is its
-own slice. Ordered by how much they get used.
+**LSP.** The client plumbing (spawn, initialize, `didOpen`/`didChange` sync)
+shipped with diagnostics (§10 Done); each capability below is its own slice.
+Ordered by how much they get used.
 
-- [ ] **LSP integration + diagnostics.** Stand up the client (spawn e.g. `ols`
-  for Odin, initialize, sync buffer changes) and render its diagnostics: gutter
-  marks / underlines, the full message on the message line for the diagnostic
-  under the cursor, and inline end-of-line virtual text as a fast-follow. (This is
-  the merged producer + inline-render feature.)
+- [ ] **Inline diagnostic virtual text.** Dimmed end-of-line message text on
+  diagnostic lines (the fast-follow split out of the shipped diagnostics ticket).
 - [ ] **Go-to-definition.** Jump, opening into a buffer.
 - [ ] **Find references.** Reference sites listed in a floating pane / picker.
 - [ ] **Rename symbol.** Workspace-wide rename driven from the prompt.
@@ -527,3 +536,5 @@ own slice. Ordered by how much they get used.
   across switches (scroll currently re-centers on the cursor on switch).
 - [ ] **Permission/ownership-preserving saves.** Carry the original file's
   mode/owner onto the atomically-written replacement.
+- [ ] **LSP restart.** A crashed or failed-to-start `ols` stays down for the
+  session (`.Failed` never retries); add a palette command to restart it.
