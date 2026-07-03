@@ -474,11 +474,20 @@ _(none open)_
   `TAB_WIDTH` (4). Support other widths (1/2/3/4 spaces) and auto-detect the width
   from the file's existing indentation on open, the way tabs-vs-spaces is already
   detected. Surface it in the status bar alongside the indent style.
-- [ ] **Toggle line comment** (`Ctrl+/`). Comment / uncomment the current line —
-  or every line a selection touches — using the language's line-comment token
-  (`//` for Odin). Toggle semantics: if every touched non-blank line is already
-  commented, strip the leading token; otherwise add it (aligned at the least
-  indent). One undo group.
+- [x] **Toggle line comment** (`Ctrl+/`, also palette "Toggle Comment").
+  Comment / uncomment the current line — or every non-blank line a selection
+  touches — with the language's line-comment token (`line_comment_token` in
+  `edit.odin`: `//` default, `#` for py/sh/yaml/toml, `--` for lua/sql). Toggle
+  semantics: if every touched non-blank line is already commented, strip the token
+  (+ one trailing space); otherwise insert `<token> ` aligned at the least-indented
+  touched line. Blank lines skipped; a selection ending at column 0 doesn't count
+  that trailing line; cursor/selection columns carried through; one undo group.
+- [ ] **Central language detection.** Today language dispatch is scattered:
+  `highlight_update`/`lsp` gate on `has_suffix(".odin")` and `line_comment_token`
+  runs its own extension switch. Introduce one place (extension → `Language`) that
+  drives comment token, tree-sitter grammar, and LSP server selection, so adding a
+  language is one table entry instead of edits across files. Do this once "More
+  languages" makes the duplication real (compression rule), not before.
 - [ ] **File-tree pane.** A persistent browser pane over the working root
   (navigate, open files). Second structural use of the pane layer.
 

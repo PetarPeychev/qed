@@ -28,6 +28,8 @@ cmd_buffer_end :: proc(editor: ^Editor) {
 	cursor_move_buffer_end(b)
 }
 
+cmd_toggle_comment :: proc(editor: ^Editor) {buffer_toggle_comment(editor_buffer(editor))}
+
 cmd_toggle_indent :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.indent = .Spaces if b.indent == .Tabs else .Tabs
@@ -51,6 +53,7 @@ commands := [?]Command {
 	{name = "Copy", shortcut = "Ctrl+C", key = .Ctrl_C, run = editor_copy},
 	{name = "Paste", shortcut = "Ctrl+V", key = .Ctrl_V, run = editor_paste},
 	{name = "Select All", shortcut = "Ctrl+A", key = .Ctrl_A, run = cmd_select_all},
+	{name = "Toggle Comment", shortcut = "Ctrl+/", key = .Ctrl_Slash, run = cmd_toggle_comment},
 	{name = "Toggle Indent (Tabs/Spaces)", key = .Ctrl_Tilde, run = cmd_toggle_indent},
 }
 

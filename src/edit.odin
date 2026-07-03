@@ -126,6 +126,127 @@ line_is_blank :: proc(text: []u8) -> bool {
 	return true
 }
 
+line_indent_len :: proc(text: []u8) -> int {
+	n := 0
+	for n < len(text) && (text[n] == ' ' || text[n] == '\t') {
+		n += 1
+	}
+	return n
+}
+
+line_comment_token :: proc(path: string) -> string {
+	switch {
+	case strings.has_suffix(path, ".py"),
+	     strings.has_suffix(path, ".sh"),
+	     strings.has_suffix(path, ".bash"),
+	     strings.has_suffix(path, ".zsh"),
+	     strings.has_suffix(path, ".yaml"),
+	     strings.has_suffix(path, ".yml"),
+	     strings.has_suffix(path, ".toml"):
+		return "#"
+	case strings.has_suffix(path, ".lua"), strings.has_suffix(path, ".sql"):
+		return "--"
+	}
+	return "//"
+}
+
+comment_shift_col :: proc(col, row, target_row, at, delta: int) -> int {
+	if row != target_row {
+		return col
+	}
+	if delta >= 0 {
+		return col + delta if col >= at else col
+	}
+	m := -delta
+	if col <= at {
+		return col
+	}
+	if col >= at + m {
+		return col - m
+	}
+	return at
+}
+
+buffer_toggle_comment :: proc(b: ^Buffer) {
+	token := line_comment_token(b.path)
+	from, to, sel := selection_range(b)
+	first_row := b.cursor.row
+	last_row := b.cursor.row
+	if sel {
+		first_row = from.row
+		last_row = to.row
+		if to.col == 0 && to.row > from.row {
+			last_row -= 1
+		}
+	}
+
+	all_commented := true
+	any := false
+	min_indent := max(int)
+	for row in first_row ..= last_row {
+		text := b.lines[row].text[:]
+		if line_is_blank(text) {
+			continue
+		}
+		any = true
+		ind := line_indent_len(text)
+		min_indent = min(min_indent, ind)
+		if !strings.has_prefix(string(text[ind:]), token) {
+			all_commented = false
+		}
+	}
+	if !any {
+		return
+	}
+
+	cur := b.cursor
+	anchor, has_anchor := b.selection.?
+	new_cur_col := cur.col
+	new_anchor_col := anchor.col
+
+	edit_open(b, .Atomic)
+	if all_commented {
+		for row in first_row ..= last_row {
+			text := b.lines[row].text[:]
+			if line_is_blank(text) {
+				continue
+			}
+			ind := line_indent_len(text)
+			n := len(token)
+			if ind + n < len(text) && text[ind + n] == ' ' {
+				n += 1
+			}
+			at := Cursor{row, ind}
+			removed := buffer_delete(b, at, {row, ind + n})
+			append(&b.open.edits, Edit{.Insert, at, removed})
+			new_cur_col = comment_shift_col(new_cur_col, row, cur.row, ind, -n)
+			new_anchor_col = comment_shift_col(new_anchor_col, row, anchor.row, ind, -n)
+		}
+	} else {
+		insert := strings.concatenate({token, " "}, context.temp_allocator)
+		shift := len(insert)
+		for row in first_row ..= last_row {
+			text := b.lines[row].text[:]
+			if line_is_blank(text) {
+				continue
+			}
+			at := Cursor{row, min_indent}
+			buffer_insert(b, at, insert)
+			append(&b.open.edits, Edit{.Delete, at, strings.clone(insert)})
+			new_cur_col = comment_shift_col(new_cur_col, row, cur.row, min_indent, shift)
+			new_anchor_col = comment_shift_col(new_anchor_col, row, anchor.row, min_indent, shift)
+		}
+	}
+	buffer_undo_commit(b)
+
+	b.cursor.col = new_cur_col
+	cursor_goal_sync(b)
+	if has_anchor {
+		anchor.col = new_anchor_col
+		b.selection = anchor
+	}
+}
+
 buffer_insert_tab :: proc(b: ^Buffer) {
 	if b.indent == .Tabs {
 		buffer_insert_text(b, "\t", .Atomic)
