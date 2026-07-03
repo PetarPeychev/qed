@@ -14,6 +14,8 @@ approach as `lib/tb2/`.
 | JSON grammar | `github.com/tree-sitter/tree-sitter-json` | `ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24` (v0.24.8) |
 | Python grammar | `github.com/tree-sitter/tree-sitter-python` | `d326e4cad262cf681656e130960e49dfc04c03ea` (v0.25.0) |
 | C grammar | `github.com/tree-sitter/tree-sitter-c` | `7fa1be1b694b6e763686793d97da01f36a0e5c12` (v0.24.1) |
+| JavaScript grammar | `github.com/tree-sitter/tree-sitter-javascript` | `44c892e0be055ac465d5eeddae6d3e194424e7de` (v0.25.0) |
+| TypeScript grammar | `github.com/tree-sitter/tree-sitter-typescript` | `f975a621f4e7f532fe322e13c4f79495e0a7b2e7` (v0.23.2) — provides `typescript`/`tsx` |
 
 Each grammar's `src/parser.c` (Odin's is ~15 MB) and `src/scanner.c` (Odin,
 Python; JSON and C have none) are **generated** artifacts committed upstream; we
@@ -31,8 +33,20 @@ odin/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (ABI 14
 json/             parser.c,           tree_sitter/*.h, highlights.scm
 python/           parser.c, scanner.c, tree_sitter/*.h, highlights.scm
 c/                parser.c,           tree_sitter/*.h, highlights.scm
+javascript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used for .js/.jsx)
+typescript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used for .ts and .tsx)
+tsx/              parser.c, scanner.c, tree_sitter/*.h                    (.tsx grammar; shares typescript's query)
+common/           scanner.h                  shared TS/TSX external scanner (from the TS repo)
 ts.odin           Odin FFI bindings          the ~15 procs qed calls
 ```
+
+The `typescript` and `tsx` grammars share one external scanner living in the TS
+repo's `common/scanner.h`. Upstream each `<lang>/src/scanner.c` includes it as
+`../../common/scanner.h`; qed's layout drops the `src/` level, so the include was
+**patched** to `../common/scanner.h`. `build.sh` compiles each with `-I` on its own
+dir so `tree_sitter/parser.h` resolves. The two scanners export distinct
+`tree_sitter_typescript_*` / `tree_sitter_tsx_*` symbols (no link clash); all
+helpers in `common/scanner.h` are `static`.
 
 `build.sh` compiles `runtime/src/lib.c` plus each grammar's `parser.c`/
 `scanner.c` into `libtreesitter.a`; `ts.odin`'s `foreign import "libtreesitter.a"`
@@ -88,6 +102,39 @@ delimiters, strings/system-lib strings, `(null)`/number/char constants, type
 identifiers / primitive & sized types, function-call and declarator names
 (`@function`/`@function.special` are unmapped, so they render plain),
 `(identifier) @variable` (unmapped → plain), comments.
+
+### `javascript/highlights.scm`
+
+Upstream JS query minus its four predicate-gated rules (qed's core doesn't
+evaluate predicates, so a gated rule matches unconditionally):
+
+- `((identifier) @constant (#match? … "^[A-Z_][A-Z\d_]+$"))` — **removed** (the
+  harmful one: `@constant` is painted, so it would color *every* identifier).
+- `((identifier) @constructor (#match? … "^[A-Z]"))` — **removed**.
+- `((identifier) @variable.builtin (#match? …))` and `@function.builtin (#eq?
+  "require")` — **removed**.
+
+Everything predicate-free is kept: keywords, strings/template strings, regex
+(`@string.special`), comments, numbers, `true`/`false`/`null`/`undefined`,
+operators/punctuation (unmapped → plain), and the `@function`/`@property`/
+`@variable` structural captures (unmapped → plain). No JSX-tag rules added — qed
+has no `@tag` color bucket, so JSX tags render plain by design.
+
+### `typescript/highlights.scm`
+
+The JavaScript base **inlined** (upstream TS is `; inherits: javascript`, which
+qed can't express) plus the TS additions, curated the same way. Used by **both**
+the `typescript` and `tsx` grammars (`.tsx` JSX nodes are already covered by the
+inlined JS rules; qed maps no JSX-specific captures). Removed the two
+predicate-gated identifier heuristics:
+
+- `((identifier) @type (#match? … "^[A-Z]"))` — **removed** (would paint every
+  identifier as a type).
+- (plus the four inherited JS `#match?`/`#eq?` rules above.)
+
+Kept predicate-free: `(type_identifier) @type`, `(predefined_type) @type.builtin`,
+type-argument brackets, parameter identifiers (unmapped → plain), and the TS
+keyword set (`interface`, `type`, `enum`, `readonly`, …).
 
 ### `odin/highlights.scm`
 

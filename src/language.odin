@@ -11,7 +11,9 @@ Language :: enum {
 	Go,
 	Rust,
 	JavaScript,
+	Jsx,
 	TypeScript,
+	Tsx,
 	Python,
 	Shell,
 	Lua,
@@ -38,8 +40,10 @@ LANGUAGES := [Language]LanguageInfo {
 	.Cpp        = {"c++", "//", "", "", nil, nil},
 	.Go         = {"go", "//", "", "", nil, nil},
 	.Rust       = {"rust", "//", "", "", nil, nil},
-	.JavaScript = {"javascript", "//", "", "", nil, nil},
-	.TypeScript = {"typescript", "//", "", "", nil, nil},
+	.JavaScript = {"javascript", "//", "", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm")},
+	.Jsx        = {"jsx", "//", "", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm")},
+	.TypeScript = {"typescript", "//", "", "", ts.tree_sitter_typescript, #load("../lib/tree_sitter/typescript/highlights.scm")},
+	.Tsx        = {"tsx", "//", "", "", ts.tree_sitter_tsx, #load("../lib/tree_sitter/typescript/highlights.scm")},
 	.Python     = {"python", "#", "pyright-langserver --stdio", "python", ts.tree_sitter_python, #load("../lib/tree_sitter/python/highlights.scm")},
 	.Shell      = {"shell", "#", "", "", nil, nil},
 	.Lua        = {"lua", "--", "", "", nil, nil},
@@ -67,10 +71,14 @@ language_of :: proc(path: string) -> Language {
 		return .Go
 	case "rs":
 		return .Rust
-	case "js", "jsx", "mjs", "cjs":
+	case "js", "mjs", "cjs":
 		return .JavaScript
-	case "ts", "tsx":
+	case "jsx":
+		return .Jsx
+	case "ts", "mts", "cts":
 		return .TypeScript
+	case "tsx":
+		return .Tsx
 	case "py", "pyw":
 		return .Python
 	case "sh", "bash", "zsh":

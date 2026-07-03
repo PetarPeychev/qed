@@ -85,4 +85,7 @@ foreign ts {
 	tree_sitter_json :: proc() -> Language ---
 	tree_sitter_python :: proc() -> Language ---
 	tree_sitter_c :: proc() -> Language ---
+	tree_sitter_javascript :: proc() -> Language ---
+	tree_sitter_typescript :: proc() -> Language ---
+	tree_sitter_tsx :: proc() -> Language ---
 }

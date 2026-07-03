@@ -21,7 +21,6 @@ _(none open)_
 
 ## Syntax highlighting (tree-sitter)
 
-- [ ] JavaScript / TypeScript (heavy, dual grammar).
 - [ ] Markdown (split block/inline grammar).
 - [ ] Shell (bash)
 - [ ] SQL

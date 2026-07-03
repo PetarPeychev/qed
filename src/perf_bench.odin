@@ -17,8 +17,21 @@ HIGHLIGHT_BUDGET_MS :: 50.0
 @(test)
 test_highlight_incremental :: proc(t: ^testing.T) {
 	defer syntax_shutdown()
+	highlight_queries_compile(t)
 	highlight_correctness(t)
 	highlight_perf(t)
+}
+
+// Every language that declares a grammar must have a query that compiles against
+// it; a bad node name would make syntax_ensure fail silently and disable coloring.
+// Runs here (not a standalone test) because this test owns the syntax cache.
+highlight_queries_compile :: proc(t: ^testing.T) {
+	for info, lang in LANGUAGES {
+		if info.grammar == nil {
+			continue
+		}
+		testing.expectf(t, syntax_ensure(lang), "syntax_ensure failed for %v", lang)
+	}
 }
 
 // The incremental-parse + viewport-scoped path must paint exactly what a fresh
