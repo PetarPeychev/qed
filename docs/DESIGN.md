@@ -156,7 +156,8 @@ list (back/forward), runtime config (`~/.config/qed/config.json`).
 
 Language intelligence: tree-sitter highlight (Odin, JSON, Python, C, JS/JSX,
 TS/TSX); LSP
-diagnostics (ols, pyright, clangd) — live syntax + on-save semantic, range
+diagnostics (ols, pyright, clangd, typescript-language-server) — live syntax +
+on-save semantic, range
 underline, gutter severity, hover pane; git diff gutter (live vs `HEAD`).
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
