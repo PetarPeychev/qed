@@ -2,30 +2,22 @@ package main
 
 import "core:fmt"
 import "core:strings"
-import "core:unicode/utf8"
 import "lib:tb2"
 
 LineFind :: struct {
-	active:   bool,
-	query:    [dynamic]u8,
-	lines:    [dynamic]string,
-	matches:  [dynamic]int,
-	selected: int,
-	scroll:   int,
-	fuzzy:    Fuzzy,
+	using list: FuzzyList,
+	lines:      [dynamic]string,
 }
 
 linefind_destroy :: proc(p: ^LineFind) {
-	fuzzy_end(&p.fuzzy)
+	fuzzy_list_destroy(&p.list)
 	delete(p.lines)
-	delete(p.query)
-	delete(p.matches)
 }
 
 linefind_open :: proc(editor: ^Editor) {
 	p := &editor.linefind
 	p.active = true
-	clear(&p.query)
+	fuzzy_list_reset(&p.list)
 	editor_set_message(editor, "")
 
 	b := editor_buffer(editor)
@@ -34,10 +26,10 @@ linefind_open :: proc(editor: ^Editor) {
 		append(&p.lines, string(line.text[:]))
 	}
 	p.fuzzy = fuzzy_begin(p.lines[:])
-	linefind_filter(editor)
+	fuzzy_list_refilter(&p.list)
 
 	p.selected = clamp(b.cursor.row, 0, max(0, len(p.matches) - 1))
-	list_h := linefind_layout(editor).list_h
+	list_h := overlay_layout(editor).list_h
 	p.scroll = max(0, p.selected - list_h / 2)
 }
 
@@ -48,47 +40,9 @@ linefind_close :: proc(editor: ^Editor) {
 	clear(&p.lines)
 }
 
-linefind_filter :: proc(editor: ^Editor) {
-	p := &editor.linefind
-	clear(&p.matches)
-	p.selected = 0
-	p.scroll = 0
-	ranked := fuzzy_rank(&p.fuzzy, string(p.query[:]))
-	for idx in ranked {
-		append(&p.matches, idx)
-	}
-}
-
-linefind_layout :: proc(editor: ^Editor) -> PickerLayout {
-	sw := int(tb2.width())
-	sh := int(tb2.height())
-	if !editor.welcome {
-		sh -= STATUS_ROWS
-	}
-	box := Rect{PICKER_MARGIN_X, PICKER_MARGIN_Y, max(0, sw - 2 * PICKER_MARGIN_X), max(0, sh - 2 * PICKER_MARGIN_Y)}
-	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
-	list_top := inner.y + 2
-	body_h := inner.h - 2
-	list_h := max(0, body_h / 2)
-	sep_y := list_top + list_h
-	preview_top := sep_y + 1
-	preview_h := max(0, body_h - list_h - 1)
-	return {box, inner, list_top, list_h, sep_y, preview_top, preview_h}
-}
-
 linefind_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.linefind
-	if len(p.matches) == 0 {
-		return
-	}
-	p.selected = clamp(p.selected + delta, 0, len(p.matches) - 1)
-	list_h := linefind_layout(editor).list_h
-	if p.selected < p.scroll {
-		p.scroll = p.selected
-	}
-	if list_h > 0 && p.selected >= p.scroll + list_h {
-		p.scroll = p.selected - list_h + 1
-	}
+	fuzzy_list_move_clamp(&p.list, delta, overlay_layout(editor).list_h)
 }
 
 linefind_execute :: proc(editor: ^Editor) {
@@ -132,29 +86,14 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		linefind_move(editor, -1)
 	case .Pgdn:
-		linefind_move(editor, linefind_layout(editor).list_h)
+		linefind_move(editor, overlay_layout(editor).list_h)
 	case .Pgup:
-		linefind_move(editor, -linefind_layout(editor).list_h)
-	case .Backspace, .Backspace2:
-		if len(p.query) > 0 {
-			resize(&p.query, len(p.query) - 1)
-			linefind_filter(editor)
-		}
+		linefind_move(editor, -overlay_layout(editor).list_h)
 	case:
-		if ev.ch >= 0x20 && !alt {
-			bytes, n := utf8.encode_rune(ev.ch)
-			append(&p.query, ..bytes[:n])
-			linefind_filter(editor)
+		if !alt && query_edit_key(&p.query, ev) {
+			fuzzy_list_refilter(&p.list)
 		}
 	}
-}
-
-linefind_number_width :: proc(count: int) -> int {
-	w := 1
-	for n := count; n >= 10; n /= 10 {
-		w += 1
-	}
-	return w
 }
 
 linefind_label :: proc(numw, row: int, text: string) -> string {
@@ -165,9 +104,9 @@ linefind_label :: proc(numw, row: int, text: string) -> string {
 
 linefind_render :: proc(editor: ^Editor) {
 	p := &editor.linefind
-	lay := linefind_layout(editor)
+	lay := overlay_layout(editor)
 	inner := pane_draw_box(lay.box)
-	numw := linefind_number_width(len(p.lines))
+	numw := digit_count(len(p.lines))
 
 	prompt := fmt.tprintf("> %s", string(p.query[:]))
 	pane_text(inner.x + 1, inner.y, inner.w - 2, prompt, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
@@ -204,6 +143,5 @@ linefind_render :: proc(editor: ^Editor) {
 		}
 	}
 
-	cx := min(inner.x + 3 + len(p.query), inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(inner.y))
+	overlay_cursor(inner, len(p.query))
 }

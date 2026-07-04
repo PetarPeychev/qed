@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
-import "core:unicode/utf8"
 import "lib:tb2"
 
 Match :: struct {
@@ -129,7 +128,7 @@ projsearch_load_preview :: proc(editor: ^Editor) {
 	}
 	m := p.matches[p.selected]
 	full, _ := filepath.join({editor.working_root, m.path}, context.temp_allocator)
-	h := max(1, picker_layout(editor).preview_h)
+	h := max(1, overlay_layout(editor).preview_h)
 	start := max(1, (m.row + 1) - h / 2)
 	cmd := fmt.ctprintf("sed -n '%d,%dp' %s 2>/dev/null", start, start + h - 1, shell_quote(full))
 	out, ok := shell_capture(cmd)
@@ -149,7 +148,7 @@ projsearch_move :: proc(editor: ^Editor, delta: int) {
 		return
 	}
 	p.selected = clamp(p.selected + delta, 0, len(p.matches) - 1)
-	list_h := picker_layout(editor).list_h
+	list_h := overlay_layout(editor).list_h
 	if p.selected < p.scroll {
 		p.scroll = p.selected
 	}
@@ -199,19 +198,11 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		projsearch_move(editor, -1)
 	case .Pgdn:
-		projsearch_move(editor, picker_layout(editor).list_h)
+		projsearch_move(editor, overlay_layout(editor).list_h)
 	case .Pgup:
-		projsearch_move(editor, -picker_layout(editor).list_h)
-	case .Backspace, .Backspace2:
-		if len(p.query) > 0 {
-			resize(&p.query, len(p.query) - 1)
-			projsearch_run(editor)
-			projsearch_load_preview(editor)
-		}
+		projsearch_move(editor, -overlay_layout(editor).list_h)
 	case:
-		if ev.ch >= 0x20 && !alt {
-			bytes, n := utf8.encode_rune(ev.ch)
-			append(&p.query, ..bytes[:n])
+		if !alt && query_edit_key(&p.query, ev) {
 			projsearch_run(editor)
 			projsearch_load_preview(editor)
 		}
@@ -220,7 +211,7 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 projsearch_render :: proc(editor: ^Editor) {
 	p := &editor.projsearch
-	lay := picker_layout(editor)
+	lay := overlay_layout(editor)
 	inner := pane_draw_box(lay.box)
 
 	prompt := fmt.tprintf("> %s", string(p.query[:]))
@@ -248,7 +239,7 @@ projsearch_render :: proc(editor: ^Editor) {
 
 	pane_hline(lay.box, lay.sep_y)
 
-	numw := linefind_number_width(p.preview_start + len(p.preview))
+	numw := digit_count(p.preview_start + len(p.preview))
 	for line, i in p.preview {
 		if i >= lay.preview_h {
 			break
@@ -262,6 +253,5 @@ projsearch_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, inner.w - 2, linefind_label(numw, lineno - 1, line), fg, COLOR_PANE_BG)
 	}
 
-	cx := min(inner.x + 3 + len(p.query), inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(inner.y))
+	overlay_cursor(inner, len(p.query))
 }

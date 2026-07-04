@@ -1,7 +1,6 @@
 package main
 
 import "core:fmt"
-import "core:unicode/utf8"
 import "lib:tb2"
 
 Command :: struct {
@@ -99,66 +98,31 @@ command_for_alt :: proc(ch: rune) -> (Command, bool) {
 }
 
 Palette :: struct {
-	active:   bool,
-	query:    [dynamic]u8,
-	matches:  [dynamic]int,
-	selected: int,
-	scroll:   int,
-	fuzzy:    Fuzzy,
-	names:    [dynamic]string,
+	using list: FuzzyList,
+	names:      [dynamic]string,
 }
 
 palette_destroy :: proc(p: ^Palette) {
-	fuzzy_end(&p.fuzzy)
-	delete(p.query)
-	delete(p.matches)
+	fuzzy_list_destroy(&p.list)
 	delete(p.names)
 }
 
 palette_open :: proc(editor: ^Editor) {
 	p := &editor.palette
 	p.active = true
-	clear(&p.query)
-	p.selected = 0
-	p.scroll = 0
+	fuzzy_list_reset(&p.list)
 	editor_set_message(editor, "")
 	clear(&p.names)
 	for cmd in commands {
 		append(&p.names, cmd.name)
 	}
 	p.fuzzy = fuzzy_begin(p.names[:])
-	palette_filter(editor)
+	fuzzy_list_refilter(&p.list)
 }
 
 palette_close :: proc(editor: ^Editor) {
 	editor.palette.active = false
 	fuzzy_end(&editor.palette.fuzzy)
-}
-
-palette_filter :: proc(editor: ^Editor) {
-	p := &editor.palette
-	clear(&p.matches)
-	p.selected = 0
-	p.scroll = 0
-	ranked := fuzzy_rank(&p.fuzzy, string(p.query[:]))
-	for idx in ranked {
-		append(&p.matches, idx)
-	}
-}
-
-palette_move :: proc(editor: ^Editor, delta: int) {
-	p := &editor.palette
-	n := len(p.matches)
-	if n == 0 {
-		return
-	}
-	p.selected = (p.selected + delta + n) % n
-	if p.selected < p.scroll {
-		p.scroll = p.selected
-	}
-	if p.selected >= p.scroll + PALETTE_MAX_ROWS {
-		p.scroll = p.selected - PALETTE_MAX_ROWS + 1
-	}
 }
 
 palette_execute :: proc(editor: ^Editor) {
@@ -180,19 +144,12 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Enter:
 		palette_execute(editor)
 	case .Arrow_Down:
-		palette_move(editor, 1)
+		fuzzy_list_move_wrap(&p.list, 1, PALETTE_MAX_ROWS)
 	case .Arrow_Up:
-		palette_move(editor, -1)
-	case .Backspace, .Backspace2:
-		if len(p.query) > 0 {
-			resize(&p.query, len(p.query) - 1)
-			palette_filter(editor)
-		}
+		fuzzy_list_move_wrap(&p.list, -1, PALETTE_MAX_ROWS)
 	case:
-		if ev.ch >= 0x20 {
-			bytes, n := utf8.encode_rune(ev.ch)
-			append(&p.query, ..bytes[:n])
-			palette_filter(editor)
+		if query_edit_key(&p.query, ev) {
+			fuzzy_list_refilter(&p.list)
 		}
 	}
 }
@@ -223,6 +180,5 @@ palette_render :: proc(editor: ^Editor) {
 		pane_text(sx, y, len(cmd.shortcut), cmd.shortcut, sc_fg, bg)
 	}
 
-	cx := min(inner.x + 3 + len(p.query), inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(inner.y))
+	overlay_cursor(inner, len(p.query))
 }

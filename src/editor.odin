@@ -125,13 +125,7 @@ editor_set_language :: proc(editor: ^Editor, lang: Language) {
 }
 
 editor_gutter_width :: proc(editor: ^Editor) -> int {
-	n := len(editor_buffer(editor).lines)
-	digits := 1
-	for n >= 10 {
-		digits += 1
-		n /= 10
-	}
-	return digits + 2
+	return digit_count(len(editor_buffer(editor).lines)) + 2
 }
 
 editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
@@ -140,71 +134,39 @@ editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
 	return
 }
 
+Overlay :: struct {
+	active:   ^bool,
+	dispatch: proc(editor: ^Editor, ev: tb2.Event),
+	render:   proc(editor: ^Editor),
+}
+
+editor_overlays :: proc(editor: ^Editor) -> [9]Overlay {
+	return {
+		{&editor.palette.active, palette_dispatch_key, palette_render},
+		{&editor.picker.active, picker_dispatch_key, picker_render},
+		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render},
+		{&editor.langpick.active, langpick_dispatch_key, langpick_render},
+		{&editor.linefind.active, linefind_dispatch_key, linefind_render},
+		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render},
+		{&editor.rename.active, rename_dispatch_key, rename_render},
+		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render},
+		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render},
+	}
+}
+
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	origin := jump_here(editor)
 	defer jump_record(editor, origin)
-	if editor.palette.active {
-		#partial switch ev.type {
-		case .Key:
-			palette_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
+	for ov in editor_overlays(editor) {
+		if ov.active^ {
+			#partial switch ev.type {
+			case .Key:
+				ov.dispatch(editor, ev)
+			case .Resize:
+				editor_scroll(editor)
+			}
+			return
 		}
-		return
-	}
-	if editor.picker.active {
-		#partial switch ev.type {
-		case .Key:
-			picker_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
-		}
-		return
-	}
-	if editor.bufswitch.active {
-		#partial switch ev.type {
-		case .Key:
-			bufswitch_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
-		}
-		return
-	}
-	if editor.langpick.active {
-		#partial switch ev.type {
-		case .Key:
-			langpick_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
-		}
-		return
-	}
-	if editor.linefind.active {
-		#partial switch ev.type {
-		case .Key:
-			linefind_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
-		}
-		return
-	}
-	if editor.projsearch.active {
-		#partial switch ev.type {
-		case .Key:
-			projsearch_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
-		}
-		return
-	}
-	if editor.rename.active {
-		#partial switch ev.type {
-		case .Key:
-			rename_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
-		}
-		return
 	}
 	if editor.welcome {
 		if ev.type == .Key {
@@ -221,24 +183,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			case .Ctrl_P:
 				palette_open(editor)
 			}
-		}
-		return
-	}
-	if editor.quit_dialog.active {
-		#partial switch ev.type {
-		case .Key:
-			quit_dialog_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
-		}
-		return
-	}
-	if editor.close_dialog.active {
-		#partial switch ev.type {
-		case .Key:
-			close_dialog_dispatch_key(editor, ev)
-		case .Resize:
-			editor_scroll(editor)
 		}
 		return
 	}
@@ -729,28 +673,16 @@ editor_render :: proc(editor: ^Editor) {
 		editor_render_buffer(editor)
 	}
 
-	switch {
-	case editor.palette.active:
-		palette_render(editor)
-	case editor.picker.active:
-		picker_render(editor)
-	case editor.bufswitch.active:
-		bufswitch_render(editor)
-	case editor.langpick.active:
-		langpick_render(editor)
-	case editor.linefind.active:
-		linefind_render(editor)
-	case editor.projsearch.active:
-		projsearch_render(editor)
-	case editor.rename.active:
-		rename_render(editor)
-	case editor.quit_dialog.active:
-		quit_dialog_render(editor)
-	case editor.close_dialog.active:
-		close_dialog_render(editor)
-	case editor.welcome:
+	for ov in editor_overlays(editor) {
+		if ov.active^ {
+			ov.render(editor)
+			tb2.present()
+			return
+		}
+	}
+	if editor.welcome {
 		tb2.hide_cursor()
-	case:
+	} else {
 		b := editor_buffer(editor)
 		gutter := editor_gutter_width(editor)
 		vcol := visual_col(b.lines[b.cursor.row].text[:], b.cursor.col)

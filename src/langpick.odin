@@ -1,23 +1,15 @@
 package main
 
-import "core:unicode/utf8"
 import "lib:tb2"
 
 LangPick :: struct {
-	active:   bool,
-	query:    [dynamic]u8,
-	matches:  [dynamic]int,
-	selected: int,
-	scroll:   int,
-	fuzzy:    Fuzzy,
-	names:    [dynamic]string,
-	langs:    [dynamic]Language,
+	using list: FuzzyList,
+	names:      [dynamic]string,
+	langs:      [dynamic]Language,
 }
 
 langpick_destroy :: proc(lp: ^LangPick) {
-	fuzzy_end(&lp.fuzzy)
-	delete(lp.query)
-	delete(lp.matches)
+	fuzzy_list_destroy(&lp.list)
 	delete(lp.names)
 	delete(lp.langs)
 }
@@ -25,9 +17,7 @@ langpick_destroy :: proc(lp: ^LangPick) {
 langpick_open :: proc(editor: ^Editor) {
 	lp := &editor.langpick
 	lp.active = true
-	clear(&lp.query)
-	lp.selected = 0
-	lp.scroll = 0
+	fuzzy_list_reset(&lp.list)
 	editor_set_message(editor, "")
 	clear(&lp.names)
 	clear(&lp.langs)
@@ -39,38 +29,12 @@ langpick_open :: proc(editor: ^Editor) {
 		append(&lp.langs, lang)
 	}
 	lp.fuzzy = fuzzy_begin(lp.names[:])
-	langpick_filter(editor)
+	fuzzy_list_refilter(&lp.list)
 }
 
 langpick_close :: proc(editor: ^Editor) {
 	editor.langpick.active = false
 	fuzzy_end(&editor.langpick.fuzzy)
-}
-
-langpick_filter :: proc(editor: ^Editor) {
-	lp := &editor.langpick
-	clear(&lp.matches)
-	lp.selected = 0
-	lp.scroll = 0
-	ranked := fuzzy_rank(&lp.fuzzy, string(lp.query[:]))
-	for idx in ranked {
-		append(&lp.matches, idx)
-	}
-}
-
-langpick_move :: proc(editor: ^Editor, delta: int) {
-	lp := &editor.langpick
-	n := len(lp.matches)
-	if n == 0 {
-		return
-	}
-	lp.selected = (lp.selected + delta + n) % n
-	if lp.selected < lp.scroll {
-		lp.scroll = lp.selected
-	}
-	if lp.selected >= lp.scroll + PALETTE_MAX_ROWS {
-		lp.scroll = lp.selected - PALETTE_MAX_ROWS + 1
-	}
 }
 
 langpick_execute :: proc(editor: ^Editor) {
@@ -91,19 +55,12 @@ langpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Enter:
 		langpick_execute(editor)
 	case .Arrow_Down:
-		langpick_move(editor, 1)
+		fuzzy_list_move_wrap(&lp.list, 1, PALETTE_MAX_ROWS)
 	case .Arrow_Up:
-		langpick_move(editor, -1)
-	case .Backspace, .Backspace2:
-		if len(lp.query) > 0 {
-			resize(&lp.query, len(lp.query) - 1)
-			langpick_filter(editor)
-		}
+		fuzzy_list_move_wrap(&lp.list, -1, PALETTE_MAX_ROWS)
 	case:
-		if ev.ch >= 0x20 {
-			bytes, n := utf8.encode_rune(ev.ch)
-			append(&lp.query, ..bytes[:n])
-			langpick_filter(editor)
+		if query_edit_key(&lp.query, ev) {
+			fuzzy_list_refilter(&lp.list)
 		}
 	}
 }
@@ -130,6 +87,5 @@ langpick_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, inner.w - 2, name, fg, bg)
 	}
 
-	cx := min(inner.x + 3 + len(lp.query), inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(inner.y))
+	overlay_cursor(inner, len(lp.query))
 }
