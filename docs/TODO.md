@@ -13,12 +13,10 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Features
 
-- [ ] In-buffer find, then find & replace (`Ctrl+F`; `Alt+n`/`Alt+m` prev/next; incremental, wrap, highlight).
 - [ ] Auto-close pairs: `()[]{}`/quotes/backtick, surround selection, auto-close + rename JSX tags.
 - [ ] Bracket/colon-aware auto-indent on Enter; dedent on closing `}`.
 - [ ] Highlight the bracket matching the one at the cursor.
 - [ ] Configurable indent width + auto-detect from the file (like tabs-vs-spaces).
-- [ ] File-tree pane over the working root.
 
 ## AI / LLM assist
 

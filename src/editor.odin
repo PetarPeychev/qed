@@ -34,6 +34,7 @@ Editor :: struct {
 	linefind:        LineFind,
 	projsearch:      ProjSearch,
 	rename:          Rename,
+	filetree:        FileTree,
 	jumps:           JumpList,
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
@@ -90,6 +91,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
 	rename_destroy(&editor.rename)
+	filetree_destroy(&editor.filetree)
 	jump_destroy(&editor.jumps)
 	delete(g_language_rules)
 	syntax_shutdown()
@@ -140,7 +142,7 @@ Overlay :: struct {
 	render:   proc(editor: ^Editor),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [9]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [10]Overlay {
 	return {
 		{&editor.palette.active, palette_dispatch_key, palette_render},
 		{&editor.picker.active, picker_dispatch_key, picker_render},
@@ -149,6 +151,7 @@ editor_overlays :: proc(editor: ^Editor) -> [9]Overlay {
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render},
 		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render},
 		{&editor.rename.active, rename_dispatch_key, rename_render},
+		{&editor.filetree.active, filetree_dispatch_key, filetree_render},
 		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render},
 		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render},
 	}
@@ -180,6 +183,8 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				editor_request_quit(editor)
 			case .Ctrl_O:
 				picker_open(editor)
+			case .Ctrl_F:
+				filetree_open(editor)
 			case .Ctrl_P:
 				palette_open(editor)
 			}

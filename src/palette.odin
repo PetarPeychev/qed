@@ -50,6 +50,7 @@ cmd_toggle_indent :: proc(editor: ^Editor) {
 
 commands := [?]Command {
 	{name = "Open File", shortcut = "Ctrl+o", key = .Ctrl_O, run = picker_open},
+	{name = "File Tree", shortcut = "Ctrl+f", key = .Ctrl_F, run = filetree_open},
 	{name = "Find Line", shortcut = "Alt+f", alt_ch = 'f', run = linefind_open},
 	{name = "Find in Files", shortcut = "Alt+F", alt_ch = 'F', run = projsearch_open},
 	{name = "Go to Start of File", shortcut = "Alt+{", alt_ch = '{', run = cmd_buffer_start},
