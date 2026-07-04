@@ -84,6 +84,40 @@ test_config_files :: proc(t: ^testing.T) {
 	ti, ti_ok := kb["Toggle Indent (Tabs/Spaces)"].(json.String)
 	testing.expect(t, ti_ok && ti == "", "keyless command materialized as empty string")
 
+	langs, langs_ok := obj["languages"].(json.Object)
+	testing.expect(t, langs_ok, "languages materialized as object")
+	py, py_ok := langs["python"].(json.Object)
+	testing.expect(t, py_ok, "python materialized as object")
+	pyf, pyf_ok := py["formatter"].(json.String)
+	testing.expect(t, pyf_ok && pyf == "ruff format -", "python formatter default materialized")
+	pyp, pyp_ok := py["patterns"].(json.Array)
+	testing.expect(t, pyp_ok && len(pyp) == 2, "python patterns default materialized")
+
+	// Language overrides: per-key merge, patterns drive detection, invalid subkey reported.
+	saved_py_lsp := LANGUAGE_DEFAULTS[.Python].lsp_server
+	defer languages_reset_defaults()
+	lang_path := fmt.tprintf("%s/languages.json", dir)
+	_ = os.write_entire_file(
+		lang_path,
+		transmute([]byte)string(
+			`{"languages": {"python": {"patterns": ["*.py", "*.myext"], "formatter": "black -"}, "lua": {"lsp": 5}}}`,
+		),
+	)
+	msg, is_err = config_load_from(lang_path)
+	testing.expect(t, is_err, "invalid lsp type reports an error")
+	testing.expect(t, strings.contains(msg, "languages/lua/lsp"), "names the invalid subkey")
+	testing.expect(t, LANGUAGES[.Python].formatter == "black -", "python formatter override applied")
+	testing.expect(t, LANGUAGES[.Python].lsp_server == saved_py_lsp, "omitted lsp keeps default")
+	testing.expect(t, language_of("x.myext") == .Python, "custom pattern drives detection")
+	testing.expect(t, language_of("x.py") == .Python, "listed pattern still detected")
+	obj = reparse(t, lang_path)
+	langs2, _ := obj["languages"].(json.Object)
+	py2, _ := langs2["python"].(json.Object)
+	_, py2_lsp := py2["lsp"]
+	testing.expect(t, py2_lsp, "omitted python lsp filled on rewrite")
+	py2f, py2f_ok := py2["formatter"].(json.String)
+	testing.expect(t, py2f_ok && string(py2f) == "black -", "override preserved on rewrite")
+
 	// Partial file -> present value applied, missing keys filled in.
 	// jump_threshold is read only by jump.odin (no parallel test touches it).
 	saved_jump := JUMP_THRESHOLD

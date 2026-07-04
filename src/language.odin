@@ -35,7 +35,9 @@ LanguageInfo :: struct {
 	injections: []u8,
 }
 
-LANGUAGES := [Language]LanguageInfo {
+// LANGUAGE_DEFAULTS is the compiled-in source of truth; LANGUAGES is the working
+// copy config overrides mutate (lsp_server/formatter). Reset restores from defaults.
+LANGUAGE_DEFAULTS := [Language]LanguageInfo {
 	.Plain      = {"text", "//", "", "", "", nil, nil, nil},
 	.Odin       = {"odin", "//", "ols", "odin", "", ts.tree_sitter_odin, #load("../lib/tree_sitter/odin/highlights.scm"), nil},
 	.C          = {"c", "//", "clangd", "c", "", ts.tree_sitter_c, #load("../lib/tree_sitter/c/highlights.scm"), nil},
@@ -53,6 +55,8 @@ LANGUAGES := [Language]LanguageInfo {
 	.Markdown   = {"markdown", "", "", "", "", ts.tree_sitter_markdown, #load("../lib/tree_sitter/markdown/highlights.scm"), #load("../lib/tree_sitter/markdown/injections.scm")},
 	.MarkdownInline = {"markdown_inline", "", "", "", "", ts.tree_sitter_markdown_inline, #load("../lib/tree_sitter/markdown_inline/highlights.scm"), nil},
 }
+
+LANGUAGES := LANGUAGE_DEFAULTS
 
 LangRule :: struct {
 	pattern:  string,
@@ -120,16 +124,30 @@ language_rules_set :: proc(rules: []LangRule) {
 }
 
 languages_reset_defaults :: proc() {
+	LANGUAGES = LANGUAGE_DEFAULTS
 	language_rules_set(DEFAULT_LANGUAGES[:])
 }
 
-language_is_default_pattern :: proc(pattern: string) -> bool {
+// Languages that own file patterns, in first-appearance order in DEFAULT_LANGUAGES.
+// This is the set materialized into the config `languages` section.
+default_pattern_languages :: proc(allocator := context.temp_allocator) -> []Language {
+	seen: [Language]bool
+	out := make([dynamic]Language, allocator)
 	for def in DEFAULT_LANGUAGES {
-		if def.pattern == pattern {
-			return true
+		if !seen[def.language] {
+			seen[def.language] = true
+			append(&out, def.language)
 		}
 	}
-	return false
+	return out[:]
+}
+
+append_default_patterns :: proc(rules: ^[dynamic]LangRule, lang: Language) {
+	for def in DEFAULT_LANGUAGES {
+		if def.language == lang {
+			append(rules, def)
+		}
+	}
 }
 
 language_from_name :: proc(name: string) -> (Language, bool) {

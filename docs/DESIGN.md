@@ -126,14 +126,18 @@ documented in `lib/tb2/PATCHES.md`:
 ## Language detection
 
 Each `Buffer` carries a `language: Language`, set once at open (`language_of`).
-File→language is **not hardcoded**: `DEFAULT_LANGUAGES` (`language.odin`) is a
-list of `pattern → Language` rules materialized into the config `languages`
-section like every other knob, so any mapping (e.g. `*.py`) is user-overridable
-and extra globs can be added. Patterns are `*`-globs matched against the basename,
-most-specific-first (exact before glob, longer before shorter); built-in defaults
-cover extensions plus common dotfiles (`.bashrc` → shell, …). Everything —
-highlight, LSP, status bar, comment token — reads `b.language`. The *Set Language*
-command (`langpick.odin`) overrides it for the session (re-parses, re-opens LSP).
+File→language is **not hardcoded**: the config `languages` section is keyed by
+language name, each entry an object with `patterns` (glob list), `lsp` (server
+command) and `formatter` (external filter) — all user-overridable, per-key merged
+back like every other knob. `LANGUAGE_DEFAULTS` (`language.odin`) is the compiled-in
+source; `LANGUAGES` is the working copy config load resets then overlays (`lsp`/
+`formatter` overrides). `DEFAULT_LANGUAGES` supplies each language's default globs.
+Patterns are `*`-globs matched against the basename, most-specific-first (exact
+before glob, longer before shorter); built-in defaults cover extensions plus common
+dotfiles (`.bashrc` → shell, …). `lsp_id` and the comment token stay compiled-in.
+Everything — highlight, LSP, status bar, comment token — reads `b.language`. The
+*Set Language* command (`langpick.odin`) overrides it for the session (re-parses,
+re-opens LSP).
 
 ## Multiple servers / grammars
 

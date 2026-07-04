@@ -279,41 +279,72 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 
 languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
 	rules := make([dynamic]LangRule, context.temp_allocator)
-	for def in DEFAULT_LANGUAGES {
-		lang := def.language
-		if v, has := obj[def.pattern]; has {
-			if s, is := v.(json.String); is {
-				if l, ok := language_from_name(string(s)); ok {
-					lang = l
-				} else {
-					append(invalid, fmt.tprintf("languages/%s", def.pattern))
-				}
+	for lang in default_pattern_languages() {
+		name := LANGUAGES[lang].name
+		sub_val, has := obj[name]
+		if !has {
+			missing = true
+			append_default_patterns(&rules, lang)
+			continue
+		}
+		sub, is_obj := sub_val.(json.Object)
+		if !is_obj {
+			append(invalid, fmt.tprintf("languages/%s", name))
+			append_default_patterns(&rules, lang)
+			continue
+		}
+		if pv, phas := sub["patterns"]; phas {
+			if !languages_patterns_apply(pv, lang, &rules) {
+				append(invalid, fmt.tprintf("languages/%s/patterns", name))
+				append_default_patterns(&rules, lang)
+			}
+		} else {
+			missing = true
+			append_default_patterns(&rules, lang)
+		}
+		if lv, lhas := sub["lsp"]; lhas {
+			if s, is := lv.(json.String); is {
+				LANGUAGES[lang].lsp_server = strings.clone(string(s), os.heap_allocator())
 			} else {
-				append(invalid, fmt.tprintf("languages/%s", def.pattern))
+				append(invalid, fmt.tprintf("languages/%s/lsp", name))
 			}
 		} else {
 			missing = true
 		}
-		append(&rules, LangRule{def.pattern, lang})
+		if fv, fhas := sub["formatter"]; fhas {
+			if s, is := fv.(json.String); is {
+				LANGUAGES[lang].formatter = strings.clone(string(s), os.heap_allocator())
+			} else {
+				append(invalid, fmt.tprintf("languages/%s/formatter", name))
+			}
+		} else {
+			missing = true
+		}
 	}
-	for pattern, v in obj {
-		if language_is_default_pattern(pattern) {
-			continue
+	for key in obj {
+		if _, ok := language_from_name(key); !ok {
+			append(invalid, fmt.tprintf("languages/%s", key))
 		}
-		s, is := v.(json.String)
-		if !is {
-			append(invalid, fmt.tprintf("languages/%s", pattern))
-			continue
-		}
-		l, ok := language_from_name(string(s))
-		if !ok {
-			append(invalid, fmt.tprintf("languages/%s", pattern))
-			continue
-		}
-		append(&rules, LangRule{strings.clone(pattern, os.heap_allocator()), l})
 	}
 	language_rules_set(rules[:])
 	return
+}
+
+languages_patterns_apply :: proc(v: json.Value, lang: Language, rules: ^[dynamic]LangRule) -> bool {
+	arr, is_arr := v.(json.Array)
+	if !is_arr {
+		return false
+	}
+	for e in arr {
+		if _, is := e.(json.String); !is {
+			return false
+		}
+	}
+	for e in arr {
+		s := e.(json.String)
+		append(rules, LangRule{strings.clone(string(s), os.heap_allocator()), lang})
+	}
+	return true
 }
 
 config_write :: proc(path: string, root: json.Object) -> os.Error {
@@ -402,34 +433,57 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 	} else {
 		strings.write_string(&sb, "{\n")
 		lg_first := true
-		for def in DEFAULT_LANGUAGES {
+		for lang in default_pattern_languages() {
 			if !lg_first {
 				strings.write_string(&sb, ",\n")
 			}
 			lg_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(def.pattern))
-			if v, has := lang_obj[def.pattern]; has {
+			name := LANGUAGES[lang].name
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(name))
+			strings.write_string(&sb, "{\n")
+			sub, _ := lang_obj[name].(json.Object)
+
+			fmt.sbprintf(&sb, "      %s: ", lsp_json_string("patterns"))
+			if v, has := sub["patterns"]; has {
 				config_value_text(&sb, v)
 			} else {
-				strings.write_string(&sb, lsp_json_string(LANGUAGES[def.language].name))
+				config_write_pattern_array(&sb, lang)
 			}
-		}
-		for pattern, v in lang_obj {
-			if language_is_default_pattern(pattern) {
-				continue
+			fmt.sbprintf(&sb, ",\n      %s: ", lsp_json_string("lsp"))
+			if v, has := sub["lsp"]; has {
+				config_value_text(&sb, v)
+			} else {
+				strings.write_string(&sb, lsp_json_string(LANGUAGES[lang].lsp_server))
 			}
-			if !lg_first {
-				strings.write_string(&sb, ",\n")
+			fmt.sbprintf(&sb, ",\n      %s: ", lsp_json_string("formatter"))
+			if v, has := sub["formatter"]; has {
+				config_value_text(&sb, v)
+			} else {
+				strings.write_string(&sb, lsp_json_string(LANGUAGES[lang].formatter))
 			}
-			lg_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(pattern))
-			config_value_text(&sb, v)
+			strings.write_string(&sb, "\n    }")
 		}
 		strings.write_string(&sb, "\n  }")
 	}
 
 	strings.write_string(&sb, "\n}\n")
 	return os.write_entire_file(path, transmute([]byte)strings.to_string(sb))
+}
+
+config_write_pattern_array :: proc(sb: ^strings.Builder, lang: Language) {
+	strings.write_byte(sb, '[')
+	first := true
+	for def in DEFAULT_LANGUAGES {
+		if def.language != lang {
+			continue
+		}
+		if !first {
+			strings.write_string(sb, ", ")
+		}
+		first = false
+		strings.write_string(sb, lsp_json_string(def.pattern))
+	}
+	strings.write_byte(sb, ']')
 }
 
 config_dir :: proc(path: string) -> string {
