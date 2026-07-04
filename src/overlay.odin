@@ -51,14 +51,6 @@ fuzzy_list_move_wrap :: proc(l: ^FuzzyList, delta, rows: int) {
 	fuzzy_list_scroll(l, rows)
 }
 
-fuzzy_list_move_clamp :: proc(l: ^FuzzyList, delta, rows: int) {
-	if len(l.matches) == 0 {
-		return
-	}
-	l.selected = clamp(l.selected + delta, 0, len(l.matches) - 1)
-	fuzzy_list_scroll(l, rows)
-}
-
 // Returns true when the query changed, so the caller re-filters (and reloads any preview).
 query_edit_key :: proc(query: ^[dynamic]u8, ev: tb2.Event) -> bool {
 	#partial switch ev.key {

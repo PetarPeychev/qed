@@ -132,7 +132,7 @@ picker_load_preview :: proc(editor: ^Editor) {
 
 picker_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.picker
-	fuzzy_list_move_clamp(&p.list, delta, overlay_layout(editor).body_h)
+	fuzzy_list_move_wrap(&p.list, delta, overlay_layout(editor).body_h)
 	picker_load_preview(editor)
 }
 
@@ -160,10 +160,6 @@ picker_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		picker_move(editor, 1)
 	case .Arrow_Up:
 		picker_move(editor, -1)
-	case .Pgdn:
-		picker_move(editor, overlay_layout(editor).body_h)
-	case .Pgup:
-		picker_move(editor, -overlay_layout(editor).body_h)
 	case:
 		if query_edit_key(&p.query, ev) {
 			fuzzy_list_refilter(&p.list)

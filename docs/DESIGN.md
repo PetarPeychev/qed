@@ -85,7 +85,7 @@ member group is no longer on top).
 
 ## Cursor, selection, viewport
 
-- Movement: arrows, Home/End, PgUp/PgDn, Ctrl+Left/Right (word), Ctrl+Home/End,
+- Movement: arrows, Home/End, Ctrl+Left/Right (word), Ctrl+Home/End,
   Ctrl+Up/Down (paragraph), Alt smart-home/end and buffer start/end. A remembered
   goal column survives vertical moves over short lines.
 - Word classes: alphanumeric+`_`, punctuation, whitespace; a word move stops at

@@ -178,10 +178,11 @@ projsearch_load_preview :: proc(editor: ^Editor) {
 
 projsearch_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.projsearch
-	if len(p.matches) == 0 {
+	n := len(p.matches)
+	if n == 0 {
 		return
 	}
-	p.selected = clamp(p.selected + delta, 0, len(p.matches) - 1)
+	p.selected = (p.selected + delta + n) % n
 	body_h := overlay_layout(editor).body_h
 	if p.selected < p.scroll {
 		p.scroll = p.selected
@@ -231,10 +232,6 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		projsearch_move(editor, 1)
 	case .Arrow_Up:
 		projsearch_move(editor, -1)
-	case .Pgdn:
-		projsearch_move(editor, overlay_layout(editor).body_h)
-	case .Pgup:
-		projsearch_move(editor, -overlay_layout(editor).body_h)
 	case:
 		if !alt && query_edit_key(&p.query, ev) {
 			projsearch_run(editor)

@@ -343,7 +343,6 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
 	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
 	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
-	_, h := editor_viewport(editor)
 
 	if alt && ev.ch != 0 {
 		if cmd, ok := command_for_alt(ev.ch); ok {
@@ -397,7 +396,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		} else {
 			buffer_delete_forward(b)
 		}
-	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down, .Home, .End, .Pgup, .Pgdn:
+	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down, .Home, .End:
 		buffer_undo_commit(b)
 		sel_from, sel_to, had_sel := selection_range(b)
 		if shift {
@@ -453,10 +452,6 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			} else {
 				cursor_move_end(b)
 			}
-		case .Pgup:
-			cursor_move_up_n(b, h)
-		case .Pgdn:
-			cursor_move_down_n(b, h)
 		}
 	case:
 		if ev.ch == 0 {

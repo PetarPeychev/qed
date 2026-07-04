@@ -191,10 +191,11 @@ filetree_scroll :: proc(editor: ^Editor) {
 
 filetree_move :: proc(editor: ^Editor, delta: int) {
 	t := &editor.filetree
-	if len(t.entries) == 0 {
+	n := len(t.entries)
+	if n == 0 {
 		return
 	}
-	t.selected = clamp(t.selected + delta, 0, len(t.entries) - 1)
+	t.selected = (t.selected + delta + n) % n
 	filetree_scroll(editor)
 	filetree_load_preview(editor)
 }
@@ -482,10 +483,6 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_move(editor, 1)
 	case .Arrow_Up:
 		filetree_move(editor, -1)
-	case .Pgdn:
-		filetree_move(editor, filetree_layout(editor).body_h)
-	case .Pgup:
-		filetree_move(editor, -filetree_layout(editor).body_h)
 	case .Arrow_Right:
 		filetree_expand(editor)
 	case .Arrow_Left:

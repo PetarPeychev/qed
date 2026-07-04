@@ -91,13 +91,9 @@ bufswitch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Enter:
 		bufswitch_select(editor)
 	case .Arrow_Down:
-		fuzzy_list_move_clamp(&p.list, 1, PALETTE_MAX_ROWS)
+		fuzzy_list_move_wrap(&p.list, 1, PALETTE_MAX_ROWS)
 	case .Arrow_Up:
-		fuzzy_list_move_clamp(&p.list, -1, PALETTE_MAX_ROWS)
-	case .Pgdn:
-		fuzzy_list_move_clamp(&p.list, PALETTE_MAX_ROWS, PALETTE_MAX_ROWS)
-	case .Pgup:
-		fuzzy_list_move_clamp(&p.list, -PALETTE_MAX_ROWS, PALETTE_MAX_ROWS)
+		fuzzy_list_move_wrap(&p.list, -1, PALETTE_MAX_ROWS)
 	case:
 		if len(p.query) == 0 && ev.ch >= '1' && ev.ch <= '9' {
 			bufswitch_jump_number(editor, ev.ch)

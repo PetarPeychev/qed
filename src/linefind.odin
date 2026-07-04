@@ -42,7 +42,7 @@ linefind_close :: proc(editor: ^Editor) {
 
 linefind_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.linefind
-	fuzzy_list_move_clamp(&p.list, delta, overlay_layout(editor).body_h)
+	fuzzy_list_move_wrap(&p.list, delta, overlay_layout(editor).body_h)
 }
 
 linefind_execute :: proc(editor: ^Editor) {
@@ -81,10 +81,6 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		linefind_move(editor, 1)
 	case .Arrow_Up:
 		linefind_move(editor, -1)
-	case .Pgdn:
-		linefind_move(editor, overlay_layout(editor).body_h)
-	case .Pgup:
-		linefind_move(editor, -overlay_layout(editor).body_h)
 	case:
 		if !alt && query_edit_key(&p.query, ev) {
 			fuzzy_list_refilter(&p.list)
