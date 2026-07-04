@@ -215,10 +215,10 @@ Navigation & UI: line-number + git gutter, mouse (position/drag/wheel/multi-clic
 drag auto-scroll), status + message line, welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: fuzzy over open buffers
-in stable order + digit instant-jump on empty query), fuzzy line jump, project-wide
-search (`rg`), file-tree browser (`Ctrl+F`: modal, lazy per-dir expand, right-side
-preview, new/rename/delete with recursive-delete confirm; rename follows open
-buffers), jump list (back/forward), runtime config (`~/.config/qed/config.json`).
+in stable order + digit instant-jump on empty query), fuzzy line jump (`Ctrl+F`),
+project-wide search (`rg`), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
+right-side preview, new/rename/delete with recursive-delete confirm; rename follows
+open buffers), jump list (back/forward), runtime config (`~/.config/qed/config.json`).
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSON,

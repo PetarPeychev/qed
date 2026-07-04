@@ -128,7 +128,7 @@ projsearch_load_preview :: proc(editor: ^Editor) {
 	}
 	m := p.matches[p.selected]
 	full, _ := filepath.join({editor.working_root, m.path}, context.temp_allocator)
-	h := max(1, overlay_layout(editor).preview_h)
+	h := max(1, overlay_layout(editor).body_h)
 	start := max(1, (m.row + 1) - h / 2)
 	cmd := fmt.ctprintf("sed -n '%d,%dp' %s 2>/dev/null", start, start + h - 1, shell_quote(full))
 	out, ok := shell_capture(cmd)
@@ -148,12 +148,12 @@ projsearch_move :: proc(editor: ^Editor, delta: int) {
 		return
 	}
 	p.selected = clamp(p.selected + delta, 0, len(p.matches) - 1)
-	list_h := overlay_layout(editor).list_h
+	body_h := overlay_layout(editor).body_h
 	if p.selected < p.scroll {
 		p.scroll = p.selected
 	}
-	if list_h > 0 && p.selected >= p.scroll + list_h {
-		p.scroll = p.selected - list_h + 1
+	if body_h > 0 && p.selected >= p.scroll + body_h {
+		p.scroll = p.selected - body_h + 1
 	}
 	projsearch_load_preview(editor)
 }
@@ -198,9 +198,9 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		projsearch_move(editor, -1)
 	case .Pgdn:
-		projsearch_move(editor, overlay_layout(editor).list_h)
+		projsearch_move(editor, overlay_layout(editor).body_h)
 	case .Pgup:
-		projsearch_move(editor, -overlay_layout(editor).list_h)
+		projsearch_move(editor, -overlay_layout(editor).body_h)
 	case:
 		if !alt && query_edit_key(&p.query, ev) {
 			projsearch_run(editor)
@@ -216,42 +216,41 @@ projsearch_render :: proc(editor: ^Editor) {
 
 	prompt := fmt.tprintf("> %s", string(p.query[:]))
 	pane_text(inner.x + 1, inner.y, inner.w - 2, prompt, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_hline(lay.box, inner.y + 1)
+	pane_hline(lay.box, lay.title_sep_y)
 
 	if len(p.query) < PROJSEARCH_MIN_QUERY {
 		hint := fmt.tprintf("Type at least %d characters to search", PROJSEARCH_MIN_QUERY)
-		pane_text(inner.x + 1, lay.list_top, inner.w - 2, hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+		pane_text(inner.x + 1, lay.body_top, lay.left_w - 1, hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 	}
 
-	end := min(p.scroll + lay.list_h, len(p.matches))
+	end := min(p.scroll + lay.body_h, len(p.matches))
 	for i in p.scroll ..< end {
 		m := p.matches[i]
-		y := lay.list_top + (i - p.scroll)
+		y := lay.body_top + (i - p.scroll)
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		if i == p.selected {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
+			pane_fill_row(inner.x, y, lay.left_w, fg, bg)
 		}
 		text := strings.trim_left(m.text, " \t")
 		label := fmt.tprintf("%s:%d  %s", m.path, m.row + 1, text)
-		pane_text(inner.x + 1, y, inner.w - 2, label, fg, bg)
+		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
-
-	pane_hline(lay.box, lay.sep_y)
 
 	numw := digit_count(p.preview_start + len(p.preview))
 	for line, i in p.preview {
-		if i >= lay.preview_h {
+		if i >= lay.body_h {
 			break
 		}
 		lineno := p.preview_start + i
-		y := lay.preview_top + i
+		y := lay.body_top + i
 		fg := COLOR_PANE_FG
 		if lineno == p.preview_focus {
 			fg = COLOR_PANE_PROMPT_FG
 		}
-		pane_text(inner.x + 1, y, inner.w - 2, linefind_label(numw, lineno - 1, line), fg, COLOR_PANE_BG)
+		pane_text(lay.right_x + 1, y, lay.right_w - 1, linefind_label(numw, lineno - 1, line), fg, COLOR_PANE_BG)
 	}
 
+	overlay_divider(lay)
 	overlay_cursor(inner, len(p.query))
 }

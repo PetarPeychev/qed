@@ -29,8 +29,8 @@ linefind_open :: proc(editor: ^Editor) {
 	fuzzy_list_refilter(&p.list)
 
 	p.selected = clamp(b.cursor.row, 0, max(0, len(p.matches) - 1))
-	list_h := overlay_layout(editor).list_h
-	p.scroll = max(0, p.selected - list_h / 2)
+	body_h := overlay_layout(editor).body_h
+	p.scroll = max(0, p.selected - body_h / 2)
 }
 
 linefind_close :: proc(editor: ^Editor) {
@@ -42,7 +42,7 @@ linefind_close :: proc(editor: ^Editor) {
 
 linefind_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.linefind
-	fuzzy_list_move_clamp(&p.list, delta, overlay_layout(editor).list_h)
+	fuzzy_list_move_clamp(&p.list, delta, overlay_layout(editor).body_h)
 }
 
 linefind_execute :: proc(editor: ^Editor) {
@@ -72,12 +72,8 @@ linefind_execute :: proc(editor: ^Editor) {
 linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
 	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
-	if alt && ev.ch == 'f' {
-		linefind_close(editor)
-		return
-	}
 	#partial switch ev.key {
-	case .Esc:
+	case .Esc, .Ctrl_F:
 		linefind_close(editor)
 	case .Enter:
 		linefind_execute(editor)
@@ -86,9 +82,9 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		linefind_move(editor, -1)
 	case .Pgdn:
-		linefind_move(editor, overlay_layout(editor).list_h)
+		linefind_move(editor, overlay_layout(editor).body_h)
 	case .Pgup:
-		linefind_move(editor, -overlay_layout(editor).list_h)
+		linefind_move(editor, -overlay_layout(editor).body_h)
 	case:
 		if !alt && query_edit_key(&p.query, ev) {
 			fuzzy_list_refilter(&p.list)
@@ -110,38 +106,37 @@ linefind_render :: proc(editor: ^Editor) {
 
 	prompt := fmt.tprintf("> %s", string(p.query[:]))
 	pane_text(inner.x + 1, inner.y, inner.w - 2, prompt, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_hline(lay.box, inner.y + 1)
+	pane_hline(lay.box, lay.title_sep_y)
 
-	end := min(p.scroll + lay.list_h, len(p.matches))
+	end := min(p.scroll + lay.body_h, len(p.matches))
 	for i in p.scroll ..< end {
 		row := p.matches[i]
-		y := lay.list_top + (i - p.scroll)
+		y := lay.body_top + (i - p.scroll)
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		if i == p.selected {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
+			pane_fill_row(inner.x, y, lay.left_w, fg, bg)
 		}
-		pane_text(inner.x + 1, y, inner.w - 2, linefind_label(numw, row, p.lines[row]), fg, bg)
+		pane_text(inner.x + 1, y, lay.left_w - 1, linefind_label(numw, row, p.lines[row]), fg, bg)
 	}
 
-	pane_hline(lay.box, lay.sep_y)
-
-	if len(p.matches) > 0 && lay.preview_h > 0 {
+	if len(p.matches) > 0 && lay.body_h > 0 {
 		focus := p.matches[p.selected]
-		start := clamp(focus - lay.preview_h / 2, 0, max(0, len(p.lines) - lay.preview_h))
-		for i in 0 ..< lay.preview_h {
+		start := clamp(focus - lay.body_h / 2, 0, max(0, len(p.lines) - lay.body_h))
+		for i in 0 ..< lay.body_h {
 			row := start + i
 			if row >= len(p.lines) {
 				break
 			}
-			y := lay.preview_top + i
+			y := lay.body_top + i
 			fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 			if row == focus {
 				fg = COLOR_PANE_PROMPT_FG
 			}
-			pane_text(inner.x + 1, y, inner.w - 2, linefind_label(numw, row, p.lines[row]), fg, bg)
+			pane_text(lay.right_x + 1, y, lay.right_w - 1, linefind_label(numw, row, p.lines[row]), fg, bg)
 		}
 	}
 
+	overlay_divider(lay)
 	overlay_cursor(inner, len(p.query))
 }

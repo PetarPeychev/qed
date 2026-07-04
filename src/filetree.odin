@@ -464,8 +464,12 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_prompt_key(editor, ev)
 		return
 	}
+	if (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0 && ev.ch == 'f' {
+		filetree_close(editor)
+		return
+	}
 	#partial switch ev.key {
-	case .Esc, .Ctrl_F:
+	case .Esc:
 		filetree_close(editor)
 	case .Arrow_Down:
 		filetree_move(editor, 1)

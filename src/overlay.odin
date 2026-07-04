@@ -83,13 +83,10 @@ overlay_cursor :: proc(inner: Rect, query_len: int) {
 }
 
 OverlayLayout :: struct {
-	box:         Rect,
-	inner:       Rect,
-	list_top:    int,
-	list_h:      int,
-	sep_y:       int,
-	preview_top: int,
-	preview_h:   int,
+	box, inner:                       Rect,
+	body_top, body_h:                 int,
+	title_sep_y:                      int,
+	div_x, left_w, right_x, right_w:  int,
 }
 
 overlay_layout :: proc(editor: ^Editor) -> OverlayLayout {
@@ -100,13 +97,23 @@ overlay_layout :: proc(editor: ^Editor) -> OverlayLayout {
 	}
 	box := Rect{PICKER_MARGIN_X, PICKER_MARGIN_Y, max(0, sw - 2 * PICKER_MARGIN_X), max(0, sh - 2 * PICKER_MARGIN_Y)}
 	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
-	list_top := inner.y + 2
-	body_h := inner.h - 2
-	list_h := max(0, body_h / 2)
-	sep_y := list_top + list_h
-	preview_top := sep_y + 1
-	preview_h := max(0, body_h - list_h - 1)
-	return {box, inner, list_top, list_h, sep_y, preview_top, preview_h}
+	title_sep_y := inner.y + 1
+	body_top := inner.y + 2
+	body_h := max(0, inner.h - 2)
+	left_w := (inner.w - 1) / 2
+	div_x := inner.x + left_w
+	right_x := div_x + 1
+	right_w := max(0, inner.x + inner.w - right_x)
+	return {box, inner, body_top, body_h, title_sep_y, div_x, left_w, right_x, right_w}
+}
+
+overlay_divider :: proc(lay: OverlayLayout) {
+	bottom := lay.box.y + lay.box.h - 1
+	for y in lay.body_top ..< bottom {
+		tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	}
+	tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	tb2.set_cell(i32(lay.div_x), i32(bottom), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 }
 
 digit_count :: proc(n: int) -> int {

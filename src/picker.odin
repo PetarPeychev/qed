@@ -112,7 +112,7 @@ picker_load_preview :: proc(editor: ^Editor) {
 	}
 	rel := p.files[p.matches[p.selected]]
 	full, _ := filepath.join({editor.working_root, rel}, context.temp_allocator)
-	lines := max(1, overlay_layout(editor).preview_h)
+	lines := max(1, overlay_layout(editor).body_h)
 	cmd := fmt.ctprintf("head -n %d %s 2>/dev/null", lines, shell_quote(full))
 	out, ok := shell_capture(cmd)
 	if !ok {
@@ -125,7 +125,7 @@ picker_load_preview :: proc(editor: ^Editor) {
 
 picker_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.picker
-	fuzzy_list_move_clamp(&p.list, delta, overlay_layout(editor).list_h)
+	fuzzy_list_move_clamp(&p.list, delta, overlay_layout(editor).body_h)
 	picker_load_preview(editor)
 }
 
@@ -154,9 +154,9 @@ picker_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		picker_move(editor, -1)
 	case .Pgdn:
-		picker_move(editor, overlay_layout(editor).list_h)
+		picker_move(editor, overlay_layout(editor).body_h)
 	case .Pgup:
-		picker_move(editor, -overlay_layout(editor).list_h)
+		picker_move(editor, -overlay_layout(editor).body_h)
 	case:
 		if query_edit_key(&p.query, ev) {
 			fuzzy_list_refilter(&p.list)
@@ -182,32 +182,31 @@ picker_render :: proc(editor: ^Editor) {
 
 	prompt := fmt.tprintf("> %s", string(p.query[:]))
 	pane_text(inner.x + 1, inner.y, inner.w - 2, prompt, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_hline(lay.box, inner.y + 1)
+	pane_hline(lay.box, lay.title_sep_y)
 
-	end := min(p.scroll + lay.list_h, len(p.matches))
+	end := min(p.scroll + lay.body_h, len(p.matches))
 	for i in p.scroll ..< end {
 		rel := p.files[p.matches[i]]
-		y := lay.list_top + (i - p.scroll)
+		y := lay.body_top + (i - p.scroll)
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		if i == p.selected {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
+			pane_fill_row(inner.x, y, lay.left_w, fg, bg)
 		}
 		label := rel
 		if picker_file_modified(editor, rel) {
 			label = fmt.tprintf("%s [*]", rel)
 		}
-		pane_text(inner.x + 1, y, inner.w - 2, label, fg, bg)
+		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
-
-	pane_hline(lay.box, lay.sep_y)
 
 	for line, i in p.preview {
-		if i >= lay.preview_h {
+		if i >= lay.body_h {
 			break
 		}
-		pane_text(inner.x + 1, lay.preview_top + i, inner.w - 2, line, COLOR_PANE_FG, COLOR_PANE_BG)
+		pane_text(lay.right_x + 1, lay.body_top + i, lay.right_w - 1, line, COLOR_PANE_FG, COLOR_PANE_BG)
 	}
 
+	overlay_divider(lay)
 	overlay_cursor(inner, len(p.query))
 }

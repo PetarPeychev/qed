@@ -178,13 +178,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				projsearch_open(editor)
 				return
 			}
+			if alt && ev.ch == 'f' {
+				filetree_open(editor)
+				return
+			}
 			#partial switch ev.key {
 			case .Ctrl_Q:
 				editor_request_quit(editor)
 			case .Ctrl_O:
 				picker_open(editor)
-			case .Ctrl_F:
-				filetree_open(editor)
 			case .Ctrl_P:
 				palette_open(editor)
 			}
