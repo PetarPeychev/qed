@@ -485,11 +485,15 @@ highlight_ready :: proc(b: ^Buffer) -> bool {
 }
 
 highlight_paint :: proc(hl: ^Highlight, r0, c0, r1, c1: int, color: tb2.Color) {
+	highlight_paint_rows(hl.colors[:], r0, c0, r1, c1, color)
+}
+
+highlight_paint_rows :: proc(rows: [][dynamic]tb2.Color, r0, c0, r1, c1: int, color: tb2.Color) {
 	for r in r0 ..= r1 {
-		if r < 0 || r >= len(hl.colors) {
+		if r < 0 || r >= len(rows) {
 			continue
 		}
-		row := &hl.colors[r]
+		row := &rows[r]
 		cs := c0 if r == r0 else 0
 		ce := c1 if r == r1 else len(row)
 		cs = clamp(cs, 0, len(row))
@@ -498,6 +502,65 @@ highlight_paint :: proc(hl: ^Highlight, r0, c0, r1, c1: int, color: tb2.Color) {
 			row[c] = color
 		}
 	}
+}
+
+// One-shot synchronous highlight of a small standalone snippet (preview panes).
+// Fills `out` with one color row per input line, sized to the line's byte length,
+// defaulting to COLOR_FG. Parses the whole snippet fresh — no retained tree, no
+// injection — so it is only appropriate for a handful of lines.
+highlight_lines :: proc(language: Language, lines: []string, out: ^[dynamic][dynamic]tb2.Color) {
+	for &row in out {
+		delete(row)
+	}
+	clear(out)
+	for line in lines {
+		row := make([dynamic]tb2.Color)
+		resize(&row, len(line))
+		for i in 0 ..< len(line) {
+			row[i] = COLOR_FG
+		}
+		append(out, row)
+	}
+	if !syntax_ensure(language) {
+		return
+	}
+	s := &g_syntaxes[language]
+
+	sb := strings.builder_make(context.temp_allocator)
+	for line, i in lines {
+		if i > 0 {
+			strings.write_byte(&sb, '\n')
+		}
+		strings.write_string(&sb, line)
+	}
+	src := strings.to_string(sb)
+	tree := ts.parser_parse_string(s.parser, nil, raw_data(src), u32(len(src)))
+	if tree == nil {
+		return
+	}
+	defer ts.tree_delete(tree)
+
+	ts.query_cursor_set_point_range(s.cursor, {0, 0}, {max(u32), 0})
+	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(tree))
+	match: ts.QueryMatch
+	for ts.query_cursor_next_match(s.cursor, &match) {
+		for i in 0 ..< int(match.capture_count) {
+			cap := match.captures[i]
+			if int(cap.index) >= len(s.paint) || !s.paint[cap.index] {
+				continue
+			}
+			sp := ts.node_start_point(cap.node)
+			ep := ts.node_end_point(cap.node)
+			highlight_paint_rows(out[:], int(sp.row), int(sp.column), int(ep.row), int(ep.column), s.colors[cap.index])
+		}
+	}
+}
+
+highlight_lines_destroy :: proc(out: ^[dynamic][dynamic]tb2.Color) {
+	for &row in out {
+		delete(row)
+	}
+	delete(out^)
 }
 
 highlight_colors :: proc(b: ^Buffer, row: int) -> []tb2.Color {

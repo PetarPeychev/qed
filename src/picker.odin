@@ -59,6 +59,7 @@ Picker :: struct {
 	using list: FuzzyList,
 	files:      [dynamic]string,
 	preview:    [dynamic]string,
+	colors:     [dynamic][dynamic]tb2.Color,
 }
 
 picker_clear_files :: proc(p: ^Picker) {
@@ -73,6 +74,10 @@ picker_clear_preview :: proc(p: ^Picker) {
 		delete(s)
 	}
 	clear(&p.preview)
+	for &row in p.colors {
+		delete(row)
+	}
+	clear(&p.colors)
 }
 
 picker_destroy :: proc(p: ^Picker) {
@@ -81,6 +86,7 @@ picker_destroy :: proc(p: ^Picker) {
 	picker_clear_preview(p)
 	delete(p.files)
 	delete(p.preview)
+	delete(p.colors)
 }
 
 picker_open :: proc(editor: ^Editor) {
@@ -121,6 +127,7 @@ picker_load_preview :: proc(editor: ^Editor) {
 	for line in strings.split_lines_iterator(&out) {
 		append(&p.preview, strings.clone(line))
 	}
+	highlight_lines(language_of(rel), p.preview[:], &p.colors)
 }
 
 picker_move :: proc(editor: ^Editor, delta: int) {
@@ -204,7 +211,8 @@ picker_render :: proc(editor: ^Editor) {
 		if i >= lay.body_h {
 			break
 		}
-		pane_text(lay.right_x + 1, lay.body_top + i, lay.right_w - 1, line, COLOR_PANE_FG, COLOR_PANE_BG)
+		colors := p.colors[i][:] if i < len(p.colors) else nil
+		pane_text_colored(lay.right_x + 1, lay.body_top + i, lay.right_w - 1, line, colors, 0, COLOR_PANE_FG, COLOR_PANE_BG)
 	}
 
 	overlay_divider(lay)

@@ -22,6 +22,7 @@ ProjSearch :: struct {
 	preview:       [dynamic]string,
 	preview_start: int,
 	preview_focus: int,
+	colors:        [dynamic][dynamic]tb2.Color,
 }
 
 projsearch_clear_matches :: proc(p: ^ProjSearch) {
@@ -37,6 +38,10 @@ projsearch_clear_preview :: proc(p: ^ProjSearch) {
 		delete(s)
 	}
 	clear(&p.preview)
+	for &row in p.colors {
+		delete(row)
+	}
+	clear(&p.colors)
 }
 
 projsearch_destroy :: proc(p: ^ProjSearch) {
@@ -45,6 +50,7 @@ projsearch_destroy :: proc(p: ^ProjSearch) {
 	delete(p.matches)
 	delete(p.preview)
 	delete(p.query)
+	delete(p.colors)
 }
 
 projsearch_open :: proc(editor: ^Editor) {
@@ -130,16 +136,44 @@ projsearch_load_preview :: proc(editor: ^Editor) {
 	full, _ := filepath.join({editor.working_root, m.path}, context.temp_allocator)
 	h := max(1, overlay_layout(editor).body_h)
 	start := max(1, (m.row + 1) - h / 2)
-	cmd := fmt.ctprintf("sed -n '%d,%dp' %s 2>/dev/null", start, start + h - 1, shell_quote(full))
+	end := start + h - 1
+	// Parse from the file's first line so multi-line strings/comments opening
+	// above the window color correctly; content below the window can't affect it.
+	cmd := fmt.ctprintf("sed -n '1,%dp' %s 2>/dev/null", end, shell_quote(full))
 	out, ok := shell_capture(cmd)
 	if !ok {
 		return
 	}
 	p.preview_start = start
 	p.preview_focus = m.row + 1
+
+	lines := make([dynamic]string, context.temp_allocator)
 	for line in strings.split_lines_iterator(&out) {
-		append(&p.preview, strings.clone(line))
+		append(&lines, line)
 	}
+	off := min(start - 1, len(lines))
+
+	// Above the inline-parse gate, skip the from-top pass and color only the
+	// window (occasionally imprecise at the top edge) to bound keypress latency.
+	if len(out) >= HIGHLIGHT_ASYNC_BYTES {
+		for line in lines[off:] {
+			append(&p.preview, strings.clone(line))
+		}
+		highlight_lines(language_of(m.path), p.preview[:], &p.colors)
+		return
+	}
+
+	tmp: [dynamic][dynamic]tb2.Color
+	highlight_lines(language_of(m.path), lines[:], &tmp)
+	for row, i in tmp {
+		if i < off {
+			delete(row)
+			continue
+		}
+		append(&p.preview, strings.clone(lines[i]))
+		append(&p.colors, row)
+	}
+	delete(tmp)
 }
 
 projsearch_move :: proc(editor: ^Editor, delta: int) {
@@ -244,11 +278,13 @@ projsearch_render :: proc(editor: ^Editor) {
 		}
 		lineno := p.preview_start + i
 		y := lay.body_top + i
-		fg := COLOR_PANE_FG
+		label := linefind_label(numw, lineno - 1, line)
 		if lineno == p.preview_focus {
-			fg = COLOR_PANE_PROMPT_FG
+			pane_text(lay.right_x + 1, y, lay.right_w - 1, label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+			continue
 		}
-		pane_text(lay.right_x + 1, y, lay.right_w - 1, linefind_label(numw, lineno - 1, line), fg, COLOR_PANE_BG)
+		colors := p.colors[i][:] if i < len(p.colors) else nil
+		pane_text_colored(lay.right_x + 1, y, lay.right_w - 1, label, colors, len(label) - len(line), COLOR_PANE_FG, COLOR_PANE_BG)
 	}
 
 	overlay_divider(lay)

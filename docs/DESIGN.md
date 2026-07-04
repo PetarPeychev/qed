@@ -219,6 +219,10 @@ in stable order + digit instant-jump on empty query), fuzzy line jump (`Ctrl+F`)
 project-wide search (`rg`), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
 right-side preview, new/rename/delete with recursive-delete confirm; rename follows
 open buffers), jump list (back/forward), runtime config (`~/.config/qed/config.json`).
+Preview panes (file-open, file-tree, project-search) are syntax-highlighted via a
+one-shot synchronous tree-sitter pass (`highlight_lines`); project-search parses
+from line 1 to the window end (size-gated at `HIGHLIGHT_ASYNC_BYTES`) so constructs
+opening above the window color correctly.
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSON,

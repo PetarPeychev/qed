@@ -33,6 +33,7 @@ FileTree :: struct {
 	input:    [dynamic]u8,
 	caret:    int,
 	preview:  [dynamic]string,
+	colors:   [dynamic][dynamic]tb2.Color,
 }
 
 FileTreeLayout :: struct {
@@ -67,6 +68,7 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.input)
 	filetree_clear_preview(t)
 	delete(t.preview)
+	delete(t.colors)
 }
 
 filetree_clear_entries :: proc(t: ^FileTree) {
@@ -81,6 +83,10 @@ filetree_clear_preview :: proc(t: ^FileTree) {
 		delete(s)
 	}
 	clear(&t.preview)
+	for &row in t.colors {
+		delete(row)
+	}
+	clear(&t.colors)
 }
 
 filetree_load_preview :: proc(editor: ^Editor) {
@@ -99,6 +105,7 @@ filetree_load_preview :: proc(editor: ^Editor) {
 	for line in strings.split_lines_iterator(&out) {
 		append(&t.preview, strings.clone(line))
 	}
+	highlight_lines(language_of(e.path), t.preview[:], &t.colors)
 }
 
 filetree_set_expanded :: proc(t: ^FileTree, path: string, val: bool) {
@@ -549,7 +556,8 @@ filetree_render :: proc(editor: ^Editor) {
 		if i >= lay.body_h {
 			break
 		}
-		pane_text(lay.right_x + 1, lay.body_top + i, lay.right_w - 1, line, COLOR_PANE_FG, COLOR_PANE_BG)
+		colors := t.colors[i][:] if i < len(t.colors) else nil
+		pane_text_colored(lay.right_x + 1, lay.body_top + i, lay.right_w - 1, line, colors, 0, COLOR_PANE_FG, COLOR_PANE_BG)
 	}
 
 	pane_hline(lay.box, lay.footer_sep_y)
