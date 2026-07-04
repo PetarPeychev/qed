@@ -15,7 +15,6 @@ _(none open)_
 
 - [ ] In-buffer find, then find & replace (`Ctrl+F`; `Alt+n`/`Alt+m` prev/next; incremental, wrap, highlight).
 - [ ] Configurable indent width + auto-detect from the file (like tabs-vs-spaces).
-- [ ] Central language detection: one extension → `Language` table driving comment token, grammar, LSP.
 - [ ] Open-buffer switcher: fuzzy picker over currently-open buffers (binding TBD, e.g. `Alt+b`).
 - [ ] File-tree pane over the working root.
 
@@ -35,7 +34,6 @@ _(none open)_
 - [ ] Symbol search (fuzzy document/workspace symbols).
 - [ ] Signature help (later).
 - [ ] Inlay hints (later).
-- [ ] LSP restart command (a crashed server currently stays down for the session).
 
 ## Git diff gutter
 

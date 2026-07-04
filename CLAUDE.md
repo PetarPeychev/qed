@@ -77,8 +77,11 @@ repetition only once it exists in front of you.
 - **Language:** idiomatic Odin. `snake_case` for procs/variables, `PascalCase`
   for types/enums, `SCREAMING_SNAKE` for constants.
 - **Comments:** don't add them. Let clear names and obvious structure carry the
-  code. Comment only something genuinely unintuitive the code cannot imply (a
-  non-obvious invariant, an external-quirk workaround) — never to restate a line.
+  code. **Never write a comment that describes what a proc or struct does** — no
+  function-header / doc comments summarizing behavior; the name and body already
+  say it. Comment *only* something genuinely unintuitive the code cannot imply (a
+  non-obvious invariant, an external-quirk workaround), and keep it to one terse
+  line stating the *why* — never restate a line.
 - **Naming:** procedures are `noun_verb` grouped by subject (`buffer_open`,
   `buffer_insert`, `editor_render`, `cursor_move_left`). The first parameter is
   the thing acted on, usually a pointer for mutation (`buffer: ^Buffer`).

@@ -16,8 +16,7 @@ QuitDialog :: struct {
 quit_dialog_open :: proc(editor: ^Editor) {
 	editor.quit_dialog.active = true
 	editor.quit_dialog.selected = 0
-	editor.message = ""
-	editor.message_error = false
+	editor_set_message(editor, "")
 }
 
 quit_dialog_close :: proc(editor: ^Editor) {
@@ -34,8 +33,7 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 		}
 		if editor_any_modified(editor) {
 			quit_dialog_close(editor)
-			editor.message = "Save failed"
-			editor.message_error = true
+			editor_set_message(editor, "Save failed", true)
 		} else {
 			editor.quit = true
 		}
@@ -93,8 +91,7 @@ CloseDialog :: struct {
 close_dialog_open :: proc(editor: ^Editor) {
 	editor.close_dialog.active = true
 	editor.close_dialog.selected = 0
-	editor.message = ""
-	editor.message_error = false
+	editor_set_message(editor, "")
 }
 
 close_dialog_close :: proc(editor: ^Editor) {
@@ -108,8 +105,7 @@ close_dialog_execute :: proc(editor: ^Editor) {
 		buffer_save(b)
 		close_dialog_close(editor)
 		if b.modified {
-			editor.message = "Save failed"
-			editor.message_error = true
+			editor_set_message(editor, "Save failed", true)
 		} else {
 			editor_close_current(editor)
 		}

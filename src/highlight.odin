@@ -46,6 +46,9 @@ Syntax :: struct {
 @(private = "file")
 g_syntaxes: [Language]Syntax
 
+// A language that ships a grammar failed to compile it; the editor drains this into the message line once.
+g_syntax_error: string
+
 syntax_ensure :: proc(language: Language) -> bool {
 	s := &g_syntaxes[language]
 	if s.tried {
@@ -61,6 +64,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 	lang := info.grammar()
 	s.parser = ts.parser_new()
 	if !ts.parser_set_language(s.parser, lang) {
+		g_syntax_error = info.name
 		return false
 	}
 
@@ -68,6 +72,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 	err_type: ts.QueryError
 	s.query = ts.query_new(lang, raw_data(info.highlights), u32(len(info.highlights)), &err_off, &err_type)
 	if s.query == nil {
+		g_syntax_error = info.name
 		return false
 	}
 	s.cursor = ts.query_cursor_new()
@@ -163,7 +168,7 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 }
 
 highlight_update :: proc(b: ^Buffer, top, bot: int) {
-	language := language_of(b.path)
+	language := b.language
 	if !syntax_ensure(language) {
 		clear(&b.hl.pending)
 		b.hl.valid = false

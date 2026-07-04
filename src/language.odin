@@ -1,5 +1,7 @@
 package main
 
+import "core:os"
+import "core:slice"
 import "core:strings"
 import ts "lib:tree_sitter"
 
@@ -7,9 +9,6 @@ Language :: enum {
 	Plain,
 	Odin,
 	C,
-	Cpp,
-	Go,
-	Rust,
 	JavaScript,
 	Jsx,
 	TypeScript,
@@ -39,9 +38,6 @@ LANGUAGES := [Language]LanguageInfo {
 	.Plain      = {"text", "//", "", "", nil, nil, nil},
 	.Odin       = {"odin", "//", "ols", "odin", ts.tree_sitter_odin, #load("../lib/tree_sitter/odin/highlights.scm"), nil},
 	.C          = {"c", "//", "clangd", "c", ts.tree_sitter_c, #load("../lib/tree_sitter/c/highlights.scm"), nil},
-	.Cpp        = {"c++", "//", "", "", nil, nil, nil},
-	.Go         = {"go", "//", "", "", nil, nil, nil},
-	.Rust       = {"rust", "//", "", "", nil, nil, nil},
 	.JavaScript = {"javascript", "//", "typescript-language-server --stdio", "javascript", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
 	.Jsx        = {"jsx", "//", "typescript-language-server --stdio", "javascriptreact", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
 	.TypeScript = {"typescript", "//", "typescript-language-server --stdio", "typescript", ts.tree_sitter_typescript, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
@@ -57,47 +53,126 @@ LANGUAGES := [Language]LanguageInfo {
 	.MarkdownInline = {"markdown_inline", "", "", "", ts.tree_sitter_markdown_inline, #load("../lib/tree_sitter/markdown_inline/highlights.scm"), nil},
 }
 
-language_of :: proc(path: string) -> Language {
-	dot := strings.last_index_byte(path, '.')
-	slash := strings.last_index_byte(path, '/')
-	if dot <= slash {
-		return .Plain
+LangRule :: struct {
+	pattern:  string,
+	language: Language,
+}
+
+DEFAULT_LANGUAGES := [?]LangRule {
+	{"*.odin", .Odin},
+	{"*.c", .C},
+	{"*.h", .C},
+	{"*.js", .JavaScript},
+	{"*.mjs", .JavaScript},
+	{"*.cjs", .JavaScript},
+	{"*.jsx", .Jsx},
+	{"*.ts", .TypeScript},
+	{"*.mts", .TypeScript},
+	{"*.cts", .TypeScript},
+	{"*.tsx", .Tsx},
+	{"*.py", .Python},
+	{"*.pyw", .Python},
+	{"*.sh", .Shell},
+	{"*.bash", .Shell},
+	{"*.zsh", .Shell},
+	{".bashrc", .Shell},
+	{".bash_profile", .Shell},
+	{".bash_aliases", .Shell},
+	{".profile", .Shell},
+	{".zshrc", .Shell},
+	{".zshenv", .Shell},
+	{".zprofile", .Shell},
+	{"PKGBUILD", .Shell},
+	{"*.lua", .Lua},
+	{".luacheckrc", .Lua},
+	{"*.sql", .Sql},
+	{"*.yaml", .Yaml},
+	{"*.yml", .Yaml},
+	{"*.toml", .Toml},
+	{"*.json", .Json},
+	{"*.md", .Markdown},
+	{"*.markdown", .Markdown},
+}
+
+g_language_rules: [dynamic]LangRule
+
+// Most-specific first (exact before glob, longer before shorter): language_of takes the first match.
+// Backed by the OS heap, not context.allocator: this global outlives any single
+// config-load call (and any per-test allocator that would otherwise reclaim it).
+language_rules_set :: proc(rules: []LangRule) {
+	if g_language_rules == nil {
+		g_language_rules = make([dynamic]LangRule, 0, len(rules), os.heap_allocator())
 	}
-	switch path[dot + 1:] {
-	case "odin":
-		return .Odin
-	case "c", "h":
-		return .C
-	case "cc", "cpp", "cxx", "hpp", "hh", "hxx":
-		return .Cpp
-	case "go":
-		return .Go
-	case "rs":
-		return .Rust
-	case "js", "mjs", "cjs":
-		return .JavaScript
-	case "jsx":
-		return .Jsx
-	case "ts", "mts", "cts":
-		return .TypeScript
-	case "tsx":
-		return .Tsx
-	case "py", "pyw":
-		return .Python
-	case "sh", "bash", "zsh":
-		return .Shell
-	case "lua":
-		return .Lua
-	case "sql":
-		return .Sql
-	case "yaml", "yml":
-		return .Yaml
-	case "toml":
-		return .Toml
-	case "json":
-		return .Json
-	case "md", "markdown":
-		return .Markdown
+	clear(&g_language_rules)
+	append(&g_language_rules, ..rules)
+	slice.sort_by(g_language_rules[:], proc(a, b: LangRule) -> bool {
+		aw := strings.contains_rune(a.pattern, '*')
+		bw := strings.contains_rune(b.pattern, '*')
+		if aw != bw {
+			return !aw
+		}
+		if len(a.pattern) != len(b.pattern) {
+			return len(a.pattern) > len(b.pattern)
+		}
+		return a.pattern < b.pattern
+	})
+}
+
+languages_reset_defaults :: proc() {
+	language_rules_set(DEFAULT_LANGUAGES[:])
+}
+
+language_is_default_pattern :: proc(pattern: string) -> bool {
+	for def in DEFAULT_LANGUAGES {
+		if def.pattern == pattern {
+			return true
+		}
+	}
+	return false
+}
+
+language_from_name :: proc(name: string) -> (Language, bool) {
+	for info, lang in LANGUAGES {
+		if info.name == name {
+			return lang, true
+		}
+	}
+	return .Plain, false
+}
+
+glob_match :: proc(pattern, s: string) -> bool {
+	p, i := 0, 0
+	star := -1
+	mark := 0
+	for i < len(s) {
+		if p < len(pattern) && pattern[p] == s[i] {
+			p += 1
+			i += 1
+		} else if p < len(pattern) && pattern[p] == '*' {
+			star = p
+			mark = i
+			p += 1
+		} else if star != -1 {
+			p = star + 1
+			mark += 1
+			i = mark
+		} else {
+			return false
+		}
+	}
+	for p < len(pattern) && pattern[p] == '*' {
+		p += 1
+	}
+	return p == len(pattern)
+}
+
+language_of :: proc(path: string) -> Language {
+	slash := strings.last_index_byte(path, '/')
+	name := path[slash + 1:]
+	for rule in g_language_rules {
+		if glob_match(rule.pattern, name) {
+			return rule.language
+		}
 	}
 	return .Plain
 }
@@ -131,8 +206,4 @@ language_of_name :: proc(name: string) -> Language {
 		return .Sql
 	}
 	return .Plain
-}
-
-language_info :: proc(path: string) -> LanguageInfo {
-	return LANGUAGES[language_of(path)]
 }

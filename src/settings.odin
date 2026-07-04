@@ -126,12 +126,14 @@ parse_keybind :: proc(s: string) -> (key: tb2.Key, alt_ch: rune, ok: bool) {
 config_load :: proc() -> (message: string, is_error: bool) {
 	path := config_path()
 	if path == "" {
+		languages_reset_defaults()
 		return "", false
 	}
 	return config_load_from(path)
 }
 
 config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
+	languages_reset_defaults()
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil {
 		if err := config_write(path, {}); err != nil {
@@ -226,6 +228,16 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 		append(&invalid, "keybinds")
 	}
 
+	if lang_val, present := root["languages"]; !present {
+		missing = true
+	} else if lang_obj, is_obj := lang_val.(json.Object); is_obj {
+		if languages_from_config(lang_obj, &invalid) {
+			missing = true
+		}
+	} else {
+		append(&invalid, "languages")
+	}
+
 	if missing {
 		if err := config_write(path, root); err != nil {
 			return fmt.tprintf("config.json: could not update %s (%v)", path, err), true
@@ -240,6 +252,45 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 		return "config.json: wrote missing defaults", false
 	}
 	return "", false
+}
+
+languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
+	rules := make([dynamic]LangRule, context.temp_allocator)
+	for def in DEFAULT_LANGUAGES {
+		lang := def.language
+		if v, has := obj[def.pattern]; has {
+			if s, is := v.(json.String); is {
+				if l, ok := language_from_name(string(s)); ok {
+					lang = l
+				} else {
+					append(invalid, fmt.tprintf("languages/%s", def.pattern))
+				}
+			} else {
+				append(invalid, fmt.tprintf("languages/%s", def.pattern))
+			}
+		} else {
+			missing = true
+		}
+		append(&rules, LangRule{def.pattern, lang})
+	}
+	for pattern, v in obj {
+		if language_is_default_pattern(pattern) {
+			continue
+		}
+		s, is := v.(json.String)
+		if !is {
+			append(invalid, fmt.tprintf("languages/%s", pattern))
+			continue
+		}
+		l, ok := language_from_name(string(s))
+		if !ok {
+			append(invalid, fmt.tprintf("languages/%s", pattern))
+			continue
+		}
+		append(&rules, LangRule{strings.clone(pattern, os.heap_allocator()), l})
+	}
+	language_rules_set(rules[:])
+	return
 }
 
 config_write :: proc(path: string, root: json.Object) -> os.Error {
@@ -308,6 +359,39 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 			} else {
 				strings.write_string(&sb, lsp_json_string(cmd.shortcut))
 			}
+		}
+		strings.write_string(&sb, "\n  }")
+	}
+
+	emit_key(&sb, &first, "languages")
+	lang_raw, lang_present := root["languages"]
+	if lang_obj, is_obj := lang_raw.(json.Object); lang_present && !is_obj {
+		config_value_text(&sb, lang_raw)
+	} else {
+		strings.write_string(&sb, "{\n")
+		lg_first := true
+		for def in DEFAULT_LANGUAGES {
+			if !lg_first {
+				strings.write_string(&sb, ",\n")
+			}
+			lg_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(def.pattern))
+			if v, has := lang_obj[def.pattern]; has {
+				config_value_text(&sb, v)
+			} else {
+				strings.write_string(&sb, lsp_json_string(LANGUAGES[def.language].name))
+			}
+		}
+		for pattern, v in lang_obj {
+			if language_is_default_pattern(pattern) {
+				continue
+			}
+			if !lg_first {
+				strings.write_string(&sb, ",\n")
+			}
+			lg_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(pattern))
+			config_value_text(&sb, v)
 		}
 		strings.write_string(&sb, "\n  }")
 	}

@@ -29,6 +29,7 @@ Buffer :: struct {
 	lsp_rev:       u64,
 	lsp_changes:   [dynamic]LspChange,
 	big:           bool,
+	language:      Language,
 }
 
 
@@ -184,6 +185,7 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 
 	delete(buffer.path)
 	buffer.path = strings.clone(path)
+	buffer.language = language_of(path)
 	buffer.cursor = {0, 0}
 	buffer.selection = nil
 	buffer.goal_col = 0

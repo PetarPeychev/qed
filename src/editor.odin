@@ -16,6 +16,7 @@ Editor :: struct {
 	scroll_row:      int,
 	scroll_col:      int,
 	message:         string,
+	message_store:   [dynamic]u8,
 	message_error:   bool,
 	quit_dialog:     QuitDialog,
 	close_dialog:    CloseDialog,
@@ -28,6 +29,7 @@ Editor :: struct {
 	click_count:     int,
 	palette:         Palette,
 	picker:          Picker,
+	langpick:        LangPick,
 	linefind:        LineFind,
 	projsearch:      ProjSearch,
 	jumps:           JumpList,
@@ -71,11 +73,14 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.buffers)
 	delete(editor.working_root)
 	delete(editor.paste_buf)
+	delete(editor.message_store)
 	palette_destroy(&editor.palette)
 	picker_destroy(&editor.picker)
+	langpick_destroy(&editor.langpick)
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
 	jump_destroy(&editor.jumps)
+	delete(g_language_rules)
 	syntax_shutdown()
 	clipboard_shutdown()
 	tb2.shutdown()
@@ -83,6 +88,29 @@ editor_shutdown :: proc(editor: ^Editor) {
 
 editor_buffer :: proc(editor: ^Editor) -> ^Buffer {
 	return &editor.buffers[editor.current]
+}
+
+// Copy into owned storage: callers pass temp-allocator strings, and the main
+// loop's free_all would leave editor.message dangling into reused temp memory.
+editor_set_message :: proc(editor: ^Editor, msg: string, is_error := false) {
+	clear(&editor.message_store)
+	append(&editor.message_store, ..transmute([]u8)msg)
+	editor.message = string(editor.message_store[:])
+	editor.message_error = is_error
+}
+
+editor_set_language :: proc(editor: ^Editor, lang: Language) {
+	b := editor_buffer(editor)
+	if b.language == lang {
+		return
+	}
+	if b.lsp_open {
+		lsp_did_close(editor, b)
+	}
+	b.language = lang
+	highlight_destroy(&b.hl)
+	b.hl = {}
+	editor_set_message(editor, fmt.tprintf("Language: %s", LANGUAGES[lang].name))
 }
 
 editor_gutter_width :: proc(editor: ^Editor) -> int {
@@ -117,6 +145,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		#partial switch ev.type {
 		case .Key:
 			picker_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
+		}
+		return
+	}
+	if editor.langpick.active {
+		#partial switch ev.type {
+		case .Key:
+			langpick_dispatch_key(editor, ev)
 		case .Resize:
 			editor_scroll(editor)
 		}
@@ -186,8 +223,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Paste_Begin:
 		editor.pasting = true
 		editor.paste_last_cr = false
-		editor.message = ""
-		editor.message_error = false
+		editor_set_message(editor, "")
 		clear(&editor.paste_buf)
 	case .Paste_End:
 		editor_paste_commit(editor)
@@ -210,8 +246,7 @@ editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 }
 
 editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	editor.message = ""
-	editor.message_error = false
+	editor_set_message(editor, "")
 	b := editor_buffer(editor)
 
 	#partial switch ev.key {
@@ -311,8 +346,7 @@ editor_paste_commit :: proc(editor: ^Editor) {
 }
 
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	editor.message = ""
-	editor.message_error = false
+	editor_set_message(editor, "")
 	b := editor_buffer(editor)
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
 	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
@@ -559,14 +593,12 @@ editor_paste :: proc(editor: ^Editor) {
 editor_save :: proc(editor: ^Editor) {
 	switch buffer_save(editor_buffer(editor)) {
 	case .None:
-		editor.message = "Saved"
+		editor_set_message(editor, "Saved")
 		lsp_did_save(editor, editor_buffer(editor))
 	case .NoPath:
-		editor.message = "No file name"
-		editor.message_error = true
+		editor_set_message(editor, "No file name", true)
 	case .WriteError, .RenameError:
-		editor.message = "Save failed"
-		editor.message_error = true
+		editor_set_message(editor, "Save failed", true)
 	}
 }
 
@@ -602,6 +634,10 @@ editor_render :: proc(editor: ^Editor) {
 		_, vh := editor_viewport(editor)
 		if !editor_buffer(editor).big {
 			highlight_update(editor_buffer(editor), editor.scroll_row, editor.scroll_row + vh - 1)
+			if g_syntax_error != "" {
+				editor_set_message(editor, fmt.tprintf("syntax: failed to load %s grammar", g_syntax_error), true)
+				g_syntax_error = ""
+			}
 			git_gutter_update(editor_buffer(editor))
 		}
 		editor_render_buffer(editor)
@@ -612,6 +648,8 @@ editor_render :: proc(editor: ^Editor) {
 		palette_render(editor)
 	case editor.picker.active:
 		picker_render(editor)
+	case editor.langpick.active:
+		langpick_render(editor)
 	case editor.linefind.active:
 		linefind_render(editor)
 	case editor.projsearch.active:
@@ -765,7 +803,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	}
 	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
 	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", TAB_WIDTH)
-	right := language_info(b.path).name
+	right := LANGUAGES[b.language].name
 	if b.big {
 		right = fmt.tprintf("%s  big", right)
 	} else if lsp := lsp_status_label(b); lsp != "" {

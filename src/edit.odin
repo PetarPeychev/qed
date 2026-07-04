@@ -152,7 +152,7 @@ comment_shift_col :: proc(col, row, target_row, at, delta: int) -> int {
 }
 
 buffer_toggle_comment :: proc(b: ^Buffer) {
-	token := language_info(b.path).comment
+	token := LANGUAGES[b.language].comment
 	if token == "" {
 		return
 	}

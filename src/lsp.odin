@@ -68,7 +68,7 @@ lsp_display_name :: proc(server: string) -> string {
 }
 
 lsp_for :: proc(b: ^Buffer) -> (^Lsp, bool) {
-	server := language_info(b.path).lsp_server
+	server := LANGUAGES[b.language].lsp_server
 	if server == "" {
 		return nil, false
 	}
@@ -77,7 +77,7 @@ lsp_for :: proc(b: ^Buffer) -> (^Lsp, bool) {
 }
 
 lsp_status_label :: proc(b: ^Buffer) -> string {
-	server := language_info(b.path).lsp_server
+	server := LANGUAGES[b.language].lsp_server
 	if server == "" {
 		return ""
 	}
@@ -129,8 +129,7 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 		os.close(in_w)
 		os.close(out_r)
 		lsp.state = .Failed
-		editor.message = fmt.tprintf("LSP: failed to start %s", lsp_display_name(server))
-		editor.message_error = true
+		editor_set_message(editor, fmt.tprintf("LSP: failed to start %s", lsp_display_name(server)), true)
 		return lsp
 	}
 
@@ -155,25 +154,55 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 	return lsp
 }
 
+lsp_shutdown_one :: proc(editor: ^Editor, lsp: ^Lsp) {
+	if lsp.state != .Running {
+		return
+	}
+	lsp.next_id += 1
+	lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","id":%d,"method":"shutdown","params":null}}`, lsp.next_id))
+	lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"exit","params":null}`)
+	if lsp.state != .Running {
+		return
+	}
+	os.close(lsp.stdin)
+	os.close(lsp.stdout)
+	if _, err := os.process_wait(lsp.process, 200 * time.Millisecond); err != nil {
+		_ = os.process_kill(lsp.process)
+	}
+}
+
 lsp_stop :: proc(editor: ^Editor) {
 	for _, lsp in g_lsps {
-		if lsp.state == .Running {
-			lsp.next_id += 1
-			lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","id":%d,"method":"shutdown","params":null}}`, lsp.next_id))
-			lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"exit","params":null}`)
-			if lsp.state == .Running {
-				os.close(lsp.stdin)
-				os.close(lsp.stdout)
-				if _, err := os.process_wait(lsp.process, 200 * time.Millisecond); err != nil {
-					_ = os.process_kill(lsp.process)
-				}
-			}
-		}
+		lsp_shutdown_one(editor, lsp)
 		delete(lsp.recv)
 		free(lsp)
 	}
 	delete(g_lsps)
 	g_lsps = nil
+}
+
+lsp_restart :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	server := LANGUAGES[b.language].lsp_server
+	if server == "" {
+		editor_set_message(editor, "No language server for this buffer", true)
+		return
+	}
+	name := lsp_display_name(server)
+	if lsp, ok := g_lsps[server]; ok {
+		lsp_shutdown_one(editor, lsp)
+		delete(lsp.recv)
+		free(lsp)
+		delete_key(&g_lsps, server)
+		for &bb in editor.buffers {
+			if LANGUAGES[bb.language].lsp_server == server {
+				buffer_clear_diags(&bb)
+				buffer_lsp_changes_clear(&bb)
+				bb.lsp_open = false
+			}
+		}
+	}
+	editor_set_message(editor, fmt.tprintf("LSP: restarting %s", name))
 }
 
 lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
@@ -185,14 +214,13 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 	os.close(lsp.stdout)
 	_ = os.process_kill(lsp.process)
 	for &b in editor.buffers {
-		if language_info(b.path).lsp_server == lsp.server {
+		if LANGUAGES[b.language].lsp_server == lsp.server {
 			buffer_clear_diags(&b)
 			buffer_lsp_changes_clear(&b)
 			b.lsp_open = false
 		}
 	}
-	editor.message = fmt.tprintf("LSP: %s stopped", lsp_display_name(lsp.server))
-	editor.message_error = true
+	editor_set_message(editor, fmt.tprintf("LSP: %s stopped", lsp_display_name(lsp.server)), true)
 }
 
 lsp_send :: proc(editor: ^Editor, lsp: ^Lsp, body: string) {
@@ -210,7 +238,7 @@ lsp_sync :: proc(editor: ^Editor) {
 		if b.big {
 			continue
 		}
-		server := language_info(b.path).lsp_server
+		server := LANGUAGES[b.language].lsp_server
 		if server == "" {
 			continue
 		}
@@ -240,7 +268,7 @@ lsp_did_open :: proc(editor: ^Editor, b: ^Buffer) {
 	body := fmt.tprintf(
 		`{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":%s,"languageId":%s,"version":%d,"text":%s}}}}}}`,
 		lsp_json_string(lsp_uri(b.path)),
-		lsp_json_string(language_info(b.path).lsp_id),
+		lsp_json_string(LANGUAGES[b.language].lsp_id),
 		b.rev,
 		lsp_json_string(text),
 	)

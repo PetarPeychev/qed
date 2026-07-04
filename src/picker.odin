@@ -97,8 +97,7 @@ picker_open :: proc(editor: ^Editor) {
 	clear(&p.query)
 	p.selected = 0
 	p.scroll = 0
-	editor.message = ""
-	editor.message_error = false
+	editor_set_message(editor, "")
 
 	picker_clear_files(p)
 	files_list(editor.working_root, &p.files)

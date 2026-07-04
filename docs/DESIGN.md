@@ -18,6 +18,7 @@ Buffer :: struct {
     final_newline, modified, big: bool
     undo, redo:  [dynamic]EditGroup     // inverse-op log; `open` group coalesces
     hl: Highlight, git: GitGutter       // per-buffer highlight tree + git marks
+    language: Language                  // detected at open; Set Language overrides
     // ... lsp/diag/rev bookkeeping
 }
 Line   :: struct { text: [dynamic]u8 }   // bytes, no line terminator stored
@@ -57,7 +58,9 @@ Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 screen↔buffer column mapping (cursor placement, mouse).
 
 Message line clears on the next input event (no timers); an active interactive
-prompt owns the line + input until it resolves. Truecolor output; gruber palette
+prompt owns the line + input until it resolves. All writes go through
+`editor_set_message`, which copies into owned storage — a raw `tprintf` string
+would dangle once the per-frame `temp_allocator` is freed. Truecolor output; gruber palette
 and all colors live in `config.odin` (`COLOR_*`), overridable via config `theme`.
 
 ## Editing & undo
@@ -120,14 +123,27 @@ documented in `lib/tb2/PATCHES.md`:
 - **Bracketed paste:** patched termbox surfaces `Paste_Begin`/`Paste_End`; qed
   accumulates the keys between them and inserts the whole paste as one undo group.
 
+## Language detection
+
+Each `Buffer` carries a `language: Language`, set once at open (`language_of`).
+File→language is **not hardcoded**: `DEFAULT_LANGUAGES` (`language.odin`) is a
+list of `pattern → Language` rules materialized into the config `languages`
+section like every other knob, so any mapping (e.g. `*.py`) is user-overridable
+and extra globs can be added. Patterns are `*`-globs matched against the basename,
+most-specific-first (exact before glob, longer before shorter); built-in defaults
+cover extensions plus common dotfiles (`.bashrc` → shell, …). Everything —
+highlight, LSP, status bar, comment token — reads `b.language`. The *Set Language*
+command (`langpick.odin`) overrides it for the session (re-parses, re-opens LSP).
+
 ## Multiple servers / grammars
 
 - **Syntax** (`highlight.odin`, `language.odin`): per-language `[Language]Syntax`;
   adding one = vendor `parser.c` (+`scanner.c`) + `highlights.scm` under
   `lib/tree_sitter/<lang>/`, add the FFI decl + `build.sh` line, fill the
-  `LANGUAGES` row. Query is structural-only (predicates stripped, see
-  `lib/tree_sitter/PATCHES.md`). Parse is incremental + async on big files —
-  [notes/perf.md](notes/perf.md).
+  `LANGUAGES` row (grammar/comment/LSP) + a `DEFAULT_LANGUAGES` glob. Query is
+  structural-only (predicates stripped, see `lib/tree_sitter/PATCHES.md`). A
+  grammar/query that fails to compile surfaces a one-shot status message. Parse is
+  incremental + async on big files — [notes/perf.md](notes/perf.md).
 - **Injection** (markdown only): a `LANGUAGES` row may carry an `injections` query.
   After the host paint, `highlight_inject` runs it over the viewport, and for each
   region freshly re-parses the embedded language (synchronous, viewport-scoped —
@@ -139,13 +155,15 @@ documented in `lib/tb2/PATCHES.md`:
   (grammar + query, no file extension).
 - **LSP** (`lsp.odin`): JSON-RPC/stdio, multiple servers concurrent
   (`g_lsps` keyed by server command), one per language; UTF-16 columns converted
-  to byte offsets. `didChange` is incremental when the server advertises it.
+  to byte offsets. `didChange` is incremental when the server advertises it. Servers
+  auto-start lazily; the *Restart LSP* command tears the current buffer's server
+  down so the next `lsp_sync` respawns it (crash recovery).
 
 ## File layout
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
-`confirm` · `pane` (floating overlay) · `palette` · `picker` · `fuzzy` ·
+`confirm` · `pane` (floating overlay) · `palette` · `picker` · `langpick` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `git` ·
 `perf_bench`.
 
@@ -163,11 +181,12 @@ modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, fuzzy line jump, project-wide search (`rg`), jump
 list (back/forward), runtime config (`~/.config/qed/config.json`).
 
-Language intelligence: tree-sitter highlight (Odin, JSON, Python, C, JS/JSX,
-TS/TSX, Shell, Lua, SQL, Markdown w/ inline + fenced-code injection); LSP
-diagnostics (ols, pyright, clangd, typescript-language-server, bash-language-server,
-lua-language-server) — live syntax + on-save semantic, range
-underline, gutter severity, hover pane; git diff gutter (live vs `HEAD`).
+Language intelligence: config-driven language detection (glob rules + built-in
+dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSON,
+Python, C, JS/JSX, TS/TSX, Shell, Lua, SQL, Markdown w/ inline + fenced-code
+injection); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
+bash-language-server, lua-language-server) — live syntax + on-save semantic, range
+underline, gutter severity, hover pane, `Restart LSP`; git diff gutter (live vs `HEAD`).
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff. See

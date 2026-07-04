@@ -23,8 +23,7 @@ main :: proc() {
 	editor := editor_init(path)
 	defer editor_shutdown(&editor)
 
-	editor.message = config_message
-	editor.message_error = config_error
+	editor_set_message(&editor, config_message, config_error)
 
 
 	ev: tb2.Event

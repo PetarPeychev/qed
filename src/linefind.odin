@@ -26,8 +26,7 @@ linefind_open :: proc(editor: ^Editor) {
 	p := &editor.linefind
 	p.active = true
 	clear(&p.query)
-	editor.message = ""
-	editor.message_error = false
+	editor_set_message(editor, "")
 
 	b := editor_buffer(editor)
 	clear(&p.lines)

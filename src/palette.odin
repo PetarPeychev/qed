@@ -29,11 +29,13 @@ cmd_buffer_end :: proc(editor: ^Editor) {
 }
 
 cmd_toggle_comment :: proc(editor: ^Editor) {buffer_toggle_comment(editor_buffer(editor))}
+cmd_set_language :: proc(editor: ^Editor) {langpick_open(editor)}
+cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
 
 cmd_toggle_indent :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.indent = .Spaces if b.indent == .Tabs else .Tabs
-	editor.message = fmt.tprintf("Indent: %s", "Tabs" if b.indent == .Tabs else "Spaces")
+	editor_set_message(editor, fmt.tprintf("Indent: %s", "Tabs" if b.indent == .Tabs else "Spaces"))
 }
 
 commands := [?]Command {
@@ -55,6 +57,8 @@ commands := [?]Command {
 	{name = "Select All", shortcut = "Ctrl+a", key = .Ctrl_A, run = cmd_select_all},
 	{name = "Toggle Comment", shortcut = "Ctrl+/", key = .Ctrl_Slash, run = cmd_toggle_comment},
 	{name = "Toggle Indent (Tabs/Spaces)", key = .Ctrl_Tilde, run = cmd_toggle_indent},
+	{name = "Set Language", run = cmd_set_language},
+	{name = "Restart LSP", run = cmd_lsp_restart},
 }
 
 command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
@@ -98,8 +102,7 @@ palette_open :: proc(editor: ^Editor) {
 	clear(&p.query)
 	p.selected = 0
 	p.scroll = 0
-	editor.message = ""
-	editor.message_error = false
+	editor_set_message(editor, "")
 	clear(&p.names)
 	for cmd in commands {
 		append(&p.names, cmd.name)

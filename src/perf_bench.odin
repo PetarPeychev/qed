@@ -32,6 +32,7 @@ highlight_injection :: proc(t: ^testing.T) {
 	defer buffer_destroy(&b)
 	delete(b.path)
 	b.path = strings.clone("test.md")
+	b.language = .Markdown
 	buffer_insert(&b, Cursor{0, 0}, "# Title\n\n- [ ] todo\n- [x] done\n\nSome **bold**, `code`, and a [link](http://x).\n\n```ts\nconst n: number = 1;\n```\n")
 	highlight_update(&b, 0, len(b.lines) - 1)
 
@@ -248,6 +249,7 @@ c_buffer :: proc(content: string) -> Buffer {
 	b := buffer_new()
 	delete(b.path)
 	b.path = strings.clone("test.c")
+	b.language = .C
 	buffer_insert(&b, Cursor{0, 0}, content)
 	return b
 }
