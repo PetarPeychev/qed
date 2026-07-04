@@ -38,6 +38,7 @@ Editor :: struct {
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
 	hover_active:    bool,
+	completion:      Completion,
 	format_on_save:  bool,
 }
 
@@ -81,6 +82,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.paste_buf)
 	delete(editor.message_store)
 	delete(editor.hover)
+	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
 	picker_destroy(&editor.picker)
 	bufswitch_destroy(&editor.bufswitch)
@@ -275,6 +277,7 @@ editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor_set_message(editor, "")
 	editor.hover_active = false
+	completion_dismiss(editor)
 	b := editor_buffer(editor)
 
 	#partial switch ev.key {
@@ -374,6 +377,15 @@ editor_paste_commit :: proc(editor: ^Editor) {
 }
 
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
+	if editor.completion.active {
+		if completion_key(editor, ev) {
+			editor_scroll(editor)
+			return
+		}
+		if !completion_keeps(ev) {
+			completion_dismiss(editor)
+		}
+	}
 	editor_set_message(editor, "")
 	editor.hover_active = false
 	b := editor_buffer(editor)
@@ -502,6 +514,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		buffer_type_rune(b, ev.ch)
 	}
 	editor_scroll(editor)
+	completion_after(editor, ev)
 }
 
 editor_request_quit :: proc(editor: ^Editor) {
@@ -531,6 +544,7 @@ editor_find_buffer :: proc(editor: ^Editor, path: string) -> int {
 }
 
 editor_switch_to :: proc(editor: ^Editor, idx: int) {
+	completion_dismiss(editor)
 	editor.current = idx
 	editor.welcome = false
 	editor.scroll_row = 0
@@ -743,7 +757,9 @@ editor_render :: proc(editor: ^Editor) {
 		cx := gutter + vcol - editor.scroll_col
 		cy := b.cursor.row - editor.scroll_row
 		tb2.set_cursor(i32(cx), i32(cy))
-		if editor.hover_active {
+		if editor.completion.active {
+			completion_render(editor, cx, cy)
+		} else if editor.hover_active {
 			editor_render_hover_pane(editor, cx, cy)
 		} else {
 			editor_render_diag_pane(editor, cx, cy)

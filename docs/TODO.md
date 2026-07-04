@@ -41,7 +41,7 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 - [ ] Inline diagnostic virtual text (dimmed end-of-line message).
 - [ ] Code actions / quick-fix (`textDocument/codeAction`) — esp. auto-import for TS/React.
 - [ ] Find references (floating pane / picker).
-- [ ] Completion dropdown (floating pane, incremental).
+- [ ] Completion: interactive snippet placeholder navigation (Tab through `$1`/`$2`) + `completionItem/resolve` for lazy detail/edits.
 - [ ] Symbol search (fuzzy document/workspace symbols).
 - [ ] Signature help (later).
 - [ ] Inlay hints (later).

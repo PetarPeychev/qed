@@ -166,9 +166,16 @@ re-opens LSP).
   to byte offsets. `didChange` is incremental when the server advertises it. Servers
   auto-start lazily; the *Restart LSP* command tears the current buffer's server
   down so the next `lsp_sync` respawns it (crash recovery). Client-initiated
-  requests (definition/hover/formatting/rename) are capability-gated off the
+  requests (definition/hover/formatting/rename/completion) are capability-gated off the
   `initialize` result and tracked in a per-server `pending` map keyed by request id;
-  the async response is dispatched back by request kind. Formatting carries the
+  the async response is dispatched back by request kind. *Completion* (`completion.odin`)
+  auto-triggers while typing: a word char (≥ `COMPLETION_MIN_CHARS`) or a server trigger char
+  queues a debounced `textDocument/completion`; the popup then filters client-side against the
+  typed prefix (dismissing on an invalid edit) and re-requests when the result was `isIncomplete`.
+  `snippetSupport:false` is advertised so items arrive as plain text; a stray snippet is truncated
+  at its first placeholder. `Tab` accepts — replacing the whole current word and applying any
+  `additionalTextEdits` (auto-import) in the same undo group; `Esc`/movement/non-word input dismisses.
+  Formatting carries the
   buffer `rev` so a stale result (doc changed mid-request) is dropped, and
   format-on-save chains the save onto the response. *Rename* (`rename.odin`, `Alt+r`)
   prompts in a small caret-editable box, then applies the server's WorkspaceEdit
@@ -193,8 +200,8 @@ re-opens LSP).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
 `confirm` · `pane` (floating overlay) · `palette` · `picker` · `bufswitch` · `langpick` · `fuzzy` ·
-`linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `rename` · `format` · `git` ·
-`perf_bench`.
+`linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
+`format` · `git` · `perf_bench`.
 
 ## Shipped
 
@@ -219,6 +226,8 @@ bash-language-server, lua-language-server) — live syntax + on-save semantic, r
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
+auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
+incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
 (config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`).
 

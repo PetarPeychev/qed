@@ -42,6 +42,10 @@ main :: proc() {
 				if lsp_running() && lsp_pump(&editor) {
 					redraw = true
 				}
+				if completion_due(&editor) {
+					editor.completion.want = false
+					completion_request(&editor)
+				}
 				if highlight_ready(editor_buffer(&editor)) {
 					redraw = true
 				}

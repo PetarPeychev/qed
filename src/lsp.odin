@@ -39,6 +39,8 @@ Lsp :: struct {
 	cap_hover:      bool,
 	cap_format:     bool,
 	cap_rename:     bool,
+	cap_completion: bool,
+	completion_triggers: [dynamic]u8,
 	pending:        map[int]LspPending,
 }
 
@@ -48,6 +50,7 @@ LspRequest :: enum {
 	Format,
 	FormatOnSave,
 	Rename,
+	Completion,
 }
 
 // A request awaiting its response. `path`/`rev` locate the target buffer and
@@ -169,7 +172,7 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 	lsp.init_id = lsp.next_id
 	root_uri := lsp_json_string(lsp_uri(editor.working_root))
 	body := fmt.tprintf(
-		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"workspaceFolders":[{{"uri":%s,"name":"root"}}],"capabilities":{{"workspace":{{"configuration":true,"didChangeConfiguration":{{}},"workspaceFolders":true}},"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}},"definition":{{}},"hover":{{"contentFormat":["plaintext","markdown"]}},"formatting":{{}},"rename":{{}}}}}}}}}}`,
+		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"workspaceFolders":[{{"uri":%s,"name":"root"}}],"capabilities":{{"workspace":{{"configuration":true,"didChangeConfiguration":{{}},"workspaceFolders":true}},"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}},"definition":{{}},"hover":{{"contentFormat":["plaintext","markdown"]}},"formatting":{{}},"rename":{{}},"completion":{{"contextSupport":true,"completionItem":{{"snippetSupport":false}}}}}}}}}}}}`,
 		lsp.init_id,
 		root_uri,
 		root_uri,
@@ -208,6 +211,7 @@ lsp_stop :: proc(editor: ^Editor) {
 		lsp_shutdown_one(editor, lsp)
 		lsp_pending_clear(lsp)
 		delete(lsp.recv)
+		delete(lsp.completion_triggers)
 		free(lsp)
 	}
 	delete(g_lsps)
@@ -226,6 +230,7 @@ lsp_restart :: proc(editor: ^Editor) {
 		lsp_shutdown_one(editor, lsp)
 		lsp_pending_clear(lsp)
 		delete(lsp.recv)
+		delete(lsp.completion_triggers)
 		free(lsp)
 		delete_key(&g_lsps, server)
 		for &bb in editor.buffers {
@@ -538,6 +543,17 @@ lsp_parse_caps :: proc(lsp: ^Lsp, obj: json.Object) {
 	lsp.cap_hover = lsp_cap_present(caps["hoverProvider"])
 	lsp.cap_format = lsp_cap_present(caps["documentFormattingProvider"])
 	lsp.cap_rename = lsp_cap_present(caps["renameProvider"])
+	lsp.cap_completion = lsp_cap_present(caps["completionProvider"])
+	clear(&lsp.completion_triggers)
+	if comp, ok := caps["completionProvider"].(json.Object); ok {
+		if tc, ok2 := comp["triggerCharacters"].(json.Array); ok2 {
+			for t in tc {
+				if s, ok3 := t.(string); ok3 && len(s) > 0 {
+					append(&lsp.completion_triggers, s[0])
+				}
+			}
+		}
+	}
 }
 
 lsp_cap_present :: proc(v: json.Value) -> bool {
@@ -847,6 +863,8 @@ lsp_handle_response :: proc(editor: ^Editor, p: LspPending, obj: json.Object) ->
 		return lsp_apply_format(editor, p, obj, true)
 	case .Rename:
 		return lsp_apply_rename(editor, obj)
+	case .Completion:
+		return completion_apply(editor, p, obj)
 	}
 	return false
 }
