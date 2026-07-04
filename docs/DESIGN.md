@@ -186,7 +186,7 @@ dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSO
 Python, C, JS/JSX, TS/TSX, Shell, Lua, SQL, Markdown w/ inline + fenced-code
 injection); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
-underline, gutter severity, hover pane, `Restart LSP`; git diff gutter (live vs `HEAD`).
+underline, gutter severity, diagnostics pane, `Restart LSP`; git diff gutter (live vs `HEAD`).
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff. See

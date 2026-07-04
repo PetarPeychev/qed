@@ -14,9 +14,23 @@ _(none open)_
 ## Features
 
 - [ ] In-buffer find, then find & replace (`Ctrl+F`; `Alt+n`/`Alt+m` prev/next; incremental, wrap, highlight).
+- [ ] Auto-close pairs: `()[]{}`/quotes/backtick, surround selection, auto-close + rename JSX tags.
+- [ ] Bracket/colon-aware auto-indent on Enter; dedent on closing `}`.
+- [ ] Highlight the bracket matching the one at the cursor.
 - [ ] Configurable indent width + auto-detect from the file (like tabs-vs-spaces).
 - [ ] Open-buffer switcher: fuzzy picker over currently-open buffers (binding TBD, e.g. `Alt+b`).
 - [ ] File-tree pane over the working root.
+
+## AI / LLM assist
+
+See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schema.
+
+- [ ] Inline FIM completion: async debounced ghost-text, Tab/word accept, `Esc` dismiss (default backend Codestral).
+- [ ] Selection + prompt (`Ctrl+K`): replace selection via chat backend, one undo group.
+- [ ] Context + prompt: floating prompt pane, cursor-context aware, insert/replace.
+- [ ] `llm` config section: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
+- [ ] Async subprocess runner with cancellation (generalize `lsp.odin` machinery; `curl` subprocess for HTTP providers).
+- [ ] Shared inline virtual-text primitive (ghost-text + inline diagnostics).
 
 ## Syntax highlighting (tree-sitter)
 
@@ -26,6 +40,9 @@ _(none open)_
 ## LSP capabilities
 
 - [ ] Inline diagnostic virtual text (dimmed end-of-line message).
+- [ ] Format document + format-on-save toggle (`textDocument/formatting`).
+- [ ] Code actions / quick-fix (`textDocument/codeAction`) — esp. auto-import for TS/React.
+- [ ] Go to next/prev diagnostic.
 - [ ] Go-to-definition.
 - [ ] Find references (floating pane / picker).
 - [ ] Rename symbol (workspace-wide, from the prompt).
