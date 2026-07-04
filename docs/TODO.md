@@ -39,13 +39,9 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 ## LSP capabilities
 
 - [ ] Inline diagnostic virtual text (dimmed end-of-line message).
-- [ ] Format document + format-on-save toggle (`textDocument/formatting`).
 - [ ] Code actions / quick-fix (`textDocument/codeAction`) — esp. auto-import for TS/React.
-- [ ] Go to next/prev diagnostic.
-- [ ] Go-to-definition.
 - [ ] Find references (floating pane / picker).
 - [ ] Rename symbol (workspace-wide, from the prompt).
-- [ ] Hover (type/docs popup on a key).
 - [ ] Completion dropdown (floating pane, incremental).
 - [ ] Symbol search (fuzzy document/workspace symbols).
 - [ ] Signature help (later).

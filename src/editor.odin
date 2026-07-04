@@ -35,6 +35,9 @@ Editor :: struct {
 	projsearch:      ProjSearch,
 	jumps:           JumpList,
 	jump_lock:       bool,
+	hover:           [dynamic]u8,
+	hover_active:    bool,
+	format_on_save:  bool,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -75,6 +78,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.working_root)
 	delete(editor.paste_buf)
 	delete(editor.message_store)
+	delete(editor.hover)
 	palette_destroy(&editor.palette)
 	picker_destroy(&editor.picker)
 	bufswitch_destroy(&editor.bufswitch)
@@ -258,6 +262,7 @@ editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 
 editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor_set_message(editor, "")
+	editor.hover_active = false
 	b := editor_buffer(editor)
 
 	#partial switch ev.key {
@@ -358,6 +363,7 @@ editor_paste_commit :: proc(editor: ^Editor) {
 
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor_set_message(editor, "")
+	editor.hover_active = false
 	b := editor_buffer(editor)
 	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
 	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
@@ -602,10 +608,24 @@ editor_paste :: proc(editor: ^Editor) {
 }
 
 editor_save :: proc(editor: ^Editor) {
-	switch buffer_save(editor_buffer(editor)) {
+	b := editor_buffer(editor)
+	if editor.format_on_save && lsp_send_format(editor, b, .FormatOnSave) {
+		return
+	}
+	editor_save_buffer(editor, b)
+}
+
+editor_save_path :: proc(editor: ^Editor, path: string) {
+	if idx := editor_find_buffer(editor, path); idx >= 0 {
+		editor_save_buffer(editor, &editor.buffers[idx])
+	}
+}
+
+editor_save_buffer :: proc(editor: ^Editor, b: ^Buffer) {
+	switch buffer_save(b) {
 	case .None:
 		editor_set_message(editor, "Saved")
-		lsp_did_save(editor, editor_buffer(editor))
+		lsp_did_save(editor, b)
 	case .NoPath:
 		editor_set_message(editor, "No file name", true)
 	case .WriteError, .RenameError:
@@ -680,7 +700,11 @@ editor_render :: proc(editor: ^Editor) {
 		cx := gutter + vcol - editor.scroll_col
 		cy := b.cursor.row - editor.scroll_row
 		tb2.set_cursor(i32(cx), i32(cy))
-		editor_render_diag_pane(editor, cx, cy)
+		if editor.hover_active {
+			editor_render_hover_pane(editor, cx, cy)
+		} else {
+			editor_render_diag_pane(editor, cx, cy)
+		}
 	}
 	tb2.present()
 }
@@ -691,15 +715,30 @@ editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
 	if !ok {
 		return
 	}
-	sw := int(tb2.width())
-	_, h := editor_viewport(editor)
-
-	text_w := sw - 2 * DIAG_PANE_MARGIN_X - 2
+	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 2
 	if text_w < 8 {
 		return
 	}
 	lines := wrap_text(d.message, text_w)
+	editor_render_text_pane(editor, cx, cy, lines[:], diagnostic_color(d.severity))
+}
+
+editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
+	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 2
+	if text_w < 8 {
+		return
+	}
+	lines := wrap_text(string(editor.hover[:]), text_w)
+	editor_render_text_pane(editor, cx, cy, lines[:], COLOR_PANE_FG)
+}
+
+editor_render_text_pane :: proc(editor: ^Editor, cx, cy: int, lines: []string, fg: tb2.Color) {
 	content_h := min(len(lines), DIAG_PANE_MAX_LINES)
+	if content_h == 0 {
+		return
+	}
+	sw := int(tb2.width())
+	_, h := editor_viewport(editor)
 	content_w := 0
 	for line in lines[:content_h] {
 		content_w = max(content_w, len(line))
@@ -715,7 +754,6 @@ editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
 	}
 	x := clamp(cx, 0, max(0, sw - pane_w))
 	box := pane_draw_box({x, y, pane_w, pane_h})
-	fg := diagnostic_color(d.severity)
 	for line, i in lines[:content_h] {
 		pane_text(box.x, box.y + i, box.w, line, fg, COLOR_PANE_BG)
 	}

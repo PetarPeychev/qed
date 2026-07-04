@@ -157,7 +157,12 @@ command (`langpick.odin`) overrides it for the session (re-parses, re-opens LSP)
   (`g_lsps` keyed by server command), one per language; UTF-16 columns converted
   to byte offsets. `didChange` is incremental when the server advertises it. Servers
   auto-start lazily; the *Restart LSP* command tears the current buffer's server
-  down so the next `lsp_sync` respawns it (crash recovery).
+  down so the next `lsp_sync` respawns it (crash recovery). Client-initiated
+  requests (definition/hover/formatting) are capability-gated off the `initialize`
+  result and tracked in a per-server `pending` map keyed by request id; the async
+  response is dispatched back by request kind. Formatting carries the buffer `rev`
+  so a stale result (doc changed mid-request) is dropped, and format-on-save chains
+  the save onto the response.
 
 ## File layout
 
@@ -187,7 +192,9 @@ dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSO
 Python, C, JS/JSX, TS/TSX, Shell, Lua, SQL, Markdown w/ inline + fenced-code
 injection); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
-underline, gutter severity, diagnostics pane, `Restart LSP`; git diff gutter (live vs `HEAD`).
+underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
+(`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
+document formatting + format-on-save toggle, `Restart LSP`; git diff gutter (live vs `HEAD`).
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff. See

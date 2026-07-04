@@ -31,6 +31,16 @@ cmd_buffer_end :: proc(editor: ^Editor) {
 cmd_toggle_comment :: proc(editor: ^Editor) {buffer_toggle_comment(editor_buffer(editor))}
 cmd_set_language :: proc(editor: ^Editor) {langpick_open(editor)}
 cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
+cmd_lsp_definition :: proc(editor: ^Editor) {lsp_definition(editor)}
+cmd_lsp_hover :: proc(editor: ^Editor) {lsp_hover(editor)}
+cmd_lsp_format :: proc(editor: ^Editor) {lsp_format(editor)}
+cmd_diag_next :: proc(editor: ^Editor) {diag_goto(editor, +1)}
+cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
+
+cmd_toggle_format_on_save :: proc(editor: ^Editor) {
+	editor.format_on_save = !editor.format_on_save
+	editor_set_message(editor, fmt.tprintf("Format on save: %s", "on" if editor.format_on_save else "off"))
+}
 
 cmd_toggle_indent :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
@@ -59,6 +69,12 @@ commands := [?]Command {
 	{name = "Toggle Comment", shortcut = "Ctrl+/", key = .Ctrl_Slash, run = cmd_toggle_comment},
 	{name = "Toggle Indent (Tabs/Spaces)", key = .Ctrl_Tilde, run = cmd_toggle_indent},
 	{name = "Set Language", run = cmd_set_language},
+	{name = "Go to Definition", shortcut = "Alt+d", alt_ch = 'd', run = cmd_lsp_definition},
+	{name = "Hover", shortcut = "Alt+s", alt_ch = 's', run = cmd_lsp_hover},
+	{name = "Format Document", run = cmd_lsp_format},
+	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
+	{name = "Next Diagnostic", shortcut = "Alt+>", alt_ch = '>', run = cmd_diag_next},
+	{name = "Previous Diagnostic", shortcut = "Alt+<", alt_ch = '<', run = cmd_diag_prev},
 	{name = "Restart LSP", run = cmd_lsp_restart},
 }
 

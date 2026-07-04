@@ -4,6 +4,7 @@ import "core:c"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:sys/posix"
@@ -24,16 +25,35 @@ LspState :: enum {
 }
 
 Lsp :: struct {
-	server:      string,
-	state:       LspState,
-	process:     os.Process,
-	stdin:       ^os.File,
-	stdout:      ^os.File,
-	recv:        [dynamic]u8,
-	next_id:     int,
-	init_id:     int,
-	initialized: bool,
-	sync_kind:   int,
+	server:         string,
+	state:          LspState,
+	process:        os.Process,
+	stdin:          ^os.File,
+	stdout:         ^os.File,
+	recv:           [dynamic]u8,
+	next_id:        int,
+	init_id:        int,
+	initialized:    bool,
+	sync_kind:      int,
+	cap_definition: bool,
+	cap_hover:      bool,
+	cap_format:     bool,
+	pending:        map[int]LspPending,
+}
+
+LspRequest :: enum {
+	Definition,
+	Hover,
+	Format,
+	FormatOnSave,
+}
+
+// A request awaiting its response. `path`/`rev` locate the target buffer and
+// guard against applying stale results (formatting) after the doc has changed.
+LspPending :: struct {
+	kind: LspRequest,
+	path: string,
+	rev:  u64,
 }
 
 // One entry in a `textDocument/didChange` batch: an LSP range (UTF-16 columns)
@@ -146,7 +166,7 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 	lsp.next_id += 1
 	lsp.init_id = lsp.next_id
 	body := fmt.tprintf(
-		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"capabilities":{{"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}}}}}}}}}}`,
+		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"capabilities":{{"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}},"definition":{{}},"hover":{{"contentFormat":["plaintext","markdown"]}},"formatting":{{}}}}}}}}}}`,
 		lsp.init_id,
 		lsp_json_string(lsp_uri(editor.working_root)),
 	)
@@ -171,9 +191,18 @@ lsp_shutdown_one :: proc(editor: ^Editor, lsp: ^Lsp) {
 	}
 }
 
+lsp_pending_clear :: proc(lsp: ^Lsp) {
+	for _, p in lsp.pending {
+		delete(p.path)
+	}
+	delete(lsp.pending)
+	lsp.pending = nil
+}
+
 lsp_stop :: proc(editor: ^Editor) {
 	for _, lsp in g_lsps {
 		lsp_shutdown_one(editor, lsp)
+		lsp_pending_clear(lsp)
 		delete(lsp.recv)
 		free(lsp)
 	}
@@ -191,6 +220,7 @@ lsp_restart :: proc(editor: ^Editor) {
 	name := lsp_display_name(server)
 	if lsp, ok := g_lsps[server]; ok {
 		lsp_shutdown_one(editor, lsp)
+		lsp_pending_clear(lsp)
 		delete(lsp.recv)
 		free(lsp)
 		delete_key(&g_lsps, server)
@@ -210,6 +240,7 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 		return
 	}
 	lsp.state = .Failed
+	lsp_pending_clear(lsp)
 	os.close(lsp.stdin)
 	os.close(lsp.stdout)
 	_ = os.process_kill(lsp.process)
@@ -460,12 +491,38 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 	}
 
 	if id_v, has_id := obj["id"]; has_id {
-		if id, ok := lsp_num(id_v); ok && id == lsp.init_id && !lsp.initialized {
-			lsp.initialized = true
-			lsp.sync_kind = lsp_sync_kind(obj)
-			lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
-			return true
+		if id, ok := lsp_num(id_v); ok {
+			if id == lsp.init_id && !lsp.initialized {
+				lsp.initialized = true
+				lsp.sync_kind = lsp_sync_kind(obj)
+				lsp_parse_caps(lsp, obj)
+				lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
+				return true
+			}
+			if p, has := lsp.pending[id]; has {
+				delete_key(&lsp.pending, id)
+				defer delete(p.path)
+				return lsp_handle_response(editor, p, obj)
+			}
 		}
+	}
+	return false
+}
+
+lsp_parse_caps :: proc(lsp: ^Lsp, obj: json.Object) {
+	result := obj["result"].(json.Object) or_else nil
+	caps := result["capabilities"].(json.Object) or_else nil
+	lsp.cap_definition = lsp_cap_present(caps["definitionProvider"])
+	lsp.cap_hover = lsp_cap_present(caps["hoverProvider"])
+	lsp.cap_format = lsp_cap_present(caps["documentFormattingProvider"])
+}
+
+lsp_cap_present :: proc(v: json.Value) -> bool {
+	#partial switch t in v {
+	case json.Boolean:
+		return bool(t)
+	case json.Object:
+		return true
 	}
 	return false
 }
@@ -533,6 +590,346 @@ lsp_handle_diagnostics :: proc(editor: ^Editor, obj: json.Object) -> bool {
 		}
 	}
 	return true
+}
+
+lsp_ready :: proc(b: ^Buffer) -> (^Lsp, bool) {
+	lsp, ok := lsp_for(b)
+	if !ok || lsp.state != .Running || !lsp.initialized || !b.lsp_open {
+		return nil, false
+	}
+	return lsp, true
+}
+
+lsp_ensure_synced :: proc(editor: ^Editor, b: ^Buffer) {
+	if b.rev != b.lsp_rev {
+		lsp_did_change(editor, b)
+	}
+}
+
+lsp_pending_add :: proc(lsp: ^Lsp, kind: LspRequest, b: ^Buffer) -> int {
+	lsp.next_id += 1
+	id := lsp.next_id
+	lsp.pending[id] = LspPending {
+		kind = kind,
+		path = strings.clone(b.path),
+		rev  = b.rev,
+	}
+	return id
+}
+
+lsp_definition :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	if LANGUAGES[b.language].lsp_server == "" {
+		editor_set_message(editor, "No language server for this buffer", true)
+		return
+	}
+	lsp, ok := lsp_ready(b)
+	if !ok {
+		editor_set_message(editor, "Language server not ready", true)
+		return
+	}
+	if !lsp.cap_definition {
+		editor_set_message(editor, "Server has no go-to-definition", true)
+		return
+	}
+	lsp_ensure_synced(editor, b)
+	id := lsp_pending_add(lsp, .Definition, b)
+	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
+	lsp_send(
+		editor,
+		lsp,
+		fmt.tprintf(
+			`{{"jsonrpc":"2.0","id":%d,"method":"textDocument/definition","params":{{"textDocument":{{"uri":%s}},"position":{{"line":%d,"character":%d}}}}}}`,
+			id,
+			lsp_json_string(lsp_uri(b.path)),
+			b.cursor.row,
+			ch,
+		),
+	)
+}
+
+lsp_hover :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	if LANGUAGES[b.language].lsp_server == "" {
+		editor_set_message(editor, "No language server for this buffer", true)
+		return
+	}
+	lsp, ok := lsp_ready(b)
+	if !ok {
+		editor_set_message(editor, "Language server not ready", true)
+		return
+	}
+	if !lsp.cap_hover {
+		editor_set_message(editor, "Server has no hover", true)
+		return
+	}
+	lsp_ensure_synced(editor, b)
+	id := lsp_pending_add(lsp, .Hover, b)
+	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
+	lsp_send(
+		editor,
+		lsp,
+		fmt.tprintf(
+			`{{"jsonrpc":"2.0","id":%d,"method":"textDocument/hover","params":{{"textDocument":{{"uri":%s}},"position":{{"line":%d,"character":%d}}}}}}`,
+			id,
+			lsp_json_string(lsp_uri(b.path)),
+			b.cursor.row,
+			ch,
+		),
+	)
+}
+
+lsp_format :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	if LANGUAGES[b.language].lsp_server == "" {
+		editor_set_message(editor, "No language server for this buffer", true)
+		return
+	}
+	if !lsp_send_format(editor, b, .Format) {
+		editor_set_message(editor, "Formatting not available", true)
+	}
+}
+
+lsp_send_format :: proc(editor: ^Editor, b: ^Buffer, kind: LspRequest) -> bool {
+	lsp, ok := lsp_ready(b)
+	if !ok || !lsp.cap_format {
+		return false
+	}
+	lsp_ensure_synced(editor, b)
+	id := lsp_pending_add(lsp, kind, b)
+	lsp_send(
+		editor,
+		lsp,
+		fmt.tprintf(
+			`{{"jsonrpc":"2.0","id":%d,"method":"textDocument/formatting","params":{{"textDocument":{{"uri":%s}},"options":{{"tabSize":%d,"insertSpaces":%s}}}}}}`,
+			id,
+			lsp_json_string(lsp_uri(b.path)),
+			TAB_WIDTH,
+			"true" if b.indent == .Spaces else "false",
+		),
+	)
+	return true
+}
+
+lsp_handle_response :: proc(editor: ^Editor, p: LspPending, obj: json.Object) -> bool {
+	if e, has := obj["error"].(json.Object); has {
+		msg := e["message"].(string) or_else "request failed"
+		editor_set_message(editor, fmt.tprintf("LSP: %s", msg), true)
+		if p.kind == .FormatOnSave {
+			editor_save_path(editor, p.path)
+		}
+		return true
+	}
+	switch p.kind {
+	case .Definition:
+		return lsp_apply_definition(editor, obj)
+	case .Hover:
+		return lsp_apply_hover(editor, obj)
+	case .Format:
+		return lsp_apply_format(editor, p, obj, false)
+	case .FormatOnSave:
+		return lsp_apply_format(editor, p, obj, true)
+	}
+	return false
+}
+
+lsp_definition_target :: proc(result: json.Value) -> (uri: string, rng: json.Object, ok: bool) {
+	#partial switch r in result {
+	case json.Object:
+		if u, has := r["uri"].(string); has {
+			return u, r["range"].(json.Object) or_else nil, true
+		}
+	case json.Array:
+		if len(r) == 0 {
+			return
+		}
+		first := r[0].(json.Object) or_return
+		if u, has := first["uri"].(string); has {
+			return u, first["range"].(json.Object) or_else nil, true
+		}
+		if u, has := first["targetUri"].(string); has {
+			sel := first["targetSelectionRange"].(json.Object) or_else (first["targetRange"].(json.Object) or_else nil)
+			return u, sel, true
+		}
+	}
+	return
+}
+
+lsp_apply_definition :: proc(editor: ^Editor, obj: json.Object) -> bool {
+	uri, rng, ok := lsp_definition_target(obj["result"])
+	start, sok := rng["start"].(json.Object)
+	if !ok || !sok {
+		editor_set_message(editor, "No definition found")
+		return true
+	}
+	path := lsp_uri_to_path(uri)
+	line, _ := lsp_num(start["line"])
+	ch, _ := lsp_num(start["character"])
+
+	origin := jump_here(editor)
+	editor_open_path(editor, path)
+	b := editor_buffer(editor)
+	row := clamp(line, 0, len(b.lines) - 1)
+	col := col_from_utf16(b.lines[row].text[:], ch)
+	b.selection = nil
+	b.cursor = {row, col}
+	cursor_goal_sync(b)
+	_, h := editor_viewport(editor)
+	editor.scroll_row = row - h / 2
+	editor_scroll(editor)
+	jump_record(editor, origin)
+	return true
+}
+
+lsp_hover_contents :: proc(v: json.Value) -> string {
+	#partial switch c in v {
+	case json.String:
+		return string(c)
+	case json.Object:
+		if val, ok := c["value"].(string); ok {
+			return val
+		}
+	case json.Array:
+		sb := strings.builder_make(context.temp_allocator)
+		for e in c {
+			part := lsp_hover_contents(e)
+			if part == "" {
+				continue
+			}
+			if strings.builder_len(sb) > 0 {
+				strings.write_byte(&sb, '\n')
+			}
+			strings.write_string(&sb, part)
+		}
+		return strings.to_string(sb)
+	}
+	return ""
+}
+
+lsp_apply_hover :: proc(editor: ^Editor, obj: json.Object) -> bool {
+	text := ""
+	if result, has := obj["result"].(json.Object); has {
+		text = lsp_hover_contents(result["contents"])
+	}
+	text = strings.trim_space(text)
+	if text == "" {
+		editor_set_message(editor, "No hover info")
+		return true
+	}
+	clear(&editor.hover)
+	append(&editor.hover, ..transmute([]u8)text)
+	editor.hover_active = true
+	return true
+}
+
+lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object, save_after: bool) -> bool {
+	idx := editor_find_buffer(editor, p.path)
+	if idx < 0 {
+		return false
+	}
+	b := &editor.buffers[idx]
+	if b.rev != p.rev {
+		if save_after {
+			editor_save_path(editor, p.path)
+		} else {
+			editor_set_message(editor, "Format skipped: buffer changed", true)
+		}
+		return true
+	}
+	applied := false
+	if edits, ok := obj["result"].(json.Array); ok && len(edits) > 0 {
+		applied = lsp_apply_text_edits(b, edits)
+	}
+	if applied {
+		b.cursor.row = clamp(b.cursor.row, 0, len(b.lines) - 1)
+		b.cursor.col = clamp(b.cursor.col, 0, len(b.lines[b.cursor.row].text))
+		b.selection = nil
+		cursor_goal_sync(b)
+		if b == editor_buffer(editor) {
+			editor_scroll(editor)
+		}
+	}
+	if save_after {
+		editor_save_path(editor, p.path)
+	} else if applied {
+		editor_set_message(editor, "Formatted")
+	} else {
+		editor_set_message(editor, "No formatting changes")
+	}
+	return true
+}
+
+lsp_apply_text_edits :: proc(b: ^Buffer, edits: json.Array) -> bool {
+	Ranged :: struct {
+		from, to: Cursor,
+		text:     string,
+	}
+	list := make([dynamic]Ranged, context.temp_allocator)
+	for item in edits {
+		e := item.(json.Object) or_continue
+		r := e["range"].(json.Object) or_continue
+		s := r["start"].(json.Object) or_continue
+		en := r["end"].(json.Object) or_continue
+		text := e["newText"].(string) or_else ""
+		append(&list, Ranged{lsp_cursor(b, s), lsp_cursor(b, en), text})
+	}
+	if len(list) == 0 {
+		return false
+	}
+	slice.sort_by(list[:], proc(a, b: Ranged) -> bool {
+		if a.from.row != b.from.row {
+			return a.from.row > b.from.row
+		}
+		return a.from.col > b.from.col
+	})
+	edit_open(b, .Atomic)
+	for e in list {
+		removed := buffer_delete(b, e.from, e.to)
+		append(&b.open.edits, Edit{.Insert, e.from, removed})
+		buffer_insert(b, e.from, e.text)
+		append(&b.open.edits, Edit{.Delete, e.from, strings.clone(e.text)})
+	}
+	buffer_undo_commit(b)
+	return true
+}
+
+cursor_before :: proc(a, b: Cursor) -> bool {
+	return a.row < b.row || (a.row == b.row && a.col < b.col)
+}
+
+diag_goto :: proc(editor: ^Editor, dir: int) {
+	b := editor_buffer(editor)
+	if len(b.diags) == 0 {
+		editor_set_message(editor, "No diagnostics")
+		return
+	}
+	cur := b.cursor
+	best, wrap: Cursor
+	found, wrap_set := false, false
+	for d in b.diags {
+		s := d.from
+		if dir > 0 {
+			if !wrap_set || cursor_before(s, wrap) {
+				wrap, wrap_set = s, true
+			}
+			if cursor_before(cur, s) && (!found || cursor_before(s, best)) {
+				best, found = s, true
+			}
+		} else {
+			if !wrap_set || cursor_before(wrap, s) {
+				wrap, wrap_set = s, true
+			}
+			if cursor_before(s, cur) && (!found || cursor_before(best, s)) {
+				best, found = s, true
+			}
+		}
+	}
+	target := best if found else wrap
+	row := clamp(target.row, 0, len(b.lines) - 1)
+	b.selection = nil
+	b.cursor = {row, clamp(target.col, 0, len(b.lines[row].text))}
+	cursor_goal_sync(b)
+	editor_scroll(editor)
 }
 
 lsp_num :: proc(v: json.Value) -> (int, bool) {
