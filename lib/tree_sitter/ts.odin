@@ -90,4 +90,7 @@ foreign ts {
 	tree_sitter_tsx :: proc() -> Language ---
 	tree_sitter_markdown :: proc() -> Language ---
 	tree_sitter_markdown_inline :: proc() -> Language ---
+	tree_sitter_bash :: proc() -> Language ---
+	tree_sitter_lua :: proc() -> Language ---
+	tree_sitter_sql :: proc() -> Language ---
 }

@@ -47,9 +47,9 @@ LANGUAGES := [Language]LanguageInfo {
 	.TypeScript = {"typescript", "//", "typescript-language-server --stdio", "typescript", ts.tree_sitter_typescript, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
 	.Tsx        = {"tsx", "//", "typescript-language-server --stdio", "typescriptreact", ts.tree_sitter_tsx, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
 	.Python     = {"python", "#", "pyright-langserver --stdio", "python", ts.tree_sitter_python, #load("../lib/tree_sitter/python/highlights.scm"), nil},
-	.Shell      = {"shell", "#", "", "", nil, nil, nil},
-	.Lua        = {"lua", "--", "", "", nil, nil, nil},
-	.Sql        = {"sql", "--", "", "", nil, nil, nil},
+	.Shell      = {"shell", "#", "bash-language-server start", "shellscript", ts.tree_sitter_bash, #load("../lib/tree_sitter/bash/highlights.scm"), nil},
+	.Lua        = {"lua", "--", "lua-language-server", "lua", ts.tree_sitter_lua, #load("../lib/tree_sitter/lua/highlights.scm"), nil},
+	.Sql        = {"sql", "--", "", "", ts.tree_sitter_sql, #load("../lib/tree_sitter/sql/highlights.scm"), nil},
 	.Yaml       = {"yaml", "#", "", "", nil, nil, nil},
 	.Toml       = {"toml", "#", "", "", nil, nil, nil},
 	.Json       = {"json", "", "", "", ts.tree_sitter_json, #load("../lib/tree_sitter/json/highlights.scm"), nil},
@@ -123,6 +123,12 @@ language_of_name :: proc(name: string) -> Language {
 		return .Odin
 	case "json":
 		return .Json
+	case "sh", "bash", "shell", "zsh":
+		return .Shell
+	case "lua":
+		return .Lua
+	case "sql":
+		return .Sql
 	}
 	return .Plain
 }

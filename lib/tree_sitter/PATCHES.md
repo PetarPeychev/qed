@@ -17,6 +17,9 @@ approach as `lib/tb2/`.
 | JavaScript grammar | `github.com/tree-sitter/tree-sitter-javascript` | `44c892e0be055ac465d5eeddae6d3e194424e7de` (v0.25.0) |
 | TypeScript grammar | `github.com/tree-sitter/tree-sitter-typescript` | `f975a621f4e7f532fe322e13c4f79495e0a7b2e7` (v0.23.2) — provides `typescript`/`tsx` |
 | Markdown grammar | `github.com/tree-sitter-grammars/tree-sitter-markdown` | `f969cd3ae3f9fbd4e43205431d0ae286014c05b5` (v0.5.3) — provides `markdown` (block) + `markdown_inline` |
+| Bash grammar | `github.com/tree-sitter/tree-sitter-bash` | `56b54c61fb48bce0c63e3dfa2240b5d274384763` (v0.25.0) |
+| Lua grammar | `github.com/tree-sitter-grammars/tree-sitter-lua` | `10fe0054734eec83049514ea2e718b2a56acd0c9` (v0.5.0) |
+| SQL grammar | `github.com/DerekStride/tree-sitter-sql` | `7b51ecda191d36b92f5a90a8d1bc3faef1c7b8b8` (v0.3.11) — `parser.c` is gitignored upstream, generated with `tree-sitter generate` (CLI v0.25.10) |
 
 Each grammar's `src/parser.c` (Odin's is ~15 MB) and `src/scanner.c` (Odin,
 Python; JSON and C have none) are **generated** artifacts committed upstream; we
@@ -40,6 +43,9 @@ tsx/              parser.c, scanner.c, tree_sitter/*.h                    (.tsx 
 common/           scanner.h                  shared TS/TSX external scanner (from the TS repo)
 markdown/         parser.c, scanner.c, tree_sitter/*.h, highlights.scm, injections.scm   (block)
 markdown_inline/  parser.c, scanner.c, tree_sitter/*.h, highlights.scm    (inline, injection-only)
+bash/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (.sh/.bash/.zsh)
+lua/              parser.c, scanner.c, tree_sitter/*.h, highlights.scm
+sql/              parser.c, scanner.c, tree_sitter/*.h, highlights.scm
 ts.odin           Odin FFI bindings          the ~15 procs qed calls
 ```
 
@@ -172,6 +178,53 @@ toml metadata injections are dropped (no grammar for them).
 
 The new `@text.*` / `@text.code` capture names are mapped in
 `src/highlight.odin`'s `syntax_capture_color` (see below).
+
+### `bash/highlights.scm`
+
+One `#match?`-gated rule removed:
+
+- `((command (_) @constant) (#match? @constant "^-"))` — **removed** (would paint
+  every command argument, not just `-`-prefixed flags, in the constant color).
+
+Everything predicate-free is kept: strings/heredocs, `(command_name)`/function
+names (`@function` unmapped → plain), `(variable_name)` (`@property` → plain),
+the keyword set, comments, `(file_descriptor)` numbers, command/process/expansion
+substitutions (`@embedded` → plain), operators (`@operator` → plain).
+
+### `lua/highlights.scm`
+
+Three predicate-gated rules removed (qed's core doesn't evaluate predicates, so a
+gated rule matches unconditionally):
+
+- `((identifier) @constant (#match? … "^[A-Z][A-Z_0-9]*$"))` — **removed** (the
+  harmful one: `@constant` is painted, so it would color *every* identifier).
+- `((identifier) @variable.builtin (#eq? … "self"))` — **removed** (`@variable.builtin`
+  is unmapped → plain, so cosmetically harmless, but dropped for consistency).
+- `((function_call (identifier) @function.builtin) (#any-of? …))` builtin list —
+  **removed** (`@function.builtin` unmapped → plain; dropped for consistency).
+
+Kept predicate-free: keywords/conditionals/repeats (all → keyword color),
+`(nil)`/`(vararg_expression)`/booleans (constant), strings + escapes, numbers,
+comments, `(hash_bang_line)` (`@preproc` → attribute). Structural `@function`/
+`@field`/`@method`/`@parameter`/`@variable`/`@operator`/`@punctuation.*` are
+unmapped → plain (qed's "identifiers stay plain" scope).
+
+### `sql/highlights.scm`
+
+Two `#match?`-gated `(literal)` rules removed:
+
+- `((literal) @number (#match? … "^[-+]?%d+$"))` — **removed**.
+- `((literal) @float (#match? … "^[-+]?%d*\.%d*$"))` — **removed**.
+
+The grammar exposes numbers and strings as the same `(literal)` node, split only
+by these regexes; with no predicate evaluator both would match unconditionally and
+overwrite `(literal) @string` — painting *all* literals (including strings) the
+constant color. Removing them leaves `(literal) @string`, so numeric literals
+render in the string color (acceptable: the tree has no structural number node).
+Everything else is kept: the large `keyword_*` set (→ keyword), `keyword_*`
+type-qualifier/builtin/storageclass/conditional/operator groups, `(object_reference
+… @type)`, `(invocation … @function.call)` (unmapped → plain), comments, booleans,
+`(field … @field)`/`(parameter) @parameter`/`(relation alias) @variable` (plain).
 
 ### `odin/highlights.scm`
 

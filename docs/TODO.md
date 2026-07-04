@@ -21,9 +21,6 @@ _(none open)_
 
 ## Syntax highlighting (tree-sitter)
 
-- [ ] Shell (bash)
-- [ ] SQL
-- [ ] Lua
 - [ ] Query predicate evaluator (`#match?`/`#eq?`/…) so upstream `.scm` work unstripped.
 - [ ] Dynamic grammar loading via `dlopen` (exploration — tension with vendored/no-plugins).
 

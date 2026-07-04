@@ -26,6 +26,12 @@ cc -c -w -O2 -I "$TS/markdown" "$TS/markdown/parser.c" -o "$TS/markdown-parser.o
 cc -c -w -O2 -I "$TS/markdown" "$TS/markdown/scanner.c" -o "$TS/markdown-scanner.o"
 cc -c -w -O2 -I "$TS/markdown_inline" "$TS/markdown_inline/parser.c" -o "$TS/markdown_inline-parser.o"
 cc -c -w -O2 -I "$TS/markdown_inline" "$TS/markdown_inline/scanner.c" -o "$TS/markdown_inline-scanner.o"
+cc -c -w -O2 -I "$TS/bash" "$TS/bash/parser.c" -o "$TS/bash-parser.o"
+cc -c -w -O2 -I "$TS/bash" "$TS/bash/scanner.c" -o "$TS/bash-scanner.o"
+cc -c -w -O2 -I "$TS/lua" "$TS/lua/parser.c" -o "$TS/lua-parser.o"
+cc -c -w -O2 -I "$TS/lua" "$TS/lua/scanner.c" -o "$TS/lua-scanner.o"
+cc -c -w -O2 -I "$TS/sql" "$TS/sql/parser.c" -o "$TS/sql-parser.o"
+cc -c -w -O2 -I "$TS/sql" "$TS/sql/scanner.c" -o "$TS/sql-scanner.o"
 ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/odin-parser.o" "$TS/odin-scanner.o" \
    "$TS/json-parser.o" \
@@ -35,7 +41,10 @@ ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/typescript-parser.o" "$TS/typescript-scanner.o" \
    "$TS/tsx-parser.o" "$TS/tsx-scanner.o" \
    "$TS/markdown-parser.o" "$TS/markdown-scanner.o" \
-   "$TS/markdown_inline-parser.o" "$TS/markdown_inline-scanner.o"
+   "$TS/markdown_inline-parser.o" "$TS/markdown_inline-scanner.o" \
+   "$TS/bash-parser.o" "$TS/bash-scanner.o" \
+   "$TS/lua-parser.o" "$TS/lua-scanner.o" \
+   "$TS/sql-parser.o" "$TS/sql-scanner.o"
 
 # Build the editor, exposing vendor/ as a collection
 odin build src -collection:lib=lib -out:qed
