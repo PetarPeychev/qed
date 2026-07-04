@@ -17,6 +17,14 @@ Edit :: struct {
 EditGroup :: struct {
 	edits:  [dynamic]Edit,
 	cursor: Cursor,
+	tx:     int,
+}
+
+g_tx_seq: int
+
+tx_next :: proc() -> int {
+	g_tx_seq += 1
+	return g_tx_seq
 }
 
 Coalesce :: enum {
@@ -511,6 +519,7 @@ buffer_move_lines :: proc(b: ^Buffer, delta: int) {
 buffer_apply_inverse :: proc(b: ^Buffer, group: EditGroup) -> EditGroup {
 	result := EditGroup {
 		cursor = b.cursor,
+		tx     = group.tx,
 	}
 	#reverse for edit in group.edits {
 		switch edit.kind {
@@ -547,4 +556,70 @@ buffer_redo :: proc(b: ^Buffer) {
 	b.selection = nil
 	group := pop(&b.redo)
 	append(&b.undo, buffer_apply_inverse(b, group))
+}
+
+// A transaction is intact only if no buffer holds a member group buried under a
+// newer one; otherwise the step decomposes into a plain per-buffer undo/redo.
+tx_intact :: proc(editor: ^Editor, tx: int, is_undo: bool) -> bool {
+	for &b in editor.buffers {
+		stack := b.undo if is_undo else b.redo
+		for g, i in stack {
+			if g.tx == tx && i != len(stack) - 1 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+editor_undo :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	buffer_undo_commit(b)
+	if len(b.undo) == 0 {
+		return
+	}
+	tx := b.undo[len(b.undo) - 1].tx
+	if tx == 0 {
+		buffer_undo(b)
+		return
+	}
+	for &bb in editor.buffers {
+		buffer_undo_commit(&bb)
+	}
+	if !tx_intact(editor, tx, true) {
+		buffer_undo(b)
+		return
+	}
+	for &bb in editor.buffers {
+		if len(bb.undo) > 0 && bb.undo[len(bb.undo) - 1].tx == tx {
+			bb.selection = nil
+			append(&bb.redo, buffer_apply_inverse(&bb, pop(&bb.undo)))
+		}
+	}
+}
+
+editor_redo :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	buffer_undo_commit(b)
+	if len(b.redo) == 0 {
+		return
+	}
+	tx := b.redo[len(b.redo) - 1].tx
+	if tx == 0 {
+		buffer_redo(b)
+		return
+	}
+	for &bb in editor.buffers {
+		buffer_undo_commit(&bb)
+	}
+	if !tx_intact(editor, tx, false) {
+		buffer_redo(b)
+		return
+	}
+	for &bb in editor.buffers {
+		if len(bb.redo) > 0 && bb.redo[len(bb.redo) - 1].tx == tx {
+			bb.selection = nil
+			append(&bb.undo, buffer_apply_inverse(&bb, pop(&bb.redo)))
+		}
+	}
 }

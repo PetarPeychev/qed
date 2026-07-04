@@ -38,6 +38,7 @@ Lsp :: struct {
 	cap_definition: bool,
 	cap_hover:      bool,
 	cap_format:     bool,
+	cap_rename:     bool,
 	pending:        map[int]LspPending,
 }
 
@@ -46,6 +47,7 @@ LspRequest :: enum {
 	Hover,
 	Format,
 	FormatOnSave,
+	Rename,
 }
 
 // A request awaiting its response. `path`/`rev` locate the target buffer and
@@ -165,10 +167,12 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 
 	lsp.next_id += 1
 	lsp.init_id = lsp.next_id
+	root_uri := lsp_json_string(lsp_uri(editor.working_root))
 	body := fmt.tprintf(
-		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"capabilities":{{"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}},"definition":{{}},"hover":{{"contentFormat":["plaintext","markdown"]}},"formatting":{{}}}}}}}}}}`,
+		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"workspaceFolders":[{{"uri":%s,"name":"root"}}],"capabilities":{{"workspace":{{"configuration":true,"didChangeConfiguration":{{}},"workspaceFolders":true}},"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}},"definition":{{}},"hover":{{"contentFormat":["plaintext","markdown"]}},"formatting":{{}},"rename":{{}}}}}}}}}}`,
 		lsp.init_id,
-		lsp_json_string(lsp_uri(editor.working_root)),
+		root_uri,
+		root_uri,
 	)
 	lsp_send(editor, lsp, body)
 	return lsp
@@ -363,9 +367,14 @@ lsp_did_save :: proc(editor: ^Editor, b: ^Buffer) {
 	if b.rev != b.lsp_rev {
 		lsp_did_change(editor, b)
 	}
+	// Include the text: ols re-indexes from didSave's `text`, so omitting it makes
+	// ols index the file as empty and drop its symbols (breaks cross-file rename).
+	text := buffer_snapshot(b)
+	defer delete(text)
 	body := fmt.tprintf(
-		`{{"jsonrpc":"2.0","method":"textDocument/didSave","params":{{"textDocument":{{"uri":%s}}}}}}`,
+		`{{"jsonrpc":"2.0","method":"textDocument/didSave","params":{{"textDocument":{{"uri":%s}},"text":%s}}}}`,
 		lsp_json_string(lsp_uri(b.path)),
+		lsp_json_string(text),
 	)
 	lsp_send(editor, lsp, body)
 }
@@ -464,19 +473,21 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 			id, _ := lsp_num(id_v)
 			result := "null"
 			if method == "workspace/configuration" {
-				n := 1
-				if params, ok := obj["params"].(json.Object); ok {
-					if items, ok2 := params["items"].(json.Array); ok2 {
-						n = len(items)
-					}
-				}
 				sb := strings.builder_make(context.temp_allocator)
 				strings.write_byte(&sb, '[')
-				for i in 0 ..< n {
-					if i > 0 {
-						strings.write_byte(&sb, ',')
+				if params, ok := obj["params"].(json.Object); ok {
+					if items, ok2 := params["items"].(json.Array); ok2 {
+						for item, i in items {
+							if i > 0 {
+								strings.write_byte(&sb, ',')
+							}
+							section := ""
+							if io, ok3 := item.(json.Object); ok3 {
+								section, _ = io["section"].(string)
+							}
+							strings.write_string(&sb, lsp_config_for_section(section))
+						}
 					}
-					strings.write_string(&sb, "null")
 				}
 				strings.write_byte(&sb, ']')
 				result = strings.to_string(sb)
@@ -497,6 +508,7 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 				lsp.sync_kind = lsp_sync_kind(obj)
 				lsp_parse_caps(lsp, obj)
 				lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
+				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}}}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE))
 				return true
 			}
 			if p, has := lsp.pending[id]; has {
@@ -509,12 +521,23 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 	return false
 }
 
+lsp_config_for_section :: proc(section: string) -> string {
+	switch section {
+	case "python", "basedpyright", "pyright":
+		return fmt.tprintf(`{{"analysis":{{"diagnosticMode":"%s"}}}}`, LSP_DIAGNOSTIC_MODE)
+	case "python.analysis", "basedpyright.analysis", "pyright.analysis":
+		return fmt.tprintf(`{{"diagnosticMode":"%s"}}`, LSP_DIAGNOSTIC_MODE)
+	}
+	return "null"
+}
+
 lsp_parse_caps :: proc(lsp: ^Lsp, obj: json.Object) {
 	result := obj["result"].(json.Object) or_else nil
 	caps := result["capabilities"].(json.Object) or_else nil
 	lsp.cap_definition = lsp_cap_present(caps["definitionProvider"])
 	lsp.cap_hover = lsp_cap_present(caps["hoverProvider"])
 	lsp.cap_format = lsp_cap_present(caps["documentFormattingProvider"])
+	lsp.cap_rename = lsp_cap_present(caps["renameProvider"])
 }
 
 lsp_cap_present :: proc(v: json.Value) -> bool {
@@ -679,6 +702,99 @@ lsp_hover :: proc(editor: ^Editor) {
 	)
 }
 
+lsp_rename_ready :: proc(editor: ^Editor, b: ^Buffer) -> (^Lsp, bool) {
+	if LANGUAGES[b.language].lsp_server == "" {
+		editor_set_message(editor, "No language server for this buffer", true)
+		return nil, false
+	}
+	lsp, ok := lsp_ready(b)
+	if !ok {
+		editor_set_message(editor, "Language server not ready", true)
+		return nil, false
+	}
+	if !lsp.cap_rename {
+		editor_set_message(editor, "Server has no rename", true)
+		return nil, false
+	}
+	return lsp, true
+}
+
+lsp_rename_send :: proc(editor: ^Editor, new_name: string) {
+	b := editor_buffer(editor)
+	lsp, ok := lsp_rename_ready(editor, b)
+	if !ok {
+		return
+	}
+	lsp_ensure_synced(editor, b)
+	id := lsp_pending_add(lsp, .Rename, b)
+	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
+	lsp_send(
+		editor,
+		lsp,
+		fmt.tprintf(
+			`{{"jsonrpc":"2.0","id":%d,"method":"textDocument/rename","params":{{"textDocument":{{"uri":%s}},"position":{{"line":%d,"character":%d}},"newName":%s}}}}`,
+			id,
+			lsp_json_string(lsp_uri(b.path)),
+			b.cursor.row,
+			ch,
+			lsp_json_string(new_name),
+		),
+	)
+}
+
+lsp_apply_rename :: proc(editor: ^Editor, obj: json.Object) -> bool {
+	result, ok := obj["result"].(json.Object)
+	if !ok {
+		editor_set_message(editor, "Cannot rename symbol", true)
+		return true
+	}
+	files := 0
+	total := 0
+	touched_current := false
+	tx := tx_next()
+	apply :: proc(editor: ^Editor, uri: string, edits: json.Array, tx: int, files: ^int, touched_current: ^bool) {
+		idx := editor_load_buffer(editor, lsp_uri_to_path(uri))
+		if idx < 0 {
+			return
+		}
+		if lsp_apply_text_edits(&editor.buffers[idx], edits, tx) {
+			files^ += 1
+			if idx == editor.current {
+				touched_current^ = true
+			}
+		}
+	}
+	if changes, has := result["changes"].(json.Object); has {
+		total = len(changes)
+		for uri, v in changes {
+			edits := v.(json.Array) or_continue
+			apply(editor, uri, edits, tx, &files, &touched_current)
+		}
+	} else if doc_changes, has2 := result["documentChanges"].(json.Array); has2 {
+		total = len(doc_changes)
+		for item in doc_changes {
+			dc := item.(json.Object) or_continue
+			td := dc["textDocument"].(json.Object) or_continue
+			uri := td["uri"].(string) or_continue
+			edits := dc["edits"].(json.Array) or_continue
+			apply(editor, uri, edits, tx, &files, &touched_current)
+		}
+	}
+	if files == 0 {
+		editor_set_message(editor, "No rename changes")
+		return true
+	}
+	if touched_current {
+		editor_scroll(editor)
+	}
+	if files < total {
+		editor_set_message(editor, fmt.tprintf("Renamed in %d/%d files (rest unreadable)", files, total), true)
+	} else {
+		editor_set_message(editor, fmt.tprintf("Renamed in %d file%s", files, "" if files == 1 else "s"))
+	}
+	return true
+}
+
 lsp_format :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if LANGUAGES[b.language].lsp_server == "" {
@@ -729,6 +845,8 @@ lsp_handle_response :: proc(editor: ^Editor, p: LspPending, obj: json.Object) ->
 		return lsp_apply_format(editor, p, obj, false)
 	case .FormatOnSave:
 		return lsp_apply_format(editor, p, obj, true)
+	case .Rename:
+		return lsp_apply_rename(editor, obj)
 	}
 	return false
 }
@@ -859,7 +977,7 @@ lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object, save_
 	return true
 }
 
-lsp_apply_text_edits :: proc(b: ^Buffer, edits: json.Array) -> bool {
+lsp_apply_text_edits :: proc(b: ^Buffer, edits: json.Array, tx: int = 0) -> bool {
 	Ranged :: struct {
 		from, to: Cursor,
 		text:     string,
@@ -890,6 +1008,9 @@ lsp_apply_text_edits :: proc(b: ^Buffer, edits: json.Array) -> bool {
 		append(&b.open.edits, Edit{.Delete, e.from, strings.clone(e.text)})
 	}
 	buffer_undo_commit(b)
+	if tx != 0 && len(b.undo) > 0 {
+		b.undo[len(b.undo) - 1].tx = tx
+	}
 	return true
 }
 

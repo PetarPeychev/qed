@@ -77,7 +77,11 @@ kind, newline, save) seals the group. This gives atomic compound actions and
 coalesced typing (undo removes a run, not one keystroke). Undo applies a group's
 inverses in reverse, restores the cursor, pushes to `redo`; any fresh edit clears
 `redo`. Primitives also emit the `ts.InputEdit` (highlight) and `LspChange`
-(incremental `didChange`) records — see [notes/perf.md](notes/perf.md).
+(incremental `didChange`) records — see [notes/perf.md](notes/perf.md). Undo is
+per-buffer, except a cross-file rename tags every touched buffer's group with a
+shared transaction id (`EditGroup.tx`); `editor_undo`/`editor_redo` then revert the
+whole rename in one step across all buffers (falling back to per-buffer if any
+member group is no longer on top).
 
 ## Cursor, selection, viewport
 
@@ -162,11 +166,19 @@ re-opens LSP).
   to byte offsets. `didChange` is incremental when the server advertises it. Servers
   auto-start lazily; the *Restart LSP* command tears the current buffer's server
   down so the next `lsp_sync` respawns it (crash recovery). Client-initiated
-  requests (definition/hover/formatting) are capability-gated off the `initialize`
-  result and tracked in a per-server `pending` map keyed by request id; the async
-  response is dispatched back by request kind. Formatting carries the buffer `rev`
-  so a stale result (doc changed mid-request) is dropped, and format-on-save chains
-  the save onto the response.
+  requests (definition/hover/formatting/rename) are capability-gated off the
+  `initialize` result and tracked in a per-server `pending` map keyed by request id;
+  the async response is dispatched back by request kind. Formatting carries the
+  buffer `rev` so a stale result (doc changed mid-request) is dropped, and
+  format-on-save chains the save onto the response. *Rename* (`rename.odin`, `Alt+r`)
+  prompts in a small caret-editable box, then applies the server's WorkspaceEdit
+  (`changes`/`documentChanges`) across every file — loading unopened ones as modified
+  buffers (`editor_load_buffer`) — as one cross-buffer undo transaction. `initialize`
+  advertises `workspaceFolders` + `workspace.configuration` (both needed for
+  servers to do workspace-wide rename/refs); `didSave` **must** carry the document
+  `text` (ols re-indexes from it — omitting it drops the file's symbols). pyright's
+  open-files-only default is flipped via `LSP_DIAGNOSTIC_MODE` answered on the config
+  pull + pushed on `didChangeConfiguration`.
 - **Formatting** (`format.odin`): *Format Document* / format-on-save prefer a
   language's external `formatter` (a `LANGUAGES` field, e.g. Python → `ruff format -`)
   over the LSP path. The buffer is piped through the tool as a stdin→stdout filter
@@ -181,7 +193,7 @@ re-opens LSP).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
 `confirm` · `pane` (floating overlay) · `palette` · `picker` · `bufswitch` · `langpick` · `fuzzy` ·
-`linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `format` · `git` ·
+`linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `rename` · `format` · `git` ·
 `perf_bench`.
 
 ## Shipped
@@ -206,6 +218,7 @@ injection); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
+workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
 (config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`).
 

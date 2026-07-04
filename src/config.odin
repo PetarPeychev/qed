@@ -23,6 +23,9 @@ PROJSEARCH_MIN_QUERY := 2
 ALT_ESC_TIMEOUT_MS := 25
 
 LSP_POLL_MS := 30
+// pyright/basedpyright analyze only open files by default, so cross-file rename
+// and references miss unopened files; "workspace" makes them index the whole root.
+LSP_DIAGNOSTIC_MODE :: "workspace"
 DIAG_PANE_MARGIN_X := 2
 DIAG_PANE_MAX_LINES := 8
 

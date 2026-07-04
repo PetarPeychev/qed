@@ -12,8 +12,8 @@ Command :: struct {
 	run:      proc(editor: ^Editor),
 }
 
-cmd_undo :: proc(editor: ^Editor) {buffer_undo(editor_buffer(editor))}
-cmd_redo :: proc(editor: ^Editor) {buffer_redo(editor_buffer(editor))}
+cmd_undo :: proc(editor: ^Editor) {editor_undo(editor)}
+cmd_redo :: proc(editor: ^Editor) {editor_redo(editor)}
 cmd_select_all :: proc(editor: ^Editor) {cursor_select_all(editor_buffer(editor))}
 
 cmd_buffer_start :: proc(editor: ^Editor) {
@@ -33,6 +33,7 @@ cmd_set_language :: proc(editor: ^Editor) {langpick_open(editor)}
 cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
 cmd_lsp_definition :: proc(editor: ^Editor) {lsp_definition(editor)}
 cmd_lsp_hover :: proc(editor: ^Editor) {lsp_hover(editor)}
+cmd_lsp_rename :: proc(editor: ^Editor) {rename_open(editor)}
 cmd_format :: proc(editor: ^Editor) {format_document(editor)}
 cmd_diag_next :: proc(editor: ^Editor) {diag_goto(editor, +1)}
 cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
@@ -71,6 +72,7 @@ commands := [?]Command {
 	{name = "Set Language", run = cmd_set_language},
 	{name = "Go to Definition", shortcut = "Alt+d", alt_ch = 'd', run = cmd_lsp_definition},
 	{name = "Hover", shortcut = "Alt+s", alt_ch = 's', run = cmd_lsp_hover},
+	{name = "Rename Symbol", shortcut = "Alt+r", alt_ch = 'r', run = cmd_lsp_rename},
 	{name = "Format Document", run = cmd_format},
 	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
 	{name = "Next Diagnostic", shortcut = "Alt+>", alt_ch = '>', run = cmd_diag_next},

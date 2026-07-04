@@ -9,7 +9,7 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
-_(none open)_
+- [ ] lsp hover pane is too small to see larger definitions like odin large structs
 
 ## Features
 
@@ -41,7 +41,6 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 - [ ] Inline diagnostic virtual text (dimmed end-of-line message).
 - [ ] Code actions / quick-fix (`textDocument/codeAction`) — esp. auto-import for TS/React.
 - [ ] Find references (floating pane / picker).
-- [ ] Rename symbol (workspace-wide, from the prompt).
 - [ ] Completion dropdown (floating pane, incremental).
 - [ ] Symbol search (fuzzy document/workspace symbols).
 - [ ] Signature help (later).

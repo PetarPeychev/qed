@@ -33,6 +33,7 @@ Editor :: struct {
 	langpick:        LangPick,
 	linefind:        LineFind,
 	projsearch:      ProjSearch,
+	rename:          Rename,
 	jumps:           JumpList,
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
@@ -86,6 +87,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	langpick_destroy(&editor.langpick)
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
+	rename_destroy(&editor.rename)
 	jump_destroy(&editor.jumps)
 	delete(g_language_rules)
 	syntax_shutdown()
@@ -188,6 +190,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		#partial switch ev.type {
 		case .Key:
 			projsearch_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
+		}
+		return
+	}
+	if editor.rename.active {
+		#partial switch ev.type {
+		case .Key:
+			rename_dispatch_key(editor, ev)
 		case .Resize:
 			editor_scroll(editor)
 		}
@@ -579,6 +590,29 @@ editor_open_path :: proc(editor: ^Editor, path: string) {
 	}
 }
 
+editor_load_buffer :: proc(editor: ^Editor, path: string) -> int {
+	abs, err := filepath.abs(path, context.temp_allocator)
+	if err != nil {
+		abs = path
+	}
+	if idx := editor_find_buffer(editor, abs); idx >= 0 {
+		return idx
+	}
+	b := buffer_new()
+	if buffer_open(&b, abs) != .None {
+		buffer_destroy(&b)
+		return -1
+	}
+	scratch := editor.buffers[0]
+	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
+		buffer_destroy(&editor.buffers[0])
+		editor.buffers[0] = b
+		return 0
+	}
+	append(&editor.buffers, b)
+	return len(editor.buffers) - 1
+}
+
 editor_copy :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if selection_active(b) {
@@ -694,6 +728,8 @@ editor_render :: proc(editor: ^Editor) {
 		linefind_render(editor)
 	case editor.projsearch.active:
 		projsearch_render(editor)
+	case editor.rename.active:
+		rename_render(editor)
 	case editor.quit_dialog.active:
 		quit_dialog_render(editor)
 	case editor.close_dialog.active:
