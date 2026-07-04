@@ -46,6 +46,7 @@ commands := [?]Command {
 	{name = "Go to End of File", shortcut = "Alt+}", alt_ch = '}', run = cmd_buffer_end},
 	{name = "Jump Back", shortcut = "Alt+,", alt_ch = ',', run = jump_back},
 	{name = "Jump Forward", shortcut = "Alt+.", alt_ch = '.', run = jump_forward},
+	{name = "Switch Buffer", shortcut = "Ctrl+e", key = .Ctrl_E, run = bufswitch_open},
 	{name = "Close Buffer", shortcut = "Ctrl+w", key = .Ctrl_W, run = editor_close_buffer},
 	{name = "Save", shortcut = "Ctrl+s", key = .Ctrl_S, run = editor_save},
 	{name = "Quit", shortcut = "Ctrl+q", key = .Ctrl_Q, run = editor_request_quit},

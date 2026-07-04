@@ -163,7 +163,7 @@ command (`langpick.odin`) overrides it for the session (re-parses, re-opens LSP)
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
-`confirm` · `pane` (floating overlay) · `palette` · `picker` · `langpick` · `fuzzy` ·
+`confirm` · `pane` (floating overlay) · `palette` · `picker` · `bufswitch` · `langpick` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `git` ·
 `perf_bench`.
 
@@ -178,8 +178,9 @@ line-comment toggle, move-lines, paragraph/word/smart-home motion.
 Navigation & UI: line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line, welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
-multiple buffers, close buffer, fuzzy line jump, project-wide search (`rg`), jump
-list (back/forward), runtime config (`~/.config/qed/config.json`).
+multiple buffers, close buffer, buffer switcher (`Ctrl+E`: fuzzy over open buffers
+in stable order + digit instant-jump on empty query), fuzzy line jump, project-wide
+search (`rg`), jump list (back/forward), runtime config (`~/.config/qed/config.json`).
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSON,

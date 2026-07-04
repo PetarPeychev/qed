@@ -29,6 +29,7 @@ Editor :: struct {
 	click_count:     int,
 	palette:         Palette,
 	picker:          Picker,
+	bufswitch:       BufSwitch,
 	langpick:        LangPick,
 	linefind:        LineFind,
 	projsearch:      ProjSearch,
@@ -76,6 +77,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.message_store)
 	palette_destroy(&editor.palette)
 	picker_destroy(&editor.picker)
+	bufswitch_destroy(&editor.bufswitch)
 	langpick_destroy(&editor.langpick)
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
@@ -145,6 +147,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		#partial switch ev.type {
 		case .Key:
 			picker_dispatch_key(editor, ev)
+		case .Resize:
+			editor_scroll(editor)
+		}
+		return
+	}
+	if editor.bufswitch.active {
+		#partial switch ev.type {
+		case .Key:
+			bufswitch_dispatch_key(editor, ev)
 		case .Resize:
 			editor_scroll(editor)
 		}
@@ -648,6 +659,8 @@ editor_render :: proc(editor: ^Editor) {
 		palette_render(editor)
 	case editor.picker.active:
 		picker_render(editor)
+	case editor.bufswitch.active:
+		bufswitch_render(editor)
 	case editor.langpick.active:
 		langpick_render(editor)
 	case editor.linefind.active:

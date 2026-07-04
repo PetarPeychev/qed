@@ -18,7 +18,6 @@ _(none open)_
 - [ ] Bracket/colon-aware auto-indent on Enter; dedent on closing `}`.
 - [ ] Highlight the bracket matching the one at the cursor.
 - [ ] Configurable indent width + auto-detect from the file (like tabs-vs-spaces).
-- [ ] Open-buffer switcher: fuzzy picker over currently-open buffers (binding TBD, e.g. `Alt+b`).
 - [ ] File-tree pane over the working root.
 
 ## AI / LLM assist
