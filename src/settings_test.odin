@@ -65,6 +65,10 @@ test_config_files :: proc(t: ^testing.T) {
 		_, present := obj[it.key]
 		testing.expectf(t, present, "int key %s materialized", it.key)
 	}
+	for it in config_bools {
+		_, present := obj[it.key]
+		testing.expectf(t, present, "bool key %s materialized", it.key)
+	}
 	theme, theme_ok := obj["theme"].(json.Object)
 	testing.expect(t, theme_ok, "theme materialized as object")
 	for c in config_colors {
@@ -95,6 +99,15 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, jt_ok && jt == 99, "present value preserved on rewrite")
 	_, sm_present := obj["scroll_margin"]
 	testing.expect(t, sm_present, "missing key filled")
+
+	saved_fos := FORMAT_ON_SAVE
+	defer FORMAT_ON_SAVE = saved_fos
+	bool_path := fmt.tprintf("%s/bool.json", dir)
+	_ = os.write_entire_file(bool_path, transmute([]byte)string(`{"format_on_save": true}`))
+	FORMAT_ON_SAVE = false
+	_, is_err = config_load_from(bool_path)
+	testing.expect(t, !is_err, "bool value load is not an error")
+	testing.expect(t, FORMAT_ON_SAVE, "bool value applied")
 
 	// Invalid value -> keep default at runtime, report it, preserve it in the file.
 	bad_path := fmt.tprintf("%s/invalid.json", dir)

@@ -46,7 +46,8 @@ editor_init :: proc(path: string = "") -> Editor {
 	tb2.set_input_mode(.Mouse)
 	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	editor := Editor {
-		buffers = make([dynamic]Buffer, 0, 8),
+		buffers        = make([dynamic]Buffer, 0, 8),
+		format_on_save = FORMAT_ON_SAVE,
 	}
 	b := buffer_new()
 	if path != "" && !os.is_dir(path) {
@@ -609,8 +610,14 @@ editor_paste :: proc(editor: ^Editor) {
 
 editor_save :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
-	if editor.format_on_save && lsp_send_format(editor, b, .FormatOnSave) {
-		return
+	if editor.format_on_save {
+		if LANGUAGES[b.language].formatter != "" {
+			format_external(editor, b, true)
+			return
+		}
+		if lsp_send_format(editor, b, .FormatOnSave) {
+			return
+		}
 	}
 	editor_save_buffer(editor, b)
 }

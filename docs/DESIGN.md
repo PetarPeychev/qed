@@ -140,7 +140,7 @@ command (`langpick.odin`) overrides it for the session (re-parses, re-opens LSP)
 - **Syntax** (`highlight.odin`, `language.odin`): per-language `[Language]Syntax`;
   adding one = vendor `parser.c` (+`scanner.c`) + `highlights.scm` under
   `lib/tree_sitter/<lang>/`, add the FFI decl + `build.sh` line, fill the
-  `LANGUAGES` row (grammar/comment/LSP) + a `DEFAULT_LANGUAGES` glob. Query is
+  `LANGUAGES` row (grammar/comment/LSP/formatter) + a `DEFAULT_LANGUAGES` glob. Query is
   structural-only (predicates stripped, see `lib/tree_sitter/PATCHES.md`). A
   grammar/query that fails to compile surfaces a one-shot status message. Parse is
   incremental + async on big files — [notes/perf.md](notes/perf.md).
@@ -163,13 +163,21 @@ command (`langpick.odin`) overrides it for the session (re-parses, re-opens LSP)
   response is dispatched back by request kind. Formatting carries the buffer `rev`
   so a stale result (doc changed mid-request) is dropped, and format-on-save chains
   the save onto the response.
+- **Formatting** (`format.odin`): *Format Document* / format-on-save prefer a
+  language's external `formatter` (a `LANGUAGES` field, e.g. Python → `ruff format -`)
+  over the LSP path. The buffer is piped through the tool as a stdin→stdout filter
+  (`shell_filter`: temp-file input so writing can't deadlock the output, stderr
+  discarded so it can't corrupt the TUI), and the result is applied as one undo
+  group (whole-buffer replace, cursor clamped). A missing tool / non-zero exit
+  reports a message and leaves the buffer untouched (on save, it saves unformatted).
+  `format_on_save` is a config knob seeding `editor.format_on_save` at startup.
 
 ## File layout
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
 `confirm` · `pane` (floating overlay) · `palette` · `picker` · `bufswitch` · `langpick` · `fuzzy` ·
-`linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `git` ·
+`linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `format` · `git` ·
 `perf_bench`.
 
 ## Shipped
@@ -194,7 +202,8 @@ injection); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
-document formatting + format-on-save toggle, `Restart LSP`; git diff gutter (live vs `HEAD`).
+document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
+(config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`).
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff. See

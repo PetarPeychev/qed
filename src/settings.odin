@@ -13,6 +13,11 @@ Config_Int :: struct {
 	ptr: ^int,
 }
 
+Config_Bool :: struct {
+	key: string,
+	ptr: ^bool,
+}
+
 Config_Color :: struct {
 	key: string,
 	ptr: ^tb2.Color,
@@ -36,6 +41,10 @@ config_ints := [?]Config_Int {
 	{"jump_threshold", &JUMP_THRESHOLD},
 	{"git_diff_max_d", &GIT_DIFF_MAX_D},
 	{"big_file_bytes", &BIG_FILE_BYTES},
+}
+
+config_bools := [?]Config_Bool {
+	{"format_on_save", &FORMAT_ON_SAVE},
 }
 
 config_colors := [?]Config_Color {
@@ -165,6 +174,20 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			it.ptr^ = int(n)
 		case json.Float:
 			it.ptr^ = int(n)
+		case:
+			append(&invalid, it.key)
+		}
+	}
+
+	for it in config_bools {
+		v, present := root[it.key]
+		if !present {
+			missing = true
+			continue
+		}
+		#partial switch b in v {
+		case json.Boolean:
+			it.ptr^ = bool(b)
 		case:
 			append(&invalid, it.key)
 		}
@@ -316,6 +339,15 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 			config_value_text(&sb, v)
 		} else {
 			fmt.sbprintf(&sb, "%d", it.ptr^)
+		}
+	}
+
+	for it in config_bools {
+		emit_key(&sb, &first, it.key)
+		if v, present := root[it.key]; present {
+			config_value_text(&sb, v)
+		} else {
+			strings.write_string(&sb, "true" if it.ptr^ else "false")
 		}
 	}
 
