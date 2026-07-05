@@ -50,6 +50,7 @@ config_ints := [?]Config_Int {
 config_bools := [?]Config_Bool {
 	{"format_on_save", &FORMAT_ON_SAVE},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
+	{"git_hunk_highlight", &GIT_HUNK_HIGHLIGHT},
 }
 
 Config_Str :: struct {
@@ -75,7 +76,6 @@ config_colors := [?]Config_Color {
 	{"current_line_foreground", &COLOR_CURRENT_LINE_FG},
 	{"current_line_background", &COLOR_CURRENT_LINE_BG},
 	{"ai_edit_background", &COLOR_AI_EDIT_BG},
-	{"ai_edit_current_background", &COLOR_AI_EDIT_CURRENT_BG},
 	{"pane_foreground", &COLOR_PANE_FG},
 	{"pane_background", &COLOR_PANE_BG},
 	{"pane_border", &COLOR_PANE_BORDER},

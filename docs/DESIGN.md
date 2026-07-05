@@ -57,6 +57,13 @@ Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
 
+Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`),
+stacked bottom→top: optional git-hunk row tint → AI-edit tint → current-line tint
+(a semi-transparent white lift over whatever's beneath). Tint strengths are
+`*_TINT` constants in `config.odin`; the tint colors are theme-overridable. Hunk
+row tint is toggled by *Toggle Hunk Highlight* (config `git_hunk_highlight`, off by
+default) and is separate from the always-on gutter mark.
+
 Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All writes go through
 `editor_set_message`, which copies into owned storage — a raw `tprintf` string
@@ -270,7 +277,8 @@ workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buf
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
-(config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`).
+(config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`)
++ optional hunk row highlight (`Toggle Hunk Highlight`, config `git_hunk_highlight`).
 
 AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command
 (`llm.chat_command`, default `claude -p`) — whole-file context, concurrent

@@ -46,7 +46,6 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 
 ## Polish
 
-- [ ] Generic layered line-background system: compose per-line tints (current line, AI-edit, git hunk, …) instead of fixed per-feature colors with hardcoded precedence in `editor_render_text_row`.
 - [ ] Context-filter the command list (hide commands that don't apply, e.g. on welcome screen).
 - [ ] Picker mouse support (click row, wheel scroll).
 - [ ] Per-buffer viewport memory across buffer switches.

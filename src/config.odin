@@ -9,6 +9,7 @@ DOUBLE_CLICK_MS := 400
 
 FORMAT_ON_SAVE := false
 AUTO_CLOSE_PAIRS := true
+GIT_HUNK_HIGHLIGHT := false
 
 LLM_CHAT_COMMAND := "claude -p"
 LLM_EDIT_PROMPT :=
@@ -58,9 +59,8 @@ COLOR_DIAG_WARN_FG := tb2.Color(0xffdd33)
 COLOR_GUTTER_FG := tb2.Color(0x868686)
 COLOR_GUTTER_BG := tb2.Color(0x1b1b1b)
 COLOR_CURRENT_LINE_FG := tb2.Color(0xffdd33)
-COLOR_CURRENT_LINE_BG := tb2.Color(0x1b1b1b)
-COLOR_AI_EDIT_BG := tb2.Color(0x2f2340)
-COLOR_AI_EDIT_CURRENT_BG := tb2.Color(0x3a2c50)
+COLOR_CURRENT_LINE_BG := tb2.Color(0xffffff)
+COLOR_AI_EDIT_BG := tb2.Color(0x5a378a)
 COLOR_PANE_FG := tb2.Color(0xf4f4ff)
 COLOR_PANE_BG := tb2.Color(0x2b2b2b)
 COLOR_PANE_BORDER := tb2.Color(0x868686)
@@ -80,3 +80,7 @@ COLOR_SYN_CODE := tb2.Color(0x95a99f)
 COLOR_GIT_ADD := tb2.Color(0x73c936)
 COLOR_GIT_MOD := tb2.Color(0xffdd33)
 COLOR_GIT_DEL := tb2.Color(0xf43841)
+
+CURRENT_LINE_TINT :: 0.06
+AI_EDIT_TINT :: 0.35
+GIT_HUNK_TINT :: 0.12

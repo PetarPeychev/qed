@@ -42,6 +42,7 @@ Editor :: struct {
 	hover_active:    bool,
 	completion:      Completion,
 	format_on_save:  bool,
+	hunk_highlight:  bool,
 	llm:             Llm,
 	aiedit:          AiEdit,
 }
@@ -54,6 +55,7 @@ editor_init :: proc(path: string = "") -> Editor {
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		format_on_save = FORMAT_ON_SAVE,
+		hunk_highlight = GIT_HUNK_HIGHLIGHT,
 	}
 	b := buffer_new()
 	if path != "" && !os.is_dir(path) {
@@ -836,7 +838,8 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				severity = d.severity
 			}
 		}
-		editor_render_gutter(screen_y, gutter, row + 1, current, severity, git_mark_at(b, row))
+		mark := git_mark_at(b, row)
+		editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark)
 
 		text := b.lines[row].text
 		row_sel_from, row_sel_to := -1, -1
@@ -874,7 +877,8 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			}
 		}
 		colors := highlight_colors(b, row)
-		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, ai_edit, row_sel_from, row_sel_to, underlines[:])
+		line_bg := editor_line_bg(current, ai_edit, mark, editor.hunk_highlight)
+		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:])
 	}
 
 	name := b.path if b.path != "" else "[No Name]"
@@ -974,25 +978,45 @@ editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int
 	tb2.print(1, i32(y), fg, COLOR_GUTTER_BG, cstr)
 }
 
+color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {
+	b := u64(base) & 0xffffff
+	t := u64(tint) & 0xffffff
+	chan :: proc(base, tint: u64, shift: uint, alpha: f32) -> u64 {
+		bc := f32((base >> shift) & 0xff)
+		tc := f32((tint >> shift) & 0xff)
+		return u64(bc + (tc - bc) * alpha + 0.5) << shift
+	}
+	return tb2.Color(chan(b, t, 16, alpha) | chan(b, t, 8, alpha) | chan(b, t, 0, alpha))
+}
+
+editor_line_bg :: proc(current, ai_edit: bool, mark: GitMark, hunk: bool) -> tb2.Color {
+	bg := COLOR_BG
+	if hunk {
+		#partial switch mark {
+		case .Added:
+			bg = color_over(bg, COLOR_GIT_ADD, GIT_HUNK_TINT)
+		case .Modified:
+			bg = color_over(bg, COLOR_GIT_MOD, GIT_HUNK_TINT)
+		}
+	}
+	if ai_edit {
+		bg = color_over(bg, COLOR_AI_EDIT_BG, AI_EDIT_TINT)
+	}
+	if current {
+		bg = color_over(bg, COLOR_CURRENT_LINE_BG, CURRENT_LINE_TINT)
+	}
+	return bg
+}
+
 editor_render_text_row :: proc(
 	gutter, y, w: int,
 	text: []u8,
 	colors: []tb2.Color,
 	scroll_col: int,
-	current: bool,
-	ai_edit: bool,
+	bg_normal: tb2.Color,
 	sel_from, sel_to: int,
 	underlines: [][2]int,
 ) {
-	bg_normal := COLOR_BG
-	switch {
-	case ai_edit && current:
-		bg_normal = COLOR_AI_EDIT_CURRENT_BG
-	case ai_edit:
-		bg_normal = COLOR_AI_EDIT_BG
-	case current:
-		bg_normal = COLOR_CURRENT_LINE_BG
-	}
 	for sx in 0 ..< w {
 		tb2.set_cell(i32(gutter + sx), i32(y), ' ', COLOR_FG, bg_normal)
 	}

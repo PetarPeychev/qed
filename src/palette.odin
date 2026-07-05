@@ -42,6 +42,11 @@ cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 	editor_set_message(editor, fmt.tprintf("Format on save: %s", "on" if editor.format_on_save else "off"))
 }
 
+cmd_toggle_hunk_highlight :: proc(editor: ^Editor) {
+	editor.hunk_highlight = !editor.hunk_highlight
+	editor_set_message(editor, fmt.tprintf("Hunk highlight: %s", "on" if editor.hunk_highlight else "off"))
+}
+
 cmd_change_indent :: proc(editor: ^Editor) {indentpick_open(editor)}
 cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
 cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
@@ -75,6 +80,7 @@ commands := [?]Command {
 	{name = "Cancel AI Edits", run = cmd_ai_cancel},
 	{name = "Format Document", run = cmd_format},
 	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
+	{name = "Toggle Hunk Highlight", run = cmd_toggle_hunk_highlight},
 	{name = "Next Diagnostic", shortcut = "Alt+>", alt_ch = '>', run = cmd_diag_next},
 	{name = "Previous Diagnostic", shortcut = "Alt+<", alt_ch = '<', run = cmd_diag_prev},
 	{name = "Restart LSP", run = cmd_lsp_restart},
