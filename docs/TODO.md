@@ -11,6 +11,8 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Features
 
+- [ ] Detect external file changes on disk (reload prompt / clobber guard when another process rewrites an open file).
+
 ## AI / LLM assist
 
 See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schema.
