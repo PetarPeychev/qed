@@ -12,8 +12,6 @@ Shipped list. Groups are priority buckets, not a build order.
 ## Features
 
 - [ ] JSX tags: auto-close `>` and paired rename of open/close tags.
-- [ ] Bracket/colon-aware auto-indent on Enter; dedent on closing `}`.
-- [ ] Configurable indent width + auto-detect from the file (like tabs-vs-spaces).
 
 ## AI / LLM assist
 

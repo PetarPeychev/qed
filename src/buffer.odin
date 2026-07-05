@@ -14,6 +14,7 @@ Buffer :: struct {
 	saved:         string,
 	modified:      bool,
 	indent:        IndentStyle,
+	indent_width:  int,
 	line_ending:   LineEnding,
 	final_newline: bool,
 	undo:          [dynamic]EditGroup,
@@ -51,6 +52,18 @@ IndentStyle :: enum {
 	Tabs,
 }
 
+buffer_detect_indent :: proc(b: ^Buffer) {
+	b.indent = .Spaces
+	for line in b.lines {
+		if len(line.text) == 0 || (line.text[0] != ' ' && line.text[0] != '\t') {
+			continue
+		}
+		b.indent = .Tabs if line.text[0] == '\t' else .Spaces
+		break
+	}
+	b.indent_width = TAB_WIDTH if b.indent == .Tabs else indent_width_detect(b.lines[:])
+}
+
 buffer_new :: proc() -> Buffer {
 	lines := make([dynamic]Line, 0, 64)
 	append(&lines, Line{})
@@ -59,6 +72,7 @@ buffer_new :: proc() -> Buffer {
 		cursor        = {0, 0},
 		line_ending   = .LF,
 		final_newline = true,
+		indent_width  = TAB_WIDTH,
 	}
 	buffer.saved = buffer_snapshot(&buffer)
 	return buffer
@@ -174,14 +188,7 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 		append(&buffer.lines, Line{})
 	}
 
-	buffer.indent = .Spaces
-	for line in buffer.lines {
-		if len(line.text) == 0 || (line.text[0] != ' ' && line.text[0] != '\t') {
-			continue
-		}
-		buffer.indent = .Tabs if line.text[0] == '\t' else .Spaces
-		break
-	}
+	buffer_detect_indent(buffer)
 
 	delete(buffer.path)
 	buffer.path = strings.clone(path)

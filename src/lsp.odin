@@ -836,7 +836,7 @@ lsp_send_format :: proc(editor: ^Editor, b: ^Buffer, kind: LspRequest) -> bool {
 			`{{"jsonrpc":"2.0","id":%d,"method":"textDocument/formatting","params":{{"textDocument":{{"uri":%s}},"options":{{"tabSize":%d,"insertSpaces":%s}}}}}}`,
 			id,
 			lsp_json_string(lsp_uri(b.path)),
-			TAB_WIDTH,
+			b.indent_width,
 			"true" if b.indent == .Spaces else "false",
 		),
 	)

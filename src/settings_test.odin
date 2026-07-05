@@ -81,7 +81,7 @@ test_config_files :: proc(t: ^testing.T) {
 		_, present := kb[cmd.name]
 		testing.expectf(t, present, "keybind %s materialized", cmd.name)
 	}
-	ti, ti_ok := kb["Toggle Indent (Tabs/Spaces)"].(json.String)
+	ti, ti_ok := kb["Change Indentation"].(json.String)
 	testing.expect(t, ti_ok && ti == "", "keyless command materialized as empty string")
 
 	langs, langs_ok := obj["languages"].(json.Object)

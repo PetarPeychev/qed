@@ -206,9 +206,13 @@ re-opens LSP).
 ## Shipped
 
 Core editing: buffer open/save (atomic, LF/CRLF + final-newline preserving),
-insert/delete primitives + grouped undo/redo, auto-indent, selection +
+insert/delete primitives + grouped undo/redo, bracket/colon-aware auto-indent
+(Enter indents after an opener / Python `:`, splits a matched `{}` pair, closing
+bracket re-aligns to its opener), selection +
 selection-aware editing, block indent/dedent, clipboard (external + fallback),
-full Unicode (grapheme + display width), tab-char display + tabs/spaces detect,
+full Unicode (grapheme + display width), tab-char display + per-buffer
+tabs/spaces + indent-width detect (`Change Indentation` command: Auto-detect /
+Tabs / Spaces:1–4; literal-tab display width stays the global `tab_width`),
 line-comment toggle, move-lines, paragraph/word/smart-home motion, auto-close
 pairs (brackets/quotes/backtick: surround selection, type-over, backspace-deletes-pair;
 `auto_close_pairs` knob), matching-bracket underline.

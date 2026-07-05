@@ -31,6 +31,7 @@ Editor :: struct {
 	picker:          Picker,
 	bufswitch:       BufSwitch,
 	langpick:        LangPick,
+	indentpick:      IndentPick,
 	linefind:        LineFind,
 	projsearch:      ProjSearch,
 	rename:          Rename,
@@ -88,6 +89,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	picker_destroy(&editor.picker)
 	bufswitch_destroy(&editor.bufswitch)
 	langpick_destroy(&editor.langpick)
+	indentpick_destroy(&editor.indentpick)
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
 	rename_destroy(&editor.rename)
@@ -142,12 +144,13 @@ Overlay :: struct {
 	render:   proc(editor: ^Editor),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [10]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [11]Overlay {
 	return {
 		{&editor.palette.active, palette_dispatch_key, palette_render},
 		{&editor.picker.active, picker_dispatch_key, picker_render},
 		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render},
 		{&editor.langpick.active, langpick_dispatch_key, langpick_render},
+		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render},
 		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render},
 		{&editor.rename.active, rename_dispatch_key, rename_render},
@@ -457,7 +460,11 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if ev.ch == 0 {
 			return
 		}
-		if !buffer_type_pair(b, ev.ch) {
+		handled := buffer_type_pair(b, ev.ch)
+		if !handled && ev.ch <= 0x7f {
+			handled = buffer_close_dedent(b, u8(ev.ch))
+		}
+		if !handled {
 			buffer_type_rune(b, ev.ch)
 		}
 	}
@@ -861,7 +868,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
 	}
 	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
-	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", TAB_WIDTH)
+	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
 	right := LANGUAGES[b.language].name
 	if b.big {
 		right = fmt.tprintf("%s  big", right)

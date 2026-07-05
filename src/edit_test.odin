@@ -44,6 +44,89 @@ test_redo_restores_typing_run :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_newline_indents_after_opener :: proc(t: ^testing.T) {
+	b := test_buffer("func() {")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 8}
+
+	buffer_newline(&b)
+	testing.expect_value(t, buffer_string(&b), "func() {\n    ")
+	testing.expect_value(t, b.cursor, Cursor{1, 4})
+}
+
+@(test)
+test_newline_splits_brace_pair :: proc(t: ^testing.T) {
+	b := test_buffer("func() {}")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 8}
+
+	buffer_newline(&b)
+	testing.expect_value(t, buffer_string(&b), "func() {\n    \n}")
+	testing.expect_value(t, b.cursor, Cursor{1, 4})
+}
+
+@(test)
+test_newline_indents_after_colon_python :: proc(t: ^testing.T) {
+	b := test_buffer("if x:")
+	defer buffer_destroy(&b)
+	b.language = .Python
+	b.cursor = {0, 5}
+
+	buffer_newline(&b)
+	testing.expect_value(t, buffer_string(&b), "if x:\n    ")
+	testing.expect_value(t, b.cursor, Cursor{1, 4})
+}
+
+@(test)
+test_newline_colon_ignored_non_python :: proc(t: ^testing.T) {
+	b := test_buffer("if x:")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 5}
+
+	buffer_newline(&b)
+	testing.expect_value(t, buffer_string(&b), "if x:\n")
+	testing.expect_value(t, b.cursor, Cursor{1, 0})
+}
+
+@(test)
+test_close_dedent_aligns_to_opener :: proc(t: ^testing.T) {
+	b := test_buffer("if x {", "    foo", "    ")
+	defer buffer_destroy(&b)
+	b.cursor = {2, 4}
+
+	handled := buffer_close_dedent(&b, '}')
+	testing.expect(t, handled)
+	testing.expect_value(t, buffer_string(&b), "if x {\n    foo\n}")
+	testing.expect_value(t, b.cursor, Cursor{2, 1})
+}
+
+@(test)
+test_close_dedent_skips_non_blank_prefix :: proc(t: ^testing.T) {
+	b := test_buffer("    foo")
+	defer buffer_destroy(&b)
+	b.cursor = {0, 7}
+
+	handled := buffer_close_dedent(&b, ')')
+	testing.expect(t, !handled)
+	testing.expect_value(t, buffer_string(&b), "    foo")
+}
+
+@(test)
+test_indent_width_detect :: proc(t: ^testing.T) {
+	two := test_buffer("def f():", "  x = 1", "  if x:", "    y = 2")
+	defer buffer_destroy(&two)
+	testing.expect_value(t, indent_width_detect(two.lines[:]), 2)
+
+	four := test_buffer("func() {", "    a := 1", "    if a {", "        b := 2")
+	defer buffer_destroy(&four)
+	testing.expect_value(t, indent_width_detect(four.lines[:]), 4)
+
+	flat := test_buffer("no", "indent", "here")
+	defer buffer_destroy(&flat)
+	testing.expect_value(t, indent_width_detect(flat.lines[:]), TAB_WIDTH)
+}
+
+@(test)
 test_newline_breaks_coalescing :: proc(t: ^testing.T) {
 	b := test_buffer("")
 	defer buffer_destroy(&b)

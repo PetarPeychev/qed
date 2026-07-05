@@ -144,6 +144,51 @@ buffer_backspace_pair :: proc(b: ^Buffer) -> bool {
 	return true
 }
 
+bracket_matches :: proc(open, close: u8) -> bool {
+	_, c, is_open, ok := bracket_pair(open)
+	return ok && is_open && close == c
+}
+
+// Typing a closing bracket on an otherwise-blank line re-aligns that line's
+// indentation to its matching opener. Returns true when it consumed the rune.
+buffer_close_dedent :: proc(b: ^Buffer, c: u8) -> bool {
+	if selection_active(b) || !is_close_bracket(c) {
+		return false
+	}
+	row := b.cursor.row
+	col := b.cursor.col
+	line := b.lines[row].text[:]
+	for i in 0 ..< col {
+		if line[i] != ' ' && line[i] != '\t' {
+			return false
+		}
+	}
+	open, close, _, _ := bracket_pair(c)
+	ins := [1]u8{c}
+
+	edit_open(b, .Atomic)
+	buffer_insert(b, {row, col}, string(ins[:]))
+	append(&b.open.edits, Edit{.Delete, {row, col}, strings.clone(string(ins[:]))})
+
+	new_col := col + 1
+	if partner, ok := bracket_scan_backward(b, {row, col}, open, close); ok && partner.row != row {
+		lead := line_indent_len(b.lines[partner.row].text[:])
+		indent := strings.clone(string(b.lines[partner.row].text[:lead]), context.temp_allocator)
+		if string(b.lines[row].text[:col]) != indent {
+			removed := buffer_delete(b, {row, 0}, {row, col})
+			append(&b.open.edits, Edit{.Insert, {row, 0}, removed})
+			buffer_insert(b, {row, 0}, indent)
+			append(&b.open.edits, Edit{.Delete, {row, 0}, strings.clone(indent)})
+			new_col = len(indent) + 1
+		}
+	}
+	buffer_undo_commit(b)
+
+	b.cursor = {row, new_col}
+	cursor_goal_sync(b)
+	return true
+}
+
 bracket_pair :: proc(c: u8) -> (open, close: u8, is_open, ok: bool) {
 	switch c {
 	case '(':

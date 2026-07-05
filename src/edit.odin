@@ -102,17 +102,42 @@ buffer_insert_rune :: proc(b: ^Buffer, r: rune) {
 
 buffer_newline :: proc(b: ^Buffer) {
 	row := b.cursor.row
+	col := b.cursor.col
 	line := b.lines[row].text[:]
-	indent_len := 0
-	for indent_len < len(line) && (line[indent_len] == ' ' || line[indent_len] == '\t') {
-		indent_len += 1
+
+	base := min(line_indent_len(line), col)
+	indent := string(line[:base])
+	unit := indent_unit(b)
+
+	extra := ""
+	opener: u8 = 0
+	if p, ok := last_nonspace(line[:col]); ok {
+		if _, _, is_open, is_bracket := bracket_pair(p); is_bracket && is_open {
+			extra = unit
+			opener = p
+		} else if b.language == .Python && p == ':' {
+			extra = unit
+		}
 	}
-	indent_len = min(indent_len, b.cursor.col)
-	text := strings.concatenate({"\n", string(line[:indent_len])}, context.temp_allocator)
+	split := false
+	if opener != 0 {
+		if q, ok := first_nonspace(line[col:]); ok {
+			split = bracket_matches(opener, q)
+		}
+	}
 
 	edit_open(b, .Atomic)
-	end := buffer_insert(b, b.cursor, text)
-	append(&b.open.edits, Edit{.Delete, b.cursor, strings.clone(text)})
+	cursor: Cursor
+	if split {
+		text := strings.concatenate({"\n", indent, unit, "\n", indent}, context.temp_allocator)
+		buffer_insert(b, {row, col}, text)
+		append(&b.open.edits, Edit{.Delete, {row, col}, strings.clone(text)})
+		cursor = {row + 1, base + len(unit)}
+	} else {
+		text := strings.concatenate({"\n", indent, extra}, context.temp_allocator)
+		cursor = buffer_insert(b, {row, col}, text)
+		append(&b.open.edits, Edit{.Delete, {row, col}, strings.clone(text)})
+	}
 
 	prev := b.lines[row].text[:]
 	if len(prev) > 0 && line_is_blank(prev) {
@@ -121,8 +146,26 @@ buffer_newline :: proc(b: ^Buffer) {
 	}
 	buffer_undo_commit(b)
 
-	b.cursor = end
+	b.cursor = cursor
 	cursor_goal_sync(b)
+}
+
+last_nonspace :: proc(text: []u8) -> (u8, bool) {
+	for i := len(text) - 1; i >= 0; i -= 1 {
+		if text[i] != ' ' && text[i] != '\t' {
+			return text[i], true
+		}
+	}
+	return 0, false
+}
+
+first_nonspace :: proc(text: []u8) -> (u8, bool) {
+	for c in text {
+		if c != ' ' && c != '\t' {
+			return c, true
+		}
+	}
+	return 0, false
 }
 
 line_is_blank :: proc(text: []u8) -> bool {
@@ -140,6 +183,39 @@ line_indent_len :: proc(text: []u8) -> int {
 		n += 1
 	}
 	return n
+}
+
+// Most common positive step between consecutive non-blank lines' leading-space
+// counts. Falls back to TAB_WIDTH when the file has no space indentation.
+indent_width_detect :: proc(lines: []Line) -> int {
+	freq: [9]int
+	prev := 0
+	for line in lines {
+		text := line.text[:]
+		if len(text) > 0 && text[0] == '\t' {
+			prev = 0
+			continue
+		}
+		n := 0
+		for n < len(text) && text[n] == ' ' {
+			n += 1
+		}
+		if n == len(text) {
+			continue
+		}
+		d := n - prev
+		if d > 0 && d < len(freq) {
+			freq[d] += 1
+		}
+		prev = n
+	}
+	best, width := 0, 0
+	for count, w in freq {
+		if count > best {
+			best, width = count, w
+		}
+	}
+	return width if width > 0 else TAB_WIDTH
 }
 
 comment_shift_col :: proc(col, row, target_row, at, delta: int) -> int {
@@ -247,7 +323,7 @@ buffer_insert_tab :: proc(b: ^Buffer) {
 		buffer_insert_text(b, "\t", .Atomic)
 		return
 	}
-	n := TAB_WIDTH - b.cursor.col % TAB_WIDTH
+	n := b.indent_width - b.cursor.col % b.indent_width
 	buffer_insert_text(b, strings.repeat(" ", n, context.temp_allocator), .Atomic)
 }
 
@@ -362,7 +438,7 @@ buffer_indent :: proc(b: ^Buffer) {
 	if to.col == 0 && to.row > from.row {
 		last_row -= 1
 	}
-	indent := "\t" if b.indent == .Tabs else strings.repeat(" ", TAB_WIDTH, context.temp_allocator)
+	indent := indent_unit(b)
 	shift := len(indent)
 
 	edit_open(b, .Atomic)
@@ -384,7 +460,14 @@ buffer_indent :: proc(b: ^Buffer) {
 	cursor_goal_sync(b)
 }
 
-dedent_count :: proc(text: []u8) -> int {
+indent_unit :: proc(b: ^Buffer) -> string {
+	if b.indent == .Tabs {
+		return "\t"
+	}
+	return strings.repeat(" ", b.indent_width, context.temp_allocator)
+}
+
+dedent_count :: proc(text: []u8, width: int) -> int {
 	if len(text) > 0 && text[0] == '\t' {
 		return 1
 	}
@@ -392,7 +475,7 @@ dedent_count :: proc(text: []u8) -> int {
 	for lead < len(text) && text[lead] == ' ' {
 		lead += 1
 	}
-	return min(lead, TAB_WIDTH)
+	return min(lead, width)
 }
 
 buffer_dedent :: proc(b: ^Buffer) {
@@ -411,7 +494,7 @@ buffer_dedent :: proc(b: ^Buffer) {
 
 	any := false
 	for row in first_row ..= last_row {
-		if dedent_count(b.lines[row].text[:]) > 0 {
+		if dedent_count(b.lines[row].text[:], b.indent_width) > 0 {
 			any = true
 			break
 		}
@@ -426,7 +509,7 @@ buffer_dedent :: proc(b: ^Buffer) {
 
 	edit_open(b, .Atomic)
 	for row in first_row ..= last_row {
-		n := dedent_count(b.lines[row].text[:])
+		n := dedent_count(b.lines[row].text[:], b.indent_width)
 		if n == 0 {
 			continue
 		}

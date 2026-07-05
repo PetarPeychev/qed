@@ -42,11 +42,7 @@ cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 	editor_set_message(editor, fmt.tprintf("Format on save: %s", "on" if editor.format_on_save else "off"))
 }
 
-cmd_toggle_indent :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
-	b.indent = .Spaces if b.indent == .Tabs else .Tabs
-	editor_set_message(editor, fmt.tprintf("Indent: %s", "Tabs" if b.indent == .Tabs else "Spaces"))
-}
+cmd_change_indent :: proc(editor: ^Editor) {indentpick_open(editor)}
 
 commands := [?]Command {
 	{name = "Open File", shortcut = "Ctrl+o", key = .Ctrl_O, run = picker_open},
@@ -68,7 +64,7 @@ commands := [?]Command {
 	{name = "Paste", shortcut = "Ctrl+v", key = .Ctrl_V, run = editor_paste},
 	{name = "Select All", shortcut = "Ctrl+a", key = .Ctrl_A, run = cmd_select_all},
 	{name = "Toggle Comment", shortcut = "Ctrl+/", key = .Ctrl_Slash, run = cmd_toggle_comment},
-	{name = "Toggle Indent (Tabs/Spaces)", key = .Ctrl_Tilde, run = cmd_toggle_indent},
+	{name = "Change Indentation", run = cmd_change_indent},
 	{name = "Set Language", run = cmd_set_language},
 	{name = "Go to Definition", shortcut = "Alt+d", alt_ch = 'd', run = cmd_lsp_definition},
 	{name = "Hover", shortcut = "Alt+s", alt_ch = 's', run = cmd_lsp_hover},
