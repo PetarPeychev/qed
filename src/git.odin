@@ -75,11 +75,7 @@ git_base_fetch :: proc(b: ^Buffer) {
 		return
 	}
 
-	final_nl := blob[len(blob) - 1] == '\n'
 	segments := strings.split(blob, "\n", context.temp_allocator)
-	if final_nl {
-		segments = segments[:len(segments) - 1]
-	}
 	for segment in segments {
 		s := segment
 		if len(s) > 0 && s[len(s) - 1] == '\r' {

@@ -16,7 +16,6 @@ Buffer :: struct {
 	indent:        IndentStyle,
 	indent_width:  int,
 	line_ending:   LineEnding,
-	final_newline: bool,
 	undo:          [dynamic]EditGroup,
 	redo:          [dynamic]EditGroup,
 	open:          EditGroup,
@@ -68,11 +67,10 @@ buffer_new :: proc() -> Buffer {
 	lines := make([dynamic]Line, 0, 64)
 	append(&lines, Line{})
 	buffer := Buffer {
-		lines         = lines,
-		cursor        = {0, 0},
-		line_ending   = .LF,
-		final_newline = true,
-		indent_width  = TAB_WIDTH,
+		lines        = lines,
+		cursor       = {0, 0},
+		line_ending  = .LF,
+		indent_width = TAB_WIDTH,
 	}
 	buffer.saved = buffer_snapshot(&buffer)
 	return buffer
@@ -171,12 +169,8 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	text := string(data)
 	buffer.big = len(data) >= BIG_FILE_BYTES
 	buffer.line_ending = .CRLF if strings.contains(text, "\r\n") else .LF
-	buffer.final_newline = len(text) > 0 && text[len(text) - 1] == '\n'
 
 	segments := strings.split(text, "\n", context.temp_allocator)
-	if buffer.final_newline {
-		segments = segments[:len(segments) - 1]
-	}
 	for segment in segments {
 		s := segment
 		if len(s) > 0 && s[len(s) - 1] == '\r' {
@@ -223,9 +217,6 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 			strings.write_string(&sb, ending)
 		}
 		strings.write_bytes(&sb, line.text[:])
-	}
-	if buffer.final_newline {
-		strings.write_string(&sb, ending)
 	}
 	data := strings.to_string(sb)
 

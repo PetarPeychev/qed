@@ -15,7 +15,7 @@ Buffer :: struct {
     selection:   Maybe(Cursor)          // anchor; cursor is the moving end
     goal_col:    int                    // remembered x for vertical moves
     line_ending: LineEnding             // .LF | .CRLF, detected on open
-    final_newline, modified, big: bool
+    modified, big: bool
     undo, redo:  [dynamic]EditGroup     // inverse-op log; `open` group coalesces
     hl: Highlight, git: GitGutter       // per-buffer highlight tree + git marks
     language: Language                  // detected at open; Set Language overrides
@@ -101,12 +101,16 @@ member group is no longer on top).
 
 ## Files
 
-- **Open:** detect LF vs CRLF and final-newline, split into lines without storing
-  terminators. Missing path → empty buffer, created on first save. Files ≥
-  `BIG_FILE_BYTES` (2 MB) open with `big` set — highlight, git gutter and LSP are
-  skipped (fast plain-text buffer).
+- **Open:** detect LF vs CRLF, split on `\n` into lines without storing
+  terminators. A trailing newline is a **real empty last line** (VS Code model:
+  visible + navigable), so "content\n" → `["content", ""]`; join with `\n`
+  reconstructs the file exactly, no separate final-newline flag. Missing path →
+  empty buffer, created on first save. Files ≥ `BIG_FILE_BYTES` (2 MB) open with
+  `big` set — highlight, git gutter and LSP are skipped (fast plain-text buffer).
 - **Save (atomic):** write a temp file in the same dir, then `rename` over target;
-  reconstruct bytes from `line_ending` + `final_newline`.
+  reconstruct bytes by joining lines with `line_ending` (the trailing empty line,
+  if any, becomes the trailing newline). No newline is forced — files save exactly
+  as shown.
 - **Startup arg:** file → open it; directory → set working root + welcome screen;
   absent → welcome screen. Working root is the future root for cross-file features.
 

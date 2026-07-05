@@ -330,7 +330,6 @@ test_open_detects_lf_no_final_newline :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(b.lines), 2)
 	testing.expect_value(t, buffer_string(&b), "a\nb")
 	testing.expect_value(t, b.line_ending, LineEnding.LF)
-	testing.expect(t, !b.final_newline)
 }
 
 @(test)
@@ -343,10 +342,9 @@ test_open_detects_crlf_final_newline :: proc(t: ^testing.T) {
 	defer buffer_destroy(&b)
 	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
 
-	testing.expect_value(t, len(b.lines), 2)
-	testing.expect_value(t, buffer_string(&b), "a\nb")
+	testing.expect_value(t, len(b.lines), 3)
+	testing.expect_value(t, buffer_string(&b), "a\nb\n")
 	testing.expect_value(t, b.line_ending, LineEnding.CRLF)
-	testing.expect(t, b.final_newline)
 }
 
 @(test)

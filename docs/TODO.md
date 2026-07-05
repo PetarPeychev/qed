@@ -9,8 +9,6 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
-- [ ] Show a trailing empty line when `final_newline` is set (match vim/VS Code) — a single final newline is currently invisible/non-navigable, so ruff-normalized files look like they lost their trailing newline.
-
 ## Features
 
 ## AI / LLM assist

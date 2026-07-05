@@ -37,11 +37,10 @@ format_external :: proc(editor: ^Editor, b: ^Buffer, save_after: bool) {
 		return
 	}
 
-	body, final_nl := format_normalize(out)
-	changed := body != input || final_nl != b.final_newline
+	body := format_normalize(out)
+	changed := body != input
 	if changed {
 		format_apply(b, body)
-		b.final_newline = final_nl
 		if b == editor_buffer(editor) {
 			editor_scroll(editor)
 		}
@@ -53,18 +52,12 @@ format_external :: proc(editor: ^Editor, b: ^Buffer, save_after: bool) {
 	}
 }
 
-// Strip line terminators to the buffer's storage form: content joined by '\n' with
-// the trailing newline hoisted out into a flag (matching buffer_snapshot / final_newline).
-format_normalize :: proc(out: string) -> (string, bool) {
+format_normalize :: proc(out: string) -> string {
 	text := out
 	if strings.contains_rune(text, '\r') {
 		text, _ = strings.replace_all(text, "\r\n", "\n", context.temp_allocator)
 	}
-	final_nl := len(text) > 0 && text[len(text) - 1] == '\n'
-	if final_nl {
-		text = text[:len(text) - 1]
-	}
-	return text, final_nl
+	return text
 }
 
 format_apply :: proc(b: ^Buffer, body: string) {

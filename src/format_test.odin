@@ -24,21 +24,19 @@ save_and_read_last_byte :: proc(b: ^Buffer, path: string) -> (u8, bool) {
 apply_format :: proc(b: ^Buffer, out: string) {
 	input := buffer_snapshot(b)
 	defer delete(input)
-	body, final_nl := format_normalize(out)
-	if body != input || final_nl != b.final_newline {
+	body := format_normalize(out)
+	if body != input {
 		format_apply(b, body)
-		b.final_newline = final_nl
 	}
 }
 
 @(test)
 test_format_preserves_trailing_newline :: proc(t: ^testing.T) {
-	b := test_buffer("x = 1")
+	b := test_buffer("x = 1", "") // trailing empty line = trailing newline
 	defer buffer_destroy(&b)
-	b.final_newline = true
 
 	apply_format(&b, "x = 1\n") // ruff: no change, keeps newline
-	testing.expect(t, b.final_newline, "flag stays true")
+	testing.expect_value(t, len(b.lines), 2)
 
 	last, ok := save_and_read_last_byte(&b, "/tmp/qed-fmt-preserve.py")
 	testing.expect(t, ok)
@@ -47,12 +45,11 @@ test_format_preserves_trailing_newline :: proc(t: ^testing.T) {
 
 @(test)
 test_format_reformats_keeps_newline :: proc(t: ^testing.T) {
-	b := test_buffer("x=1") // ruff will reformat this
+	b := test_buffer("x=1", "") // ruff will reformat this
 	defer buffer_destroy(&b)
-	b.final_newline = true
 
 	apply_format(&b, "x = 1\n")
-	testing.expect(t, b.final_newline, "flag stays true through a content change")
+	testing.expect_value(t, len(b.lines), 2)
 
 	last, ok := save_and_read_last_byte(&b, "/tmp/qed-fmt-reformat.py")
 	testing.expect(t, ok)
@@ -61,12 +58,11 @@ test_format_reformats_keeps_newline :: proc(t: ^testing.T) {
 
 @(test)
 test_format_adds_missing_trailing_newline :: proc(t: ^testing.T) {
-	b := test_buffer("x=1")
+	b := test_buffer("x=1") // no trailing empty line
 	defer buffer_destroy(&b)
-	b.final_newline = false
 
 	apply_format(&b, "x = 1\n") // ruff reformats and ends with newline
-	testing.expect(t, b.final_newline, "flag flips to true")
+	testing.expect_value(t, len(b.lines), 2)
 
 	last, ok := save_and_read_last_byte(&b, "/tmp/qed-fmt-add.py")
 	testing.expect(t, ok)
