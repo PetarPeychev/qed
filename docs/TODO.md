@@ -11,8 +11,6 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Features
 
-- [ ] JSX tags: auto-close `>` and paired rename of open/close tags.
-
 ## AI / LLM assist
 
 See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schema.
