@@ -74,6 +74,8 @@ config_colors := [?]Config_Color {
 	{"gutter_background", &COLOR_GUTTER_BG},
 	{"current_line_foreground", &COLOR_CURRENT_LINE_FG},
 	{"current_line_background", &COLOR_CURRENT_LINE_BG},
+	{"ai_edit_background", &COLOR_AI_EDIT_BG},
+	{"ai_edit_current_background", &COLOR_AI_EDIT_CURRENT_BG},
 	{"pane_foreground", &COLOR_PANE_FG},
 	{"pane_background", &COLOR_PANE_BG},
 	{"pane_border", &COLOR_PANE_BORDER},

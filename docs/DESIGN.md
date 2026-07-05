@@ -208,10 +208,14 @@ them). Each request stores the target buffer **path** (survives `[]Buffer` reall
 and the original selected **text**. On completion: the reply's **last fenced code
 block** is extracted (the model may reason first), the block is **relocated** by
 content search nearest the original range — so unrelated edits elsewhere don't
-invalidate it, and a genuinely changed block is discarded — the selection's
+invalidate it; editing the block itself cancels the request immediately
+(`llm_prune_edited`, kills the subprocess so it stops burning tokens) — the selection's
 leading/trailing **whitespace framing is reattached**, and the range is replaced
 as **one undo group** with the cursor/selection translated in place (no jump to the
-edit). `QED_LLM_DEBUG` dumps the prompt/response to `/tmp` for debugging. The
+edit). While a request is in flight its rows carry a faint highlight
+(`COLOR_AI_EDIT_BG`, lighter `COLOR_AI_EDIT_CURRENT_BG` on the cursor line),
+relocated live each render by the same content search so it tracks edits above/below.
+`QED_LLM_DEBUG` dumps the prompt/response to `/tmp` for debugging. The
 selection-replace contract can't touch code outside the region (e.g. add an
 import); that's a TODO. See [notes/ai.md](notes/ai.md).
 

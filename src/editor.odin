@@ -819,6 +819,11 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		bra, brm, br_ok = bracket_match(b)
 	}
 
+	ai_rows: [][2]int
+	if len(editor.llm.requests) > 0 {
+		ai_rows = llm_active_rows(editor, b)
+	}
+
 	for screen_y in 0 ..< h {
 		row := editor.scroll_row + screen_y
 		if row >= len(b.lines) {
@@ -861,8 +866,15 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				append(&underlines, [2]int{brm.col, brm.col + 1})
 			}
 		}
+		ai_edit := false
+		for r in ai_rows {
+			if row >= r[0] && row <= r[1] {
+				ai_edit = true
+				break
+			}
+		}
 		colors := highlight_colors(b, row)
-		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, row_sel_from, row_sel_to, underlines[:])
+		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, ai_edit, row_sel_from, row_sel_to, underlines[:])
 	}
 
 	name := b.path if b.path != "" else "[No Name]"
@@ -968,10 +980,19 @@ editor_render_text_row :: proc(
 	colors: []tb2.Color,
 	scroll_col: int,
 	current: bool,
+	ai_edit: bool,
 	sel_from, sel_to: int,
 	underlines: [][2]int,
 ) {
-	bg_normal := COLOR_CURRENT_LINE_BG if current else COLOR_BG
+	bg_normal := COLOR_BG
+	switch {
+	case ai_edit && current:
+		bg_normal = COLOR_AI_EDIT_CURRENT_BG
+	case ai_edit:
+		bg_normal = COLOR_AI_EDIT_BG
+	case current:
+		bg_normal = COLOR_CURRENT_LINE_BG
+	}
 	for sx in 0 ..< w {
 		tb2.set_cell(i32(gutter + sx), i32(y), ' ', COLOR_FG, bg_normal)
 	}

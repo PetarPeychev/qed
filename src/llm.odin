@@ -27,6 +27,28 @@ llm_running :: proc(editor: ^Editor) -> bool {
 	return len(editor.llm.requests) > 0
 }
 
+// Row ranges [lo, hi] that in-flight requests currently cover in buffer `b`,
+// located live by the same content search the apply uses — so the highlight
+// tracks edits above/below instead of going stale.
+llm_active_rows :: proc(editor: ^Editor, b: ^Buffer, allocator := context.temp_allocator) -> [][2]int {
+	rows := make([dynamic][2]int, allocator)
+	for &req in editor.llm.requests {
+		if req.buf_path != b.path {
+			continue
+		}
+		from, to, ok := llm_locate(b, req.original, req.from)
+		if !ok {
+			continue
+		}
+		end_row := to.row
+		if to.col == 0 && to.row > from.row {
+			end_row -= 1
+		}
+		append(&rows, [2]int{from.row, end_row})
+	}
+	return rows[:]
+}
+
 llm_build_prompt :: proc(
 	b: ^Buffer,
 	instruction: string,
@@ -194,11 +216,36 @@ llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
 	editor_set_message(editor, "AI edit applied")
 }
 
+// Cancel any in-flight request whose block was edited (llm_locate can no longer
+// find it): kill the subprocess right away so it stops burning tokens, and the
+// highlight drops with it. Called after each edit.
+llm_prune_edited :: proc(editor: ^Editor) {
+	for i := 0; i < len(editor.llm.requests); {
+		req := &editor.llm.requests[i]
+		idx := editor_find_buffer(editor, req.buf_path)
+		if idx >= 0 {
+			if _, _, ok := llm_locate(&editor.buffers[idx], req.original, req.from); !ok {
+				llm_request_kill(req)
+				ordered_remove(&editor.llm.requests, i)
+				editor_set_message(editor, "AI edit cancelled: block edited")
+				continue
+			}
+		}
+		i += 1
+	}
+}
+
+llm_request_kill :: proc(req: ^LlmRequest) {
+	_ = os.process_kill(req.process)
+	os.close(req.stdout)
+	_, _ = os.process_wait(req.process, time.Second)
+	llm_request_destroy(req)
+}
+
 llm_cancel_all :: proc(editor: ^Editor) {
 	n := len(editor.llm.requests)
 	for &req in editor.llm.requests {
-		_ = os.process_kill(req.process)
-		llm_request_destroy(&req)
+		llm_request_kill(&req)
 	}
 	clear(&editor.llm.requests)
 	if n > 0 {

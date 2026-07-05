@@ -76,6 +76,9 @@ main :: proc() {
 				}
 			}
 			editor_dispatch(&editor, ev)
+			if llm_running(&editor) {
+				llm_prune_edited(&editor)
+			}
 		}
 		free_all(context.temp_allocator)
 	}

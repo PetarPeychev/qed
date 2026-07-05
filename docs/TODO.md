@@ -9,6 +9,8 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
+- [ ] Show a trailing empty line when `final_newline` is set (match vim/VS Code) — a single final newline is currently invisible/non-navigable, so ruff-normalized files look like they lost their trailing newline.
+
 ## Features
 
 ## AI / LLM assist
@@ -46,6 +48,7 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 
 ## Polish
 
+- [ ] Generic layered line-background system: compose per-line tints (current line, AI-edit, git hunk, …) instead of fixed per-feature colors with hardcoded precedence in `editor_render_text_row`.
 - [ ] Context-filter the command list (hide commands that don't apply, e.g. on welcome screen).
 - [ ] Picker mouse support (click row, wheel scroll).
 - [ ] Per-buffer viewport memory across buffer switches.
