@@ -230,13 +230,33 @@ relocated live each render by the same content search so it tracks edits above/b
 selection-replace contract can't touch code outside the region (e.g. add an
 import); that's a TODO. See [notes/ai.md](notes/ai.md).
 
+## Inline completion
+
+*Ghost-text FIM* (`fim.odin`): with `fim.enabled` (config `llm.completion_enabled`,
+seeded at startup, *Toggle Inline Completion* flips it), typing arms a debounced
+(`completion_debounce_ms`) request. `prefix`/`suffix` are the buffer around the cursor
+clamped to `completion_context_lines`, sent to a FIM endpoint (default Codestral
+`/v1/fim/completions`) as an async `curl` subprocess — same non-blocking poll as
+`lsp`/`llm`, pumped in the main loop; any edit cancels the in-flight request and re-arms.
+The reply's `choices[0].message.content` is stored as dimmed virtual text
+(`COLOR_GHOST_FG`) drawn at the cursor, **not** backed by the buffer; multi-line
+suggestions reserve blank rows via `fim_ghost_gap` (the buffer render offsets rows below
+the cursor down) so continuation lines don't paint over real text. Ghost is valid only
+while the cursor sits at `ghost_at`. `Tab` accepts all, `Ctrl+Right` a word (both one
+`buffer_insert_text` undo group); other keys / mouse / cursor move dismiss. The LSP
+completion popup takes precedence — ghost is suppressed while it is open. The API key is
+read from `$CODESTRAL_API_KEY` (config `completion_api_key_env`) by the curl child, never
+held by qed. **External quirk:** the POST body is fed on **stdin** (`--data-binary @-`),
+not `@file` — the async spawn unlinks the temp immediately and curl opens a `@file`
+lazily, so a `@file` races to an empty body. `QED_FIM_DEBUG` logs to `/tmp/qed-fim.log`.
+
 ## File layout
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
-`format` · `git` · `llm` · `aiedit` · `perf_bench`.
+`format` · `git` · `llm` · `aiedit` · `fim` · `perf_bench`.
 
 ## Shipped
 
@@ -283,7 +303,11 @@ document formatting (external formatter e.g. `ruff format -`, else LSP) + format
 AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command
 (`llm.chat_command`, default `claude -p`) — whole-file context, concurrent
 cancellable async subprocesses, fenced-block extraction, content-relocated apply
-as one undo group with whitespace framing preserved.
+as one undo group with whitespace framing preserved. Inline FIM completion
+(ghost-text): auto-triggered debounced suggestions from a FIM endpoint (default
+Codestral `/v1/fim/completions` via `curl`), dimmed virtual text with multi-line
+push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismiss,
+LSP popup takes precedence; `llm.completion_enabled` + *Toggle Inline Completion*.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff. See

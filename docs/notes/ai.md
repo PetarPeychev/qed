@@ -6,10 +6,12 @@ context+prompt). Read CLAUDE.md and DESIGN.md first. This is a `notes/` file
 because the subsystem spans several TODO items; the one-liners in
 [../TODO.md](../TODO.md) link here.
 
-**Status:** *Selection + prompt* (`Ctrl+K`) shipped — the chat backend via a shell
-command, plus the reusable async subprocess runner it needed. Still open: inline
-FIM ghost-text, context + prompt, HTTP (`curl`) providers, the shared inline
-virtual-text primitive, and letting an edit touch code outside the selection.
+**Status:** *Selection + prompt* (`Ctrl+K`) and *inline FIM ghost-text* (`fim.odin`,
+Codestral via `curl`) shipped, along with the reusable async subprocess runner they
+share. Still open: context + prompt, the provider-neutral `llm` config (named HTTP
+providers vs command; only Codestral's shape is wired today), a genuinely *shared*
+inline virtual-text primitive (ghost-text has its own renderer; inline diagnostics still
+want one), and letting an edit touch code outside the selection.
 
 ## Two backends, never one
 

@@ -45,6 +45,7 @@ Editor :: struct {
 	hunk_highlight:  bool,
 	llm:             Llm,
 	aiedit:          AiEdit,
+	fim:             Fim,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -56,6 +57,7 @@ editor_init :: proc(path: string = "") -> Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		format_on_save = FORMAT_ON_SAVE,
 		hunk_highlight = GIT_HUNK_HIGHLIGHT,
+		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
 	}
 	b := buffer_new()
 	if path != "" && !os.is_dir(path) {
@@ -101,6 +103,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	jump_destroy(&editor.jumps)
 	llm_cancel_all(editor)
 	delete(editor.llm.requests)
+	fim_dismiss(editor)
 	aiedit_destroy(&editor.aiedit)
 	delete(g_language_rules)
 	syntax_shutdown()
@@ -240,6 +243,7 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor_set_message(editor, "")
 	editor.hover_active = false
 	completion_dismiss(editor)
+	fim_dismiss(editor)
 	b := editor_buffer(editor)
 
 	#partial switch ev.key {
@@ -347,6 +351,12 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if !completion_keeps(ev) {
 			completion_dismiss(editor)
 		}
+	}
+	if !editor.completion.active && fim_ghost_active(editor) {
+		if fim_ghost_key(editor, ev) {
+			return
+		}
+		fim_dismiss(editor)
 	}
 	editor_set_message(editor, "")
 	editor.hover_active = false
@@ -478,6 +488,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	editor_scroll(editor)
 	completion_after(editor, ev)
+	fim_after(editor, ev)
 }
 
 editor_request_quit :: proc(editor: ^Editor) {
@@ -710,6 +721,8 @@ editor_render :: proc(editor: ^Editor) {
 		tb2.set_cursor(i32(cx), i32(cy))
 		if editor.completion.active {
 			completion_render(editor, cx, cy)
+		} else if fim_ghost_active(editor) {
+			fim_render(editor, cx, cy)
 		} else if editor.hover_active {
 			editor_render_hover_pane(editor, cx, cy)
 		} else {
@@ -826,9 +839,13 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		ai_rows = llm_active_rows(editor, b)
 	}
 
-	for screen_y in 0 ..< h {
-		row := editor.scroll_row + screen_y
-		if row >= len(b.lines) {
+	gap := fim_ghost_gap(editor)
+	for row := editor.scroll_row; row < len(b.lines); row += 1 {
+		screen_y := row - editor.scroll_row
+		if gap > 0 && row > b.cursor.row {
+			screen_y += gap
+		}
+		if screen_y >= h {
 			break
 		}
 		current := row == b.cursor.row

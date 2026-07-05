@@ -15,6 +15,14 @@ LLM_CHAT_COMMAND := "claude -p"
 LLM_EDIT_PROMPT :=
 	"You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region — and nothing else — inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}"
 
+LLM_COMPLETION_ENABLED := false
+LLM_COMPLETION_ENDPOINT := "https://codestral.mistral.ai/v1/fim/completions"
+LLM_COMPLETION_MODEL := "codestral-latest"
+LLM_COMPLETION_API_KEY_ENV := "CODESTRAL_API_KEY"
+LLM_COMPLETION_MAX_TOKENS := 256
+LLM_COMPLETION_DEBOUNCE_MS := 350
+LLM_COMPLETION_CONTEXT_LINES := 200
+
 PALETTE_WIDTH := 60
 PALETTE_MAX_ROWS := 8
 
@@ -61,6 +69,7 @@ COLOR_GUTTER_BG := tb2.Color(0x1b1b1b)
 COLOR_CURRENT_LINE_FG := tb2.Color(0xffdd33)
 COLOR_CURRENT_LINE_BG := tb2.Color(0xffffff)
 COLOR_AI_EDIT_BG := tb2.Color(0x5a378a)
+COLOR_GHOST_FG := tb2.Color(0x9e9e9e)
 COLOR_PANE_FG := tb2.Color(0xf4f4ff)
 COLOR_PANE_BG := tb2.Color(0x2b2b2b)
 COLOR_PANE_BORDER := tb2.Color(0x868686)

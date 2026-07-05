@@ -61,6 +61,19 @@ Config_Str :: struct {
 config_llm := [?]Config_Str {
 	{"chat_command", &LLM_CHAT_COMMAND},
 	{"edit_prompt", &LLM_EDIT_PROMPT},
+	{"completion_endpoint", &LLM_COMPLETION_ENDPOINT},
+	{"completion_model", &LLM_COMPLETION_MODEL},
+	{"completion_api_key_env", &LLM_COMPLETION_API_KEY_ENV},
+}
+
+config_llm_ints := [?]Config_Int {
+	{"completion_max_tokens", &LLM_COMPLETION_MAX_TOKENS},
+	{"completion_debounce_ms", &LLM_COMPLETION_DEBOUNCE_MS},
+	{"completion_context_lines", &LLM_COMPLETION_CONTEXT_LINES},
+}
+
+config_llm_bools := [?]Config_Bool {
+	{"completion_enabled", &LLM_COMPLETION_ENABLED},
 }
 
 config_colors := [?]Config_Color {
@@ -76,6 +89,7 @@ config_colors := [?]Config_Color {
 	{"current_line_foreground", &COLOR_CURRENT_LINE_FG},
 	{"current_line_background", &COLOR_CURRENT_LINE_BG},
 	{"ai_edit_background", &COLOR_AI_EDIT_BG},
+	{"ghost_foreground", &COLOR_GHOST_FG},
 	{"pane_foreground", &COLOR_PANE_FG},
 	{"pane_background", &COLOR_PANE_BG},
 	{"pane_border", &COLOR_PANE_BORDER},
@@ -293,6 +307,33 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 				continue
 			}
 			it.ptr^ = strings.clone(string(s))
+		}
+		for it in config_llm_ints {
+			v, has := llm_obj[it.key]
+			if !has {
+				missing = true
+				continue
+			}
+			#partial switch n in v {
+			case json.Integer:
+				it.ptr^ = int(n)
+			case json.Float:
+				it.ptr^ = int(n)
+			case:
+				append(&invalid, fmt.tprintf("llm/%s", it.key))
+			}
+		}
+		for it in config_llm_bools {
+			v, has := llm_obj[it.key]
+			if !has {
+				missing = true
+				continue
+			}
+			if b, is_bool := v.(json.Boolean); is_bool {
+				it.ptr^ = bool(b)
+			} else {
+				append(&invalid, fmt.tprintf("llm/%s", it.key))
+			}
 		}
 	} else {
 		append(&invalid, "llm")
@@ -520,6 +561,30 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 				config_value_text(&sb, v)
 			} else {
 				strings.write_string(&sb, lsp_json_string(it.ptr^))
+			}
+		}
+		for it in config_llm_ints {
+			if !lm_first {
+				strings.write_string(&sb, ",\n")
+			}
+			lm_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
+			if v, has := llm_obj[it.key]; has {
+				config_value_text(&sb, v)
+			} else {
+				fmt.sbprintf(&sb, "%d", it.ptr^)
+			}
+		}
+		for it in config_llm_bools {
+			if !lm_first {
+				strings.write_string(&sb, ",\n")
+			}
+			lm_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
+			if v, has := llm_obj[it.key]; has {
+				config_value_text(&sb, v)
+			} else {
+				strings.write_string(&sb, "true" if it.ptr^ else "false")
 			}
 		}
 		strings.write_string(&sb, "\n  }")

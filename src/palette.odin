@@ -47,6 +47,15 @@ cmd_toggle_hunk_highlight :: proc(editor: ^Editor) {
 	editor_set_message(editor, fmt.tprintf("Hunk highlight: %s", "on" if editor.hunk_highlight else "off"))
 }
 
+cmd_toggle_inline_completion :: proc(editor: ^Editor) {
+	editor.fim.enabled = !editor.fim.enabled
+	editor.fim.warned = false
+	if !editor.fim.enabled {
+		fim_dismiss(editor)
+	}
+	editor_set_message(editor, fmt.tprintf("Inline completion: %s", "on" if editor.fim.enabled else "off"))
+}
+
 cmd_change_indent :: proc(editor: ^Editor) {indentpick_open(editor)}
 cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
 cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
@@ -78,6 +87,7 @@ commands := [?]Command {
 	{name = "Rename Symbol", shortcut = "Alt+r", alt_ch = 'r', run = cmd_lsp_rename},
 	{name = "AI Edit Selection", shortcut = "Ctrl+k", key = .Ctrl_K, run = cmd_ai_edit},
 	{name = "Cancel AI Edits", run = cmd_ai_cancel},
+	{name = "Toggle Inline Completion", run = cmd_toggle_inline_completion},
 	{name = "Format Document", run = cmd_format},
 	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
 	{name = "Toggle Hunk Highlight", run = cmd_toggle_hunk_highlight},

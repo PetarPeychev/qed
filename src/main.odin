@@ -34,7 +34,7 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || llm_running(&editor) || highlight_busy(editor_buffer(&editor)) {
+			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) {
 				if tb2.peek_event(&ev, i32(LSP_POLL_MS)) == .Ok {
 					got_event = true
 				}
@@ -44,6 +44,12 @@ main :: proc() {
 				}
 				if llm_running(&editor) && llm_pump(&editor) {
 					redraw = true
+				}
+				if fim_pump(&editor) {
+					redraw = true
+				}
+				if fim_due(&editor) {
+					fim_request(&editor)
 				}
 				if completion_due(&editor) {
 					editor.completion.want = false
