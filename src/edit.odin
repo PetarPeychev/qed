@@ -340,7 +340,13 @@ buffer_backspace :: proc(b: ^Buffer) {
 	c := b.cursor
 	from := c
 	if c.col > 0 {
-		from = {c.row, grapheme_prev(b.lines[c.row].text[:], c.col)}
+		line := b.lines[c.row].text[:]
+		if b.indent == .Spaces && col_in_leading_spaces(line, c.col) {
+			n := (c.col - 1) % b.indent_width + 1
+			from = {c.row, c.col - n}
+		} else {
+			from = {c.row, grapheme_prev(line, c.col)}
+		}
 	} else if c.row > 0 {
 		from = {c.row - 1, len(b.lines[c.row - 1].text)}
 	} else {
@@ -465,6 +471,15 @@ indent_unit :: proc(b: ^Buffer) -> string {
 		return "\t"
 	}
 	return strings.repeat(" ", b.indent_width, context.temp_allocator)
+}
+
+col_in_leading_spaces :: proc(text: []u8, col: int) -> bool {
+	for i in 0 ..< col {
+		if text[i] != ' ' {
+			return false
+		}
+	}
+	return true
 }
 
 dedent_count :: proc(text: []u8, width: int) -> int {

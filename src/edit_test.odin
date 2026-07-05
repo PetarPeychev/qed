@@ -161,6 +161,39 @@ test_cursor_move_seals_group :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_backspace_deletes_indent :: proc(t: ^testing.T) {
+	b := test_buffer("        pass") // 8 leading spaces, width 4
+	defer buffer_destroy(&b)
+	b.cursor = {0, 8}
+
+	buffer_backspace(&b)
+	testing.expect_value(t, buffer_string(&b), "    pass")
+	testing.expect_value(t, b.cursor, Cursor{0, 4})
+}
+
+@(test)
+test_backspace_partial_indent_snaps_to_stop :: proc(t: ^testing.T) {
+	b := test_buffer("      x") // 6 leading spaces
+	defer buffer_destroy(&b)
+	b.cursor = {0, 6}
+
+	buffer_backspace(&b) // snaps back to the width-4 stop: removes 2
+	testing.expect_value(t, buffer_string(&b), "    x")
+	testing.expect_value(t, b.cursor, Cursor{0, 4})
+}
+
+@(test)
+test_backspace_after_text_is_single_char :: proc(t: ^testing.T) {
+	b := test_buffer("    ab") // spaces then text
+	defer buffer_destroy(&b)
+	b.cursor = {0, 6}
+
+	buffer_backspace(&b) // not in leading whitespace -> one char
+	testing.expect_value(t, buffer_string(&b), "    a")
+	testing.expect_value(t, b.cursor, Cursor{0, 5})
+}
+
+@(test)
 test_undo_backspace :: proc(t: ^testing.T) {
 	b := test_buffer("abc")
 	defer buffer_destroy(&b)
