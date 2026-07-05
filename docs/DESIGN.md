@@ -209,7 +209,9 @@ Core editing: buffer open/save (atomic, LF/CRLF + final-newline preserving),
 insert/delete primitives + grouped undo/redo, auto-indent, selection +
 selection-aware editing, block indent/dedent, clipboard (external + fallback),
 full Unicode (grapheme + display width), tab-char display + tabs/spaces detect,
-line-comment toggle, move-lines, paragraph/word/smart-home motion.
+line-comment toggle, move-lines, paragraph/word/smart-home motion, auto-close
+pairs (brackets/quotes/backtick: surround selection, type-over, backspace-deletes-pair;
+`auto_close_pairs` knob), matching-bracket underline.
 
 Navigation & UI: line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line, welcome screen, quit guard across

@@ -387,7 +387,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Backspace, .Backspace2:
 		if selection_active(b) {
 			buffer_delete_selection(b)
-		} else {
+		} else if !buffer_backspace_pair(b) {
 			buffer_backspace(b)
 		}
 	case .Delete:
@@ -457,7 +457,9 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if ev.ch == 0 {
 			return
 		}
-		buffer_type_rune(b, ev.ch)
+		if !buffer_type_pair(b, ev.ch) {
+			buffer_type_rune(b, ev.ch)
+		}
 	}
 	editor_scroll(editor)
 	completion_after(editor, ev)
@@ -798,6 +800,12 @@ editor_render_buffer :: proc(editor: ^Editor) {
 
 	sel_from, sel_to, sel_ok := selection_range(b)
 
+	bra, brm: Cursor
+	br_ok := false
+	if !b.big && !sel_ok {
+		bra, brm, br_ok = bracket_match(b)
+	}
+
 	for screen_y in 0 ..< h {
 		row := editor.scroll_row + screen_y
 		if row >= len(b.lines) {
@@ -818,7 +826,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			row_sel_from = sel_from.col if row == sel_from.row else 0
 			row_sel_to = sel_to.col if row == sel_to.row else len(text) + 1
 		}
-		row_diags := make([dynamic][2]int, context.temp_allocator)
+		underlines := make([dynamic][2]int, context.temp_allocator)
 		for d in b.diags {
 			if row < d.from.row || row > d.to.row {
 				continue
@@ -829,11 +837,19 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				de = min(de + 1, len(text))
 			}
 			if ds < de {
-				append(&row_diags, [2]int{ds, de})
+				append(&underlines, [2]int{ds, de})
+			}
+		}
+		if br_ok {
+			if bra.row == row {
+				append(&underlines, [2]int{bra.col, bra.col + 1})
+			}
+			if brm.row == row {
+				append(&underlines, [2]int{brm.col, brm.col + 1})
 			}
 		}
 		colors := highlight_colors(b, row)
-		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, row_sel_from, row_sel_to, row_diags[:])
+		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, current, row_sel_from, row_sel_to, underlines[:])
 	}
 
 	name := b.path if b.path != "" else "[No Name]"
@@ -937,7 +953,7 @@ editor_render_text_row :: proc(
 	scroll_col: int,
 	current: bool,
 	sel_from, sel_to: int,
-	diags: [][2]int,
+	underlines: [][2]int,
 ) {
 	bg_normal := COLOR_CURRENT_LINE_BG if current else COLOR_BG
 	for sx in 0 ..< w {
@@ -983,8 +999,8 @@ editor_render_text_row :: proc(
 		return vcol + cluster_width(cluster)
 	}
 
-	underlined :: proc(diags: [][2]int, col: int) -> bool {
-		for r in diags {
+	underlined :: proc(underlines: [][2]int, col: int) -> bool {
+		for r in underlines {
 			if col >= r[0] && col < r[1] {
 				return true
 			}
@@ -1004,7 +1020,7 @@ editor_render_text_row :: proc(
 		pstart = g.byte_index
 		psel = sel_from >= 0 && g.byte_index >= sel_from && g.byte_index < sel_to
 		pfg = colors[pstart] if colors != nil && pstart < len(colors) else COLOR_FG
-		if underlined(diags, pstart) {
+		if underlined(underlines, pstart) {
 			pfg = tb2.Color(u64(pfg) | u64(tb2.Color.Underline))
 		}
 	}

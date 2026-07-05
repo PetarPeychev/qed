@@ -49,6 +49,7 @@ config_ints := [?]Config_Int {
 
 config_bools := [?]Config_Bool {
 	{"format_on_save", &FORMAT_ON_SAVE},
+	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 }
 
 config_colors := [?]Config_Color {

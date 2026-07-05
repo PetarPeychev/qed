@@ -11,9 +11,8 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Features
 
-- [ ] Auto-close pairs: `()[]{}`/quotes/backtick, surround selection, auto-close + rename JSX tags.
+- [ ] JSX tags: auto-close `>` and paired rename of open/close tags.
 - [ ] Bracket/colon-aware auto-indent on Enter; dedent on closing `}`.
-- [ ] Highlight the bracket matching the one at the cursor.
 - [ ] Configurable indent width + auto-detect from the file (like tabs-vs-spaces).
 
 ## AI / LLM assist
