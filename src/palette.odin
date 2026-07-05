@@ -43,6 +43,8 @@ cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 }
 
 cmd_change_indent :: proc(editor: ^Editor) {indentpick_open(editor)}
+cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
+cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
 
 commands := [?]Command {
 	{name = "Open File", shortcut = "Ctrl+o", key = .Ctrl_O, run = picker_open},
@@ -69,6 +71,8 @@ commands := [?]Command {
 	{name = "Go to Definition", shortcut = "Alt+d", alt_ch = 'd', run = cmd_lsp_definition},
 	{name = "Hover", shortcut = "Alt+s", alt_ch = 's', run = cmd_lsp_hover},
 	{name = "Rename Symbol", shortcut = "Alt+r", alt_ch = 'r', run = cmd_lsp_rename},
+	{name = "AI Edit Selection", shortcut = "Ctrl+k", key = .Ctrl_K, run = cmd_ai_edit},
+	{name = "Cancel AI Edits", run = cmd_ai_cancel},
 	{name = "Format Document", run = cmd_format},
 	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
 	{name = "Next Diagnostic", shortcut = "Alt+>", alt_ch = '>', run = cmd_diag_next},

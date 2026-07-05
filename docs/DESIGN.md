@@ -195,13 +195,33 @@ re-opens LSP).
   reports a message and leaves the buffer untouched (on save, it saves unformatted).
   `format_on_save` is a config knob seeding `editor.format_on_save` at startup.
 
+## AI edit
+
+*Selection + prompt* (`Ctrl+K`, `aiedit.odin` → `llm.odin`): a caret prompt takes an
+instruction; qed sends the whole buffer — with the selection wrapped in
+`<<<SELECT…SELECT>>>` — plus the instruction to a configurable chat command
+(`llm.chat_command`, default `claude -p`; `llm.edit_prompt` is the template). The
+command runs as an **async subprocess** (spawn + non-blocking stdout poll,
+generalized from `lsp.odin`, wired into the main loop next to `lsp_pump`);
+multiple run concurrently and are cancellable (*Cancel AI Edits* / shutdown kill
+them). Each request stores the target buffer **path** (survives `[]Buffer` realloc)
+and the original selected **text**. On completion: the reply's **last fenced code
+block** is extracted (the model may reason first), the block is **relocated** by
+content search nearest the original range — so unrelated edits elsewhere don't
+invalidate it, and a genuinely changed block is discarded — the selection's
+leading/trailing **whitespace framing is reattached**, and the range is replaced
+as **one undo group** with the cursor/selection translated in place (no jump to the
+edit). `QED_LLM_DEBUG` dumps the prompt/response to `/tmp` for debugging. The
+selection-replace contract can't touch code outside the region (e.g. add an
+import); that's a TODO. See [notes/ai.md](notes/ai.md).
+
 ## File layout
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
-`format` · `git` · `perf_bench`.
+`format` · `git` · `llm` · `aiedit` · `perf_bench`.
 
 ## Shipped
 
@@ -243,6 +263,11 @@ auto-triggered completion dropdown (as-you-type + trigger chars, debounced, clie
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
 (config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`).
+
+AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command
+(`llm.chat_command`, default `claude -p`) — whole-file context, concurrent
+cancellable async subprocesses, fenced-block extraction, content-relocated apply
+as one undo group with whitespace framing preserved.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff. See

@@ -90,8 +90,5 @@ rename_render :: proc(editor: ^Editor) {
 	pane_text(inner.x + 1, inner.y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	tx := inner.x + 1 + len(label)
 	tw := inner.x + inner.w - 1 - tx
-	pane_text(tx, inner.y, tw, string(r.input[:]), COLOR_PANE_FG, COLOR_PANE_BG)
-
-	cx := min(tx + visual_width(r.input[:r.caret]), inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(inner.y))
+	input_line_render(tx, inner.y, tw, r.input[:], r.caret)
 }

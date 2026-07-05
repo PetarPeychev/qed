@@ -52,6 +52,16 @@ config_bools := [?]Config_Bool {
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 }
 
+Config_Str :: struct {
+	key: string,
+	ptr: ^string,
+}
+
+config_llm := [?]Config_Str {
+	{"chat_command", &LLM_CHAT_COMMAND},
+	{"edit_prompt", &LLM_EDIT_PROMPT},
+}
+
 config_colors := [?]Config_Color {
 	{"foreground", &COLOR_FG},
 	{"background", &COLOR_BG},
@@ -266,6 +276,26 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 		append(&invalid, "languages")
 	}
 
+	if llm_val, present := root["llm"]; !present {
+		missing = true
+	} else if llm_obj, is_obj := llm_val.(json.Object); is_obj {
+		for it in config_llm {
+			v, has := llm_obj[it.key]
+			if !has {
+				missing = true
+				continue
+			}
+			s, is_str := v.(json.String)
+			if !is_str {
+				append(&invalid, fmt.tprintf("llm/%s", it.key))
+				continue
+			}
+			it.ptr^ = strings.clone(string(s))
+		}
+	} else {
+		append(&invalid, "llm")
+	}
+
 	if missing {
 		if err := config_write(path, root); err != nil {
 			return fmt.tprintf("config.json: could not update %s (%v)", path, err), true
@@ -467,6 +497,28 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 				strings.write_string(&sb, lsp_json_string(LANGUAGES[lang].formatter))
 			}
 			strings.write_string(&sb, "\n    }")
+		}
+		strings.write_string(&sb, "\n  }")
+	}
+
+	emit_key(&sb, &first, "llm")
+	llm_raw, llm_present := root["llm"]
+	if llm_obj, is_obj := llm_raw.(json.Object); llm_present && !is_obj {
+		config_value_text(&sb, llm_raw)
+	} else {
+		strings.write_string(&sb, "{\n")
+		lm_first := true
+		for it in config_llm {
+			if !lm_first {
+				strings.write_string(&sb, ",\n")
+			}
+			lm_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
+			if v, has := llm_obj[it.key]; has {
+				config_value_text(&sb, v)
+			} else {
+				strings.write_string(&sb, lsp_json_string(it.ptr^))
+			}
 		}
 		strings.write_string(&sb, "\n  }")
 	}

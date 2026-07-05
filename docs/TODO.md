@@ -16,8 +16,8 @@ Shipped list. Groups are priority buckets, not a build order.
 See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schema.
 
 - [ ] Inline FIM completion: async debounced ghost-text, Tab/word accept, `Esc` dismiss (default backend Codestral).
-- [ ] Selection + prompt (`Ctrl+K`): replace selection via chat backend, one undo group.
 - [ ] Context + prompt: floating prompt pane, cursor-context aware, insert/replace.
+- [ ] Let an AI edit touch code outside the selection (add a missing import etc.) — whole-file rewrite or agentic mode; `Ctrl+K` today is selection-replace only.
 - [ ] `llm` config section: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
 - [ ] Async subprocess runner with cancellation (generalize `lsp.odin` machinery; `curl` subprocess for HTTP providers).
 - [ ] Shared inline virtual-text primitive (ghost-text + inline diagnostics).

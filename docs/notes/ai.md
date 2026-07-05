@@ -6,6 +6,11 @@ context+prompt). Read CLAUDE.md and DESIGN.md first. This is a `notes/` file
 because the subsystem spans several TODO items; the one-liners in
 [../TODO.md](../TODO.md) link here.
 
+**Status:** *Selection + prompt* (`Ctrl+K`) shipped — the chat backend via a shell
+command, plus the reusable async subprocess runner it needed. Still open: inline
+FIM ghost-text, context + prompt, HTTP (`curl`) providers, the shared inline
+virtual-text primitive, and letting an edit touch code outside the selection.
+
 ## Two backends, never one
 
 Ghost-text and prompt-editing need different models, so they are configured

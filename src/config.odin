@@ -10,6 +10,10 @@ DOUBLE_CLICK_MS := 400
 FORMAT_ON_SAVE := false
 AUTO_CLOSE_PAIRS := true
 
+LLM_CHAT_COMMAND := "claude -p"
+LLM_EDIT_PROMPT :=
+	"You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region — and nothing else — inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}"
+
 PALETTE_WIDTH := 60
 PALETTE_MAX_ROWS := 8
 

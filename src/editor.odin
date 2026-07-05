@@ -42,6 +42,8 @@ Editor :: struct {
 	hover_active:    bool,
 	completion:      Completion,
 	format_on_save:  bool,
+	llm:             Llm,
+	aiedit:          AiEdit,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -95,6 +97,9 @@ editor_shutdown :: proc(editor: ^Editor) {
 	rename_destroy(&editor.rename)
 	filetree_destroy(&editor.filetree)
 	jump_destroy(&editor.jumps)
+	llm_cancel_all(editor)
+	delete(editor.llm.requests)
+	aiedit_destroy(&editor.aiedit)
 	delete(g_language_rules)
 	syntax_shutdown()
 	clipboard_shutdown()
@@ -144,8 +149,9 @@ Overlay :: struct {
 	render:   proc(editor: ^Editor),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [11]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [12]Overlay {
 	return {
+		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render},
 		{&editor.palette.active, palette_dispatch_key, palette_render},
 		{&editor.picker.active, picker_dispatch_key, picker_render},
 		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render},
@@ -876,6 +882,9 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		right = fmt.tprintf("%s  %s", right, lsp)
 	}
 	right = fmt.tprintf("%s  %s", right, indent)
+	if n := len(editor.llm.requests); n > 0 {
+		right = fmt.tprintf("AI:%d  %s", n, right)
+	}
 	right_w := visual_width(transmute([]u8)right)
 	right_cstr := strings.clone_to_cstring(right, context.temp_allocator)
 	tb2.print(i32(max(0, full_w - right_w - 1)), i32(h), COLOR_STATUS_FG, COLOR_STATUS_BG, right_cstr)

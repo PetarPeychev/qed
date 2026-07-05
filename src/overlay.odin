@@ -69,6 +69,20 @@ query_edit_key :: proc(query: ^[dynamic]u8, ev: tb2.Event) -> bool {
 	return false
 }
 
+// Draw a single-line caret-editable input in the column span [x, x+w), scrolled
+// horizontally so the caret is always visible, and place the hardware cursor.
+input_line_render :: proc(x, y, w: int, input: []u8, caret: int) {
+	if w <= 0 {
+		return
+	}
+	start := 0
+	for start < caret && visual_width(input[start:caret]) >= w {
+		start = grapheme_next(input, start)
+	}
+	pane_text(x, y, w, string(input[start:]), COLOR_PANE_FG, COLOR_PANE_BG)
+	tb2.set_cursor(i32(x + visual_width(input[start:caret])), i32(y))
+}
+
 overlay_cursor :: proc(inner: Rect, query_len: int) {
 	cx := min(inner.x + 3 + query_len, inner.x + inner.w - 1)
 	tb2.set_cursor(i32(cx), i32(inner.y))
