@@ -722,29 +722,28 @@ editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 		return
 	}
 	lines := wrap_text(string(editor.hover[:]), text_w)
-	editor_render_text_pane(editor, cx, cy, lines[:], COLOR_PANE_FG)
+	editor_render_text_pane(editor, cx, cy, lines[:], COLOR_PANE_FG, HOVER_PANE_MAX_LINES)
 }
 
-editor_render_text_pane :: proc(editor: ^Editor, cx, cy: int, lines: []string, fg: tb2.Color) {
-	content_h := min(len(lines), DIAG_PANE_MAX_LINES)
-	if content_h == 0 {
+editor_render_text_pane :: proc(editor: ^Editor, cx, cy: int, lines: []string, fg: tb2.Color, max_lines := DIAG_PANE_MAX_LINES) {
+	if len(lines) == 0 {
 		return
 	}
 	sw := int(tb2.width())
 	_, h := editor_viewport(editor)
+	room_below := h - (cy + 1)
+	room_above := cy
+	content_h := min(len(lines), max_lines, max(room_below, room_above) - 2)
+	if content_h <= 0 {
+		return
+	}
 	content_w := 0
 	for line in lines[:content_h] {
 		content_w = max(content_w, len(line))
 	}
 	pane_w := content_w + 2
 	pane_h := content_h + 2
-	y := cy + 1
-	if y + pane_h > h {
-		y = cy - pane_h
-	}
-	if y < 0 {
-		return
-	}
+	y := room_below >= pane_h ? cy + 1 : cy - pane_h
 	x := clamp(cx, 0, max(0, sw - pane_w))
 	box := pane_draw_box({x, y, pane_w, pane_h})
 	for line, i in lines[:content_h] {

@@ -9,8 +9,6 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
-- [ ] lsp hover pane is too small to see larger definitions like odin large structs
-
 ## Features
 
 - [ ] Auto-close pairs: `()[]{}`/quotes/backtick, surround selection, auto-close + rename JSX tags.
