@@ -213,6 +213,7 @@ projsearch_execute :: proc(editor: ^Editor) {
 	cursor_goal_sync(b)
 	_, h := editor_viewport(editor)
 	editor.scroll_row = row - h / 2
+	editor.scroll_sub = 0
 	editor_scroll(editor)
 }
 

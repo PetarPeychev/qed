@@ -110,7 +110,7 @@ repetition only once it exists in front of you.
 | Platform       | Linux + macOS; OS-specific bits isolated. CTRL-based keybinds. |
 | Core structure | `Buffer` = `[dynamic]Line`; `Line` = `[dynamic]u8`. |
 | Text/columns   | `col` is a byte offset; movement/width is grapheme-cluster aware. |
-| Long lines     | Horizontal scroll, no wrap. 1 buffer line = 1 screen row. |
+| Long lines     | Per-buffer soft wrap (word-boundary), on by default; toggle per buffer. Off → horizontal scroll. |
 | Cursor         | Single cursor + optional selection anchor (shift-select). |
 | Undo/redo      | Inverse-op edit log, grouped into steps; all edits go through primitive ops. |
 | Indent         | Spaces, width 4 (`config.odin`). |

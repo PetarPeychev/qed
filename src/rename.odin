@@ -58,10 +58,6 @@ rename_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if r.caret < len(r.input) {
 			r.caret = grapheme_next(r.input[:], r.caret)
 		}
-	case .Home:
-		r.caret = 0
-	case .End:
-		r.caret = len(r.input)
 	case .Backspace, .Backspace2:
 		if r.caret > 0 {
 			prev := grapheme_prev(r.input[:], r.caret)

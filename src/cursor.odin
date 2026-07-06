@@ -135,7 +135,13 @@ col_at_visual :: proc(text: []u8, target: int) -> int {
 }
 
 cursor_goal_sync :: proc(b: ^Buffer) {
-	b.goal_col = visual_col(b.lines[b.cursor.row].text[:], b.cursor.col)
+	text := b.lines[b.cursor.row].text[:]
+	if b.wrap && b.wrap_width > 0 {
+		seg := wrap_seg_start(text, b.wrap_width, b.cursor.col)
+		b.goal_col = visual_col(text, b.cursor.col) - visual_col(text, seg)
+	} else {
+		b.goal_col = visual_col(text, b.cursor.col)
+	}
 }
 
 selection_active :: proc(b: ^Buffer) -> bool {
@@ -219,34 +225,88 @@ cursor_move_right :: proc(b: ^Buffer) {
 }
 
 cursor_move_up_n :: proc(b: ^Buffer, n: int) {
+	if b.wrap && b.wrap_width > 0 {
+		for _ in 0 ..< n {
+			cursor_visual_up(b)
+		}
+		return
+	}
 	c := &b.cursor
 	c.row = max(0, c.row - n)
 	c.col = col_at_visual(b.lines[c.row].text[:], b.goal_col)
 }
 
 cursor_move_down_n :: proc(b: ^Buffer, n: int) {
+	if b.wrap && b.wrap_width > 0 {
+		for _ in 0 ..< n {
+			cursor_visual_down(b)
+		}
+		return
+	}
 	c := &b.cursor
 	c.row = min(len(b.lines) - 1, c.row + n)
 	c.col = col_at_visual(b.lines[c.row].text[:], b.goal_col)
 }
 
-cursor_move_home :: proc(b: ^Buffer) {
-	b.cursor.col = 0
-	cursor_goal_sync(b)
+cursor_visual_up :: proc(b: ^Buffer) {
+	w := b.wrap_width
+	c := &b.cursor
+	text := b.lines[c.row].text[:]
+	sub := wrap_subrow(text, w, c.col)
+	if sub > 0 {
+		c.col = cursor_place_in_subrow(text, w, sub - 1, b.goal_col)
+	} else if c.row > 0 {
+		c.row -= 1
+		up := b.lines[c.row].text[:]
+		c.col = cursor_place_in_subrow(up, w, wrap_rows(up, w) - 1, b.goal_col)
+	}
+}
+
+cursor_visual_down :: proc(b: ^Buffer) {
+	w := b.wrap_width
+	c := &b.cursor
+	text := b.lines[c.row].text[:]
+	sub := wrap_subrow(text, w, c.col)
+	if sub < wrap_rows(text, w) - 1 {
+		c.col = cursor_place_in_subrow(text, w, sub + 1, b.goal_col)
+	} else if c.row < len(b.lines) - 1 {
+		c.row += 1
+		c.col = cursor_place_in_subrow(b.lines[c.row].text[:], w, 0, b.goal_col)
+	}
 }
 
 cursor_move_home_smart :: proc(b: ^Buffer) {
-	text := b.lines[b.cursor.row].text[:]
+	c := &b.cursor
+	text := b.lines[c.row].text[:]
 	first := 0
 	for first < len(text) && (text[first] == ' ' || text[first] == '\t') {
 		first += 1
 	}
-	b.cursor.col = 0 if b.cursor.col == first else first
+	if b.wrap && b.wrap_width > 0 {
+		seg := wrap_seg_start(text, b.wrap_width, c.col)
+		primary := first if seg == 0 else seg
+		if c.col != primary {
+			c.col = primary
+		} else if c.col != 0 {
+			c.col = 0
+		} else {
+			c.col = first
+		}
+	} else {
+		c.col = 0 if c.col == first else first
+	}
 	cursor_goal_sync(b)
 }
 
 cursor_move_end :: proc(b: ^Buffer) {
-	b.cursor.col = len(b.lines[b.cursor.row].text)
+	text := b.lines[b.cursor.row].text[:]
+	if b.wrap && b.wrap_width > 0 {
+		_, end := wrap_segment(text, b.wrap_width, wrap_subrow(text, b.wrap_width, b.cursor.col))
+		row_end := max(grapheme_prev(text, end), 0) if end < len(text) else len(text)
+		b.cursor.col = len(text) if b.cursor.col == row_end else row_end
+	} else {
+		b.cursor.col = len(text)
+	}
 	cursor_goal_sync(b)
 }
 

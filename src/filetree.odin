@@ -443,10 +443,6 @@ filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if t.caret < len(t.input) {
 			t.caret = grapheme_next(t.input[:], t.caret)
 		}
-	case .Home:
-		t.caret = 0
-	case .End:
-		t.caret = len(t.input)
 	case .Backspace, .Backspace2:
 		if t.caret > 0 {
 			prev := grapheme_prev(t.input[:], t.caret)

@@ -51,6 +51,16 @@ Full redraw per event; termbox flushes only changed cells. Each loop iteration:
 poll → dispatch → redraw (text, status bar, overlays) → set hardware cursor →
 `present()` → `free_all(context.temp_allocator)`.
 
+**Soft wrap** (`wrap.odin`, per-buffer `Buffer.wrap`, config `line_wrap`, default
+on; *Toggle Line Wrap* flips the current buffer): a logical line spills over
+consecutive visual rows, breaking at word boundaries (a word wider than the width
+hard-breaks), tab/grapheme-width aware. Continuation rows get a blank gutter.
+`line_wrap` yields per-line segment start offsets; `vpos_*` walk/measure visual
+rows (bounded by the viewport). The render loop iterates visual rows; the row
+renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
+(FIM) on the cursor line renders inline through the same wrap layout
+(`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
+
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 1-row **status bar** (path + `[*]` modified flag + indent style / `big`), then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
@@ -92,9 +102,11 @@ member group is no longer on top).
 
 ## Cursor, selection, viewport
 
-- Movement: arrows, Home/End, Ctrl+Left/Right (word), Ctrl+Home/End,
-  Ctrl+Up/Down (paragraph), Alt smart-home/end and buffer start/end. A remembered
-  goal column survives vertical moves over short lines.
+- Movement: arrows, Ctrl+Left/Right (word), Ctrl+Up/Down (paragraph), Alt
+  smart-home/end (Alt+Left/Right) and buffer start/end (Alt+{/}). No Home/End
+  binding. A remembered goal column survives vertical moves over short lines.
+  With soft wrap on, arrows + smart-home/end move by **visual** row (goal column
+  is the x within the visual row).
 - Word classes: alphanumeric+`_`, punctuation, whitespace; a word move stops at
   every class boundary.
 - Selection: Shift+movement sets/extends the anchor; non-shift movement clears it.
@@ -102,7 +114,9 @@ member group is no longer on top).
   every touched line (exact inverses; trailing line ending at col 0 not counted).
   Selected cells render inverted.
 - Viewport: `scroll_row`/`scroll_col` track the top-left cell; after a move,
-  scroll the minimum to keep the cursor visible honoring `SCROLL_MARGIN`.
+  scroll the minimum to keep the cursor visible honoring `SCROLL_MARGIN`. With
+  soft wrap, `scroll_col` is 0 and `scroll_sub` anchors the visual sub-row of
+  `scroll_row` at the top (all visibility math in visual rows — see `wrap.odin`).
 - Mouse: click positions, drag extends (auto-scrolls past the edge), wheel
   scrolls, double/triple-click selects word/line.
 
@@ -266,7 +280,7 @@ lazily, so a `@file` races to an empty body. `QED_FIM_DEBUG` logs to `/tmp/qed-f
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `wrap` (soft-wrap layout) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `llm` · `aiedit` · `fim` · `perf_bench`.
 
@@ -286,7 +300,9 @@ line-comment toggle, move-lines, paragraph/word/smart-home motion, auto-close
 pairs (brackets/quotes/backtick: surround selection, type-over, backspace-deletes-pair;
 `auto_close_pairs` knob), matching-bracket underline.
 
-Navigation & UI: line-number + git gutter, mouse (position/drag/wheel/multi-click,
+Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default on,
+*Toggle Line Wrap*; visual-row cursor motion + sub-row scroll; wraps ghost-text too),
+line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line, welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: fuzzy over open buffers

@@ -463,8 +463,14 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 	pane_w := content_w + 2
 	pane_h := rows + 2
 
-	avcol := visual_col(b.lines[c.anchor_row].text[:], c.anchor_col)
-	ax := gutter + avcol - editor.scroll_col
+	atext := b.lines[c.anchor_row].text[:]
+	ax: int
+	if b.wrap && b.wrap_width > 0 {
+		seg := wrap_seg_start(atext, b.wrap_width, c.anchor_col)
+		ax = gutter + visual_col(atext, c.anchor_col) - visual_col(atext, seg)
+	} else {
+		ax = gutter + visual_col(atext, c.anchor_col) - editor.scroll_col
+	}
 	x := clamp(ax, 0, max(0, sw - pane_w))
 	y := cy + 1
 	if y + pane_h > vh {

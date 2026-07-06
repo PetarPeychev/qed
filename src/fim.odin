@@ -376,21 +376,11 @@ fim_render :: proc(editor: ^Editor, cx, cy: int) {
 	gutter := editor_gutter_width(editor)
 	_, vh := editor_viewport(editor)
 	full_w := int(tb2.width())
-	y := cy
-	for line, li in strings.split(f.ghost, "\n", context.temp_allocator) {
-		bx := cx
-		if li > 0 {
-			y += 1
-			if y >= vh {
-				break
-			}
-			bx = gutter
-		}
-		bg := COLOR_BG
-		if li == 0 {
-			bg = editor_line_bg(true, false, git_mark_at(b, b.cursor.row), editor.hunk_highlight)
-		}
-		for r in line {
+	line_bg := editor_line_bg(true, false, git_mark_at(b, b.cursor.row), editor.hunk_highlight)
+
+	emit :: proc(text: string, gutter, full_w, y, bx: int, fg, bg: tb2.Color) -> int {
+		bx := bx
+		for r in text {
 			if r == '\t' {
 				bx = gutter + ((bx - gutter) / TAB_WIDTH + 1) * TAB_WIDTH
 				continue
@@ -399,9 +389,32 @@ fim_render :: proc(editor: ^Editor, cx, cy: int) {
 				break
 			}
 			if bx >= gutter {
-				tb2.set_cell(i32(bx), i32(y), r, COLOR_GHOST_FG, bg)
+				tb2.set_cell(i32(bx), i32(y), r, fg, bg)
 			}
 			bx += 1
 		}
+		return bx
+	}
+
+	y := cy
+	bx := cx
+	for line, li in strings.split(f.ghost, "\n", context.temp_allocator) {
+		if li > 0 {
+			y += 1
+			if y >= vh {
+				return
+			}
+			bx = gutter
+		}
+		bg := line_bg if y == cy else COLOR_BG
+		bx = emit(line, gutter, full_w, y, bx, COLOR_GHOST_FG, bg)
+	}
+
+	// The buffer render stopped the cursor line at the caret; re-emit its suffix
+	// after the ghost so a mid-line ghost no longer overwrites the rest of the line.
+	suffix := string(b.lines[b.cursor.row].text[b.cursor.col:])
+	if len(suffix) > 0 {
+		bg := line_bg if y == cy else COLOR_BG
+		emit(suffix, gutter, full_w, y, bx, COLOR_FG, bg)
 	}
 }

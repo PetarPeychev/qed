@@ -57,7 +57,7 @@ test_move_home_end :: proc(t: ^testing.T) {
 
 	cursor_move_end(&b)
 	testing.expect_value(t, b.cursor, Cursor{0, 5})
-	cursor_move_home(&b)
+	cursor_move_home_smart(&b)
 	testing.expect_value(t, b.cursor, Cursor{0, 0})
 }
 

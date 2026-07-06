@@ -912,6 +912,7 @@ lsp_apply_definition :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	cursor_goal_sync(b)
 	_, h := editor_viewport(editor)
 	editor.scroll_row = row - h / 2
+	editor.scroll_sub = 0
 	editor_scroll(editor)
 	jump_record(editor, origin)
 	return true

@@ -14,6 +14,7 @@ Editor :: struct {
 	working_root:    string,
 	welcome:         bool,
 	scroll_row:      int,
+	scroll_sub:      int,
 	scroll_col:      int,
 	message:         string,
 	message_store:   [dynamic]u8,
@@ -236,10 +237,21 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 	b := editor_buffer(editor)
 	gutter := editor_gutter_width(editor)
-	_, h := editor_viewport(editor)
+	w, h := editor_viewport(editor)
+	if b.wrap && w > 0 {
+		row, sub := vpos_down(b, w, editor.scroll_row, editor.scroll_sub, clamp(y, 0, h - 1))
+		return {row, editor_wrap_col(b, w, row, sub, gutter, x)}
+	}
 	row := clamp(editor.scroll_row + min(y, h - 1), 0, len(b.lines) - 1)
 	col := col_at_visual(b.lines[row].text[:], editor.scroll_col + max(0, x - gutter))
 	return {row, col}
+}
+
+editor_wrap_col :: proc(b: ^Buffer, w, row, sub, gutter, x: int) -> int {
+	text := b.lines[row].text[:]
+	seg_start, seg_end := wrap_segment(text, w, sub)
+	target := visual_col(text, seg_start) + max(0, x - gutter)
+	return clamp(col_at_visual(text, target), seg_start, seg_end)
 }
 
 editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -254,9 +266,24 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		buffer_undo_commit(b)
 		if (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0 {
 			selection_set_anchor(b)
-			_, h := editor_viewport(editor)
+			w, h := editor_viewport(editor)
 			gutter := editor_gutter_width(editor)
 			y := int(ev.y)
+			if b.wrap && w > 0 {
+				tr, ts: int
+				switch {
+				case y <= 0:
+					tr, ts = vpos_up(b, w, editor.scroll_row, editor.scroll_sub, 1)
+				case y >= h - 1:
+					tr, ts = vpos_down(b, w, editor.scroll_row, editor.scroll_sub, h)
+				case:
+					tr, ts = vpos_down(b, w, editor.scroll_row, editor.scroll_sub, y)
+				}
+				b.cursor = {tr, editor_wrap_col(b, w, tr, ts, gutter, int(ev.x))}
+				cursor_goal_sync(b)
+				editor_scroll(editor)
+				return
+			}
 			row: int
 			switch {
 			case y <= 0:
@@ -303,11 +330,26 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		editor_scroll(editor)
 	case .Mouse_Wheel_Up:
-		editor.scroll_row = max(0, editor.scroll_row - WHEEL_SCROLL_LINES)
+		w, _ := editor_viewport(editor)
+		if b.wrap && w > 0 {
+			editor.scroll_row, editor.scroll_sub = vpos_up(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
+		} else {
+			editor.scroll_row = max(0, editor.scroll_row - WHEEL_SCROLL_LINES)
+		}
 	case .Mouse_Wheel_Down:
-		_, h := editor_viewport(editor)
-		max_scroll := max(0, len(b.lines) - h)
-		editor.scroll_row = min(max_scroll, editor.scroll_row + WHEEL_SCROLL_LINES)
+		w, h := editor_viewport(editor)
+		if b.wrap && w > 0 {
+			last := len(b.lines) - 1
+			max_r, max_s := vpos_up(b, w, last, wrap_rows(b.lines[last].text[:], w) - 1, h - 1)
+			r, s := vpos_down(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
+			if vpos_cmp(r, s, max_r, max_s) > 0 {
+				r, s = max_r, max_s
+			}
+			editor.scroll_row, editor.scroll_sub = r, s
+		} else {
+			max_scroll := max(0, len(b.lines) - h)
+			editor.scroll_row = min(max_scroll, editor.scroll_row + WHEEL_SCROLL_LINES)
+		}
 	}
 }
 
@@ -420,7 +462,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		} else {
 			buffer_delete_forward(b)
 		}
-	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down, .Home, .End:
+	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down:
 		buffer_undo_commit(b)
 		sel_from, sel_to, had_sel := selection_range(b)
 		if shift {
@@ -463,18 +505,6 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 				cursor_paragraph_next(b)
 			} else {
 				cursor_move_down_n(b, 1)
-			}
-		case .Home:
-			if ctrl {
-				cursor_move_buffer_start(b)
-			} else {
-				cursor_move_home(b)
-			}
-		case .End:
-			if ctrl {
-				cursor_move_buffer_end(b)
-			} else {
-				cursor_move_end(b)
 			}
 		}
 	case:
@@ -525,6 +555,7 @@ editor_switch_to :: proc(editor: ^Editor, idx: int) {
 	editor.current = idx
 	editor.welcome = false
 	editor.scroll_row = 0
+	editor.scroll_sub = 0
 	editor.scroll_col = 0
 	editor_scroll(editor)
 }
@@ -551,6 +582,7 @@ editor_close_current :: proc(editor: ^Editor) {
 		editor.current = 0
 		editor.welcome = true
 		editor.scroll_row = 0
+		editor.scroll_sub = 0
 		editor.scroll_col = 0
 	} else {
 		editor_switch_to(editor, min(idx, len(editor.buffers) - 1))
@@ -723,7 +755,15 @@ editor_poll_disk :: proc(editor: ^Editor) -> bool {
 editor_scroll :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	w, h := editor_viewport(editor)
+	b.wrap_width = w
 	cur := b.cursor
+
+	if b.wrap && w > 0 {
+		editor.scroll_col = 0
+		editor_scroll_wrap(editor, b, w, h)
+		return
+	}
+	editor.scroll_sub = 0
 
 	if cur.row < editor.scroll_row + SCROLL_MARGIN {
 		editor.scroll_row = cur.row - SCROLL_MARGIN
@@ -742,6 +782,30 @@ editor_scroll :: proc(editor: ^Editor) {
 		editor.scroll_col = cur_vcol - w + 1 + SCROLL_MARGIN
 	}
 	editor.scroll_col = max(0, editor.scroll_col)
+}
+
+editor_scroll_wrap :: proc(editor: ^Editor, b: ^Buffer, w, h: int) {
+	cur := b.cursor
+	cur_sub := wrap_subrow(b.lines[cur.row].text[:], w, cur.col)
+
+	top_r := clamp(editor.scroll_row, 0, len(b.lines) - 1)
+	top_s := clamp(editor.scroll_sub, 0, wrap_rows(b.lines[top_r].text[:], w) - 1)
+
+	mr, ms := vpos_up(b, w, cur.row, cur_sub, SCROLL_MARGIN)
+	if vpos_cmp(top_r, top_s, mr, ms) > 0 {
+		top_r, top_s = mr, ms
+	}
+	lr, ls := vpos_up(b, w, cur.row, cur_sub, h - 1 - SCROLL_MARGIN)
+	if vpos_cmp(top_r, top_s, lr, ls) < 0 {
+		top_r, top_s = lr, ls
+	}
+	last := len(b.lines) - 1
+	max_r, max_s := vpos_up(b, w, last, wrap_rows(b.lines[last].text[:], w) - 1, h - 1)
+	if vpos_cmp(top_r, top_s, max_r, max_s) > 0 {
+		top_r, top_s = max_r, max_s
+	}
+	editor.scroll_row = top_r
+	editor.scroll_sub = top_s
 }
 
 editor_render :: proc(editor: ^Editor) {
@@ -773,14 +837,26 @@ editor_render :: proc(editor: ^Editor) {
 	} else {
 		b := editor_buffer(editor)
 		gutter := editor_gutter_width(editor)
-		vcol := visual_col(b.lines[b.cursor.row].text[:], b.cursor.col)
-		cx := gutter + vcol - editor.scroll_col
-		cy := b.cursor.row - editor.scroll_row
+		w, _ := editor_viewport(editor)
+		text := b.lines[b.cursor.row].text[:]
+		cx, cy: int
+		if b.wrap && w > 0 {
+			seg := wrap_seg_start(text, w, b.cursor.col)
+			cur_sub := wrap_subrow(text, w, b.cursor.col)
+			cx = gutter + visual_col(text, b.cursor.col) - visual_col(text, seg)
+			cy = vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, b.cursor.row, cur_sub)
+		} else {
+			cx = gutter + visual_col(text, b.cursor.col) - editor.scroll_col
+			cy = b.cursor.row - editor.scroll_row
+		}
 		tb2.set_cursor(i32(cx), i32(cy))
 		if editor.completion.active {
 			completion_render(editor, cx, cy)
 		} else if fim_ghost_active(editor) {
-			fim_render(editor, cx, cy)
+			// A wrapped buffer draws the ghost inline in editor_render_buffer.
+			if !(b.wrap && w > 0) {
+				fim_render(editor, cx, cy)
+			}
 		} else if editor.hover_active {
 			editor_render_hover_pane(editor, cx, cy)
 		} else {
@@ -878,6 +954,59 @@ wrap_text :: proc(text: string, width: int, allocator := context.temp_allocator)
 	return lines
 }
 
+// Lays out the cursor's logical line as prefix + dimmed ghost + suffix and
+// renders it through the wrap machinery, so ghost and the relocated suffix obey
+// the same soft-wrap rules as real text. Ghost newlines are hard breaks. Returns
+// the next screen row.
+editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h, screen_y: int, colors: []tb2.Color, line_bg: tb2.Color) -> int {
+	text := b.lines[row].text[:]
+	cut := b.cursor.col
+	glines := strings.split(editor.fim.ghost, "\n", context.temp_allocator)
+	mark := git_mark_at(b, row)
+
+	sy := screen_y
+	first_row := true
+	color_at :: proc(colors: []tb2.Color, i: int) -> tb2.Color {
+		return colors[i] if colors != nil && i < len(colors) else COLOR_FG
+	}
+	for gl, gi in glines {
+		content := make([dynamic]u8, context.temp_allocator)
+		ccol := make([dynamic]tb2.Color, context.temp_allocator)
+		if gi == 0 {
+			append(&content, ..text[:cut])
+			for i in 0 ..< cut {
+				append(&ccol, color_at(colors, i))
+			}
+		}
+		append(&content, ..transmute([]u8)gl)
+		for _ in 0 ..< len(gl) {
+			append(&ccol, COLOR_GHOST_FG)
+		}
+		if gi == len(glines) - 1 {
+			append(&content, ..text[cut:])
+			for i in cut ..< len(text) {
+				append(&ccol, color_at(colors, i))
+			}
+		}
+
+		ct := content[:]
+		segs := line_wrap(ct, w)
+		for s in 0 ..< len(segs) {
+			if sy >= h {
+				return sy
+			}
+			seg_start := segs[s]
+			seg_end := segs[s + 1] if s + 1 < len(segs) else len(ct)
+			x_origin := visual_col(ct, seg_start)
+			editor_render_gutter(sy, gutter, row + 1, true, 0, mark, !first_row)
+			editor_render_text_row(gutter, sy, w, ct, ccol[:], x_origin, line_bg, -1, -1, nil, seg_start, seg_end)
+			sy += 1
+			first_row = false
+		}
+	}
+	return sy
+}
+
 editor_render_buffer :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	full_w := int(tb2.width())
@@ -897,15 +1026,14 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		ai_rows = llm_active_rows(editor, b)
 	}
 
+	b.wrap_width = w
+	wrapping := b.wrap && w > 0
 	gap := fim_ghost_gap(editor)
-	for row := editor.scroll_row; row < len(b.lines); row += 1 {
-		screen_y := row - editor.scroll_row
-		if gap > 0 && row > b.cursor.row {
-			screen_y += gap
-		}
-		if screen_y >= h {
-			break
-		}
+	// While a ghost shows, the cursor line is drawn only up to the caret; the
+	// suffix is relocated after the ghost by fim_render (else it'd paint over it).
+	ghost_cut := !editor.completion.active && fim_ghost_active(editor)
+	screen_y := 0
+	for row := editor.scroll_row; row < len(b.lines) && screen_y < h; row += 1 {
 		current := row == b.cursor.row
 		severity := 0
 		for d in b.diags {
@@ -914,7 +1042,6 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			}
 		}
 		mark := git_mark_at(b, row)
-		editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark)
 
 		text := b.lines[row].text
 		row_sel_from, row_sel_to := -1, -1
@@ -953,7 +1080,39 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		}
 		colors := highlight_colors(b, row)
 		line_bg := editor_line_bg(current, ai_edit, mark, editor.hunk_highlight)
-		editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:])
+
+		ghost_row := ghost_cut && row == b.cursor.row
+		if wrapping {
+			if ghost_row {
+				// Ghost + suffix wrap as one flow, pushing lines below down by the
+				// rows they consume (no separate gap needed).
+				screen_y = editor_render_ghost_line(editor, b, row, gutter, w, h, screen_y, colors, line_bg)
+				continue
+			}
+			segs := line_wrap(text[:], w)
+			start_sub := editor.scroll_sub if row == editor.scroll_row else 0
+			for s in start_sub ..< len(segs) {
+				if screen_y >= h {
+					break
+				}
+				seg_start := segs[s]
+				seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
+				x_origin := visual_col(text[:], seg_start)
+				editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, s > 0)
+				editor_render_text_row(gutter, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end)
+				screen_y += 1
+			}
+		} else {
+			// Unwrapped: ghost + suffix stay on one row (clipped), drawn by
+			// fim_render, so cut the real line at the caret and reserve gap rows.
+			text_end := b.cursor.col if ghost_row else len(text)
+			editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, false)
+			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end)
+			screen_y += 1
+			if gap > 0 && row == b.cursor.row {
+				screen_y += gap
+			}
+		}
 	}
 
 	name := b.path if b.path != "" else "[No Name]"
@@ -1030,7 +1189,13 @@ editor_render_welcome_line :: proc(x, y: int, text: string) {
 	tb2.print(i32(x), i32(y), COLOR_FG, COLOR_BG, cstr)
 }
 
-editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int, mark: GitMark) {
+editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int, mark: GitMark, continuation: bool) {
+	if continuation {
+		for x in 0 ..< width {
+			tb2.set_cell(i32(x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
+		}
+		return
+	}
 	mark_ch, mark_fg := git_mark_glyph(mark)
 	tb2.set_cell(0, i32(y), mark_ch, mark_fg, COLOR_GUTTER_BG)
 
@@ -1083,14 +1248,19 @@ editor_line_bg :: proc(current, ai_edit: bool, mark: GitMark, hunk: bool) -> tb2
 	return bg
 }
 
+// Renders the byte range [col_start, col_end) of `text` on screen row `y`.
+// `x_origin` is the visual column mapped to screen x 0 (horizontal scroll when
+// unwrapped; the segment's start column when wrapped). Clusters outside the
+// range still advance the running visual column so tab stops stay absolute.
 editor_render_text_row :: proc(
 	gutter, y, w: int,
 	text: []u8,
 	colors: []tb2.Color,
-	scroll_col: int,
+	x_origin: int,
 	bg_normal: tb2.Color,
 	sel_from, sel_to: int,
 	underlines: [][2]int,
+	col_start, col_end: int,
 ) {
 	for sx in 0 ..< w {
 		tb2.set_cell(i32(gutter + sx), i32(y), ' ', COLOR_FG, bg_normal)
@@ -1144,6 +1314,13 @@ editor_render_text_row :: proc(
 		return false
 	}
 
+	emit :: proc(gutter, y, w: int, text: []u8, pstart, pend, vcol, x_origin, col_start, col_end: int, psel: bool, pfg, bg_normal: tb2.Color) -> int {
+		if pstart >= col_start && pstart < col_end {
+			return draw_cluster(gutter, y, w, text[pstart:pend], vcol, x_origin, psel, pfg, bg_normal)
+		}
+		return vcol + seg_width(text, pstart, pend, vcol)
+	}
+
 	vcol := 0
 	pstart := -1
 	psel := false
@@ -1151,7 +1328,7 @@ editor_render_text_row :: proc(
 	it := utf8.decode_grapheme_iterator_make(string(text))
 	for _, g in utf8.decode_grapheme_iterate(&it) {
 		if pstart >= 0 {
-			vcol = draw_cluster(gutter, y, w, text[pstart:g.byte_index], vcol, scroll_col, psel, pfg, bg_normal)
+			vcol = emit(gutter, y, w, text, pstart, g.byte_index, vcol, x_origin, col_start, col_end, psel, pfg, bg_normal)
 		}
 		pstart = g.byte_index
 		psel = sel_from >= 0 && g.byte_index >= sel_from && g.byte_index < sel_to
@@ -1161,10 +1338,10 @@ editor_render_text_row :: proc(
 		}
 	}
 	if pstart >= 0 {
-		vcol = draw_cluster(gutter, y, w, text[pstart:], vcol, scroll_col, psel, pfg, bg_normal)
+		vcol = emit(gutter, y, w, text, pstart, len(text), vcol, x_origin, col_start, col_end, psel, pfg, bg_normal)
 	}
-	if sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
-		draw(gutter, y, vcol - scroll_col, w, ' ', true, COLOR_FG, bg_normal)
+	if col_end >= len(text) && sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
+		draw(gutter, y, vcol - x_origin, w, ' ', true, COLOR_FG, bg_normal)
 	}
 }
 

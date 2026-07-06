@@ -30,6 +30,8 @@ Buffer :: struct {
 	lsp_rev:       u64,
 	lsp_changes:   [dynamic]LspChange,
 	big:           bool,
+	wrap:          bool,
+	wrap_width:    int,
 	language:      Language,
 	disk:          DiskStamp,
 	disk_conflict: bool,
@@ -81,6 +83,7 @@ buffer_new :: proc() -> Buffer {
 		cursor       = {0, 0},
 		line_ending  = .LF,
 		indent_width = TAB_WIDTH,
+		wrap         = LINE_WRAP,
 	}
 	buffer.saved = buffer_snapshot(&buffer)
 	return buffer

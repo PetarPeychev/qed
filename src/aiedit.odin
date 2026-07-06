@@ -62,10 +62,6 @@ aiedit_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if a.caret < len(a.input) {
 			a.caret = grapheme_next(a.input[:], a.caret)
 		}
-	case .Home:
-		a.caret = 0
-	case .End:
-		a.caret = len(a.input)
 	case .Backspace, .Backspace2:
 		if a.caret > 0 {
 			prev := grapheme_prev(a.input[:], a.caret)
