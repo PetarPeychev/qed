@@ -1225,7 +1225,7 @@ editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int
 	}
 	strings.write_string(&sb, label)
 	if severity > 0 {
-		strings.write_rune(&sb, '●')
+		strings.write_rune(&sb, diagnostic_glyph(severity))
 	} else {
 		strings.write_byte(&sb, ' ')
 	}

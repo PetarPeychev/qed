@@ -1233,5 +1233,15 @@ diagnostic_color :: proc(severity: int) -> tb2.Color {
 	case 2:
 		return COLOR_DIAG_WARN_FG
 	}
-	return COLOR_GUTTER_FG
+	return COLOR_DIAG_INFO_FG
+}
+
+diagnostic_glyph :: proc(severity: int) -> rune {
+	switch severity {
+	case 1:
+		return '»'
+	case 2:
+		return '›'
+	}
+	return '~'
 }
