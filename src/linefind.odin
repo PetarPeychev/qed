@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 import "lib:tb2"
 
@@ -14,10 +15,15 @@ linefind_destroy :: proc(p: ^LineFind) {
 	delete(p.lines)
 }
 
+linefind_refilter :: proc(p: ^LineFind) {
+	fuzzy_list_refilter(&p.list)
+	slice.sort(p.matches[:])
+}
+
 linefind_open :: proc(editor: ^Editor) {
 	p := &editor.linefind
 	p.active = true
-	fuzzy_list_reset(&p.list)
+	textfield_select_all(&p.field)
 	editor_set_message(editor, "")
 
 	b := editor_buffer(editor)
@@ -26,9 +32,16 @@ linefind_open :: proc(editor: ^Editor) {
 		append(&p.lines, string(line.text[:]))
 	}
 	p.fuzzy = fuzzy_begin(p.lines[:])
-	fuzzy_list_refilter(&p.list)
+	linefind_refilter(p)
 
-	p.selected = clamp(b.cursor.row, 0, max(0, len(p.matches) - 1))
+	p.selected = 0
+	best := max(int)
+	for row, i in p.matches {
+		if d := abs(row - b.cursor.row); d < best {
+			best = d
+			p.selected = i
+		}
+	}
 	body_h := overlay_layout(editor).body_h
 	p.scroll = max(0, p.selected - body_h / 2)
 }
@@ -83,7 +96,7 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		linefind_move(editor, -1)
 	case:
 		if textfield_key(&p.field, ev) {
-			fuzzy_list_refilter(&p.list)
+			linefind_refilter(p)
 		}
 	}
 }

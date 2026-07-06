@@ -30,6 +30,11 @@ textfield_str :: proc(f: ^TextField) -> string {
 	return string(f.text[:])
 }
 
+textfield_select_all :: proc(f: ^TextField) {
+	f.anchor = 0
+	f.caret = len(f.text)
+}
+
 textfield_selection :: proc(f: ^TextField) -> (lo, hi: int, ok: bool) {
 	if f.anchor < 0 || f.anchor == f.caret {
 		return 0, 0, false
@@ -109,8 +114,7 @@ textfield_key :: proc(f: ^TextField, ev: tb2.Event) -> bool {
 
 	#partial switch ev.key {
 	case .Ctrl_A:
-		f.anchor = 0
-		f.caret = len(f.text)
+		textfield_select_all(f)
 		return false
 	case .Ctrl_C:
 		textfield_copy(f)

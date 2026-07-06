@@ -167,6 +167,10 @@ returns whether the text changed (fuzzy callers re-filter); `textfield_render` d
 scrolled to the caret with the selection inverted (`COLOR_PANE_BG`/`FG`). Word/home
 motion is the same `word_left_col`/`word_right_col`/`home_smart_col` the buffer cursor
 uses. `FuzzyList` (`overlay.odin`) embeds one; its `> ` prompt draws via `overlay_prompt_render`.
+Most panes reset their query on open; **line-find and project-search persist it** —
+reopened with the text fully selected (`textfield_select_all`) so a keystroke replaces it,
+else edit/arrow to refine. Project-search also restores its selected match; the file tree
+persists its expanded set + selection.
 
 Two terminal workarounds, both
 documented in `lib/tb2/PATCHES.md`:
@@ -318,8 +322,9 @@ line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line, welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: fuzzy over open buffers
-in stable order + digit instant-jump on empty query), fuzzy line jump (`Ctrl+F`),
-project-wide search (`rg`), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
+in stable order + digit instant-jump on empty query), fuzzy line jump (`Ctrl+F`,
+matches in file order), project-wide search (`rg --sort path` for deterministic
+order), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
 right-side preview, new/rename/delete with recursive-delete confirm; rename follows
 open buffers), jump list (back/forward), runtime config (`~/.config/qed/config.json`).
 Preview panes (file-open, file-tree, project-search) are syntax-highlighted via a

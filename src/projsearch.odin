@@ -56,16 +56,20 @@ projsearch_destroy :: proc(p: ^ProjSearch) {
 projsearch_open :: proc(editor: ^Editor) {
 	p := &editor.projsearch
 	editor_set_message(editor, "")
-	projsearch_clear_matches(p)
-	projsearch_clear_preview(p)
 	if !shell_command_exists("rg") {
 		editor_set_message(editor, "ripgrep (rg) not found", true)
+		projsearch_clear_matches(p)
+		projsearch_clear_preview(p)
 		return
 	}
 	p.active = true
-	textfield_reset(&p.field)
-	p.selected = 0
-	p.scroll = 0
+	textfield_select_all(&p.field)
+	keep := p.selected
+	projsearch_run(editor)
+	p.selected = clamp(keep, 0, max(0, len(p.matches) - 1))
+	body_h := overlay_layout(editor).body_h
+	p.scroll = max(0, p.selected - body_h / 2)
+	projsearch_load_preview(editor)
 }
 
 projsearch_close :: proc(editor: ^Editor) {
@@ -85,7 +89,7 @@ projsearch_run :: proc(editor: ^Editor) {
 		return
 	}
 	cmd := fmt.ctprintf(
-		"cd %s && rg --vimgrep -F -S -e %s 2>/dev/null | head -n %d",
+		"cd %s && rg --sort path --vimgrep -F -S -e %s 2>/dev/null | head -n %d",
 		shell_quote(editor.working_root),
 		shell_quote(query),
 		PROJSEARCH_MAX,
