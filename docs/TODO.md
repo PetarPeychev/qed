@@ -9,8 +9,6 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
-- [ ] Flaky `test_language_of_extensions` (`.mts` → Plain, ~10-20% of runs): `language_of` glob tie-break depends on map iteration order.
-
 ## Features
 
 ## AI / LLM assist

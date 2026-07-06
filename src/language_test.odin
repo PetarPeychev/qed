@@ -1,9 +1,13 @@
 package main
 
+import "core:sync"
 import "core:testing"
 
 @(test)
 test_language_of_extensions :: proc(t: ^testing.T) {
+	sync.lock(&g_lang_rules_test_mu)
+	defer sync.unlock(&g_lang_rules_test_mu)
+
 	languages_reset_defaults()
 	Case :: struct {
 		path: string,

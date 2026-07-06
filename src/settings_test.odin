@@ -4,8 +4,13 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "lib:tb2"
+
+// Tests run in parallel; serialize the ones that mutate/read the global
+// language-rule table (single-threaded at runtime, so no production lock).
+g_lang_rules_test_mu: sync.Mutex
 
 @(private = "file")
 reparse :: proc(t: ^testing.T, path: string) -> json.Object {
@@ -48,8 +53,13 @@ test_config_keybind :: proc(t: ^testing.T) {
 
 // One sequential test: the file scenarios mutate shared config globals, so they
 // must not run concurrently with each other (the rest of the suite is parallel).
+// The lock also fences off test_language_of_extensions, which reads the same
+// global language-rule table this test rebuilds via config_load_from.
 @(test)
 test_config_files :: proc(t: ^testing.T) {
+	sync.lock(&g_lang_rules_test_mu)
+	defer sync.unlock(&g_lang_rules_test_mu)
+
 	dir := "/tmp/qed-cfg-test"
 	os.make_directory_all(dir)
 
