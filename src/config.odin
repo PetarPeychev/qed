@@ -80,6 +80,29 @@ COLOR_PANE_SHORTCUT_FG := tb2.Color(0x868686)
 COLOR_PANE_SEL_FG := tb2.Color(0x181818)
 COLOR_PANE_SEL_BG := tb2.Color(0xffdd33)
 
+COLOR_TERM_FG := tb2.Color(0xf4f4ff)
+COLOR_TERM_BG := tb2.Color(0x2b2b2b)
+// kitty's default palette lifted +0x20 per channel so darker entries stay legible
+// on the light pane background.
+COLOR_TERM_ANSI := [16]tb2.Color {
+	tb2.Color(0x202020),
+	tb2.Color(0xec2423),
+	tb2.Color(0x39eb20),
+	tb2.Color(0xeeeb20),
+	tb2.Color(0x2d93ec),
+	tb2.Color(0xeb3ef1),
+	tb2.Color(0x2deded),
+	tb2.Color(0xfdfdfd),
+	tb2.Color(0x969696),
+	tb2.Color(0xff403f),
+	tb2.Color(0x43ff20),
+	tb2.Color(0xffff20),
+	tb2.Color(0x3aafff),
+	tb2.Color(0xff48ff),
+	tb2.Color(0x34ffff),
+	tb2.Color(0xffffff),
+}
+
 COLOR_SYN_KEYWORD := tb2.Color(0xffdd33)
 COLOR_SYN_TYPE := tb2.Color(0x96a6c8)
 COLOR_SYN_STRING := tb2.Color(0x73c936)

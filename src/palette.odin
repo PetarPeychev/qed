@@ -71,6 +71,7 @@ cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
 commands := [?]Command {
 	{name = "Open File", shortcut = "Ctrl+o", key = .Ctrl_O, run = picker_open},
 	{name = "File Tree", shortcut = "Alt+f", alt_ch = 'f', run = filetree_open},
+	{name = "Toggle Terminal", shortcut = "Alt+t", alt_ch = 't', run = term_toggle},
 	{name = "Find Line", shortcut = "Ctrl+f", key = .Ctrl_F, run = linefind_open},
 	{name = "Find in Files", shortcut = "Alt+F", alt_ch = 'F', run = projsearch_open},
 	{name = "Go to Start of File", shortcut = "Alt+{", alt_ch = '{', run = cmd_buffer_start},

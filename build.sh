@@ -46,5 +46,16 @@ ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/lua-parser.o" "$TS/lua-scanner.o" \
    "$TS/sql-parser.o" "$TS/sql-scanner.o"
 
+# Build the vendored libvterm terminal emulator into a static lib
+VT=lib/vterm
+for f in "$VT"/src/*.c; do
+   cc -c -w -O2 -I "$VT/include" -I "$VT/src" "$f" -o "${f%.c}.o"
+done
+ar rcs "$VT/libvterm.a" "$VT"/src/*.o
+
+# Build the PTY shim (forkpty) into a static lib
+cc -c -w -O2 lib/pty/pty.c -o lib/pty/pty.o
+ar rcs lib/pty/libqedpty.a lib/pty/pty.o
+
 # Build the editor, exposing vendor/ as a collection
 odin build src -collection:lib=lib -out:qed

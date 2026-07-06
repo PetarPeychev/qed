@@ -49,6 +49,7 @@ Editor :: struct {
 	llm:             Llm,
 	aiedit:          AiEdit,
 	fim:             Fim,
+	terminal:        Terminal,
 }
 
 editor_init :: proc(path: string = "") -> Editor {
@@ -108,6 +109,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.llm.requests)
 	fim_dismiss(editor)
 	aiedit_destroy(&editor.aiedit)
+	term_destroy(editor)
 	delete(g_language_rules)
 	syntax_shutdown()
 	clipboard_shutdown()
@@ -157,8 +159,9 @@ Overlay :: struct {
 	render:   proc(editor: ^Editor),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [13]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [14]Overlay {
 	return {
+		{&editor.terminal.active, term_dispatch, term_render},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render},
 		{&editor.palette.active, palette_dispatch_key, palette_render},
 		{&editor.picker.active, picker_dispatch_key, picker_render},
@@ -185,6 +188,9 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				ov.dispatch(editor, ev)
 			case .Resize:
 				editor_scroll(editor)
+				if editor.terminal.active {
+					term_resize(editor)
+				}
 			}
 			return
 		}
@@ -198,6 +204,10 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			}
 			if alt && ev.ch == 'f' {
 				filetree_open(editor)
+				return
+			}
+			if alt && ev.ch == 't' {
+				term_toggle(editor)
 				return
 			}
 			#partial switch ev.key {

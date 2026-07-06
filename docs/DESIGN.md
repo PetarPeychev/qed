@@ -292,13 +292,36 @@ held by qed. **External quirk:** the POST body is fed on **stdin** (`--data-bina
 not `@file` — the async spawn unlinks the temp immediately and curl opens a `@file`
 lazily, so a `@file` races to an empty body. `QED_FIM_DEBUG` logs to `/tmp/qed-fim.log`.
 
+## Terminal pane
+
+*Floating embedded terminal* (`terminal.odin`, `Alt+t`): a persistent interactive
+shell in an overlay sized by `overlay_layout` (like project-search). The shell +
+PTY + emulator outlive pane open/close — toggling only shows/hides; the session
+survives. The emulator is **vendored libvterm** (`lib:vterm`), fed PTY bytes; the
+PTY itself is a `forkpty` shim (`lib:pty`, `-lutil`) — the one OS-specific piece.
+`term_pump` (main loop, next to `lsp_pump`) does a non-blocking `read(pty_fd)` →
+`vterm_input_write`; the loop's fast-poll gate carries `term_alive` so a hidden-but-
+running shell still drains (child never blocks on a full pipe). `term_render` walks
+the libvterm grid cell-by-cell to `tb2.set_cell` (full redraw, like everywhere);
+the hardware cursor sits at the emulator cursor when focused. `term_dispatch`
+forwards keys via `vterm_keyboard_*` and intercepts exactly one escape-hatch —
+`Alt+t` — to defocus. Alt-screen is enabled (full-TUI capable: vim/htop/less).
+Colours come from qed's own palette, not the host terminal (qed is a guest; the
+host palette is invisible): `COLOR_TERM_FG/BG` + a 16-entry `COLOR_TERM_ANSI`
+(config `terminal_foreground`/`terminal_background`/`terminal_ansi_0..15`) set on the
+vterm state; default bg matches the pane. **External quirk:** this terminal's
+termbox tags the control-byte keys (Enter/Tab/Backspace/Esc) with a spurious Ctrl
+modifier, so `term_send_key` strips Ctrl for those before encoding. Mouse
+forwarding and copy-out are not wired yet. Deep-dive: [notes/terminal.md](notes/terminal.md).
+
 ## File layout
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
-`format` · `git` · `llm` · `aiedit` · `fim` · `perf_bench`.
+`format` · `git` · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
+Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
 
 ## Shipped
 
@@ -326,7 +349,9 @@ in stable order + digit instant-jump on empty query), fuzzy line jump (`Ctrl+F`,
 matches in file order), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
 right-side preview, new/rename/delete with recursive-delete confirm; rename follows
-open buffers), jump list (back/forward), runtime config (`~/.config/qed/config.json`).
+open buffers), floating terminal pane (`Alt+t`: persistent embedded shell via
+vendored libvterm + PTY, full-TUI capable, qed-palette colors), jump list
+(back/forward), runtime config (`~/.config/qed/config.json`).
 Preview panes (file-open, file-tree, project-search) are syntax-highlighted via a
 one-shot synchronous tree-sitter pass (`highlight_lines`); project-search parses
 from line 1 to the window end (size-gated at `HIGHLIGHT_ASYNC_BYTES`) so constructs
