@@ -117,7 +117,19 @@ member group is no longer on top).
 - **Save (atomic):** write a temp file in the same dir, then `rename` over target;
   reconstruct bytes by joining lines with `line_ending` (the trailing empty line,
   if any, becomes the trailing newline). No newline is forced — files save exactly
-  as shown.
+  as shown. The temp is created with the target's existing **mode** (from the disk
+  fingerprint) + an explicit `fchmod`, so `rename` doesn't flatten permissions (a
+  `+x` script stays executable). Ownership is not preserved (single-user editor).
+- **External changes:** each buffer keeps a `DiskStamp` (`mtime`/`size`/`mode`),
+  captured on open and refreshed after every save (so our own write never looks
+  external). The main loop polls `os.stat` for every open buffer, throttled by
+  `disk_poll_ms` (idle branch uses a timed `peek_event`, so it fires even with no
+  input). A changed file that is **clean** auto-reloads (`buffer_reload`: re-read,
+  clear undo/redo, drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
+  clamp the cursor); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
+  onto it opens the conflict dialog (Cancel / Overwrite / Reload) instead of
+  clobbering. Reload skips a buffer while its highlight parse thread is busy
+  (retries next poll). Deletion on disk is ignored (buffer stays; save recreates).
 - **Startup arg:** file → open it; directory → set working root + welcome screen;
   absent → welcome screen. Working root is the future root for cross-file features.
 
@@ -260,7 +272,8 @@ lazily, so a `@file` races to an empty body. `QED_FIM_DEBUG` logs to `/tmp/qed-f
 
 ## Shipped
 
-Core editing: buffer open/save (atomic, LF/CRLF + final-newline preserving),
+Core editing: buffer open/save (atomic, permission-preserving, LF/CRLF +
+final-newline preserving; external-change auto-reload + dirty-buffer save clobber guard),
 insert/delete primitives + grouped undo/redo, bracket/colon-aware auto-indent
 (Enter indents after an opener / Python `:`, splits a matched `{}` pair, closing
 bracket re-aligns to its opener), selection +

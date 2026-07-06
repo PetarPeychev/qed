@@ -58,6 +58,9 @@ main :: proc() {
 				if highlight_ready(editor_buffer(&editor)) {
 					redraw = true
 				}
+				if editor_maybe_poll_disk(&editor) {
+					redraw = true
+				}
 				if redraw && !got_event {
 					break
 				}
@@ -65,8 +68,13 @@ main :: proc() {
 					free_all(context.temp_allocator)
 				}
 			} else {
-				tb2.poll_event(&ev)
-				got_event = true
+				if tb2.peek_event(&ev, i32(DISK_POLL_MS)) == .Ok {
+					got_event = true
+				} else if editor_maybe_poll_disk(&editor) {
+					break
+				} else {
+					free_all(context.temp_allocator)
+				}
 			}
 		}
 		if got_event {

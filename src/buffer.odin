@@ -3,6 +3,7 @@ package main
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "core:time"
 import ts "lib:tree_sitter"
 
 Buffer :: struct {
@@ -30,6 +31,15 @@ Buffer :: struct {
 	lsp_changes:   [dynamic]LspChange,
 	big:           bool,
 	language:      Language,
+	disk:          DiskStamp,
+	disk_conflict: bool,
+}
+
+DiskStamp :: struct {
+	mtime: i64,
+	size:  i64,
+	mode:  os.Permissions,
+	ok:    bool,
 }
 
 
@@ -141,26 +151,34 @@ buffer_recompute_modified :: proc(buffer: ^Buffer) {
 	buffer.modified = pos != len(saved)
 }
 
-BufferOpenError :: enum {
-	None,
-	FileOpenError,
-	FileReadError,
+buffer_disk_stamp :: proc(path: string) -> DiskStamp {
+	if path == "" {
+		return {}
+	}
+	fi, err := os.stat(path, context.temp_allocator)
+	if err != nil {
+		return {}
+	}
+	return DiskStamp {
+		mtime = time.time_to_unix_nano(fi.modification_time),
+		size = fi.size,
+		mode = fi.mode,
+		ok = true,
+	}
 }
 
-buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
-	file, err := os.open(path, flags = {.Read, .Create})
-	if err != nil {
-		return .FileOpenError
+buffer_disk_changed :: proc(buffer: ^Buffer) -> bool {
+	if !buffer.disk.ok {
+		return false
 	}
-	defer os.close(file)
-
-	data: []u8
-	data, err = os.read_entire_file(file, context.allocator)
-	if err != nil {
-		return .FileReadError
+	now := buffer_disk_stamp(buffer.path)
+	if !now.ok {
+		return false
 	}
-	defer delete(data)
+	return now.mtime != buffer.disk.mtime || now.size != buffer.disk.size
+}
 
+buffer_set_content :: proc(buffer: ^Buffer, data: []u8) {
 	for &line in buffer.lines {
 		delete(line.text)
 	}
@@ -184,15 +202,94 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 
 	buffer_detect_indent(buffer)
 
+	delete(buffer.saved)
+	buffer.saved = buffer_snapshot(buffer)
+	buffer.modified = false
+}
+
+BufferOpenError :: enum {
+	None,
+	FileOpenError,
+	FileReadError,
+}
+
+buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
+	file, err := os.open(path, flags = {.Read, .Create})
+	if err != nil {
+		return .FileOpenError
+	}
+	defer os.close(file)
+
+	data: []u8
+	data, err = os.read_entire_file(file, context.allocator)
+	if err != nil {
+		return .FileReadError
+	}
+	defer delete(data)
+
+	buffer_set_content(buffer, data)
+
 	delete(buffer.path)
 	buffer.path = strings.clone(path)
 	buffer.language = language_of(path)
 	buffer.cursor = {0, 0}
 	buffer.selection = nil
 	buffer.goal_col = 0
-	delete(buffer.saved)
-	buffer.saved = buffer_snapshot(buffer)
-	buffer.modified = false
+	buffer.disk = buffer_disk_stamp(path)
+	buffer.disk_conflict = false
+	git_invalidate(buffer)
+
+	return .None
+}
+
+buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
+	file, err := os.open(buffer.path, flags = {.Read})
+	if err != nil {
+		return .FileOpenError
+	}
+	defer os.close(file)
+
+	data: []u8
+	data, err = os.read_entire_file(file, context.allocator)
+	if err != nil {
+		return .FileReadError
+	}
+	defer delete(data)
+
+	cur := buffer.cursor
+	buffer_set_content(buffer, data)
+
+	// The prior edit log describes content that no longer exists on disk.
+	for &group in buffer.undo {
+		group_destroy(&group)
+	}
+	clear(&buffer.undo)
+	for &group in buffer.redo {
+		group_destroy(&group)
+	}
+	clear(&buffer.redo)
+	group_destroy(&buffer.open)
+	buffer.open = {}
+	buffer.has_open = false
+
+	buffer.cursor.row = clamp(cur.row, 0, len(buffer.lines) - 1)
+	buffer.cursor.col = clamp(cur.col, 0, len(buffer.lines[buffer.cursor.row].text))
+	buffer.selection = nil
+	buffer.goal_col = 0
+
+	// Full content swap invalidates the retained parse tree and any queued edits.
+	if buffer.hl.tree != nil {
+		ts.tree_delete(buffer.hl.tree)
+		buffer.hl.tree = nil
+	}
+	clear(&buffer.hl.pending)
+	buffer.hl.computed = false
+	buffer.hl.valid = false
+
+	buffer_lsp_changes_clear(buffer)
+	buffer.rev += 1
+	buffer.disk = buffer_disk_stamp(buffer.path)
+	buffer.disk_conflict = false
 	git_invalidate(buffer)
 
 	return .None
@@ -220,11 +317,17 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	}
 	data := strings.to_string(sb)
 
+	mode := os.perm(0o644)
+	if buffer.disk.ok {
+		mode = buffer.disk.mode
+	}
+
 	tmp := strings.concatenate({buffer.path, ".qed-tmp"}, context.temp_allocator)
-	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, os.perm(0o644))
+	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, mode)
 	if open_err != nil {
 		return .WriteError
 	}
+	os.fchmod(fd, mode) // umask can't strip the preserved bits when set explicitly
 	_, write_err := os.write(fd, transmute([]u8)data)
 	os.close(fd)
 	if write_err != nil {
@@ -240,6 +343,8 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	delete(buffer.saved)
 	buffer.saved = buffer_snapshot(buffer)
 	buffer.modified = false
+	buffer.disk = buffer_disk_stamp(buffer.path)
+	buffer.disk_conflict = false
 	git_invalidate(buffer)
 
 	return .None

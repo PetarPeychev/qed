@@ -20,6 +20,8 @@ Editor :: struct {
 	message_error:   bool,
 	quit_dialog:     QuitDialog,
 	close_dialog:    CloseDialog,
+	conflict_dialog: ConflictDialog,
+	disk_poll:       time.Tick,
 	quit:            bool,
 	pasting:         bool,
 	paste_buf:       [dynamic]u8,
@@ -154,7 +156,7 @@ Overlay :: struct {
 	render:   proc(editor: ^Editor),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [12]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [13]Overlay {
 	return {
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render},
 		{&editor.palette.active, palette_dispatch_key, palette_render},
@@ -168,6 +170,7 @@ editor_overlays :: proc(editor: ^Editor) -> [12]Overlay {
 		{&editor.filetree.active, filetree_dispatch_key, filetree_render},
 		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render},
 		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render},
+		{&editor.conflict_dialog.active, conflict_dialog_dispatch_key, conflict_dialog_render},
 	}
 }
 
@@ -651,6 +654,14 @@ editor_save_path :: proc(editor: ^Editor, path: string) {
 }
 
 editor_save_buffer :: proc(editor: ^Editor, b: ^Buffer) {
+	if buffer_disk_changed(b) {
+		conflict_dialog_open(editor)
+		return
+	}
+	editor_force_save(editor, b)
+}
+
+editor_force_save :: proc(editor: ^Editor, b: ^Buffer) {
 	switch buffer_save(b) {
 	case .None:
 		editor_set_message(editor, "Saved")
@@ -660,6 +671,53 @@ editor_save_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 	case .WriteError, .RenameError:
 		editor_set_message(editor, "Save failed", true)
 	}
+}
+
+editor_reload_buffer :: proc(editor: ^Editor, b: ^Buffer) {
+	lsp_did_close(editor, b)
+	switch buffer_reload(b) {
+	case .None:
+		if b == editor_buffer(editor) {
+			editor_scroll(editor)
+			editor_set_message(editor, "Reloaded from disk")
+		}
+	case .FileOpenError, .FileReadError:
+		editor_set_message(editor, "Reload failed", true)
+	}
+}
+
+editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
+	if time.duration_milliseconds(time.tick_since(editor.disk_poll)) < f64(DISK_POLL_MS) {
+		return false
+	}
+	editor.disk_poll = time.tick_now()
+	return editor_poll_disk(editor)
+}
+
+editor_poll_disk :: proc(editor: ^Editor) -> bool {
+	cur := editor_buffer(editor)
+	changed := false
+	for &b in editor.buffers {
+		if b.path == "" || !buffer_disk_changed(&b) {
+			continue
+		}
+		if b.modified {
+			if !b.disk_conflict {
+				b.disk_conflict = true
+				if &b == cur {
+					editor_set_message(editor, "File changed on disk — you have unsaved edits", true)
+					changed = true
+				}
+			}
+			continue
+		}
+		if highlight_busy(&b) {
+			continue // don't swap content under a running parse; retry next poll
+		}
+		editor_reload_buffer(editor, &b)
+		changed = true
+	}
+	return changed
 }
 
 editor_scroll :: proc(editor: ^Editor) {

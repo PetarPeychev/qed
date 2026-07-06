@@ -7,6 +7,7 @@ import "lib:tb2"
 
 quit_actions := [?]string{"Save All", "Discard All", "Cancel"}
 close_actions := [?]string{"Save", "Discard", "Cancel"}
+conflict_actions := [?]string{"Cancel", "Overwrite (keep my version)", "Reload (discard my changes)"}
 
 QuitDialog :: struct {
 	active:   bool,
@@ -136,6 +137,54 @@ close_dialog_render :: proc(editor: ^Editor) {
 	name := filepath.base(b.path) if b.path != "" else "[No Name]"
 	question := fmt.tprintf("Save changes to %s?", name)
 	dialog_render(editor, question, close_actions[:], editor.close_dialog.selected)
+}
+
+ConflictDialog :: struct {
+	active:   bool,
+	selected: int,
+}
+
+conflict_dialog_open :: proc(editor: ^Editor) {
+	editor.conflict_dialog.active = true
+	editor.conflict_dialog.selected = 0
+	editor_set_message(editor, "")
+}
+
+conflict_dialog_close :: proc(editor: ^Editor) {
+	editor.conflict_dialog.active = false
+}
+
+conflict_dialog_execute :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	selected := editor.conflict_dialog.selected
+	conflict_dialog_close(editor)
+	switch selected {
+	case 1:
+		editor_force_save(editor, b)
+	case 2:
+		editor_reload_buffer(editor, b)
+	}
+}
+
+conflict_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
+	d := &editor.conflict_dialog
+	#partial switch ev.key {
+	case .Esc:
+		conflict_dialog_close(editor)
+	case .Enter:
+		conflict_dialog_execute(editor)
+	case .Arrow_Down:
+		d.selected = (d.selected + 1) % len(conflict_actions)
+	case .Arrow_Up:
+		d.selected = (d.selected - 1 + len(conflict_actions)) % len(conflict_actions)
+	}
+}
+
+conflict_dialog_render :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	name := filepath.base(b.path) if b.path != "" else "[No Name]"
+	question := fmt.tprintf("%s changed on disk since you loaded it.", name)
+	dialog_render(editor, question, conflict_actions[:], editor.conflict_dialog.selected)
 }
 
 dialog_render :: proc(editor: ^Editor, question: string, actions: []string, selected: int) {

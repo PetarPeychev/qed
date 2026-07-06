@@ -28,6 +28,7 @@ config_ints := [?]Config_Int {
 	{"tab_width", &TAB_WIDTH},
 	{"wheel_scroll_lines", &WHEEL_SCROLL_LINES},
 	{"double_click_ms", &DOUBLE_CLICK_MS},
+	{"disk_poll_ms", &DISK_POLL_MS},
 	{"palette_width", &PALETTE_WIDTH},
 	{"palette_max_rows", &PALETTE_MAX_ROWS},
 	{"picker_margin_x", &PICKER_MARGIN_X},

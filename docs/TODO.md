@@ -9,9 +9,9 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
-## Features
+- [ ] Flaky `test_language_of_extensions` (`.mts` → Plain, ~10-20% of runs): `language_of` glob tie-break depends on map iteration order.
 
-- [ ] Detect external file changes on disk (reload prompt / clobber guard when another process rewrites an open file).
+## Features
 
 ## AI / LLM assist
 
