@@ -113,10 +113,14 @@ member group is no longer on top).
   Editing replaces the selection — except Tab/Shift+Tab, which block indent/dedent
   every touched line (exact inverses; trailing line ending at col 0 not counted).
   Selected cells render inverted.
-- Viewport: `scroll_row`/`scroll_col` track the top-left cell; after a move,
-  scroll the minimum to keep the cursor visible honoring `SCROLL_MARGIN`. With
-  soft wrap, `scroll_col` is 0 and `scroll_sub` anchors the visual sub-row of
-  `scroll_row` at the top (all visibility math in visual rows — see `wrap.odin`).
+- Viewport: `scroll_row`/`scroll_col` track the top-left cell. Each command owns
+  its own reveal — a command that moves the cursor calls `editor_scroll`; opening
+  a pane / a no-cursor command (save, toggles, wheel scroll) leaves the viewport
+  put. `editor_scroll` scrolls the minimum to keep the cursor visible honoring
+  `SCROLL_MARGIN`. With soft wrap, `scroll_col` is 0 and `scroll_sub` anchors the
+  visual sub-row of `scroll_row` at the top (all visibility math in visual rows —
+  see `wrap.odin`). When the caret is scrolled out of the viewport it is hidden,
+  not clamped to an edge.
 - Mouse: click positions, drag extends (auto-scrolls past the edge), wheel
   scrolls, double/triple-click selects word/line.
 

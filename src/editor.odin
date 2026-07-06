@@ -423,14 +423,12 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	if alt && ev.ch != 0 {
 		if cmd, ok := command_for_alt(ev.ch); ok {
 			cmd.run(editor)
-			editor_scroll(editor)
 		}
 		return
 	}
 
 	if cmd, ok := command_for_key(ev.key); ok {
 		cmd.run(editor)
-		editor_scroll(editor)
 		return
 	}
 
@@ -450,6 +448,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	#partial switch ev.key {
 	case .Ctrl_P:
 		palette_open(editor)
+		return
 	case .Enter:
 		if selection_active(b) {
 			buffer_replace_selection(b, "\n")
@@ -665,6 +664,7 @@ editor_cut :: proc(editor: ^Editor) {
 	} else {
 		buffer_delete_line(b)
 	}
+	editor_scroll(editor)
 }
 
 editor_paste :: proc(editor: ^Editor) {
@@ -673,6 +673,7 @@ editor_paste :: proc(editor: ^Editor) {
 		return
 	}
 	buffer_paste(editor_buffer(editor), text)
+	editor_scroll(editor)
 }
 
 editor_save :: proc(editor: ^Editor) {
@@ -847,30 +848,38 @@ editor_render :: proc(editor: ^Editor) {
 	} else {
 		b := editor_buffer(editor)
 		gutter := editor_gutter_width(editor)
-		w, _ := editor_viewport(editor)
+		w, h := editor_viewport(editor)
 		text := b.lines[b.cursor.row].text[:]
 		cx, cy: int
+		above := false
 		if b.wrap && w > 0 {
 			seg := wrap_seg_start(text, w, b.cursor.col)
 			cur_sub := wrap_subrow(text, w, b.cursor.col)
 			cx = gutter + visual_col(text, b.cursor.col) - visual_col(text, seg)
+			above =
+				b.cursor.row < editor.scroll_row ||
+				(b.cursor.row == editor.scroll_row && cur_sub < editor.scroll_sub)
 			cy = vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, b.cursor.row, cur_sub)
 		} else {
 			cx = gutter + visual_col(text, b.cursor.col) - editor.scroll_col
 			cy = b.cursor.row - editor.scroll_row
 		}
-		tb2.set_cursor(i32(cx), i32(cy))
-		if editor.completion.active {
-			completion_render(editor, cx, cy)
-		} else if fim_ghost_active(editor) {
-			// A wrapped buffer draws the ghost inline in editor_render_buffer.
-			if !(b.wrap && w > 0) {
-				fim_render(editor, cx, cy)
-			}
-		} else if editor.hover_active {
-			editor_render_hover_pane(editor, cx, cy)
+		if above || cy < 0 || cy >= h || cx < gutter || cx >= gutter + w {
+			tb2.hide_cursor()
 		} else {
-			editor_render_diag_pane(editor, cx, cy)
+			tb2.set_cursor(i32(cx), i32(cy))
+			if editor.completion.active {
+				completion_render(editor, cx, cy)
+			} else if fim_ghost_active(editor) {
+				// A wrapped buffer draws the ghost inline in editor_render_buffer.
+				if !(b.wrap && w > 0) {
+					fim_render(editor, cx, cy)
+				}
+			} else if editor.hover_active {
+				editor_render_hover_pane(editor, cx, cy)
+			} else {
+				editor_render_diag_pane(editor, cx, cy)
+			}
 		}
 	}
 	tb2.present()

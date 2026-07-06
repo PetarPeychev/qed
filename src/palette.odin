@@ -11,23 +11,37 @@ Command :: struct {
 	run:      proc(editor: ^Editor),
 }
 
-cmd_undo :: proc(editor: ^Editor) {editor_undo(editor)}
-cmd_redo :: proc(editor: ^Editor) {editor_redo(editor)}
-cmd_select_all :: proc(editor: ^Editor) {cursor_select_all(editor_buffer(editor))}
+cmd_undo :: proc(editor: ^Editor) {
+	editor_undo(editor)
+	editor_scroll(editor)
+}
+cmd_redo :: proc(editor: ^Editor) {
+	editor_redo(editor)
+	editor_scroll(editor)
+}
+cmd_select_all :: proc(editor: ^Editor) {
+	cursor_select_all(editor_buffer(editor))
+	editor_scroll(editor)
+}
 
 cmd_buffer_start :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.selection = nil
 	cursor_move_buffer_start(b)
+	editor_scroll(editor)
 }
 
 cmd_buffer_end :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.selection = nil
 	cursor_move_buffer_end(b)
+	editor_scroll(editor)
 }
 
-cmd_toggle_comment :: proc(editor: ^Editor) {buffer_toggle_comment(editor_buffer(editor))}
+cmd_toggle_comment :: proc(editor: ^Editor) {
+	buffer_toggle_comment(editor_buffer(editor))
+	editor_scroll(editor)
+}
 cmd_set_language :: proc(editor: ^Editor) {langpick_open(editor)}
 cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
 cmd_lsp_definition :: proc(editor: ^Editor) {lsp_definition(editor)}
@@ -52,6 +66,7 @@ cmd_toggle_line_wrap :: proc(editor: ^Editor) {
 	b.wrap = !b.wrap
 	editor.scroll_col = 0
 	editor.scroll_sub = 0
+	editor_scroll(editor)
 	editor_set_message(editor, fmt.tprintf("Line wrap: %s", "on" if b.wrap else "off"))
 }
 
@@ -160,7 +175,6 @@ palette_execute :: proc(editor: ^Editor) {
 	cmd := commands[p.matches[p.selected]]
 	palette_close(editor)
 	cmd.run(editor)
-	editor_scroll(editor)
 }
 
 palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {

@@ -9,8 +9,6 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
-- [ ] opening command palette when scroll is off-screen from the cursor scrolls back to the cursor
- 
 ## Features
 
 ## AI / LLM assist
