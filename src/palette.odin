@@ -174,7 +174,7 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		fuzzy_list_move_wrap(&p.list, -1, PALETTE_MAX_ROWS)
 	case:
-		if query_edit_key(&p.query, ev) {
+		if textfield_key(&p.field, ev) {
 			fuzzy_list_refilter(&p.list)
 		}
 	}
@@ -186,8 +186,7 @@ palette_render :: proc(editor: ^Editor) {
 	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
 	inner := pane_draw_box(box)
 
-	pane_text(inner.x + 1, inner.y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_text(inner.x + 3, inner.y, inner.w - 4, string(p.query[:]), COLOR_PANE_FG, COLOR_PANE_BG)
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &p.field)
 	pane_hline(box, inner.y + 1)
 
 	for i in 0 ..< rows {
@@ -205,6 +204,4 @@ palette_render :: proc(editor: ^Editor) {
 		sx := inner.x + inner.w - 1 - len(cmd.shortcut)
 		pane_text(sx, y, len(cmd.shortcut), cmd.shortcut, sc_fg, bg)
 	}
-
-	overlay_cursor(inner, len(p.query))
 }

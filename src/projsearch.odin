@@ -15,7 +15,7 @@ Match :: struct {
 
 ProjSearch :: struct {
 	active:        bool,
-	query:         [dynamic]u8,
+	field:         TextField,
 	matches:       [dynamic]Match,
 	selected:      int,
 	scroll:        int,
@@ -49,7 +49,7 @@ projsearch_destroy :: proc(p: ^ProjSearch) {
 	projsearch_clear_preview(p)
 	delete(p.matches)
 	delete(p.preview)
-	delete(p.query)
+	textfield_destroy(&p.field)
 	delete(p.colors)
 }
 
@@ -63,7 +63,7 @@ projsearch_open :: proc(editor: ^Editor) {
 		return
 	}
 	p.active = true
-	clear(&p.query)
+	textfield_reset(&p.field)
 	p.selected = 0
 	p.scroll = 0
 }
@@ -80,7 +80,7 @@ projsearch_run :: proc(editor: ^Editor) {
 	projsearch_clear_matches(p)
 	p.selected = 0
 	p.scroll = 0
-	query := string(p.query[:])
+	query := textfield_str(&p.field)
 	if len(query) < PROJSEARCH_MIN_QUERY {
 		return
 	}
@@ -234,7 +234,7 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		projsearch_move(editor, -1)
 	case:
-		if !alt && query_edit_key(&p.query, ev) {
+		if textfield_key(&p.field, ev) {
 			projsearch_run(editor)
 			projsearch_load_preview(editor)
 		}
@@ -246,11 +246,10 @@ projsearch_render :: proc(editor: ^Editor) {
 	lay := overlay_layout(editor)
 	inner := pane_draw_box(lay.box)
 
-	prompt := fmt.tprintf("> %s", string(p.query[:]))
-	pane_text(inner.x + 1, inner.y, inner.w - 2, prompt, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &p.field)
 	pane_hline(lay.box, lay.title_sep_y)
 
-	if len(p.query) < PROJSEARCH_MIN_QUERY {
+	if len(p.field.text) < PROJSEARCH_MIN_QUERY {
 		hint := fmt.tprintf("Type at least %d characters to search", PROJSEARCH_MIN_QUERY)
 		pane_text(inner.x + 1, lay.body_top, lay.left_w - 1, hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 	}
@@ -286,5 +285,4 @@ projsearch_render :: proc(editor: ^Editor) {
 	}
 
 	overlay_divider(lay)
-	overlay_cursor(inner, len(p.query))
 }

@@ -72,7 +72,6 @@ linefind_execute :: proc(editor: ^Editor) {
 
 linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
-	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
 	#partial switch ev.key {
 	case .Esc, .Ctrl_F:
 		linefind_close(editor)
@@ -83,7 +82,7 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		linefind_move(editor, -1)
 	case:
-		if !alt && query_edit_key(&p.query, ev) {
+		if textfield_key(&p.field, ev) {
 			fuzzy_list_refilter(&p.list)
 		}
 	}
@@ -101,8 +100,7 @@ linefind_render :: proc(editor: ^Editor) {
 	inner := pane_draw_box(lay.box)
 	numw := digit_count(len(p.lines))
 
-	prompt := fmt.tprintf("> %s", string(p.query[:]))
-	pane_text(inner.x + 1, inner.y, inner.w - 2, prompt, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &p.field)
 	pane_hline(lay.box, lay.title_sep_y)
 
 	end := min(p.scroll + lay.body_h, len(p.matches))
@@ -135,5 +133,4 @@ linefind_render :: proc(editor: ^Editor) {
 	}
 
 	overlay_divider(lay)
-	overlay_cursor(inner, len(p.query))
 }

@@ -156,7 +156,19 @@ Copy/cut/paste shell out via `clipboard.odin`: `wl-copy`/`wl-paste` or `xclip`
 
 Explicit `switch` on `(key, mod, ch)` → action procs; keys named in `config.odin`.
 Rebindable commands live in the `commands` table (`palette.odin`); primitive
-editing/movement and `Ctrl+P` (palette) are fixed. Two terminal workarounds, both
+editing/movement and `Ctrl+P` (palette) are fixed.
+
+Every editable text box (palette/picker/switcher/lang/indent/line-find/project-search
+queries, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
+`TextField` (`textfield.odin`): `{text, caret, anchor}` with buffer-parity binds —
+grapheme + word (`Ctrl+←/→`) motion, smart home/end (`Alt+←/→`), shift-select,
+`Ctrl+A`, `Ctrl+X/C/V` (paste flattens newlines), delete-selection. `textfield_key`
+returns whether the text changed (fuzzy callers re-filter); `textfield_render` draws it
+scrolled to the caret with the selection inverted (`COLOR_PANE_BG`/`FG`). Word/home
+motion is the same `word_left_col`/`word_right_col`/`home_smart_col` the buffer cursor
+uses. `FuzzyList` (`overlay.odin`) embeds one; its `> ` prompt draws via `overlay_prompt_render`.
+
+Two terminal workarounds, both
 documented in `lib/tb2/PATCHES.md`:
 - **ALT keys:** termbox stays in ESC input mode; after a bare `Esc`, qed
   `peek_event`s for `ALT_ESC_TIMEOUT_MS` and re-tags a buffered printable as
@@ -280,7 +292,7 @@ lazily, so a `@file` races to an empty body. `QED_FIM_DEBUG` logs to `/tmp/qed-f
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `wrap` (soft-wrap layout) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `llm` · `aiedit` · `fim` · `perf_bench`.
 

@@ -293,7 +293,7 @@ cursor_move_home_smart :: proc(b: ^Buffer) {
 			c.col = first
 		}
 	} else {
-		c.col = 0 if c.col == first else first
+		c.col = home_smart_col(text, c.col)
 	}
 	cursor_goal_sync(b)
 }
@@ -347,6 +347,44 @@ cursor_paragraph_next :: proc(b: ^Buffer) {
 	cursor_move_buffer_end(b)
 }
 
+word_left_col :: proc(text: []u8, col: int) -> int {
+	col := col
+	if col <= 0 {
+		return 0
+	}
+	prev := grapheme_prev(text, col)
+	cls := grapheme_class(text, prev)
+	col = prev
+	for col > 0 {
+		p := grapheme_prev(text, col)
+		if grapheme_class(text, p) != cls {
+			break
+		}
+		col = p
+	}
+	return col
+}
+
+word_right_col :: proc(text: []u8, col: int) -> int {
+	col := col
+	if col >= len(text) {
+		return len(text)
+	}
+	cls := grapheme_class(text, col)
+	for col < len(text) && grapheme_class(text, col) == cls {
+		col = grapheme_next(text, col)
+	}
+	return col
+}
+
+home_smart_col :: proc(text: []u8, col: int) -> int {
+	first := 0
+	for first < len(text) && (text[first] == ' ' || text[first] == '\t') {
+		first += 1
+	}
+	return 0 if col == first else first
+}
+
 cursor_move_word_left :: proc(b: ^Buffer) {
 	c := &b.cursor
 	if c.col == 0 {
@@ -354,20 +392,8 @@ cursor_move_word_left :: proc(b: ^Buffer) {
 			c.row -= 1
 			c.col = len(b.lines[c.row].text)
 		}
-		cursor_goal_sync(b)
-		return
-	}
-
-	text := b.lines[c.row].text[:]
-	prev := grapheme_prev(text, c.col)
-	cls := grapheme_class(text, prev)
-	c.col = prev
-	for c.col > 0 {
-		p := grapheme_prev(text, c.col)
-		if grapheme_class(text, p) != cls {
-			break
-		}
-		c.col = p
+	} else {
+		c.col = word_left_col(b.lines[c.row].text[:], c.col)
 	}
 	cursor_goal_sync(b)
 }
@@ -380,13 +406,8 @@ cursor_move_word_right :: proc(b: ^Buffer) {
 			c.row += 1
 			c.col = 0
 		}
-		cursor_goal_sync(b)
-		return
-	}
-
-	cls := grapheme_class(text, c.col)
-	for c.col < len(text) && grapheme_class(text, c.col) == cls {
-		c.col = grapheme_next(text, c.col)
+	} else {
+		c.col = word_right_col(text, c.col)
 	}
 	cursor_goal_sync(b)
 }

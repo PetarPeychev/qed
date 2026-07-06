@@ -95,9 +95,9 @@ bufswitch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		fuzzy_list_move_wrap(&p.list, -1, PALETTE_MAX_ROWS)
 	case:
-		if len(p.query) == 0 && ev.ch >= '1' && ev.ch <= '9' {
+		if len(p.field.text) == 0 && ev.ch >= '1' && ev.ch <= '9' {
 			bufswitch_jump_number(editor, ev.ch)
-		} else if query_edit_key(&p.query, ev) {
+		} else if textfield_key(&p.field, ev) {
 			fuzzy_list_refilter(&p.list)
 		}
 	}
@@ -109,8 +109,7 @@ bufswitch_render :: proc(editor: ^Editor) {
 	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
 	inner := pane_draw_box(box)
 
-	pane_text(inner.x + 1, inner.y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_text(inner.x + 3, inner.y, inner.w - 4, string(p.query[:]), COLOR_PANE_FG, COLOR_PANE_BG)
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &p.field)
 	pane_hline(box, inner.y + 1)
 
 	for i in 0 ..< rows {
@@ -131,6 +130,4 @@ bufswitch_render :: proc(editor: ^Editor) {
 		}
 		pane_text(inner.x + 4, y, inner.w - 5, label, fg, bg)
 	}
-
-	overlay_cursor(inner, len(p.query))
 }

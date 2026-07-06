@@ -161,7 +161,7 @@ picker_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		picker_move(editor, -1)
 	case:
-		if query_edit_key(&p.query, ev) {
+		if textfield_key(&p.field, ev) {
 			fuzzy_list_refilter(&p.list)
 			picker_load_preview(editor)
 		}
@@ -183,8 +183,7 @@ picker_render :: proc(editor: ^Editor) {
 	lay := overlay_layout(editor)
 	inner := pane_draw_box(lay.box)
 
-	prompt := fmt.tprintf("> %s", string(p.query[:]))
-	pane_text(inner.x + 1, inner.y, inner.w - 2, prompt, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &p.field)
 	pane_hline(lay.box, lay.title_sep_y)
 
 	end := min(p.scroll + lay.body_h, len(p.matches))
@@ -212,5 +211,4 @@ picker_render :: proc(editor: ^Editor) {
 	}
 
 	overlay_divider(lay)
-	overlay_cursor(inner, len(p.query))
 }

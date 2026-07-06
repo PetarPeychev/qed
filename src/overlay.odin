@@ -1,11 +1,10 @@
 package main
 
-import "core:unicode/utf8"
 import "lib:tb2"
 
 FuzzyList :: struct {
 	active:   bool,
-	query:    [dynamic]u8,
+	field:    TextField,
 	matches:  [dynamic]int,
 	selected: int,
 	scroll:   int,
@@ -14,12 +13,12 @@ FuzzyList :: struct {
 
 fuzzy_list_destroy :: proc(l: ^FuzzyList) {
 	fuzzy_end(&l.fuzzy)
-	delete(l.query)
+	textfield_destroy(&l.field)
 	delete(l.matches)
 }
 
 fuzzy_list_reset :: proc(l: ^FuzzyList) {
-	clear(&l.query)
+	textfield_reset(&l.field)
 	l.selected = 0
 	l.scroll = 0
 }
@@ -28,7 +27,7 @@ fuzzy_list_refilter :: proc(l: ^FuzzyList) {
 	clear(&l.matches)
 	l.selected = 0
 	l.scroll = 0
-	for idx in fuzzy_rank(&l.fuzzy, string(l.query[:])) {
+	for idx in fuzzy_rank(&l.fuzzy, textfield_str(&l.field)) {
 		append(&l.matches, idx)
 	}
 }
@@ -51,41 +50,10 @@ fuzzy_list_move_wrap :: proc(l: ^FuzzyList, delta, rows: int) {
 	fuzzy_list_scroll(l, rows)
 }
 
-// Returns true when the query changed, so the caller re-filters (and reloads any preview).
-query_edit_key :: proc(query: ^[dynamic]u8, ev: tb2.Event) -> bool {
-	#partial switch ev.key {
-	case .Backspace, .Backspace2:
-		if len(query) > 0 {
-			resize(query, len(query) - 1)
-			return true
-		}
-	case:
-		if ev.ch >= 0x20 {
-			bytes, n := utf8.encode_rune(ev.ch)
-			append(query, ..bytes[:n])
-			return true
-		}
-	}
-	return false
-}
-
-// Draw a single-line caret-editable input in the column span [x, x+w), scrolled
-// horizontally so the caret is always visible, and place the hardware cursor.
-input_line_render :: proc(x, y, w: int, input: []u8, caret: int) {
-	if w <= 0 {
-		return
-	}
-	start := 0
-	for start < caret && visual_width(input[start:caret]) >= w {
-		start = grapheme_next(input, start)
-	}
-	pane_text(x, y, w, string(input[start:]), COLOR_PANE_FG, COLOR_PANE_BG)
-	tb2.set_cursor(i32(x + visual_width(input[start:caret])), i32(y))
-}
-
-overlay_cursor :: proc(inner: Rect, query_len: int) {
-	cx := min(inner.x + 3 + query_len, inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(inner.y))
+// A "> " prompt prefix followed by the field, as every fuzzy overlay draws it.
+overlay_prompt_render :: proc(x, y, w: int, f: ^TextField) {
+	pane_text(x, y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	textfield_render(x + 2, y, w - 2, f)
 }
 
 OverlayLayout :: struct {

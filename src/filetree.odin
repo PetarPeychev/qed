@@ -30,8 +30,7 @@ FileTree :: struct {
 	selected: int,
 	scroll:   int,
 	mode:     FileTreeMode,
-	input:    [dynamic]u8,
-	caret:    int,
+	field:    TextField,
 	preview:  [dynamic]string,
 	colors:   [dynamic][dynamic]tb2.Color,
 }
@@ -65,7 +64,7 @@ filetree_destroy :: proc(t: ^FileTree) {
 		delete(key)
 	}
 	delete(t.expanded)
-	delete(t.input)
+	textfield_destroy(&t.field)
 	filetree_clear_preview(t)
 	delete(t.preview)
 	delete(t.colors)
@@ -211,8 +210,7 @@ filetree_open :: proc(editor: ^Editor) {
 	t := &editor.filetree
 	t.active = true
 	t.mode = .Nav
-	clear(&t.input)
-	t.caret = 0
+	textfield_reset(&t.field)
 	editor_set_message(editor, "")
 	filetree_rebuild(editor)
 }
@@ -313,19 +311,18 @@ filetree_reveal :: proc(editor: ^Editor, path: string) {
 filetree_prompt_begin :: proc(editor: ^Editor, mode: FileTreeMode) {
 	t := &editor.filetree
 	t.mode = mode
-	clear(&t.input)
+	textfield_reset(&t.field)
 	if mode == .Rename {
 		if e, ok := filetree_selected(t); ok {
-			append(&t.input, ..transmute([]u8)e.name)
+			textfield_set(&t.field, e.name)
 		}
 	}
-	t.caret = len(t.input)
 	editor_set_message(editor, "")
 }
 
 filetree_prompt_commit :: proc(editor: ^Editor) {
 	t := &editor.filetree
-	name := strings.trim_space(string(t.input[:]))
+	name := strings.trim_space(textfield_str(&t.field))
 	mode := t.mode
 	t.mode = .Nav
 	if name == "" {
@@ -435,30 +432,8 @@ filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		t.mode = .Nav
 	case .Enter:
 		filetree_prompt_commit(editor)
-	case .Arrow_Left:
-		if t.caret > 0 {
-			t.caret = grapheme_prev(t.input[:], t.caret)
-		}
-	case .Arrow_Right:
-		if t.caret < len(t.input) {
-			t.caret = grapheme_next(t.input[:], t.caret)
-		}
-	case .Backspace, .Backspace2:
-		if t.caret > 0 {
-			prev := grapheme_prev(t.input[:], t.caret)
-			remove_range(&t.input, prev, t.caret)
-			t.caret = prev
-		}
-	case .Delete:
-		if t.caret < len(t.input) {
-			remove_range(&t.input, t.caret, grapheme_next(t.input[:], t.caret))
-		}
 	case:
-		if ev.ch >= 0x20 {
-			bytes, n := utf8.encode_rune(ev.ch)
-			inject_at(&t.input, t.caret, ..bytes[:n])
-			t.caret += n
-		}
+		textfield_key(&t.field, ev)
 	}
 }
 
@@ -592,7 +567,5 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 	pane_text(inner.x + 1, y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	tx := inner.x + 1 + len(label)
 	tw := inner.x + inner.w - 1 - tx
-	pane_text(tx, y, tw, string(t.input[:]), COLOR_PANE_FG, COLOR_PANE_BG)
-	cx := min(tx + visual_width(t.input[:t.caret]), inner.x + inner.w - 1)
-	tb2.set_cursor(i32(cx), i32(y))
+	textfield_render(tx, y, tw, &t.field)
 }

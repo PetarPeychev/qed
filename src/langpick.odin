@@ -59,7 +59,7 @@ langpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		fuzzy_list_move_wrap(&lp.list, -1, PALETTE_MAX_ROWS)
 	case:
-		if query_edit_key(&lp.query, ev) {
+		if textfield_key(&lp.field, ev) {
 			fuzzy_list_refilter(&lp.list)
 		}
 	}
@@ -71,8 +71,7 @@ langpick_render :: proc(editor: ^Editor) {
 	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
 	inner := pane_draw_box(box)
 
-	pane_text(inner.x + 1, inner.y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_text(inner.x + 3, inner.y, inner.w - 4, string(lp.query[:]), COLOR_PANE_FG, COLOR_PANE_BG)
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &lp.field)
 	pane_hline(box, inner.y + 1)
 
 	for i in 0 ..< rows {
@@ -86,6 +85,4 @@ langpick_render :: proc(editor: ^Editor) {
 		}
 		pane_text(inner.x + 1, y, inner.w - 2, name, fg, bg)
 	}
-
-	overlay_cursor(inner, len(lp.query))
 }

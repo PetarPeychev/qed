@@ -67,7 +67,7 @@ indentpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Arrow_Up:
 		fuzzy_list_move_wrap(&ip.list, -1, PALETTE_MAX_ROWS)
 	case:
-		if query_edit_key(&ip.query, ev) {
+		if textfield_key(&ip.field, ev) {
 			fuzzy_list_refilter(&ip.list)
 		}
 	}
@@ -79,8 +79,7 @@ indentpick_render :: proc(editor: ^Editor) {
 	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
 	inner := pane_draw_box(box)
 
-	pane_text(inner.x + 1, inner.y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_text(inner.x + 3, inner.y, inner.w - 4, string(ip.query[:]), COLOR_PANE_FG, COLOR_PANE_BG)
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &ip.field)
 	pane_hline(box, inner.y + 1)
 
 	for i in 0 ..< rows {
@@ -94,6 +93,4 @@ indentpick_render :: proc(editor: ^Editor) {
 		}
 		pane_text(inner.x + 1, y, inner.w - 2, name, fg, bg)
 	}
-
-	overlay_cursor(inner, len(ip.query))
 }
