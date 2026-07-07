@@ -186,7 +186,7 @@ projsearch_move :: proc(editor: ^Editor, delta: int) {
 	if n == 0 {
 		return
 	}
-	p.selected = (p.selected + delta + n) % n
+	p.selected = clamp(p.selected + delta, 0, n - 1)
 	body_h := overlay_layout(editor).body_h
 	if p.selected < p.scroll {
 		p.scroll = p.selected

@@ -185,9 +185,9 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Enter:
 		palette_execute(editor)
 	case .Arrow_Down:
-		fuzzy_list_move_wrap(&p.list, 1, PALETTE_MAX_ROWS)
+		fuzzy_list_move(&p.list, 1, PALETTE_MAX_ROWS)
 	case .Arrow_Up:
-		fuzzy_list_move_wrap(&p.list, -1, PALETTE_MAX_ROWS)
+		fuzzy_list_move(&p.list, -1, PALETTE_MAX_ROWS)
 	case:
 		if textfield_key(&p.field, ev) {
 			fuzzy_list_refilter(&p.list)

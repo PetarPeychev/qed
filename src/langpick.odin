@@ -55,9 +55,9 @@ langpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Enter:
 		langpick_execute(editor)
 	case .Arrow_Down:
-		fuzzy_list_move_wrap(&lp.list, 1, PALETTE_MAX_ROWS)
+		fuzzy_list_move(&lp.list, 1, PALETTE_MAX_ROWS)
 	case .Arrow_Up:
-		fuzzy_list_move_wrap(&lp.list, -1, PALETTE_MAX_ROWS)
+		fuzzy_list_move(&lp.list, -1, PALETTE_MAX_ROWS)
 	case:
 		if textfield_key(&lp.field, ev) {
 			fuzzy_list_refilter(&lp.list)

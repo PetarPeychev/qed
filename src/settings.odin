@@ -130,6 +130,7 @@ config_colors := [?]Config_Color {
 	{"git_added", &COLOR_GIT_ADD},
 	{"git_modified", &COLOR_GIT_MOD},
 	{"git_deleted", &COLOR_GIT_DEL},
+	{"filetree_ignored", &COLOR_FILETREE_IGNORED},
 }
 
 config_path :: proc(allocator := context.temp_allocator) -> string {

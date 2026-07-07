@@ -55,7 +55,7 @@ linefind_close :: proc(editor: ^Editor) {
 
 linefind_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.linefind
-	fuzzy_list_move_wrap(&p.list, delta, overlay_layout(editor).body_h)
+	fuzzy_list_move(&p.list, delta, overlay_layout(editor).body_h)
 }
 
 linefind_execute :: proc(editor: ^Editor) {

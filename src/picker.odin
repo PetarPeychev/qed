@@ -132,7 +132,7 @@ picker_load_preview :: proc(editor: ^Editor) {
 
 picker_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.picker
-	fuzzy_list_move_wrap(&p.list, delta, overlay_layout(editor).body_h)
+	fuzzy_list_move(&p.list, delta, overlay_layout(editor).body_h)
 	picker_load_preview(editor)
 }
 
@@ -210,7 +210,7 @@ picker_render :: proc(editor: ^Editor) {
 		}
 		label := rel
 		if picker_file_modified(editor, rel) {
-			label = fmt.tprintf("%s [*]", rel)
+			label = fmt.tprintf("%s ●", rel)
 		}
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}

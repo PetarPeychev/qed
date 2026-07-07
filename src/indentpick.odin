@@ -63,9 +63,9 @@ indentpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Enter:
 		indentpick_execute(editor)
 	case .Arrow_Down:
-		fuzzy_list_move_wrap(&ip.list, 1, PALETTE_MAX_ROWS)
+		fuzzy_list_move(&ip.list, 1, PALETTE_MAX_ROWS)
 	case .Arrow_Up:
-		fuzzy_list_move_wrap(&ip.list, -1, PALETTE_MAX_ROWS)
+		fuzzy_list_move(&ip.list, -1, PALETTE_MAX_ROWS)
 	case:
 		if textfield_key(&ip.field, ev) {
 			fuzzy_list_refilter(&ip.list)

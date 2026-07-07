@@ -132,7 +132,7 @@ bufswitch_load_preview :: proc(editor: ^Editor) {
 
 bufswitch_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.bufswitch
-	fuzzy_list_move_wrap(&p.list, delta, overlay_layout(editor).body_h)
+	fuzzy_list_move(&p.list, delta, overlay_layout(editor).body_h)
 	bufswitch_load_preview(editor)
 }
 
@@ -212,7 +212,7 @@ bufswitch_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, 3, fmt.tprintf("%d", bufidx + 1), num_fg, bg)
 		label := p.names[bufidx]
 		if editor.buffers[bufidx].modified {
-			label = fmt.tprintf("%s [*]", label)
+			label = fmt.tprintf("%s ●", label)
 		}
 		pane_text(inner.x + 4, y, lay.left_w - 4, label, fg, bg)
 	}

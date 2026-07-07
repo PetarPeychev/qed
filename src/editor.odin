@@ -1175,7 +1175,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	name := b.path if b.path != "" else "[No Name]"
 	status := name
 	if b.modified {
-		status = fmt.tprintf("%s [*]", name)
+		status = fmt.tprintf("%s ●", name)
 	}
 	if len(editor.buffers) > 1 {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))

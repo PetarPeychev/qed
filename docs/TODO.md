@@ -9,6 +9,8 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
+- [ ] Completion popup: pane size changes as you scroll through results — should stay fixed.
+
 ## Features
 
 - [ ] Status bar: show git branch + ahead/behind (watch the one-line budget — may need abbreviating).
@@ -47,6 +49,7 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 
 ## Git diff gutter
 
+- [ ] Git diff viewer (design TBD): a pane showing the full diff, beyond the gutter marks.
 - [ ] Hunk navigation (next/prev change).
 - [ ] Hunk preview + revert.
 - [ ] Stage / unstage hunks (later).
@@ -54,7 +57,6 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 
 ## Polish
 
-- [ ] Unsaved/modified indicators in panes with file lists where missing (buffer switcher, file tree, …).
 - [ ] Color file names in list panes with git status colors.
 - [ ] File tree: mark the active buffer's entry (like the buffer switcher marks `current`).
 - [ ] Unify preview panes (file-open, file-tree, project-search): consistent empty/binary placeholder.

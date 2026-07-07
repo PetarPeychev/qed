@@ -34,6 +34,7 @@ FileTree :: struct {
 	preview:  [dynamic]string,
 	colors:   [dynamic][dynamic]tb2.Color,
 	status:   map[string]GitMark,
+	ignored:  map[string]bool,
 }
 
 FileTreeLayout :: struct {
@@ -71,6 +72,23 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.colors)
 	filetree_clear_status(t)
 	delete(t.status)
+	delete(t.ignored)
+}
+
+filetree_unsaved :: proc(editor: ^Editor, e: FileEntry) -> bool {
+	if !e.is_dir {
+		if idx := editor_find_buffer(editor, e.path); idx >= 0 {
+			return editor.buffers[idx].modified
+		}
+		return false
+	}
+	prefix := strings.concatenate({e.path, "/"}, context.temp_allocator)
+	for &b in editor.buffers {
+		if b.modified && strings.has_prefix(b.path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 filetree_clear_status :: proc(t: ^FileTree) {
@@ -78,6 +96,10 @@ filetree_clear_status :: proc(t: ^FileTree) {
 		delete(key)
 	}
 	clear(&t.status)
+	for key in t.ignored {
+		delete(key)
+	}
+	clear(&t.ignored)
 }
 
 filetree_scan_status :: proc(editor: ^Editor) {
@@ -93,7 +115,7 @@ filetree_scan_status :: proc(editor: ^Editor) {
 	if !top_ok || top == "" {
 		return
 	}
-	status_cmd := fmt.ctprintf("git -C %s status --porcelain 2>/dev/null", shell_quote(root))
+	status_cmd := fmt.ctprintf("git -C %s status --porcelain --ignored 2>/dev/null", shell_quote(root))
 	out, ok := shell_capture(status_cmd)
 	if !ok {
 		return
@@ -102,7 +124,7 @@ filetree_scan_status :: proc(editor: ^Editor) {
 		if len(line) < 4 {
 			continue
 		}
-		mark := filetree_status_mark(line[:2])
+		code := line[:2]
 		rel := line[3:]
 		if idx := strings.index(rel, " -> "); idx >= 0 {
 			rel = rel[idx + 4:]
@@ -114,8 +136,27 @@ filetree_scan_status :: proc(editor: ^Editor) {
 			continue
 		}
 		abs, _ := filepath.join({top, rel}, context.temp_allocator)
-		filetree_status_add(t, root, abs, mark)
+		if code == "!!" {
+			t.ignored[strings.clone(abs)] = true
+			continue
+		}
+		filetree_status_add(t, root, abs, filetree_status_mark(code))
 	}
+}
+
+filetree_is_ignored :: proc(t: ^FileTree, path: string) -> bool {
+	p := path
+	for {
+		if t.ignored[p] {
+			return true
+		}
+		np := filetree_parent_dir(p)
+		if np == p {
+			break
+		}
+		p = np
+	}
+	return false
 }
 
 filetree_status_mark :: proc(code: string) -> GitMark {
@@ -273,7 +314,7 @@ filetree_move :: proc(editor: ^Editor, delta: int) {
 	if n == 0 {
 		return
 	}
-	t.selected = (t.selected + delta + n) % n
+	t.selected = clamp(t.selected + delta, 0, n - 1)
 	filetree_scroll(editor)
 	filetree_load_preview(editor)
 }
@@ -600,7 +641,14 @@ filetree_render :: proc(editor: ^Editor) {
 			bar := COLOR_GIT_ADD if mark == .Added else COLOR_GIT_MOD
 			tb2.set_cell(i32(inner.x), i32(y), '▌', bar, COLOR_PANE_BG)
 		}
-		pane_text(inner.x + 1, y, lay.left_w - 1, filetree_row_label(t, e), fg, bg)
+		if i != t.selected && filetree_is_ignored(t, e.path) {
+			fg = COLOR_FILETREE_IGNORED
+		}
+		label := filetree_row_label(t, e)
+		if filetree_unsaved(editor, e) {
+			label = strings.concatenate({label, " ●"}, context.temp_allocator)
+		}
+		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
 
 	for line, i in t.preview {

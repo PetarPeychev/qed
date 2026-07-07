@@ -46,17 +46,7 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 }
 
 quit_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	d := &editor.quit_dialog
-	#partial switch ev.key {
-	case .Esc:
-		quit_dialog_close(editor)
-	case .Enter:
-		quit_dialog_execute(editor)
-	case .Arrow_Down:
-		d.selected = (d.selected + 1) % len(quit_actions)
-	case .Arrow_Up:
-		d.selected = (d.selected - 1 + len(quit_actions)) % len(quit_actions)
-	}
+	dialog_key(editor, ev, &editor.quit_dialog.selected, len(quit_actions), quit_dialog_execute, quit_dialog_close)
 }
 
 quit_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -123,17 +113,7 @@ close_dialog_execute :: proc(editor: ^Editor) {
 }
 
 close_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	d := &editor.close_dialog
-	#partial switch ev.key {
-	case .Esc:
-		close_dialog_close(editor)
-	case .Enter:
-		close_dialog_execute(editor)
-	case .Arrow_Down:
-		d.selected = (d.selected + 1) % len(close_actions)
-	case .Arrow_Up:
-		d.selected = (d.selected - 1 + len(close_actions)) % len(close_actions)
-	}
+	dialog_key(editor, ev, &editor.close_dialog.selected, len(close_actions), close_dialog_execute, close_dialog_close)
 }
 
 close_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -178,17 +158,7 @@ conflict_dialog_execute :: proc(editor: ^Editor) {
 }
 
 conflict_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	d := &editor.conflict_dialog
-	#partial switch ev.key {
-	case .Esc:
-		conflict_dialog_close(editor)
-	case .Enter:
-		conflict_dialog_execute(editor)
-	case .Arrow_Down:
-		d.selected = (d.selected + 1) % len(conflict_actions)
-	case .Arrow_Up:
-		d.selected = (d.selected - 1 + len(conflict_actions)) % len(conflict_actions)
-	}
+	dialog_key(editor, ev, &editor.conflict_dialog.selected, len(conflict_actions), conflict_dialog_execute, conflict_dialog_close)
 }
 
 conflict_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -213,6 +183,19 @@ dialog_box :: proc(editor: ^Editor, question: string, actions: []string) -> Rect
 	content_w += 2
 	content_w = min(content_w, int(tb2.width()) - 4)
 	return pane_center(editor, content_w, 2 + len(actions))
+}
+
+dialog_key :: proc(editor: ^Editor, ev: tb2.Event, selected: ^int, n: int, execute, close: proc(editor: ^Editor)) {
+	#partial switch ev.key {
+	case .Esc:
+		close(editor)
+	case .Enter:
+		execute(editor)
+	case .Arrow_Down:
+		selected^ = min(selected^ + 1, n - 1)
+	case .Arrow_Up:
+		selected^ = max(selected^ - 1, 0)
+	}
 }
 
 dialog_mouse :: proc(

@@ -62,7 +62,7 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 (`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
-1-row **status bar** (path + `[*]` modified flag + `line/total` + indent style / `big`), then a
+1-row **status bar** (path + `●` modified flag + `line/total` + indent style / `big`), then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
@@ -372,8 +372,9 @@ selected buffer's in-memory content centered on its cursor), fuzzy line jump (`C
 matches in file order), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
 right-side preview, new/rename/delete with recursive-delete confirm; rename follows
-open buffers; git-status bars — `git status --porcelain` scanned per rebuild, a
-green/yellow `▌` per added/modified file propagated up its ancestor folders),
+open buffers; git-status bars — `git status --porcelain --ignored` scanned per rebuild, a
+green/yellow `▌` per added/modified file propagated up its ancestor folders, ignored
+files dimmed; unsaved open buffers marked with a trailing `●`, propagated to folders),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback), jump list

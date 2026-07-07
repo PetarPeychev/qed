@@ -42,12 +42,12 @@ fuzzy_list_scroll :: proc(l: ^FuzzyList, rows: int) {
 	}
 }
 
-fuzzy_list_move_wrap :: proc(l: ^FuzzyList, delta, rows: int) {
+fuzzy_list_move :: proc(l: ^FuzzyList, delta, rows: int) {
 	n := len(l.matches)
 	if n == 0 {
 		return
 	}
-	l.selected = (l.selected + delta + n) % n
+	l.selected = clamp(l.selected + delta, 0, n - 1)
 	fuzzy_list_scroll(l, rows)
 }
 
