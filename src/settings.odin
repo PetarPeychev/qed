@@ -29,6 +29,9 @@ config_ints := [?]Config_Int {
 	{"wheel_scroll_lines", &WHEEL_SCROLL_LINES},
 	{"double_click_ms", &DOUBLE_CLICK_MS},
 	{"disk_poll_ms", &DISK_POLL_MS},
+	{"cursor_accel_interval_ms", &CURSOR_ACCEL_INTERVAL_MS},
+	{"cursor_accel_ramp_presses", &CURSOR_ACCEL_RAMP_PRESSES},
+	{"cursor_accel_max_step", &CURSOR_ACCEL_MAX_STEP},
 	{"palette_width", &PALETTE_WIDTH},
 	{"palette_max_rows", &PALETTE_MAX_ROWS},
 	{"picker_margin_x", &PICKER_MARGIN_X},
@@ -50,6 +53,7 @@ config_ints := [?]Config_Int {
 
 config_bools := [?]Config_Bool {
 	{"format_on_save", &FORMAT_ON_SAVE},
+	{"cursor_accel", &CURSOR_ACCEL},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 	{"git_hunk_highlight", &GIT_HUNK_HIGHLIGHT},
 	{"line_wrap", &LINE_WRAP},

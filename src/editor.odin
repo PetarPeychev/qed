@@ -30,6 +30,10 @@ Editor :: struct {
 	last_click_tick: time.Tick,
 	last_click_pos:  Cursor,
 	click_count:     int,
+	accel_key:       tb2.Key,
+	accel_count:     int,
+	accel_rem:       f64,
+	accel_tick:      time.Tick,
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
 	palette:         Palette,
@@ -404,6 +408,28 @@ editor_paste_commit :: proc(editor: ^Editor) {
 	editor_scroll(editor)
 }
 
+editor_accel_step :: proc(editor: ^Editor, key: tb2.Key) -> int {
+	if !CURSOR_ACCEL {
+		return 1
+	}
+	gap := time.duration_milliseconds(time.tick_since(editor.accel_tick))
+	if key == editor.accel_key && gap <= f64(CURSOR_ACCEL_INTERVAL_MS) {
+		editor.accel_count += 1
+	} else {
+		editor.accel_count = 1
+		editor.accel_rem = 0
+	}
+	editor.accel_key = key
+	editor.accel_tick = time.tick_now()
+
+	vel := 1.0 + f64(editor.accel_count - 1) / f64(max(1, CURSOR_ACCEL_RAMP_PRESSES))
+	vel = min(vel, f64(CURSOR_ACCEL_MAX_STEP))
+	editor.accel_rem += vel
+	step := int(editor.accel_rem)
+	editor.accel_rem -= f64(step)
+	return step
+}
+
 editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	if editor.completion.active {
 		if completion_key(editor, ev) {
@@ -487,6 +513,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			b.selection = nil
 		}
 		collapse := had_sel && !shift && !ctrl && !alt
+		step := 1 if ctrl || alt || collapse else editor_accel_step(editor, ev.key)
 		#partial switch ev.key {
 		case .Arrow_Left:
 			if alt {
@@ -497,7 +524,9 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			} else if ctrl {
 				cursor_move_word_left(b)
 			} else {
-				cursor_move_left(b)
+				for _ in 0 ..< step {
+					cursor_move_left(b)
+				}
 			}
 		case .Arrow_Right:
 			if alt {
@@ -508,19 +537,21 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			} else if ctrl {
 				cursor_move_word_right(b)
 			} else {
-				cursor_move_right(b)
+				for _ in 0 ..< step {
+					cursor_move_right(b)
+				}
 			}
 		case .Arrow_Up:
 			if ctrl {
 				cursor_paragraph_prev(b)
 			} else {
-				cursor_move_up_n(b, 1)
+				cursor_move_up_n(b, step)
 			}
 		case .Arrow_Down:
 			if ctrl {
 				cursor_paragraph_next(b)
 			} else {
-				cursor_move_down_n(b, 1)
+				cursor_move_down_n(b, step)
 			}
 		}
 	case:

@@ -106,7 +106,11 @@ member group is no longer on top).
   smart-home/end (Alt+Left/Right) and buffer start/end (Alt+{/}). No Home/End
   binding. A remembered goal column survives vertical moves over short lines.
   With soft wrap on, arrows + smart-home/end move by **visual** row (goal column
-  is the x within the visual row).
+  is the x within the visual row). Holding a plain arrow **accelerates**
+  (`editor_accel_step`): a fractional-velocity ramp grows the step the longer the
+  key repeats and carries the remainder, so motion eases in (no cliff); reversing
+  direction or a pause > `cursor_accel_interval_ms` resets it. Word/paragraph and
+  shift-collapse moves are never accelerated. Knobs: `cursor_accel*` in config.
 - Word classes: alphanumeric+`_`, punctuation, whitespace; a word move stops at
   every class boundary.
 - Selection: Shift+movement sets/extends the anchor; non-shift movement clears it.
@@ -351,7 +355,8 @@ indent in leading whitespace), clipboard (external + fallback),
 full Unicode (grapheme + display width), tab-char display + per-buffer
 tabs/spaces + indent-width detect (`Change Indentation` command: Auto-detect /
 Tabs / Spaces:1–4; literal-tab display width stays the global `tab_width`),
-line-comment toggle, move-lines, paragraph/word/smart-home motion, auto-close
+line-comment toggle, move-lines, paragraph/word/smart-home motion, held-arrow
+cursor acceleration (smooth fractional-velocity ramp, `cursor_accel*` knobs), auto-close
 pairs (brackets/quotes/backtick: surround selection, type-over, backspace-deletes-pair;
 `auto_close_pairs` knob), matching-bracket underline.
 
