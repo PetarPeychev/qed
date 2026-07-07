@@ -9,8 +9,6 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Bugs
 
-- [ ] Completion popup: pane size changes as you scroll through results — should stay fixed.
-
 ## Features
 
 - [ ] Status bar: show git branch + ahead/behind (watch the one-line budget — may need abbreviating).

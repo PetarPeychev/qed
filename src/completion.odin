@@ -451,8 +451,8 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 	rows := min(len(c.matches), COMPLETION_MAX_ROWS)
 
 	content_w := 0
-	for i in 0 ..< rows {
-		it := &c.items[c.matches[c.scroll + i]]
+	for m in c.matches {
+		it := &c.items[m]
 		w := len(it.label)
 		if it.detail != "" {
 			w += 2 + len(it.detail)
@@ -460,7 +460,7 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 		content_w = max(content_w, w)
 	}
 	content_w = clamp(content_w, 10, COMPLETION_MAX_WIDTH)
-	pane_w := content_w + 2
+	pane_w := content_w + 4
 	pane_h := rows + 2
 
 	atext := b.lines[c.anchor_row].text[:]
