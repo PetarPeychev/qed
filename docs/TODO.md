@@ -12,6 +12,13 @@ Shipped list. Groups are priority buckets, not a build order.
 ## Features
 
 - [ ] Status bar: show cursor line,column and total line count in the file.
+- [ ] Status bar: show git branch + ahead/behind (watch the one-line budget — may need abbreviating).
+- [ ] Go-to-line-number (`:42`-style exact jump, distinct from `Ctrl+F` content search).
+- [ ] Save all modified buffers in one command.
+- [ ] Whole-line copy/cut on empty selection: `Ctrl+C` copies the line, `Ctrl+X` cuts it (= delete line).
+- [ ] Sticky scroll: pin the enclosing scope header (function/block) at the top while scrolled — tree-sitter tree.
+- [ ] Command palette: order entries by recency of use, persisted cross-session (needs a small state file).
+- [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, palette MRU, etc. Figure out scope + format before building.
 - [ ] File browser: show more detail per entry (size, line count, other `ls -l`-style bits).
 
 ## AI / LLM assist
@@ -48,6 +55,11 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 
 ## Polish
 
+- [ ] Unsaved/modified indicators in panes with file lists where missing (buffer switcher, file tree, …).
+- [ ] Color file names in list panes with git status colors.
+- [ ] File tree: mark the active buffer's entry (like the buffer switcher marks `current`).
+- [ ] Unify preview panes (file-open, file-tree, project-search): consistent empty/binary placeholder.
+- [ ] List panes: scroll affordance (count / thumb) when scrolled past the visible rows.
 - [ ] Context-filter the command list (hide commands that don't apply, e.g. on welcome screen).
 - [ ] Terminal copy/paste: drag-select + copy-out (auto-copy on drag-release; Ctrl+C stays SIGINT) + paste into the PTY (Ctrl+V / host bracketed paste).
 - [ ] Per-buffer viewport memory across buffer switches.

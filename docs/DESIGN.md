@@ -366,8 +366,9 @@ Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default
 line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line, welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
-multiple buffers, close buffer, buffer switcher (`Ctrl+E`: fuzzy over open buffers
-in stable order + digit instant-jump on empty query), fuzzy line jump (`Ctrl+F`,
+multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
+buffers in stable order + digit instant-jump on empty query, side preview of the
+selected buffer's in-memory content centered on its cursor), fuzzy line jump (`Ctrl+F`,
 matches in file order), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
 right-side preview, new/rename/delete with recursive-delete confirm; rename follows
@@ -377,8 +378,8 @@ guest + wheel scrollback), jump list
 (back/forward), runtime config (`~/.config/qed/config.json`). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss).
-Preview panes (file-open, file-tree, project-search) are syntax-highlighted via a
-one-shot synchronous tree-sitter pass (`highlight_lines`); project-search parses
+Preview panes (file-open, file-tree, project-search, buffer switcher) are syntax-highlighted
+via a one-shot synchronous tree-sitter pass (`highlight_lines`); project-search parses
 from line 1 to the window end (size-gated at `HIGHLIGHT_ASYNC_BYTES`) so constructs
 opening above the window color correctly.
 
