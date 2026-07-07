@@ -1,6 +1,5 @@
 package main
 
-import "core:c"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
@@ -158,9 +157,7 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 		return lsp
 	}
 
-	fd := posix.FD(os.fd(out_r))
-	flags := posix.fcntl(fd, .GETFL)
-	posix.fcntl(fd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
+	fd_set_nonblock(out_r)
 
 	lsp.process = process
 	lsp.stdin = in_w

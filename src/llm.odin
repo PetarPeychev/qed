@@ -1,16 +1,11 @@
 package main
 
-import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:sys/posix"
-import "core:time"
 
 LlmRequest :: struct {
-	process:  os.Process,
-	stdout:   ^os.File,
-	out:      strings.Builder,
+	sub:      Subprocess,
 	buf_path: string,
 	original: string,
 	from:     Cursor,
@@ -19,9 +14,6 @@ LlmRequest :: struct {
 Llm :: struct {
 	requests: [dynamic]LlmRequest,
 }
-
-@(private = "file")
-g_llm_counter: int
 
 llm_running :: proc(editor: ^Editor) -> bool {
 	return len(editor.llm.requests) > 0
@@ -81,62 +73,16 @@ llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
 		_ = os.write_entire_file("/tmp/qed-llm-prompt.txt", transmute([]u8)prompt)
 	}
 
-	g_llm_counter += 1
-	tmp := fmt.tprintf("/tmp/qed-ai-%d-%d.tmp", posix.getpid(), g_llm_counter)
-	fd, oerr := os.open(tmp, {.Write, .Create, .Trunc}, os.perm(0o600))
-	if oerr != nil {
-		editor_set_message(editor, "AI edit: temp file failed", true)
-		return
-	}
-	os.write(fd, transmute([]u8)prompt)
-	os.close(fd)
-
-	in_file, ierr := os.open(tmp, {.Read})
-	if ierr != nil {
-		os.remove(tmp)
-		editor_set_message(editor, "AI edit: temp file failed", true)
-		return
-	}
-	out_r, out_w, perr := os.pipe()
-	if perr != nil {
-		os.close(in_file)
-		os.remove(tmp)
-		editor_set_message(editor, "AI edit: pipe failed", true)
-		return
-	}
-
-	posix.sigignore(.SIGPIPE)
-	process, serr := os.process_start(
-		{
-			command = {"sh", "-c", fmt.tprintf("%s 2>/dev/null", LLM_CHAT_COMMAND)},
-			working_dir = editor.working_root,
-			stdin = in_file,
-			stdout = out_w,
-		},
-	)
-	os.close(in_file)
-	os.close(out_w)
-	os.remove(tmp)
-	if serr != nil {
-		os.close(out_r)
+	cmd := fmt.tprintf("%s 2>/dev/null", LLM_CHAT_COMMAND)
+	sub, ok := subprocess_start(cmd, transmute([]u8)prompt, editor.working_root)
+	if !ok {
 		editor_set_message(editor, "AI edit: could not start command", true)
 		return
 	}
 
-	nfd := posix.FD(os.fd(out_r))
-	flags := posix.fcntl(nfd, .GETFL)
-	posix.fcntl(nfd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
-
 	append(
 		&editor.llm.requests,
-		LlmRequest {
-			process = process,
-			stdout = out_r,
-			out = strings.builder_make(),
-			buf_path = strings.clone(b.path),
-			original = strings.clone(selection),
-			from = from,
-		},
+		LlmRequest{sub = sub, buf_path = strings.clone(b.path), original = strings.clone(selection), from = from},
 	)
 	editor_set_message(editor, fmt.tprintf("AI edit sent (%d running)", len(editor.llm.requests)))
 }
@@ -145,21 +91,7 @@ llm_pump :: proc(editor: ^Editor) -> bool {
 	changed := false
 	for i := 0; i < len(editor.llm.requests); {
 		req := &editor.llm.requests[i]
-		fd := posix.FD(os.fd(req.stdout))
-		buf: [16384]u8
-		done := false
-		for {
-			n := posix.read(fd, &buf[0], len(buf))
-			if n > 0 {
-				strings.write_bytes(&req.out, buf[:n])
-				continue
-			}
-			if n == 0 || posix.errno() != .EAGAIN {
-				done = true
-			}
-			break
-		}
-		if done {
+		if subprocess_drain(&req.sub) {
 			llm_apply(editor, req)
 			llm_request_destroy(req)
 			ordered_remove(&editor.llm.requests, i)
@@ -172,10 +104,7 @@ llm_pump :: proc(editor: ^Editor) -> bool {
 }
 
 llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
-	os.close(req.stdout)
-	_, _ = os.process_wait(req.process, time.Second)
-
-	raw := strings.to_string(req.out)
+	raw := subprocess_output(&req.sub)
 	if os.get_env("QED_LLM_DEBUG", context.temp_allocator) != "" {
 		_ = os.write_entire_file("/tmp/qed-llm-response.txt", transmute([]u8)raw)
 	}
@@ -236,10 +165,9 @@ llm_prune_edited :: proc(editor: ^Editor) {
 }
 
 llm_request_kill :: proc(req: ^LlmRequest) {
-	_ = os.process_kill(req.process)
-	os.close(req.stdout)
-	_, _ = os.process_wait(req.process, time.Second)
-	llm_request_destroy(req)
+	subprocess_kill(&req.sub)
+	delete(req.buf_path)
+	delete(req.original)
 }
 
 llm_cancel_all :: proc(editor: ^Editor) {
@@ -254,7 +182,7 @@ llm_cancel_all :: proc(editor: ^Editor) {
 }
 
 llm_request_destroy :: proc(req: ^LlmRequest) {
-	strings.builder_destroy(&req.out)
+	subprocess_destroy(&req.sub)
 	delete(req.buf_path)
 	delete(req.original)
 }

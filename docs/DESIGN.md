@@ -268,8 +268,8 @@ re-opens LSP).
 instruction; qed sends the whole buffer — with the selection wrapped in
 `<<<SELECT…SELECT>>>` — plus the instruction to a configurable chat command
 (`llm.chat_command`, default `claude -p`; `llm.edit_prompt` is the template). The
-command runs as an **async subprocess** (spawn + non-blocking stdout poll,
-generalized from `lsp.odin`, wired into the main loop next to `lsp_pump`);
+command runs through the shared **async subprocess** runner (`subprocess.odin`:
+spawn-with-stdin-body + non-blocking stdout drain + cancel, pumped next to `lsp_pump`);
 multiple run concurrently and are cancellable (*Cancel AI Edits* / shutdown kill
 them). Each request stores the target buffer **path** (survives `[]Buffer` realloc)
 and the original selected **text**. On completion: the reply's **last fenced code
@@ -292,8 +292,9 @@ import); that's a TODO. See [notes/ai.md](notes/ai.md).
 seeded at startup, *Toggle Inline Completion* flips it), typing arms a debounced
 (`completion_debounce_ms`) request. `prefix`/`suffix` are the buffer around the cursor
 clamped to `completion_context_lines`, sent to a FIM endpoint (default Codestral
-`/v1/fim/completions`) as an async `curl` subprocess — same non-blocking poll as
-`lsp`/`llm`, pumped in the main loop; any edit cancels the in-flight request and re-arms.
+`/v1/fim/completions`) as an async `curl` subprocess through the shared
+`subprocess.odin` runner (like the AI edit), pumped in the main loop; any edit
+cancels the in-flight request and re-arms.
 The reply's `choices[0].message.content` is stored as dimmed virtual text
 (`COLOR_GHOST_FG`) drawn at the cursor, **not** backed by the buffer; multi-line
 suggestions reserve blank rows via `fim_ghost_gap` (the buffer render offsets rows below
@@ -338,7 +339,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).

@@ -1,17 +1,12 @@
 package main
 
-import "core:c"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:sys/posix"
 import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
-
-@(private = "file")
-g_fim_counter: int
 
 @(private = "file")
 fim_log :: proc(format: string, args: ..any) {
@@ -32,10 +27,7 @@ Fim :: struct {
 	warned:     bool,
 	want:       bool,
 	request_at: time.Tick,
-	running:    bool,
-	process:    os.Process,
-	stdout:     ^os.File,
-	out:        strings.Builder,
+	sub:        Subprocess,
 	req_path:   string,
 	req_at:     Cursor,
 	ghost:      string,
@@ -43,7 +35,7 @@ Fim :: struct {
 }
 
 fim_active :: proc(editor: ^Editor) -> bool {
-	return editor.fim.running || editor.fim.want
+	return editor.fim.sub.running || editor.fim.want
 }
 
 fim_ghost_active :: proc(editor: ^Editor) -> bool {
@@ -69,15 +61,11 @@ fim_clear_ghost :: proc(f: ^Fim) {
 }
 
 fim_kill_request :: proc(f: ^Fim) {
-	if !f.running {
+	if !f.sub.running {
 		return
 	}
-	_ = os.process_kill(f.process)
-	os.close(f.stdout)
-	_, _ = os.process_wait(f.process, time.Second)
-	strings.builder_destroy(&f.out)
+	subprocess_kill(&f.sub)
 	delete(f.req_path)
-	f.running = false
 }
 
 fim_dismiss :: proc(editor: ^Editor) {
@@ -159,86 +147,33 @@ fim_request :: proc(editor: ^Editor) {
 		LLM_COMPLETION_MAX_TOKENS,
 	)
 
-	g_fim_counter += 1
-	tmp := fmt.tprintf("/tmp/qed-fim-%d-%d.json", posix.getpid(), g_fim_counter)
-	fd, oerr := os.open(tmp, {.Write, .Create, .Trunc}, os.perm(0o600))
-	if oerr != nil {
-		fim_log("request skipped: temp open failed %v", oerr)
-		return
-	}
-	os.write(fd, transmute([]u8)body)
-	os.close(fd)
-	in_file, ierr := os.open(tmp, {.Read})
-	if ierr != nil {
-		os.remove(tmp)
-		fim_log("request skipped: temp reopen failed %v", ierr)
-		return
-	}
-
-	out_r, out_w, perr := os.pipe()
-	if perr != nil {
-		os.close(in_file)
-		os.remove(tmp)
-		fim_log("request skipped: pipe failed %v", perr)
-		return
-	}
 	cmd := fmt.tprintf(
 		"curl -s --max-time 10 -X POST '%s' -H 'Content-Type: application/json' -H \"Authorization: Bearer $%s\" --data-binary @- 2>/dev/null",
 		LLM_COMPLETION_ENDPOINT,
 		LLM_COMPLETION_API_KEY_ENV,
 	)
-	posix.sigignore(.SIGPIPE)
-	process, serr := os.process_start(
-		{command = {"sh", "-c", cmd}, working_dir = editor.working_root, stdin = in_file, stdout = out_w},
-	)
-	os.close(in_file)
-	os.close(out_w)
-	os.remove(tmp)
-	if serr != nil {
-		fim_log("request FAILED to start: %v (working_dir=%q)", serr, editor.working_root)
-		os.close(out_r)
+	sub, ok := subprocess_start(cmd, transmute([]u8)body, editor.working_root)
+	if !ok {
+		fim_log("request FAILED to start (working_dir=%q)", editor.working_root)
 		return
 	}
 	fim_log("request started at (%d,%d) prefix=%dB suffix=%dB", b.cursor.row, b.cursor.col, len(prefix), len(suffix))
 
-	nfd := posix.FD(os.fd(out_r))
-	flags := posix.fcntl(nfd, .GETFL)
-	posix.fcntl(nfd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
-
-	f.process = process
-	f.stdout = out_r
-	f.out = strings.builder_make()
+	f.sub = sub
 	f.req_path = strings.clone(b.path)
 	f.req_at = b.cursor
-	f.running = true
 }
 
 fim_pump :: proc(editor: ^Editor) -> bool {
 	f := &editor.fim
-	if !f.running {
+	if !f.sub.running {
 		return false
 	}
-	fd := posix.FD(os.fd(f.stdout))
-	buf: [16384]u8
-	done := false
-	for {
-		n := posix.read(fd, &buf[0], len(buf))
-		if n > 0 {
-			strings.write_bytes(&f.out, buf[:n])
-			continue
-		}
-		if n == 0 || posix.errno() != .EAGAIN {
-			done = true
-		}
-		break
-	}
-	if !done {
+	if !subprocess_drain(&f.sub) {
 		return false
 	}
 
-	os.close(f.stdout)
-	_, _ = os.process_wait(f.process, time.Second)
-	raw := strings.to_string(f.out)
+	raw := subprocess_output(&f.sub)
 	text := strings.trim_right(fim_parse(raw), "\n")
 	b := editor_buffer(editor)
 	moved := b.path != f.req_path || b.cursor != f.req_at
@@ -247,9 +182,8 @@ fim_pump :: proc(editor: ^Editor) -> bool {
 		f.ghost = strings.clone(text)
 		f.ghost_at = b.cursor
 	}
-	strings.builder_destroy(&f.out)
+	subprocess_destroy(&f.sub)
 	delete(f.req_path)
-	f.running = false
 	return true
 }
 

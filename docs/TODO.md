@@ -11,6 +11,9 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Features
 
+- [ ] Status bar: show cursor line,column and total line count in the file.
+- [ ] File browser: show more detail per entry (size, line count, other `ls -l`-style bits).
+
 ## AI / LLM assist
 
 See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schema.
@@ -18,11 +21,11 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 - [ ] Context + prompt: floating prompt pane, cursor-context aware, insert/replace.
 - [ ] Let an AI edit touch code outside the selection (add a missing import etc.) — whole-file rewrite or agentic mode; `Ctrl+K` today is selection-replace only.
 - [ ] `llm` config section: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
-- [ ] Async subprocess runner with cancellation (generalize `lsp.odin` machinery; `curl` subprocess for HTTP providers).
 - [ ] Shared inline virtual-text primitive (ghost-text + inline diagnostics).
 
 ## Syntax highlighting (tree-sitter)
 
+- [ ] Markdown: better visual distinction between headers and bold text.
 - [ ] Query predicate evaluator (`#match?`/`#eq?`/…) so upstream `.scm` work unstripped.
 - [ ] Dynamic grammar loading via `dlopen` (exploration — tension with vendored/no-plugins).
 
