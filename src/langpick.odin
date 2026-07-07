@@ -65,6 +65,10 @@ langpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+langpick_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	fuzzy_list_center_mouse(editor, &editor.langpick.list, ev, langpick_execute, langpick_close)
+}
+
 langpick_render :: proc(editor: ^Editor) {
 	lp := &editor.langpick
 	rows := min(len(lp.matches), PALETTE_MAX_ROWS)

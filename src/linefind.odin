@@ -101,6 +101,18 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+linefind_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	p := &editor.linefind
+	idx, activate := overlay_list_mouse(editor, ev, overlay_layout(editor), len(p.matches), &p.scroll, &p.field, linefind_close)
+	if idx < 0 {
+		return
+	}
+	p.selected = idx
+	if activate {
+		linefind_execute(editor)
+	}
+}
+
 linefind_label :: proc(numw, row: int, text: string) -> string {
 	num := fmt.tprintf("%d", row + 1)
 	pad := strings.repeat(" ", max(0, numw - len(num)), context.temp_allocator)

@@ -103,10 +103,19 @@ reserved chords. Pick it deliberately in `config.odin`.
   on qed's own — `COLOR_TERM_FG/BG` + `COLOR_TERM_ANSI[16]`, all config-overridable
   (`terminal_*` theme keys). Default bg = pane bg; ANSI = kitty's palette lifted
   +0x20/channel for legibility on the light pane.
-- **Scrollback:** left to the child (less/tmux) for now — no in-pane scroll key.
+- **Mouse:** forwarded to the child via `vterm_mouse_move`/`vterm_mouse_button`
+  (libvterm gates output on the child's mouse mode, so a plain shell is unaffected);
+  press/drag/release tracked, a lost release clears the held button. A click outside
+  the pane defocuses. Buttons 1–3 = left/middle/right, 4/5 = wheel.
+- **Scrollback:** qed keeps its own ring. `sb_pushline`/`sb_popline` screen callbacks
+  capture lines scrolling off the main screen (`TERM_SCROLLBACK`, exact-width heap
+  slices in a ring; callbacks run on the pump thread and borrow the stored context).
+  The wheel drives a `sb_view` offset that `term_render` composites (scrollback rows on
+  top, live screen below); a keystroke snaps to the bottom, streaming output stays
+  pinned while scrolled up. On the **alt-screen** (settermprop callback) the wheel
+  forwards to the child instead — vim/htop/less scroll themselves.
 - **Shell/cwd:** `$SHELL` (`/bin/sh` fallback), started in `working_root`, env inherited.
 
 ## Not yet wired
 
-- Mouse forwarding to the child (only when it enables a mouse mode).
-- Copy out of the pane (selection → clipboard).
+- Copy out of the pane (drag-select → clipboard) and paste into the PTY.

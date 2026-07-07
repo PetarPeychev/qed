@@ -245,6 +245,19 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+projsearch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	p := &editor.projsearch
+	idx, activate := overlay_list_mouse(editor, ev, overlay_layout(editor), len(p.matches), &p.scroll, &p.field, projsearch_close)
+	if idx < 0 {
+		return
+	}
+	p.selected = idx
+	projsearch_load_preview(editor)
+	if activate {
+		projsearch_execute(editor)
+	}
+}
+
 projsearch_render :: proc(editor: ^Editor) {
 	p := &editor.projsearch
 	lay := overlay_layout(editor)

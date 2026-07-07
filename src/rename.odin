@@ -51,6 +51,23 @@ rename_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+rename_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	if ev.key != .Mouse_Left {
+		return
+	}
+	box := pane_center(editor, PALETTE_WIDTH, 1)
+	if !mouse_in_rect(ev, box) {
+		if !overlay_ev_motion(ev) {
+			rename_close(editor)
+		}
+		return
+	}
+	label := "Rename to: "
+	tx := box.x + 2 + len(label)
+	tw := box.x + box.w - 2 - tx
+	textfield_mouse(&editor.rename.field, tx, box.y + 1, tw, ev)
+}
+
 rename_render :: proc(editor: ^Editor) {
 	r := &editor.rename
 	box := pane_center(editor, PALETTE_WIDTH, 1)

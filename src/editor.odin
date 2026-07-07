@@ -30,6 +30,8 @@ Editor :: struct {
 	last_click_tick: time.Tick,
 	last_click_pos:  Cursor,
 	click_count:     int,
+	overlay_click_tick: time.Tick,
+	overlay_click_idx:  int,
 	palette:         Palette,
 	picker:          Picker,
 	bufswitch:       BufSwitch,
@@ -157,24 +159,25 @@ Overlay :: struct {
 	active:   ^bool,
 	dispatch: proc(editor: ^Editor, ev: tb2.Event),
 	render:   proc(editor: ^Editor),
+	mouse:    proc(editor: ^Editor, ev: tb2.Event),
 }
 
 editor_overlays :: proc(editor: ^Editor) -> [14]Overlay {
 	return {
-		{&editor.terminal.active, term_dispatch, term_render},
-		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render},
-		{&editor.palette.active, palette_dispatch_key, palette_render},
-		{&editor.picker.active, picker_dispatch_key, picker_render},
-		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render},
-		{&editor.langpick.active, langpick_dispatch_key, langpick_render},
-		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render},
-		{&editor.linefind.active, linefind_dispatch_key, linefind_render},
-		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render},
-		{&editor.rename.active, rename_dispatch_key, rename_render},
-		{&editor.filetree.active, filetree_dispatch_key, filetree_render},
-		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render},
-		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render},
-		{&editor.conflict_dialog.active, conflict_dialog_dispatch_key, conflict_dialog_render},
+		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse},
+		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse},
+		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse},
+		{&editor.picker.active, picker_dispatch_key, picker_render, picker_dispatch_mouse},
+		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render, bufswitch_dispatch_mouse},
+		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse},
+		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse},
+		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse},
+		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render, projsearch_dispatch_mouse},
+		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse},
+		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse},
+		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render, quit_dialog_dispatch_mouse},
+		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render, close_dialog_dispatch_mouse},
+		{&editor.conflict_dialog.active, conflict_dialog_dispatch_key, conflict_dialog_render, conflict_dialog_dispatch_mouse},
 	}
 }
 
@@ -186,6 +189,10 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			#partial switch ev.type {
 			case .Key:
 				ov.dispatch(editor, ev)
+			case .Mouse:
+				if ov.mouse != nil {
+					ov.mouse(editor, ev)
+				}
 			case .Resize:
 				editor_scroll(editor)
 				if editor.terminal.active {

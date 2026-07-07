@@ -178,6 +178,19 @@ picker_file_modified :: proc(editor: ^Editor, rel: string) -> bool {
 	return idx >= 0 && editor.buffers[idx].modified
 }
 
+picker_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	p := &editor.picker
+	idx, activate := overlay_list_mouse(editor, ev, overlay_layout(editor), len(p.matches), &p.scroll, &p.field, picker_close)
+	if idx < 0 {
+		return
+	}
+	p.selected = idx
+	picker_load_preview(editor)
+	if activate {
+		picker_open_selected(editor)
+	}
+}
+
 picker_render :: proc(editor: ^Editor) {
 	p := &editor.picker
 	lay := overlay_layout(editor)

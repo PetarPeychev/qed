@@ -56,6 +56,23 @@ aiedit_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+aiedit_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	if ev.key != .Mouse_Left {
+		return
+	}
+	box := pane_center(editor, PALETTE_WIDTH, 1)
+	if !mouse_in_rect(ev, box) {
+		if !overlay_ev_motion(ev) {
+			aiedit_close(editor)
+		}
+		return
+	}
+	label := "AI edit: "
+	tx := box.x + 2 + len(label)
+	tw := box.x + box.w - 2 - tx
+	textfield_mouse(&editor.aiedit.field, tx, box.y + 1, tw, ev)
+}
+
 aiedit_render :: proc(editor: ^Editor) {
 	a := &editor.aiedit
 	box := pane_center(editor, PALETTE_WIDTH, 1)

@@ -195,6 +195,10 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+palette_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	fuzzy_list_center_mouse(editor, &editor.palette.list, ev, palette_execute, palette_close)
+}
+
 palette_render :: proc(editor: ^Editor) {
 	p := &editor.palette
 	rows := min(len(p.matches), PALETTE_MAX_ROWS)

@@ -73,6 +73,10 @@ indentpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+indentpick_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	fuzzy_list_center_mouse(editor, &editor.indentpick.list, ev, indentpick_execute, indentpick_close)
+}
+
 indentpick_render :: proc(editor: ^Editor) {
 	ip := &editor.indentpick
 	rows := min(len(ip.matches), PALETTE_MAX_ROWS)

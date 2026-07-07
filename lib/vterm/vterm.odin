@@ -41,6 +41,29 @@ MOD_SHIFT :: Modifier(0x01)
 MOD_ALT :: Modifier(0x02)
 MOD_CTRL :: Modifier(0x04)
 
+PROP_ALTSCREEN :: c.int(3)
+
+// Only the leading `int` of the VTermValue union is read here (boolean/number
+// share offset 0); the full union is wider but we never touch the other members.
+Value :: struct {
+	number: c.int,
+}
+
+// VTermScreenCallbacks. Fields we don't use are left as rawptr nils — libvterm
+// null-checks each before calling.
+ScreenCallbacks :: struct {
+	damage:       rawptr,
+	moverect:     rawptr,
+	movecursor:   rawptr,
+	settermprop:  proc "c" (prop: c.int, val: ^Value, user: rawptr) -> c.int,
+	bell:         rawptr,
+	resize:       rawptr,
+	sb_pushline:  proc "c" (cols: c.int, cells: [^]ScreenCell, user: rawptr) -> c.int,
+	sb_popline:   proc "c" (cols: c.int, cells: [^]ScreenCell, user: rawptr) -> c.int,
+	sb_clear:     proc "c" (user: rawptr) -> c.int,
+	sb_pushline4: rawptr,
+}
+
 Key :: enum c.int {
 	None = 0,
 	Enter,
@@ -71,6 +94,8 @@ foreign lib {
 	output_read :: proc(vt: ^VTerm, buffer: [^]u8, len: c.size_t) -> c.size_t ---
 	keyboard_unichar :: proc(vt: ^VTerm, ch: u32, mod: Modifier) ---
 	keyboard_key :: proc(vt: ^VTerm, key: Key, mod: Modifier) ---
+	mouse_move :: proc(vt: ^VTerm, row, col: c.int, mod: Modifier) ---
+	mouse_button :: proc(vt: ^VTerm, button: c.int, pressed: bool, mod: Modifier) ---
 
 	obtain_state :: proc(vt: ^VTerm) -> ^State ---
 	state_get_cursorpos :: proc(state: ^State, cursorpos: ^Pos) ---
@@ -82,4 +107,5 @@ foreign lib {
 	screen_set_default_colors :: proc(screen: ^Screen, default_fg, default_bg: ^Color) ---
 	screen_convert_color_to_rgb :: proc(screen: ^Screen, col: ^Color) ---
 	screen_get_cell :: proc(screen: ^Screen, pos: Pos, cell: ^ScreenCell) -> c.int ---
+	screen_set_callbacks :: proc(screen: ^Screen, callbacks: ^ScreenCallbacks, user: rawptr) ---
 }

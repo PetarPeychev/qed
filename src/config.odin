@@ -81,6 +81,8 @@ COLOR_PANE_SHORTCUT_FG := tb2.Color(0x868686)
 COLOR_PANE_SEL_FG := tb2.Color(0x181818)
 COLOR_PANE_SEL_BG := tb2.Color(0xffdd33)
 
+TERM_SCROLLBACK := 2000
+
 COLOR_TERM_FG := tb2.Color(0xf4f4ff)
 COLOR_TERM_BG := tb2.Color(0x2b2b2b)
 // kitty's default palette lifted +0x20 per channel so darker entries stay legible

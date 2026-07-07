@@ -59,6 +59,10 @@ quit_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+quit_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	dialog_mouse(editor, ev, quit_dialog_question(editor), quit_actions[:], &editor.quit_dialog.selected, quit_dialog_execute, quit_dialog_close)
+}
+
 quit_dialog_question :: proc(editor: ^Editor) -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	strings.write_string(&sb, "Unsaved changes in: ")
@@ -132,11 +136,18 @@ close_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
-close_dialog_render :: proc(editor: ^Editor) {
+close_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	dialog_mouse(editor, ev, close_dialog_question(editor), close_actions[:], &editor.close_dialog.selected, close_dialog_execute, close_dialog_close)
+}
+
+close_dialog_question :: proc(editor: ^Editor) -> string {
 	b := editor_buffer(editor)
 	name := filepath.base(b.path) if b.path != "" else "[No Name]"
-	question := fmt.tprintf("Save changes to %s?", name)
-	dialog_render(editor, question, close_actions[:], editor.close_dialog.selected)
+	return fmt.tprintf("Save changes to %s?", name)
+}
+
+close_dialog_render :: proc(editor: ^Editor) {
+	dialog_render(editor, close_dialog_question(editor), close_actions[:], editor.close_dialog.selected)
 }
 
 ConflictDialog :: struct {
@@ -180,23 +191,61 @@ conflict_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
-conflict_dialog_render :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
-	name := filepath.base(b.path) if b.path != "" else "[No Name]"
-	question := fmt.tprintf("%s changed on disk since you loaded it.", name)
-	dialog_render(editor, question, conflict_actions[:], editor.conflict_dialog.selected)
+conflict_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	dialog_mouse(editor, ev, conflict_dialog_question(editor), conflict_actions[:], &editor.conflict_dialog.selected, conflict_dialog_execute, conflict_dialog_close)
 }
 
-dialog_render :: proc(editor: ^Editor, question: string, actions: []string, selected: int) {
+conflict_dialog_question :: proc(editor: ^Editor) -> string {
+	b := editor_buffer(editor)
+	name := filepath.base(b.path) if b.path != "" else "[No Name]"
+	return fmt.tprintf("%s changed on disk since you loaded it.", name)
+}
+
+conflict_dialog_render :: proc(editor: ^Editor) {
+	dialog_render(editor, conflict_dialog_question(editor), conflict_actions[:], editor.conflict_dialog.selected)
+}
+
+dialog_box :: proc(editor: ^Editor, question: string, actions: []string) -> Rect {
 	content_w := len(question)
 	for a in actions {
 		content_w = max(content_w, len(a))
 	}
 	content_w += 2
 	content_w = min(content_w, int(tb2.width()) - 4)
-	content_h := 2 + len(actions)
+	return pane_center(editor, content_w, 2 + len(actions))
+}
 
-	box := pane_center(editor, content_w, content_h)
+dialog_mouse :: proc(
+	editor: ^Editor,
+	ev: tb2.Event,
+	question: string,
+	actions: []string,
+	selected: ^int,
+	execute, close: proc(editor: ^Editor),
+) {
+	if ev.key != .Mouse_Left {
+		return
+	}
+	box := dialog_box(editor, question, actions)
+	motion := overlay_ev_motion(ev)
+	if !mouse_in_rect(ev, box) {
+		if !motion {
+			close(editor)
+		}
+		return
+	}
+	off := overlay_row_off(ev, Rect{box.x + 1, box.y + 3, box.w - 2, len(actions)})
+	if off < 0 {
+		return
+	}
+	selected^ = off
+	if !motion && overlay_double_click(editor, off) {
+		execute(editor)
+	}
+}
+
+dialog_render :: proc(editor: ^Editor, question: string, actions: []string, selected: int) {
+	box := dialog_box(editor, question, actions)
 	inner := pane_draw_box(box)
 
 	pane_text(inner.x + 1, inner.y, inner.w - 2, question, COLOR_PANE_FG, COLOR_PANE_BG)

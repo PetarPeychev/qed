@@ -538,20 +538,28 @@ filetree_render :: proc(editor: ^Editor) {
 	filetree_render_footer(editor, inner, lay.footer_y)
 }
 
+filetree_footer_label :: proc(mode: FileTreeMode) -> string {
+	switch mode {
+	case .NewFile:
+		return "New file: "
+	case .NewFolder:
+		return "New folder: "
+	case .Rename:
+		return "Rename: "
+	case .Nav, .ConfirmDelete:
+	}
+	return ""
+}
+
 filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 	t := &editor.filetree
-	label, prompt := "", ""
+	prompt := ""
 	switch t.mode {
 	case .Nav:
 		pane_text(inner.x + 1, y, inner.w - 2, "n new  N folder  r rename  d delete", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 		tb2.hide_cursor()
 		return
-	case .NewFile:
-		label = "New file: "
-	case .NewFolder:
-		label = "New folder: "
-	case .Rename:
-		label = "Rename: "
+	case .NewFile, .NewFolder, .Rename:
 	case .ConfirmDelete:
 		if e, ok := filetree_selected(t); ok {
 			if e.is_dir {
@@ -564,8 +572,51 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 		tb2.hide_cursor()
 		return
 	}
+	label := filetree_footer_label(t.mode)
 	pane_text(inner.x + 1, y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	tx := inner.x + 1 + len(label)
 	tw := inner.x + inner.w - 1 - tx
 	textfield_render(tx, y, tw, &t.field)
+}
+
+filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	t := &editor.filetree
+	lay := filetree_layout(editor)
+	motion := overlay_ev_motion(ev)
+	if !mouse_in_rect(ev, lay.box) {
+		if ev.key == .Mouse_Left && !motion {
+			filetree_close(editor)
+		}
+		return
+	}
+	if t.mode != .Nav {
+		if ev.key == .Mouse_Left {
+			if label := filetree_footer_label(t.mode); label != "" {
+				tx := lay.inner.x + 1 + len(label)
+				tw := lay.inner.x + lay.inner.w - 1 - tx
+				textfield_mouse(&t.field, tx, lay.footer_y, tw, ev)
+			}
+		}
+		return
+	}
+	#partial switch ev.key {
+	case .Mouse_Wheel_Up:
+		overlay_scroll_by(&t.scroll, -WHEEL_SCROLL_LINES, len(t.entries), lay.body_h)
+	case .Mouse_Wheel_Down:
+		overlay_scroll_by(&t.scroll, WHEEL_SCROLL_LINES, len(t.entries), lay.body_h)
+	case .Mouse_Left:
+		off := overlay_row_off(ev, Rect{lay.inner.x, lay.body_top, lay.left_w, lay.body_h})
+		if off < 0 {
+			return
+		}
+		idx := t.scroll + off
+		if idx >= len(t.entries) {
+			return
+		}
+		t.selected = idx
+		filetree_load_preview(editor)
+		if !motion && overlay_double_click(editor, idx) {
+			filetree_activate(editor)
+		}
+	}
 }

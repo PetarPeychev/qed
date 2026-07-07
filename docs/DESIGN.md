@@ -171,6 +171,12 @@ returns whether the text changed (fuzzy callers re-filter); `textfield_render` d
 scrolled to the caret with the selection inverted (`COLOR_PANE_BG`/`FG`). Word/home
 motion is the same `word_left_col`/`word_right_col`/`home_smart_col` the buffer cursor
 uses. `FuzzyList` (`overlay.odin`) embeds one; its `> ` prompt draws via `overlay_prompt_render`.
+Every pane is mouse-driven through an optional `Overlay.mouse` handler (`editor_dispatch`
+routes `.Mouse` to it): wheel scrolls, single-click selects a row, double-click activates,
+a click in the query/prompt field places the caret and a button-held drag selects, and a
+click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). Shared row/
+field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
+`overlay_prompt_mouse`, `dialog_mouse`; `textfield_mouse` maps a click to a caret).
 Most panes reset their query on open; **line-find and project-search persist it** —
 reopened with the text fully selected (`textfield_select_all`) so a keystroke replaces it,
 else edit/arrow to refine. Project-search also restores its selected match; the file tree
@@ -315,8 +321,14 @@ host palette is invisible): `COLOR_TERM_FG/BG` + a 16-entry `COLOR_TERM_ANSI`
 (config `terminal_foreground`/`terminal_background`/`terminal_ansi_0..15`) set on the
 vterm state; default bg matches the pane. **External quirk:** this terminal's
 termbox tags the control-byte keys (Enter/Tab/Backspace/Esc) with a spurious Ctrl
-modifier, so `term_send_key` strips Ctrl for those before encoding. Mouse
-forwarding and copy-out are not wired yet. Deep-dive: [notes/terminal.md](notes/terminal.md).
+modifier, so `term_send_key` strips Ctrl for those before encoding. Mouse events forward
+to the guest via `vterm_mouse_*` (libvterm only emits bytes when the program enabled mouse
+reporting, so a plain shell ignores them); the wheel scrolls a libvterm scrollback ring
+(`sb_pushline`/`sb_popline` callbacks, `TERM_SCROLLBACK` lines) at the shell prompt but
+forwards to the program on the alt-screen (tracked via a `settermprop` callback); a click
+outside the pane defocuses. `term_render` draws through a `sb_view` scroll offset; a
+keystroke snaps back to the live bottom. Text copy-out/paste are not wired yet.
+Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 ## File layout
 
@@ -354,8 +366,11 @@ matches in file order), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
 right-side preview, new/rename/delete with recursive-delete confirm; rename follows
 open buffers), floating terminal pane (`Alt+t`: persistent embedded shell via
-vendored libvterm + PTY, full-TUI capable, qed-palette colors), jump list
-(back/forward), runtime config (`~/.config/qed/config.json`).
+vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
+guest + wheel scrollback), jump list
+(back/forward), runtime config (`~/.config/qed/config.json`). Every floating pane is
+mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
+prompt fields, click-away dismiss).
 Preview panes (file-open, file-tree, project-search) are syntax-highlighted via a
 one-shot synchronous tree-sitter pass (`highlight_lines`); project-search parses
 from line 1 to the window end (size-gated at `HIGHLIGHT_ASYNC_BYTES`) so constructs

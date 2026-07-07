@@ -103,6 +103,10 @@ bufswitch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+bufswitch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	fuzzy_list_center_mouse(editor, &editor.bufswitch.list, ev, bufswitch_select, bufswitch_close)
+}
+
 bufswitch_render :: proc(editor: ^Editor) {
 	p := &editor.bufswitch
 	rows := min(len(p.matches), PALETTE_MAX_ROWS)

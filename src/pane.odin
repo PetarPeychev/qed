@@ -47,6 +47,11 @@ pane_draw_box :: proc(r: Rect) -> Rect {
 	return {r.x + 1, r.y + 1, r.w - 2, r.h - 2}
 }
 
+mouse_in_rect :: proc(ev: tb2.Event, r: Rect) -> bool {
+	x, y := int(ev.x), int(ev.y)
+	return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+}
+
 pane_hline :: proc(box: Rect, y: int) {
 	left := box.x
 	right := box.x + box.w - 1

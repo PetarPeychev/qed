@@ -187,6 +187,29 @@ textfield_key :: proc(f: ^TextField, ev: tb2.Event) -> bool {
 	return false
 }
 
+// Places the caret at the clicked column (mirroring textfield_render's scroll);
+// a button-held drag (Motion) extends the selection from the press position.
+textfield_mouse :: proc(f: ^TextField, x, y, w: int, ev: tb2.Event) {
+	if int(ev.y) != y {
+		return
+	}
+	text := f.text[:]
+	start := 0
+	for start < f.caret && visual_width(text[start:f.caret]) >= w {
+		start = grapheme_next(text, start)
+	}
+	target := max(0, int(ev.x) - x)
+	caret := start + col_at_visual(text[start:], target)
+	if (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0 {
+		if f.anchor < 0 {
+			f.anchor = f.caret
+		}
+	} else {
+		f.anchor = -1
+	}
+	f.caret = caret
+}
+
 // Single-line input in the column span [x, x+w), scrolled horizontally so the
 // caret stays visible, with the selection inverted and the hardware cursor placed.
 textfield_render :: proc(x, y, w: int, f: ^TextField) {

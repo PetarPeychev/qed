@@ -1,5 +1,6 @@
 package main
 
+import "base:runtime"
 import "core:c"
 import "core:os"
 import "core:sys/posix"
@@ -7,15 +8,115 @@ import "lib:pty"
 import "lib:tb2"
 import "lib:vterm"
 
+TermLine :: struct {
+	cells: []vterm.ScreenCell,
+}
+
 Terminal :: struct {
-	active: bool,
-	alive:  bool,
-	pty_fd: int,
-	pid:    int,
-	vt:     ^vterm.VTerm,
-	screen: ^vterm.Screen,
-	cols:   int,
-	rows:   int,
+	active:    bool,
+	alive:     bool,
+	pty_fd:    int,
+	pid:       int,
+	vt:        ^vterm.VTerm,
+	screen:    ^vterm.Screen,
+	cols:      int,
+	rows:      int,
+	mouse_btn: int,
+	altscreen: bool,
+	// Scrollback ring of lines pushed off the top of the main screen; sb_view is
+	// how many lines we're scrolled up from the live bottom (0 = live).
+	sb_ring:   []TermLine,
+	sb_start:  int,
+	sb_len:    int,
+	sb_view:   int,
+	ctx:       runtime.Context,
+}
+
+term_callbacks := vterm.ScreenCallbacks {
+	settermprop = term_sb_settermprop,
+	sb_pushline = term_sb_pushline,
+	sb_popline  = term_sb_popline,
+	sb_clear    = term_sb_clear,
+}
+
+term_sb_pushline :: proc "c" (cols: c.int, cells: [^]vterm.ScreenCell, user: rawptr) -> c.int {
+	t := (^Terminal)(user)
+	if len(t.sb_ring) == 0 {
+		return 0
+	}
+	context = t.ctx
+	line := make([]vterm.ScreenCell, int(cols))
+	for i in 0 ..< int(cols) {
+		line[i] = cells[i]
+	}
+	rc := len(t.sb_ring)
+	grew := t.sb_len < rc
+	slot: int
+	if grew {
+		slot = (t.sb_start + t.sb_len) % rc
+		t.sb_len += 1
+	} else {
+		slot = t.sb_start
+		delete(t.sb_ring[slot].cells)
+		t.sb_start = (t.sb_start + 1) % rc
+	}
+	t.sb_ring[slot] = {line}
+	// Keep a scrolled-up viewport pinned to the same lines as output streams in.
+	if t.sb_view > 0 && grew {
+		t.sb_view = min(t.sb_view + 1, t.sb_len)
+	}
+	return 1
+}
+
+term_sb_popline :: proc "c" (cols: c.int, cells: [^]vterm.ScreenCell, user: rawptr) -> c.int {
+	t := (^Terminal)(user)
+	if t.sb_len == 0 {
+		return 0
+	}
+	context = t.ctx
+	t.sb_len -= 1
+	slot := (t.sb_start + t.sb_len) % len(t.sb_ring)
+	line := t.sb_ring[slot].cells
+	for i in 0 ..< int(cols) {
+		if i < len(line) {
+			cells[i] = line[i]
+		} else {
+			cells[i] = {}
+			cells[i].width = 1
+		}
+	}
+	delete(line)
+	t.sb_ring[slot] = {}
+	if t.sb_view > t.sb_len {
+		t.sb_view = t.sb_len
+	}
+	return 1
+}
+
+term_sb_clear :: proc "c" (user: rawptr) -> c.int {
+	t := (^Terminal)(user)
+	context = t.ctx
+	term_sb_free(t)
+	return 1
+}
+
+term_sb_settermprop :: proc "c" (prop: c.int, val: ^vterm.Value, user: rawptr) -> c.int {
+	if prop == vterm.PROP_ALTSCREEN {
+		t := (^Terminal)(user)
+		t.altscreen = val.number != 0
+		t.sb_view = 0
+	}
+	return 1
+}
+
+term_sb_free :: proc(t: ^Terminal) {
+	for &l in t.sb_ring {
+		delete(l.cells)
+		l = {}
+	}
+	t.sb_start = 0
+	t.sb_len = 0
+	t.sb_view = 0
 }
 
 term_alive :: proc(editor: ^Editor) -> bool {
@@ -76,6 +177,14 @@ term_start :: proc(editor: ^Editor) -> bool {
 	bg := term_color(COLOR_TERM_BG)
 	vterm.screen_set_default_colors(screen, &fg, &bg)
 	vterm.screen_reset(screen, 1)
+
+	t.ctx = context
+	if t.sb_ring == nil {
+		t.sb_ring = make([]TermLine, max(1, TERM_SCROLLBACK))
+	}
+	term_sb_free(t)
+	t.altscreen = false
+	vterm.screen_set_callbacks(screen, &term_callbacks, t)
 
 	t.vt = vt
 	t.screen = screen
@@ -151,11 +260,12 @@ term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		t.active = false
 		return
 	}
+	t.sb_view = 0
 	term_send_key(t, ev)
 	term_flush_output(t)
 }
 
-term_send_key :: proc(t: ^Terminal, ev: tb2.Event) {
+term_mods :: proc(ev: tb2.Event) -> vterm.Modifier {
 	mod := vterm.MOD_NONE
 	if (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0 {
 		mod |= vterm.MOD_SHIFT
@@ -166,6 +276,69 @@ term_send_key :: proc(t: ^Terminal, ev: tb2.Event) {
 	if (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0 {
 		mod |= vterm.MOD_CTRL
 	}
+	return mod
+}
+
+term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
+	t := &editor.terminal
+	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
+	mod := term_mods(ev)
+
+	// A release always clears the held button so vterm doesn't keep it "down"
+	// after a drag that ends outside the pane.
+	if ev.key == .Mouse_Release {
+		if t.alive && t.mouse_btn != 0 {
+			vterm.mouse_button(t.vt, c.int(t.mouse_btn), false, mod)
+			t.mouse_btn = 0
+			term_flush_output(t)
+		}
+		return
+	}
+
+	lay := overlay_layout(editor)
+	if !mouse_in_rect(ev, lay.box) {
+		if ev.key == .Mouse_Left && !motion {
+			t.active = false
+		}
+		return
+	}
+	if !t.alive {
+		return
+	}
+	row := clamp(int(ev.y) - lay.inner.y, 0, t.rows - 1)
+	col := clamp(int(ev.x) - lay.inner.x, 0, t.cols - 1)
+	// Position first: vterm reads the stored cell for the button report.
+	vterm.mouse_move(t.vt, c.int(row), c.int(col), mod)
+	if !motion {
+		#partial switch ev.key {
+		case .Mouse_Left:
+			t.mouse_btn = 1
+			vterm.mouse_button(t.vt, 1, true, mod)
+		case .Mouse_Middle:
+			t.mouse_btn = 2
+			vterm.mouse_button(t.vt, 2, true, mod)
+		case .Mouse_Right:
+			t.mouse_btn = 3
+			vterm.mouse_button(t.vt, 3, true, mod)
+		case .Mouse_Wheel_Up:
+			if t.altscreen {
+				vterm.mouse_button(t.vt, 4, true, mod)
+			} else {
+				t.sb_view = min(t.sb_view + WHEEL_SCROLL_LINES, t.sb_len)
+			}
+		case .Mouse_Wheel_Down:
+			if t.altscreen {
+				vterm.mouse_button(t.vt, 5, true, mod)
+			} else {
+				t.sb_view = max(0, t.sb_view - WHEEL_SCROLL_LINES)
+			}
+		}
+	}
+	term_flush_output(t)
+}
+
+term_send_key :: proc(t: ^Terminal, ev: tb2.Event) {
+	mod := term_mods(ev)
 
 	// Enter/Tab/Backspace/Esc are control-byte keycodes; termbox tags them with a
 	// spurious Ctrl modifier that would encode Ctrl+Enter etc. — drop it here.
@@ -255,10 +428,25 @@ term_render :: proc(editor: ^Editor) {
 	}
 	rows := min(t.rows, inner.h)
 	cols := min(t.cols, inner.w)
+	v := clamp(t.sb_view, 0, t.sb_len)
+	base := t.sb_len + t.rows - rows - v
 	for row in 0 ..< rows {
+		vi := base + row
+		live := vi >= t.sb_len
+		sb_line: []vterm.ScreenCell
+		if !live {
+			sb_line = t.sb_ring[(t.sb_start + vi) % len(t.sb_ring)].cells
+		}
 		for col := 0; col < cols; {
 			cell: vterm.ScreenCell
-			vterm.screen_get_cell(t.screen, {c.int(row), c.int(col)}, &cell)
+			switch {
+			case live:
+				vterm.screen_get_cell(t.screen, {c.int(vi - t.sb_len), c.int(col)}, &cell)
+			case col < len(sb_line):
+				cell = sb_line[col]
+			case:
+				cell.width = 1
+			}
 			w := int(cell.width)
 			if w < 1 {
 				w = 1
@@ -280,7 +468,7 @@ term_render :: proc(editor: ^Editor) {
 			col += w
 		}
 	}
-	if t.active && t.alive {
+	if t.active && t.alive && v == 0 {
 		cur: vterm.Pos
 		vterm.state_get_cursorpos(vterm.obtain_state(t.vt), &cur)
 		if int(cur.row) < rows && int(cur.col) < cols {
@@ -328,6 +516,9 @@ term_destroy :: proc(editor: ^Editor) {
 		t.alive = false
 	}
 	term_free_vt(t)
+	term_sb_free(t)
+	delete(t.sb_ring)
+	t.sb_ring = nil
 }
 
 term_free_vt :: proc(t: ^Terminal) {
@@ -336,5 +527,6 @@ term_free_vt :: proc(t: ^Terminal) {
 		t.vt = nil
 		t.screen = nil
 	}
+	term_sb_free(t)
 	t.alive = false
 }
