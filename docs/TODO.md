@@ -11,7 +11,6 @@ Shipped list. Groups are priority buckets, not a build order.
 
 ## Features
 
-- [ ] Status bar: show cursor line,column and total line count in the file.
 - [ ] Status bar: show git branch + ahead/behind (watch the one-line budget — may need abbreviating).
 - [ ] Go-to-line-number (`:42`-style exact jump, distinct from `Ctrl+F` content search).
 - [ ] Save all modified buffers in one command.

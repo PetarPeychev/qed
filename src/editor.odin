@@ -1180,6 +1180,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	if len(editor.buffers) > 1 {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
 	}
+	status = fmt.tprintf("%s  %d/%d", status, b.cursor.row + 1, len(b.lines))
 	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
 	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
 	right := LANGUAGES[b.language].name

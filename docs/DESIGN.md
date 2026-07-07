@@ -62,7 +62,7 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 (`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
-1-row **status bar** (path + `[*]` modified flag + indent style / `big`), then a
+1-row **status bar** (path + `[*]` modified flag + `line/total` + indent style / `big`), then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
