@@ -33,6 +33,7 @@ FileTree :: struct {
 	field:    TextField,
 	preview:  [dynamic]string,
 	colors:   [dynamic][dynamic]tb2.Color,
+	status:   map[string]GitMark,
 }
 
 FileTreeLayout :: struct {
@@ -68,6 +69,83 @@ filetree_destroy :: proc(t: ^FileTree) {
 	filetree_clear_preview(t)
 	delete(t.preview)
 	delete(t.colors)
+	filetree_clear_status(t)
+	delete(t.status)
+}
+
+filetree_clear_status :: proc(t: ^FileTree) {
+	for key in t.status {
+		delete(key)
+	}
+	clear(&t.status)
+}
+
+filetree_scan_status :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	filetree_clear_status(t)
+	root := editor.working_root
+	if root == "" || !shell_command_exists("git") {
+		return
+	}
+	top_cmd := fmt.ctprintf("git -C %s rev-parse --show-toplevel 2>/dev/null", shell_quote(root))
+	top, top_ok := shell_capture(top_cmd)
+	top = strings.trim_space(top)
+	if !top_ok || top == "" {
+		return
+	}
+	status_cmd := fmt.ctprintf("git -C %s status --porcelain 2>/dev/null", shell_quote(root))
+	out, ok := shell_capture(status_cmd)
+	if !ok {
+		return
+	}
+	for line in strings.split_lines_iterator(&out) {
+		if len(line) < 4 {
+			continue
+		}
+		mark := filetree_status_mark(line[:2])
+		rel := line[3:]
+		if idx := strings.index(rel, " -> "); idx >= 0 {
+			rel = rel[idx + 4:]
+		}
+		rel = strings.trim_space(rel)
+		rel = strings.trim(rel, "\"")
+		rel = strings.trim_right(rel, "/")
+		if rel == "" {
+			continue
+		}
+		abs, _ := filepath.join({top, rel}, context.temp_allocator)
+		filetree_status_add(t, root, abs, mark)
+	}
+}
+
+filetree_status_mark :: proc(code: string) -> GitMark {
+	if code == "??" || code[0] == 'A' || code[1] == 'A' {
+		return .Added
+	}
+	return .Modified
+}
+
+filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: GitMark) {
+	filetree_status_set(t, path, mark)
+	p := path
+	for strings.has_prefix(p, root) && p != root {
+		np := filetree_parent_dir(p)
+		if np == p {
+			break
+		}
+		p = np
+		filetree_status_set(t, p, mark)
+	}
+}
+
+filetree_status_set :: proc(t: ^FileTree, path: string, mark: GitMark) {
+	if existing, ok := t.status[path]; ok {
+		if int(mark) > int(existing) {
+			t.status[path] = mark
+		}
+		return
+	}
+	t.status[strings.clone(path)] = mark
 }
 
 filetree_clear_entries :: proc(t: ^FileTree) {
@@ -161,6 +239,7 @@ filetree_rebuild :: proc(editor: ^Editor) {
 		keep = strings.clone(t.entries[t.selected].path, context.temp_allocator)
 	}
 	filetree_clear_entries(t)
+	filetree_scan_status(editor)
 	filetree_read_dir(t, editor.working_root, 0)
 	t.selected = 0
 	if keep != "" {
@@ -515,7 +594,11 @@ filetree_render :: proc(editor: ^Editor) {
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		if i == t.selected {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, lay.left_w, fg, bg)
+			pane_fill_row(inner.x + 1, y, lay.left_w - 1, fg, bg)
+		}
+		if mark, ok := t.status[e.path]; ok {
+			bar := COLOR_GIT_ADD if mark == .Added else COLOR_GIT_MOD
+			tb2.set_cell(i32(inner.x), i32(y), '▌', bar, COLOR_PANE_BG)
 		}
 		pane_text(inner.x + 1, y, lay.left_w - 1, filetree_row_label(t, e), fg, bg)
 	}

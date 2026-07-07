@@ -372,7 +372,9 @@ selected buffer's in-memory content centered on its cursor), fuzzy line jump (`C
 matches in file order), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
 right-side preview, new/rename/delete with recursive-delete confirm; rename follows
-open buffers), floating terminal pane (`Alt+t`: persistent embedded shell via
+open buffers; git-status bars — `git status --porcelain` scanned per rebuild, a
+green/yellow `▌` per added/modified file propagated up its ancestor folders),
+floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback), jump list
 (back/forward), runtime config (`~/.config/qed/config.json`). Every floating pane is
