@@ -48,7 +48,7 @@ highlight_injection :: proc(t: ^testing.T) {
 	testing.expect(t, row_has(&b, 0, COLOR_SYN_KEYWORD), "heading marker + text should be the title color")
 	testing.expect(t, row_has(&b, 2, COLOR_SYN_KEYWORD), "unchecked [ ] should be the keyword color")
 	testing.expect(t, row_has(&b, 3, COLOR_SYN_STRING), "checked [x] should be the string/green color")
-	testing.expect(t, row_has(&b, 5, COLOR_SYN_ATTRIBUTE), "**bold** should be injected (strong)")
+	testing.expect(t, row_has(&b, 5, color_attr(COLOR_SYN_ATTRIBUTE, .Bold)), "**bold** should be injected (strong)")
 	testing.expect(t, row_has(&b, 5, COLOR_SYN_CODE), "`code` span should be the subtle code gray")
 	testing.expect(t, row_has(&b, 5, COLOR_SYN_TYPE), "[link](url) should be injected blue")
 	testing.expect(t, row_has(&b, 7, COLOR_SYN_CODE), "```ts fence + info string should be the code gray")
@@ -122,6 +122,9 @@ highlight_perf :: proc(t: ^testing.T) {
 		testing.fail_now(t, "perf: cannot open " + PERF_FILE)
 	}
 	defer buffer_destroy(&b)
+	// language_of reads g_language_rules, which only config_load (in main) fills;
+	// tests must set the language themselves or the buffer opens as .Plain.
+	b.language = .C
 	testing.expect(t, len(b.lines) > 50_000, "perf fixture should be a large file")
 
 	mid := len(b.lines) / 2
@@ -181,6 +184,7 @@ bench_large_file :: proc(t: ^testing.T) {
 		path = env
 	}
 
+	languages_reset_defaults()
 	b: Buffer
 	if err := buffer_open(&b, path); err != .None {
 		fmt.eprintfln("bench: cannot open %s: %v", path, err)
