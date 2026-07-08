@@ -28,7 +28,7 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 - [ ] Context + prompt: floating prompt pane, cursor-context aware, insert/replace.
 - [ ] Let an AI edit touch code outside the selection (add a missing import etc.) — whole-file rewrite or agentic mode; `Ctrl+K` today is selection-replace only.
 - [ ] `llm` config section: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
-- [ ] Shared inline virtual-text primitive (ghost-text + inline diagnostics).
+- [ ] Shared inline virtual-text primitive (ghost-text + inline diagnostics) — unify with git ghost rows first, see [notes/refactors.md](notes/refactors.md).
 
 ## Syntax highlighting (tree-sitter)
 
@@ -62,8 +62,26 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 - [ ] List panes: scroll affordance (count / thumb) when scrolled past the visible rows.
 - [ ] Context-filter the command list (hide commands that don't apply, e.g. on welcome screen).
 - [ ] Terminal→editor cwd back-channel: handle OSC 7 from the PTY (shell reports cwd) so `Alt+t` can retarget qed's working root — VSCode's shell-integration model; env vars stay uncrossable.
-- [ ] Per-buffer viewport memory across buffer switches.
+- [ ] Per-buffer viewport memory across buffer switches — move scroll state into `Buffer`, see [notes/refactors.md](notes/refactors.md).
 - [ ] Permission/ownership-preserving saves.
-- [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified`, sub-cutoff git gutter) — see [notes/perf.md](notes/perf.md).
+- [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified` → save watermark, git gutter → debounce) — see [notes/refactors.md](notes/refactors.md) + [notes/perf.md](notes/perf.md).
 - [ ] Cheaper cold `git_gutter_update` + `buffer_open` per-line-allocation floor before first paint — see [notes/perf.md](notes/perf.md).
 - [ ] `subprocess_output` can block the main loop up to 1s in `process_wait` after stdout EOF — reap non-blocking.
+
+## Performance
+
+Details for all items: [notes/refactors.md](notes/refactors.md).
+
+- [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
+- [ ] Cache `llm_locate` per (path, rev) — an in-flight AI edit rebuilds + searches the whole buffer every render.
+- [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
+- [ ] Migrate interactive-path blocking spawns (`format_external`, projsearch `rg`, picker `fzf`, preview `head`, `git show`) to the async subprocess runner.
+- [ ] Per-frame `line_wrap` memo — measure first, only if profiling shows wrap cost.
+
+## Refactors
+
+Details for all items: [notes/refactors.md](notes/refactors.md).
+
+- [ ] Collapse the four dialogs (quit/close/conflict/merge) into one `Dialog` primitive.
+- [ ] Collapse the centered pickers (palette/langpick/indentpick) + shared two-pane picker key dispatch.
+- [ ] `buffer_intel_reset` choke point for the language-change / repath / reload teardown dance.
