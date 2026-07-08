@@ -62,6 +62,7 @@ config_bools := [?]Config_Bool {
 	{"line_wrap", &LINE_WRAP},
 	{"filetree_show_dotfiles", &FILETREE_SHOW_DOTFILES},
 	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
+	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
 }
 
 Config_Str :: struct {

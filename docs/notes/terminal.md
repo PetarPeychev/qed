@@ -116,6 +116,25 @@ reserved chords. Pick it deliberately in `config.odin`.
   forwards to the child instead — vim/htop/less scroll themselves.
 - **Shell/cwd:** `$SHELL` (`/bin/sh` fallback), started in `working_root`, env inherited.
 
+## Copy / paste (resolved)
+
+- **Copy:** left-drag selects over the grid + scrollback (`term_vi_at` maps a screen
+  row to a virtual line index spanning the scrollback ring then the live screen), renders
+  inverted, and auto-copies the per-line right-trimmed text on release (xterm model, no
+  keybind). Only fires when the guest isn't grabbing the mouse (`mouse_mode`, tracked via
+  the `PROP_MOUSE` settermprop); `Shift`+drag forces a local selection over a mouse-mode
+  program. The drag is deliberately tolerant of the tmux+WT layers dropping the clean
+  button-press or injecting a stray mid-drag release — a bare left-motion (re)anchors and
+  starts a drag, a fresh press re-anchors, so it catches on the first attempt.
+- **Paste:** host bracketed-paste only (no qed keybind — Ctrl+V can't be used and WT eats
+  it). While focused, `editor_dispatch` routes `Paste_Begin`/keys/`Paste_End` (reusing the
+  buffer's `paste_buf` accumulation) into `term_paste`, which brackets the body with
+  libvterm's `vterm_keyboard_{start,end}_paste` (emits DECSET 2004 markers only if the guest
+  enabled them) and writes it to the PTY with `\n`→`\r`.
+- **Escape:** defocuses the pane at a plain shell prompt; forwarded to the guest on the
+  alt-screen so vim/htop/less/fzf keep it. Config `terminal_escape_closes` (default on)
+  disables even the prompt-level close (for readline vi-mode users).
+
 ## Not yet wired
 
-- Copy out of the pane (drag-select → clipboard) and paste into the PTY.
+- Auto-scroll of the scrollback while drag-selecting past the top/bottom edge.

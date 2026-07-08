@@ -42,6 +42,7 @@ MOD_ALT :: Modifier(0x02)
 MOD_CTRL :: Modifier(0x04)
 
 PROP_ALTSCREEN :: c.int(3)
+PROP_MOUSE :: c.int(8)
 
 // Only the leading `int` of the VTermValue union is read here (boolean/number
 // share offset 0); the full union is wider but we never touch the other members.
@@ -94,6 +95,8 @@ foreign lib {
 	output_read :: proc(vt: ^VTerm, buffer: [^]u8, len: c.size_t) -> c.size_t ---
 	keyboard_unichar :: proc(vt: ^VTerm, ch: u32, mod: Modifier) ---
 	keyboard_key :: proc(vt: ^VTerm, key: Key, mod: Modifier) ---
+	keyboard_start_paste :: proc(vt: ^VTerm) ---
+	keyboard_end_paste :: proc(vt: ^VTerm) ---
 	mouse_move :: proc(vt: ^VTerm, row, col: c.int, mod: Modifier) ---
 	mouse_button :: proc(vt: ^VTerm, button: c.int, pressed: bool, mod: Modifier) ---
 

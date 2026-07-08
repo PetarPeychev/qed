@@ -190,6 +190,25 @@ editor_overlays :: proc(editor: ^Editor) -> [15]Overlay {
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	origin := jump_here(editor)
 	defer jump_record(editor, origin)
+	if editor.terminal.active {
+		#partial switch ev.type {
+		case .Paste_Begin:
+			editor.pasting = true
+			editor.paste_last_cr = false
+			clear(&editor.paste_buf)
+			return
+		case .Paste_End:
+			editor.pasting = false
+			term_paste(&editor.terminal, string(editor.paste_buf[:]))
+			clear(&editor.paste_buf)
+			return
+		case .Key:
+			if editor.pasting {
+				editor_paste_accumulate(editor, ev)
+				return
+			}
+		}
+	}
 	for ov in editor_overlays(editor) {
 		if ov.active^ {
 			#partial switch ev.type {

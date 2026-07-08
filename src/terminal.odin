@@ -3,6 +3,7 @@ package main
 import "base:runtime"
 import "core:c"
 import "core:os"
+import "core:strings"
 import "core:sys/posix"
 import "lib:pty"
 import "lib:tb2"
@@ -12,17 +13,28 @@ TermLine :: struct {
 	cells: []vterm.ScreenCell,
 }
 
+// row = virtual line index over the scrollback ring (0..sb_len) then the live
+// screen (sb_len..sb_len+rows); col = grid column.
+TermPos :: struct {
+	row, col: int,
+}
+
 Terminal :: struct {
-	active:    bool,
-	alive:     bool,
-	pty_fd:    int,
-	pid:       int,
-	vt:        ^vterm.VTerm,
-	screen:    ^vterm.Screen,
-	cols:      int,
-	rows:      int,
-	mouse_btn: int,
-	altscreen: bool,
+	active:      bool,
+	alive:       bool,
+	pty_fd:      int,
+	pid:         int,
+	vt:          ^vterm.VTerm,
+	screen:      ^vterm.Screen,
+	cols:        int,
+	rows:        int,
+	mouse_btn:   int,
+	altscreen:   bool,
+	mouse_mode:  bool,
+	sel_active:  bool,
+	sel_drag:    bool,
+	sel_anchor:  TermPos,
+	sel_end:     TermPos,
 	// Scrollback ring of lines pushed off the top of the main screen; sb_view is
 	// how many lines we're scrolled up from the live bottom (0 = live).
 	sb_ring:   []TermLine,
@@ -105,6 +117,9 @@ term_sb_settermprop :: proc "c" (prop: c.int, val: ^vterm.Value, user: rawptr) -
 		t := (^Terminal)(user)
 		t.altscreen = val.number != 0
 		t.sb_view = 0
+	} else if prop == vterm.PROP_MOUSE {
+		t := (^Terminal)(user)
+		t.mouse_mode = val.number != 0
 	}
 	return 1
 }
@@ -256,11 +271,18 @@ term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		t.active = false
 		return
 	}
+	// Full-screen programs (alt-screen) own Escape; at a plain shell prompt it
+	// defocuses the pane instead (config-gated).
+	if ev.key == .Esc && !alt && TERMINAL_ESCAPE_CLOSES && !t.altscreen {
+		t.active = false
+		return
+	}
 	if !t.alive {
 		t.active = false
 		return
 	}
 	t.sb_view = 0
+	t.sel_active = false
 	term_send_key(t, ev)
 	term_flush_output(t)
 }
@@ -282,11 +304,21 @@ term_mods :: proc(ev: tb2.Event) -> vterm.Modifier {
 term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.terminal
 	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
+	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
 	mod := term_mods(ev)
+	lay := overlay_layout(editor)
+	// A plain shell doesn't grab the mouse, so a drag there is a local text
+	// selection; a mouse-mode program (vim/htop) takes it unless Shift forces local.
+	local := !t.mouse_mode || shift
 
-	// A release always clears the held button so vterm doesn't keep it "down"
-	// after a drag that ends outside the pane.
+	// A release ends an in-progress selection (auto-copy) or clears the held
+	// button so vterm doesn't keep it "down" after a drag that left the pane.
 	if ev.key == .Mouse_Release {
+		if t.sel_drag {
+			t.sel_drag = false
+			term_copy_selection(editor)
+			return
+		}
 		if t.alive && t.mouse_btn != 0 {
 			vterm.mouse_button(t.vt, c.int(t.mouse_btn), false, mod)
 			t.mouse_btn = 0
@@ -295,7 +327,27 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	}
 
-	lay := overlay_layout(editor)
+	// Local text selection (plain-shell drag, or Shift over a mouse-mode program).
+	// Handles drag-extend even when the pointer leaves the pane, and is robust to
+	// tmux/WT dropping the clean button-press or injecting a stray release mid-drag:
+	// a fresh press re-anchors, and a bare motion starts a drag if one isn't live.
+	if local && ev.key == .Mouse_Left {
+		if !motion && !mouse_in_rect(ev, lay.box) {
+			t.active = false
+			return
+		}
+		row := clamp(int(ev.y) - lay.inner.y, 0, t.rows - 1)
+		col := clamp(int(ev.x) - lay.inner.x, 0, t.cols - 1)
+		vi := term_vi_at(t, row)
+		if !motion || !t.sel_drag {
+			t.sel_drag = true
+			t.sel_active = true
+			t.sel_anchor = {vi, col}
+		}
+		t.sel_end = {vi, col}
+		return
+	}
+
 	if !mouse_in_rect(ev, lay.box) {
 		if ev.key == .Mouse_Left && !motion {
 			t.active = false
@@ -307,11 +359,13 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	row := clamp(int(ev.y) - lay.inner.y, 0, t.rows - 1)
 	col := clamp(int(ev.x) - lay.inner.x, 0, t.cols - 1)
+
 	// Position first: vterm reads the stored cell for the button report.
 	vterm.mouse_move(t.vt, c.int(row), c.int(col), mod)
 	if !motion {
 		#partial switch ev.key {
 		case .Mouse_Left:
+			t.sel_active = false
 			t.mouse_btn = 1
 			vterm.mouse_button(t.vt, 1, true, mod)
 		case .Mouse_Middle:
@@ -335,6 +389,126 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 	}
 	term_flush_output(t)
+}
+
+term_vi_at :: proc(t: ^Terminal, screen_row: int) -> int {
+	v := clamp(t.sb_view, 0, t.sb_len)
+	return t.sb_len - v + screen_row
+}
+
+term_sel_bounds :: proc(t: ^Terminal) -> (s, e: TermPos) {
+	a, b := t.sel_anchor, t.sel_end
+	if a.row < b.row || (a.row == b.row && a.col <= b.col) {
+		return a, b
+	}
+	return b, a
+}
+
+term_selected :: proc(t: ^Terminal, vi, col: int) -> bool {
+	if !t.sel_active {
+		return false
+	}
+	s, e := term_sel_bounds(t)
+	if vi < s.row || vi > e.row {
+		return false
+	}
+	c0 := s.col if vi == s.row else 0
+	c1 := e.col if vi == e.row else t.cols - 1
+	return col >= c0 && col <= c1
+}
+
+term_cell_at :: proc(t: ^Terminal, vi, col: int, cell: ^vterm.ScreenCell) {
+	if vi >= t.sb_len {
+		vterm.screen_get_cell(t.screen, {c.int(vi - t.sb_len), c.int(col)}, cell)
+		return
+	}
+	line := t.sb_ring[(t.sb_start + vi) % len(t.sb_ring)].cells
+	if col >= 0 && col < len(line) {
+		cell^ = line[col]
+	} else {
+		cell^ = {}
+		cell.width = 1
+	}
+}
+
+term_copy_selection :: proc(editor: ^Editor) {
+	t := &editor.terminal
+	// A plain click (no drag) selects nothing — just clear any prior highlight.
+	if !t.sel_active || t.sel_anchor == t.sel_end {
+		t.sel_active = false
+		return
+	}
+	s, e := term_sel_bounds(t)
+	out := strings.builder_make(context.temp_allocator)
+	for vi in s.row ..= e.row {
+		c0 := s.col if vi == s.row else 0
+		c1 := e.col if vi == e.row else t.cols - 1
+		line := strings.builder_make(context.temp_allocator)
+		for col := c0; col <= c1; {
+			cell: vterm.ScreenCell
+			term_cell_at(t, vi, col, &cell)
+			w := int(cell.width)
+			if w < 1 {
+				w = 1
+			}
+			if cell.chars[0] == 0 {
+				strings.write_rune(&line, ' ')
+			} else {
+				for k in 0 ..< len(cell.chars) {
+					if cell.chars[k] == 0 {
+						break
+					}
+					strings.write_rune(&line, rune(cell.chars[k]))
+				}
+			}
+			col += w
+		}
+		strings.write_string(&out, strings.trim_right(strings.to_string(line), " "))
+		if vi < e.row {
+			strings.write_byte(&out, '\n')
+		}
+	}
+	text := strings.to_string(out)
+	if len(text) == 0 {
+		return
+	}
+	clipboard_set(text)
+	editor_set_message(editor, "Terminal: copied selection")
+}
+
+term_paste :: proc(t: ^Terminal, text: string) {
+	if !t.alive || t.vt == nil || len(text) == 0 {
+		return
+	}
+	// Bracket the paste when the guest enabled it (no-op otherwise); the markers
+	// go through vterm's output, so flush them around the raw body.
+	vterm.keyboard_start_paste(t.vt)
+	term_flush_output(t)
+	body := make([dynamic]u8, 0, len(text), context.temp_allocator)
+	for i in 0 ..< len(text) {
+		append(&body, '\r' if text[i] == '\n' else text[i])
+	}
+	term_write_all(t, body[:])
+	vterm.keyboard_end_paste(t.vt)
+	term_flush_output(t)
+	t.sb_view = 0
+	t.sel_active = false
+}
+
+term_write_all :: proc(t: ^Terminal, data: []u8) {
+	fd := posix.FD(t.pty_fd)
+	off := 0
+	for off < len(data) {
+		rem := len(data) - off
+		n := posix.write(fd, &data[off], c.size_t(rem))
+		if n > 0 {
+			off += int(n)
+			continue
+		}
+		if posix.errno() != .EAGAIN {
+			break
+		}
+	}
 }
 
 term_send_key :: proc(t: ^Terminal, ev: tb2.Event) {
@@ -452,6 +626,9 @@ term_render :: proc(editor: ^Editor) {
 				w = 1
 			}
 			fg, bg := term_cell_colors(t, &cell)
+			if term_selected(t, vi, col) {
+				fg, bg = bg, fg
+			}
 			r := rune(cell.chars[0])
 			if r == 0 {
 				r = ' '

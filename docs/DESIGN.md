@@ -353,7 +353,16 @@ reporting, so a plain shell ignores them); the wheel scrolls a libvterm scrollba
 (`sb_pushline`/`sb_popline` callbacks, `TERM_SCROLLBACK` lines) at the shell prompt but
 forwards to the program on the alt-screen (tracked via a `settermprop` callback); a click
 outside the pane defocuses. `term_render` draws through a `sb_view` scroll offset; a
-keystroke snaps back to the live bottom. Text copy-out/paste are not wired yet.
+keystroke snaps back to the live bottom. **Copy:** a left drag over the grid+scrollback
+selects (rendered inverted) and auto-copies the trimmed text to the clipboard on release
+(`term_copy_selection`); the drag is robust to tmux/WT dropping the press or slipping in a
+stray release (a bare motion (re)anchors). A drag only selects when the guest isn't grabbing
+the mouse — on a mouse-mode program (tracked via `PROP_MOUSE` settermprop) it forwards, and
+`Shift`+drag forces a local selection. **Paste** (host bracketed-paste only): while the pane is
+focused, `editor_dispatch` routes `Paste_Begin`/keys/`Paste_End` into `term_paste`, wrapping the
+body in libvterm's `keyboard_{start,end}_paste` (bracketed only if the guest enabled DECSET 2004)
+with `\n`→`\r`. **Escape** defocuses at a plain shell prompt but is forwarded on the alt-screen so
+full-TUI programs keep it (config `terminal_escape_closes`, default on).
 Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 ## File layout
@@ -406,7 +415,8 @@ added/modified file propagated up its ancestor folders, ignored files dimmed; un
 open buffers marked with a trailing `●`, propagated to folders),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
-guest + wheel scrollback), jump list
+guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
+the shell prompt), jump list
 (back/forward), runtime config (`~/.config/qed/config.json`). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss).
