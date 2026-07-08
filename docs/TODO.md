@@ -33,8 +33,16 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 ## Syntax highlighting (tree-sitter)
 
 - [ ] Markdown: better visual distinction between headers and bold text.
+
+## Language support endgame
+
+Decided direction + sequence: [notes/languages.md](notes/languages.md). In order:
+
+- [ ] Language registry: replace the `Language` enum with a runtime table; hardcoded per-language behaviors (Python colon-indent, injection wiring, fenced-block aliases) become table fields.
 - [ ] Query predicate evaluator (`#match?`/`#eq?`/…) so upstream `.scm` work unstripped.
-- [ ] Dynamic grammar loading via `dlopen` (exploration — tension with vendored/no-plugins).
+- [ ] Runtime dir for queries + language metadata as files, compiled-in fallback for the core set.
+- [ ] Grammar lock-file build fetch — vendored parser.c out of the repo, build pulls by pinned commit + sha.
+- [ ] Runtime grammar loading via `dlopen` for user-added tail languages (core set stays compiled in).
 
 ## LSP capabilities
 
