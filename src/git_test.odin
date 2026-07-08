@@ -153,6 +153,20 @@ test_git_word_span_middle :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_git_word_span_prefix :: proc(t: ^testing.T) {
+	o, n := git_word_span("line 28", "line 28 content here")
+	testing.expect_value(t, o[0], 7)
+	testing.expect_value(t, o[1], 7)
+	testing.expect_value(t, n[0], 7)
+	testing.expect_value(t, n[1], 20)
+	o2, n2 := git_word_span("line 28 content here", "line 28")
+	testing.expect_value(t, o2[0], 7)
+	testing.expect_value(t, o2[1], 20)
+	testing.expect_value(t, n2[0], 7)
+	testing.expect_value(t, n2[1], 7)
+}
+
+@(test)
 test_git_word_span_grow :: proc(t: ^testing.T) {
 	o, n := git_word_span("abc", "abXYc")
 	testing.expect_value(t, o[0], 2)

@@ -402,7 +402,7 @@ git_word_span :: proc(old, new: string) -> (old_span, new_span: [2]int) {
 	for p < len(old) && p < len(new) && old[p] == new[p] {
 		p += 1
 	}
-	for p > 0 && (is_utf8_cont(old[p]) || is_utf8_cont(new[p])) {
+	for p > 0 && p < len(old) && p < len(new) && (is_utf8_cont(old[p]) || is_utf8_cont(new[p])) {
 		p -= 1
 	}
 	so, sn := len(old), len(new)
