@@ -57,6 +57,8 @@ config_bools := [?]Config_Bool {
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 	{"git_diff_view", &GIT_DIFF_VIEW},
 	{"line_wrap", &LINE_WRAP},
+	{"filetree_show_dotfiles", &FILETREE_SHOW_DOTFILES},
+	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
 }
 
 Config_Str :: struct {

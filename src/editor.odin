@@ -66,6 +66,7 @@ editor_init :: proc(path: string = "") -> Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		format_on_save = FORMAT_ON_SAVE,
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
+		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED},
 	}
 	g_diff_view = GIT_DIFF_VIEW
 	b := buffer_new()

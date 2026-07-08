@@ -382,11 +382,16 @@ multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-
 buffers in stable order + digit instant-jump on empty query, side preview of the
 selected buffer's in-memory content centered on its cursor), fuzzy line jump (`Ctrl+F`,
 matches in file order), project-wide search (`rg --sort path` for deterministic
-order), file-tree browser (`Alt+f`: modal, lazy per-dir expand,
-right-side preview, new/rename/delete with recursive-delete confirm; rename follows
-open buffers; git-status bars — `git status --porcelain --ignored` scanned per rebuild, a
-green/yellow `▌` per added/modified file propagated up its ancestor folders, ignored
-files dimmed; unsaved open buffers marked with a trailing `●`, propagated to folders),
+order), file-tree browser (`Alt+f`: modal, `Enter` expands a folder / opens a file,
+lazy per-dir expand, right-side preview, new/rename/delete with recursive-delete confirm;
+rename follows open buffers; footer toggles — `e` expand/collapse-all (skips
+gitignored + hidden dotdirs), `.`/`i` show dotfiles / gitignored (both hidden by
+default, config `filetree_show_dotfiles`/`filetree_show_ignored`), highlighted when on;
+header scope tab bar (`All`/`Open`/`Git`/`Unsaved`, `←`/`→` or click) restricting the
+tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
+`git status --porcelain --ignored` scanned per rebuild, a green/yellow `▌` per
+added/modified file propagated up its ancestor folders, ignored files dimmed; unsaved
+open buffers marked with a trailing `●`, propagated to folders),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback), jump list
