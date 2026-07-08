@@ -433,7 +433,7 @@ built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutt
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSON,
 Python, C, JS/JSX, TS/TSX, Shell, Lua, SQL, Markdown w/ inline + fenced-code
-injection); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
+injection, bold headings/strong + italic emphasis); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),

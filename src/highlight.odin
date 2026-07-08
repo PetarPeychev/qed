@@ -131,6 +131,10 @@ syntax_shutdown :: proc() {
 	}
 }
 
+color_attr :: proc(c: tb2.Color, attr: tb2.Color) -> tb2.Color {
+	return tb2.Color(u64(c) | u64(attr))
+}
+
 syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 	switch {
 	case strings.has_prefix(name, "keyword"),
@@ -154,15 +158,15 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 		return COLOR_SYN_ATTRIBUTE, true
 	// Markdown (block + inline) uses nvim-flavored @text.* capture names.
 	case name == "text.title":
-		return COLOR_SYN_KEYWORD, true
+		return color_attr(COLOR_SYN_KEYWORD, .Bold), true
 	case name == "text.code":
 		return COLOR_SYN_CODE, true
 	case name == "text.uri", name == "text.reference":
 		return COLOR_SYN_TYPE, true
 	case name == "text.strong":
-		return COLOR_SYN_ATTRIBUTE, true
+		return color_attr(COLOR_SYN_ATTRIBUTE, .Bold), true
 	case name == "text.emphasis":
-		return COLOR_SYN_COMMENT, true
+		return color_attr(COLOR_SYN_COMMENT, .Italic), true
 	}
 	return COLOR_FG, false
 }
