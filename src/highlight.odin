@@ -135,6 +135,12 @@ color_attr :: proc(c: tb2.Color, attr: tb2.Color) -> tb2.Color {
 	return tb2.Color(u64(c) | u64(attr))
 }
 
+COLOR_RGB_MASK :: u64(0x00FF_FFFF)
+
+color_attrs :: proc(c: tb2.Color) -> u64 {
+	return u64(c) &~ COLOR_RGB_MASK
+}
+
 syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 	switch {
 	case strings.has_prefix(name, "keyword"),

@@ -1422,7 +1422,7 @@ editor_render_text_row :: proc(
 		}
 		fg, bg := fg_base, bg_normal
 		if selected {
-			fg, bg = COLOR_BG, COLOR_FG
+			fg, bg = tb2.Color(u64(COLOR_BG) | color_attrs(fg_base)), COLOR_FG
 		}
 		tb2.set_cell(i32(gutter + sx), i32(y), ch, fg, bg)
 	}
