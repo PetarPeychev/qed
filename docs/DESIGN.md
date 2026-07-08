@@ -71,7 +71,7 @@ Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`
 stacked bottom→top: optional git-hunk row tint → AI-edit tint → current-line tint
 (a semi-transparent white lift over whatever's beneath). Tint strengths are
 `*_TINT` constants in `config.odin`; the tint colors are theme-overridable. The
-row tint is part of **diff view** (*Toggle Diff View*, `Alt+g`, config
+row tint is part of **diff view** (*Git: Toggle Diff View*, `Alt+g`, config
 `git_diff_view`, off by default), separate from the always-on gutter mark — see
 Git diff view below.
 
@@ -91,7 +91,7 @@ no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 tints ours green, theirs blue, diff3 base gray, marker lines stronger + fg-colored (all
 via the existing `editor_line_bg`/`diff_bg` render path). Ours↔theirs word emphasis reuses
 `git_myers` (line pairing) + `git_word_span` (per-char span), shown on both sides.
-*Resolve Conflict* (`Alt+m`): cursor in a block opens a 3-way `Keep Ours/Theirs/Both`
+*Git: Resolve Conflict* (`Alt+m`): cursor in a block opens a 3-way `Keep Ours/Theirs/Both`
 dialog (`MergeDialog`, the shared `dialog_*` primitive); cursor outside jumps to the next
 block. Resolve deletes the marker/side rows bottom-up as one undo group (`merge_resolve`).
 
@@ -252,7 +252,7 @@ re-opens LSP).
 - **LSP** (`lsp.odin`): JSON-RPC/stdio, multiple servers concurrent
   (`g_lsps` keyed by server command), one per language; UTF-16 columns converted
   to byte offsets. `didChange` is incremental when the server advertises it. Servers
-  auto-start lazily; the *Restart LSP* command tears the current buffer's server
+  auto-start lazily; the *LSP: Restart* command tears the current buffer's server
   down so the next `lsp_sync` respawns it (crash recovery). Client-initiated
   requests (definition/hover/formatting/rename/completion) are capability-gated off the
   `initialize` result and tracked in a per-server `pending` map keyed by request id;
@@ -291,7 +291,7 @@ instruction; qed sends the whole buffer — with the selection wrapped in
 (`llm.chat_command`, default `claude -p`; `llm.edit_prompt` is the template). The
 command runs through the shared **async subprocess** runner (`subprocess.odin`:
 spawn-with-stdin-body + non-blocking stdout drain + cancel, pumped next to `lsp_pump`);
-multiple run concurrently and are cancellable (*Cancel AI Edits* / shutdown kill
+multiple run concurrently and are cancellable (*AI: Cancel Edits* / shutdown kill
 them). Each request stores the target buffer **path** (survives `[]Buffer` realloc)
 and the original selected **text**. On completion: the reply's **last fenced code
 block** is extracted (the model may reason first), the block is **relocated** by
@@ -310,7 +310,7 @@ import); that's a TODO. See [notes/ai.md](notes/ai.md).
 ## Inline completion
 
 *Ghost-text FIM* (`fim.odin`): with `fim.enabled` (config `llm.completion_enabled`,
-seeded at startup, *Toggle Inline Completion* flips it), typing arms a debounced
+seeded at startup, *AI: Toggle Inline Completion* flips it), typing arms a debounced
 (`completion_debounce_ms`) request. `prefix`/`suffix` are the buffer around the cursor
 clamped to `completion_context_lines`, sent to a FIM endpoint (default Codestral
 `/v1/fim/completions`) as an async `curl` subprocess through the shared
@@ -426,8 +426,8 @@ workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buf
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
-(config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`)
-+ optional inline diff view (`Toggle Diff View`, `Alt+g`, config `git_diff_view`): row
+(config `format_on_save`, toggleable), `LSP: Restart`; git diff gutter (live vs `HEAD`)
++ optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `git_diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines
 emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
@@ -440,7 +440,7 @@ as one undo group with whitespace framing preserved. Inline FIM completion
 (ghost-text): auto-triggered debounced suggestions from a FIM endpoint (default
 Codestral `/v1/fim/completions` via `curl`), dimmed virtual text with multi-line
 push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismiss,
-LSP popup takes precedence; `llm.completion_enabled` + *Toggle Inline Completion*.
+LSP popup takes precedence; `llm.completion_enabled` + *AI: Toggle Inline Completion*.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff. See

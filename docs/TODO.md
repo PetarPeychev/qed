@@ -61,6 +61,7 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 - [ ] List panes: scroll affordance (count / thumb) when scrolled past the visible rows.
 - [ ] Context-filter the command list (hide commands that don't apply, e.g. on welcome screen).
 - [ ] Terminal copy/paste: drag-select + copy-out (auto-copy on drag-release; Ctrl+C stays SIGINT) + paste into the PTY (Ctrl+V / host bracketed paste).
+- [ ] Terminal→editor cwd back-channel: handle OSC 7 from the PTY (shell reports cwd) so `Alt+t` can retarget qed's working root — VSCode's shell-integration model; env vars stay uncrossable.
 - [ ] Per-buffer viewport memory across buffer switches.
 - [ ] Permission/ownership-preserving saves.
 - [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified`, sub-cutoff git gutter) — see [notes/perf.md](notes/perf.md).
