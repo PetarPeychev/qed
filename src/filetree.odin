@@ -303,12 +303,21 @@ filetree_load_preview :: proc(editor: ^Editor) {
 		return
 	}
 	lines := filetree_layout(editor).body_h
-	cmd := fmt.ctprintf("head -n %d %s 2>/dev/null", lines, shell_quote(e.path))
-	out, got := shell_capture(cmd)
-	if !got {
+	fd, err := os.open(e.path)
+	if err != nil {
 		return
 	}
-	for line in strings.split_lines_iterator(&out) {
+	defer os.close(fd)
+	buf := make([]u8, FILETREE_PREVIEW_BYTES, context.temp_allocator)
+	n, read_err := os.read(fd, buf)
+	if read_err != nil || n <= 0 {
+		return
+	}
+	data := string(buf[:n])
+	for line in strings.split_lines_iterator(&data) {
+		if len(t.preview) >= lines {
+			break
+		}
 		append(&t.preview, strings.clone(line))
 	}
 	highlight_lines(language_of(e.path), t.preview[:], &t.colors)
@@ -340,7 +349,7 @@ filetree_read_dir :: proc(t: ^FileTree, dir: string, depth: int) {
 	}
 	rows := make([dynamic]Row, context.temp_allocator)
 	for info in infos {
-		append(&rows, Row{info.fullpath, os.is_dir(info.fullpath)})
+		append(&rows, Row{info.fullpath, info.type == .Directory})
 	}
 	slice.sort_by(rows[:], proc(a, b: Row) -> bool {
 		if a.is_dir != b.is_dir {
@@ -382,7 +391,6 @@ filetree_rebuild :: proc(editor: ^Editor) {
 		keep = strings.clone(t.entries[t.selected].path, context.temp_allocator)
 	}
 	filetree_clear_entries(t)
-	filetree_scan_status(editor)
 	filetree_build_scope(editor)
 	filetree_read_dir(t, editor.working_root, 0)
 	t.selected = 0
@@ -397,6 +405,11 @@ filetree_rebuild :: proc(editor: ^Editor) {
 	t.selected = clamp(t.selected, 0, max(0, len(t.entries) - 1))
 	filetree_scroll(editor)
 	filetree_load_preview(editor)
+}
+
+filetree_refresh :: proc(editor: ^Editor) {
+	filetree_scan_status(editor)
+	filetree_rebuild(editor)
 }
 
 filetree_scroll :: proc(editor: ^Editor) {
@@ -435,7 +448,7 @@ filetree_open :: proc(editor: ^Editor) {
 	t.mode = .Nav
 	textfield_reset(&t.field)
 	editor_set_message(editor, "")
-	filetree_rebuild(editor)
+	filetree_refresh(editor)
 }
 
 filetree_close :: proc(editor: ^Editor) {
@@ -450,7 +463,7 @@ filetree_mark_expanded :: proc(t: ^FileTree, dir: string) {
 		return
 	}
 	for info in infos {
-		if !os.is_dir(info.fullpath) || filetree_is_ignored(t, info.fullpath) {
+		if info.type != .Directory || filetree_is_ignored(t, info.fullpath) {
 			continue
 		}
 		if !t.show_dotfiles && strings.has_prefix(filepath.base(info.fullpath), ".") {
@@ -555,7 +568,7 @@ filetree_reveal :: proc(editor: ^Editor, path: string) {
 		}
 		p = np
 	}
-	filetree_rebuild(editor)
+	filetree_refresh(editor)
 	for e, i in t.entries {
 		if e.path == path {
 			t.selected = i
@@ -671,7 +684,7 @@ filetree_delete_commit :: proc(editor: ^Editor) {
 		return
 	}
 	t.selected = max(0, t.selected - 1)
-	filetree_rebuild(editor)
+	filetree_refresh(editor)
 	editor_set_message(editor, "Deleted")
 }
 
