@@ -89,51 +89,82 @@ wrap_segment :: proc(text: []u8, width, sub: int) -> (start, end: int) {
 	return
 }
 
-// Move k visual rows up from (row, sub); clamps at the buffer top.
+// Real (landable) visual rows a logical line occupies: soft-wrap segments when
+// wrapping, else 1. Diff-view ghost rows are counted separately (git_above/below).
+line_rows :: proc(b: ^Buffer, width, row: int) -> int {
+	if b.wrap && width > 0 {
+		return wrap_rows(b.lines[row].text[:], width)
+	}
+	return 1
+}
+
+// Move k screen rows up from real (row, sub); clamps at the buffer top. Diff-view
+// ghost rows count as steps but are never landed on — a step into them snaps to
+// the adjacent real row.
 vpos_up :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 	row, sub, k := row, sub, k
 	for k > 0 {
 		if sub > 0 {
 			sub -= 1
-		} else if row > 0 {
-			row -= 1
-			sub = wrap_rows(b.lines[row].text[:], width) - 1
-		} else {
+			k -= 1
+			continue
+		}
+		if row == 0 {
 			break
 		}
+		ghosts := git_above(b, row) + git_below(b, row - 1)
+		if k <= ghosts {
+			row -= 1
+			sub = line_rows(b, width, row) - 1
+			break
+		}
+		k -= ghosts
+		row -= 1
+		sub = line_rows(b, width, row) - 1
 		k -= 1
 	}
 	return row, sub
 }
 
-// Move k visual rows down from (row, sub); clamps at the buffer bottom.
+// Move k screen rows down from real (row, sub); clamps at the buffer bottom.
 vpos_down :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 	row, sub, k := row, sub, k
 	for k > 0 {
-		rows := wrap_rows(b.lines[row].text[:], width)
+		rows := line_rows(b, width, row)
 		if sub < rows - 1 {
 			sub += 1
-		} else if row < len(b.lines) - 1 {
-			row += 1
-			sub = 0
-		} else {
+			k -= 1
+			continue
+		}
+		if row >= len(b.lines) - 1 {
 			break
 		}
+		ghosts := git_below(b, row) + git_above(b, row + 1)
+		if k <= ghosts {
+			row += 1
+			sub = 0
+			break
+		}
+		k -= ghosts
+		row += 1
+		sub = 0
 		k -= 1
 	}
 	return row, sub
 }
 
-// Visual-row count from (r0,s0) up to (r1,s1); assumes the first precedes the second.
+// Screen-row count from (r0,s0) down to (r1,s1); assumes the first precedes the
+// second. Includes diff-view ghost rows between them (above-ghosts of r0 are
+// hidden, since r0 anchors the viewport top).
 vpos_dist :: proc(b: ^Buffer, width, r0, s0, r1, s1: int) -> int {
 	if r0 == r1 {
 		return s1 - s0
 	}
-	total := wrap_rows(b.lines[r0].text[:], width) - s0
+	total := line_rows(b, width, r0) - s0 + git_below(b, r0)
 	for r in r0 + 1 ..< r1 {
-		total += wrap_rows(b.lines[r].text[:], width)
+		total += git_above(b, r) + line_rows(b, width, r) + git_below(b, r)
 	}
-	return total + s1
+	return total + git_above(b, r1) + s1
 }
 
 vpos_cmp :: proc(r0, s0, r1, s1: int) -> int {

@@ -56,9 +56,9 @@ cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 	editor_set_message(editor, fmt.tprintf("Format on save: %s", "on" if editor.format_on_save else "off"))
 }
 
-cmd_toggle_hunk_highlight :: proc(editor: ^Editor) {
-	editor.hunk_highlight = !editor.hunk_highlight
-	editor_set_message(editor, fmt.tprintf("Hunk highlight: %s", "on" if editor.hunk_highlight else "off"))
+cmd_toggle_diff_view :: proc(editor: ^Editor) {
+	g_diff_view = !g_diff_view
+	editor_set_message(editor, fmt.tprintf("Diff view: %s", "on" if g_diff_view else "off"))
 }
 
 cmd_toggle_line_wrap :: proc(editor: ^Editor) {
@@ -114,7 +114,7 @@ commands := [?]Command {
 	{name = "Toggle Inline Completion", run = cmd_toggle_inline_completion},
 	{name = "Format Document", run = cmd_format},
 	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
-	{name = "Toggle Hunk Highlight", run = cmd_toggle_hunk_highlight},
+	{name = "Toggle Diff View", shortcut = "Alt+g", alt_ch = 'g', run = cmd_toggle_diff_view},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "Next Diagnostic", shortcut = "Alt+>", alt_ch = '>', run = cmd_diag_next},
 	{name = "Previous Diagnostic", shortcut = "Alt+<", alt_ch = '<', run = cmd_diag_prev},

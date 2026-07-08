@@ -55,7 +55,7 @@ config_bools := [?]Config_Bool {
 	{"format_on_save", &FORMAT_ON_SAVE},
 	{"cursor_accel", &CURSOR_ACCEL},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
-	{"git_hunk_highlight", &GIT_HUNK_HIGHLIGHT},
+	{"git_diff_view", &GIT_DIFF_VIEW},
 	{"line_wrap", &LINE_WRAP},
 }
 

@@ -2,8 +2,11 @@ package main
 
 import "core:fmt"
 import "core:hash"
+import "core:os"
 import "core:strings"
 import "lib:tb2"
+
+g_diff_view: bool
 
 GitMark :: enum u8 {
 	None,
@@ -12,18 +15,40 @@ GitMark :: enum u8 {
 	Deleted,
 }
 
+// One changed region: `old` lines (base_text[lo:hi]) shown as ghost text.
+// `above` renders them above `row` (modification), else below it (pure deletion).
+// `new_n` is the count of current rows starting at `row` paired for word diff.
+GitHunk :: struct {
+	row:    int,
+	above:  bool,
+	lo, hi: int,
+	new_n:  int,
+}
+
 GitGutter :: struct {
-	tried:    bool,
-	enabled:  bool,
-	base:     [dynamic]u64,
-	computed: bool,
-	rev:      u64,
-	marks:    [dynamic]GitMark,
+	tried:     bool,
+	enabled:   bool,
+	blob:      string,
+	base:      [dynamic]u64,
+	base_text: [dynamic]string,
+	computed:  bool,
+	rev:       u64,
+	marks:     [dynamic]GitMark,
+	above:     [dynamic]int,
+	below:     [dynamic]int,
+	hunks:     [dynamic]GitHunk,
 }
 
 git_destroy :: proc(g: ^GitGutter) {
 	delete(g.base)
+	delete(g.base_text)
 	delete(g.marks)
+	delete(g.above)
+	delete(g.below)
+	delete(g.hunks)
+	if g.blob != "" {
+		delete(g.blob)
+	}
 }
 
 git_hash :: proc(bytes: []u8) -> u64 {
@@ -53,6 +78,11 @@ git_base_fetch :: proc(b: ^Buffer) {
 	g.tried = true
 	g.enabled = false
 	clear(&g.base)
+	clear(&g.base_text)
+	if g.blob != "" {
+		delete(g.blob)
+		g.blob = ""
+	}
 
 	if b.path == "" || !shell_command_exists("git") {
 		return
@@ -70,27 +100,36 @@ git_base_fetch :: proc(b: ^Buffer) {
 	g.enabled = true
 
 	show_cmd := fmt.ctprintf("git -C %s show HEAD:./%s 2>/dev/null", shell_quote(dir), shell_quote(name))
-	blob, blob_ok := shell_capture(show_cmd)
+	blob, blob_ok := shell_capture(show_cmd, os.heap_allocator())
 	if !blob_ok || len(blob) == 0 {
+		if blob_ok {
+			delete(blob)
+		}
 		return
 	}
+	g.blob = blob
 
-	segments := strings.split(blob, "\n", context.temp_allocator)
-	for segment in segments {
+	for segment in strings.split(blob, "\n", context.temp_allocator) {
 		s := segment
 		if len(s) > 0 && s[len(s) - 1] == '\r' {
 			s = s[:len(s) - 1]
 		}
 		append(&g.base, git_hash(transmute([]u8)s))
+		append(&g.base_text, s)
 	}
 }
 
 git_recompute :: proc(b: ^Buffer) {
 	g := &b.git
 	resize(&g.marks, len(b.lines))
-	for i in 0 ..< len(g.marks) {
+	resize(&g.above, len(b.lines))
+	resize(&g.below, len(b.lines))
+	for i in 0 ..< len(b.lines) {
 		g.marks[i] = .None
+		g.above[i] = 0
+		g.below[i] = 0
 	}
+	clear(&g.hunks)
 	if !g.enabled {
 		return
 	}
@@ -99,10 +138,22 @@ git_recompute :: proc(b: ^Buffer) {
 	for line in b.lines {
 		append(&cur, git_hash(line.text[:]))
 	}
-	git_diff(g.base[:], cur[:], g.marks[:])
+	git_diff(g.base[:], cur[:], g.marks[:], &g.hunks)
+
+	for h in g.hunks {
+		n := h.hi - h.lo
+		if h.row < 0 || h.row >= len(b.lines) {
+			continue
+		}
+		if h.above {
+			g.above[h.row] += n
+		} else {
+			g.below[h.row] += n
+		}
+	}
 }
 
-git_diff :: proc(base, cur: []u64, marks: []GitMark) {
+git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk) {
 	lo := 0
 	for lo < len(base) && lo < len(cur) && base[lo] == cur[lo] {
 		lo += 1
@@ -127,6 +178,7 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark) {
 	}
 	if len(new_lines) == 0 {
 		git_mark_deletion(marks, lo)
+		git_hunk_deletion(hunks, lo, len(marks), lo, hi_base)
 		return
 	}
 
@@ -136,23 +188,26 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark) {
 		for k in 0 ..< len(new_lines) {
 			marks[lo + k] = .Modified if k < nmod else .Added
 		}
+		append(hunks, GitHunk{row = lo, above = true, lo = lo, hi = hi_base, new_n = len(new_lines)})
 		return
 	}
 
-	ci := lo
+	ci, bi := lo, lo
 	i := 0
 	for i < len(ops) {
 		if ops[i] == .Equal {
 			ci += 1
+			bi += 1
 			i += 1
 			continue
 		}
 		dels, adds := 0, 0
-		hunk_ci := ci
+		hunk_ci, hunk_bi := ci, bi
 		for i < len(ops) && ops[i] != .Equal {
 			switch ops[i] {
 			case .Delete:
 				dels += 1
+				bi += 1
 			case .Insert:
 				adds += 1
 				ci += 1
@@ -162,10 +217,14 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark) {
 		}
 		if adds == 0 {
 			git_mark_deletion(marks, hunk_ci)
+			git_hunk_deletion(hunks, hunk_ci, len(marks), hunk_bi, hunk_bi + dels)
 		} else {
 			nmod := min(dels, adds)
 			for k in 0 ..< adds {
 				marks[hunk_ci + k] = .Modified if k < nmod else .Added
+			}
+			if dels > 0 {
+				append(hunks, GitHunk{row = hunk_ci, above = true, lo = hunk_bi, hi = hunk_bi + dels, new_n = adds})
 			}
 		}
 	}
@@ -175,6 +234,19 @@ git_mark_deletion :: proc(marks: []GitMark, ci: int) {
 	idx := clamp(ci - 1, 0, len(marks) - 1)
 	if idx >= 0 && marks[idx] == .None {
 		marks[idx] = .Deleted
+	}
+}
+
+// Deleted old lines render below the line before the gap; if the gap is at the
+// file top (ci == 0), there is no such line, so render them above row 0 instead.
+git_hunk_deletion :: proc(hunks: ^[dynamic]GitHunk, ci, nrows, lo, hi: int) {
+	if lo >= hi || nrows == 0 {
+		return
+	}
+	if ci <= 0 {
+		append(hunks, GitHunk{row = 0, above = true, lo = lo, hi = hi, new_n = 0})
+	} else {
+		append(hunks, GitHunk{row = clamp(ci - 1, 0, nrows - 1), above = false, lo = lo, hi = hi, new_n = 0})
 	}
 }
 
@@ -276,4 +348,77 @@ git_mark_at :: proc(b: ^Buffer, row: int) -> GitMark {
 		return .None
 	}
 	return b.git.marks[row]
+}
+
+git_above :: proc(b: ^Buffer, row: int) -> int {
+	if !g_diff_view || row < 0 || row >= len(b.git.above) {
+		return 0
+	}
+	return b.git.above[row]
+}
+
+git_below :: proc(b: ^Buffer, row: int) -> int {
+	if !g_diff_view || row < 0 || row >= len(b.git.below) {
+		return 0
+	}
+	return b.git.below[row]
+}
+
+// The hunk whose old lines render above/below `row` (nil if none).
+git_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (GitHunk, bool) {
+	if !g_diff_view {
+		return {}, false
+	}
+	for h in b.git.hunks {
+		if h.row == row && h.above == above {
+			return h, true
+		}
+	}
+	return {}, false
+}
+
+// For a live (current-buffer) row inside a modification, the base line it is
+// paired with for word-level diffing.
+git_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
+	if !g_diff_view {
+		return "", false
+	}
+	for h in b.git.hunks {
+		if !h.above || h.new_n == 0 {
+			continue
+		}
+		off := row - h.row
+		if off >= 0 && off < h.new_n && h.lo + off < h.hi {
+			return b.git.base_text[h.lo + off], true
+		}
+	}
+	return "", false
+}
+
+// Changed byte span [from,to) in each of `old` and `new` after trimming the
+// common prefix and suffix (rune-boundary safe). from==to means no change.
+git_word_span :: proc(old, new: string) -> (old_span, new_span: [2]int) {
+	p := 0
+	for p < len(old) && p < len(new) && old[p] == new[p] {
+		p += 1
+	}
+	for p > 0 && (is_utf8_cont(old[p]) || is_utf8_cont(new[p])) {
+		p -= 1
+	}
+	so, sn := len(old), len(new)
+	for so > p && sn > p && old[so - 1] == new[sn - 1] {
+		so -= 1
+		sn -= 1
+	}
+	for so < len(old) && is_utf8_cont(old[so]) {
+		so += 1
+	}
+	for sn < len(new) && is_utf8_cont(new[sn]) {
+		sn += 1
+	}
+	return {p, so}, {p, sn}
+}
+
+is_utf8_cont :: proc(c: u8) -> bool {
+	return c & 0xc0 == 0x80
 }

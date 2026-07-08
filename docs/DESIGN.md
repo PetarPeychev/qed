@@ -70,9 +70,21 @@ screen↔buffer column mapping (cursor placement, mouse).
 Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`),
 stacked bottom→top: optional git-hunk row tint → AI-edit tint → current-line tint
 (a semi-transparent white lift over whatever's beneath). Tint strengths are
-`*_TINT` constants in `config.odin`; the tint colors are theme-overridable. Hunk
-row tint is toggled by *Toggle Hunk Highlight* (config `git_hunk_highlight`, off by
-default) and is separate from the always-on gutter mark.
+`*_TINT` constants in `config.odin`; the tint colors are theme-overridable. The
+row tint is part of **diff view** (*Toggle Diff View*, `Alt+g`, config
+`git_diff_view`, off by default), separate from the always-on gutter mark — see
+Git diff view below.
+
+**Git diff view** (`git.odin`, global `g_diff_view`): with diff view on, a hunk's
+removed/base lines render inline as dim-red **ghost rows** (`editor_render_hunk_ghosts`)
+— above a modification, below a pure deletion — with the changed span word-highlighted
+on both the ghost and the live line (`git_word_span`, prefix/suffix trim). The gutter
+keeps the HEAD blob + per-line text (`base_text`) so old text is available; `git_diff`
+emits `GitHunk`s + per-row `above`/`below` ghost counts. Ghost rows are virtual (one
+clipped row each, never wrapped) and shift everything below, so the counts fold into
+the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `git_above`/`below`);
+cursor *motion* is unaffected (it walks real rows via `cursor_visual_*`). All ghost math
+no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 
 Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All writes go through
@@ -398,7 +410,8 @@ auto-triggered completion dropdown (as-you-type + trigger chars, debounced, clie
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
 (config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`)
-+ optional hunk row highlight (`Toggle Hunk Highlight`, config `git_hunk_highlight`).
++ optional inline diff view (`Toggle Diff View`, `Alt+g`, config `git_diff_view`): row
+tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight.
 
 AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command
 (`llm.chat_command`, default `claude -p`) — whole-file context, concurrent

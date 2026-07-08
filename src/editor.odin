@@ -51,7 +51,6 @@ Editor :: struct {
 	hover_active:    bool,
 	completion:      Completion,
 	format_on_save:  bool,
-	hunk_highlight:  bool,
 	llm:             Llm,
 	aiedit:          AiEdit,
 	fim:             Fim,
@@ -66,9 +65,9 @@ editor_init :: proc(path: string = "") -> Editor {
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		format_on_save = FORMAT_ON_SAVE,
-		hunk_highlight = GIT_HUNK_HIGHLIGHT,
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
 	}
+	g_diff_view = GIT_DIFF_VIEW
 	b := buffer_new()
 	if path != "" && !os.is_dir(path) {
 		abs, err := filepath.abs(path, context.temp_allocator)
@@ -263,7 +262,7 @@ editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 		row, sub := vpos_down(b, w, editor.scroll_row, editor.scroll_sub, clamp(y, 0, h - 1))
 		return {row, editor_wrap_col(b, w, row, sub, gutter, x)}
 	}
-	row := clamp(editor.scroll_row + min(y, h - 1), 0, len(b.lines) - 1)
+	row, _ := vpos_down(b, w, editor.scroll_row, 0, clamp(y, 0, h - 1))
 	col := col_at_visual(b.lines[row].text[:], editor.scroll_col + max(0, x - gutter))
 	return {row, col}
 }
@@ -308,13 +307,12 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 			row: int
 			switch {
 			case y <= 0:
-				row = editor.scroll_row - 1
+				row, _ = vpos_up(b, w, editor.scroll_row, 0, 1)
 			case y >= h - 1:
-				row = editor.scroll_row + h
+				row, _ = vpos_down(b, w, editor.scroll_row, 0, h)
 			case:
-				row = editor.scroll_row + y
+				row, _ = vpos_down(b, w, editor.scroll_row, 0, y)
 			}
-			row = clamp(row, 0, len(b.lines) - 1)
 			col := col_at_visual(b.lines[row].text[:], editor.scroll_col + max(0, int(ev.x) - gutter))
 			b.cursor = {row, col}
 			cursor_goal_sync(b)
@@ -352,25 +350,16 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		editor_scroll(editor)
 	case .Mouse_Wheel_Up:
 		w, _ := editor_viewport(editor)
-		if b.wrap && w > 0 {
-			editor.scroll_row, editor.scroll_sub = vpos_up(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
-		} else {
-			editor.scroll_row = max(0, editor.scroll_row - WHEEL_SCROLL_LINES)
-		}
+		editor.scroll_row, editor.scroll_sub = vpos_up(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
 	case .Mouse_Wheel_Down:
 		w, h := editor_viewport(editor)
-		if b.wrap && w > 0 {
-			last := len(b.lines) - 1
-			max_r, max_s := vpos_up(b, w, last, wrap_rows(b.lines[last].text[:], w) - 1, h - 1)
-			r, s := vpos_down(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
-			if vpos_cmp(r, s, max_r, max_s) > 0 {
-				r, s = max_r, max_s
-			}
-			editor.scroll_row, editor.scroll_sub = r, s
-		} else {
-			max_scroll := max(0, len(b.lines) - h)
-			editor.scroll_row = min(max_scroll, editor.scroll_row + WHEEL_SCROLL_LINES)
+		last := len(b.lines) - 1
+		max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
+		r, s := vpos_down(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
+		if vpos_cmp(r, s, max_r, max_s) > 0 {
+			r, s = max_r, max_s
 		}
+		editor.scroll_row, editor.scroll_sub = r, s
 	}
 }
 
@@ -809,19 +798,11 @@ editor_scroll :: proc(editor: ^Editor) {
 
 	if b.wrap && w > 0 {
 		editor.scroll_col = 0
-		editor_scroll_wrap(editor, b, w, h)
+		editor_scroll_vert(editor, b, w, h)
 		return
 	}
 	editor.scroll_sub = 0
-
-	if cur.row < editor.scroll_row + SCROLL_MARGIN {
-		editor.scroll_row = cur.row - SCROLL_MARGIN
-	}
-	if cur.row > editor.scroll_row + h - 1 - SCROLL_MARGIN {
-		editor.scroll_row = cur.row - h + 1 + SCROLL_MARGIN
-	}
-	max_scroll_row := max(0, len(b.lines) - h)
-	editor.scroll_row = clamp(editor.scroll_row, 0, max_scroll_row)
+	editor_scroll_vert(editor, b, w, h)
 
 	cur_vcol := visual_col(b.lines[cur.row].text[:], cur.col)
 	if cur_vcol < editor.scroll_col + SCROLL_MARGIN {
@@ -833,12 +814,15 @@ editor_scroll :: proc(editor: ^Editor) {
 	editor.scroll_col = max(0, editor.scroll_col)
 }
 
-editor_scroll_wrap :: proc(editor: ^Editor, b: ^Buffer, w, h: int) {
+editor_scroll_vert :: proc(editor: ^Editor, b: ^Buffer, w, h: int) {
 	cur := b.cursor
-	cur_sub := wrap_subrow(b.lines[cur.row].text[:], w, cur.col)
+	cur_sub := 0
+	if b.wrap && w > 0 {
+		cur_sub = wrap_subrow(b.lines[cur.row].text[:], w, cur.col)
+	}
 
 	top_r := clamp(editor.scroll_row, 0, len(b.lines) - 1)
-	top_s := clamp(editor.scroll_sub, 0, wrap_rows(b.lines[top_r].text[:], w) - 1)
+	top_s := clamp(editor.scroll_sub, 0, line_rows(b, w, top_r) - 1)
 
 	mr, ms := vpos_up(b, w, cur.row, cur_sub, SCROLL_MARGIN)
 	if vpos_cmp(top_r, top_s, mr, ms) > 0 {
@@ -849,7 +833,7 @@ editor_scroll_wrap :: proc(editor: ^Editor, b: ^Buffer, w, h: int) {
 		top_r, top_s = lr, ls
 	}
 	last := len(b.lines) - 1
-	max_r, max_s := vpos_up(b, w, last, wrap_rows(b.lines[last].text[:], w) - 1, h - 1)
+	max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
 	if vpos_cmp(top_r, top_s, max_r, max_s) > 0 {
 		top_r, top_s = max_r, max_s
 	}
@@ -890,18 +874,19 @@ editor_render :: proc(editor: ^Editor) {
 		text := b.lines[b.cursor.row].text[:]
 		cx, cy: int
 		above := false
+		cur_sub := 0
 		if b.wrap && w > 0 {
 			seg := wrap_seg_start(text, w, b.cursor.col)
-			cur_sub := wrap_subrow(text, w, b.cursor.col)
+			cur_sub = wrap_subrow(text, w, b.cursor.col)
 			cx = gutter + visual_col(text, b.cursor.col) - visual_col(text, seg)
 			above =
 				b.cursor.row < editor.scroll_row ||
 				(b.cursor.row == editor.scroll_row && cur_sub < editor.scroll_sub)
-			cy = vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, b.cursor.row, cur_sub)
 		} else {
 			cx = gutter + visual_col(text, b.cursor.col) - editor.scroll_col
-			cy = b.cursor.row - editor.scroll_row
+			above = b.cursor.row < editor.scroll_row
 		}
+		cy = -1 if above else vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, b.cursor.row, cur_sub)
 		if above || cy < 0 || cy >= h || cx < gutter || cx >= gutter + w {
 			tb2.hide_cursor()
 		} else {
@@ -1064,6 +1049,45 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h,
 	return sy
 }
 
+editor_render_ghost_gutter :: proc(y, width: int) {
+	tb2.set_cell(0, i32(y), '▌', COLOR_GIT_DEL, COLOR_GUTTER_BG)
+	for x in 1 ..< width {
+		tb2.set_cell(i32(x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
+	}
+}
+
+// Draws a hunk's removed/base lines as dim-red, non-wrapping ghost rows (one
+// screen row each, clipped). Above-hunk lines paired with their live counterpart
+// get the changed span emphasized. Returns the next screen row.
+editor_render_hunk_ghosts :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h: int, above: bool, screen_y: int) -> int {
+	hunk, ok := git_hunk_at(b, row, above)
+	if !ok {
+		return screen_y
+	}
+	ghost_bg := color_over(COLOR_BG, COLOR_GIT_DEL, GIT_DIFF_GHOST_TINT)
+	word_bg := color_over(COLOR_BG, COLOR_GIT_DEL, GIT_DIFF_WORD_TINT)
+	sy := screen_y
+	for gi in 0 ..< hunk.hi - hunk.lo {
+		if sy >= h {
+			break
+		}
+		old := transmute([]u8)b.git.base_text[hunk.lo + gi]
+		df, dt := -1, -1
+		if above && gi < hunk.new_n && hunk.row + gi < len(b.lines) {
+			ospan, _ := git_word_span(string(old), string(b.lines[hunk.row + gi].text[:]))
+			df, dt = ospan[0], ospan[1]
+		}
+		ccol := make([]tb2.Color, len(old), context.temp_allocator)
+		for i in 0 ..< len(old) {
+			ccol[i] = COLOR_GHOST_FG
+		}
+		editor_render_ghost_gutter(sy, gutter)
+		editor_render_text_row(gutter, sy, w, old, ccol, 0, ghost_bg, -1, -1, nil, 0, len(old), df, dt, word_bg)
+		sy += 1
+	}
+	return sy
+}
+
 editor_render_buffer :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	full_w := int(tb2.width())
@@ -1136,7 +1160,27 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			}
 		}
 		colors := highlight_colors(b, row)
-		line_bg := editor_line_bg(current, ai_edit, mark, editor.hunk_highlight)
+		line_bg := editor_line_bg(current, ai_edit, mark, g_diff_view)
+
+		// A modification's changed span on the live line, emphasized against its base pair.
+		diff_from, diff_to := -1, -1
+		diff_bg := tb2.Color(0)
+		if g_diff_view && mark == .Modified {
+			if old, ok := git_pair_old(b, row); ok {
+				_, nspan := git_word_span(old, string(text[:]))
+				diff_from, diff_to = nspan[0], nspan[1]
+				diff_bg = color_over(line_bg, COLOR_GIT_MOD, GIT_DIFF_WORD_TINT)
+			}
+		}
+
+		// Deleted/replaced base lines render as dim-red ghost rows: above a
+		// modification, below a pure deletion. Hidden for the top line.
+		if row != editor.scroll_row {
+			screen_y = editor_render_hunk_ghosts(editor, b, row, gutter, w, h, true, screen_y)
+			if screen_y >= h {
+				break
+			}
+		}
 
 		ghost_row := ghost_cut && row == b.cursor.row
 		if wrapping {
@@ -1144,31 +1188,34 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				// Ghost + suffix wrap as one flow, pushing lines below down by the
 				// rows they consume (no separate gap needed).
 				screen_y = editor_render_ghost_line(editor, b, row, gutter, w, h, screen_y, colors, line_bg)
-				continue
-			}
-			segs := line_wrap(text[:], w)
-			start_sub := editor.scroll_sub if row == editor.scroll_row else 0
-			for s in start_sub ..< len(segs) {
-				if screen_y >= h {
-					break
+			} else {
+				segs := line_wrap(text[:], w)
+				start_sub := editor.scroll_sub if row == editor.scroll_row else 0
+				for s in start_sub ..< len(segs) {
+					if screen_y >= h {
+						break
+					}
+					seg_start := segs[s]
+					seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
+					x_origin := visual_col(text[:], seg_start)
+					editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, s > 0)
+					editor_render_text_row(gutter, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end, diff_from, diff_to, diff_bg)
+					screen_y += 1
 				}
-				seg_start := segs[s]
-				seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
-				x_origin := visual_col(text[:], seg_start)
-				editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, s > 0)
-				editor_render_text_row(gutter, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end)
-				screen_y += 1
 			}
 		} else {
 			// Unwrapped: ghost + suffix stay on one row (clipped), drawn by
 			// fim_render, so cut the real line at the caret and reserve gap rows.
 			text_end := b.cursor.col if ghost_row else len(text)
 			editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, false)
-			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end)
+			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg)
 			screen_y += 1
 			if gap > 0 && row == b.cursor.row {
 				screen_y += gap
 			}
+		}
+		if screen_y < h {
+			screen_y = editor_render_hunk_ghosts(editor, b, row, gutter, w, h, false, screen_y)
 		}
 	}
 
@@ -1319,6 +1366,9 @@ editor_render_text_row :: proc(
 	sel_from, sel_to: int,
 	underlines: [][2]int,
 	col_start, col_end: int,
+	diff_from := -1,
+	diff_to := -1,
+	diff_bg := tb2.Color(0),
 ) {
 	for sx in 0 ..< w {
 		tb2.set_cell(i32(gutter + sx), i32(y), ' ', COLOR_FG, bg_normal)
@@ -1383,10 +1433,11 @@ editor_render_text_row :: proc(
 	pstart := -1
 	psel := false
 	pfg := COLOR_FG
+	pbg := bg_normal
 	it := utf8.decode_grapheme_iterator_make(string(text))
 	for _, g in utf8.decode_grapheme_iterate(&it) {
 		if pstart >= 0 {
-			vcol = emit(gutter, y, w, text, pstart, g.byte_index, vcol, x_origin, col_start, col_end, psel, pfg, bg_normal)
+			vcol = emit(gutter, y, w, text, pstart, g.byte_index, vcol, x_origin, col_start, col_end, psel, pfg, pbg)
 		}
 		pstart = g.byte_index
 		psel = sel_from >= 0 && g.byte_index >= sel_from && g.byte_index < sel_to
@@ -1394,9 +1445,10 @@ editor_render_text_row :: proc(
 		if underlined(underlines, pstart) {
 			pfg = tb2.Color(u64(pfg) | u64(tb2.Color.Underline))
 		}
+		pbg = diff_bg if diff_from >= 0 && pstart >= diff_from && pstart < diff_to else bg_normal
 	}
 	if pstart >= 0 {
-		vcol = emit(gutter, y, w, text, pstart, len(text), vcol, x_origin, col_start, col_end, psel, pfg, bg_normal)
+		vcol = emit(gutter, y, w, text, pstart, len(text), vcol, x_origin, col_start, col_end, psel, pfg, pbg)
 	}
 	if col_end >= len(text) && sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
 		draw(gutter, y, vcol - x_origin, w, ' ', true, COLOR_FG, bg_normal)
