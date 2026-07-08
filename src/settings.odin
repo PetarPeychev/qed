@@ -132,6 +132,9 @@ config_colors := [?]Config_Color {
 	{"git_added", &COLOR_GIT_ADD},
 	{"git_modified", &COLOR_GIT_MOD},
 	{"git_deleted", &COLOR_GIT_DEL},
+	{"conflict_ours", &COLOR_CONFLICT_OURS},
+	{"conflict_theirs", &COLOR_CONFLICT_THEIRS},
+	{"conflict_base", &COLOR_CONFLICT_BASE},
 	{"filetree_ignored", &COLOR_FILETREE_IGNORED},
 }
 

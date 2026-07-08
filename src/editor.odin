@@ -22,6 +22,7 @@ Editor :: struct {
 	quit_dialog:     QuitDialog,
 	close_dialog:    CloseDialog,
 	conflict_dialog: ConflictDialog,
+	merge_dialog:    MergeDialog,
 	disk_poll:       time.Tick,
 	quit:            bool,
 	pasting:         bool,
@@ -166,7 +167,7 @@ Overlay :: struct {
 	mouse:    proc(editor: ^Editor, ev: tb2.Event),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [14]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [15]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse},
@@ -182,6 +183,7 @@ editor_overlays :: proc(editor: ^Editor) -> [14]Overlay {
 		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render, quit_dialog_dispatch_mouse},
 		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render, close_dialog_dispatch_mouse},
 		{&editor.conflict_dialog.active, conflict_dialog_dispatch_key, conflict_dialog_render, conflict_dialog_dispatch_mouse},
+		{&editor.merge_dialog.active, merge_dialog_dispatch_key, merge_dialog_render, merge_dialog_dispatch_mouse},
 	}
 }
 
@@ -1108,6 +1110,9 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		ai_rows = llm_active_rows(editor, b)
 	}
 
+	conflicts := merge_scan(b)
+	conflict_spans := merge_word_map(b, conflicts)
+
 	b.wrap_width = w
 	wrapping := b.wrap && w > 0
 	gap := fim_ghost_gap(editor)
@@ -1160,8 +1165,16 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				break
 			}
 		}
+		side, cmark := merge_side(conflicts, row)
 		colors := highlight_colors(b, row)
-		line_bg := editor_line_bg(current, ai_edit, mark, g_diff_view)
+		if cmark {
+			mc := make([]tb2.Color, len(text), context.temp_allocator)
+			for i in 0 ..< len(text) {
+				mc[i] = merge_side_color(side)
+			}
+			colors = mc
+		}
+		line_bg := editor_line_bg(current, ai_edit, mark, g_diff_view, side, cmark)
 
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
@@ -1171,6 +1184,12 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				_, nspan := git_word_span(old, string(text[:]))
 				diff_from, diff_to = nspan[0], nspan[1]
 				diff_bg = color_over(line_bg, COLOR_GIT_MOD, GIT_DIFF_WORD_TINT)
+			}
+		}
+		if (side == .Ours || side == .Theirs) && !cmark {
+			if sp, ok := conflict_spans[row]; ok {
+				diff_from, diff_to = sp[0], sp[1]
+				diff_bg = color_over(line_bg, merge_side_color(side), CONFLICT_WORD_TINT)
 			}
 		}
 
@@ -1335,7 +1354,7 @@ color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {
 	return tb2.Color(chan(b, t, 16, alpha) | chan(b, t, 8, alpha) | chan(b, t, 0, alpha))
 }
 
-editor_line_bg :: proc(current, ai_edit: bool, mark: GitMark, hunk: bool) -> tb2.Color {
+editor_line_bg :: proc(current, ai_edit: bool, mark: GitMark, hunk: bool, side: MergeSide, marker: bool) -> tb2.Color {
 	bg := COLOR_BG
 	if hunk {
 		#partial switch mark {
@@ -1344,6 +1363,9 @@ editor_line_bg :: proc(current, ai_edit: bool, mark: GitMark, hunk: bool) -> tb2
 		case .Modified:
 			bg = color_over(bg, COLOR_GIT_MOD, GIT_HUNK_TINT)
 		}
+	}
+	if side != .None {
+		bg = color_over(bg, merge_side_color(side), CONFLICT_MARKER_TINT if marker else CONFLICT_TINT)
 	}
 	if ai_edit {
 		bg = color_over(bg, COLOR_AI_EDIT_BG, AI_EDIT_TINT)

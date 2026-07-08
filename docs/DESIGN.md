@@ -86,6 +86,15 @@ the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `git_above
 cursor *motion* is unaffected (it walks real rows via `cursor_visual_*`). All ghost math
 no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 
+**Merge conflicts** (`conflict.odin`): content-driven, always on, no git dependency —
+`merge_scan` finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks by line prefix. Render
+tints ours green, theirs blue, diff3 base gray, marker lines stronger + fg-colored (all
+via the existing `editor_line_bg`/`diff_bg` render path). Ours↔theirs word emphasis reuses
+`git_myers` (line pairing) + `git_word_span` (per-char span), shown on both sides.
+*Resolve Conflict* (`Alt+m`): cursor in a block opens a 3-way `Keep Ours/Theirs/Both`
+dialog (`MergeDialog`, the shared `dialog_*` primitive); cursor outside jumps to the next
+block. Resolve deletes the marker/side rows bottom-up as one undo group (`merge_resolve`).
+
 Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All writes go through
 `editor_set_message`, which copies into owned storage — a raw `tprintf` string
@@ -353,7 +362,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
-`format` · `git` · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
+`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
 
 ## Shipped
@@ -419,7 +428,10 @@ incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
 (config `format_on_save`, toggleable), `Restart LSP`; git diff gutter (live vs `HEAD`)
 + optional inline diff view (`Toggle Diff View`, `Alt+g`, config `git_diff_view`): row
-tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight.
+tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
+merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines
+emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
+theirs / both, or jump to next conflict).
 
 AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command
 (`llm.chat_command`, default `claude -p`) — whole-file context, concurrent

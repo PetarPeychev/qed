@@ -115,6 +115,7 @@ commands := [?]Command {
 	{name = "Format Document", run = cmd_format},
 	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
 	{name = "Toggle Diff View", shortcut = "Alt+g", alt_ch = 'g', run = cmd_toggle_diff_view},
+	{name = "Resolve Conflict", shortcut = "Alt+m", alt_ch = 'm', run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "Next Diagnostic", shortcut = "Alt+>", alt_ch = '>', run = cmd_diag_next},
 	{name = "Previous Diagnostic", shortcut = "Alt+<", alt_ch = '<', run = cmd_diag_prev},
