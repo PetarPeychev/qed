@@ -19,6 +19,7 @@ Shipped list. Groups are priority buckets, not a build order.
 - [ ] Command palette: order entries by recency of use, persisted cross-session (needs a small state file).
 - [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, palette MRU, etc. Figure out scope + format before building.
 - [ ] File browser: show more detail per entry (size, line count, other `ls -l`-style bits).
+- [ ] Pane swap (NOT FINALISED — design unsure): opening a nav pane's chord while another nav pane is open closes the current + opens the target (1 fewer key, no Esc first); intercept at the `editor_dispatch` choke point, sources = nav panes only (exclude terminal/rename/aiedit/dialogs). Open question: is bisecting behaviour this way (some panes swap, some don't) actually good design?
 
 ## AI / LLM assist
 
