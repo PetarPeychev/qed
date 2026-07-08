@@ -389,8 +389,10 @@ gitignored + hidden dotdirs), `.`/`i` show dotfiles / gitignored (both hidden by
 default, config `filetree_show_dotfiles`/`filetree_show_ignored`), highlighted when on;
 header scope tab bar (`All`/`Open`/`Git`/`Unsaved`, `←`/`→` or click) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
-`git status --porcelain --ignored` scanned once per open/mutation (cached across
-expand/collapse/scope), a green/yellow `▌` per
+`git status --porcelain --ignored` (single `sh -c` with `rev-parse`) scanned **async**
+via the shared subprocess runner: the first open of a session blocks on it, every
+reopen renders instantly from the cached status/ignored then refreshes in the
+background (`filetree_scan_pump`); a green/yellow `▌` per
 added/modified file propagated up its ancestor folders, ignored files dimmed; unsaved
 open buffers marked with a trailing `●`, propagated to folders),
 floating terminal pane (`Alt+t`: persistent embedded shell via

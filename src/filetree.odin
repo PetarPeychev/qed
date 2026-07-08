@@ -53,6 +53,8 @@ FileTree :: struct {
 	show_ignored:  bool,
 	scope:         FileTreeScope,
 	scope_paths:   map[string]bool,
+	scan_sub:      Subprocess,
+	scanned:       bool,
 }
 
 FileTreeLayout :: struct {
@@ -95,6 +97,7 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 }
 
 filetree_destroy :: proc(t: ^FileTree) {
+	subprocess_kill(&t.scan_sub)
 	filetree_clear_entries(t)
 	delete(t.entries)
 	for key in t.expanded {
@@ -139,22 +142,76 @@ filetree_clear_status :: proc(t: ^FileTree) {
 	clear(&t.ignored)
 }
 
+filetree_scan_cmd :: proc(root: string) -> cstring {
+	q := shell_quote(root)
+	return fmt.ctprintf(
+		"git -C %s rev-parse --show-toplevel 2>/dev/null && git -C %s status --porcelain --ignored 2>/dev/null",
+		q,
+		q,
+	)
+}
+
 filetree_scan_status :: proc(editor: ^Editor) {
+	root := editor.working_root
+	if root == "" {
+		filetree_clear_status(&editor.filetree)
+		editor.filetree.scanned = true
+		return
+	}
+	out, ok := shell_capture(filetree_scan_cmd(root))
+	if !ok {
+		return
+	}
+	filetree_scan_apply(editor, out)
+}
+
+filetree_scan_start :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	if t.scan_sub.running {
+		subprocess_kill(&t.scan_sub)
+	}
+	root := editor.working_root
+	if root == "" {
+		filetree_clear_status(t)
+		t.scanned = true
+		return
+	}
+	sub, ok := subprocess_start(string(filetree_scan_cmd(root)), nil, root)
+	if !ok {
+		return
+	}
+	t.scan_sub = sub
+}
+
+filetree_scanning :: proc(editor: ^Editor) -> bool {
+	return editor.filetree.scan_sub.running
+}
+
+filetree_scan_pump :: proc(editor: ^Editor) -> bool {
+	t := &editor.filetree
+	if !t.scan_sub.running {
+		return false
+	}
+	if !subprocess_drain(&t.scan_sub) {
+		return false
+	}
+	filetree_scan_apply(editor, subprocess_output(&t.scan_sub))
+	subprocess_destroy(&t.scan_sub)
+	if t.active {
+		filetree_rebuild(editor)
+	}
+	return true
+}
+
+filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	t := &editor.filetree
 	filetree_clear_status(t)
+	t.scanned = true
 	root := editor.working_root
-	if root == "" || !shell_command_exists("git") {
-		return
-	}
-	top_cmd := fmt.ctprintf("git -C %s rev-parse --show-toplevel 2>/dev/null", shell_quote(root))
-	top, top_ok := shell_capture(top_cmd)
+	out := output
+	top, top_ok := strings.split_lines_iterator(&out)
 	top = strings.trim_space(top)
 	if !top_ok || top == "" {
-		return
-	}
-	status_cmd := fmt.ctprintf("git -C %s status --porcelain --ignored 2>/dev/null", shell_quote(root))
-	out, ok := shell_capture(status_cmd)
-	if !ok {
 		return
 	}
 	for line in strings.split_lines_iterator(&out) {
@@ -448,7 +505,12 @@ filetree_open :: proc(editor: ^Editor) {
 	t.mode = .Nav
 	textfield_reset(&t.field)
 	editor_set_message(editor, "")
-	filetree_refresh(editor)
+	if t.scanned {
+		filetree_rebuild(editor)
+		filetree_scan_start(editor)
+	} else {
+		filetree_refresh(editor)
+	}
 }
 
 filetree_close :: proc(editor: ^Editor) {
