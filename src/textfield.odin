@@ -82,7 +82,11 @@ textfield_paste :: proc(f: ^TextField) -> bool {
 	if len(text) == 0 {
 		return false
 	}
-	// A field is single-line: flatten any pasted line/tab breaks to spaces.
+	return textfield_insert_flat(f, text)
+}
+
+// A field is single-line: flatten any pasted line/tab breaks to spaces.
+textfield_insert_flat :: proc(f: ^TextField, text: string) -> bool {
 	buf := make([dynamic]u8, 0, len(text), context.temp_allocator)
 	for i := 0; i < len(text); {
 		r, n := utf8.decode_rune(text[i:])
@@ -107,9 +111,9 @@ textfield_paste :: proc(f: ^TextField) -> bool {
 // text content changed, so a fuzzy caller re-filters. Navigation keys the field
 // doesn't own (Enter/Esc/Up/Down) fall through unhandled for the caller.
 textfield_key :: proc(f: ^TextField, ev: tb2.Event) -> bool {
-	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
-	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
-	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
+	ctrl := ev_ctrl(ev)
+	shift := ev_shift(ev)
+	alt := ev_alt(ev)
 	text := f.text[:]
 
 	#partial switch ev.key {
@@ -200,7 +204,7 @@ textfield_mouse :: proc(f: ^TextField, x, y, w: int, ev: tb2.Event) {
 	}
 	target := max(0, int(ev.x) - x)
 	caret := start + col_at_visual(text[start:], target)
-	if (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0 {
+	if ev_motion(ev) {
 		if f.anchor < 0 {
 			f.anchor = f.caret
 		}

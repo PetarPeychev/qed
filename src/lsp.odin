@@ -247,6 +247,8 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 	}
 	lsp.state = .Failed
 	lsp_pending_clear(lsp)
+	delete(lsp.recv)
+	lsp.recv = nil
 	os.close(lsp.stdin)
 	os.close(lsp.stdout)
 	_ = os.process_kill(lsp.process)
@@ -903,14 +905,7 @@ lsp_apply_definition :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	editor_open_path(editor, path)
 	b := editor_buffer(editor)
 	row := clamp(line, 0, len(b.lines) - 1)
-	col := col_from_utf16(b.lines[row].text[:], ch)
-	b.selection = nil
-	b.cursor = {row, col}
-	cursor_goal_sync(b)
-	_, h := editor_viewport(editor)
-	editor.scroll_row = row - h / 2
-	editor.scroll_sub = 0
-	editor_scroll(editor)
+	editor_goto(editor, row, col_from_utf16(b.lines[row].text[:], ch))
 	jump_record(editor, origin)
 	return true
 }
@@ -1018,10 +1013,8 @@ lsp_apply_text_edits :: proc(b: ^Buffer, edits: json.Array, tx: int = 0) -> bool
 	})
 	edit_open(b, .Atomic)
 	for e in list {
-		removed := buffer_delete(b, e.from, e.to)
-		append(&b.open.edits, Edit{.Insert, e.from, removed})
-		buffer_insert(b, e.from, e.text)
-		append(&b.open.edits, Edit{.Delete, e.from, strings.clone(e.text)})
+		edit_delete(b, e.from, e.to)
+		edit_insert(b, e.from, e.text)
 	}
 	buffer_undo_commit(b)
 	if tx != 0 && len(b.undo) > 0 {

@@ -110,10 +110,8 @@ buffer_surround :: proc(b: ^Buffer, open, close: u8) {
 	}
 
 	edit_open(b, .Atomic)
-	buffer_insert(b, from, string(ob[:]))
-	append(&b.open.edits, Edit{.Delete, from, strings.clone(string(ob[:]))})
-	buffer_insert(b, close_at, string(cb[:]))
-	append(&b.open.edits, Edit{.Delete, close_at, strings.clone(string(cb[:]))})
+	edit_insert(b, from, string(ob[:]))
+	edit_insert(b, close_at, string(cb[:]))
 	buffer_undo_commit(b)
 
 	b.selection = Cursor{from.row, from.col + 1}
@@ -167,18 +165,15 @@ buffer_close_dedent :: proc(b: ^Buffer, c: u8) -> bool {
 	ins := [1]u8{c}
 
 	edit_open(b, .Atomic)
-	buffer_insert(b, {row, col}, string(ins[:]))
-	append(&b.open.edits, Edit{.Delete, {row, col}, strings.clone(string(ins[:]))})
+	edit_insert(b, {row, col}, string(ins[:]))
 
 	new_col := col + 1
 	if partner, ok := bracket_scan_backward(b, {row, col}, open, close); ok && partner.row != row {
 		lead := line_indent_len(b.lines[partner.row].text[:])
 		indent := strings.clone(string(b.lines[partner.row].text[:lead]), context.temp_allocator)
 		if string(b.lines[row].text[:col]) != indent {
-			removed := buffer_delete(b, {row, 0}, {row, col})
-			append(&b.open.edits, Edit{.Insert, {row, 0}, removed})
-			buffer_insert(b, {row, 0}, indent)
-			append(&b.open.edits, Edit{.Delete, {row, 0}, strings.clone(indent)})
+			edit_delete(b, {row, 0}, {row, col})
+			edit_insert(b, {row, 0}, indent)
 			new_col = len(indent) + 1
 		}
 	}

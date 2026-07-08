@@ -743,13 +743,21 @@ filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+filetree_paste :: proc(editor: ^Editor, text: string) {
+	t := &editor.filetree
+	#partial switch t.mode {
+	case .NewFile, .NewFolder, .Rename:
+		textfield_insert_flat(&t.field, text)
+	}
+}
+
 filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
 	if t.mode != .Nav {
 		filetree_prompt_key(editor, ev)
 		return
 	}
-	if (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0 && ev.ch == 'f' {
+	if ev_alt(ev) && ev.ch == 'f' {
 		filetree_close(editor)
 		return
 	}
@@ -955,7 +963,7 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
 	lay := filetree_layout(editor)
-	motion := overlay_ev_motion(ev)
+	motion := ev_motion(ev)
 	if !mouse_in_rect(ev, lay.box) {
 		if ev.key == .Mouse_Left && !motion {
 			filetree_close(editor)

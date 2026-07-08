@@ -217,16 +217,18 @@ BufferOpenError :: enum {
 }
 
 buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
-	file, err := os.open(path, flags = {.Read, .Create})
-	if err != nil {
-		return .FileOpenError
-	}
-	defer os.close(file)
-
 	data: []u8
-	data, err = os.read_entire_file(file, context.allocator)
-	if err != nil {
-		return .FileReadError
+	if os.exists(path) {
+		file, err := os.open(path, flags = {.Read})
+		if err != nil {
+			return .FileOpenError
+		}
+		defer os.close(file)
+
+		data, err = os.read_entire_file(file, context.allocator)
+		if err != nil {
+			return .FileReadError
+		}
 	}
 	defer delete(data)
 

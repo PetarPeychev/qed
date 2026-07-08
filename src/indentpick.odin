@@ -73,6 +73,12 @@ indentpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+indentpick_paste :: proc(editor: ^Editor, text: string) {
+	if textfield_insert_flat(&editor.indentpick.field, text) {
+		fuzzy_list_refilter(&editor.indentpick.list)
+	}
+}
+
 indentpick_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	fuzzy_list_center_mouse(editor, &editor.indentpick.list, ev, indentpick_execute, indentpick_close)
 }

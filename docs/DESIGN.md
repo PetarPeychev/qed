@@ -213,7 +213,10 @@ documented in `lib/tb2/PATCHES.md`:
   `peek_event`s for `ALT_ESC_TIMEOUT_MS` and re-tags a buffered printable as
   `Mod.Alt` (so `Alt+f`/`Alt+F` are distinct, unlike `Ctrl+letter`).
 - **Bracketed paste:** patched termbox surfaces `Paste_Begin`/`Paste_End`; qed
-  accumulates the keys between them and inserts the whole paste as one undo group.
+  accumulates the keys between them and routes the whole paste to whatever has
+  focus — the buffer (one undo group), the terminal pane, or the active overlay's
+  text field via `Overlay.paste` (flattened to one line, so a pasted newline
+  can't fire Enter mid-paste); dialogs ignore it.
 
 ## Language detection
 

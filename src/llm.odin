@@ -32,11 +32,7 @@ llm_active_rows :: proc(editor: ^Editor, b: ^Buffer, allocator := context.temp_a
 		if !ok {
 			continue
 		}
-		end_row := to.row
-		if to.col == 0 && to.row > from.row {
-			end_row -= 1
-		}
-		append(&rows, [2]int{from.row, end_row})
+		append(&rows, [2]int{from.row, selection_last_row(from, to)})
 	}
 	return rows[:]
 }
@@ -127,10 +123,8 @@ llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
 	output := llm_reframe(core, req.original, context.temp_allocator)
 
 	edit_open(b, .Atomic)
-	removed := buffer_delete(b, from, to)
-	append(&b.open.edits, Edit{.Insert, from, removed})
-	end := buffer_insert(b, from, output)
-	append(&b.open.edits, Edit{.Delete, from, strings.clone(output)})
+	edit_delete(b, from, to)
+	end := edit_insert(b, from, output)
 	buffer_undo_commit(b)
 
 	b.cursor = cursor_translate_after_edit(b.cursor, from, to, end)

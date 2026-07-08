@@ -153,22 +153,13 @@ projsearch_execute :: proc(editor: ^Editor) {
 	projsearch_close(editor)
 	editor_open_path(editor, full)
 
-	b := editor_buffer(editor)
-	buffer_undo_commit(b)
-	row := clamp(m.row, 0, len(b.lines) - 1)
-	col := clamp(m.col, 0, len(b.lines[row].text))
-	b.selection = nil
-	b.cursor = {row, col}
-	cursor_goal_sync(b)
-	_, h := editor_viewport(editor)
-	editor.scroll_row = row - h / 2
-	editor.scroll_sub = 0
-	editor_scroll(editor)
+	buffer_undo_commit(editor_buffer(editor))
+	editor_goto(editor, m.row, m.col)
 }
 
 projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.projsearch
-	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
+	alt := ev_alt(ev)
 	if alt && ev.ch == 'F' {
 		projsearch_close(editor)
 		return
@@ -187,6 +178,14 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			projsearch_run(editor)
 			projsearch_load_preview(editor)
 		}
+	}
+}
+
+projsearch_paste :: proc(editor: ^Editor, text: string) {
+	p := &editor.projsearch
+	if textfield_insert_flat(&p.field, text) {
+		projsearch_run(editor)
+		projsearch_load_preview(editor)
 	}
 }
 

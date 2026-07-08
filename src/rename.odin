@@ -51,13 +51,17 @@ rename_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+rename_paste :: proc(editor: ^Editor, text: string) {
+	textfield_insert_flat(&editor.rename.field, text)
+}
+
 rename_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	if ev.key != .Mouse_Left {
 		return
 	}
 	box := pane_center(editor, PALETTE_WIDTH, 1)
 	if !mouse_in_rect(ev, box) {
-		if !overlay_ev_motion(ev) {
+		if !ev_motion(ev) {
 			rename_close(editor)
 		}
 		return

@@ -259,8 +259,11 @@ GitOp :: enum u8 {
 git_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]GitOp, bool) {
 	n, m := len(a), len(b)
 	maxd := n + m
-	offset := maxd
-	v := make([]int, 2 * maxd + 1, context.temp_allocator)
+	// k stays within ±d ≤ ±cap_d, so the arrays only need the capped span — sizing
+	// by maxd would make each of the up-to-cap_d trace snapshots O(n+m).
+	cap_d := min(maxd, GIT_DIFF_MAX_D)
+	offset := cap_d
+	v := make([]int, 2 * cap_d + 1, context.temp_allocator)
 	trace := make([dynamic][]int, context.temp_allocator)
 
 	found_d := -1
@@ -268,7 +271,7 @@ git_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]GitOp,
 		if d > GIT_DIFF_MAX_D {
 			return nil, false
 		}
-		snapshot := make([]int, 2 * maxd + 1, context.temp_allocator)
+		snapshot := make([]int, 2 * cap_d + 1, context.temp_allocator)
 		copy(snapshot, v)
 		append(&trace, snapshot)
 

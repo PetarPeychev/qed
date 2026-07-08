@@ -65,10 +65,8 @@ format_apply :: proc(b: ^Buffer, body: string) {
 	last := len(b.lines) - 1
 	end := Cursor{last, len(b.lines[last].text)}
 	edit_open(b, .Atomic)
-	removed := buffer_delete(b, {0, 0}, end)
-	append(&b.open.edits, Edit{.Insert, {0, 0}, removed})
-	buffer_insert(b, {0, 0}, body)
-	append(&b.open.edits, Edit{.Delete, {0, 0}, strings.clone(body)})
+	edit_delete(b, {0, 0}, end)
+	edit_insert(b, {0, 0}, body)
 	buffer_undo_commit(b)
 	b.selection = nil
 	row := clamp(old.row, 0, len(b.lines) - 1)

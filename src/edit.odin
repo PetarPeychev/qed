@@ -72,6 +72,17 @@ edit_open :: proc(b: ^Buffer, kind: Coalesce) {
 	b.open_kind = kind
 }
 
+edit_insert :: proc(b: ^Buffer, at: Cursor, text: string) -> Cursor {
+	end := buffer_insert(b, at, text)
+	append(&b.open.edits, Edit{.Delete, at, strings.clone(text)})
+	return end
+}
+
+edit_delete :: proc(b: ^Buffer, from, to: Cursor) {
+	removed := buffer_delete(b, from, to)
+	append(&b.open.edits, Edit{.Insert, from, removed})
+}
+
 cursor_advance :: proc(at: Cursor, text: string) -> Cursor {
 	end := at
 	nl := strings.last_index_byte(text, '\n')
@@ -86,8 +97,7 @@ cursor_advance :: proc(at: Cursor, text: string) -> Cursor {
 
 buffer_insert_text :: proc(b: ^Buffer, text: string, kind: Coalesce = .Insert) {
 	edit_open(b, kind)
-	end := buffer_insert(b, b.cursor, text)
-	append(&b.open.edits, Edit{.Delete, b.cursor, strings.clone(text)})
+	end := edit_insert(b, b.cursor, text)
 	if kind == .Atomic {
 		buffer_undo_commit(b)
 	}
@@ -130,19 +140,16 @@ buffer_newline :: proc(b: ^Buffer) {
 	cursor: Cursor
 	if split {
 		text := strings.concatenate({"\n", indent, unit, "\n", indent}, context.temp_allocator)
-		buffer_insert(b, {row, col}, text)
-		append(&b.open.edits, Edit{.Delete, {row, col}, strings.clone(text)})
+		edit_insert(b, {row, col}, text)
 		cursor = {row + 1, base + len(unit)}
 	} else {
 		text := strings.concatenate({"\n", indent, extra}, context.temp_allocator)
-		cursor = buffer_insert(b, {row, col}, text)
-		append(&b.open.edits, Edit{.Delete, {row, col}, strings.clone(text)})
+		cursor = edit_insert(b, {row, col}, text)
 	}
 
 	prev := b.lines[row].text[:]
 	if len(prev) > 0 && line_is_blank(prev) {
-		removed := buffer_delete(b, {row, 0}, {row, len(prev)})
-		append(&b.open.edits, Edit{.Insert, {row, 0}, removed})
+		edit_delete(b, {row, 0}, {row, len(prev)})
 	}
 	buffer_undo_commit(b)
 
@@ -245,10 +252,7 @@ buffer_toggle_comment :: proc(b: ^Buffer) {
 	last_row := b.cursor.row
 	if sel {
 		first_row = from.row
-		last_row = to.row
-		if to.col == 0 && to.row > from.row {
-			last_row -= 1
-		}
+		last_row = selection_last_row(from, to)
 	}
 
 	all_commented := true
@@ -288,8 +292,7 @@ buffer_toggle_comment :: proc(b: ^Buffer) {
 				n += 1
 			}
 			at := Cursor{row, ind}
-			removed := buffer_delete(b, at, {row, ind + n})
-			append(&b.open.edits, Edit{.Insert, at, removed})
+			edit_delete(b, at, {row, ind + n})
 			new_cur_col = comment_shift_col(new_cur_col, row, cur.row, ind, -n)
 			new_anchor_col = comment_shift_col(new_anchor_col, row, anchor.row, ind, -n)
 		}
@@ -302,8 +305,7 @@ buffer_toggle_comment :: proc(b: ^Buffer) {
 				continue
 			}
 			at := Cursor{row, min_indent}
-			buffer_insert(b, at, insert)
-			append(&b.open.edits, Edit{.Delete, at, strings.clone(insert)})
+			edit_insert(b, at, insert)
 			new_cur_col = comment_shift_col(new_cur_col, row, cur.row, min_indent, shift)
 			new_anchor_col = comment_shift_col(new_anchor_col, row, anchor.row, min_indent, shift)
 		}
@@ -329,8 +331,7 @@ buffer_insert_tab :: proc(b: ^Buffer) {
 
 buffer_delete_range :: proc(b: ^Buffer, from, to: Cursor, kind: Coalesce) {
 	edit_open(b, kind)
-	removed := buffer_delete(b, from, to)
-	append(&b.open.edits, Edit{.Insert, from, removed})
+	edit_delete(b, from, to)
 	if kind == .Atomic {
 		buffer_undo_commit(b)
 	}
@@ -387,10 +388,8 @@ buffer_replace_selection :: proc(b: ^Buffer, text: string) {
 		return
 	}
 	edit_open(b, .Atomic)
-	removed := buffer_delete(b, from, to)
-	append(&b.open.edits, Edit{.Insert, from, removed})
-	end := buffer_insert(b, from, text)
-	append(&b.open.edits, Edit{.Delete, from, strings.clone(text)})
+	edit_delete(b, from, to)
+	end := edit_insert(b, from, text)
 	buffer_undo_commit(b)
 	b.cursor = end
 	cursor_goal_sync(b)
@@ -440,18 +439,13 @@ buffer_indent :: proc(b: ^Buffer) {
 		buffer_insert_tab(b)
 		return
 	}
-	last_row := to.row
-	if to.col == 0 && to.row > from.row {
-		last_row -= 1
-	}
+	last_row := selection_last_row(from, to)
 	indent := indent_unit(b)
 	shift := len(indent)
 
 	edit_open(b, .Atomic)
 	for row in from.row ..= last_row {
-		at := Cursor{row, 0}
-		buffer_insert(b, at, indent)
-		append(&b.open.edits, Edit{.Delete, at, strings.clone(indent)})
+		edit_insert(b, {row, 0}, indent)
 	}
 	buffer_undo_commit(b)
 
@@ -498,10 +492,7 @@ buffer_dedent :: proc(b: ^Buffer) {
 	first_row, last_row: int
 	if ok {
 		first_row = from.row
-		last_row = to.row
-		if to.col == 0 && to.row > from.row {
-			last_row -= 1
-		}
+		last_row = selection_last_row(from, to)
 	} else {
 		first_row = b.cursor.row
 		last_row = b.cursor.row
@@ -528,9 +519,7 @@ buffer_dedent :: proc(b: ^Buffer) {
 		if n == 0 {
 			continue
 		}
-		at := Cursor{row, 0}
-		removed := buffer_delete(b, at, {row, n})
-		append(&b.open.edits, Edit{.Insert, at, removed})
+		edit_delete(b, {row, 0}, {row, n})
 		if row == b.cursor.row {
 			cursor_removed = n
 		}
@@ -554,10 +543,7 @@ buffer_move_lines :: proc(b: ^Buffer, delta: int) {
 	bot := b.cursor.row
 	if sel {
 		top = from.row
-		bot = to.row
-		if to.col == 0 && to.row > from.row {
-			bot -= 1
-		}
+		bot = selection_last_row(from, to)
 	}
 	if delta < 0 && top == 0 {
 		return
@@ -598,10 +584,8 @@ buffer_move_lines :: proc(b: ^Buffer, delta: int) {
 	}
 
 	edit_open(b, .Atomic)
-	removed := buffer_delete(b, del_from, del_to)
-	append(&b.open.edits, Edit{.Insert, del_from, removed})
-	buffer_insert(b, del_from, insert_text)
-	append(&b.open.edits, Edit{.Delete, del_from, strings.clone(insert_text)})
+	edit_delete(b, del_from, del_to)
+	edit_insert(b, del_from, insert_text)
 	buffer_undo_commit(b)
 
 	b.cursor.row = clamp(b.cursor.row + delta, 0, len(b.lines) - 1)

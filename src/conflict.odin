@@ -203,8 +203,7 @@ merge_delete_rows :: proc(b: ^Buffer, lo, hi: int) {
 	} else {
 		to = Cursor{hi, len(b.lines[hi].text)}
 	}
-	removed := buffer_delete(b, from, to)
-	append(&b.open.edits, Edit{.Insert, from, removed})
+	edit_delete(b, from, to)
 }
 
 merge_resolve :: proc(b: ^Buffer, c: MergeConflict, keep: MergeKeep) {

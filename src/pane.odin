@@ -86,30 +86,3 @@ pane_text :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
 		i += sz
 	}
 }
-
-// Like pane_text, but each byte offset draws in colors[i] (base when out of range)
-// — the per-cell syntax colors from highlight_lines. `off` shifts the color lookup
-// so a plain prefix (e.g. a line-number gutter) renders in base before the code.
-pane_text_colored :: proc(x, y, w: int, text: string, colors: []tb2.Color, off: int, base, bg: tb2.Color) {
-	col := 0
-	i := 0
-	for i < len(text) && col < w {
-		r, sz := utf8.decode_rune(text[i:])
-		fg := base
-		ci := i - off
-		if ci >= 0 && ci < len(colors) {
-			fg = colors[ci]
-		}
-		if r == '\t' {
-			next := (col / TAB_WIDTH + 1) * TAB_WIDTH
-			for col < next && col < w {
-				tb2.set_cell(i32(x + col), i32(y), ' ', fg, bg)
-				col += 1
-			}
-		} else {
-			tb2.set_cell(i32(x + col), i32(y), r, fg, bg)
-			col += 1
-		}
-		i += sz
-	}
-}

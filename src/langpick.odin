@@ -65,6 +65,12 @@ langpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+langpick_paste :: proc(editor: ^Editor, text: string) {
+	if textfield_insert_flat(&editor.langpick.field, text) {
+		fuzzy_list_refilter(&editor.langpick.list)
+	}
+}
+
 langpick_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	fuzzy_list_center_mouse(editor, &editor.langpick.list, ev, langpick_execute, langpick_close)
 }

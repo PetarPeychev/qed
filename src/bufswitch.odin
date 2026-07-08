@@ -125,6 +125,14 @@ bufswitch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+bufswitch_paste :: proc(editor: ^Editor, text: string) {
+	p := &editor.bufswitch
+	if textfield_insert_flat(&p.field, text) {
+		fuzzy_list_refilter(&p.list)
+		bufswitch_load_preview(editor)
+	}
+}
+
 bufswitch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.bufswitch
 	lay := overlay_layout(editor)

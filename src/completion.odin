@@ -17,7 +17,6 @@ Completion :: struct {
 	anchor_col: int,
 	incomplete: bool,
 	want:       bool,
-	pending:    bool,
 	request_at: time.Tick,
 }
 
@@ -114,7 +113,6 @@ completion_request :: proc(editor: ^Editor) {
 	c := &editor.completion
 	c.anchor_row = b.cursor.row
 	c.anchor_col = completion_word_start(b, b.cursor)
-	c.pending = true
 	id := lsp_pending_add(lsp, .Completion, b)
 	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
 	lsp_send(
@@ -151,7 +149,6 @@ snippet_prefix :: proc(s: string) -> string {
 
 completion_apply :: proc(editor: ^Editor, p: LspPending, obj: json.Object) -> bool {
 	c := &editor.completion
-	c.pending = false
 	if editor_buffer(editor).path != p.path {
 		return false
 	}
@@ -342,10 +339,8 @@ completion_accept :: proc(editor: ^Editor) {
 
 	edit_open(b, .Atomic)
 	for e in list {
-		removed := buffer_delete(b, e.from, e.to)
-		append(&b.open.edits, Edit{.Insert, e.from, removed})
-		buffer_insert(b, e.from, e.text)
-		append(&b.open.edits, Edit{.Delete, e.from, strings.clone(e.text)})
+		edit_delete(b, e.from, e.to)
+		edit_insert(b, e.from, e.text)
 	}
 	buffer_undo_commit(b)
 
@@ -359,7 +354,7 @@ completion_accept :: proc(editor: ^Editor) {
 }
 
 completion_keeps :: proc(ev: tb2.Event) -> bool {
-	if u8(ev.mod) & (u8(tb2.Mod.Ctrl) | u8(tb2.Mod.Alt)) != 0 {
+	if ev_ctrl(ev) || ev_alt(ev) {
 		return false
 	}
 	if ev.ch >= 0x20 {
@@ -373,7 +368,7 @@ completion_keeps :: proc(ev: tb2.Event) -> bool {
 }
 
 completion_key :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
-	mod := u8(ev.mod) & (u8(tb2.Mod.Ctrl) | u8(tb2.Mod.Alt))
+	mod := ev_ctrl(ev) || ev_alt(ev)
 	#partial switch ev.key {
 	case .Tab:
 		completion_accept(editor)
@@ -382,13 +377,13 @@ completion_key :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 		completion_dismiss(editor)
 		return true
 	case .Arrow_Down:
-		if mod != 0 {
+		if mod {
 			return false
 		}
 		completion_move(editor, +1)
 		return true
 	case .Arrow_Up:
-		if mod != 0 {
+		if mod {
 			return false
 		}
 		completion_move(editor, -1)
@@ -420,7 +415,7 @@ completion_maybe_open :: proc(editor: ^Editor, ev: tb2.Event) {
 	if b.big || selection_active(b) || ev.ch == 0 {
 		return
 	}
-	if u8(ev.mod) & (u8(tb2.Mod.Ctrl) | u8(tb2.Mod.Alt)) != 0 {
+	if ev_ctrl(ev) || ev_alt(ev) {
 		return
 	}
 	lsp, ok := lsp_ready(b)

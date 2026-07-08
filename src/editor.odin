@@ -165,48 +165,51 @@ Overlay :: struct {
 	dispatch: proc(editor: ^Editor, ev: tb2.Event),
 	render:   proc(editor: ^Editor),
 	mouse:    proc(editor: ^Editor, ev: tb2.Event),
+	paste:    proc(editor: ^Editor, text: string),
 }
 
 editor_overlays :: proc(editor: ^Editor) -> [15]Overlay {
 	return {
-		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse},
-		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse},
-		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse},
-		{&editor.picker.active, picker_dispatch_key, picker_render, picker_dispatch_mouse},
-		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render, bufswitch_dispatch_mouse},
-		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse},
-		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse},
-		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse},
-		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render, projsearch_dispatch_mouse},
-		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse},
-		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse},
-		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render, quit_dialog_dispatch_mouse},
-		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render, close_dialog_dispatch_mouse},
-		{&editor.conflict_dialog.active, conflict_dialog_dispatch_key, conflict_dialog_render, conflict_dialog_dispatch_mouse},
-		{&editor.merge_dialog.active, merge_dialog_dispatch_key, merge_dialog_render, merge_dialog_dispatch_mouse},
+		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
+		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
+		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
+		{&editor.picker.active, picker_dispatch_key, picker_render, picker_dispatch_mouse, picker_paste},
+		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render, bufswitch_dispatch_mouse, bufswitch_paste},
+		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
+		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse, indentpick_paste},
+		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
+		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render, projsearch_dispatch_mouse, projsearch_paste},
+		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse, rename_paste},
+		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse, filetree_paste},
+		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render, quit_dialog_dispatch_mouse, nil},
+		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render, close_dialog_dispatch_mouse, nil},
+		{&editor.conflict_dialog.active, conflict_dialog_dispatch_key, conflict_dialog_render, conflict_dialog_dispatch_mouse, nil},
+		{&editor.merge_dialog.active, merge_dialog_dispatch_key, merge_dialog_render, merge_dialog_dispatch_mouse, nil},
 	}
 }
 
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	origin := jump_here(editor)
 	defer jump_record(editor, origin)
-	if editor.terminal.active {
-		#partial switch ev.type {
-		case .Paste_Begin:
-			editor.pasting = true
-			editor.paste_last_cr = false
-			clear(&editor.paste_buf)
+	#partial switch ev.type {
+	case .Paste_Begin:
+		editor.pasting = true
+		editor.paste_last_cr = false
+		clear(&editor.paste_buf)
+		return
+	case .Paste_End:
+		editor.pasting = false
+		editor_paste_route(editor, string(editor.paste_buf[:]))
+		clear(&editor.paste_buf)
+		return
+	case .Key:
+		if editor.pasting {
+			editor_paste_accumulate(editor, ev)
 			return
-		case .Paste_End:
-			editor.pasting = false
-			term_paste(&editor.terminal, string(editor.paste_buf[:]))
-			clear(&editor.paste_buf)
+		}
+	case .Mouse:
+		if editor.pasting {
 			return
-		case .Key:
-			if editor.pasting {
-				editor_paste_accumulate(editor, ev)
-				return
-			}
 		}
 	}
 	for ov in editor_overlays(editor) {
@@ -229,7 +232,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	if editor.welcome {
 		if ev.type == .Key {
-			alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
+			alt := ev_alt(ev)
 			if alt && ev.ch == 'F' {
 				projsearch_open(editor)
 				return
@@ -255,25 +258,32 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	#partial switch ev.type {
 	case .Key:
-		if editor.pasting {
-			editor_paste_accumulate(editor, ev)
-		} else {
-			editor_dispatch_key(editor, ev)
-		}
-	case .Paste_Begin:
-		editor.pasting = true
-		editor.paste_last_cr = false
-		editor_set_message(editor, "")
-		clear(&editor.paste_buf)
-	case .Paste_End:
-		editor_paste_commit(editor)
+		editor_dispatch_key(editor, ev)
 	case .Mouse:
-		if !editor.pasting {
-			editor_dispatch_mouse(editor, ev)
-		}
+		editor_dispatch_mouse(editor, ev)
 	case .Resize:
 		editor_scroll(editor)
 	}
+}
+
+editor_paste_route :: proc(editor: ^Editor, text: string) {
+	if len(text) == 0 {
+		return
+	}
+	for ov in editor_overlays(editor) {
+		if ov.active^ {
+			if ov.paste != nil {
+				ov.paste(editor, text)
+			}
+			return
+		}
+	}
+	if editor.welcome {
+		return
+	}
+	editor_set_message(editor, "")
+	buffer_paste(editor_buffer(editor), text)
+	editor_scroll(editor)
 }
 
 editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
@@ -306,7 +316,7 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	#partial switch ev.key {
 	case .Mouse_Left:
 		buffer_undo_commit(b)
-		if (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0 {
+		if ev_motion(ev) {
 			selection_set_anchor(b)
 			w, h := editor_viewport(editor)
 			gutter := editor_gutter_width(editor)
@@ -409,16 +419,6 @@ editor_paste_accumulate :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
-editor_paste_commit :: proc(editor: ^Editor) {
-	editor.pasting = false
-	if len(editor.paste_buf) == 0 {
-		return
-	}
-	buffer_paste(editor_buffer(editor), string(editor.paste_buf[:]))
-	clear(&editor.paste_buf)
-	editor_scroll(editor)
-}
-
 editor_accel_step :: proc(editor: ^Editor, key: tb2.Key) -> int {
 	if !CURSOR_ACCEL {
 		return 1
@@ -460,9 +460,9 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor_set_message(editor, "")
 	editor.hover_active = false
 	b := editor_buffer(editor)
-	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
-	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
-	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
+	ctrl := ev_ctrl(ev)
+	shift := ev_shift(ev)
+	alt := ev_alt(ev)
 
 	if alt && ev.ch != 0 {
 		if cmd, ok := command_for_alt(ev.ch); ok {
@@ -863,6 +863,18 @@ editor_scroll_vert :: proc(editor: ^Editor, b: ^Buffer, w, h: int) {
 	editor.scroll_sub = top_s
 }
 
+editor_goto :: proc(editor: ^Editor, row, col: int) {
+	b := editor_buffer(editor)
+	r := clamp(row, 0, len(b.lines) - 1)
+	b.selection = nil
+	b.cursor = {r, clamp(col, 0, len(b.lines[r].text))}
+	cursor_goal_sync(b)
+	_, h := editor_viewport(editor)
+	editor.scroll_row = r - h / 2
+	editor.scroll_sub = 0
+	editor_scroll(editor)
+}
+
 editor_render :: proc(editor: ^Editor) {
 	tb2.clear()
 	if editor.welcome {
@@ -908,7 +920,7 @@ editor_render :: proc(editor: ^Editor) {
 			cx = gutter + visual_col(text, b.cursor.col) - editor.scroll_col
 			above = b.cursor.row < editor.scroll_row
 		}
-		cy = -1 if above else vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, b.cursor.row, cur_sub)
+		cy = -1 if above else vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, b.cursor.row, cur_sub, h)
 		if above || cy < 0 || cy >= h || cx < gutter || cx >= gutter + w {
 			tb2.hide_cursor()
 		} else {

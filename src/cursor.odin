@@ -160,6 +160,15 @@ selection_range :: proc(b: ^Buffer) -> (from, to: Cursor, ok: bool) {
 	return b.cursor, anchor, true
 }
 
+// Last row a selection touches for whole-line edits: an endpoint at col 0 of a
+// later row selects the line break, not that row's content.
+selection_last_row :: proc(from, to: Cursor) -> int {
+	if to.col == 0 && to.row > from.row {
+		return to.row - 1
+	}
+	return to.row
+}
+
 selection_set_anchor :: proc(b: ^Buffer) {
 	if _, has := b.selection.?; !has {
 		b.selection = b.cursor

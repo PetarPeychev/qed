@@ -80,8 +80,20 @@ overlay_prompt_mouse :: proc(f: ^TextField, x, y, w: int, ev: tb2.Event) {
 	textfield_mouse(f, x + 2, y, w - 2, ev)
 }
 
-overlay_ev_motion :: proc(ev: tb2.Event) -> bool {
+ev_motion :: proc(ev: tb2.Event) -> bool {
 	return (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
+}
+
+ev_ctrl :: proc(ev: tb2.Event) -> bool {
+	return (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
+}
+
+ev_shift :: proc(ev: tb2.Event) -> bool {
+	return (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
+}
+
+ev_alt :: proc(ev: tb2.Event) -> bool {
+	return (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
 }
 
 // Mouse handling shared by every centered fuzzy picker (palette-style): wheel
@@ -101,7 +113,7 @@ fuzzy_list_center_mouse :: proc(
 	case .Mouse_Wheel_Down:
 		overlay_scroll_by(&l.scroll, WHEEL_SCROLL_LINES, len(l.matches), rows)
 	case .Mouse_Left:
-		motion := overlay_ev_motion(ev)
+		motion := ev_motion(ev)
 		if !mouse_in_rect(ev, box) {
 			if !motion {
 				close(editor)
@@ -146,7 +158,7 @@ overlay_list_mouse :: proc(
 	case .Mouse_Wheel_Down:
 		overlay_scroll_by(scroll, WHEEL_SCROLL_LINES, count, lay.body_h)
 	case .Mouse_Left:
-		motion := overlay_ev_motion(ev)
+		motion := ev_motion(ev)
 		if !mouse_in_rect(ev, lay.box) {
 			if !motion {
 				close(editor)

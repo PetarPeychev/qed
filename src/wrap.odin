@@ -155,14 +155,19 @@ vpos_down :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 
 // Screen-row count from (r0,s0) down to (r1,s1); assumes the first precedes the
 // second. Includes diff-view ghost rows between them (above-ghosts of r0 are
-// hidden, since r0 anchors the viewport top).
-vpos_dist :: proc(b: ^Buffer, width, r0, s0, r1, s1: int) -> int {
+// hidden, since r0 anchors the viewport top). Stops early once the count reaches
+// `limit` — a caller that only cares about "on screen or not" avoids walking the
+// whole buffer when the target is far below.
+vpos_dist :: proc(b: ^Buffer, width, r0, s0, r1, s1: int, limit := max(int)) -> int {
 	if r0 == r1 {
 		return s1 - s0
 	}
 	total := line_rows(b, width, r0) - s0 + git_below(b, r0)
 	for r in r0 + 1 ..< r1 {
 		total += git_above(b, r) + line_rows(b, width, r) + git_below(b, r)
+		if total >= limit {
+			return total
+		}
 	}
 	return total + git_above(b, r1) + s1
 }

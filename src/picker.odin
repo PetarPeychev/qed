@@ -145,6 +145,13 @@ picker_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+picker_paste :: proc(editor: ^Editor, text: string) {
+	if textfield_insert_flat(&editor.picker.field, text) {
+		fuzzy_list_refilter(&editor.picker.list)
+		picker_load_preview(editor)
+	}
+}
+
 picker_file_modified :: proc(editor: ^Editor, rel: string) -> bool {
 	full, _ := filepath.join({editor.working_root, rel}, context.temp_allocator)
 	abs, err := filepath.abs(full, context.temp_allocator)

@@ -27,14 +27,21 @@ quit_dialog_close :: proc(editor: ^Editor) {
 quit_dialog_execute :: proc(editor: ^Editor) {
 	switch editor.quit_dialog.selected {
 	case 0:
+		conflict := false
 		for &b in editor.buffers {
-			if b.modified {
-				buffer_save(&b)
+			if !b.modified {
+				continue
 			}
+			if buffer_disk_changed(&b) {
+				conflict = true
+				continue
+			}
+			buffer_save(&b)
 		}
 		if editor_any_modified(editor) {
 			quit_dialog_close(editor)
-			editor_set_message(editor, "Save failed", true)
+			msg := "File changed on disk — save it with Ctrl+S to resolve" if conflict else "Save failed"
+			editor_set_message(editor, msg, true)
 		} else {
 			editor.quit = true
 		}
@@ -97,11 +104,13 @@ close_dialog_execute :: proc(editor: ^Editor) {
 	switch editor.close_dialog.selected {
 	case 0:
 		b := editor_buffer(editor)
-		buffer_save(b)
 		close_dialog_close(editor)
-		if b.modified {
-			editor_set_message(editor, "Save failed", true)
-		} else {
+		if buffer_disk_changed(b) {
+			conflict_dialog_open(editor)
+			return
+		}
+		editor_force_save(editor, b)
+		if !b.modified {
 			editor_close_current(editor)
 		}
 	case 1:
@@ -210,7 +219,7 @@ dialog_mouse :: proc(
 		return
 	}
 	box := dialog_box(editor, question, actions)
-	motion := overlay_ev_motion(ev)
+	motion := ev_motion(ev)
 	if !mouse_in_rect(ev, box) {
 		if !motion {
 			close(editor)

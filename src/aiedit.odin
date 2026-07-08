@@ -56,13 +56,17 @@ aiedit_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+aiedit_paste :: proc(editor: ^Editor, text: string) {
+	textfield_insert_flat(&editor.aiedit.field, text)
+}
+
 aiedit_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	if ev.key != .Mouse_Left {
 		return
 	}
 	box := pane_center(editor, PALETTE_WIDTH, 1)
 	if !mouse_in_rect(ev, box) {
-		if !overlay_ev_motion(ev) {
+		if !ev_motion(ev) {
 			aiedit_close(editor)
 		}
 		return

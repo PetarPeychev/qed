@@ -266,7 +266,7 @@ term_mark_exited :: proc(editor: ^Editor) {
 
 term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.terminal
-	alt := (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
+	alt := ev_alt(ev)
 	if alt && (ev.ch == 't' || ev.ch == 'T') {
 		t.active = false
 		return
@@ -289,13 +289,13 @@ term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 
 term_mods :: proc(ev: tb2.Event) -> vterm.Modifier {
 	mod := vterm.MOD_NONE
-	if (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0 {
+	if ev_shift(ev) {
 		mod |= vterm.MOD_SHIFT
 	}
-	if (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0 {
+	if ev_alt(ev) {
 		mod |= vterm.MOD_ALT
 	}
-	if (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0 {
+	if ev_ctrl(ev) {
 		mod |= vterm.MOD_CTRL
 	}
 	return mod
@@ -303,8 +303,8 @@ term_mods :: proc(ev: tb2.Event) -> vterm.Modifier {
 
 term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.terminal
-	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
-	shift := (u8(ev.mod) & u8(tb2.Mod.Shift)) != 0
+	motion := ev_motion(ev)
+	shift := ev_shift(ev)
 	mod := term_mods(ev)
 	lay := overlay_layout(editor)
 	// A plain shell doesn't grab the mouse, so a drag there is a local text
@@ -474,6 +474,10 @@ term_copy_selection :: proc(editor: ^Editor) {
 	}
 	clipboard_set(text)
 	editor_set_message(editor, "Terminal: copied selection")
+}
+
+term_paste_overlay :: proc(editor: ^Editor, text: string) {
+	term_paste(&editor.terminal, text)
 }
 
 term_paste :: proc(t: ^Terminal, text: string) {

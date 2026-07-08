@@ -20,9 +20,11 @@ jump_destroy :: proc(jl: ^JumpList) {
 	delete(jl.entries)
 }
 
+// The path is temp-cloned: dispatch can free/replace the buffer's own path
+// (file-tree rename, buffer close) before the deferred jump_record reads it.
 jump_here :: proc(editor: ^Editor) -> Jump {
 	b := editor_buffer(editor)
-	return {path = b.path, row = b.cursor.row, col = b.cursor.col}
+	return {path = strings.clone(b.path, context.temp_allocator), row = b.cursor.row, col = b.cursor.col}
 }
 
 jump_record :: proc(editor: ^Editor, origin: Jump) {
@@ -73,16 +75,7 @@ jump_go :: proc(editor: ^Editor, target: Jump) {
 		}
 		editor_switch_to(editor, idx)
 	}
-	b := editor_buffer(editor)
-	row := clamp(target.row, 0, len(b.lines) - 1)
-	col := clamp(target.col, 0, len(b.lines[row].text))
-	b.selection = nil
-	b.cursor = {row, col}
-	cursor_goal_sync(b)
-	_, h := editor_viewport(editor)
-	editor.scroll_row = row - h / 2
-	editor.scroll_sub = 0
-	editor_scroll(editor)
+	editor_goto(editor, target.row, target.col)
 }
 
 jump_back :: proc(editor: ^Editor) {

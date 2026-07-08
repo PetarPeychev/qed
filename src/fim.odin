@@ -95,7 +95,7 @@ fim_after :: proc(editor: ^Editor, ev: tb2.Event) {
 	if b.big || selection_active(b) {
 		return
 	}
-	if u8(ev.mod) & (u8(tb2.Mod.Ctrl) | u8(tb2.Mod.Alt)) != 0 {
+	if ev_ctrl(ev) || ev_alt(ev) {
 		return
 	}
 	#partial switch ev.key {
@@ -216,7 +216,7 @@ fim_parse :: proc(raw: string) -> string {
 }
 
 fim_ghost_key :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
-	ctrl := (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
+	ctrl := ev_ctrl(ev)
 	#partial switch ev.key {
 	case .Tab:
 		fim_accept(editor)

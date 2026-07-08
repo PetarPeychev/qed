@@ -85,18 +85,7 @@ linefind_execute :: proc(editor: ^Editor) {
 	linefind_close(editor)
 
 	buffer_undo_commit(b)
-	text := b.lines[row].text[:]
-	col := 0
-	for col < len(text) && (text[col] == ' ' || text[col] == '\t') {
-		col += 1
-	}
-	b.selection = nil
-	b.cursor = {row, col}
-	cursor_goal_sync(b)
-	_, h := editor_viewport(editor)
-	editor.scroll_row = row - h / 2
-	editor.scroll_sub = 0
-	editor_scroll(editor)
+	editor_goto(editor, row, line_indent_len(b.lines[row].text[:]))
 }
 
 linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -115,6 +104,14 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			linefind_refilter(p)
 			linefind_load_preview(editor)
 		}
+	}
+}
+
+linefind_paste :: proc(editor: ^Editor, text: string) {
+	p := &editor.linefind
+	if textfield_insert_flat(&p.field, text) {
+		linefind_refilter(p)
+		linefind_load_preview(editor)
 	}
 }
 

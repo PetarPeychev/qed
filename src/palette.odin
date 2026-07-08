@@ -196,6 +196,12 @@ palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
+palette_paste :: proc(editor: ^Editor, text: string) {
+	if textfield_insert_flat(&editor.palette.field, text) {
+		fuzzy_list_refilter(&editor.palette.list)
+	}
+}
+
 palette_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	fuzzy_list_center_mouse(editor, &editor.palette.list, ev, palette_execute, palette_close)
 }
