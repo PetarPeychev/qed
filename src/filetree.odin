@@ -45,8 +45,7 @@ FileTree :: struct {
 	scroll:   int,
 	mode:     FileTreeMode,
 	field:    TextField,
-	preview:  [dynamic]string,
-	colors:   [dynamic][dynamic]tb2.Color,
+	preview:  Preview,
 	status:   map[string]GitMark,
 	ignored:  map[string]bool,
 	show_dotfiles: bool,
@@ -105,9 +104,7 @@ filetree_destroy :: proc(t: ^FileTree) {
 	}
 	delete(t.expanded)
 	textfield_destroy(&t.field)
-	filetree_clear_preview(t)
-	delete(t.preview)
-	delete(t.colors)
+	preview_destroy(&t.preview)
 	filetree_clear_status(t)
 	delete(t.status)
 	delete(t.ignored)
@@ -341,43 +338,19 @@ filetree_clear_entries :: proc(t: ^FileTree) {
 	clear(&t.entries)
 }
 
-filetree_clear_preview :: proc(t: ^FileTree) {
-	for s in t.preview {
-		delete(s)
-	}
-	clear(&t.preview)
-	for &row in t.colors {
-		delete(row)
-	}
-	clear(&t.colors)
-}
-
 filetree_load_preview :: proc(editor: ^Editor) {
 	t := &editor.filetree
-	filetree_clear_preview(t)
 	e, ok := filetree_selected(t)
 	if !ok || e.is_dir {
+		preview_reset(&t.preview)
 		return
 	}
-	lines := filetree_layout(editor).body_h
-	fd, err := os.open(e.path)
-	if err != nil {
+	h := filetree_layout(editor).body_h
+	if t.scope == .Git {
+		preview_set_diff(&t.preview, e.path, h)
 		return
 	}
-	defer os.close(fd)
-	buf := make([]u8, FILETREE_PREVIEW_BYTES, context.temp_allocator)
-	n, read_err := os.read(fd, buf)
-	if read_err != nil || n <= 0 {
-		return
-	}
-	data := string(buf[:n])
-	for line in strings.split_lines_iterator(&data) {
-		if len(t.preview) >= lines {
-			break
-		}
-		append(&t.preview, strings.clone(line))
-	}
-	highlight_lines(language_of(e.path), t.preview[:], &t.colors)
+	preview_set_file(&t.preview, e.path, 0, h)
 }
 
 filetree_set_expanded :: proc(t: ^FileTree, path: string, val: bool) {
@@ -516,7 +489,7 @@ filetree_open :: proc(editor: ^Editor) {
 filetree_close :: proc(editor: ^Editor) {
 	editor.filetree.active = false
 	editor.filetree.mode = .Nav
-	filetree_clear_preview(&editor.filetree)
+	preview_reset(&editor.filetree.preview)
 }
 
 filetree_mark_expanded :: proc(t: ^FileTree, dir: string) {
@@ -872,13 +845,7 @@ filetree_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
 
-	for line, i in t.preview {
-		if i >= lay.body_h {
-			break
-		}
-		colors := t.colors[i][:] if i < len(t.colors) else nil
-		pane_text_colored(lay.right_x + 1, lay.body_top + i, lay.right_w - 1, line, colors, 0, COLOR_PANE_FG, COLOR_PANE_BG)
-	}
+	preview_render(&t.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
 
 	pane_hline(lay.box, lay.footer_sep_y)
 	for y in lay.body_top ..< lay.footer_sep_y {
@@ -1003,6 +970,9 @@ filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 				textfield_mouse(&t.field, tx, lay.footer_y, tw, ev)
 			}
 		}
+		return
+	}
+	if preview_wheel(&t.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
 		return
 	}
 	#partial switch ev.key {

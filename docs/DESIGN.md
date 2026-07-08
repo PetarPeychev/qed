@@ -360,7 +360,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
@@ -410,10 +410,15 @@ guest + wheel scrollback), jump list
 (back/forward), runtime config (`~/.config/qed/config.json`). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss).
-Preview panes (file-open, file-tree, project-search, buffer switcher) are syntax-highlighted
-via a one-shot synchronous tree-sitter pass (`highlight_lines`); project-search parses
-from line 1 to the window end (size-gated at `HIGHLIGHT_ASYNC_BYTES`) so constructs
-opening above the window color correctly.
+Preview panes (file-open, file-tree, project-search, buffer switcher, line jump) share one
+scrollable, syntax-highlighted `Preview` component (`preview.odin`): wheel-scrollable while
+the pointer is over the right pane, highlighting line 1→viewport+lookahead (`preview_parse_ahead`)
+and re-highlighting from the top as it scrolls, size-gated at `HIGHLIGHT_ASYNC_BYTES`
+(window-only above it), capped at `preview_max_lines`. File source loads lazily via `head`;
+buffer source (switcher/line jump) previews in-memory content. The file-tree **Git** tab
+previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
+inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
+built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSON,

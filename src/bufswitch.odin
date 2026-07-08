@@ -5,12 +5,9 @@ import "core:strings"
 import "lib:tb2"
 
 BufSwitch :: struct {
-	using list:    FuzzyList,
-	names:         [dynamic]string,
-	preview:       [dynamic]string,
-	preview_start: int,
-	preview_focus: int,
-	colors:        [dynamic][dynamic]tb2.Color,
+	using list: FuzzyList,
+	names:      [dynamic]string,
+	preview:    Preview,
 }
 
 bufswitch_clear_names :: proc(p: ^BufSwitch) {
@@ -20,24 +17,11 @@ bufswitch_clear_names :: proc(p: ^BufSwitch) {
 	clear(&p.names)
 }
 
-bufswitch_clear_preview :: proc(p: ^BufSwitch) {
-	for s in p.preview {
-		delete(s)
-	}
-	clear(&p.preview)
-	for &row in p.colors {
-		delete(row)
-	}
-	clear(&p.colors)
-}
-
 bufswitch_destroy :: proc(p: ^BufSwitch) {
 	fuzzy_list_destroy(&p.list)
 	bufswitch_clear_names(p)
-	bufswitch_clear_preview(p)
+	preview_destroy(&p.preview)
 	delete(p.names)
-	delete(p.preview)
-	delete(p.colors)
 }
 
 bufswitch_label :: proc(editor: ^Editor, b: ^Buffer) -> string {
@@ -80,54 +64,18 @@ bufswitch_close :: proc(editor: ^Editor) {
 	p.active = false
 	fuzzy_end(&p.fuzzy)
 	bufswitch_clear_names(p)
-	bufswitch_clear_preview(p)
+	preview_reset(&p.preview)
 }
 
 bufswitch_load_preview :: proc(editor: ^Editor) {
 	p := &editor.bufswitch
-	bufswitch_clear_preview(p)
 	if len(p.matches) == 0 {
+		preview_reset(&p.preview)
 		return
 	}
 	b := &editor.buffers[p.matches[p.selected]]
-	h := max(1, overlay_layout(editor).body_h)
-	focus := clamp(b.cursor.row, 0, len(b.lines) - 1)
-	start := max(0, focus - h / 2)
-	end := min(len(b.lines), start + h)
-	p.preview_start = start + 1
-	p.preview_focus = focus + 1
-
-	lines := make([dynamic]string, context.temp_allocator)
-	total := 0
-	for i in 0 ..< end {
-		s := string(b.lines[i].text[:])
-		append(&lines, s)
-		total += len(s) + 1
-	}
-
-	// Parse from line 1 so multi-line strings/comments opening above the window
-	// color correctly; above the async gate, color only the window to bound latency.
-	if b.big || total >= HIGHLIGHT_ASYNC_BYTES {
-		for s in lines[start:] {
-			append(&p.preview, strings.clone(s))
-		}
-		if !b.big {
-			highlight_lines(b.language, p.preview[:], &p.colors)
-		}
-		return
-	}
-
-	tmp: [dynamic][dynamic]tb2.Color
-	highlight_lines(b.language, lines[:], &tmp)
-	for row, i in tmp {
-		if i < start {
-			delete(row)
-			continue
-		}
-		append(&p.preview, strings.clone(lines[i]))
-		append(&p.colors, row)
-	}
-	delete(tmp)
+	focus := clamp(b.cursor.row, 0, max(0, len(b.lines) - 1)) + 1
+	preview_set_buffer(&p.preview, b, focus, overlay_layout(editor).body_h)
 }
 
 bufswitch_move :: proc(editor: ^Editor, delta: int) {
@@ -179,7 +127,11 @@ bufswitch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 bufswitch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.bufswitch
-	idx, activate := overlay_list_mouse(editor, ev, overlay_layout(editor), len(p.matches), &p.scroll, &p.field, bufswitch_close)
+	lay := overlay_layout(editor)
+	if preview_wheel(&p.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
+		return
+	}
+	idx, activate := overlay_list_mouse(editor, ev, lay, len(p.matches), &p.scroll, &p.field, bufswitch_close)
 	if idx < 0 {
 		return
 	}
@@ -217,21 +169,7 @@ bufswitch_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 4, y, lay.left_w - 4, label, fg, bg)
 	}
 
-	numw := digit_count(p.preview_start + len(p.preview))
-	for line, i in p.preview {
-		if i >= lay.body_h {
-			break
-		}
-		lineno := p.preview_start + i
-		y := lay.body_top + i
-		label := linefind_label(numw, lineno - 1, line)
-		if lineno == p.preview_focus {
-			pane_text(lay.right_x + 1, y, lay.right_w - 1, label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-			continue
-		}
-		colors := p.colors[i][:] if i < len(p.colors) else nil
-		pane_text_colored(lay.right_x + 1, y, lay.right_w - 1, label, colors, len(label) - len(line), COLOR_PANE_FG, COLOR_PANE_BG)
-	}
+	preview_render(&p.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
 
 	overlay_divider(lay)
 }

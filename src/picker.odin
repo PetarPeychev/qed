@@ -58,8 +58,7 @@ files_list :: proc(root: string, out: ^[dynamic]string) {
 Picker :: struct {
 	using list: FuzzyList,
 	files:      [dynamic]string,
-	preview:    [dynamic]string,
-	colors:     [dynamic][dynamic]tb2.Color,
+	preview:    Preview,
 }
 
 picker_clear_files :: proc(p: ^Picker) {
@@ -69,24 +68,11 @@ picker_clear_files :: proc(p: ^Picker) {
 	clear(&p.files)
 }
 
-picker_clear_preview :: proc(p: ^Picker) {
-	for s in p.preview {
-		delete(s)
-	}
-	clear(&p.preview)
-	for &row in p.colors {
-		delete(row)
-	}
-	clear(&p.colors)
-}
-
 picker_destroy :: proc(p: ^Picker) {
 	fuzzy_list_destroy(&p.list)
 	picker_clear_files(p)
-	picker_clear_preview(p)
+	preview_destroy(&p.preview)
 	delete(p.files)
-	delete(p.preview)
-	delete(p.colors)
 }
 
 picker_open :: proc(editor: ^Editor) {
@@ -107,27 +93,18 @@ picker_close :: proc(editor: ^Editor) {
 	p.active = false
 	fuzzy_end(&p.fuzzy)
 	picker_clear_files(p)
-	picker_clear_preview(p)
+	preview_reset(&p.preview)
 }
 
 picker_load_preview :: proc(editor: ^Editor) {
 	p := &editor.picker
-	picker_clear_preview(p)
 	if len(p.matches) == 0 {
+		preview_reset(&p.preview)
 		return
 	}
 	rel := p.files[p.matches[p.selected]]
 	full, _ := filepath.join({editor.working_root, rel}, context.temp_allocator)
-	lines := max(1, overlay_layout(editor).body_h)
-	cmd := fmt.ctprintf("head -n %d %s 2>/dev/null", lines, shell_quote(full))
-	out, ok := shell_capture(cmd)
-	if !ok {
-		return
-	}
-	for line in strings.split_lines_iterator(&out) {
-		append(&p.preview, strings.clone(line))
-	}
-	highlight_lines(language_of(rel), p.preview[:], &p.colors)
+	preview_set_file(&p.preview, full, 0, overlay_layout(editor).body_h)
 }
 
 picker_move :: proc(editor: ^Editor, delta: int) {
@@ -180,7 +157,11 @@ picker_file_modified :: proc(editor: ^Editor, rel: string) -> bool {
 
 picker_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.picker
-	idx, activate := overlay_list_mouse(editor, ev, overlay_layout(editor), len(p.matches), &p.scroll, &p.field, picker_close)
+	lay := overlay_layout(editor)
+	if preview_wheel(&p.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
+		return
+	}
+	idx, activate := overlay_list_mouse(editor, ev, lay, len(p.matches), &p.scroll, &p.field, picker_close)
 	if idx < 0 {
 		return
 	}
@@ -215,13 +196,7 @@ picker_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
 
-	for line, i in p.preview {
-		if i >= lay.body_h {
-			break
-		}
-		colors := p.colors[i][:] if i < len(p.colors) else nil
-		pane_text_colored(lay.right_x + 1, lay.body_top + i, lay.right_w - 1, line, colors, 0, COLOR_PANE_FG, COLOR_PANE_BG)
-	}
+	preview_render(&p.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
 
 	overlay_divider(lay)
 }

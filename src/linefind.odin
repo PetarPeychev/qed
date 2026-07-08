@@ -8,10 +8,12 @@ import "lib:tb2"
 LineFind :: struct {
 	using list: FuzzyList,
 	lines:      [dynamic]string,
+	preview:    Preview,
 }
 
 linefind_destroy :: proc(p: ^LineFind) {
 	fuzzy_list_destroy(&p.list)
+	preview_destroy(&p.preview)
 	delete(p.lines)
 }
 
@@ -44,6 +46,7 @@ linefind_open :: proc(editor: ^Editor) {
 	}
 	body_h := overlay_layout(editor).body_h
 	p.scroll = max(0, p.selected - body_h / 2)
+	linefind_load_preview(editor)
 }
 
 linefind_close :: proc(editor: ^Editor) {
@@ -51,11 +54,24 @@ linefind_close :: proc(editor: ^Editor) {
 	p.active = false
 	fuzzy_end(&p.fuzzy)
 	clear(&p.lines)
+	preview_reset(&p.preview)
+}
+
+linefind_load_preview :: proc(editor: ^Editor) {
+	p := &editor.linefind
+	if len(p.matches) == 0 {
+		preview_reset(&p.preview)
+		return
+	}
+	b := editor_buffer(editor)
+	focus := p.matches[p.selected] + 1
+	preview_set_buffer(&p.preview, b, focus, overlay_layout(editor).body_h)
 }
 
 linefind_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.linefind
 	fuzzy_list_move(&p.list, delta, overlay_layout(editor).body_h)
+	linefind_load_preview(editor)
 }
 
 linefind_execute :: proc(editor: ^Editor) {
@@ -97,17 +113,23 @@ linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case:
 		if textfield_key(&p.field, ev) {
 			linefind_refilter(p)
+			linefind_load_preview(editor)
 		}
 	}
 }
 
 linefind_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
-	idx, activate := overlay_list_mouse(editor, ev, overlay_layout(editor), len(p.matches), &p.scroll, &p.field, linefind_close)
+	lay := overlay_layout(editor)
+	if preview_wheel(&p.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
+		return
+	}
+	idx, activate := overlay_list_mouse(editor, ev, lay, len(p.matches), &p.scroll, &p.field, linefind_close)
 	if idx < 0 {
 		return
 	}
 	p.selected = idx
+	linefind_load_preview(editor)
 	if activate {
 		linefind_execute(editor)
 	}
@@ -140,22 +162,7 @@ linefind_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, lay.left_w - 1, linefind_label(numw, row, p.lines[row]), fg, bg)
 	}
 
-	if len(p.matches) > 0 && lay.body_h > 0 {
-		focus := p.matches[p.selected]
-		start := clamp(focus - lay.body_h / 2, 0, max(0, len(p.lines) - lay.body_h))
-		for i in 0 ..< lay.body_h {
-			row := start + i
-			if row >= len(p.lines) {
-				break
-			}
-			y := lay.body_top + i
-			fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-			if row == focus {
-				fg = COLOR_PANE_PROMPT_FG
-			}
-			pane_text(lay.right_x + 1, y, lay.right_w - 1, linefind_label(numw, row, p.lines[row]), fg, bg)
-		}
-	}
+	preview_render(&p.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
 
 	overlay_divider(lay)
 }

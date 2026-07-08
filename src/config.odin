@@ -21,6 +21,10 @@ FILETREE_SHOW_DOTFILES := false
 FILETREE_SHOW_IGNORED := false
 FILETREE_PREVIEW_BYTES := 64 * 1024
 
+PREVIEW_MAX_LINES := 4000
+PREVIEW_PARSE_AHEAD := 64
+PREVIEW_DIFF_CONTEXT := 3
+
 LLM_CHAT_COMMAND := "claude -p"
 LLM_EDIT_PROMPT :=
 	"You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region — and nothing else — inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}"

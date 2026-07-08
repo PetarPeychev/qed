@@ -422,3 +422,67 @@ git_word_span :: proc(old, new: string) -> (old_span, new_span: [2]int) {
 is_utf8_cont :: proc(c: u8) -> bool {
 	return c & 0xc0 == 0x80
 }
+
+git_split_lines :: proc(s: string, allocator := context.temp_allocator) -> [dynamic]string {
+	out := make([dynamic]string, allocator)
+	if len(s) == 0 {
+		return out
+	}
+	for seg in strings.split(s, "\n", allocator) {
+		t := seg
+		if len(t) > 0 && t[len(t) - 1] == '\r' {
+			t = t[:len(t) - 1]
+		}
+		append(&out, t)
+	}
+	if len(out) > 0 && out[len(out) - 1] == "" {
+		pop(&out)
+	}
+	return out
+}
+
+// HEAD-vs-worktree diff for an arbitrary file (not an open buffer). Reuses the
+// gutter's line-hash diff so a preview renders identically to the inline diff view.
+git_diff_file :: proc(
+	path: string,
+) -> (
+	base_text: []string,
+	cur: []string,
+	marks: []GitMark,
+	hunks: []GitHunk,
+	ok: bool,
+) {
+	if path == "" || !shell_command_exists("git") {
+		return
+	}
+	data, derr := os.read_entire_file(path, context.temp_allocator)
+	if derr != nil || len(data) > BIG_FILE_BYTES {
+		return
+	}
+
+	slash := strings.last_index_byte(path, '/')
+	dir := path[:slash] if slash >= 0 else "."
+	name := path[slash + 1:] if slash >= 0 else path
+	show_cmd := fmt.ctprintf("git -C %s show HEAD:./%s 2>/dev/null", shell_quote(dir), shell_quote(name))
+	blob, _ := shell_capture(show_cmd)
+
+	bt := git_split_lines(blob)
+	cl := git_split_lines(string(data))
+	if len(cl) > PREVIEW_MAX_LINES {
+		resize(&cl, PREVIEW_MAX_LINES)
+	}
+
+	bh := make([dynamic]u64, 0, len(bt), context.temp_allocator)
+	for s in bt {
+		append(&bh, git_hash(transmute([]u8)s))
+	}
+	ch := make([dynamic]u64, 0, len(cl), context.temp_allocator)
+	for s in cl {
+		append(&ch, git_hash(transmute([]u8)s))
+	}
+
+	m := make([]GitMark, len(cl), context.temp_allocator)
+	hk := make([dynamic]GitHunk, context.temp_allocator)
+	git_diff(bh[:], ch[:], m, &hk)
+	return bt[:], cl[:], m, hk[:], true
+}
