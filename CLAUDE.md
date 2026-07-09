@@ -46,6 +46,11 @@ Closing a ticket has a fixed sequence:
    item from `docs/TODO.md`, update DESIGN.md (Shipped list / architecture) if it
    changed anything, then commit & push (direct to `master`).
 
+**Versioning:** every push to `master` also gets a new **minor** tag, pushed with
+it. The scheme is `vMAJOR.MINOR` (`v0.1` → `v0.2` → …); a pushed `v*` tag drives
+the release workflow. So the push step is always:
+`git push && git tag vX.Y+1 && git push origin vX.Y+1`.
+
 ## Build & run
 
 ```sh
