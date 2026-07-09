@@ -34,7 +34,7 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || filetree_scanning(&editor) {
+			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || filetree_scanning(&editor) || git_stat_running(&editor) {
 				if tb2.peek_event(&ev, i32(LSP_POLL_MS)) == .Ok {
 					got_event = true
 				}
@@ -52,6 +52,9 @@ main :: proc() {
 					redraw = true
 				}
 				if filetree_scan_pump(&editor) {
+					redraw = true
+				}
+				if git_stat_pump(&editor) {
 					redraw = true
 				}
 				if fim_due(&editor) {

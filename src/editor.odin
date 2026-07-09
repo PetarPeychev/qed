@@ -46,6 +46,7 @@ Editor :: struct {
 	projsearch:      ProjSearch,
 	rename:          Rename,
 	filetree:        FileTree,
+	gitstat:         GitStat,
 	jumps:           JumpList,
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
@@ -97,6 +98,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 		buffer_destroy(&b)
 	}
 	delete(editor.buffers)
+	git_stat_destroy(&editor.gitstat)
 	delete(editor.working_root)
 	delete(editor.paste_buf)
 	delete(editor.message_store)
@@ -778,11 +780,20 @@ editor_reload_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 	}
 }
 
+editor_display_path :: proc(editor: ^Editor, path: string) -> string {
+	root := editor.working_root
+	if root != "" && len(path) > len(root) + 1 && path[len(root)] == '/' && strings.has_prefix(path, root) {
+		return fmt.tprintf("%s/%s", filepath.base(root), path[len(root) + 1:])
+	}
+	return path
+}
+
 editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
 	if time.duration_milliseconds(time.tick_since(editor.disk_poll)) < f64(DISK_POLL_MS) {
 		return false
 	}
 	editor.disk_poll = time.tick_now()
+	git_stat_maybe_start(editor)
 	return editor_poll_disk(editor)
 }
 
@@ -1270,24 +1281,34 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		}
 	}
 
-	name := b.path if b.path != "" else "[No Name]"
-	status := name
+	name := editor_display_path(editor, b.path) if b.path != "" else "[No Name]"
+	status := fmt.tprintf(" %s %s", STATUS_ICON_FILE, name)
 	if b.modified {
-		status = fmt.tprintf("%s ●", name)
+		status = fmt.tprintf("%s ●", status)
+	}
+	status = fmt.tprintf("%s  %d/%d", status, b.cursor.row + 1, len(b.lines))
+	if editor.gitstat.branch != "" {
+		status = fmt.tprintf("%s  %s %s", status, STATUS_ICON_BRANCH, editor.gitstat.branch)
+		if editor.gitstat.ahead > 0 {
+			status = fmt.tprintf("%s %s%d", status, STATUS_ICON_AHEAD, editor.gitstat.ahead)
+		}
+		if editor.gitstat.behind > 0 {
+			sep := "" if editor.gitstat.ahead > 0 else " "
+			status = fmt.tprintf("%s%s%s%d", status, sep, STATUS_ICON_BEHIND, editor.gitstat.behind)
+		}
 	}
 	if len(editor.buffers) > 1 {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
 	}
-	status = fmt.tprintf("%s  %d/%d", status, b.cursor.row + 1, len(b.lines))
 	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
 	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
-	right := LANGUAGES[b.language].name
+	right := fmt.tprintf("%s %s", STATUS_ICON_LANG, LANGUAGES[b.language].name)
 	if b.big {
 		right = fmt.tprintf("%s  big", right)
 	} else if lsp := lsp_status_label(b); lsp != "" {
-		right = fmt.tprintf("%s  %s", right, lsp)
+		right = fmt.tprintf("%s  %s %s", right, STATUS_ICON_LSP, lsp)
 	}
-	right = fmt.tprintf("%s  %s", right, indent)
+	right = fmt.tprintf("%s  %s %s", right, STATUS_ICON_INDENT, indent)
 	if n := len(editor.llm.requests); n > 0 {
 		right = fmt.tprintf("AI:%d  %s", n, right)
 	}
@@ -1510,15 +1531,18 @@ editor_render_text_row :: proc(
 }
 
 editor_render_row :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
+	bytes := transmute([]u8)text
+	row := text
+	pad := w - visual_width(bytes)
+	if pad < 0 {
+		row = text[:col_at_visual(bytes, w)]
+		pad = 0
+	}
 	sb := strings.builder_make(context.temp_allocator)
-	strings.write_string(&sb, text)
-	for _ in len(text) ..< w {
+	strings.write_string(&sb, row)
+	for _ in 0 ..< pad {
 		strings.write_byte(&sb, ' ')
 	}
-	row := strings.to_string(sb)
-	if len(row) > w {
-		row = row[:w]
-	}
-	cstr := strings.clone_to_cstring(row, context.temp_allocator)
+	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
 	tb2.print(i32(x), i32(y), fg, bg, cstr)
 }

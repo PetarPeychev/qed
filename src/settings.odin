@@ -51,6 +51,7 @@ config_ints := [?]Config_Int {
 	{"completion_min_chars", &COMPLETION_MIN_CHARS},
 	{"jump_threshold", &JUMP_THRESHOLD},
 	{"git_diff_max_d", &GIT_DIFF_MAX_D},
+	{"git_stat_poll_ms", &GIT_STAT_POLL_MS},
 	{"big_file_bytes", &BIG_FILE_BYTES},
 }
 

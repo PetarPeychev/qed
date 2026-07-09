@@ -3,10 +3,82 @@ package main
 import "core:fmt"
 import "core:hash"
 import "core:os"
+import "core:strconv"
 import "core:strings"
+import "core:time"
 import "lib:tb2"
 
 g_diff_view: bool
+
+GitStat :: struct {
+	branch:        string,
+	ahead, behind: int,
+	sub:           Subprocess,
+	poll:          time.Tick,
+}
+
+git_stat_maybe_start :: proc(editor: ^Editor) {
+	s := &editor.gitstat
+	if s.sub.running || time.duration_milliseconds(time.tick_since(s.poll)) < f64(GIT_STAT_POLL_MS) {
+		return
+	}
+	s.poll = time.tick_now()
+	root := editor.working_root
+	if root == "" || !shell_command_exists("git") {
+		return
+	}
+	q := shell_quote(root)
+	// odin fmt parses {} placeholders, hence {{u}} for a literal @{u}
+	cmd := fmt.tprintf(
+		"git -C %s symbolic-ref --short -q HEAD 2>/dev/null || git -C %s rev-parse --short HEAD 2>/dev/null; git -C %s rev-list --left-right --count '@{{u}}...HEAD' 2>/dev/null",
+		q,
+		q,
+		q,
+	)
+	sub, ok := subprocess_start(cmd, nil, root)
+	if ok {
+		s.sub = sub
+	}
+}
+
+git_stat_running :: proc(editor: ^Editor) -> bool {
+	return editor.gitstat.sub.running
+}
+
+git_stat_pump :: proc(editor: ^Editor) -> bool {
+	s := &editor.gitstat
+	if !s.sub.running || !subprocess_drain(&s.sub) {
+		return false
+	}
+	out := subprocess_output(&s.sub)
+	branch := ""
+	ahead, behind := 0, 0
+	lines := strings.split_lines(out, context.temp_allocator)
+	if len(lines) > 0 {
+		branch = strings.trim_space(lines[0])
+	}
+	if len(lines) > 1 {
+		counts := strings.fields(lines[1], context.temp_allocator)
+		if len(counts) == 2 {
+			behind, _ = strconv.parse_int(counts[0])
+			ahead, _ = strconv.parse_int(counts[1])
+		}
+	}
+	changed := branch != s.branch || ahead != s.ahead || behind != s.behind
+	if branch != s.branch {
+		delete(s.branch)
+		s.branch = strings.clone(branch)
+	}
+	s.ahead = ahead
+	s.behind = behind
+	subprocess_destroy(&s.sub)
+	return changed
+}
+
+git_stat_destroy :: proc(s: ^GitStat) {
+	subprocess_kill(&s.sub)
+	delete(s.branch)
+}
 
 GitMark :: enum u8 {
 	None,
