@@ -58,4 +58,4 @@ cc -c -w -O2 lib/pty/pty.c -o lib/pty/pty.o
 ar rcs lib/pty/libqedpty.a lib/pty/pty.o
 
 # Build the editor, exposing vendor/ as a collection
-odin build src -collection:lib=lib -out:qed
+odin build src -collection:lib=lib -define:QED_VERSION="${QED_VERSION:-dev}" -out:qed

@@ -4,8 +4,11 @@ import "core:fmt"
 import "core:os"
 import "lib:tb2"
 
+VERSION :: #config(QED_VERSION, "dev")
+
 print_help :: proc() {
 	fmt.println("Usage: qed [FILE]")
+	fmt.println("       qed --version")
 }
 
 main :: proc() {
@@ -17,7 +20,22 @@ main :: proc() {
 
 	path := ""
 	if len(os.args) == 2 {
-		path = os.args[1]
+		arg := os.args[1]
+		switch arg {
+		case "--version", "-v":
+			fmt.printfln("qed %s", VERSION)
+			os.exit(0)
+		case "--help", "-h":
+			print_help()
+			os.exit(0)
+		case:
+			if len(arg) > 0 && arg[0] == '-' {
+				fmt.printfln("Error: Unknown option '%s'.", arg)
+				print_help()
+				os.exit(1)
+			}
+			path = arg
+		}
 	}
 	config_message, config_error := config_load()
 	editor := editor_init(path)
