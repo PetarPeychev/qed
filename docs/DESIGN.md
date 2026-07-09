@@ -62,7 +62,9 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 (`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
-1-row **status bar** (path + `●` modified flag + `line/total` + indent style / `big`), then a
+1-row **status bar** (icon-prefixed segments, `STATUS_ICON_*` in config: working-root-relative
+path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` — polled async every
+`git_stat_poll_ms` via `GitStat`; right side: language + LSP + indent style / `big`), then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
@@ -397,7 +399,7 @@ pairs (brackets/quotes/backtick: surround selection, type-over, backspace-delete
 Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default on,
 *Toggle Line Wrap*; visual-row cursor motion + sub-row scroll; wraps ghost-text too),
 line-number + git gutter, mouse (position/drag/wheel/multi-click,
-drag auto-scroll), status + message line, welcome screen, quit guard across
+drag auto-scroll), status + message line (relative path, git branch + ahead/behind, segment icons), welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
 buffers in stable order + digit instant-jump on empty query, side preview of the
