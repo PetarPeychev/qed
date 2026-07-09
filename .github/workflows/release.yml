@@ -8,7 +8,24 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: laytan/setup-odin@v2
+        with:
+          release: dev-2026-05
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Test
+        run: odin test src -collection:lib=lib
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
