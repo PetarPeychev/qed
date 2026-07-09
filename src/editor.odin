@@ -24,6 +24,7 @@ Editor :: struct {
 	conflict_dialog: ConflictDialog,
 	merge_dialog:    MergeDialog,
 	disk_poll:       time.Tick,
+	config_stamp:    DiskStamp,
 	quit:            bool,
 	pasting:         bool,
 	paste_buf:       [dynamic]u8,
@@ -71,6 +72,7 @@ editor_init :: proc(path: string = "") -> Editor {
 		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED},
 	}
 	g_diff_view = GIT_DIFF_VIEW
+	editor.config_stamp = buffer_disk_stamp(config_path())
 	b := buffer_new()
 	if path != "" && !os.is_dir(path) {
 		abs, err := filepath.abs(path, context.temp_allocator)
@@ -794,7 +796,31 @@ editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
 	}
 	editor.disk_poll = time.tick_now()
 	git_stat_maybe_start(editor)
-	return editor_poll_disk(editor)
+	changed := editor_maybe_reload_config(editor)
+	if editor_poll_disk(editor) {
+		changed = true
+	}
+	return changed
+}
+
+editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
+	path := config_path()
+	if path == "" {
+		return false
+	}
+	now := buffer_disk_stamp(path)
+	if !now.ok || (now.mtime == editor.config_stamp.mtime && now.size == editor.config_stamp.size) {
+		return false
+	}
+	message, is_error := config_load_from(path)
+	editor.config_stamp = buffer_disk_stamp(path)
+	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
+	term_reload_colors(editor)
+	if message == "" {
+		message = "config.json reloaded"
+	}
+	editor_set_message(editor, message, is_error)
+	return true
 }
 
 editor_poll_disk :: proc(editor: ^Editor) -> bool {

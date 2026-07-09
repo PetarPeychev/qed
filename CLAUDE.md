@@ -122,7 +122,7 @@ repetition only once it exists in front of you.
 | Colors         | gruber palette; default hex in `config.odin`, overridable via `theme`. |
 | Gutter         | Left line-number gutter; current line emphasized; git-diff mark column. |
 | Commands       | Direct CTRL keybinds (rebindable by name); floating command palette. |
-| Config         | `config.odin` defaults; `~/.config/qed/config.json` overrides, auto-materialized with every key. |
+| Config         | `config.odin` defaults; `~/.config/qed/config.json` overrides, auto-materialized with every key, hot-reloaded on change. |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |
 | Startup arg    | File → open it; directory → set working root + welcome screen. |

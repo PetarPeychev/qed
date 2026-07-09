@@ -422,7 +422,9 @@ floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
 the shell prompt), jump list
-(back/forward), runtime config (`~/.config/qed/config.json`). Every floating pane is
+(back/forward), runtime config (`~/.config/qed/config.json`, hot-reloaded via the
+disk poll — colors/keybinds/knobs apply live, runtime toggles survive, terminal
+palette re-pushed; existing buffers keep their language, running LSPs their command). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss).
 Preview panes (file-open, file-tree, project-search, buffer switcher, line jump) share one

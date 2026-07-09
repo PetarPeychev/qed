@@ -183,14 +183,7 @@ term_start :: proc(editor: ^Editor) -> bool {
 	vterm.set_utf8(vt, 1)
 	screen := vterm.obtain_screen(vt)
 	vterm.screen_enable_altscreen(screen, 1)
-	state := vterm.obtain_state(vt)
-	for i in 0 ..< 16 {
-		col := term_color(COLOR_TERM_ANSI[i])
-		vterm.state_set_palette_color(state, c.int(i), &col)
-	}
-	fg := term_color(COLOR_TERM_FG)
-	bg := term_color(COLOR_TERM_BG)
-	vterm.screen_set_default_colors(screen, &fg, &bg)
+	term_push_colors(vterm.obtain_state(vt), screen)
 	vterm.screen_reset(screen, 1)
 
 	t.ctx = context
@@ -209,6 +202,24 @@ term_start :: proc(editor: ^Editor) -> bool {
 	t.rows = rows
 	t.alive = true
 	return true
+}
+
+term_push_colors :: proc(state: ^vterm.State, screen: ^vterm.Screen) {
+	for i in 0 ..< 16 {
+		col := term_color(COLOR_TERM_ANSI[i])
+		vterm.state_set_palette_color(state, c.int(i), &col)
+	}
+	fg := term_color(COLOR_TERM_FG)
+	bg := term_color(COLOR_TERM_BG)
+	vterm.screen_set_default_colors(screen, &fg, &bg)
+}
+
+term_reload_colors :: proc(editor: ^Editor) {
+	t := &editor.terminal
+	if t.vt == nil {
+		return
+	}
+	term_push_colors(vterm.obtain_state(t.vt), t.screen)
 }
 
 term_resize :: proc(editor: ^Editor) {
