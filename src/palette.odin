@@ -43,6 +43,7 @@ cmd_toggle_comment :: proc(editor: ^Editor) {
 	editor_scroll(editor)
 }
 cmd_set_language :: proc(editor: ^Editor) {langpick_open(editor)}
+cmd_set_theme :: proc(editor: ^Editor) {themepick_open(editor)}
 cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
 cmd_lsp_definition :: proc(editor: ^Editor) {lsp_definition(editor)}
 cmd_lsp_hover :: proc(editor: ^Editor) {lsp_hover(editor)}
@@ -108,6 +109,7 @@ commands := [?]Command {
 	{name = "Toggle Comment", run = cmd_toggle_comment},
 	{name = "Change Indentation", run = cmd_change_indent},
 	{name = "Set Language", run = cmd_set_language},
+	{name = "Set Theme", run = cmd_set_theme},
 	{name = "LSP: Go to Definition", run = cmd_lsp_definition},
 	{name = "LSP: Hover", run = cmd_lsp_hover},
 	{name = "LSP: Rename Symbol", run = cmd_lsp_rename},

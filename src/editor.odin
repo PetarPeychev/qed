@@ -46,6 +46,7 @@ Editor :: struct {
 	picker:          Picker,
 	bufswitch:       BufSwitch,
 	langpick:        LangPick,
+	themepick:       ThemePick,
 	indentpick:      IndentPick,
 	linefind:        LineFind,
 	projsearch:      ProjSearch,
@@ -115,6 +116,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	picker_destroy(&editor.picker)
 	bufswitch_destroy(&editor.bufswitch)
 	langpick_destroy(&editor.langpick)
+	themepick_destroy(&editor.themepick)
 	indentpick_destroy(&editor.indentpick)
 	linefind_destroy(&editor.linefind)
 	projsearch_destroy(&editor.projsearch)
@@ -177,7 +179,7 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [15]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
@@ -185,6 +187,7 @@ editor_overlays :: proc(editor: ^Editor) -> [15]Overlay {
 		{&editor.picker.active, picker_dispatch_key, picker_render, picker_dispatch_mouse, picker_paste},
 		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render, bufswitch_dispatch_mouse, bufswitch_paste},
 		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
+		{&editor.themepick.active, themepick_dispatch_key, themepick_render, themepick_dispatch_mouse, themepick_paste},
 		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse, indentpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render, projsearch_dispatch_mouse, projsearch_paste},
@@ -808,6 +811,15 @@ editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
 	return changed
 }
 
+editor_retheme :: proc(editor: ^Editor) {
+	syntax_recolor()
+	for &b in editor.buffers {
+		b.hl.top = -1 // force a repaint so the per-char color cache picks up the new theme
+	}
+	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
+	term_reload_colors(editor)
+}
+
 editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	path := config_path()
 	if path == "" {
@@ -823,8 +835,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	message, is_error := config_load_from(path)
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
-	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
-	term_reload_colors(editor)
+	editor_retheme(editor)
 	if message == "" {
 		message = "config.json reloaded"
 	}

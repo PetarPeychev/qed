@@ -103,9 +103,14 @@ prompt owns the line + input until it resolves. All writes go through
 would dangle once the per-frame `temp_allocator` is freed. Truecolor output; colors
 (`COLOR_*`), UI glyphs (`ICON_*`) and tint strengths (`*_TINT`) come from the active
 theme — config `theme` names a JSON file in `~/.config/qed/themes/` with
-`colors`/`icons`/`tints` sections, hot-reloaded like config.json. Bundled themes
-(gruber-darker, atom-one-dark) ship inside the binary from repo `config/themes/`
-and re-materialize whenever missing; a missing non-bundled name errors to defaults.
+`colors`/`icons`/`tints` sections, hot-reloaded like config.json. Nine bundled
+themes (two light: solarized-light, catppuccin-latte) ship inside the binary from
+repo `config/themes/` and re-materialize whenever missing; a missing non-bundled
+name errors to defaults. A theme change — via the *Set Theme* picker or the disk
+poll — funnels through `editor_retheme`: theme colors are baked into two caches
+(each language's `Syntax.colors` palette and every buffer's per-char `hl.colors`),
+so it rebuilds the palettes (`syntax_recolor`) and invalidates the buffers
+(`hl.top = -1`) or on-screen text keeps the old colors until the next edit.
 
 ## Editing & undo
 
@@ -433,7 +438,9 @@ the shell prompt), jump list
 both hot-reloaded via the disk poll — colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
 their command), JSON themes (config `theme` picks a file from `~/.config/qed/themes/`,
-switchable live; bundled gruber-darker + atom-one-dark embedded from repo `config/themes/`
+switchable live via the *Set Theme* fuzzy picker — instant preview as you move,
+Enter persists to config.json / Esc reverts; nine bundled themes, two light,
+embedded from repo `config/themes/`
 and re-materialized whenever missing; every user-facing default — knobs, keybinds,
 language patterns/lsp/formatter — sourced from the embedded `config/config.json`,
 none in Odin source, completeness test-enforced). Every floating pane is

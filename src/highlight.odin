@@ -79,15 +79,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 	}
 	s.cursor = ts.query_cursor_new()
 
-	n := ts.query_capture_count(s.query)
-	for id in 0 ..< n {
-		length: u32
-		name_ptr := ts.query_capture_name_for_id(s.query, id, &length)
-		name := string(name_ptr[:length])
-		color, ok := syntax_capture_color(name)
-		append(&s.colors, color)
-		append(&s.paint, ok)
-	}
+	syntax_load_colors(s)
 
 	// Optional injection query (currently markdown). Failure to compile just
 	// disables injection; the host highlights still work.
@@ -108,6 +100,28 @@ syntax_ensure :: proc(language: Language) -> bool {
 
 	s.ready = true
 	return true
+}
+
+syntax_load_colors :: proc(s: ^Syntax) {
+	clear(&s.colors)
+	clear(&s.paint)
+	n := ts.query_capture_count(s.query)
+	for id in 0 ..< n {
+		length: u32
+		name_ptr := ts.query_capture_name_for_id(s.query, id, &length)
+		name := string(name_ptr[:length])
+		color, ok := syntax_capture_color(name)
+		append(&s.colors, color)
+		append(&s.paint, ok)
+	}
+}
+
+syntax_recolor :: proc() {
+	for &s in g_syntaxes {
+		if s.query != nil {
+			syntax_load_colors(&s)
+		}
+	}
 }
 
 syntax_shutdown :: proc() {

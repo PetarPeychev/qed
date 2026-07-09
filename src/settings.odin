@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:unicode/utf8"
@@ -586,6 +587,13 @@ Bundled_Theme :: struct {
 bundled_themes := [?]Bundled_Theme {
 	{"gruber-darker", #load("../config/themes/gruber-darker.json")},
 	{"atom-one-dark", #load("../config/themes/atom-one-dark.json")},
+	{"dracula", #load("../config/themes/dracula.json")},
+	{"nord", #load("../config/themes/nord.json")},
+	{"gruvbox-dark", #load("../config/themes/gruvbox-dark.json")},
+	{"tokyo-night", #load("../config/themes/tokyo-night.json")},
+	{"catppuccin-mocha", #load("../config/themes/catppuccin-mocha.json")},
+	{"catppuccin-latte", #load("../config/themes/catppuccin-latte.json")},
+	{"solarized-light", #load("../config/themes/solarized-light.json")},
 }
 
 theme_path :: proc(cfg_path: string, name: string, allocator := context.temp_allocator) -> string {
@@ -594,6 +602,74 @@ theme_path :: proc(cfg_path: string, name: string, allocator := context.temp_all
 		return fmt.aprintf("themes/%s.json", name, allocator = allocator)
 	}
 	return fmt.aprintf("%s/themes/%s.json", dir, name, allocator = allocator)
+}
+
+theme_names :: proc(cfg_path: string, allocator := context.temp_allocator) -> []string {
+	seen := make(map[string]bool, 16, context.temp_allocator)
+	names := make([dynamic]string, allocator)
+	if dir := config_dir(cfg_path); dir != "" {
+		tdir := fmt.tprintf("%s/themes", dir)
+		if infos, err := os.read_directory_by_path(tdir, -1, context.temp_allocator); err == nil {
+			for info in infos {
+				if info.type == .Directory || !strings.has_suffix(info.name, ".json") {
+					continue
+				}
+				name := info.name[:len(info.name) - 5]
+				if name in seen {
+					continue
+				}
+				seen[name] = true
+				append(&names, strings.clone(name, allocator))
+			}
+		}
+	}
+	for bt in bundled_themes {
+		if bt.name in seen {
+			continue
+		}
+		seen[bt.name] = true
+		append(&names, strings.clone(bt.name, allocator))
+	}
+	slice.sort(names[:])
+	return names[:]
+}
+
+theme_preview :: proc(cfg_path: string, name: string) -> bool {
+	theme_reset_defaults()
+	data, read_err := os.read_entire_file(theme_path(cfg_path, name), context.temp_allocator)
+	if read_err != nil {
+		return false
+	}
+	root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
+	if perr != nil {
+		return false
+	}
+	root, is_obj := root_val.(json.Object)
+	if !is_obj {
+		return false
+	}
+	invalid := make([dynamic]string, context.temp_allocator)
+	theme_apply(root, &invalid)
+	return true
+}
+
+theme_persist :: proc(name: string) -> bool {
+	THEME = strings.clone(name)
+	path := config_path()
+	if path == "" {
+		return false
+	}
+	root: json.Object
+	if data, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil {
+		if v, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator);
+		   perr == nil {
+			if o, ok := v.(json.Object); ok {
+				root = o
+				delete_key(&root, "theme") // config_write falls back to the THEME global
+			}
+		}
+	}
+	return config_write(path, root) == nil
 }
 
 theme_reset_defaults :: proc() {

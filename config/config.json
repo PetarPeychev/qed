@@ -60,6 +60,7 @@
     "Toggle Comment": "Ctrl+/",
     "Change Indentation": "",
     "Set Language": "",
+    "Set Theme": "",
     "LSP: Go to Definition": "Alt+d",
     "LSP: Hover": "Alt+s",
     "LSP: Rename Symbol": "Alt+r",
