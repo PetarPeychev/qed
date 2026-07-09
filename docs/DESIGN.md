@@ -62,7 +62,7 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 (`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
-1-row **status bar** (icon-prefixed segments, `STATUS_ICON_*` in config: working-root-relative
+1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
 path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` — polled async every
 `git_stat_poll_ms` via `GitStat`; right side: language + LSP + indent style / `big`), then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
@@ -71,8 +71,8 @@ screen↔buffer column mapping (cursor placement, mouse).
 
 Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`),
 stacked bottom→top: optional git-hunk row tint → AI-edit tint → current-line tint
-(a semi-transparent white lift over whatever's beneath). Tint strengths are
-`*_TINT` constants in `config.odin`; the tint colors are theme-overridable. The
+(a semi-transparent white lift over whatever's beneath). Tint strengths
+(`*_TINT`) and tint colors are both theme-overridable. The
 row tint is part of **diff view** (*Git: Toggle Diff View*, `Alt+g`, config
 `git_diff_view`, off by default), separate from the always-on gutter mark — see
 Git diff view below.
@@ -100,8 +100,9 @@ block. Resolve deletes the marker/side rows bottom-up as one undo group (`merge_
 Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All writes go through
 `editor_set_message`, which copies into owned storage — a raw `tprintf` string
-would dangle once the per-frame `temp_allocator` is freed. Truecolor output; gruber palette
-and all colors live in `config.odin` (`COLOR_*`), overridable via config `theme`.
+would dangle once the per-frame `temp_allocator` is freed. Truecolor output; the gruber
+palette (`COLOR_*`), UI glyphs (`ICON_*`) and tint strengths (`*_TINT`) live in
+`config.odin`, overridable via the config `theme` sub-sections `colors`/`icons`/`tints`.
 
 ## Editing & undo
 

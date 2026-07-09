@@ -198,7 +198,7 @@ picker_render :: proc(editor: ^Editor) {
 		}
 		label := rel
 		if picker_file_modified(editor, rel) {
-			label = fmt.tprintf("%s ●", rel)
+			label = fmt.tprintf("%s %s", rel, ICON_MODIFIED)
 		}
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}

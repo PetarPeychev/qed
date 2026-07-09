@@ -415,7 +415,7 @@ preview_render :: proc(p: ^Preview, x, y, w, h: int) {
 		row := p.rows[ri]
 		ry := y + i
 		if row.kind == .Gap {
-			preview_draw_row(x, ry, w, "  ⋮", nil, 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
+			preview_draw_row(x, ry, w, fmt.tprintf("  %s", ICON_PREVIEW_MORE), nil, 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
 			continue
 		}
 		label := preview_gutter(p.numw, row.lineno, row.text)

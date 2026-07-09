@@ -802,7 +802,8 @@ filetree_row_label :: proc(t: ^FileTree, e: FileEntry) -> string {
 		strings.write_string(&sb, "  ")
 	}
 	if e.is_dir {
-		strings.write_string(&sb, "▾ " if t.expanded[e.path] else "▸ ")
+		strings.write_string(&sb, ICON_TREE_EXPANDED if t.expanded[e.path] else ICON_TREE_COLLAPSED)
+		strings.write_byte(&sb, ' ')
 		strings.write_string(&sb, e.name)
 		strings.write_byte(&sb, '/')
 	} else {
@@ -848,7 +849,7 @@ filetree_render :: proc(editor: ^Editor) {
 		}
 		label := filetree_row_label(t, e)
 		if filetree_unsaved(editor, e) {
-			label = strings.concatenate({label, " ●"}, context.temp_allocator)
+			label = strings.concatenate({label, " ", ICON_MODIFIED}, context.temp_allocator)
 		}
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}

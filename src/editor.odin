@@ -1308,39 +1308,39 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	}
 
 	name := editor_display_path(editor, b.path) if b.path != "" else "[No Name]"
-	status := fmt.tprintf(" %s %s", STATUS_ICON_FILE, name)
+	status := fmt.tprintf(" %s %s", ICON_STATUS_FILE, name)
 	if b.modified {
-		status = fmt.tprintf("%s ●", status)
+		status = fmt.tprintf("%s %s", status, ICON_MODIFIED)
 	}
 	status = fmt.tprintf("%s  %d/%d", status, b.cursor.row + 1, len(b.lines))
 	if editor.gitstat.branch != "" {
-		status = fmt.tprintf("%s  %s %s", status, STATUS_ICON_BRANCH, editor.gitstat.branch)
+		status = fmt.tprintf("%s  %s %s", status, ICON_STATUS_BRANCH, editor.gitstat.branch)
 		if editor.gitstat.ahead > 0 {
-			status = fmt.tprintf("%s %s%d", status, STATUS_ICON_AHEAD, editor.gitstat.ahead)
+			status = fmt.tprintf("%s %s%d", status, ICON_STATUS_AHEAD, editor.gitstat.ahead)
 		}
 		if editor.gitstat.behind > 0 {
 			sep := "" if editor.gitstat.ahead > 0 else " "
-			status = fmt.tprintf("%s%s%s%d", status, sep, STATUS_ICON_BEHIND, editor.gitstat.behind)
+			status = fmt.tprintf("%s%s%s%d", status, sep, ICON_STATUS_BEHIND, editor.gitstat.behind)
 		}
 	}
 	if len(editor.buffers) > 1 {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
 	}
-	editor_render_row(0, h, full_w, status, COLOR_STATUS_FG, COLOR_STATUS_BG)
+	editor_render_row(0, h, full_w, status, COLOR_PANE_FG, COLOR_PANE_BG)
 	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
-	right := fmt.tprintf("%s %s", STATUS_ICON_LANG, LANGUAGES[b.language].name)
+	right := fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name)
 	if b.big {
 		right = fmt.tprintf("%s  big", right)
 	} else if lsp := lsp_status_label(b); lsp != "" {
-		right = fmt.tprintf("%s  %s %s", right, STATUS_ICON_LSP, lsp)
+		right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_LSP, lsp)
 	}
-	right = fmt.tprintf("%s  %s %s", right, STATUS_ICON_INDENT, indent)
+	right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_INDENT, indent)
 	if n := len(editor.llm.requests); n > 0 {
 		right = fmt.tprintf("AI:%d  %s", n, right)
 	}
 	right_w := visual_width(transmute([]u8)right)
 	right_cstr := strings.clone_to_cstring(right, context.temp_allocator)
-	tb2.print(i32(max(0, full_w - right_w - 1)), i32(h), COLOR_STATUS_FG, COLOR_STATUS_BG, right_cstr)
+	tb2.print(i32(max(0, full_w - right_w - 1)), i32(h), COLOR_PANE_FG, COLOR_PANE_BG, right_cstr)
 	message_fg := COLOR_ERROR_FG if editor.message_error else COLOR_FG
 	editor_render_row(0, h + 1, full_w, editor.message, message_fg, COLOR_BG)
 }
@@ -1409,7 +1409,7 @@ editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int
 	}
 	strings.write_string(&sb, label)
 	if severity > 0 {
-		strings.write_rune(&sb, diagnostic_glyph(severity))
+		strings.write_string(&sb, diagnostic_glyph(severity))
 	} else {
 		strings.write_byte(&sb, ' ')
 	}

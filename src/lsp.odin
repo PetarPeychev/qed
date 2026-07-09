@@ -108,15 +108,15 @@ lsp_status_label :: proc(b: ^Buffer) -> string {
 	name := lsp_display_name(server)
 	lsp, ok := g_lsps[server]
 	if !ok {
-		return fmt.tprintf("%s …", name)
+		return fmt.tprintf("%s %s", name, ICON_LSP_STARTING)
 	}
 	switch lsp.state {
 	case .Running:
 		return name
 	case .Failed:
-		return fmt.tprintf("%s ✗", name)
+		return fmt.tprintf("%s %s", name, ICON_LSP_FAILED)
 	case .Off:
-		return fmt.tprintf("%s …", name)
+		return fmt.tprintf("%s %s", name, ICON_LSP_STARTING)
 	}
 	return name
 }
@@ -1226,12 +1226,12 @@ diagnostic_color :: proc(severity: int) -> tb2.Color {
 	return COLOR_DIAG_INFO_FG
 }
 
-diagnostic_glyph :: proc(severity: int) -> rune {
+diagnostic_glyph :: proc(severity: int) -> string {
 	switch severity {
 	case 1:
-		return '»'
+		return ICON_DIAG_ERROR
 	case 2:
-		return '›'
+		return ICON_DIAG_WARN
 	}
-	return '~'
+	return ICON_DIAG_INFO
 }

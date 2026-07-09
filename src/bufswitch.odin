@@ -172,7 +172,7 @@ bufswitch_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, 3, fmt.tprintf("%d", bufidx + 1), num_fg, bg)
 		label := p.names[bufidx]
 		if editor.buffers[bufidx].modified {
-			label = fmt.tprintf("%s ●", label)
+			label = fmt.tprintf("%s %s", label, ICON_MODIFIED)
 		}
 		pane_text(inner.x + 4, y, lay.left_w - 4, label, fg, bg)
 	}

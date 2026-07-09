@@ -89,14 +89,18 @@ config_llm_bools := [?]Config_Bool {
 	{"completion_enabled", &LLM_COMPLETION_ENABLED},
 }
 
+Config_Float :: struct {
+	key: string,
+	ptr: ^f32,
+}
+
 config_colors := [?]Config_Color {
 	{"foreground", &COLOR_FG},
 	{"background", &COLOR_BG},
-	{"status_foreground", &COLOR_STATUS_FG},
-	{"status_background", &COLOR_STATUS_BG},
 	{"error_foreground", &COLOR_ERROR_FG},
 	{"diagnostic_error_foreground", &COLOR_DIAG_ERROR_FG},
 	{"diagnostic_warning_foreground", &COLOR_DIAG_WARN_FG},
+	{"diagnostic_info_foreground", &COLOR_DIAG_INFO_FG},
 	{"gutter_foreground", &COLOR_GUTTER_FG},
 	{"gutter_background", &COLOR_GUTTER_BG},
 	{"current_line_foreground", &COLOR_CURRENT_LINE_FG},
@@ -134,6 +138,7 @@ config_colors := [?]Config_Color {
 	{"syntax_comment", &COLOR_SYN_COMMENT},
 	{"syntax_constant", &COLOR_SYN_CONSTANT},
 	{"syntax_attribute", &COLOR_SYN_ATTRIBUTE},
+	{"syntax_code", &COLOR_SYN_CODE},
 	{"git_added", &COLOR_GIT_ADD},
 	{"git_modified", &COLOR_GIT_MOD},
 	{"git_deleted", &COLOR_GIT_DEL},
@@ -141,6 +146,36 @@ config_colors := [?]Config_Color {
 	{"conflict_theirs", &COLOR_CONFLICT_THEIRS},
 	{"conflict_base", &COLOR_CONFLICT_BASE},
 	{"filetree_ignored", &COLOR_FILETREE_IGNORED},
+}
+
+config_icons := [?]Config_Str {
+	{"status_file", &ICON_STATUS_FILE},
+	{"status_branch", &ICON_STATUS_BRANCH},
+	{"status_ahead", &ICON_STATUS_AHEAD},
+	{"status_behind", &ICON_STATUS_BEHIND},
+	{"status_language", &ICON_STATUS_LANG},
+	{"status_lsp", &ICON_STATUS_LSP},
+	{"status_indent", &ICON_STATUS_INDENT},
+	{"modified", &ICON_MODIFIED},
+	{"tree_expanded", &ICON_TREE_EXPANDED},
+	{"tree_collapsed", &ICON_TREE_COLLAPSED},
+	{"preview_more", &ICON_PREVIEW_MORE},
+	{"lsp_starting", &ICON_LSP_STARTING},
+	{"lsp_failed", &ICON_LSP_FAILED},
+	{"diagnostic_error", &ICON_DIAG_ERROR},
+	{"diagnostic_warning", &ICON_DIAG_WARN},
+	{"diagnostic_info", &ICON_DIAG_INFO},
+}
+
+config_tints := [?]Config_Float {
+	{"current_line", &CURRENT_LINE_TINT},
+	{"ai_edit", &AI_EDIT_TINT},
+	{"git_hunk", &GIT_HUNK_TINT},
+	{"git_diff_ghost", &GIT_DIFF_GHOST_TINT},
+	{"git_diff_word", &GIT_DIFF_WORD_TINT},
+	{"conflict", &CONFLICT_TINT},
+	{"conflict_marker", &CONFLICT_MARKER_TINT},
+	{"conflict_word", &CONFLICT_WORD_TINT},
 }
 
 config_path :: proc(allocator := context.temp_allocator) -> string {
@@ -262,23 +297,70 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 	if theme_val, present := root["theme"]; !present {
 		missing = true
 	} else if theme_obj, is_obj := theme_val.(json.Object); is_obj {
-		for c in config_colors {
-			v, has := theme_obj[c.key]
-			if !has {
-				missing = true
-				continue
+		if col_val, has := theme_obj["colors"]; !has {
+			missing = true
+		} else if col_obj, col_is_obj := col_val.(json.Object); col_is_obj {
+			for c in config_colors {
+				v, chas := col_obj[c.key]
+				if !chas {
+					missing = true
+					continue
+				}
+				s, is_str := v.(json.String)
+				if !is_str {
+					append(&invalid, fmt.tprintf("theme/colors/%s", c.key))
+					continue
+				}
+				col, cok := parse_hex_color(string(s))
+				if !cok {
+					append(&invalid, fmt.tprintf("theme/colors/%s", c.key))
+					continue
+				}
+				c.ptr^ = col
 			}
-			s, is_str := v.(json.String)
-			if !is_str {
-				append(&invalid, fmt.tprintf("theme/%s", c.key))
-				continue
+		} else {
+			append(&invalid, "theme/colors")
+		}
+
+		if ic_val, has := theme_obj["icons"]; !has {
+			missing = true
+		} else if ic_obj, ic_is_obj := ic_val.(json.Object); ic_is_obj {
+			for it in config_icons {
+				v, ihas := ic_obj[it.key]
+				if !ihas {
+					missing = true
+					continue
+				}
+				if s, is_str := v.(json.String); is_str {
+					it.ptr^ = strings.clone(string(s))
+				} else {
+					append(&invalid, fmt.tprintf("theme/icons/%s", it.key))
+				}
 			}
-			col, cok := parse_hex_color(string(s))
-			if !cok {
-				append(&invalid, fmt.tprintf("theme/%s", c.key))
-				continue
+		} else {
+			append(&invalid, "theme/icons")
+		}
+
+		if tn_val, has := theme_obj["tints"]; !has {
+			missing = true
+		} else if tn_obj, tn_is_obj := tn_val.(json.Object); tn_is_obj {
+			for it in config_tints {
+				v, thas := tn_obj[it.key]
+				if !thas {
+					missing = true
+					continue
+				}
+				#partial switch n in v {
+				case json.Float:
+					it.ptr^ = f32(n)
+				case json.Integer:
+					it.ptr^ = f32(n)
+				case:
+					append(&invalid, fmt.tprintf("theme/tints/%s", it.key))
+				}
 			}
-			c.ptr^ = col
+		} else {
+			append(&invalid, "theme/tints")
 		}
 	} else {
 		append(&invalid, "theme")
@@ -501,19 +583,73 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 		config_value_text(&sb, theme_raw)
 	} else {
 		strings.write_string(&sb, "{\n")
-		th_first := true
-		for c in config_colors {
-			if !th_first {
-				strings.write_string(&sb, ",\n")
+
+		fmt.sbprintf(&sb, "    %s: ", lsp_json_string("colors"))
+		col_raw, col_present := theme_obj["colors"]
+		if col_obj, col_is_obj := col_raw.(json.Object); col_present && !col_is_obj {
+			config_value_text(&sb, col_raw)
+		} else {
+			strings.write_string(&sb, "{\n")
+			th_first := true
+			for c in config_colors {
+				if !th_first {
+					strings.write_string(&sb, ",\n")
+				}
+				th_first = false
+				fmt.sbprintf(&sb, "      %s: ", lsp_json_string(c.key))
+				if v, has := col_obj[c.key]; has {
+					config_value_text(&sb, v)
+				} else {
+					strings.write_string(&sb, lsp_json_string(color_to_hex(c.ptr^)))
+				}
 			}
-			th_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(c.key))
-			if v, has := theme_obj[c.key]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, lsp_json_string(color_to_hex(c.ptr^)))
-			}
+			strings.write_string(&sb, "\n    }")
 		}
+
+		fmt.sbprintf(&sb, ",\n    %s: ", lsp_json_string("icons"))
+		ic_raw, ic_present := theme_obj["icons"]
+		if ic_obj, ic_is_obj := ic_raw.(json.Object); ic_present && !ic_is_obj {
+			config_value_text(&sb, ic_raw)
+		} else {
+			strings.write_string(&sb, "{\n")
+			th_first := true
+			for it in config_icons {
+				if !th_first {
+					strings.write_string(&sb, ",\n")
+				}
+				th_first = false
+				fmt.sbprintf(&sb, "      %s: ", lsp_json_string(it.key))
+				if v, has := ic_obj[it.key]; has {
+					config_value_text(&sb, v)
+				} else {
+					strings.write_string(&sb, lsp_json_string(it.ptr^))
+				}
+			}
+			strings.write_string(&sb, "\n    }")
+		}
+
+		fmt.sbprintf(&sb, ",\n    %s: ", lsp_json_string("tints"))
+		tn_raw, tn_present := theme_obj["tints"]
+		if tn_obj, tn_is_obj := tn_raw.(json.Object); tn_present && !tn_is_obj {
+			config_value_text(&sb, tn_raw)
+		} else {
+			strings.write_string(&sb, "{\n")
+			th_first := true
+			for it in config_tints {
+				if !th_first {
+					strings.write_string(&sb, ",\n")
+				}
+				th_first = false
+				fmt.sbprintf(&sb, "      %s: ", lsp_json_string(it.key))
+				if v, has := tn_obj[it.key]; has {
+					config_value_text(&sb, v)
+				} else {
+					fmt.sbprintf(&sb, "%.2f", it.ptr^)
+				}
+			}
+			strings.write_string(&sb, "\n    }")
+		}
+
 		strings.write_string(&sb, "\n  }")
 	}
 

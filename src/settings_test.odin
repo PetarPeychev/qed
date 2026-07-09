@@ -81,9 +81,23 @@ test_config_files :: proc(t: ^testing.T) {
 	}
 	theme, theme_ok := obj["theme"].(json.Object)
 	testing.expect(t, theme_ok, "theme materialized as object")
+	colors, colors_ok := theme["colors"].(json.Object)
+	testing.expect(t, colors_ok, "theme colors materialized as object")
 	for c in config_colors {
-		_, present := theme[c.key]
+		_, present := colors[c.key]
 		testing.expectf(t, present, "theme color %s materialized", c.key)
+	}
+	icons, icons_ok := theme["icons"].(json.Object)
+	testing.expect(t, icons_ok, "theme icons materialized as object")
+	for it in config_icons {
+		_, present := icons[it.key]
+		testing.expectf(t, present, "theme icon %s materialized", it.key)
+	}
+	tints, tints_ok := theme["tints"].(json.Object)
+	testing.expect(t, tints_ok, "theme tints materialized as object")
+	for it in config_tints {
+		_, present := tints[it.key]
+		testing.expectf(t, present, "theme tint %s materialized", it.key)
 	}
 	kb, ok := obj["keybinds"].(json.Object)
 	testing.expect(t, ok, "keybinds materialized as object")
@@ -155,7 +169,7 @@ test_config_files :: proc(t: ^testing.T) {
 
 	// Invalid value -> keep default at runtime, report it, preserve it in the file.
 	bad_path := fmt.tprintf("%s/invalid.json", dir)
-	_ = os.write_entire_file(bad_path, transmute([]byte)string(`{"theme": {"foreground": "#nothex"}}`))
+	_ = os.write_entire_file(bad_path, transmute([]byte)string(`{"theme": {"colors": {"foreground": "#nothex"}}}`))
 	saved_fg := COLOR_FG
 	defer COLOR_FG = saved_fg
 	COLOR_FG = tb2.Color(0xf4f4ff)
@@ -167,6 +181,8 @@ test_config_files :: proc(t: ^testing.T) {
 	obj = reparse(t, bad_path)
 	theme2, theme2_ok := obj["theme"].(json.Object)
 	testing.expect(t, theme2_ok, "theme preserved as object")
-	fg, fg_ok := theme2["foreground"].(json.String)
+	colors2, colors2_ok := theme2["colors"].(json.Object)
+	testing.expect(t, colors2_ok, "theme colors preserved as object")
+	fg, fg_ok := colors2["foreground"].(json.String)
 	testing.expect(t, fg_ok && string(fg) == "#nothex", "invalid value preserved in file")
 }
