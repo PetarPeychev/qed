@@ -1,5 +1,6 @@
 package main
 
+import "core:encoding/json"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -35,19 +36,20 @@ LanguageInfo :: struct {
 	injections: []u8,
 }
 
-// LANGUAGE_DEFAULTS is the compiled-in source of truth; LANGUAGES is the working
-// copy config overrides mutate (lsp_server/formatter). Reset restores from defaults.
+// LANGUAGE_DEFAULTS is compiled-in wiring only (name, comment token, lsp id,
+// grammar, queries); the user-facing fields — patterns, lsp_server, formatter —
+// are seeded from the embedded config/config.json `languages` section.
 LANGUAGE_DEFAULTS := [Language]LanguageInfo {
 	.Plain      = {"text", "//", "", "", "", nil, nil, nil},
-	.Odin       = {"odin", "//", "ols", "odin", "", ts.tree_sitter_odin, #load("../lib/tree_sitter/odin/highlights.scm"), nil},
-	.C          = {"c", "//", "clangd", "c", "", ts.tree_sitter_c, #load("../lib/tree_sitter/c/highlights.scm"), nil},
-	.JavaScript = {"javascript", "//", "typescript-language-server --stdio", "javascript", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
-	.Jsx        = {"jsx", "//", "typescript-language-server --stdio", "javascriptreact", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
-	.TypeScript = {"typescript", "//", "typescript-language-server --stdio", "typescript", "", ts.tree_sitter_typescript, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
-	.Tsx        = {"tsx", "//", "typescript-language-server --stdio", "typescriptreact", "", ts.tree_sitter_tsx, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
-	.Python     = {"python", "#", "pyright-langserver --stdio", "python", "ruff format -", ts.tree_sitter_python, #load("../lib/tree_sitter/python/highlights.scm"), nil},
-	.Shell      = {"shell", "#", "bash-language-server start", "shellscript", "", ts.tree_sitter_bash, #load("../lib/tree_sitter/bash/highlights.scm"), nil},
-	.Lua        = {"lua", "--", "lua-language-server", "lua", "", ts.tree_sitter_lua, #load("../lib/tree_sitter/lua/highlights.scm"), nil},
+	.Odin       = {"odin", "//", "", "odin", "", ts.tree_sitter_odin, #load("../lib/tree_sitter/odin/highlights.scm"), nil},
+	.C          = {"c", "//", "", "c", "", ts.tree_sitter_c, #load("../lib/tree_sitter/c/highlights.scm"), nil},
+	.JavaScript = {"javascript", "//", "", "javascript", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
+	.Jsx        = {"jsx", "//", "", "javascriptreact", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
+	.TypeScript = {"typescript", "//", "", "typescript", "", ts.tree_sitter_typescript, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
+	.Tsx        = {"tsx", "//", "", "typescriptreact", "", ts.tree_sitter_tsx, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
+	.Python     = {"python", "#", "", "python", "", ts.tree_sitter_python, #load("../lib/tree_sitter/python/highlights.scm"), nil},
+	.Shell      = {"shell", "#", "", "shellscript", "", ts.tree_sitter_bash, #load("../lib/tree_sitter/bash/highlights.scm"), nil},
+	.Lua        = {"lua", "--", "", "lua", "", ts.tree_sitter_lua, #load("../lib/tree_sitter/lua/highlights.scm"), nil},
 	.Sql        = {"sql", "--", "", "", "", ts.tree_sitter_sql, #load("../lib/tree_sitter/sql/highlights.scm"), nil},
 	.Yaml       = {"yaml", "#", "", "", "", nil, nil, nil},
 	.Toml       = {"toml", "#", "", "", "", nil, nil, nil},
@@ -61,42 +63,6 @@ LANGUAGES := LANGUAGE_DEFAULTS
 LangRule :: struct {
 	pattern:  string,
 	language: Language,
-}
-
-DEFAULT_LANGUAGES := [?]LangRule {
-	{"*.odin", .Odin},
-	{"*.c", .C},
-	{"*.h", .C},
-	{"*.js", .JavaScript},
-	{"*.mjs", .JavaScript},
-	{"*.cjs", .JavaScript},
-	{"*.jsx", .Jsx},
-	{"*.ts", .TypeScript},
-	{"*.mts", .TypeScript},
-	{"*.cts", .TypeScript},
-	{"*.tsx", .Tsx},
-	{"*.py", .Python},
-	{"*.pyw", .Python},
-	{"*.sh", .Shell},
-	{"*.bash", .Shell},
-	{"*.zsh", .Shell},
-	{".bashrc", .Shell},
-	{".bash_profile", .Shell},
-	{".bash_aliases", .Shell},
-	{".profile", .Shell},
-	{".zshrc", .Shell},
-	{".zshenv", .Shell},
-	{".zprofile", .Shell},
-	{"PKGBUILD", .Shell},
-	{"*.lua", .Lua},
-	{".luacheckrc", .Lua},
-	{"*.sql", .Sql},
-	{"*.yaml", .Yaml},
-	{"*.yml", .Yaml},
-	{"*.toml", .Toml},
-	{"*.json", .Json},
-	{"*.md", .Markdown},
-	{"*.markdown", .Markdown},
 }
 
 g_language_rules: [dynamic]LangRule
@@ -125,27 +91,29 @@ language_rules_set :: proc(rules: []LangRule) {
 
 languages_reset_defaults :: proc() {
 	LANGUAGES = LANGUAGE_DEFAULTS
-	language_rules_set(DEFAULT_LANGUAGES[:])
 }
 
-// Languages that own file patterns, in first-appearance order in DEFAULT_LANGUAGES.
+// Languages named in the embedded config's `languages` section, in enum order.
 // This is the set materialized into the config `languages` section.
 default_pattern_languages :: proc(allocator := context.temp_allocator) -> []Language {
-	seen: [Language]bool
+	langs, _ := g_config_defaults["languages"].(json.Object)
 	out := make([dynamic]Language, allocator)
-	for def in DEFAULT_LANGUAGES {
-		if !seen[def.language] {
-			seen[def.language] = true
-			append(&out, def.language)
+	for info, lang in LANGUAGES {
+		if info.name in langs {
+			append(&out, lang)
 		}
 	}
 	return out[:]
 }
 
+// Pattern strings point into g_config_defaults, which lives for the whole run.
 append_default_patterns :: proc(rules: ^[dynamic]LangRule, lang: Language) {
-	for def in DEFAULT_LANGUAGES {
-		if def.language == lang {
-			append(rules, def)
+	langs, _ := g_config_defaults["languages"].(json.Object)
+	sub, _ := langs[LANGUAGES[lang].name].(json.Object)
+	arr, _ := sub["patterns"].(json.Array)
+	for e in arr {
+		if s, is := e.(json.String); is {
+			append(rules, LangRule{string(s), lang})
 		}
 	}
 }

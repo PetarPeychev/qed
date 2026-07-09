@@ -100,9 +100,12 @@ block. Resolve deletes the marker/side rows bottom-up as one undo group (`merge_
 Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All writes go through
 `editor_set_message`, which copies into owned storage — a raw `tprintf` string
-would dangle once the per-frame `temp_allocator` is freed. Truecolor output; the gruber
-palette (`COLOR_*`), UI glyphs (`ICON_*`) and tint strengths (`*_TINT`) live in
-`config.odin`, overridable via the config `theme` sub-sections `colors`/`icons`/`tints`.
+would dangle once the per-frame `temp_allocator` is freed. Truecolor output; colors
+(`COLOR_*`), UI glyphs (`ICON_*`) and tint strengths (`*_TINT`) come from the active
+theme — config `theme` names a JSON file in `~/.config/qed/themes/` with
+`colors`/`icons`/`tints` sections, hot-reloaded like config.json. Bundled themes
+(gruber-darker, atom-one-dark) ship inside the binary from repo `config/themes/`
+and re-materialize whenever missing; a missing non-bundled name errors to defaults.
 
 ## Editing & undo
 
@@ -186,9 +189,9 @@ Copy/cut/paste shell out via `clipboard.odin`: `wl-copy`/`wl-paste` or `xclip`
 
 ## Input
 
-Explicit `switch` on `(key, mod, ch)` → action procs; keys named in `config.odin`.
-Rebindable commands live in the `commands` table (`palette.odin`); primitive
-editing/movement and `Ctrl+P` (palette) are fixed.
+Explicit `switch` on `(key, mod, ch)` → action procs. Rebindable commands live in
+the `commands` table (`palette.odin`), their default binds in the embedded config's
+`keybinds` section; primitive editing/movement and `Ctrl+P` (palette) are fixed.
 
 Every editable text box (palette/picker/switcher/lang/indent/line-find/project-search
 queries, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
@@ -227,10 +230,10 @@ Each `Buffer` carries a `language: Language`, set once at open (`language_of`).
 File→language is **not hardcoded**: the config `languages` section is keyed by
 language name, each entry an object with `patterns` (glob list), `lsp` (server
 command) and `formatter` (external filter) — all user-overridable, per-key merged
-back like every other knob. `LANGUAGE_DEFAULTS` (`language.odin`) is the compiled-in
-source; `LANGUAGES` is the working copy config load resets then overlays (`lsp`/
-`formatter` overrides). `DEFAULT_LANGUAGES` supplies each language's default globs.
-Patterns are `*`-globs matched against the basename, most-specific-first (exact
+back like every other knob. `LANGUAGE_DEFAULTS` (`language.odin`) is compiled-in
+wiring only (comment token, lsp id, grammar); default patterns/`lsp`/`formatter`
+come from the embedded config's `languages` section. `LANGUAGES` is the working
+copy each load resets then overlays. Patterns are `*`-globs matched against the basename, most-specific-first (exact
 before glob, longer before shorter); built-in defaults cover extensions plus common
 dotfiles (`.bashrc` → shell, …). `lsp_id` and the comment token stay compiled-in.
 Everything — highlight, LSP, status bar, comment token — reads `b.language`. The
@@ -242,7 +245,8 @@ re-opens LSP).
 - **Syntax** (`highlight.odin`, `language.odin`): per-language `[Language]Syntax`;
   adding one = vendor `parser.c` (+`scanner.c`) + `highlights.scm` under
   `lib/tree_sitter/<lang>/`, add the FFI decl + `build.sh` line, fill the
-  `LANGUAGES` row (grammar/comment/LSP/formatter) + a `DEFAULT_LANGUAGES` glob. Query is
+  `LANGUAGE_DEFAULTS` row (grammar/comment/lsp id) + patterns/lsp/formatter in
+  `config/config.json`. Query is
   structural-only (predicates stripped, see `lib/tree_sitter/PATCHES.md`). A
   grammar/query that fails to compile surfaces a one-shot status message. Parse is
   incremental + async on big files — [notes/perf.md](notes/perf.md).
@@ -374,11 +378,13 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 ## File layout
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
-+ undo) · `cursor` · `config` · `settings` (JSON load) · `clipboard` · `shell` ·
++ undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
+defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
+Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Shipped
 
@@ -413,7 +419,7 @@ gitignored + hidden dotdirs), `.`/`i` show dotfiles / gitignored (both hidden by
 default, config `filetree_show_dotfiles`/`filetree_show_ignored`), highlighted when on;
 header scope tab bar (`All`/`Open`/`Git`/`Unsaved`, `←`/`→` or click) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
-`git status --porcelain --ignored` (single `sh -c` with `rev-parse`) scanned **async**
+`git status --porcelain --ignored --untracked-files=all` (single `sh -c` with `rev-parse`) scanned **async**
 via the shared subprocess runner: the first open of a session blocks on it, every
 reopen renders instantly from the cached status/ignored then refreshes in the
 background (`filetree_scan_pump`); a green/yellow `▌` per
@@ -423,9 +429,14 @@ floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
 the shell prompt), jump list
-(back/forward), runtime config (`~/.config/qed/config.json`, hot-reloaded via the
-disk poll — colors/keybinds/knobs apply live, runtime toggles survive, terminal
-palette re-pushed; existing buffers keep their language, running LSPs their command). Every floating pane is
+(back/forward), runtime config (`~/.config/qed/config.json` + active `themes/<name>.json`,
+both hot-reloaded via the disk poll — colors/keybinds/knobs apply live, runtime toggles
+survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
+their command), JSON themes (config `theme` picks a file from `~/.config/qed/themes/`,
+switchable live; bundled gruber-darker + atom-one-dark embedded from repo `config/themes/`
+and re-materialized whenever missing; every user-facing default — knobs, keybinds,
+language patterns/lsp/formatter — sourced from the embedded `config/config.json`,
+none in Odin source, completeness test-enforced). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss).
 Preview panes (file-open, file-tree, project-search, buffer switcher, line jump) share one

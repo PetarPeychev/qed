@@ -9,6 +9,8 @@ import "lib:pty"
 import "lib:tb2"
 import "lib:vterm"
 
+TERM_SCROLLBACK :: 2000
+
 TermLine :: struct {
 	cells: []vterm.ScreenCell,
 }

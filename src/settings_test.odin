@@ -36,6 +36,108 @@ test_config_hex_color :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_bundled_themes_complete :: proc(t: ^testing.T) {
+	for bt in bundled_themes {
+		root_val, err := json.parse(bt.data, parse_integers = true, allocator = context.temp_allocator)
+		testing.expectf(t, err == nil, "theme %s parses", bt.name)
+		root, is_obj := root_val.(json.Object)
+		testing.expectf(t, is_obj, "theme %s root is an object", bt.name)
+		colors, cok := root["colors"].(json.Object)
+		testing.expectf(t, cok, "theme %s has colors", bt.name)
+		for c in config_colors {
+			s, sok := colors[c.key].(json.String)
+			testing.expectf(t, sok, "theme %s colors/%s present", bt.name, c.key)
+			_, hok := parse_hex_color(string(s))
+			testing.expectf(t, hok, "theme %s colors/%s valid hex", bt.name, c.key)
+		}
+		icons, iok := root["icons"].(json.Object)
+		testing.expectf(t, iok, "theme %s has icons", bt.name)
+		for it in config_icons {
+			_, sok := icons[it.key].(json.String)
+			testing.expectf(t, sok, "theme %s icons/%s present", bt.name, it.key)
+		}
+		tints, tok := root["tints"].(json.Object)
+		testing.expectf(t, tok, "theme %s has tints", bt.name)
+		for it in config_tints {
+			num_ok := false
+			#partial switch _ in tints[it.key] {
+			case json.Float, json.Integer:
+				num_ok = true
+			}
+			testing.expectf(t, num_ok, "theme %s tints/%s present", bt.name, it.key)
+		}
+	}
+}
+
+@(test)
+test_embedded_config_complete :: proc(t: ^testing.T) {
+	for it in config_ints {
+		num_ok := false
+		#partial switch _ in g_config_defaults[it.key] {
+		case json.Integer, json.Float:
+			num_ok = true
+		}
+		testing.expectf(t, num_ok, "embedded int %s", it.key)
+	}
+	for it in config_bools {
+		_, ok := g_config_defaults[it.key].(json.Boolean)
+		testing.expectf(t, ok, "embedded bool %s", it.key)
+	}
+	name, name_ok := g_config_defaults["theme"].(json.String)
+	testing.expect(t, name_ok, "embedded theme is a string")
+	found := false
+	for bt in bundled_themes {
+		if bt.name == string(name) {
+			found = true
+		}
+	}
+	testing.expect(t, found, "embedded theme names a bundled theme")
+	kb, kb_ok := g_config_defaults["keybinds"].(json.Object)
+	testing.expect(t, kb_ok, "embedded keybinds object")
+	for cmd in commands {
+		s, ok := kb[cmd.name].(json.String)
+		testing.expectf(t, ok, "embedded keybind %q present", cmd.name)
+		if ok && s != "" {
+			_, _, pok := parse_keybind(string(s))
+			testing.expectf(t, pok, "embedded keybind %q parses", cmd.name)
+		}
+	}
+	langs, langs_ok := g_config_defaults["languages"].(json.Object)
+	testing.expect(t, langs_ok, "embedded languages object")
+	testing.expect(t, len(langs) > 0, "embedded languages non-empty")
+	for key, sub_val in langs {
+		_, known := language_from_name(key)
+		testing.expectf(t, known, "embedded language %s is known", key)
+		sub, sub_ok := sub_val.(json.Object)
+		testing.expectf(t, sub_ok, "embedded language %s is an object", key)
+		_, p_ok := sub["patterns"].(json.Array)
+		testing.expectf(t, p_ok, "embedded language %s has patterns", key)
+		_, l_ok := sub["lsp"].(json.String)
+		testing.expectf(t, l_ok, "embedded language %s has lsp", key)
+		_, f_ok := sub["formatter"].(json.String)
+		testing.expectf(t, f_ok, "embedded language %s has formatter", key)
+	}
+	llm, llm_ok := g_config_defaults["llm"].(json.Object)
+	testing.expect(t, llm_ok, "embedded llm object")
+	for it in config_llm {
+		_, ok := llm[it.key].(json.String)
+		testing.expectf(t, ok, "embedded llm %s", it.key)
+	}
+	for it in config_llm_ints {
+		num_ok := false
+		#partial switch _ in llm[it.key] {
+		case json.Integer, json.Float:
+			num_ok = true
+		}
+		testing.expectf(t, num_ok, "embedded llm %s", it.key)
+	}
+	for it in config_llm_bools {
+		_, ok := llm[it.key].(json.Boolean)
+		testing.expectf(t, ok, "embedded llm %s", it.key)
+	}
+}
+
+@(test)
 test_config_keybind :: proc(t: ^testing.T) {
 	k, a, ok := parse_keybind("Ctrl+S")
 	testing.expect(t, ok && k == .Ctrl_S && a == 0, "Ctrl+S")
@@ -63,9 +165,13 @@ test_config_files :: proc(t: ^testing.T) {
 	dir := "/tmp/qed-cfg-test"
 	os.make_directory_all(dir)
 
-	// No file -> create a fully materialized config.
+	// No file -> create a fully materialized config + all bundled theme files.
 	create_path := fmt.tprintf("%s/create.json", dir)
+	theme_file := fmt.tprintf("%s/themes/gruber-darker.json", dir)
 	os.remove(create_path)
+	for bt in bundled_themes {
+		os.remove(fmt.tprintf("%s/themes/%s.json", dir, bt.name))
+	}
 	msg, is_err := config_load_from(create_path)
 	testing.expect(t, !is_err, "fresh create is not an error")
 	testing.expect(t, strings.has_prefix(msg, "Created"), "reports creation")
@@ -79,25 +185,30 @@ test_config_files :: proc(t: ^testing.T) {
 		_, present := obj[it.key]
 		testing.expectf(t, present, "bool key %s materialized", it.key)
 	}
-	theme, theme_ok := obj["theme"].(json.Object)
-	testing.expect(t, theme_ok, "theme materialized as object")
-	colors, colors_ok := theme["colors"].(json.Object)
+	theme, theme_ok := obj["theme"].(json.String)
+	testing.expect(t, theme_ok && theme == "gruber-darker", "theme materialized as name string")
+	tobj := reparse(t, theme_file)
+	colors, colors_ok := tobj["colors"].(json.Object)
 	testing.expect(t, colors_ok, "theme colors materialized as object")
 	for c in config_colors {
 		_, present := colors[c.key]
 		testing.expectf(t, present, "theme color %s materialized", c.key)
 	}
-	icons, icons_ok := theme["icons"].(json.Object)
+	icons, icons_ok := tobj["icons"].(json.Object)
 	testing.expect(t, icons_ok, "theme icons materialized as object")
 	for it in config_icons {
 		_, present := icons[it.key]
 		testing.expectf(t, present, "theme icon %s materialized", it.key)
 	}
-	tints, tints_ok := theme["tints"].(json.Object)
+	tints, tints_ok := tobj["tints"].(json.Object)
 	testing.expect(t, tints_ok, "theme tints materialized as object")
 	for it in config_tints {
 		_, present := tints[it.key]
 		testing.expectf(t, present, "theme tint %s materialized", it.key)
+	}
+	for bt in bundled_themes {
+		_, bt_err := os.stat(fmt.tprintf("%s/themes/%s.json", dir, bt.name), context.temp_allocator)
+		testing.expectf(t, bt_err == nil, "bundled theme %s materialized", bt.name)
 	}
 	kb, ok := obj["keybinds"].(json.Object)
 	testing.expect(t, ok, "keybinds materialized as object")
@@ -118,8 +229,8 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, pyp_ok && len(pyp) == 2, "python patterns default materialized")
 
 	// Language overrides: per-key merge, patterns drive detection, invalid subkey reported.
-	saved_py_lsp := LANGUAGE_DEFAULTS[.Python].lsp_server
-	defer languages_reset_defaults()
+	saved_py_lsp := LANGUAGES[.Python].lsp_server
+	defer config_defaults_apply()
 	lang_path := fmt.tprintf("%s/languages.json", dir)
 	_ = os.write_entire_file(
 		lang_path,
@@ -167,9 +278,20 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !is_err, "bool value load is not an error")
 	testing.expect(t, FORMAT_ON_SAVE, "bool value applied")
 
-	// Invalid value -> keep default at runtime, report it, preserve it in the file.
+	// Missing non-default theme -> error, no file created.
+	nf_path := fmt.tprintf("%s/notheme.json", dir)
+	_ = os.write_entire_file(nf_path, transmute([]byte)string(`{"theme": "nope"}`))
+	msg, is_err = config_load_from(nf_path)
+	testing.expect(t, is_err, "missing named theme reports an error")
+	testing.expect(t, strings.contains(msg, "nope"), "names the missing theme")
+	_, nope_err := os.stat(fmt.tprintf("%s/themes/nope.json", dir), context.temp_allocator)
+	testing.expect(t, nope_err != nil, "non-default theme is not materialized")
+
+	// Invalid theme value -> keep default at runtime, report it, preserve it in the file.
 	bad_path := fmt.tprintf("%s/invalid.json", dir)
-	_ = os.write_entire_file(bad_path, transmute([]byte)string(`{"theme": {"colors": {"foreground": "#nothex"}}}`))
+	bad_theme_file := fmt.tprintf("%s/themes/bad.json", dir)
+	_ = os.write_entire_file(bad_path, transmute([]byte)string(`{"theme": "bad"}`))
+	_ = os.write_entire_file(bad_theme_file, transmute([]byte)string(`{"colors": {"foreground": "#nothex"}}`))
 	saved_fg := COLOR_FG
 	defer COLOR_FG = saved_fg
 	COLOR_FG = tb2.Color(0xf4f4ff)
@@ -178,11 +300,14 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, is_err, "invalid value reports an error")
 	testing.expect(t, strings.contains(msg, "foreground"), "names the invalid key")
 	testing.expect(t, COLOR_FG == before, "invalid value keeps default")
-	obj = reparse(t, bad_path)
-	theme2, theme2_ok := obj["theme"].(json.Object)
-	testing.expect(t, theme2_ok, "theme preserved as object")
-	colors2, colors2_ok := theme2["colors"].(json.Object)
+	tobj2 := reparse(t, bad_theme_file)
+	colors2, colors2_ok := tobj2["colors"].(json.Object)
 	testing.expect(t, colors2_ok, "theme colors preserved as object")
 	fg, fg_ok := colors2["foreground"].(json.String)
 	testing.expect(t, fg_ok && string(fg) == "#nothex", "invalid value preserved in file")
+	_, icons2_ok := tobj2["icons"].(json.Object)
+	testing.expect(t, icons2_ok, "missing theme section backfilled")
+	obj = reparse(t, bad_path)
+	tn, tn_ok := obj["theme"].(json.String)
+	testing.expect(t, tn_ok && tn == "bad", "theme name preserved in config")
 }

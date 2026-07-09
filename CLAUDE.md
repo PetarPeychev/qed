@@ -3,9 +3,9 @@
 `qed` is a personal terminal text editor written in Odin, in the spirit of
 micro/nano but with GUI-style keybinds. It targets a single author (Petar) — so
 there are **no plugins and no backwards-compatibility obligations**. Tunable
-knobs (colors, sizes, timeouts, keybinds) are compiled-in defaults in
-`src/config.odin`; `~/.config/qed/config.json` overrides them at startup. Exactly
-one place per knob.
+knobs (colors, sizes, timeouts, keybinds) default from the JSON files in
+`config/` (embedded into the binary at build); `~/.config/qed/` overrides them,
+hot-reloaded. Exactly one place per knob.
 
 ## The docs
 
@@ -69,8 +69,10 @@ repetition only once it exists in front of you.
 - **No premature data-structure optimization.** The buffer is a dynamic array of
   lines, each a dynamic array of bytes. No gap buffer / rope / piece table until
   profiling on real usage proves we need one.
-- **Hardcode, but in one place.** Every tunable is a named constant in
-  `src/config.odin`. Hardcoding is fine; scattered magic numbers are not.
+- **Hardcode, but in one place.** Every user-facing tunable is a key in the
+  embedded `config/` JSON, bound to a typed global in `src/settings.odin`; other
+  constants live with their subsystem. Hardcoding is fine; scattered magic
+  numbers are not.
 
 ## Code conventions
 
@@ -113,23 +115,23 @@ repetition only once it exists in front of you.
 | Long lines     | Per-buffer soft wrap (word-boundary), on by default; toggle per buffer. Off → horizontal scroll. |
 | Cursor         | Single cursor + optional selection anchor (shift-select). |
 | Undo/redo      | Inverse-op edit log, grouped into steps; all edits go through primitive ops. |
-| Indent         | Spaces, width 4 (`config.odin`). |
+| Indent         | Spaces, width 4 (`tab_width`). |
 | Clipboard      | External tool (wl-copy/xclip · pbcopy/pbpaste), isolated. |
 | Saving         | Atomic: write temp in same dir, then rename. |
 | Line endings   | Detect & preserve LF/CRLF and trailing-newline per file. |
 | Mouse          | Full: click-position, drag-select, wheel-scroll. |
 | Rendering      | Full redraw per event; termbox diffs internally. Truecolor output. |
-| Colors         | gruber palette; default hex in `config.odin`, overridable via `theme`. |
+| Colors         | Themes are JSON files in `~/.config/qed/themes/`; config `theme` names the active one. Bundled themes ship in `config/themes/` (embedded, re-materialized when missing); gruber-darker is the default. |
 | Gutter         | Left line-number gutter; current line emphasized; git-diff mark column. |
 | Commands       | Direct CTRL keybinds (rebindable by name); floating command palette. |
-| Config         | `config.odin` defaults; `~/.config/qed/config.json` overrides, auto-materialized with every key, hot-reloaded on change. |
+| Config         | Embedded `config/config.json` is the source of every default (knobs, keybinds, language patterns/lsp/formatter) — none in Odin source; `~/.config/qed/config.json` overrides, auto-materialized with every key, hot-reloaded on change. |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |
 | Startup arg    | File → open it; directory → set working root + welcome screen. |
 
 ## Out of scope (deliberately)
 
-Plugin system, multiple switchable color schemes, split panes, tabs. There is
+Plugin system, split panes, tabs. There is
 exactly one visible text buffer; everything else (file tree, autocomplete, search
 overlay, inline diagnostics) is an auxiliary pane or floating window layered over
 it — built only when we get there.

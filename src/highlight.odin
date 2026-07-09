@@ -5,6 +5,8 @@ import "core:thread"
 import "lib:tb2"
 import ts "lib:tree_sitter"
 
+HIGHLIGHT_ASYNC_BYTES :: 256 * 1024
+
 Highlight :: struct {
 	computed: bool,
 	valid:    bool,

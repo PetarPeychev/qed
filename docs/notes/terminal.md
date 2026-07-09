@@ -90,7 +90,7 @@ qed runs inside **tmux inside Windows Terminal**; a full-screen app in the pane 
 ~4 terminal layers. It works (neovim does it), but keybind collisions compound
 across layers — including WT eating Ctrl+V. The escape-hatch key must be one qed
 *always* intercepts before forwarding, and it should avoid tmux's prefix and WT's
-reserved chords. Pick it deliberately in `config.odin`.
+reserved chords. Pick it deliberately in the config `keybinds`.
 
 ## Resolved decisions
 

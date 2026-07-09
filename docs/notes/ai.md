@@ -44,7 +44,7 @@ to one thing: an **async subprocess runner with cancellation** (see below).
 
 ## Config schema
 
-Lives under a new `llm` section in `config.odin` defaults, materialized into
+Lives under the `llm` section of the embedded `config/config.json`, materialized into
 `~/.config/qed/config.json` like every other knob. Sketch:
 
 ```json

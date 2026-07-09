@@ -11,6 +11,10 @@ import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
 
+// pyright/basedpyright analyze only open files by default, so cross-file rename
+// and references miss unopened files; "workspace" makes them index the whole root.
+LSP_DIAGNOSTIC_MODE :: "workspace"
+
 Diagnostic :: struct {
 	from, to: Cursor,
 	severity: int,

@@ -122,8 +122,6 @@ highlight_perf :: proc(t: ^testing.T) {
 		testing.fail_now(t, "perf: cannot open " + PERF_FILE)
 	}
 	defer buffer_destroy(&b)
-	// language_of reads g_language_rules, which only config_load (in main) fills;
-	// tests must set the language themselves or the buffer opens as .Plain.
 	b.language = .C
 	testing.expect(t, len(b.lines) > 50_000, "perf fixture should be a large file")
 

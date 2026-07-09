@@ -8,6 +8,9 @@ import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
 
+STATUS_ROWS :: 2
+HOVER_PANE_MAX_LINES :: 40
+
 Editor :: struct {
 	buffers:         [dynamic]Buffer,
 	current:         int,
@@ -25,6 +28,7 @@ Editor :: struct {
 	merge_dialog:    MergeDialog,
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
+	theme_stamp:     DiskStamp,
 	quit:            bool,
 	pasting:         bool,
 	paste_buf:       [dynamic]u8,
@@ -73,6 +77,7 @@ editor_init :: proc(path: string = "") -> Editor {
 	}
 	g_diff_view = GIT_DIFF_VIEW
 	editor.config_stamp = buffer_disk_stamp(config_path())
+	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
 	b := buffer_new()
 	if path != "" && !os.is_dir(path) {
 		abs, err := filepath.abs(path, context.temp_allocator)
@@ -809,11 +814,15 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		return false
 	}
 	now := buffer_disk_stamp(path)
-	if !now.ok || (now.mtime == editor.config_stamp.mtime && now.size == editor.config_stamp.size) {
+	tnow := buffer_disk_stamp(theme_path(path, THEME))
+	cfg_changed := now.ok && (now.mtime != editor.config_stamp.mtime || now.size != editor.config_stamp.size)
+	theme_changed := tnow.ok && (tnow.mtime != editor.theme_stamp.mtime || tnow.size != editor.theme_stamp.size)
+	if !cfg_changed && !theme_changed {
 		return false
 	}
 	message, is_error := config_load_from(path)
 	editor.config_stamp = buffer_disk_stamp(path)
+	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	term_reload_colors(editor)
 	if message == "" {

@@ -1,5 +1,6 @@
 package main
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
@@ -7,6 +8,11 @@ import "core:strconv"
 import "core:strings"
 import "core:unicode/utf8"
 import "lib:tb2"
+
+// Every global in this file is user config: declared valueless, seeded from the
+// embedded config/ JSON before main (config_seed_defaults), overridden by
+// ~/.config/qed/. Program constants that the JSON does not set live with their
+// subsystems, not here.
 
 Config_Int :: struct {
 	key: string,
@@ -22,6 +28,36 @@ Config_Color :: struct {
 	key: string,
 	ptr: ^tb2.Color,
 }
+
+SCROLL_MARGIN: int
+TAB_WIDTH: int
+WHEEL_SCROLL_LINES: int
+DOUBLE_CLICK_MS: int
+DISK_POLL_MS: int
+CURSOR_ACCEL_INTERVAL_MS: int
+CURSOR_ACCEL_RAMP_PRESSES: int
+CURSOR_ACCEL_MAX_STEP: int
+PALETTE_WIDTH: int
+PALETTE_MAX_ROWS: int
+PICKER_MARGIN_X: int
+PICKER_MARGIN_Y: int
+PROJSEARCH_MAX: int
+PROJSEARCH_MIN_QUERY: int
+PREVIEW_MAX_LINES: int
+PREVIEW_PARSE_AHEAD: int
+PREVIEW_DIFF_CONTEXT: int
+ALT_ESC_TIMEOUT_MS: int
+LSP_POLL_MS: int
+DIAG_PANE_MARGIN_X: int
+DIAG_PANE_MAX_LINES: int
+COMPLETION_DEBOUNCE_MS: int
+COMPLETION_MAX_ROWS: int
+COMPLETION_MAX_WIDTH: int
+COMPLETION_MIN_CHARS: int
+JUMP_THRESHOLD: int
+GIT_DIFF_MAX_D: int
+GIT_STAT_POLL_MS: int
+BIG_FILE_BYTES: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -55,6 +91,15 @@ config_ints := [?]Config_Int {
 	{"big_file_bytes", &BIG_FILE_BYTES},
 }
 
+FORMAT_ON_SAVE: bool
+CURSOR_ACCEL: bool
+AUTO_CLOSE_PAIRS: bool
+GIT_DIFF_VIEW: bool
+LINE_WRAP: bool
+FILETREE_SHOW_DOTFILES: bool
+FILETREE_SHOW_IGNORED: bool
+TERMINAL_ESCAPE_CLOSES: bool
+
 config_bools := [?]Config_Bool {
 	{"format_on_save", &FORMAT_ON_SAVE},
 	{"cursor_accel", &CURSOR_ACCEL},
@@ -70,6 +115,16 @@ Config_Str :: struct {
 	key: string,
 	ptr: ^string,
 }
+
+LLM_CHAT_COMMAND: string
+LLM_EDIT_PROMPT: string
+LLM_COMPLETION_ENDPOINT: string
+LLM_COMPLETION_MODEL: string
+LLM_COMPLETION_API_KEY_ENV: string
+LLM_COMPLETION_MAX_TOKENS: int
+LLM_COMPLETION_DEBOUNCE_MS: int
+LLM_COMPLETION_CONTEXT_LINES: int
+LLM_COMPLETION_ENABLED: bool
 
 config_llm := [?]Config_Str {
 	{"chat_command", &LLM_CHAT_COMMAND},
@@ -93,6 +148,43 @@ Config_Float :: struct {
 	key: string,
 	ptr: ^f32,
 }
+
+COLOR_FG: tb2.Color
+COLOR_BG: tb2.Color
+COLOR_ERROR_FG: tb2.Color
+COLOR_DIAG_ERROR_FG: tb2.Color
+COLOR_DIAG_WARN_FG: tb2.Color
+COLOR_DIAG_INFO_FG: tb2.Color
+COLOR_GUTTER_FG: tb2.Color
+COLOR_GUTTER_BG: tb2.Color
+COLOR_CURRENT_LINE_FG: tb2.Color
+COLOR_CURRENT_LINE_BG: tb2.Color
+COLOR_AI_EDIT_BG: tb2.Color
+COLOR_GHOST_FG: tb2.Color
+COLOR_PANE_FG: tb2.Color
+COLOR_PANE_BG: tb2.Color
+COLOR_PANE_BORDER: tb2.Color
+COLOR_PANE_PROMPT_FG: tb2.Color
+COLOR_PANE_SHORTCUT_FG: tb2.Color
+COLOR_PANE_SEL_FG: tb2.Color
+COLOR_PANE_SEL_BG: tb2.Color
+COLOR_FILETREE_IGNORED: tb2.Color
+COLOR_TERM_FG: tb2.Color
+COLOR_TERM_BG: tb2.Color
+COLOR_TERM_ANSI: [16]tb2.Color
+COLOR_SYN_KEYWORD: tb2.Color
+COLOR_SYN_TYPE: tb2.Color
+COLOR_SYN_STRING: tb2.Color
+COLOR_SYN_COMMENT: tb2.Color
+COLOR_SYN_CONSTANT: tb2.Color
+COLOR_SYN_ATTRIBUTE: tb2.Color
+COLOR_SYN_CODE: tb2.Color
+COLOR_GIT_ADD: tb2.Color
+COLOR_GIT_MOD: tb2.Color
+COLOR_GIT_DEL: tb2.Color
+COLOR_CONFLICT_OURS: tb2.Color
+COLOR_CONFLICT_THEIRS: tb2.Color
+COLOR_CONFLICT_BASE: tb2.Color
 
 config_colors := [?]Config_Color {
 	{"foreground", &COLOR_FG},
@@ -148,6 +240,23 @@ config_colors := [?]Config_Color {
 	{"filetree_ignored", &COLOR_FILETREE_IGNORED},
 }
 
+ICON_STATUS_FILE: string
+ICON_STATUS_BRANCH: string
+ICON_STATUS_AHEAD: string
+ICON_STATUS_BEHIND: string
+ICON_STATUS_LANG: string
+ICON_STATUS_LSP: string
+ICON_STATUS_INDENT: string
+ICON_MODIFIED: string
+ICON_TREE_EXPANDED: string
+ICON_TREE_COLLAPSED: string
+ICON_PREVIEW_MORE: string
+ICON_LSP_STARTING: string
+ICON_LSP_FAILED: string
+ICON_DIAG_ERROR: string
+ICON_DIAG_WARN: string
+ICON_DIAG_INFO: string
+
 config_icons := [?]Config_Str {
 	{"status_file", &ICON_STATUS_FILE},
 	{"status_branch", &ICON_STATUS_BRANCH},
@@ -166,6 +275,15 @@ config_icons := [?]Config_Str {
 	{"diagnostic_warning", &ICON_DIAG_WARN},
 	{"diagnostic_info", &ICON_DIAG_INFO},
 }
+
+CURRENT_LINE_TINT: f32
+AI_EDIT_TINT: f32
+GIT_HUNK_TINT: f32
+GIT_DIFF_GHOST_TINT: f32
+GIT_DIFF_WORD_TINT: f32
+CONFLICT_TINT: f32
+CONFLICT_MARKER_TINT: f32
+CONFLICT_WORD_TINT: f32
 
 config_tints := [?]Config_Float {
 	{"current_line", &CURRENT_LINE_TINT},
@@ -233,23 +351,61 @@ parse_keybind :: proc(s: string) -> (key: tb2.Key, alt_ch: rune, ok: bool) {
 	return {}, 0, false
 }
 
+embedded_config_data := #load("../config/config.json")
+
+g_config_defaults: json.Object
+g_theme_defaults: json.Object
+
+// Runs before main (and before tests): the valueless globals in config.odin get
+// their defaults from the embedded config/ JSON; soundness is enforced by tests.
+@(init)
+config_seed_defaults :: proc "contextless" () {
+	context = runtime.default_context()
+	root_val, err := json.parse(embedded_config_data, parse_integers = true, allocator = os.heap_allocator())
+	assert(err == nil, "embedded config/config.json failed to parse")
+	g_config_defaults = root_val.(json.Object)
+	name := string(g_config_defaults["theme"].(json.String))
+	for bt in bundled_themes {
+		if bt.name != name {
+			continue
+		}
+		theme_val, terr := json.parse(bt.data, parse_integers = true, allocator = os.heap_allocator())
+		assert(terr == nil, "embedded default theme failed to parse")
+		g_theme_defaults = theme_val.(json.Object)
+	}
+	assert(g_theme_defaults != nil, "config/config.json theme must name a bundled theme")
+	config_defaults_apply()
+	theme_reset_defaults()
+}
+
+config_defaults_apply :: proc() {
+	languages_reset_defaults()
+	invalid := make([dynamic]string, context.temp_allocator)
+	config_apply(g_config_defaults, &invalid)
+}
+
 config_load :: proc() -> (message: string, is_error: bool) {
 	path := config_path()
 	if path == "" {
-		languages_reset_defaults()
+		config_defaults_apply()
 		return "", false
 	}
 	return config_load_from(path)
 }
 
 config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
-	languages_reset_defaults()
+	config_defaults_apply()
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil {
 		if err := config_write(path, {}); err != nil {
 			return fmt.tprintf("config.json: could not create %s (%v)", path, err), true
 		}
-		return fmt.tprintf("Created config: %s", path), false
+		created := fmt.tprintf("Created config: %s", path)
+		theme_message, theme_error := theme_load(path)
+		if theme_message != "" {
+			return fmt.tprintf("%s; %s", created, theme_message), theme_error
+		}
+		return created, false
 	}
 
 	root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
@@ -262,8 +418,33 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 	}
 
 	invalid := make([dynamic]string, context.temp_allocator)
-	missing := false
+	missing := config_apply(root, &invalid)
 
+	if missing {
+		if err := config_write(path, root); err != nil {
+			return fmt.tprintf("config.json: could not update %s (%v)", path, err), true
+		}
+	}
+
+	theme_message, theme_error := theme_load(path)
+
+	if len(invalid) > 0 {
+		list := strings.join(invalid[:], ", ", context.temp_allocator)
+		message = fmt.tprintf("config.json: invalid %s (using defaults)", list)
+		is_error = true
+	} else if missing {
+		message = "config.json: wrote missing defaults"
+	}
+	if theme_message != "" {
+		if message == "" {
+			return theme_message, theme_error
+		}
+		return fmt.tprintf("%s; %s", message, theme_message), is_error || theme_error
+	}
+	return message, is_error
+}
+
+config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
 	for it in config_ints {
 		v, present := root[it.key]
 		if !present {
@@ -276,7 +457,7 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 		case json.Float:
 			it.ptr^ = int(n)
 		case:
-			append(&invalid, it.key)
+			append(invalid, it.key)
 		}
 	}
 
@@ -290,80 +471,17 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 		case json.Boolean:
 			it.ptr^ = bool(b)
 		case:
-			append(&invalid, it.key)
+			append(invalid, it.key)
 		}
 	}
 
 	if theme_val, present := root["theme"]; !present {
 		missing = true
-	} else if theme_obj, is_obj := theme_val.(json.Object); is_obj {
-		if col_val, has := theme_obj["colors"]; !has {
-			missing = true
-		} else if col_obj, col_is_obj := col_val.(json.Object); col_is_obj {
-			for c in config_colors {
-				v, chas := col_obj[c.key]
-				if !chas {
-					missing = true
-					continue
-				}
-				s, is_str := v.(json.String)
-				if !is_str {
-					append(&invalid, fmt.tprintf("theme/colors/%s", c.key))
-					continue
-				}
-				col, cok := parse_hex_color(string(s))
-				if !cok {
-					append(&invalid, fmt.tprintf("theme/colors/%s", c.key))
-					continue
-				}
-				c.ptr^ = col
-			}
-		} else {
-			append(&invalid, "theme/colors")
-		}
-
-		if ic_val, has := theme_obj["icons"]; !has {
-			missing = true
-		} else if ic_obj, ic_is_obj := ic_val.(json.Object); ic_is_obj {
-			for it in config_icons {
-				v, ihas := ic_obj[it.key]
-				if !ihas {
-					missing = true
-					continue
-				}
-				if s, is_str := v.(json.String); is_str {
-					it.ptr^ = strings.clone(string(s))
-				} else {
-					append(&invalid, fmt.tprintf("theme/icons/%s", it.key))
-				}
-			}
-		} else {
-			append(&invalid, "theme/icons")
-		}
-
-		if tn_val, has := theme_obj["tints"]; !has {
-			missing = true
-		} else if tn_obj, tn_is_obj := tn_val.(json.Object); tn_is_obj {
-			for it in config_tints {
-				v, thas := tn_obj[it.key]
-				if !thas {
-					missing = true
-					continue
-				}
-				#partial switch n in v {
-				case json.Float:
-					it.ptr^ = f32(n)
-				case json.Integer:
-					it.ptr^ = f32(n)
-				case:
-					append(&invalid, fmt.tprintf("theme/tints/%s", it.key))
-				}
-			}
-		} else {
-			append(&invalid, "theme/tints")
-		}
+	} else if s, is_str := theme_val.(json.String); is_str {
+		THEME = strings.clone(string(s))
 	} else {
-		append(&invalid, "theme")
+		// pre-themes/ object form: rewritten as the default theme name
+		missing = true
 	}
 
 	if kb_val, present := root["keybinds"]; !present {
@@ -377,7 +495,7 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			}
 			s, is_str := v.(json.String)
 			if !is_str {
-				append(&invalid, fmt.tprintf("keybinds/%s", cmd.name))
+				append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
 				continue
 			}
 			if s == "" {
@@ -388,7 +506,7 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			}
 			key, alt_ch, pok := parse_keybind(string(s))
 			if !pok {
-				append(&invalid, fmt.tprintf("keybinds/%s", cmd.name))
+				append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
 				continue
 			}
 			cmd.key = key
@@ -396,17 +514,17 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			cmd.shortcut = strings.clone(string(s))
 		}
 	} else {
-		append(&invalid, "keybinds")
+		append(invalid, "keybinds")
 	}
 
 	if lang_val, present := root["languages"]; !present {
 		missing = true
 	} else if lang_obj, is_obj := lang_val.(json.Object); is_obj {
-		if languages_from_config(lang_obj, &invalid) {
+		if languages_from_config(lang_obj, invalid) {
 			missing = true
 		}
 	} else {
-		append(&invalid, "languages")
+		append(invalid, "languages")
 	}
 
 	if llm_val, present := root["llm"]; !present {
@@ -420,7 +538,7 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			}
 			s, is_str := v.(json.String)
 			if !is_str {
-				append(&invalid, fmt.tprintf("llm/%s", it.key))
+				append(invalid, fmt.tprintf("llm/%s", it.key))
 				continue
 			}
 			it.ptr^ = strings.clone(string(s))
@@ -437,7 +555,7 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			case json.Float:
 				it.ptr^ = int(n)
 			case:
-				append(&invalid, fmt.tprintf("llm/%s", it.key))
+				append(invalid, fmt.tprintf("llm/%s", it.key))
 			}
 		}
 		for it in config_llm_bools {
@@ -449,27 +567,257 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			if b, is_bool := v.(json.Boolean); is_bool {
 				it.ptr^ = bool(b)
 			} else {
-				append(&invalid, fmt.tprintf("llm/%s", it.key))
+				append(invalid, fmt.tprintf("llm/%s", it.key))
 			}
 		}
 	} else {
-		append(&invalid, "llm")
+		append(invalid, "llm")
+	}
+	return
+}
+
+THEME: string
+
+Bundled_Theme :: struct {
+	name: string,
+	data: []u8,
+}
+
+bundled_themes := [?]Bundled_Theme {
+	{"gruber-darker", #load("../config/themes/gruber-darker.json")},
+	{"atom-one-dark", #load("../config/themes/atom-one-dark.json")},
+}
+
+theme_path :: proc(cfg_path: string, name: string, allocator := context.temp_allocator) -> string {
+	dir := config_dir(cfg_path)
+	if dir == "" {
+		return fmt.aprintf("themes/%s.json", name, allocator = allocator)
+	}
+	return fmt.aprintf("%s/themes/%s.json", dir, name, allocator = allocator)
+}
+
+theme_reset_defaults :: proc() {
+	invalid := make([dynamic]string, context.temp_allocator)
+	theme_apply(g_theme_defaults, &invalid)
+}
+
+themes_materialize :: proc(cfg_path: string) -> (message: string, is_error: bool) {
+	created := make([dynamic]string, context.temp_allocator)
+	for bt in bundled_themes {
+		path := theme_path(cfg_path, bt.name)
+		if os.exists(path) {
+			continue
+		}
+		if dir := config_dir(path); dir != "" {
+			os.make_directory_all(dir)
+		}
+		if err := os.write_entire_file(path, bt.data); err != nil {
+			return fmt.tprintf("theme: could not create %s (%v)", path, err), true
+		}
+		append(&created, bt.name)
+	}
+	if len(created) > 0 {
+		list := strings.join(created[:], ", ", context.temp_allocator)
+		return fmt.tprintf("Created themes: %s", list), false
+	}
+	return "", false
+}
+
+theme_msg_join :: proc(a, b: string) -> string {
+	if a == "" {
+		return b
+	}
+	if b == "" {
+		return a
+	}
+	return fmt.tprintf("%s; %s", a, b)
+}
+
+theme_load :: proc(cfg_path: string) -> (message: string, is_error: bool) {
+	theme_reset_defaults()
+	created, cfail := themes_materialize(cfg_path)
+	if cfail {
+		return created, true
+	}
+	path := theme_path(cfg_path, THEME)
+	data, read_err := os.read_entire_file(path, context.temp_allocator)
+	if read_err != nil {
+		return theme_msg_join(created, fmt.tprintf("theme %q: no %s, using defaults", THEME, path)), true
 	}
 
+	root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
+	if perr != nil {
+		return theme_msg_join(created, fmt.tprintf("theme %q: parse error, using defaults", THEME)), true
+	}
+	root, is_obj := root_val.(json.Object)
+	if !is_obj {
+		return theme_msg_join(created, fmt.tprintf("theme %q: expected a JSON object, using defaults", THEME)), true
+	}
+
+	invalid := make([dynamic]string, context.temp_allocator)
+	missing := theme_apply(root, &invalid)
+
 	if missing {
-		if err := config_write(path, root); err != nil {
-			return fmt.tprintf("config.json: could not update %s (%v)", path, err), true
+		if err := theme_write(path, root); err != nil {
+			return fmt.tprintf("theme %q: could not update %s (%v)", THEME, path, err), true
 		}
 	}
 
 	if len(invalid) > 0 {
 		list := strings.join(invalid[:], ", ", context.temp_allocator)
-		return fmt.tprintf("config.json: invalid %s (using defaults)", list), true
+		return theme_msg_join(created, fmt.tprintf("theme %q: invalid %s (using defaults)", THEME, list)), true
 	}
 	if missing {
-		return "config.json: wrote missing defaults", false
+		return theme_msg_join(created, fmt.tprintf("theme %q: wrote missing defaults", THEME)), false
 	}
-	return "", false
+	return created, false
+}
+
+theme_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
+	if col_val, has := root["colors"]; !has {
+		missing = true
+	} else if col_obj, col_is_obj := col_val.(json.Object); col_is_obj {
+		for c in config_colors {
+			v, chas := col_obj[c.key]
+			if !chas {
+				missing = true
+				continue
+			}
+			s, is_str := v.(json.String)
+			if !is_str {
+				append(invalid, fmt.tprintf("colors/%s", c.key))
+				continue
+			}
+			col, cok := parse_hex_color(string(s))
+			if !cok {
+				append(invalid, fmt.tprintf("colors/%s", c.key))
+				continue
+			}
+			c.ptr^ = col
+		}
+	} else {
+		append(invalid, "colors")
+	}
+
+	if ic_val, has := root["icons"]; !has {
+		missing = true
+	} else if ic_obj, ic_is_obj := ic_val.(json.Object); ic_is_obj {
+		for it in config_icons {
+			v, ihas := ic_obj[it.key]
+			if !ihas {
+				missing = true
+				continue
+			}
+			if s, is_str := v.(json.String); is_str {
+				it.ptr^ = strings.clone(string(s))
+			} else {
+				append(invalid, fmt.tprintf("icons/%s", it.key))
+			}
+		}
+	} else {
+		append(invalid, "icons")
+	}
+
+	if tn_val, has := root["tints"]; !has {
+		missing = true
+	} else if tn_obj, tn_is_obj := tn_val.(json.Object); tn_is_obj {
+		for it in config_tints {
+			v, thas := tn_obj[it.key]
+			if !thas {
+				missing = true
+				continue
+			}
+			#partial switch n in v {
+			case json.Float:
+				it.ptr^ = f32(n)
+			case json.Integer:
+				it.ptr^ = f32(n)
+			case:
+				append(invalid, fmt.tprintf("tints/%s", it.key))
+			}
+		}
+	} else {
+		append(invalid, "tints")
+	}
+	return
+}
+
+theme_write :: proc(path: string, root: json.Object) -> os.Error {
+	if dir := config_dir(path); dir != "" {
+		os.make_directory_all(dir)
+	}
+
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, "{\n")
+
+	fmt.sbprintf(&sb, "  %s: ", lsp_json_string("colors"))
+	col_raw, col_present := root["colors"]
+	if col_obj, is_obj := col_raw.(json.Object); col_present && !is_obj {
+		config_value_text(&sb, col_raw)
+	} else {
+		strings.write_string(&sb, "{\n")
+		sec_first := true
+		for c in config_colors {
+			if !sec_first {
+				strings.write_string(&sb, ",\n")
+			}
+			sec_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(c.key))
+			if v, has := col_obj[c.key]; has {
+				config_value_text(&sb, v)
+			} else {
+				strings.write_string(&sb, lsp_json_string(color_to_hex(c.ptr^)))
+			}
+		}
+		strings.write_string(&sb, "\n  }")
+	}
+
+	fmt.sbprintf(&sb, ",\n  %s: ", lsp_json_string("icons"))
+	ic_raw, ic_present := root["icons"]
+	if ic_obj, is_obj := ic_raw.(json.Object); ic_present && !is_obj {
+		config_value_text(&sb, ic_raw)
+	} else {
+		strings.write_string(&sb, "{\n")
+		sec_first := true
+		for it in config_icons {
+			if !sec_first {
+				strings.write_string(&sb, ",\n")
+			}
+			sec_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
+			if v, has := ic_obj[it.key]; has {
+				config_value_text(&sb, v)
+			} else {
+				strings.write_string(&sb, lsp_json_string(it.ptr^))
+			}
+		}
+		strings.write_string(&sb, "\n  }")
+	}
+
+	fmt.sbprintf(&sb, ",\n  %s: ", lsp_json_string("tints"))
+	tn_raw, tn_present := root["tints"]
+	if tn_obj, is_obj := tn_raw.(json.Object); tn_present && !is_obj {
+		config_value_text(&sb, tn_raw)
+	} else {
+		strings.write_string(&sb, "{\n")
+		sec_first := true
+		for it in config_tints {
+			if !sec_first {
+				strings.write_string(&sb, ",\n")
+			}
+			sec_first = false
+			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
+			if v, has := tn_obj[it.key]; has {
+				config_value_text(&sb, v)
+			} else {
+				fmt.sbprintf(&sb, "%.2f", it.ptr^)
+			}
+		}
+		strings.write_string(&sb, "\n  }")
+	}
+
+	strings.write_string(&sb, "\n}\n")
+	return os.write_entire_file(path, transmute([]byte)strings.to_string(sb))
 }
 
 languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
@@ -578,79 +926,10 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 	}
 
 	emit_key(&sb, &first, "theme")
-	theme_raw, theme_present := root["theme"]
-	if theme_obj, is_obj := theme_raw.(json.Object); theme_present && !is_obj {
-		config_value_text(&sb, theme_raw)
+	if s, is_str := root["theme"].(json.String); is_str {
+		strings.write_string(&sb, lsp_json_string(string(s)))
 	} else {
-		strings.write_string(&sb, "{\n")
-
-		fmt.sbprintf(&sb, "    %s: ", lsp_json_string("colors"))
-		col_raw, col_present := theme_obj["colors"]
-		if col_obj, col_is_obj := col_raw.(json.Object); col_present && !col_is_obj {
-			config_value_text(&sb, col_raw)
-		} else {
-			strings.write_string(&sb, "{\n")
-			th_first := true
-			for c in config_colors {
-				if !th_first {
-					strings.write_string(&sb, ",\n")
-				}
-				th_first = false
-				fmt.sbprintf(&sb, "      %s: ", lsp_json_string(c.key))
-				if v, has := col_obj[c.key]; has {
-					config_value_text(&sb, v)
-				} else {
-					strings.write_string(&sb, lsp_json_string(color_to_hex(c.ptr^)))
-				}
-			}
-			strings.write_string(&sb, "\n    }")
-		}
-
-		fmt.sbprintf(&sb, ",\n    %s: ", lsp_json_string("icons"))
-		ic_raw, ic_present := theme_obj["icons"]
-		if ic_obj, ic_is_obj := ic_raw.(json.Object); ic_present && !ic_is_obj {
-			config_value_text(&sb, ic_raw)
-		} else {
-			strings.write_string(&sb, "{\n")
-			th_first := true
-			for it in config_icons {
-				if !th_first {
-					strings.write_string(&sb, ",\n")
-				}
-				th_first = false
-				fmt.sbprintf(&sb, "      %s: ", lsp_json_string(it.key))
-				if v, has := ic_obj[it.key]; has {
-					config_value_text(&sb, v)
-				} else {
-					strings.write_string(&sb, lsp_json_string(it.ptr^))
-				}
-			}
-			strings.write_string(&sb, "\n    }")
-		}
-
-		fmt.sbprintf(&sb, ",\n    %s: ", lsp_json_string("tints"))
-		tn_raw, tn_present := theme_obj["tints"]
-		if tn_obj, tn_is_obj := tn_raw.(json.Object); tn_present && !tn_is_obj {
-			config_value_text(&sb, tn_raw)
-		} else {
-			strings.write_string(&sb, "{\n")
-			th_first := true
-			for it in config_tints {
-				if !th_first {
-					strings.write_string(&sb, ",\n")
-				}
-				th_first = false
-				fmt.sbprintf(&sb, "      %s: ", lsp_json_string(it.key))
-				if v, has := tn_obj[it.key]; has {
-					config_value_text(&sb, v)
-				} else {
-					fmt.sbprintf(&sb, "%.2f", it.ptr^)
-				}
-			}
-			strings.write_string(&sb, "\n    }")
-		}
-
-		strings.write_string(&sb, "\n  }")
+		strings.write_string(&sb, lsp_json_string(THEME))
 	}
 
 	emit_key(&sb, &first, "keybinds")
@@ -766,19 +1045,9 @@ config_write :: proc(path: string, root: json.Object) -> os.Error {
 }
 
 config_write_pattern_array :: proc(sb: ^strings.Builder, lang: Language) {
-	strings.write_byte(sb, '[')
-	first := true
-	for def in DEFAULT_LANGUAGES {
-		if def.language != lang {
-			continue
-		}
-		if !first {
-			strings.write_string(sb, ", ")
-		}
-		first = false
-		strings.write_string(sb, lsp_json_string(def.pattern))
-	}
-	strings.write_byte(sb, ']')
+	langs, _ := g_config_defaults["languages"].(json.Object)
+	sub, _ := langs[LANGUAGES[lang].name].(json.Object)
+	config_value_text(sb, sub["patterns"])
 }
 
 config_dir :: proc(path: string) -> string {
