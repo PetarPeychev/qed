@@ -356,9 +356,16 @@ filetree_load_preview :: proc(editor: ^Editor) {
 filetree_set_expanded :: proc(t: ^FileTree, path: string, val: bool) {
 	if path in t.expanded {
 		t.expanded[path] = val
-	} else if val {
-		t.expanded[strings.clone(path)] = true
+	} else {
+		t.expanded[strings.clone(path)] = val
 	}
+}
+
+filetree_dir_expanded :: proc(t: ^FileTree, path: string) -> bool {
+	if val, present := t.expanded[path]; present {
+		return val
+	}
+	return t.scope != .All
 }
 
 filetree_parent_dir :: proc(path: string) -> string {
@@ -408,7 +415,7 @@ filetree_read_dir :: proc(t: ^FileTree, dir: string, depth: int) {
 			name = path[idx + 1:]
 		}
 		append(&t.entries, FileEntry{path, name, depth, r.is_dir})
-		if r.is_dir && (scoped || t.expanded[path]) {
+		if r.is_dir && filetree_dir_expanded(t, path) {
 			filetree_read_dir(t, path, depth + 1)
 		}
 	}
@@ -509,15 +516,47 @@ filetree_mark_expanded :: proc(t: ^FileTree, dir: string) {
 	}
 }
 
+filetree_any_expanded :: proc(t: ^FileTree) -> bool {
+	for e in t.entries {
+		if e.is_dir && filetree_dir_expanded(t, e.path) {
+			return true
+		}
+	}
+	return false
+}
+
 filetree_expand_all :: proc(editor: ^Editor) {
 	t := &editor.filetree
-	filetree_scan_status(editor)
-	filetree_mark_expanded(t, editor.working_root)
+	if t.scope == .All {
+		filetree_scan_status(editor)
+		filetree_mark_expanded(t, editor.working_root)
+		filetree_rebuild(editor)
+		return
+	}
+	drop := make([dynamic]string, context.temp_allocator)
+	for key, val in t.expanded {
+		if !val {
+			append(&drop, key)
+		}
+	}
+	for key in drop {
+		delete_key(&t.expanded, key)
+		delete(key)
+	}
 	filetree_rebuild(editor)
 }
 
 filetree_collapse_all :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	if t.scope != .All {
+		for e in t.entries {
+			if e.is_dir {
+				filetree_set_expanded(t, e.path, false)
+			}
+		}
+		filetree_rebuild(editor)
+		return
+	}
 	for key in t.expanded {
 		delete(key)
 	}
@@ -526,14 +565,11 @@ filetree_collapse_all :: proc(editor: ^Editor) {
 }
 
 filetree_toggle_expand_all :: proc(editor: ^Editor) {
-	t := &editor.filetree
-	for _, open in t.expanded {
-		if open {
-			filetree_collapse_all(editor)
-			return
-		}
+	if filetree_any_expanded(&editor.filetree) {
+		filetree_collapse_all(editor)
+	} else {
+		filetree_expand_all(editor)
 	}
-	filetree_expand_all(editor)
 }
 
 filetree_toggle_dotfiles :: proc(editor: ^Editor) {
@@ -566,7 +602,7 @@ filetree_activate :: proc(editor: ^Editor) {
 		return
 	}
 	if e.is_dir {
-		filetree_set_expanded(t, e.path, !t.expanded[e.path])
+		filetree_set_expanded(t, e.path, !filetree_dir_expanded(t, e.path))
 		filetree_rebuild(editor)
 		return
 	}
@@ -802,7 +838,7 @@ filetree_row_label :: proc(t: ^FileTree, e: FileEntry) -> string {
 		strings.write_string(&sb, "  ")
 	}
 	if e.is_dir {
-		strings.write_string(&sb, ICON_TREE_EXPANDED if t.expanded[e.path] else ICON_TREE_COLLAPSED)
+		strings.write_string(&sb, ICON_TREE_EXPANDED if filetree_dir_expanded(t, e.path) else ICON_TREE_COLLAPSED)
 		strings.write_byte(&sb, ' ')
 		strings.write_string(&sb, e.name)
 		strings.write_byte(&sb, '/')
@@ -912,13 +948,7 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 	prompt := ""
 	switch t.mode {
 	case .Nav:
-		any_expanded := false
-		for _, open in t.expanded {
-			if open {
-				any_expanded = true
-				break
-			}
-		}
+		any_expanded := filetree_any_expanded(t)
 		Toggle :: struct {
 			label: string,
 			on:    bool,
