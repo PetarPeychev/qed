@@ -14,7 +14,6 @@ Shipped list. Groups are priority buckets, not a build order.
 - [ ] Status bar: show git branch + ahead/behind (watch the one-line budget — may need abbreviating).
 - [ ] Go-to-line-number (`:42`-style exact jump, distinct from `Ctrl+F` content search).
 - [ ] Save all modified buffers in one command.
-- [ ] Whole-line copy/cut on empty selection: `Ctrl+C` copies the line, `Ctrl+X` cuts it (= delete line).
 - [ ] Sticky scroll: pin the enclosing scope header (function/block) at the top while scrolled — tree-sitter tree.
 - [ ] Command palette: order entries by recency of use, persisted cross-session (needs a small state file).
 - [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, palette MRU, etc. Figure out scope + format before building.

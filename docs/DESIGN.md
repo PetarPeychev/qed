@@ -385,7 +385,7 @@ insert/delete primitives + grouped undo/redo, bracket/colon-aware auto-indent
 (Enter indents after an opener / Python `:`, splits a matched `{}` pair, closing
 bracket re-aligns to its opener), selection +
 selection-aware editing, block indent/dedent, tab-stop backspace (deletes a full
-indent in leading whitespace), clipboard (external + fallback),
+indent in leading whitespace), clipboard (external + fallback; empty-selection `Ctrl+C`/`Ctrl+X` copy/cut the whole line),
 full Unicode (grapheme + display width), tab-char display + per-buffer
 tabs/spaces + indent-width detect (`Change Indentation` command: Auto-detect /
 Tabs / Spaces:1–4; literal-tab display width stays the global `tab_width`),
