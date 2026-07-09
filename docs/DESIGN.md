@@ -448,7 +448,10 @@ mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-sele
 prompt fields, click-away dismiss).
 Preview panes (file-open, file-tree, project-search, buffer switcher, line jump) share one
 scrollable, syntax-highlighted `Preview` component (`preview.odin`): wheel-scrollable while
-the pointer is over the right pane, highlighting line 1→viewport+lookahead (`preview_parse_ahead`)
+the pointer is over the right pane, soft-wrapping long lines (word-boundary via `line_wrap`,
+blank continuation gutter, tab-aware — always on, no horizontal scroll; the scroll clamp
+`preview_max_scroll` is wrap-aware so a wrapped tail stays reachable), highlighting line
+1→viewport+lookahead (`preview_parse_ahead`)
 and re-highlighting from the top as it scrolls, size-gated at `HIGHLIGHT_ASYNC_BYTES`
 (window-only above it), capped at `preview_max_lines`. File source loads lazily via `head`;
 buffer source (switcher/line jump) previews in-memory content. The file-tree **Git** tab

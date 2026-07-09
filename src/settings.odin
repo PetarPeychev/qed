@@ -379,6 +379,23 @@ config_seed_defaults :: proc "contextless" () {
 	theme_reset_defaults()
 }
 
+// Frees the string knobs that config_apply/theme_apply clone into globals. Runs
+// once at program exit (after main + all tests), mirroring config_seed_defaults.
+@(fini)
+settings_destroy :: proc "contextless" () {
+	context = runtime.default_context()
+	delete(THEME, os.heap_allocator())
+	for &cmd in commands {
+		delete(cmd.shortcut, os.heap_allocator())
+	}
+	for it in config_llm {
+		delete(it.ptr^, os.heap_allocator())
+	}
+	for it in config_icons {
+		delete(it.ptr^, os.heap_allocator())
+	}
+}
+
 config_defaults_apply :: proc() {
 	languages_reset_defaults()
 	invalid := make([dynamic]string, context.temp_allocator)
@@ -479,7 +496,8 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: 
 	if theme_val, present := root["theme"]; !present {
 		missing = true
 	} else if s, is_str := theme_val.(json.String); is_str {
-		THEME = strings.clone(string(s))
+		delete(THEME, os.heap_allocator())
+		THEME = strings.clone(string(s), os.heap_allocator())
 	} else {
 		// pre-themes/ object form: rewritten as the default theme name
 		missing = true
@@ -502,6 +520,7 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: 
 			if s == "" {
 				cmd.key = tb2.Key(0)
 				cmd.alt_ch = 0
+				delete(cmd.shortcut, os.heap_allocator())
 				cmd.shortcut = ""
 				continue
 			}
@@ -512,7 +531,8 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: 
 			}
 			cmd.key = key
 			cmd.alt_ch = alt_ch
-			cmd.shortcut = strings.clone(string(s))
+			delete(cmd.shortcut, os.heap_allocator())
+			cmd.shortcut = strings.clone(string(s), os.heap_allocator())
 		}
 	} else {
 		append(invalid, "keybinds")
@@ -542,7 +562,8 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: 
 				append(invalid, fmt.tprintf("llm/%s", it.key))
 				continue
 			}
-			it.ptr^ = strings.clone(string(s))
+			delete(it.ptr^, os.heap_allocator())
+			it.ptr^ = strings.clone(string(s), os.heap_allocator())
 		}
 		for it in config_llm_ints {
 			v, has := llm_obj[it.key]
@@ -654,7 +675,8 @@ theme_preview :: proc(cfg_path: string, name: string) -> bool {
 }
 
 theme_persist :: proc(name: string) -> bool {
-	THEME = strings.clone(name)
+	delete(THEME, os.heap_allocator())
+	THEME = strings.clone(name, os.heap_allocator())
 	path := config_path()
 	if path == "" {
 		return false
@@ -785,7 +807,8 @@ theme_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: b
 				continue
 			}
 			if s, is_str := v.(json.String); is_str {
-				it.ptr^ = strings.clone(string(s))
+				delete(it.ptr^, os.heap_allocator())
+				it.ptr^ = strings.clone(string(s), os.heap_allocator())
 			} else {
 				append(invalid, fmt.tprintf("icons/%s", it.key))
 			}

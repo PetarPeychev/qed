@@ -36,6 +36,7 @@ Preview :: struct {
 	no_highlight: bool,
 	path:         string,
 	complete:     bool,
+	width:        int,
 }
 
 preview_rows_clear :: proc(p: ^Preview) {
@@ -60,6 +61,7 @@ preview_reset :: proc(p: ^Preview) {
 	p.scroll = 0
 	p.focus = 0
 	p.numw = 0
+	p.width = 0
 	p.diff = false
 	p.no_highlight = false
 	p.complete = false
@@ -128,7 +130,7 @@ preview_ensure :: proc(p: ^Preview, view_h: int) {
 	if p.path != "" && !p.complete && want > len(p.src) {
 		preview_file_reload(p, want)
 	}
-	p.scroll = clamp(p.scroll, 0, max(0, preview_total(p) - view_h))
+	p.scroll = clamp(p.scroll, 0, preview_max_scroll(p, view_h))
 	preview_content_extend(p, view_h)
 }
 
@@ -337,8 +339,44 @@ preview_pair_old :: proc(hunks: []GitHunk, base_text: []string, row: int) -> (st
 	return "", false
 }
 
+preview_row_str :: proc(p: ^Preview, i: int) -> (string, PreviewRowKind) {
+	if p.diff {
+		return p.rows[i].text, p.rows[i].kind
+	}
+	return p.src[i], .Content
+}
+
+preview_visual_h :: proc(p: ^Preview, i, textw: int) -> int {
+	text, kind := preview_row_str(p, i)
+	if kind == .Gap || textw <= 0 {
+		return 1
+	}
+	return len(line_wrap(transmute([]u8)text, textw))
+}
+
+// Largest scroll (top logical row) that still pins the last visual row to the
+// bottom, so a soft-wrapped tail stays reachable. Falls back to whole-row math
+// until the first render records the pane width.
+preview_max_scroll :: proc(p: ^Preview, view_h: int) -> int {
+	total := preview_total(p)
+	textw := p.width - (p.numw + 2)
+	if p.width <= 0 || textw <= 0 {
+		return max(0, total - view_h)
+	}
+	acc, top := 0, total
+	for i := total - 1; i >= 0; i -= 1 {
+		hgt := preview_visual_h(p, i, textw)
+		if acc + hgt > view_h {
+			break
+		}
+		acc += hgt
+		top = i
+	}
+	return min(top, max(0, total - 1))
+}
+
 preview_scroll_by :: proc(p: ^Preview, delta, view_h: int) {
-	p.scroll = clamp(p.scroll + delta, 0, max(0, preview_total(p) - view_h))
+	p.scroll = clamp(p.scroll + delta, 0, preview_max_scroll(p, view_h))
 	preview_ensure(p, view_h)
 }
 
@@ -358,32 +396,58 @@ preview_wheel :: proc(p: ^Preview, ev: tb2.Event, right: Rect, view_h: int) -> b
 	return false
 }
 
-preview_gutter :: proc(numw, lineno: int, text: string) -> string {
-	if lineno <= 0 {
-		pad := strings.repeat(" ", numw, context.temp_allocator)
-		return fmt.tprintf("%s  %s", pad, text)
+// Screen columns spanned by `text[:upto]`, tab-aware; every other cluster counts
+// as width 1 (the preview's simple model, matching `preview_draw_seg`).
+preview_vcol :: proc(text: string, upto: int) -> int {
+	col, i := 0, 0
+	for i < upto && i < len(text) {
+		r, sz := utf8.decode_rune(text[i:])
+		if r == '\t' {
+			col = (col / TAB_WIDTH + 1) * TAB_WIDTH
+		} else {
+			col += 1
+		}
+		i += sz
 	}
-	num := fmt.tprintf("%d", lineno)
-	pad := strings.repeat(" ", max(0, numw - len(num)), context.temp_allocator)
-	return fmt.tprintf("%s%s  %s", pad, num, text)
+	return col
 }
 
-preview_draw_row :: proc(x, y, w: int, label: string, colors: []tb2.Color, off: int, base_fg, bg: tb2.Color, span: [2]int, span_bg: tb2.Color) {
+preview_draw_gutter :: proc(x, y, numw, lineno: int, fg, bg: tb2.Color) {
+	s: string
+	if lineno <= 0 {
+		s = strings.repeat(" ", numw + 2, context.temp_allocator)
+	} else {
+		num := fmt.tprintf("%d", lineno)
+		pad := strings.repeat(" ", max(0, numw - len(num)), context.temp_allocator)
+		s = fmt.tprintf("%s%s  ", pad, num)
+	}
 	col := 0
-	i := 0
-	for i < len(label) && col < w {
-		r, sz := utf8.decode_rune(label[i:])
+	for r in s {
+		tb2.set_cell(i32(x + col), i32(y), r, fg, bg)
+		col += 1
+	}
+}
+
+// Draws the byte range [seg_start, seg_end) of `text` on one visual row.
+// `x_origin` is the absolute screen column of `seg_start` (0 for the first
+// segment, past-the-break for wrap continuations) so tab stops stay aligned.
+// `colors` and `span` are indexed by absolute byte offset into `text`.
+preview_draw_seg :: proc(x, y, w: int, text: string, colors: []tb2.Color, seg_start, seg_end, x_origin: int, base_fg, bg: tb2.Color, span: [2]int, span_bg: tb2.Color) {
+	col := 0
+	i := seg_start
+	for i < seg_end && col < w {
+		r, sz := utf8.decode_rune(text[i:])
 		fg := base_fg
-		ci := i - off
-		if ci >= 0 && ci < len(colors) {
-			fg = colors[ci]
+		if i < len(colors) {
+			fg = colors[i]
 		}
 		cell_bg := bg
-		if span[0] != span[1] && i >= span[0] + off && i < span[1] + off {
+		if span[0] != span[1] && i >= span[0] && i < span[1] {
 			cell_bg = span_bg
 		}
 		if r == '\t' {
-			next := (col / TAB_WIDTH + 1) * TAB_WIDTH
+			abs := x_origin + col
+			next := (abs / TAB_WIDTH + 1) * TAB_WIDTH - x_origin
 			for col < next && col < w {
 				tb2.set_cell(i32(x + col), i32(y), ' ', fg, cell_bg)
 				col += 1
@@ -401,45 +465,60 @@ preview_draw_row :: proc(x, y, w: int, label: string, colors: []tb2.Color, off: 
 }
 
 preview_render :: proc(p: ^Preview, x, y, w, h: int) {
+	p.width = w
 	add_bg := color_over(COLOR_PANE_BG, COLOR_GIT_ADD, GIT_HUNK_TINT)
 	mod_bg := color_over(COLOR_PANE_BG, COLOR_GIT_MOD, GIT_HUNK_TINT)
 	ghost_bg := color_over(COLOR_PANE_BG, COLOR_GIT_DEL, GIT_DIFF_GHOST_TINT)
 	ghost_word := color_over(COLOR_PANE_BG, COLOR_GIT_DEL, GIT_DIFF_WORD_TINT)
 	mod_word := color_over(COLOR_PANE_BG, COLOR_GIT_MOD, GIT_DIFF_WORD_TINT)
 
-	for i in 0 ..< h {
-		ri := p.scroll + i
-		if ri < 0 || ri >= len(p.rows) {
-			break
-		}
+	gutterw := p.numw + 2
+	textw := max(0, w - gutterw)
+	sy := 0
+	ri := p.scroll
+	for sy < h && ri < len(p.rows) {
 		row := p.rows[ri]
-		ry := y + i
+		ri += 1
 		if row.kind == .Gap {
-			preview_draw_row(x, ry, w, fmt.tprintf("  %s", ICON_PREVIEW_MORE), nil, 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
+			preview_draw_gutter(x, y + sy, p.numw, 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+			preview_draw_seg(x + gutterw, y + sy, textw, ICON_PREVIEW_MORE, nil, 0, len(ICON_PREVIEW_MORE), 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
+			sy += 1
 			continue
 		}
-		label := preview_gutter(p.numw, row.lineno, row.text)
-		off := len(label) - len(row.text)
-		if p.focus > 0 && !p.diff && row.lineno == p.focus {
-			preview_draw_row(x, ry, w, label, nil, off, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
-			continue
-		}
+
 		base_fg := COLOR_PANE_FG
 		bg := COLOR_PANE_BG
 		word_bg := COLOR_PANE_BG
 		colors := row.colors[:]
-		#partial switch row.kind {
-		case .Ghost:
-			base_fg = COLOR_GHOST_FG
-			bg = ghost_bg
-			word_bg = ghost_word
+		if p.focus > 0 && !p.diff && row.lineno == p.focus {
+			base_fg = COLOR_PANE_PROMPT_FG
 			colors = nil
-		case .Added:
-			bg = add_bg
-		case .Modified:
-			bg = mod_bg
-			word_bg = mod_word
+		} else {
+			#partial switch row.kind {
+			case .Ghost:
+				base_fg = COLOR_GHOST_FG
+				bg = ghost_bg
+				word_bg = ghost_word
+				colors = nil
+			case .Added:
+				bg = add_bg
+			case .Modified:
+				bg = mod_bg
+				word_bg = mod_word
+			}
 		}
-		preview_draw_row(x, ry, w, label, colors, off, base_fg, bg, row.span, word_bg)
+
+		segs := line_wrap(transmute([]u8)row.text, textw)
+		for s in 0 ..< len(segs) {
+			if sy >= h {
+				break
+			}
+			seg_start := segs[s]
+			seg_end := segs[s + 1] if s + 1 < len(segs) else len(row.text)
+			x_origin := preview_vcol(row.text, seg_start)
+			preview_draw_gutter(x, y + sy, p.numw, row.lineno if s == 0 else 0, base_fg, bg)
+			preview_draw_seg(x + gutterw, y + sy, textw, row.text, colors, seg_start, seg_end, x_origin, base_fg, bg, row.span, word_bg)
+			sy += 1
+		}
 	}
 }
