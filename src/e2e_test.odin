@@ -54,7 +54,12 @@ e2e_backend_init :: proc() {
 		}
 	})
 	e2e_slave = slave
-	tb2.init_fd(i32(slave))
+	// CI runners leave TERM unset or `dumb`, which termbox2 can't map to any
+	// terminfo/builtin caps — init_fd then fails and the back buffer we read
+	// back stays blank. Force an xterm-family value (builtin caps, terminfo or
+	// not) so read-back works regardless of the runner's environment.
+	posix.setenv("TERM", "xterm-256color", true)
+	assert(tb2.init_fd(i32(slave)) == .Ok, "tb2.init_fd failed")
 	tb2.set_output_mode(.Truecolor)
 	tb2.set_input_mode(.Mouse)
 }
