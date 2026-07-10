@@ -44,16 +44,17 @@ Closing a ticket has a fixed sequence:
    him to confirm.
 3. **Only after Petar verifies it** — never self-check first — *you* remove the
    item from `docs/TODO.md`, update DESIGN.md (Shipped list / architecture) if it
-   changed anything, then commit & push (direct to `master`).
+   changed anything, then commit & push (direct to `master`), then tag the release
+   (see Versioning: minor for a feature, patch for a fix) and push the tag.
 
-**Versioning:** pushing to `master` is routine and does **not** cut a release —
-just `git push`. Releases are **deliberate milestones**: when the tip is a
-coherent increment worth downloading, tag it and the tag drives the release
-workflow (`git tag vX.Y.Z && git push origin vX.Y.Z`). Scheme is
-`v0.MINOR.PATCH` — **minor** for features, **patch** for fixes; `v1.0.0` is
+**Versioning:** every shipped feature or bugfix gets a new tag. After the change
+is verified, committed, and pushed to `master`, tag it and push the tag — the tag
+drives the release workflow (`git tag vX.Y.Z && git push origin vX.Y.Z`). Scheme
+is `v0.MINOR.PATCH` — **minor** for a feature, **patch** for a fix; `v1.0.0` is
 reserved for the first stable daily-driver build (README/manual, language
 support, config). A pushed `v*` tag runs build **and** tests before it packages,
-so a released binary is always green.
+so a released binary is always green. (Docs-only / refactor pushes that ship no
+user-visible change don't need a tag.)
 
 ## Build & run
 
