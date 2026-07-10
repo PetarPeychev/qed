@@ -151,7 +151,7 @@ find_scan :: proc(editor: ^Editor) {
 find_pick_current :: proc(f: ^Find) {
 	f.current = -1
 	for m, i in f.matches {
-		if m.row > f.origin.row || (m.row == f.origin.row && m.from >= f.origin.col) {
+		if m.row > f.origin.row || (m.row == f.origin.row && m.to >= f.origin.col) {
 			f.current = i
 			return
 		}
