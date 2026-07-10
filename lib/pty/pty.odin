@@ -10,6 +10,13 @@ foreign import _util "system:util"
 foreign lib {
 	qed_pty_spawn :: proc(rows, cols: c.int, shell, cwd: cstring, out_pid: ^c.int) -> c.int ---
 	qed_pty_resize :: proc(fd, rows, cols: c.int) ---
+	qed_pty_open :: proc(rows, cols: c.int, out_master, out_slave: ^c.int) -> c.int ---
+}
+
+open :: proc(rows, cols: int) -> (master, slave: int, ok: bool) {
+	m, s: c.int
+	rc := qed_pty_open(c.int(rows), c.int(cols), &m, &s)
+	return int(m), int(s), rc == 0
 }
 
 spawn :: proc(rows, cols: int, shell, cwd: string) -> (fd: int, pid: int) {

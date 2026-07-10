@@ -64,18 +64,24 @@ Editor :: struct {
 	aiedit:          AiEdit,
 	fim:             Fim,
 	terminal:        Terminal,
+	headless:        bool,
 }
 
-editor_init :: proc(path: string = "") -> Editor {
-	tb2.init()
-	tb2.set_output_mode(.Truecolor)
-	tb2.set_input_mode(.Mouse)
-	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
+editor_init :: proc(path: string = "", headless := false) -> Editor {
+	// headless: a test has already brought up the termbox backend (init_fd on a
+	// PTS) and owns its teardown; skip the real-terminal bring-up here.
+	if !headless {
+		tb2.init()
+		tb2.set_output_mode(.Truecolor)
+		tb2.set_input_mode(.Mouse)
+		tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
+	}
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		format_on_save = FORMAT_ON_SAVE,
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
 		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED},
+		headless       = headless,
 	}
 	g_diff_view = GIT_DIFF_VIEW
 	editor.config_stamp = buffer_disk_stamp(config_path())
@@ -130,10 +136,15 @@ editor_shutdown :: proc(editor: ^Editor) {
 	fim_dismiss(editor)
 	aiedit_destroy(&editor.aiedit)
 	term_destroy(editor)
-	delete(g_language_rules)
-	syntax_shutdown()
-	clipboard_shutdown()
-	tb2.shutdown()
+	// Process-global singletons (seeded once at @(init) / lazily, shared across
+	// every editor); real main tears them down once at exit. A headless test reuses
+	// them across many sessions, so freeing them here would dangle the next one.
+	if !editor.headless {
+		delete(g_language_rules)
+		syntax_shutdown()
+		clipboard_shutdown()
+		tb2.shutdown()
+	}
 }
 
 editor_buffer :: proc(editor: ^Editor) -> ^Buffer {

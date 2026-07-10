@@ -391,6 +391,18 @@ defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
+## Testing
+
+`core:testing` unit tests live in `src/*_test.odin`. On top of them, an **e2e
+harness** (`e2e_test.odin`) drives the real `Editor` headless: termbox comes up
+once per process on a fixed 80×24 PTS via `tb2.init_fd` (no controlling tty,
+`pty.open` supplies the pair, a background thread drains the master), synthetic
+`tb2.Event`s feed `editor_dispatch`, `editor_render` draws into termbox's back
+buffer, and the grid reads back through `tb2.get_cell`. `editor_init(headless)`
+skips terminal bring-up and the process-global teardowns (termbox/syntax/clipboard/
+`g_language_rules`) so many sessions reuse them; a mutex serializes sessions (the
+termbox singleton doesn't survive re-init). Coverage plan: [notes/e2e.md](notes/e2e.md).
+
 ## Shipped
 
 Core editing: buffer open/save (atomic, permission-preserving, LF/CRLF +

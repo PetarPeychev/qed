@@ -165,6 +165,16 @@ Cell :: struct {
 	fg, bg: Color,
 }
 
+// Matches C `struct tb_cell` under TB_OPT_ATTR_W=64 + TB_OPT_EGC — read-back only
+// (get_cell). ch is a u32 codepoint with 4 bytes tail padding before the 8-byte fg.
+Cell_Raw :: struct {
+	ch:           u32,
+	_pad:         u32,
+	fg, bg:       Color,
+	ech:          rawptr,
+	nech, cech:   uint,
+}
+
 Event :: struct {
 	type: Event_Kind,
 	mod:  Mod,
@@ -199,6 +209,7 @@ foreign termboxlib {
 
 	set_cell :: proc(x, y: i32, ch: rune, fg, bg: Color) -> Status ---
 	extend_cell :: proc(x, y: i32, ch: rune) -> Status ---
+	get_cell :: proc(x, y, back: i32, cell: ^^Cell_Raw) -> Status ---
 
 	set_input_mode :: proc(mode: Input_Mode) -> Status ---
 	set_output_mode :: proc(mode: Output_Mode) -> Status ---
