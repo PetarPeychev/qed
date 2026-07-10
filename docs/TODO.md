@@ -16,10 +16,6 @@ deferred and standing work. Within a section, order is priority, not build order
 **v1.0 = a stranger downloads the binary, configures it for their workflow, and
 daily-drives it for programming.** Every item here blocks that.
 
-### Editing — table-stakes
-
-- [ ] Go-to-line-number (`:42`-style exact jump, distinct from `Ctrl+F` content search).
-
 ### Language coverage
 
 Scope **provisional**: 1.0 ships the bundled set below, but we may pull more of

@@ -419,7 +419,7 @@ selected buffer's in-memory content centered on its cursor), find/replace in buf
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
-matches in file order), project-wide search (`rg --sort path` for deterministic
+matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, `Enter` expands a folder / opens a file,
 lazy per-dir expand, right-side preview, new/rename/delete with recursive-delete confirm;
 rename follows open buffers; footer toggles — `e` expand/collapse-all (skips

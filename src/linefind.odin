@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import "lib:tb2"
 
@@ -17,7 +18,56 @@ linefind_destroy :: proc(p: ^LineFind) {
 	delete(p.lines)
 }
 
+all_digits :: proc(s: string) -> bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i in 0 ..< len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// An all-digit spec after `:` is an exact line jump (`:42`, `:42:8`), not a
+// content match; anything with other characters (`:abc`, `:4s`) falls through
+// to fuzzy search. col == -1 means "line's first non-blank column".
+linefind_goto :: proc(p: ^LineFind) -> (row: int, col: int, ok: bool) {
+	s := textfield_str(&p.field)
+	if len(s) < 2 || s[0] != ':' || len(p.lines) == 0 {
+		return
+	}
+	rest := s[1:]
+	col = -1
+	if c := strings.index_byte(rest, ':'); c >= 0 {
+		if cs := rest[c + 1:]; len(cs) > 0 {
+			if !all_digits(cs) {
+				return
+			}
+			n, _ := strconv.parse_int(cs, 10)
+			col = max(0, n - 1)
+		}
+		rest = rest[:c]
+	}
+	if !all_digits(rest) {
+		return
+	}
+	n, rok := strconv.parse_int(rest, 10)
+	if !rok {
+		return
+	}
+	return clamp(n - 1, 0, len(p.lines) - 1), col, true
+}
+
 linefind_refilter :: proc(p: ^LineFind) {
+	if row, _, ok := linefind_goto(p); ok {
+		clear(&p.matches)
+		append(&p.matches, row)
+		p.selected = 0
+		p.scroll = 0
+		return
+	}
 	fuzzy_list_refilter(&p.list)
 	slice.sort(p.matches[:])
 }
@@ -76,6 +126,16 @@ linefind_move :: proc(editor: ^Editor, delta: int) {
 
 linefind_execute :: proc(editor: ^Editor) {
 	p := &editor.linefind
+	if row, col, ok := linefind_goto(p); ok {
+		b := editor_buffer(editor)
+		linefind_close(editor)
+		if col < 0 {
+			col = line_indent_len(b.lines[row].text[:])
+		}
+		buffer_undo_commit(b)
+		editor_goto(editor, row, col)
+		return
+	}
 	if len(p.matches) == 0 {
 		linefind_close(editor)
 		return
