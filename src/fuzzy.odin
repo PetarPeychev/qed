@@ -5,6 +5,7 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
+import "core:sync"
 
 FuzzyTool :: enum {
 	Unknown,
@@ -13,6 +14,8 @@ FuzzyTool :: enum {
 }
 
 fuzzy_tool: FuzzyTool = .Unknown
+
+fuzzy_seq: int
 
 fuzzy_detect :: proc() {
 	if shell_command_exists("fzf") {
@@ -40,7 +43,8 @@ fuzzy_begin :: proc(items: []string) -> Fuzzy {
 		for item, i in items {
 			fmt.sbprintf(&sb, "%d\t%s\n", i, item)
 		}
-		path := fmt.tprintf("/tmp/qed-fuzzy-%d", os.get_pid())
+		seq := sync.atomic_add(&fuzzy_seq, 1)
+		path := fmt.tprintf("/tmp/qed-fuzzy-%d-%d", os.get_pid(), seq)
 		if os.write_entire_file(path, strings.to_string(sb)) == nil {
 			f.tmp_path = strings.clone(path)
 			f.has_tmp = true
