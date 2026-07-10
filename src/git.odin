@@ -172,7 +172,7 @@ git_base_fetch :: proc(b: ^Buffer) {
 	g.enabled = true
 
 	show_cmd := fmt.ctprintf("git -C %s show HEAD:./%s 2>/dev/null", shell_quote(dir), shell_quote(name))
-	blob, blob_ok := shell_capture(show_cmd, os.heap_allocator())
+	blob, blob_ok := shell_capture(show_cmd, context.allocator)
 	if !blob_ok || len(blob) == 0 {
 		if blob_ok {
 			delete(blob)
