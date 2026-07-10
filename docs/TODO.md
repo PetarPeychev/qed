@@ -127,25 +127,4 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### E2E test coverage
 
-Grow the headless harness (`src/e2e_test.odin`) to cover every major feature by
-driving real keystrokes → dispatch → render. Per-test breakdown + assertions in
-[notes/e2e.md](notes/e2e.md). The harness-extension items gate the areas that need them.
-
-Harness extensions (prerequisites):
-
-- [ ] Mouse events helper (`e2e_mouse`: click / drag / wheel / multi-click).
-- [ ] Paste events helper (`e2e_paste`: bracketed `Paste_Begin`/`Paste_End` routing).
-- [ ] Configurable session size + resize event (soft-wrap / horizontal-scroll cases).
-- [ ] Temp git repo fixture (gutter marks, diff view, filetree git bars/tab).
-- [ ] Fake external-subprocess fixture (stub `chat_command` / `formatter` / FIM endpoint).
-- [ ] `editor_step(events)` seam so `main`'s ALT-timeout retag + paste accumulation are testable.
-- [ ] Fake stdio LSP server (diagnostics/hover/definition/rename/completion) — optional, heavy.
-
-Coverage (one line = one area, see the note):
-
-- [ ] Core editing: undo/redo, selection+inverted render, block indent/dedent, tab-stop backspace, auto-indent, auto-close pairs, comment toggle, move-lines, clipboard, motion, bracket underline, Unicode clusters.
-- [ ] Files: LF/CRLF save round-trip, missing-file + mode-preserving save, clean auto-reload, dirty conflict dialog, big-file cutoff.
-- [ ] Navigation & UI: soft wrap, horizontal scroll, welcome screen, palette, file-open + multi-buffer + close, buffer switcher, find/replace (rest), line jump `:N`, project search, file tree, jump list, quit guard, status/message line.
-- [ ] Language intelligence: highlight color-of-cell, merge-conflict tint + resolve, formatting via stub, git gutter + diff view, LSP client paths.
-- [ ] AI assist: `Ctrl+K` edit via stub chat, FIM ghost-text accept/dismiss via stub endpoint.
-- [ ] Panes via mouse: wheel/click/double-click/drag per pane + buffer click/drag/word-select; terminal open/type/copy/close.
+- [ ] FIM ghost × LSP completion-popup precedence — needs the FIM stub and the fake LSP wired into one session.

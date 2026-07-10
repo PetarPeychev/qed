@@ -105,34 +105,44 @@ main :: proc() {
 			}
 		}
 		if got_event {
-			pending: tb2.Event
-			pending_ok := false
-			if !editor.pasting &&
-			   ev.type == .Key &&
-			   ev.key == .Esc &&
-			   ev.ch == 0 &&
-			   u8(ev.mod) == 0 {
-				next: tb2.Event
-				if tb2.peek_event(&next, i32(ALT_ESC_TIMEOUT_MS)) == .Ok {
-					if next.type == .Key && next.ch != 0 {
-						next.mod = tb2.Mod(u8(next.mod) | u8(tb2.Mod.Alt))
-						ev = next
-					} else {
-						// Not an ALT-tagged printable: the Esc stands alone, but the
-						// peeked event is already dequeued — dispatch it too.
-						pending = next
-						pending_ok = true
-					}
-				}
-			}
-			editor_dispatch(&editor, ev)
-			if pending_ok {
-				editor_dispatch(&editor, pending)
-			}
-			if llm_running(&editor) {
-				llm_prune_edited(&editor)
-			}
+			editor_step(&editor, ev, main_peek)
 		}
 		free_all(context.temp_allocator)
+	}
+}
+
+main_peek :: proc(ms: int) -> (tb2.Event, bool) {
+	ev: tb2.Event
+	if tb2.peek_event(&ev, i32(ms)) == .Ok {
+		return ev, true
+	}
+	return {}, false
+}
+
+// One iteration's post-event handling, split out of the main loop so the e2e
+// harness can drive it with synthetic events: after a bare Esc the ALT retag
+// peeks the next event (real peek_event in main, a queued event in tests) and
+// re-tags a buffered printable as Alt; a non-printable peek dispatches on its own.
+editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.Event, bool)) {
+	ev := ev
+	pending: tb2.Event
+	pending_ok := false
+	if !editor.pasting && ev.type == .Key && ev.key == .Esc && ev.ch == 0 && u8(ev.mod) == 0 {
+		if next, ok := peek(ALT_ESC_TIMEOUT_MS); ok {
+			if next.type == .Key && next.ch != 0 {
+				next.mod = tb2.Mod(u8(next.mod) | u8(tb2.Mod.Alt))
+				ev = next
+			} else {
+				pending = next
+				pending_ok = true
+			}
+		}
+	}
+	editor_dispatch(editor, ev)
+	if pending_ok {
+		editor_dispatch(editor, pending)
+	}
+	if llm_running(editor) {
+		llm_prune_edited(editor)
 	}
 }

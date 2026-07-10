@@ -395,13 +395,21 @@ Default config + bundled themes are JSON under `config/` at the repo root, embed
 
 `core:testing` unit tests live in `src/*_test.odin`. On top of them, an **e2e
 harness** (`e2e_test.odin`) drives the real `Editor` headless: termbox comes up
-once per process on a fixed 80×24 PTS via `tb2.init_fd` (no controlling tty,
+once per process on an 80×24 PTS via `tb2.init_fd` (no controlling tty,
 `pty.open` supplies the pair, a background thread drains the master), synthetic
-`tb2.Event`s feed `editor_dispatch`, `editor_render` draws into termbox's back
-buffer, and the grid reads back through `tb2.get_cell`. `editor_init(headless)`
-skips terminal bring-up and the process-global teardowns (termbox/syntax/clipboard/
-`g_language_rules`) so many sessions reuse them; a mutex serializes sessions (the
-termbox singleton doesn't survive re-init). Coverage plan: [notes/e2e.md](notes/e2e.md).
+`tb2.Event`s feed `editor_step` (the factored main-loop body, so the ALT-Esc
+retag and bracketed-paste accumulation are covered too), `editor_render` draws
+into termbox's back buffer, and the grid reads back through `e2e_cell*` (glyph,
+truecolor fg/bg, attr bits). `editor_init(headless)` skips terminal bring-up and
+the process-global teardowns (termbox/syntax/clipboard/`g_language_rules`) so
+many sessions reuse them; a mutex serializes sessions (the termbox singleton
+doesn't survive re-init). Harness capabilities: `e2e_mouse` / `e2e_paste` /
+`e2e_resize` (TIOCSWINSZ + SIGWINCH, size restored on stop), a temp-git-repo
+fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
+formatter / chat command / FIM endpoint), and a fake stdio LSP server (canned
+JSON-RPC, in `e2e_lsp_test.odin`). Coverage is one file per area:
+`e2e_edit/files/nav/lang/ai/mouse/lsp_test.odin`; scope + assertion surfaces:
+[notes/e2e.md](notes/e2e.md).
 
 ## Shipped
 
