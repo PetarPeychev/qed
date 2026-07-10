@@ -199,7 +199,7 @@ the `commands` table (`palette.odin`), their default binds in the embedded confi
 `keybinds` section; primitive editing/movement and `Ctrl+P` (palette) are fixed.
 
 Every editable text box (palette/picker/switcher/lang/indent/line-find/project-search
-queries, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
+queries, find/replace, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
 `TextField` (`textfield.odin`): `{text, caret, anchor}` with buffer-parity binds —
 grapheme + word (`Ctrl+←/→`) motion, smart home/end (`Alt+←/→`), shift-select,
 `Ctrl+A`, `Ctrl+X/C/V` (paste flattens newlines), delete-selection. `textfield_key`
@@ -386,7 +386,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
-`linefind` · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
+`linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -415,7 +415,10 @@ drag auto-scroll), status + message line (relative path, git branch + ahead/behi
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
 buffers in stable order + digit instant-jump on empty query, side preview of the
-selected buffer's in-memory content centered on its cursor), fuzzy line jump (`Ctrl+F`,
+selected buffer's in-memory content centered on its cursor), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,
+literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
+current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
+single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, `Enter` expands a folder / opens a file,
 lazy per-dir expand, right-side preview, new/rename/delete with recursive-delete confirm;

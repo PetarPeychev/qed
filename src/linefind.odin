@@ -91,7 +91,7 @@ linefind_execute :: proc(editor: ^Editor) {
 linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
 	#partial switch ev.key {
-	case .Esc, .Ctrl_F:
+	case .Esc, .Ctrl_G:
 		linefind_close(editor)
 	case .Enter:
 		linefind_execute(editor)

@@ -90,6 +90,8 @@ commands := [?]Command {
 	{name = "Open File", run = picker_open},
 	{name = "File Tree", run = filetree_open},
 	{name = "Terminal: Toggle", run = term_toggle},
+	{name = "Find", run = find_open},
+	{name = "Replace", run = find_open_replace},
 	{name = "Find Line", run = linefind_open},
 	{name = "Find in Files", run = projsearch_open},
 	{name = "Go to Start of File", run = cmd_buffer_start},

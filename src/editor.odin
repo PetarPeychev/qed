@@ -49,6 +49,7 @@ Editor :: struct {
 	themepick:       ThemePick,
 	indentpick:      IndentPick,
 	linefind:        LineFind,
+	find:            Find,
 	projsearch:      ProjSearch,
 	rename:          Rename,
 	filetree:        FileTree,
@@ -119,6 +120,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	themepick_destroy(&editor.themepick)
 	indentpick_destroy(&editor.indentpick)
 	linefind_destroy(&editor.linefind)
+	find_destroy(&editor.find)
 	projsearch_destroy(&editor.projsearch)
 	rename_destroy(&editor.rename)
 	filetree_destroy(&editor.filetree)
@@ -179,7 +181,7 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
@@ -190,6 +192,7 @@ editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
 		{&editor.themepick.active, themepick_dispatch_key, themepick_render, themepick_dispatch_mouse, themepick_paste},
 		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse, indentpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
+		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
 		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render, projsearch_dispatch_mouse, projsearch_paste},
 		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse, rename_paste},
 		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse, filetree_paste},
@@ -1281,6 +1284,11 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			}
 		}
 
+		match_spans: [][2]int
+		if editor.find.active {
+			match_spans = find_row_spans(editor, row)
+		}
+
 		// Deleted/replaced base lines render as dim-red ghost rows: above a
 		// modification, below a pure deletion. Hidden for the top line.
 		if row != editor.scroll_row {
@@ -1307,7 +1315,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 					seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
 					x_origin := visual_col(text[:], seg_start)
 					editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, s > 0)
-					editor_render_text_row(gutter, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end, diff_from, diff_to, diff_bg)
+					editor_render_text_row(gutter, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG)
 					screen_y += 1
 				}
 			}
@@ -1316,7 +1324,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			// fim_render, so cut the real line at the caret and reserve gap rows.
 			text_end := b.cursor.col if ghost_row else len(text)
 			editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, false)
-			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg)
+			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG)
 			screen_y += 1
 			if gap > 0 && row == b.cursor.row {
 				screen_y += gap
@@ -1490,6 +1498,8 @@ editor_render_text_row :: proc(
 	diff_from := -1,
 	diff_to := -1,
 	diff_bg := tb2.Color(0),
+	match_spans: [][2]int = nil,
+	match_bg := tb2.Color(0),
 ) {
 	for sx in 0 ..< w {
 		tb2.set_cell(i32(gutter + sx), i32(y), ' ', COLOR_FG, bg_normal)
@@ -1567,6 +1577,12 @@ editor_render_text_row :: proc(
 			pfg = tb2.Color(u64(pfg) | u64(tb2.Color.Underline))
 		}
 		pbg = diff_bg if diff_from >= 0 && pstart >= diff_from && pstart < diff_to else bg_normal
+		for sp in match_spans {
+			if pstart >= sp[0] && pstart < sp[1] {
+				pbg = match_bg
+				break
+			}
+		}
 	}
 	if pstart >= 0 {
 		vcol = emit(gutter, y, w, text, pstart, len(text), vcol, x_origin, col_start, col_end, psel, pfg, pbg)

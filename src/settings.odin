@@ -183,6 +183,7 @@ COLOR_SYN_CODE: tb2.Color
 COLOR_GIT_ADD: tb2.Color
 COLOR_GIT_MOD: tb2.Color
 COLOR_GIT_DEL: tb2.Color
+COLOR_FIND_MATCH_BG: tb2.Color
 COLOR_CONFLICT_OURS: tb2.Color
 COLOR_CONFLICT_THEIRS: tb2.Color
 COLOR_CONFLICT_BASE: tb2.Color
@@ -235,6 +236,7 @@ config_colors := [?]Config_Color {
 	{"git_added", &COLOR_GIT_ADD},
 	{"git_modified", &COLOR_GIT_MOD},
 	{"git_deleted", &COLOR_GIT_DEL},
+	{"find_match_background", &COLOR_FIND_MATCH_BG},
 	{"conflict_ours", &COLOR_CONFLICT_OURS},
 	{"conflict_theirs", &COLOR_CONFLICT_THEIRS},
 	{"conflict_base", &COLOR_CONFLICT_BASE},

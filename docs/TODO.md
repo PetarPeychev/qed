@@ -18,8 +18,6 @@ daily-drives it for programming.** Every item here blocks that.
 
 ### Editing — table-stakes
 
-- [ ] Find in buffer: literal + regex, next/prev, highlight-all matches, wrap-around.
-- [ ] Replace in buffer: replace / replace-all / in-selection, sharing the find UI.
 - [ ] Go-to-line-number (`:42`-style exact jump, distinct from `Ctrl+F` content search).
 
 ### Language coverage
@@ -62,6 +60,7 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 
 ### Features
 
+- [ ] Multi-line find (regex `\n` spanning rows) — current find is single-line, matching the per-line data model; needs whole-buffer scan + cross-row match/highlight.
 - [ ] Save all modified buffers in one command.
 - [ ] Sticky scroll: pin the enclosing scope header (function/block) at the top while scrolled — tree-sitter tree.
 - [ ] Command palette: order entries by recency of use, persisted cross-session (needs a small state file).

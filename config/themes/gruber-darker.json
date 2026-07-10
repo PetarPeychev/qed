@@ -47,6 +47,7 @@
     "git_added": "#73c936",
     "git_modified": "#ffdd33",
     "git_deleted": "#f43841",
+    "find_match_background": "#453b1a",
     "conflict_ours": "#73c936",
     "conflict_theirs": "#2d93ec",
     "conflict_base": "#868686",
