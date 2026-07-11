@@ -322,10 +322,6 @@ parse_hex_color :: proc(s: string) -> (tb2.Color, bool) {
 	return tb2.Color(v), true
 }
 
-color_to_hex :: proc(c: tb2.Color) -> string {
-	return fmt.tprintf("#%06x", u64(c))
-}
-
 parse_keybind :: proc(s: string) -> (key: tb2.Key, alt_ch: rune, ok: bool) {
 	if strings.has_prefix(s, "Alt+") {
 		rest := s[4:]
@@ -400,75 +396,55 @@ settings_destroy :: proc "contextless" () {
 
 config_defaults_apply :: proc() {
 	languages_reset_defaults()
-	invalid := make([dynamic]string, context.temp_allocator)
-	config_apply(g_config_defaults, &invalid)
+	scratch := make([dynamic]string, context.temp_allocator)
+	config_apply(g_config_defaults, &scratch)
 }
 
 config_load :: proc() -> (message: string, is_error: bool) {
 	path := config_path()
 	if path == "" {
 		config_defaults_apply()
-		return "", false
+		return theme_load(path)
 	}
 	return config_load_from(path)
 }
 
 config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 	config_defaults_apply()
+
+	problems := make([dynamic]string, context.temp_allocator)
+	is_error = false
+
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
-	if read_err != nil {
-		if err := config_write(path, {}); err != nil {
-			return fmt.tprintf("config.json: could not create %s (%v)", path, err), true
-		}
-		created := fmt.tprintf("Created config: %s", path)
-		theme_message, theme_error := theme_load(path)
-		if theme_message != "" {
-			return fmt.tprintf("%s; %s", created, theme_message), theme_error
-		}
-		return created, false
-	}
-
-	root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
-	if perr != nil {
-		return "config.json: parse error, using defaults", true
-	}
-	root, is_obj := root_val.(json.Object)
-	if !is_obj {
-		return "config.json: expected a JSON object, using defaults", true
-	}
-
-	invalid := make([dynamic]string, context.temp_allocator)
-	missing := config_apply(root, &invalid)
-
-	if missing {
-		if err := config_write(path, root); err != nil {
-			return fmt.tprintf("config.json: could not update %s (%v)", path, err), true
+	if read_err == nil {
+		root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
+		if perr != nil {
+			message = fmt.tprintf("config.json: parse error in %s, using defaults", path)
+			is_error = true
+		} else if root, is_obj := root_val.(json.Object); !is_obj {
+			message = fmt.tprintf("config.json: %s is not a JSON object, using defaults", path)
+			is_error = true
+		} else {
+			config_apply(root, &problems)
+			config_collect_unknown(root, &problems)
+			if len(problems) > 0 {
+				list := strings.join(problems[:], ", ", context.temp_allocator)
+				message = fmt.tprintf("config.json: ignoring %s", list)
+				is_error = true
+			}
 		}
 	}
 
 	theme_message, theme_error := theme_load(path)
-
-	if len(invalid) > 0 {
-		list := strings.join(invalid[:], ", ", context.temp_allocator)
-		message = fmt.tprintf("config.json: invalid %s (using defaults)", list)
-		is_error = true
-	} else if missing {
-		message = "config.json: wrote missing defaults"
-	}
-	if theme_message != "" {
-		if message == "" {
-			return theme_message, theme_error
-		}
-		return fmt.tprintf("%s; %s", message, theme_message), is_error || theme_error
-	}
-	return message, is_error
+	message = theme_msg_join(message, theme_message)
+	is_error = is_error || theme_error
+	return
 }
 
-config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
+config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	for it in config_ints {
 		v, present := root[it.key]
 		if !present {
-			missing = true
 			continue
 		}
 		#partial switch n in v {
@@ -484,7 +460,6 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: 
 	for it in config_bools {
 		v, present := root[it.key]
 		if !present {
-			missing = true
 			continue
 		}
 		#partial switch b in v {
@@ -495,109 +470,165 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: 
 		}
 	}
 
-	if theme_val, present := root["theme"]; !present {
-		missing = true
-	} else if s, is_str := theme_val.(json.String); is_str {
-		delete(THEME, os.heap_allocator())
-		THEME = strings.clone(string(s), os.heap_allocator())
-	} else {
-		// pre-themes/ object form: rewritten as the default theme name
-		missing = true
+	if theme_val, present := root["theme"]; present {
+		if s, is_str := theme_val.(json.String); is_str {
+			delete(THEME, os.heap_allocator())
+			THEME = strings.clone(string(s), os.heap_allocator())
+		} else {
+			append(invalid, "theme")
+		}
 	}
 
-	if kb_val, present := root["keybinds"]; !present {
-		missing = true
-	} else if kb_obj, kb_is_obj := kb_val.(json.Object); kb_is_obj {
-		for &cmd in commands {
-			v, has := kb_obj[cmd.name]
-			if !has {
-				missing = true
-				continue
-			}
-			s, is_str := v.(json.String)
-			if !is_str {
-				append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
-				continue
-			}
-			if s == "" {
-				cmd.key = tb2.Key(0)
-				cmd.alt_ch = 0
+	if kb_val, present := root["keybinds"]; present {
+		if kb_obj, kb_is_obj := kb_val.(json.Object); kb_is_obj {
+			for &cmd in commands {
+				v, has := kb_obj[cmd.name]
+				if !has {
+					continue
+				}
+				s, is_str := v.(json.String)
+				if !is_str {
+					append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
+					continue
+				}
+				if s == "" {
+					cmd.key = tb2.Key(0)
+					cmd.alt_ch = 0
+					delete(cmd.shortcut, os.heap_allocator())
+					cmd.shortcut = ""
+					continue
+				}
+				key, alt_ch, pok := parse_keybind(string(s))
+				if !pok {
+					append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
+					continue
+				}
+				cmd.key = key
+				cmd.alt_ch = alt_ch
 				delete(cmd.shortcut, os.heap_allocator())
-				cmd.shortcut = ""
-				continue
+				cmd.shortcut = strings.clone(string(s), os.heap_allocator())
 			}
-			key, alt_ch, pok := parse_keybind(string(s))
-			if !pok {
-				append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
-				continue
-			}
-			cmd.key = key
-			cmd.alt_ch = alt_ch
-			delete(cmd.shortcut, os.heap_allocator())
-			cmd.shortcut = strings.clone(string(s), os.heap_allocator())
+		} else {
+			append(invalid, "keybinds")
 		}
-	} else {
-		append(invalid, "keybinds")
 	}
 
-	if lang_val, present := root["languages"]; !present {
-		missing = true
-	} else if lang_obj, is_obj := lang_val.(json.Object); is_obj {
-		if languages_from_config(lang_obj, invalid) {
-			missing = true
+	if lang_val, present := root["languages"]; present {
+		if lang_obj, is_obj := lang_val.(json.Object); is_obj {
+			languages_from_config(lang_obj, invalid)
+		} else {
+			append(invalid, "languages")
 		}
-	} else {
-		append(invalid, "languages")
 	}
 
-	if llm_val, present := root["llm"]; !present {
-		missing = true
-	} else if llm_obj, is_obj := llm_val.(json.Object); is_obj {
-		for it in config_llm {
-			v, has := llm_obj[it.key]
-			if !has {
-				missing = true
-				continue
+	if llm_val, present := root["llm"]; present {
+		if llm_obj, is_obj := llm_val.(json.Object); is_obj {
+			for it in config_llm {
+				v, has := llm_obj[it.key]
+				if !has {
+					continue
+				}
+				s, is_str := v.(json.String)
+				if !is_str {
+					append(invalid, fmt.tprintf("llm/%s", it.key))
+					continue
+				}
+				delete(it.ptr^, os.heap_allocator())
+				it.ptr^ = strings.clone(string(s), os.heap_allocator())
 			}
-			s, is_str := v.(json.String)
-			if !is_str {
-				append(invalid, fmt.tprintf("llm/%s", it.key))
-				continue
+			for it in config_llm_ints {
+				v, has := llm_obj[it.key]
+				if !has {
+					continue
+				}
+				#partial switch n in v {
+				case json.Integer:
+					it.ptr^ = int(n)
+				case json.Float:
+					it.ptr^ = int(n)
+				case:
+					append(invalid, fmt.tprintf("llm/%s", it.key))
+				}
 			}
-			delete(it.ptr^, os.heap_allocator())
-			it.ptr^ = strings.clone(string(s), os.heap_allocator())
+			for it in config_llm_bools {
+				v, has := llm_obj[it.key]
+				if !has {
+					continue
+				}
+				if b, is_bool := v.(json.Boolean); is_bool {
+					it.ptr^ = bool(b)
+				} else {
+					append(invalid, fmt.tprintf("llm/%s", it.key))
+				}
+			}
+		} else {
+			append(invalid, "llm")
 		}
-		for it in config_llm_ints {
-			v, has := llm_obj[it.key]
-			if !has {
-				missing = true
-				continue
-			}
-			#partial switch n in v {
-			case json.Integer:
-				it.ptr^ = int(n)
-			case json.Float:
-				it.ptr^ = int(n)
-			case:
-				append(invalid, fmt.tprintf("llm/%s", it.key))
-			}
-		}
-		for it in config_llm_bools {
-			v, has := llm_obj[it.key]
-			if !has {
-				missing = true
-				continue
-			}
-			if b, is_bool := v.(json.Boolean); is_bool {
-				it.ptr^ = bool(b)
-			} else {
-				append(invalid, fmt.tprintf("llm/%s", it.key))
-			}
-		}
-	} else {
-		append(invalid, "llm")
 	}
-	return
+}
+
+config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
+	for key in root {
+		switch key {
+		case "theme", "keybinds", "languages", "llm":
+			continue
+		}
+		known := false
+		for it in config_ints {
+			if it.key == key {
+				known = true
+				break
+			}
+		}
+		if !known {
+			for it in config_bools {
+				if it.key == key {
+					known = true
+					break
+				}
+			}
+		}
+		if !known {
+			append(warnings, fmt.tprintf("unknown key %q", key))
+		}
+	}
+
+	if kb_obj, ok := root["keybinds"].(json.Object); ok {
+		for key in kb_obj {
+			found := false
+			for cmd in commands {
+				if cmd.name == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				append(warnings, fmt.tprintf("unknown keybinds/%q", key))
+			}
+		}
+	}
+
+	if llm_obj, ok := root["llm"].(json.Object); ok {
+		for key in llm_obj {
+			found := false
+			for it in config_llm {
+				if it.key == key {found = true; break}
+			}
+			if !found {
+				for it in config_llm_ints {
+					if it.key == key {found = true; break}
+				}
+			}
+			if !found {
+				for it in config_llm_bools {
+					if it.key == key {found = true; break}
+				}
+			}
+			if !found {
+				append(warnings, fmt.tprintf("unknown llm/%q", key))
+			}
+		}
+	}
 }
 
 THEME: string
@@ -658,69 +689,20 @@ theme_names :: proc(cfg_path: string, allocator := context.temp_allocator) -> []
 }
 
 theme_preview :: proc(cfg_path: string, name: string) -> bool {
-	theme_reset_defaults()
-	data, read_err := os.read_entire_file(theme_path(cfg_path, name), context.temp_allocator)
-	if read_err != nil {
-		return false
-	}
-	root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
-	if perr != nil {
-		return false
-	}
-	root, is_obj := root_val.(json.Object)
-	if !is_obj {
-		return false
-	}
-	invalid := make([dynamic]string, context.temp_allocator)
-	theme_apply(root, &invalid)
-	return true
+	scratch := make([dynamic]string, context.temp_allocator)
+	found, _, _ := theme_resolve(cfg_path, name, &scratch)
+	return found
 }
 
 theme_persist :: proc(name: string) -> bool {
 	delete(THEME, os.heap_allocator())
 	THEME = strings.clone(name, os.heap_allocator())
-	path := config_path()
-	if path == "" {
-		return false
-	}
-	root: json.Object
-	if data, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil {
-		if v, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator);
-		   perr == nil {
-			if o, ok := v.(json.Object); ok {
-				root = o
-				delete_key(&root, "theme") // config_write falls back to the THEME global
-			}
-		}
-	}
-	return config_write(path, root) == nil
+	return config_persist_key("theme", json.String(name))
 }
 
 theme_reset_defaults :: proc() {
-	invalid := make([dynamic]string, context.temp_allocator)
-	theme_apply(g_theme_defaults, &invalid)
-}
-
-themes_materialize :: proc(cfg_path: string) -> (message: string, is_error: bool) {
-	created := make([dynamic]string, context.temp_allocator)
-	for bt in bundled_themes {
-		path := theme_path(cfg_path, bt.name)
-		if os.exists(path) {
-			continue
-		}
-		if dir := config_dir(path); dir != "" {
-			os.make_directory_all(dir)
-		}
-		if err := os.write_entire_file(path, bt.data); err != nil {
-			return fmt.tprintf("theme: could not create %s (%v)", path, err), true
-		}
-		append(&created, bt.name)
-	}
-	if len(created) > 0 {
-		list := strings.join(created[:], ", ", context.temp_allocator)
-		return fmt.tprintf("Created themes: %s", list), false
-	}
-	return "", false
+	scratch := make([dynamic]string, context.temp_allocator)
+	theme_apply(g_theme_defaults, &scratch)
 }
 
 theme_msg_join :: proc(a, b: string) -> string {
@@ -733,201 +715,208 @@ theme_msg_join :: proc(a, b: string) -> string {
 	return fmt.tprintf("%s; %s", a, b)
 }
 
-theme_load :: proc(cfg_path: string) -> (message: string, is_error: bool) {
+// Resolves a theme name onto the globals: gruber-darker defaults as the crash-safe
+// base, then the matching bundled theme (if any), then the user file overlaid
+// per-key. `found` is false only when the name matches no bundled theme AND has no
+// user file; `parse_err` flags an unreadable/malformed user file (base still applied).
+theme_resolve :: proc(
+	cfg_path, name: string,
+	warnings: ^[dynamic]string,
+) -> (
+	found: bool,
+	parse_err: bool,
+	path: string,
+) {
 	theme_reset_defaults()
-	created, cfail := themes_materialize(cfg_path)
-	if cfail {
-		return created, true
+
+	is_bundled := false
+	for bt in bundled_themes {
+		if bt.name != name {
+			continue
+		}
+		if v, e := json.parse(bt.data, parse_integers = true, allocator = context.temp_allocator);
+		   e == nil {
+			if obj, ok := v.(json.Object); ok {
+				scratch := make([dynamic]string, context.temp_allocator)
+				theme_apply(obj, &scratch)
+				is_bundled = true
+			}
+		}
+		break
 	}
-	path := theme_path(cfg_path, THEME)
+
+	path = theme_path(cfg_path, name)
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil {
-		return theme_msg_join(created, fmt.tprintf("theme %q: no %s, using defaults", THEME, path)), true
+		return is_bundled, false, path
 	}
 
 	root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
 	if perr != nil {
-		return theme_msg_join(created, fmt.tprintf("theme %q: parse error, using defaults", THEME)), true
+		return is_bundled, true, path
 	}
 	root, is_obj := root_val.(json.Object)
 	if !is_obj {
-		return theme_msg_join(created, fmt.tprintf("theme %q: expected a JSON object, using defaults", THEME)), true
+		return is_bundled, true, path
 	}
 
-	invalid := make([dynamic]string, context.temp_allocator)
-	missing := theme_apply(root, &invalid)
-
-	if missing {
-		if err := theme_write(path, root); err != nil {
-			return fmt.tprintf("theme %q: could not update %s (%v)", THEME, path, err), true
-		}
-	}
-
-	if len(invalid) > 0 {
-		list := strings.join(invalid[:], ", ", context.temp_allocator)
-		return theme_msg_join(created, fmt.tprintf("theme %q: invalid %s (using defaults)", THEME, list)), true
-	}
-	if missing {
-		return theme_msg_join(created, fmt.tprintf("theme %q: wrote missing defaults", THEME)), false
-	}
-	return created, false
+	theme_apply(root, warnings)
+	theme_collect_unknown(root, warnings)
+	return true, false, path
 }
 
-theme_apply :: proc(root: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
-	if col_val, has := root["colors"]; !has {
-		missing = true
-	} else if col_obj, col_is_obj := col_val.(json.Object); col_is_obj {
-		for c in config_colors {
-			v, chas := col_obj[c.key]
-			if !chas {
-				missing = true
-				continue
-			}
-			s, is_str := v.(json.String)
-			if !is_str {
-				append(invalid, fmt.tprintf("colors/%s", c.key))
-				continue
-			}
-			col, cok := parse_hex_color(string(s))
-			if !cok {
-				append(invalid, fmt.tprintf("colors/%s", c.key))
-				continue
-			}
-			c.ptr^ = col
-		}
-	} else {
-		append(invalid, "colors")
-	}
+theme_load :: proc(cfg_path: string) -> (message: string, is_error: bool) {
+	warnings := make([dynamic]string, context.temp_allocator)
+	found, parse_err, path := theme_resolve(cfg_path, THEME, &warnings)
 
-	if ic_val, has := root["icons"]; !has {
-		missing = true
-	} else if ic_obj, ic_is_obj := ic_val.(json.Object); ic_is_obj {
-		for it in config_icons {
-			v, ihas := ic_obj[it.key]
-			if !ihas {
-				missing = true
-				continue
-			}
-			if s, is_str := v.(json.String); is_str {
-				delete(it.ptr^, os.heap_allocator())
-				it.ptr^ = strings.clone(string(s), os.heap_allocator())
-			} else {
-				append(invalid, fmt.tprintf("icons/%s", it.key))
-			}
-		}
-	} else {
-		append(invalid, "icons")
+	if parse_err {
+		return fmt.tprintf("theme %q: parse error in %s, using defaults", THEME, path), true
 	}
-
-	if tn_val, has := root["tints"]; !has {
-		missing = true
-	} else if tn_obj, tn_is_obj := tn_val.(json.Object); tn_is_obj {
-		for it in config_tints {
-			v, thas := tn_obj[it.key]
-			if !thas {
-				missing = true
-				continue
-			}
-			#partial switch n in v {
-			case json.Float:
-				it.ptr^ = f32(n)
-			case json.Integer:
-				it.ptr^ = f32(n)
-			case:
-				append(invalid, fmt.tprintf("tints/%s", it.key))
-			}
-		}
-	} else {
-		append(invalid, "tints")
+	if !found {
+		return fmt.tprintf("theme %q: no file %s, using defaults", THEME, path), true
 	}
-	return
+	if len(warnings) > 0 {
+		list := strings.join(warnings[:], ", ", context.temp_allocator)
+		return fmt.tprintf("theme %q: ignoring %s", THEME, list), true
+	}
+	return "", false
 }
 
-theme_write :: proc(path: string, root: json.Object) -> os.Error {
-	if dir := config_dir(path); dir != "" {
-		os.make_directory_all(dir)
-	}
-
-	sb := strings.builder_make(context.temp_allocator)
-	strings.write_string(&sb, "{\n")
-
-	fmt.sbprintf(&sb, "  %s: ", lsp_json_string("colors"))
-	col_raw, col_present := root["colors"]
-	if col_obj, is_obj := col_raw.(json.Object); col_present && !is_obj {
-		config_value_text(&sb, col_raw)
-	} else {
-		strings.write_string(&sb, "{\n")
-		sec_first := true
-		for c in config_colors {
-			if !sec_first {
-				strings.write_string(&sb, ",\n")
+theme_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
+	if col_val, has := root["colors"]; has {
+		if col_obj, col_is_obj := col_val.(json.Object); col_is_obj {
+			for c in config_colors {
+				v, chas := col_obj[c.key]
+				if !chas {
+					continue
+				}
+				s, is_str := v.(json.String)
+				if !is_str {
+					append(invalid, fmt.tprintf("colors/%s", c.key))
+					continue
+				}
+				col, cok := parse_hex_color(string(s))
+				if !cok {
+					append(invalid, fmt.tprintf("colors/%s", c.key))
+					continue
+				}
+				c.ptr^ = col
 			}
-			sec_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(c.key))
-			if v, has := col_obj[c.key]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, lsp_json_string(color_to_hex(c.ptr^)))
-			}
+		} else {
+			append(invalid, "colors")
 		}
-		strings.write_string(&sb, "\n  }")
 	}
 
-	fmt.sbprintf(&sb, ",\n  %s: ", lsp_json_string("icons"))
-	ic_raw, ic_present := root["icons"]
-	if ic_obj, is_obj := ic_raw.(json.Object); ic_present && !is_obj {
-		config_value_text(&sb, ic_raw)
-	} else {
-		strings.write_string(&sb, "{\n")
-		sec_first := true
-		for it in config_icons {
-			if !sec_first {
-				strings.write_string(&sb, ",\n")
+	if ic_val, has := root["icons"]; has {
+		if ic_obj, ic_is_obj := ic_val.(json.Object); ic_is_obj {
+			for it in config_icons {
+				v, ihas := ic_obj[it.key]
+				if !ihas {
+					continue
+				}
+				if s, is_str := v.(json.String); is_str {
+					delete(it.ptr^, os.heap_allocator())
+					it.ptr^ = strings.clone(string(s), os.heap_allocator())
+				} else {
+					append(invalid, fmt.tprintf("icons/%s", it.key))
+				}
 			}
-			sec_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
-			if v, has := ic_obj[it.key]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, lsp_json_string(it.ptr^))
-			}
+		} else {
+			append(invalid, "icons")
 		}
-		strings.write_string(&sb, "\n  }")
 	}
 
-	fmt.sbprintf(&sb, ",\n  %s: ", lsp_json_string("tints"))
-	tn_raw, tn_present := root["tints"]
-	if tn_obj, is_obj := tn_raw.(json.Object); tn_present && !is_obj {
-		config_value_text(&sb, tn_raw)
-	} else {
-		strings.write_string(&sb, "{\n")
-		sec_first := true
-		for it in config_tints {
-			if !sec_first {
-				strings.write_string(&sb, ",\n")
+	if tn_val, has := root["tints"]; has {
+		if tn_obj, tn_is_obj := tn_val.(json.Object); tn_is_obj {
+			for it in config_tints {
+				v, thas := tn_obj[it.key]
+				if !thas {
+					continue
+				}
+				#partial switch n in v {
+				case json.Float:
+					it.ptr^ = f32(n)
+				case json.Integer:
+					it.ptr^ = f32(n)
+				case:
+					append(invalid, fmt.tprintf("tints/%s", it.key))
+				}
 			}
-			sec_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
-			if v, has := tn_obj[it.key]; has {
-				config_value_text(&sb, v)
-			} else {
-				fmt.sbprintf(&sb, "%.2f", it.ptr^)
-			}
+		} else {
+			append(invalid, "tints")
 		}
-		strings.write_string(&sb, "\n  }")
 	}
-
-	strings.write_string(&sb, "\n}\n")
-	return os.write_entire_file(path, transmute([]byte)strings.to_string(sb))
 }
 
-languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (missing: bool) {
+theme_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
+	for key in root {
+		switch key {
+		case "colors", "icons", "tints":
+			continue
+		}
+		append(warnings, fmt.tprintf("unknown key %q", key))
+	}
+	theme_section_unknown(root, "colors", config_colors[:], warnings)
+	if ic_obj, ok := root["icons"].(json.Object); ok {
+		for key in ic_obj {
+			found := false
+			for it in config_icons {
+				if it.key == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				append(warnings, fmt.tprintf("unknown icons/%q", key))
+			}
+		}
+	}
+	if tn_obj, ok := root["tints"].(json.Object); ok {
+		for key in tn_obj {
+			found := false
+			for it in config_tints {
+				if it.key == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				append(warnings, fmt.tprintf("unknown tints/%q", key))
+			}
+		}
+	}
+}
+
+theme_section_unknown :: proc(
+	root: json.Object,
+	section: string,
+	keys: []Config_Color,
+	warnings: ^[dynamic]string,
+) {
+	obj, ok := root[section].(json.Object)
+	if !ok {
+		return
+	}
+	for key in obj {
+		found := false
+		for c in keys {
+			if c.key == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			append(warnings, fmt.tprintf("unknown %s/%q", section, key))
+		}
+	}
+}
+
+languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) {
 	rules := make([dynamic]LangRule, context.temp_allocator)
 	for lang in default_pattern_languages() {
 		name := LANGUAGES[lang].name
 		sub_val, has := obj[name]
 		if !has {
-			missing = true
 			append_default_patterns(&rules, lang)
 			continue
 		}
@@ -943,7 +932,6 @@ languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (m
 				append_default_patterns(&rules, lang)
 			}
 		} else {
-			missing = true
 			append_default_patterns(&rules, lang)
 		}
 		if lv, lhas := sub["lsp"]; lhas {
@@ -952,8 +940,6 @@ languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (m
 			} else {
 				append(invalid, fmt.tprintf("languages/%s/lsp", name))
 			}
-		} else {
-			missing = true
 		}
 		if fv, fhas := sub["formatter"]; fhas {
 			if s, is := fv.(json.String); is {
@@ -961,8 +947,6 @@ languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (m
 			} else {
 				append(invalid, fmt.tprintf("languages/%s/formatter", name))
 			}
-		} else {
-			missing = true
 		}
 	}
 	for key in obj {
@@ -971,7 +955,6 @@ languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) -> (m
 		}
 	}
 	language_rules_set(rules[:])
-	return
 }
 
 languages_patterns_apply :: proc(v: json.Value, lang: Language, rules: ^[dynamic]LangRule) -> bool {
@@ -991,164 +974,39 @@ languages_patterns_apply :: proc(v: json.Value, lang: Language, rules: ^[dynamic
 	return true
 }
 
-config_write :: proc(path: string, root: json.Object) -> os.Error {
+// Sparse single-key persist: the only write qed makes to the user config. Reads
+// the existing user file, sets exactly `key`, writes it back — every other user
+// key is preserved, no defaults are ever emitted.
+config_persist_key :: proc(key: string, value: json.Value) -> bool {
+	path := config_path()
+	if path == "" {
+		return false
+	}
+	return config_persist_key_to(path, key, value)
+}
+
+config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> bool {
+	root: json.Object
+	if data, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil {
+		if v, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator);
+		   perr == nil {
+			if o, ok := v.(json.Object); ok {
+				root = o
+			}
+		}
+	}
+	if root == nil {
+		root = make(json.Object, context.temp_allocator)
+	}
+	root[key] = value
+
 	if dir := config_dir(path); dir != "" {
 		os.make_directory_all(dir)
 	}
-
 	sb := strings.builder_make(context.temp_allocator)
-	strings.write_string(&sb, "{\n")
-	first := true
-
-	emit_key :: proc(sb: ^strings.Builder, first: ^bool, key: string) {
-		if !first^ {
-			strings.write_string(sb, ",\n")
-		}
-		first^ = false
-		fmt.sbprintf(sb, "  %s: ", lsp_json_string(key))
-	}
-
-	for it in config_ints {
-		emit_key(&sb, &first, it.key)
-		if v, present := root[it.key]; present {
-			config_value_text(&sb, v)
-		} else {
-			fmt.sbprintf(&sb, "%d", it.ptr^)
-		}
-	}
-
-	for it in config_bools {
-		emit_key(&sb, &first, it.key)
-		if v, present := root[it.key]; present {
-			config_value_text(&sb, v)
-		} else {
-			strings.write_string(&sb, "true" if it.ptr^ else "false")
-		}
-	}
-
-	emit_key(&sb, &first, "theme")
-	if s, is_str := root["theme"].(json.String); is_str {
-		strings.write_string(&sb, lsp_json_string(string(s)))
-	} else {
-		strings.write_string(&sb, lsp_json_string(THEME))
-	}
-
-	emit_key(&sb, &first, "keybinds")
-	kb_raw, kb_present := root["keybinds"]
-	if kb_obj, is_obj := kb_raw.(json.Object); kb_present && !is_obj {
-		config_value_text(&sb, kb_raw)
-	} else {
-		strings.write_string(&sb, "{\n")
-		kb_first := true
-		for cmd in commands {
-			if !kb_first {
-				strings.write_string(&sb, ",\n")
-			}
-			kb_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(cmd.name))
-			if v, has := kb_obj[cmd.name]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, lsp_json_string(cmd.shortcut))
-			}
-		}
-		strings.write_string(&sb, "\n  }")
-	}
-
-	emit_key(&sb, &first, "languages")
-	lang_raw, lang_present := root["languages"]
-	if lang_obj, is_obj := lang_raw.(json.Object); lang_present && !is_obj {
-		config_value_text(&sb, lang_raw)
-	} else {
-		strings.write_string(&sb, "{\n")
-		lg_first := true
-		for lang in default_pattern_languages() {
-			if !lg_first {
-				strings.write_string(&sb, ",\n")
-			}
-			lg_first = false
-			name := LANGUAGES[lang].name
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(name))
-			strings.write_string(&sb, "{\n")
-			sub, _ := lang_obj[name].(json.Object)
-
-			fmt.sbprintf(&sb, "      %s: ", lsp_json_string("patterns"))
-			if v, has := sub["patterns"]; has {
-				config_value_text(&sb, v)
-			} else {
-				config_write_pattern_array(&sb, lang)
-			}
-			fmt.sbprintf(&sb, ",\n      %s: ", lsp_json_string("lsp"))
-			if v, has := sub["lsp"]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, lsp_json_string(LANGUAGES[lang].lsp_server))
-			}
-			fmt.sbprintf(&sb, ",\n      %s: ", lsp_json_string("formatter"))
-			if v, has := sub["formatter"]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, lsp_json_string(LANGUAGES[lang].formatter))
-			}
-			strings.write_string(&sb, "\n    }")
-		}
-		strings.write_string(&sb, "\n  }")
-	}
-
-	emit_key(&sb, &first, "llm")
-	llm_raw, llm_present := root["llm"]
-	if llm_obj, is_obj := llm_raw.(json.Object); llm_present && !is_obj {
-		config_value_text(&sb, llm_raw)
-	} else {
-		strings.write_string(&sb, "{\n")
-		lm_first := true
-		for it in config_llm {
-			if !lm_first {
-				strings.write_string(&sb, ",\n")
-			}
-			lm_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
-			if v, has := llm_obj[it.key]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, lsp_json_string(it.ptr^))
-			}
-		}
-		for it in config_llm_ints {
-			if !lm_first {
-				strings.write_string(&sb, ",\n")
-			}
-			lm_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
-			if v, has := llm_obj[it.key]; has {
-				config_value_text(&sb, v)
-			} else {
-				fmt.sbprintf(&sb, "%d", it.ptr^)
-			}
-		}
-		for it in config_llm_bools {
-			if !lm_first {
-				strings.write_string(&sb, ",\n")
-			}
-			lm_first = false
-			fmt.sbprintf(&sb, "    %s: ", lsp_json_string(it.key))
-			if v, has := llm_obj[it.key]; has {
-				config_value_text(&sb, v)
-			} else {
-				strings.write_string(&sb, "true" if it.ptr^ else "false")
-			}
-		}
-		strings.write_string(&sb, "\n  }")
-	}
-
-	strings.write_string(&sb, "\n}\n")
-	return os.write_entire_file(path, transmute([]byte)strings.to_string(sb))
-}
-
-config_write_pattern_array :: proc(sb: ^strings.Builder, lang: Language) {
-	langs, _ := g_config_defaults["languages"].(json.Object)
-	sub, _ := langs[LANGUAGES[lang].name].(json.Object)
-	config_value_text(sb, sub["patterns"])
+	json_write_value(&sb, root, 0)
+	strings.write_byte(&sb, '\n')
+	return os.write_entire_file(path, transmute([]byte)strings.to_string(sb)) == nil
 }
 
 config_dir :: proc(path: string) -> string {
@@ -1160,7 +1018,15 @@ config_dir :: proc(path: string) -> string {
 	return ""
 }
 
-config_value_text :: proc(sb: ^strings.Builder, v: json.Value) {
+json_write_indent :: proc(sb: ^strings.Builder, n: int) {
+	for _ in 0 ..< n {
+		strings.write_byte(sb, ' ')
+	}
+}
+
+// Pretty-prints a json.Value with sorted object keys so a rewritten user file is
+// stable and diffable. Scalar arrays (e.g. language patterns) stay on one line.
+json_write_value :: proc(sb: ^strings.Builder, v: json.Value, indent: int) {
 	switch t in v {
 	case json.Null:
 		strings.write_string(sb, "null")
@@ -1176,23 +1042,33 @@ config_value_text :: proc(sb: ^strings.Builder, v: json.Value) {
 		strings.write_byte(sb, '[')
 		for e, i in t {
 			if i > 0 {
-				strings.write_byte(sb, ',')
+				strings.write_string(sb, ", ")
 			}
-			config_value_text(sb, e)
+			json_write_value(sb, e, indent)
 		}
 		strings.write_byte(sb, ']')
 	case json.Object:
-		strings.write_byte(sb, '{')
-		first := true
-		for k, val in t {
-			if !first {
+		if len(t) == 0 {
+			strings.write_string(sb, "{}")
+			return
+		}
+		keys := make([dynamic]string, 0, len(t), context.temp_allocator)
+		for k in t {
+			append(&keys, k)
+		}
+		slice.sort(keys[:])
+		strings.write_string(sb, "{\n")
+		for k, i in keys {
+			json_write_indent(sb, indent + 2)
+			strings.write_string(sb, lsp_json_string(k))
+			strings.write_string(sb, ": ")
+			json_write_value(sb, t[k], indent + 2)
+			if i < len(keys) - 1 {
 				strings.write_byte(sb, ',')
 			}
-			first = false
-			strings.write_string(sb, lsp_json_string(k))
-			strings.write_byte(sb, ':')
-			config_value_text(sb, val)
+			strings.write_byte(sb, '\n')
 		}
+		json_write_indent(sb, indent)
 		strings.write_byte(sb, '}')
 	}
 }
