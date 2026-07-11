@@ -82,7 +82,7 @@ while True:
     elif method in ("textDocument/didOpen", "textDocument/didChange"):
         publish(msg["params"]["textDocument"]["uri"])
     elif method == "textDocument/hover":
-        reply(mid, {"contents": {"kind": "markdown", "value": "hover: canned hover text"}})
+        reply(mid, {"contents": {"kind": "markdown", "value": "# Canned Hover\n\nsome **bold** text"}})
     elif method == "textDocument/definition":
         uri = msg["params"]["textDocument"]["uri"]
         reply(mid, {"uri": uri, "range": {"start": {"line": 12, "character": 0},
@@ -277,10 +277,23 @@ e2e_lsp_hover :: proc(t: ^testing.T) {
 
 	e2e_alt(&e, 's')
 	testing.expect(t, e2e_lsp_wait(&e, pred_hover), "hover response should arrive")
-	testing.expect(t, strings.contains(string(e.ed.hover[:]), "canned hover text"), "hover text stored")
+	testing.expect(t, strings.contains(string(e.ed.hover[:]), "Canned Hover"), "hover markdown stored")
 
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "canned"), "hover popup renders the canned text")
+	// Markdown markers are stripped in the rendered popup.
+	testing.expect(t, e2e_grid_has(&e, "Canned Hover"), "hover popup renders the heading")
+	testing.expect(t, e2e_grid_has(&e, "bold"), "hover popup renders the emphasized word")
+	testing.expect(t, !e2e_grid_has(&e, "**bold**"), "markdown markers stripped")
+
+	bold_seen := false
+	for y in 0 ..< int(tb2.height()) {
+		for x in 0 ..< int(tb2.width()) {
+			if u64(e2e_cell_fg(&e, x, y)) & u64(tb2.Color.Bold) != 0 {
+				bold_seen = true
+			}
+		}
+	}
+	testing.expect(t, bold_seen, "hover popup emits bold styled cells")
 }
 
 @(test)

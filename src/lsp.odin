@@ -191,7 +191,7 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 	lsp.init_id = lsp.next_id
 	root_uri := lsp_json_string(lsp_uri(editor.working_root))
 	body := fmt.tprintf(
-		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"workspaceFolders":[{{"uri":%s,"name":"root"}}],"capabilities":{{"workspace":{{"configuration":true,"didChangeConfiguration":{{}},"workspaceFolders":true}},"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}},"definition":{{}},"hover":{{"contentFormat":["plaintext","markdown"]}},"formatting":{{}},"rename":{{}},"completion":{{"contextSupport":true,"completionItem":{{"snippetSupport":false}}}}}}}}}}}}`,
+		`{{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{{"processId":null,"rootUri":%s,"workspaceFolders":[{{"uri":%s,"name":"root"}}],"capabilities":{{"workspace":{{"configuration":true,"didChangeConfiguration":{{}},"workspaceFolders":true}},"textDocument":{{"publishDiagnostics":{{}},"synchronization":{{}},"definition":{{}},"hover":{{"contentFormat":["markdown","plaintext"]}},"formatting":{{}},"rename":{{}},"completion":{{"contextSupport":true,"completionItem":{{"snippetSupport":false}}}}}}}}}}}}`,
 		lsp.init_id,
 		root_uri,
 		root_uri,
@@ -1096,6 +1096,8 @@ lsp_apply_hover :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	clear(&editor.hover)
 	append(&editor.hover, ..transmute([]u8)text)
 	editor.hover_active = true
+	editor.hover_scroll = 0
+	editor.hover_lang = editor_buffer(editor).language
 	return true
 }
 
