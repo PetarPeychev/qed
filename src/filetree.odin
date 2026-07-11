@@ -11,7 +11,7 @@ import "lib:tb2"
 FileTreeMode :: enum {
 	Nav,
 	NewFile,
-	NewFolder,
+	NewDirectory,
 	Rename,
 	ConfirmDelete,
 }
@@ -126,6 +126,13 @@ filetree_unsaved :: proc(editor: ^Editor, e: FileEntry) -> bool {
 		}
 	}
 	return false
+}
+
+filetree_is_current :: proc(editor: ^Editor, e: FileEntry) -> bool {
+	if e.is_dir || editor.welcome || len(editor.buffers) == 0 {
+		return false
+	}
+	return editor_buffer(editor).path == e.path
 }
 
 filetree_clear_status :: proc(t: ^FileTree) {
@@ -680,6 +687,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 			editor_log(editor, .Error, "Files", "Already exists")
 			return
 		}
+		path_ensure_parent_dir(full)
 		f, err := os.open(full, {.Write, .Create, .Excl}, os.perm(0o644))
 		if err != nil {
 			editor_log(editor, .Error, "Files", "Create failed")
@@ -687,13 +695,13 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		}
 		os.close(f)
 		filetree_reveal(editor, full)
-	case .NewFolder:
+	case .NewDirectory:
 		full, _ := filepath.join({filetree_target_dir(editor), name}, context.temp_allocator)
 		if os.exists(full) {
 			editor_log(editor, .Error, "Files", "Already exists")
 			return
 		}
-		if os.make_directory(full) != nil {
+		if os.make_directory_all(full, os.perm(0o755)) != nil {
 			editor_log(editor, .Error, "Files", "Create failed")
 			return
 		}
@@ -705,6 +713,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		}
 		full, _ := filepath.join({filetree_parent_dir(e.path), name}, context.temp_allocator)
 		old := strings.clone(e.path, context.temp_allocator)
+		path_ensure_parent_dir(full)
 		if os.rename(old, full) != nil {
 			editor_log(editor, .Error, "Files", "Rename failed")
 			return
@@ -784,7 +793,7 @@ filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 filetree_paste :: proc(editor: ^Editor, text: string) {
 	t := &editor.filetree
 	#partial switch t.mode {
-	case .NewFile, .NewFolder, .Rename:
+	case .NewFile, .NewDirectory, .Rename:
 		textfield_insert_flat(&t.field, text)
 	}
 }
@@ -817,7 +826,7 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		case 'n':
 			filetree_prompt_begin(editor, .NewFile)
 		case 'N':
-			filetree_prompt_begin(editor, .NewFolder)
+			filetree_prompt_begin(editor, .NewDirectory)
 		case 'r':
 			filetree_prompt_begin(editor, .Rename)
 		case 'd':
@@ -882,7 +891,9 @@ filetree_render :: proc(editor: ^Editor) {
 			bar := COLOR_GIT_ADD if mark == .Added else COLOR_GIT_MOD
 			tb2.set_cell(i32(inner.x), i32(y), '▌', bar, COLOR_PANE_BG)
 		}
-		if i != t.selected && filetree_is_ignored(t, e.path) {
+		if filetree_is_current(editor, e) {
+			fg = COLOR_PANE_PROMPT_FG
+		} else if i != t.selected && filetree_is_ignored(t, e.path) {
 			fg = COLOR_FILETREE_IGNORED
 		}
 		label := filetree_row_label(t, e)
@@ -937,8 +948,8 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 	switch mode {
 	case .NewFile:
 		return "New file: "
-	case .NewFolder:
-		return "New folder: "
+	case .NewDirectory:
+		return "New directory: "
 	case .Rename:
 		return "Rename: "
 	case .Nav, .ConfirmDelete:
@@ -966,7 +977,7 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 		}
 		tx := inner.x + inner.w - 1 - total
 		actions_w := max(0, tx - (inner.x + 1) - 1)
-		pane_text(inner.x + 1, y, actions_w, "n new  N folder  r rename  d delete", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+		pane_text(inner.x + 1, y, actions_w, "n new  N directory  r rename  d delete", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 		for tg in toggles {
 			fg := COLOR_PANE_PROMPT_FG if tg.on else COLOR_PANE_SHORTCUT_FG
 			pane_text(tx, y, len(tg.label), tg.label, fg, COLOR_PANE_BG)
@@ -974,7 +985,7 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 		}
 		tb2.hide_cursor()
 		return
-	case .NewFile, .NewFolder, .Rename:
+	case .NewFile, .NewDirectory, .Rename:
 	case .ConfirmDelete:
 		if e, ok := filetree_selected(t); ok {
 			if e.is_dir {

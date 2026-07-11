@@ -874,3 +874,64 @@ e2e_nav_filetree_rebound_bind_toggles :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	testing.expect(t, !e.ed.filetree.active, "the old chord no longer opens it")
 }
+
+@(test)
+e2e_nav_filetree_marks_current_buffer :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	other := fmt.aprintf("%s/other.txt", e.ed.working_root)
+	defer delete(other)
+	nav_write(other, "other body")
+
+	nav_alt(&e, 'f')
+	e2e_key(&e, .Arrow_Down) // move selection off "main.txt" (sorts before "other.txt")
+	e2e_render(&e)
+
+	tr := &e.ed.filetree
+	lay := filetree_layout(&e.ed)
+
+	entry_cell :: proc(e: ^E2E, tr: ^FileTree, lay: FileTreeLayout, name: string) -> (fg, bg: tb2.Color) {
+		for entry, i in tr.entries {
+			if entry.name == name {
+				y := lay.body_top + (i - tr.scroll)
+				return e2e_cell_fg(e, lay.inner.x + 3, y), e2e_cell_bg(e, lay.inner.x + 3, y)
+			}
+		}
+		return .Default, .Default
+	}
+
+	fg, _ := entry_cell(&e, tr, lay, "main.txt")
+	testing.expect_value(t, fg, COLOR_PANE_PROMPT_FG)
+	fg, _ = entry_cell(&e, tr, lay, "other.txt")
+	testing.expect(t, fg != COLOR_PANE_PROMPT_FG, "non-current entry keeps the default color")
+
+	e2e_key(&e, .Arrow_Up) // selection back onto "main.txt"
+	e2e_render(&e)
+	bg: tb2.Color
+	fg, bg = entry_cell(&e, tr, lay, "main.txt")
+	testing.expect_value(t, fg, COLOR_PANE_PROMPT_FG)
+	testing.expect_value(t, bg, COLOR_PANE_SEL_BG)
+}
+
+@(test)
+e2e_nav_filetree_new_file_nested_dirs :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	nav_alt(&e, 'f')
+	e2e_type(&e, "n")
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.NewFile)
+	e2e_type(&e, "a/b/c.txt")
+	e2e_key(&e, .Enter)
+
+	full := fmt.aprintf("%s/a/b/c.txt", e.ed.working_root)
+	defer delete(full)
+	testing.expect(t, os.exists(full), "nested new file exists on disk")
+	testing.expect(t, os.is_dir(fmt.tprintf("%s/a/b", e.ed.working_root)), "intermediate dirs were created")
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.Nav)
+
+	sel, ok := filetree_selected(&e.ed.filetree)
+	testing.expect(t, ok, "a row is selected after reveal")
+	testing.expect(t, strings.has_suffix(sel.path, "c.txt"), "reveal selects the new nested file")
+}
