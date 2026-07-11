@@ -1,5 +1,5 @@
 {
-  "scroll_margin": 10,
+  "scroll_margin": 3,
   "tab_width": 4,
   "wheel_scroll_lines": 3,
   "double_click_ms": 400,

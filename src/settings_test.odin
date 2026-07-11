@@ -372,7 +372,7 @@ test_config_files :: proc(t: ^testing.T) {
 	_, is_err = config_load_from(miss_path)
 	testing.expect(t, !is_err, "partial file is not an error")
 	testing.expect(t, JUMP_THRESHOLD == 99, "present value applied")
-	testing.expect(t, SCROLL_MARGIN == 10, "missing key keeps embedded default")
+	testing.expect(t, SCROLL_MARGIN == 3, "missing key keeps embedded default")
 	obj := reparse(t, miss_path)
 	testing.expect(t, len(obj) == 1, "partial file not rewritten with defaults")
 	jt, jt_ok := obj["jump_threshold"].(json.Integer)
@@ -426,7 +426,7 @@ test_config_files :: proc(t: ^testing.T) {
 	msg, is_err = config_load_from(malformed_path)
 	testing.expect(t, is_err, "malformed config reports an error")
 	testing.expect(t, strings.contains(msg, "parse error"), "reports a parse error")
-	testing.expect(t, SCROLL_MARGIN == 10, "malformed config falls back to defaults")
+	testing.expect(t, SCROLL_MARGIN == 3, "malformed config falls back to defaults")
 	mdata, _ := os.read_entire_file(malformed_path, context.temp_allocator)
 	testing.expect(t, strings.contains(string(mdata), "not valid"), "malformed file left untouched")
 
