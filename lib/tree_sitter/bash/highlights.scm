@@ -49,3 +49,8 @@
   "<"
   "|"
 ] @operator
+
+(
+  (command (_) @constant)
+  (#match? @constant "^-")
+)

@@ -57,7 +57,7 @@
   (fallthrough_statement)
 ] @conditional
 
-(ternary_expression
+((ternary_expression
   [
     "?"
     ":"
@@ -65,6 +65,7 @@
     "else"
     "when"
   ] @conditional.ternary)
+  (#set! "priority" 105))
 
 ; Repeats
 
@@ -100,6 +101,8 @@
 
 ; Functions
 
+(procedure_declaration (identifier) @type)
+
 (procedure_declaration (identifier) @function (procedure (block)))
 
 (procedure_declaration (identifier) @function (procedure (uninitialized)))
@@ -111,6 +114,18 @@
 ; Types
 
 (type (identifier) @type)
+
+((type (identifier) @type.builtin)
+  (#any-of? @type.builtin
+    "bool" "byte" "b8" "b16" "b32" "b64"
+    "int" "i8" "i16" "i32" "i64" "i128"
+    "uint" "u8" "u16" "u32" "u64" "u128" "uintptr"
+    "i16le" "i32le" "i64le" "i128le" "u16le" "u32le" "u64le" "u128le"
+    "i16be" "i32be" "i64be" "i128be" "u16be" "u32be" "u64be" "u128be"
+    "float" "double" "f16" "f32" "f64" "f16le" "f32le" "f64le" "f16be" "f32be" "f64be"
+    "complex32" "complex64" "complex128" "complex_float" "complex_double"
+    "quaternion64" "quaternion128" "quaternion256"
+    "rune" "string" "cstring" "rawptr" "typeid" "any"))
 
 "..." @type.builtin
 
@@ -134,6 +149,10 @@
 
 (polymorphic_parameters (identifier) @type)
 
+((identifier) @type
+  (#lua-match? @type "^[A-Z][a-zA-Z0-9]*$")
+  (#not-has-parent? @type parameter procedure_declaration call_expression))
+
 ; Fields
 
 (member_expression "." (identifier) @field)
@@ -146,9 +165,18 @@
 
 ; Constants
 
+((identifier) @constant
+  (#lua-match? @constant "^_*[A-Z][A-Z0-9_]*$")
+  (#not-has-parent? @constant type parameter))
+
 (member_expression . "." (identifier) @constant)
 
 (enum_declaration "{" (identifier) @constant)
+
+; Macros
+
+((call_expression function: (identifier) @function.macro)
+  (#lua-match? @function.macro "^_*[A-Z][A-Z0-9_]*$"))
 
 ; Attributes
 
@@ -176,6 +204,9 @@
   (uninitialized)
   (nil)
 ] @constant.builtin
+
+((identifier) @variable.builtin
+  (#any-of? @variable.builtin "context" "self"))
 
 ; Operators
 

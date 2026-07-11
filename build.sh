@@ -15,6 +15,9 @@ cc -c -w -O2 -I "$TS/odin" "$TS/odin/scanner.c" -o "$TS/odin-scanner.o"
 cc -c -w -O2 -I "$TS/json" "$TS/json/parser.c" -o "$TS/json-parser.o"
 cc -c -w -O2 -I "$TS/python" "$TS/python/parser.c" -o "$TS/python-parser.o"
 cc -c -w -O2 -I "$TS/python" "$TS/python/scanner.c" -o "$TS/python-scanner.o"
+cc -c -w -O2 -I "$TS/go" "$TS/go/parser.c" -o "$TS/go-parser.o"
+cc -c -w -O2 -I "$TS/rust" "$TS/rust/parser.c" -o "$TS/rust-parser.o"
+cc -c -w -O2 -I "$TS/rust" "$TS/rust/scanner.c" -o "$TS/rust-scanner.o"
 cc -c -w -O2 -I "$TS/c" "$TS/c/parser.c" -o "$TS/c-parser.o"
 cc -c -w -O2 -I "$TS/javascript" "$TS/javascript/parser.c" -o "$TS/javascript-parser.o"
 cc -c -w -O2 -I "$TS/javascript" "$TS/javascript/scanner.c" -o "$TS/javascript-scanner.o"
@@ -36,6 +39,8 @@ ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/odin-parser.o" "$TS/odin-scanner.o" \
    "$TS/json-parser.o" \
    "$TS/python-parser.o" "$TS/python-scanner.o" \
+   "$TS/go-parser.o" \
+   "$TS/rust-parser.o" "$TS/rust-scanner.o" \
    "$TS/c-parser.o" \
    "$TS/javascript-parser.o" "$TS/javascript-scanner.o" \
    "$TS/typescript-parser.o" "$TS/typescript-scanner.o" \

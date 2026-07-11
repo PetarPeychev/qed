@@ -13,6 +13,8 @@ approach as `lib/tb2/`.
 | Odin grammar | `github.com/tree-sitter-grammars/tree-sitter-odin` | `d2ca8efb4487e156a60d5bd6db2598b872629403` (v1.3.0) |
 | JSON grammar | `github.com/tree-sitter/tree-sitter-json` | `ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24` (v0.24.8) |
 | Python grammar | `github.com/tree-sitter/tree-sitter-python` | `d326e4cad262cf681656e130960e49dfc04c03ea` (v0.25.0) |
+| Go grammar | `github.com/tree-sitter/tree-sitter-go` | `6048bfc6e5238eaf062c2221bd934489c39fbb61` (v0.25.0) — no external scanner |
+| Rust grammar | `github.com/tree-sitter/tree-sitter-rust` | `77a3747266f4d621d0757825e6b11edcbf991ca5` (v0.24.2) — C scanner |
 | C grammar | `github.com/tree-sitter/tree-sitter-c` | `7fa1be1b694b6e763686793d97da01f36a0e5c12` (v0.24.1) |
 | JavaScript grammar | `github.com/tree-sitter/tree-sitter-javascript` | `44c892e0be055ac465d5eeddae6d3e194424e7de` (v0.25.0) |
 | TypeScript grammar | `github.com/tree-sitter/tree-sitter-typescript` | `f975a621f4e7f532fe322e13c4f79495e0a7b2e7` (v0.23.2) — provides `typescript`/`tsx` |
@@ -36,6 +38,8 @@ runtime/src/      lib.c + the amalgamated .c  compiled into libtreesitter.a
 odin/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (ABI 14)
 json/             parser.c,           tree_sitter/*.h, highlights.scm
 python/           parser.c, scanner.c, tree_sitter/*.h, highlights.scm
+go/               parser.c,           tree_sitter/*.h, highlights.scm   (no scanner)
+rust/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm
 c/                parser.c,           tree_sitter/*.h, highlights.scm
 javascript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used for .js/.jsx)
 typescript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used for .ts and .tsx)
@@ -68,201 +72,128 @@ gated behind `TREE_SITTER_FEATURE_WASM` (undefined here), so it compiles empty
 and pulls in no wasmtime dependency. The `runtime/src/wasm*` files are therefore
 inert dead weight kept only so `lib.c`'s include resolves.
 
-## Patches to the queries
+## Queries: vendored verbatim + the predicate evaluator
 
-Every grammar's upstream `highlights.scm` is the same story: predicate-gated
-rules the tree-sitter **C core does not evaluate** must be removed, because qed
-does **structural-only** highlighting (real syntax-tree facts, no name-shape
-guessing — precise type/constant *usage* coloring is deferred to LSP semantic
-tokens). An unevaluated gating predicate means the rule matches unconditionally.
-If any query is re-vendored, re-apply the removals below (or add a predicate
-evaluator).
+Every grammar's `highlights.scm` is now vendored **verbatim** from upstream at the
+pin in the provenance table. This works because qed evaluates query predicates
+(`src/predicate.odin`) instead of stripping the predicate-gated rules — so the
+name-shape heuristics upstream relies on (SCREAMING_CASE → `@constant`,
+Capitalized → `@type`/`@constructor`, `-flag` → `@constant`, builtin lists) are
+live. The tree-sitter **C core parses but does not evaluate** predicates; the
+evaluator reads them via `ts_query_predicates_for_pattern` /
+`ts_query_string_value_for_id`, caches them per pattern at query-build time, and
+runs them per match on the paint path, discarding matches whose predicates fail.
 
-### `json/highlights.scm`
+### The evaluator
 
-Predicate-free upstream — vendored **verbatim**, no removals.
+Predicates are parsed once (`query_predicates_build`) alongside each `Syntax`
+query (host + injection) and cached per pattern index; regexes are compiled once
+there, not per match. `predicate_pass` runs a pattern's filter predicates against
+a match's captured node texts (extracted from the buffer or the parsed source
+slice) at every query-execution site: the main paint (`highlight_query_paint`),
+the injection pass (`highlight_inject`), injected sub-language paint
+(`highlight_inject_region`), and the preview path (`highlight_lines`).
 
-### `python/highlights.scm`
+Supported predicates:
 
-Three `#match?`-gated identifier heuristics removed (each would otherwise match
-*every* identifier):
+- `#eq?` / `#not-eq?` / `#any-eq?` / `#any-not-eq?` — capture-vs-string and
+  capture-vs-capture.
+- `#match?` / `#not-match?` / `#any-match?` / `#any-not-match?` — regex via Odin's
+  `core:text/regex`.
+- `#any-of?` / `#not-any-of?`.
+- `#lua-match?` / `#not-lua-match?` — Lua patterns via `core:text/match` (used by
+  the Odin query).
+- `#has-parent?` / `#not-has-parent?` / `#has-ancestor?` / `#not-has-ancestor?` —
+  Neovim extensions; tree-walk checks of the captured node's parent/ancestor
+  types against the listed type names (the Odin query uses `#not-has-parent?`).
+- `#set!` — a directive, not a filter: **ignored** for highlighting, *except*
+  `#set! injection.language <name>`, which the injection pass reads to pick the
+  embedded language.
 
-- `((identifier) @constructor (#match? … "^[A-Z]"))` — **removed** (the most
-  harmful: `@constant` below would color every identifier).
-- `((identifier) @constant (#match? … "^[A-Z][A-Z_]*$"))` — **removed**.
-- `((call function: (identifier) @function.builtin) (#match? …))` builtin-call
-  list — **removed**.
+**Unknown-predicate policy.** A predicate name the evaluator doesn't recognize
+(e.g. `#is-not? local`, a Neovim locals-scope extension qed doesn't track) is
+**skipped** — the pattern still matches, and its other, known predicates are still
+enforced. Unknown predicates never reject a whole pattern. **A regex that fails to
+compile** is treated as a failed predicate (the match is discarded), which
+reproduces the old "stripped" behavior for that one pattern.
 
-Everything predicate-free is kept: keywords, operators, `(type (identifier)
-@type)`, function/decorator/definition names (`@function`/`@property` are
-unmapped, so they render plain), strings, comments, numbers, `(none)/(true)/
-(false)` constants, escapes.
+### Remaining deviations from upstream-verbatim
 
-### `c/highlights.scm`
+- **`typescript/highlights.scm`** — the upstream `typescript` query is
+  `; inherits: javascript` (a directive qed can't express), so the file is the
+  upstream **javascript** query verbatim followed by the upstream **typescript**
+  additions verbatim, concatenated. Used by **both** the `typescript` and `tsx`
+  grammars. Layout only; no rules changed.
+- **`markdown/highlights.scm`** — upstream verbatim **plus** two GFM task-list
+  checkbox rules appended (`(task_list_marker_unchecked) @keyword`,
+  `(task_list_marker_checked) @string`); nvim-treesitter ships these in a separate
+  query, and upstream's block `highlights.scm` at this pin has none, so verbatim
+  alone would drop checkbox coloring. Everything else is verbatim.
+- **`common/scanner.h` include path** — layout patch (drops the `src/` level),
+  documented above; not a query.
+- **`rust/highlights.scm`** — vendored verbatim, including an upstream typo on the
+  SCREAMING-constant rule: `(#match? @constant "^[A-Z][A-Z\d_]+$'")` has a stray
+  `'` after the `$` end anchor, so under a real regex it can never match. The
+  evaluator therefore discards every `@constant` match; an all-caps name instead
+  falls through to the `@constructor` rule (`#match? "^[A-Z]"`) and renders in the
+  **type** color (constructor → type). Faithful verbatim behavior — no fix applied.
+- **`sql/highlights.scm`** — vendored verbatim. Its two `#match?` number/float
+  rules use Lua-style `%d` classes (nvim heritage): under a real regex `%d` is a
+  literal `%` + `d`, so `^[-+]?%d+$` never matches a digit run. The evaluator
+  therefore discards those `@number`/`@float` matches and the numeric `(literal)`
+  keeps `(literal) @string` — i.e. numbers render in the **string** color, exactly
+  the old stripped behavior. No special-casing; it falls out of correct regex
+  evaluation.
 
-One `#match?`-gated identifier heuristic removed (it would otherwise match
-*every* identifier):
+### Injection (markdown)
 
-- `((identifier) @constant (#match? … "^[A-Z][A-Z\d_]*$"))` — **removed** (would
-  paint every identifier in the constant color).
+`injections.scm` is now vendored **verbatim**. It uses the upstream convention:
+`@injection.content` marks the region, and the target language comes from either
+an `@injection.language` capture (its node text — fenced code blocks) or a
+`#set! injection.language <name>` directive (the `(inline)` → `markdown_inline`
+case). The injection pass (`highlight_inject`) reads both. Languages qed has no
+grammar for — the upstream `html` / `yaml` / `toml` metadata injections — resolve
+to `.Plain` and no-op.
 
-Everything predicate-free is kept: keywords, preproc directives, operators,
-delimiters, strings/system-lib strings, `(null)`/number/char constants, type
-identifiers / primitive & sized types, function-call and declarator names
-(`@function`/`@function.special` are unmapped, so they render plain),
-`(identifier) @variable` (unmapped → plain), comments.
-
-### `javascript/highlights.scm`
-
-Upstream JS query minus its four predicate-gated rules (qed's core doesn't
-evaluate predicates, so a gated rule matches unconditionally):
-
-- `((identifier) @constant (#match? … "^[A-Z_][A-Z\d_]+$"))` — **removed** (the
-  harmful one: `@constant` is painted, so it would color *every* identifier).
-- `((identifier) @constructor (#match? … "^[A-Z]"))` — **removed**.
-- `((identifier) @variable.builtin (#match? …))` and `@function.builtin (#eq?
-  "require")` — **removed**.
-
-Everything predicate-free is kept: keywords, strings/template strings, regex
-(`@string.special`), comments, numbers, `true`/`false`/`null`/`undefined`,
-operators/punctuation (unmapped → plain), and the `@function`/`@property`/
-`@variable` structural captures (unmapped → plain). No JSX-tag rules added — qed
-has no `@tag` color bucket, so JSX tags render plain by design.
-
-### `typescript/highlights.scm`
-
-The JavaScript base **inlined** (upstream TS is `; inherits: javascript`, which
-qed can't express) plus the TS additions, curated the same way. Used by **both**
-the `typescript` and `tsx` grammars (`.tsx` JSX nodes are already covered by the
-inlined JS rules; qed maps no JSX-specific captures). Removed the two
-predicate-gated identifier heuristics:
-
-- `((identifier) @type (#match? … "^[A-Z]"))` — **removed** (would paint every
-  identifier as a type).
-- (plus the four inherited JS `#match?`/`#eq?` rules above.)
-
-Kept predicate-free: `(type_identifier) @type`, `(predefined_type) @type.builtin`,
-type-argument brackets, parameter identifiers (unmapped → plain), and the TS
-keyword set (`interface`, `type`, `enum`, `readonly`, …).
-
-### `markdown/` + `markdown_inline/` (block + inline, injected)
-
-Markdown is qed's one **injected** language: the block grammar parses structure,
-and `highlight.odin`'s injection pass re-parses `(inline)` nodes with the
-`markdown_inline` grammar and fenced code blocks with the language named by their
-info string (`language_of_name`). See DESIGN.md §"Multiple servers / grammars".
-
-Both `highlights.scm` are predicate-free upstream (nvim-flavored `@text.*` capture
-names) and vendored near-verbatim; the capture→color choices are Petar's taste,
-made by re-labeling captures to qed's vocabulary rather than by touching shared
-code:
-- Headings, list/heading/quote markers, thematic breaks → `@keyword` (yellow).
-- `@text.strong` → attribute (yellow), `@text.emphasis` → comment (orange).
-- Links: real `[text](url)` brackets + text + destination/label → blue
-  (`@text.uri`/`@text.reference`). A bare `shortcut_link` `[text]` is left
-  **uncolored** so stray brackets and malformed checkboxes don't read as links.
-- GFM task checkboxes: `(task_list_marker_unchecked)` → `@keyword` (yellow),
-  `(task_list_marker_checked)` → `@string` (green).
-- Inline `code_span` + its backticks, and the `fenced_code_block_delimiter` +
-  `info_string` (```lang) → `@text.code`, mapped to `COLOR_SYN_CODE`.
-- `fenced_code_block`/`code_fence_content` stay unmapped so the injected language
-  paints the body.
-
-`injections.scm` is **rewritten** (not vendored): upstream encodes the target with
-`(#set! injection.language …)` predicates the C core doesn't evaluate, so qed
-can't read them. Instead the target is encoded by **capture name** — `@inline`
-means the `markdown_inline` grammar, `@language`+`@content` means the language
-named by `@language`'s text. Only `(paragraph (inline))` is injected (not
-`atx_heading` inlines, so headings keep their solid title color); the html/yaml/
-toml metadata injections are dropped (no grammar for them).
-
-The new `@text.*` / `@text.code` capture names are mapped in
-`src/highlight.odin`'s `syntax_capture_color` (see below).
-
-### `bash/highlights.scm`
-
-One `#match?`-gated rule removed:
-
-- `((command (_) @constant) (#match? @constant "^-"))` — **removed** (would paint
-  every command argument, not just `-`-prefixed flags, in the constant color).
-
-Everything predicate-free is kept: strings/heredocs, `(command_name)`/function
-names (`@function` unmapped → plain), `(variable_name)` (`@property` → plain),
-the keyword set, comments, `(file_descriptor)` numbers, command/process/expansion
-substitutions (`@embedded` → plain), operators (`@operator` → plain).
-
-### `lua/highlights.scm`
-
-Three predicate-gated rules removed (qed's core doesn't evaluate predicates, so a
-gated rule matches unconditionally):
-
-- `((identifier) @constant (#match? … "^[A-Z][A-Z_0-9]*$"))` — **removed** (the
-  harmful one: `@constant` is painted, so it would color *every* identifier).
-- `((identifier) @variable.builtin (#eq? … "self"))` — **removed** (`@variable.builtin`
-  is unmapped → plain, so cosmetically harmless, but dropped for consistency).
-- `((function_call (identifier) @function.builtin) (#any-of? …))` builtin list —
-  **removed** (`@function.builtin` unmapped → plain; dropped for consistency).
-
-Kept predicate-free: keywords/conditionals/repeats (all → keyword color),
-`(nil)`/`(vararg_expression)`/booleans (constant), strings + escapes, numbers,
-comments, `(hash_bang_line)` (`@preproc` → attribute). Structural `@function`/
-`@field`/`@method`/`@parameter`/`@variable`/`@operator`/`@punctuation.*` are
-unmapped → plain (qed's "identifiers stay plain" scope).
-
-### `sql/highlights.scm`
-
-Two `#match?`-gated `(literal)` rules removed:
-
-- `((literal) @number (#match? … "^[-+]?%d+$"))` — **removed**.
-- `((literal) @float (#match? … "^[-+]?%d*\.%d*$"))` — **removed**.
-
-The grammar exposes numbers and strings as the same `(literal)` node, split only
-by these regexes; with no predicate evaluator both would match unconditionally and
-overwrite `(literal) @string` — painting *all* literals (including strings) the
-constant color. Removing them leaves `(literal) @string`, so numeric literals
-render in the string color (acceptable: the tree has no structural number node).
-Everything else is kept: the large `keyword_*` set (→ keyword), `keyword_*`
-type-qualifier/builtin/storageclass/conditional/operator groups, `(object_reference
-… @type)`, `(invocation … @function.call)` (unmapped → plain), comments, booleans,
-`(field … @field)`/`(parameter) @parameter`/`(relation alias) @variable` (plain).
-
-### `odin/highlights.scm`
-
-The upstream query is **Neovim-flavored**: several rules gate a capture behind
-predicates the tree-sitter **C core does not evaluate** — `#lua-match?`,
-`#not-has-parent?` (Neovim extensions), and the standard `#any-of?`/`#set!`
-(core-known but only enforced if the *caller* checks them, which qed does not).
-An unevaluated gating predicate means the rule matches unconditionally, so e.g.
-`((identifier) @type (#lua-match? …))` would paint *every* identifier as a type.
-
-qed does **structural-only** highlighting (real syntax-tree facts, no
-name-shape guessing — precise type/constant *usage* coloring is deferred to LSP
-semantic tokens). So the predicate-gated rules were removed:
-
-- `(#lua-match? … "^[A-Z]…")` → identifier-as-type heuristic — **removed**.
-- `(#lua-match? … "^_*[A-Z][A-Z0-9_]*$")` → identifier-as-constant and
-  call-as-macro heuristics — **removed**.
-- `(#any-of? @type.builtin …)` builtin-type list and `(#any-of? @variable.builtin
-  "context" "self")` — **removed** (the core wouldn't filter them, so they'd
-  mis-tag; declared/annotated builtin types still color via `(type (identifier)
-  @type)`).
-- `(#set! "priority" 105)` on the ternary rule — **removed** (qed's paint order
-  is document order with later/more-specific captures overwriting; no priority
-  engine).
-- `(procedure_declaration (identifier) @type)` — **removed**. Upstream tags a
-  proc-declaration name `@type` and then overwrites it with `@function`; qed
-  leaves `@function` unmapped (procedures render plain), so without removing this
-  the `@type` paint would stick and proc names would show in the type color.
-
-Everything predicate-free is kept and works: keywords, declared/annotated types,
-proc declarations, call targets, strings, comments, numbers, booleans, escapes,
-attributes, punctuation. If this query is ever re-vendored, re-apply these
-removals (or add a predicate evaluator).
+**Look note:** upstream injects *all* `(inline)` nodes, including a heading's, so
+heading inlines now also run through `markdown_inline` (full fidelity — the old
+query injected only `(paragraph (inline))`). This is visually inert for plain
+headings (plain text produces no inline captures, so the `@text.title` color
+stays); only a heading that contains `**bold**` / `` `code` `` / a link now picks
+up that inline styling over the title.
 
 ## Capture → color mapping
 
-Lives in `src/highlight.odin` (`syntax_capture_color`), mapping capture-name
-prefixes to the `COLOR_SYN_*` constants in `src/config.odin`. Captures with no
-mapping (e.g. `@function`, `@variable`, `@parameter`, `@field`, `@operator`,
-`@punctuation.*`) render as default text — this is the "Rich but procedures/
-operators/identifiers stay plain" scope.
+Lives in `src/highlight.odin` (`syntax_capture_color`), mapping capture names /
+prefixes to the `COLOR_SYN_*` constants. With the heuristics live, the newly-firing
+captures are mapped as:
+
+- `@constant*` (incl. `@constant.builtin`), `@number`, `@float`, `@boolean`,
+  `@variable.builtin` → constant color.
+- `@type*` (incl. `@type.builtin`) and `@constructor` → type color.
+- `@function.builtin` → keyword color (builtin functions read as language-level).
+- `@comment*` (prefix) → comment color, so Rust `@comment.documentation` (`///`
+  doc comments) paints like a normal comment instead of falling through to plain.
+- Markdown: `@text.title` → bold keyword; `@text.literal`/`@text.code` → code
+  gray; `@text.uri`/`@text.reference` → type (blue); `@text.strong` → bold
+  attribute; `@text.emphasis` → italic comment.
+
+Captures with no mapping (e.g. `@function`, `@variable`, `@property`, `@parameter`,
+`@field`, `@operator`, `@namespace`, `@label`, `@escape`, `@punctuation.*`,
+`@punctuation.special`) render as default text — the "rich but procedures /
+operators / identifiers / markdown markers stay plain" scope. Go and Rust both tag
+escape sequences with a bare `@escape` (not `@string.escape`), left plain exactly
+like JSON's and Python's — so `\n` inside a Go/Rust string reads in the default
+color, matching the established behavior for those grammars. `@punctuation.special`
+is deliberately left plain: mapping it would recolor Odin's `@`/`$` sigils and
+Python/JS interpolation braces, so markdown heading/list markers render plain
+(the heading *text* is still the bold title color).
+
+**Known consequence — Odin proc names.** Upstream tags a proc-declaration name
+`@type` (`(procedure_declaration (identifier) @type)`) and then re-tags it
+`@function`. In Neovim `@function` wins (last match) and proc names get the
+function color; qed leaves `@function` unmapped (no color contribution, so it does
+**not** overwrite), and there is no function color bucket, so the earlier `@type`
+paint stays — **Odin procedure-declaration names render in the type color.** This
+is the faithful result within qed's palette (a function color would require a new
+bucket); flagged here because it is a visible change to `.odin` files.

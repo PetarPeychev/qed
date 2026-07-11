@@ -40,9 +40,11 @@ Syntax :: struct {
 	cursor:     ^ts.QueryCursor,
 	colors:     [dynamic]tb2.Color,
 	paint:      [dynamic]bool,
+	preds:      [dynamic]PatternPreds,
 	inj_query:  ^ts.Query,
 	inj_cursor: ^ts.QueryCursor,
 	inj_names:  [dynamic]string,
+	inj_preds:  [dynamic]PatternPreds,
 }
 
 @(private = "file")
@@ -78,6 +80,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 		return false
 	}
 	s.cursor = ts.query_cursor_new()
+	s.preds = query_predicates_build(s.query)
 
 	syntax_load_colors(s)
 
@@ -89,6 +92,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 		s.inj_query = ts.query_new(lang, raw_data(info.injections), u32(len(info.injections)), &off, &et)
 		if s.inj_query != nil {
 			s.inj_cursor = ts.query_cursor_new()
+			s.inj_preds = query_predicates_build(s.inj_query)
 			m := ts.query_capture_count(s.inj_query)
 			for id in 0 ..< m {
 				length: u32
@@ -141,6 +145,8 @@ syntax_shutdown :: proc() {
 		if s.parser != nil {
 			ts.parser_delete(s.parser)
 		}
+		query_predicates_destroy(&s.preds)
+		query_predicates_destroy(&s.inj_preds)
 		delete(s.colors)
 		delete(s.paint)
 		delete(s.inj_names)
@@ -165,23 +171,27 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 	     strings.has_prefix(name, "include"),
 	     name == "storageclass":
 		return COLOR_SYN_KEYWORD, true
-	case strings.has_prefix(name, "type"):
+	case strings.has_prefix(name, "type"), name == "constructor":
 		return COLOR_SYN_TYPE, true
 	case strings.has_prefix(name, "string"), name == "character":
 		return COLOR_SYN_STRING, true
-	case name == "comment", name == "spell":
+	case strings.has_prefix(name, "comment"), name == "spell":
 		return COLOR_SYN_COMMENT, true
 	case strings.has_prefix(name, "constant"),
+	     name == "variable.builtin",
 	     name == "number",
 	     name == "float",
 	     name == "boolean":
 		return COLOR_SYN_CONSTANT, true
+	case name == "function.builtin":
+		return COLOR_SYN_KEYWORD, true
 	case name == "attribute", strings.has_prefix(name, "preproc"):
 		return COLOR_SYN_ATTRIBUTE, true
-	// Markdown (block + inline) uses nvim-flavored @text.* capture names.
+	// Markdown (block + inline) uses nvim-flavored @text.* capture names; mapped
+	// to preserve qed's markdown look. Markers (@punctuation.special) stay plain.
 	case name == "text.title":
 		return color_attr(COLOR_SYN_KEYWORD, .Bold), true
-	case name == "text.code":
+	case name == "text.literal", name == "text.code":
 		return COLOR_SYN_CODE, true
 	case name == "text.uri", name == "text.reference":
 		return COLOR_SYN_TYPE, true
@@ -270,8 +280,12 @@ highlight_query_paint :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
 
 	ts.query_cursor_set_point_range(s.cursor, {u32(vtop), 0}, {u32(vbot) + 1, 0})
 	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(b.hl.tree))
+	nt := NodeText{buffer = b}
 	match: ts.QueryMatch
 	for ts.query_cursor_next_match(s.cursor, &match) {
+		if int(match.pattern_index) < len(s.preds) && !predicate_pass(s.preds[match.pattern_index], &match, nt) {
+			continue
+		}
 		for i in 0 ..< int(match.capture_count) {
 			cap := match.captures[i]
 			if int(cap.index) >= len(s.paint) || !s.paint[cap.index] {
@@ -303,13 +317,22 @@ highlight_inject :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
 	if s.inj_query == nil || b.hl.tree == nil {
 		return
 	}
+	// Upstream injection convention (nvim-flavored): @injection.content marks the
+	// region, its language named either by an @injection.language capture (the
+	// captured node's text — fenced code blocks) or a `#set! injection.language
+	// <name>` directive (the (inline) -> markdown_inline case). Languages qed has
+	// no grammar for (html/yaml/toml metadata) resolve to .Plain and no-op.
+	nt := NodeText{buffer = b}
 	ts.query_cursor_set_point_range(s.inj_cursor, {u32(vtop), 0}, {u32(vbot) + 1, 0})
 	ts.query_cursor_exec(s.inj_cursor, s.inj_query, ts.tree_root_node(b.hl.tree))
 	match: ts.QueryMatch
 	for ts.query_cursor_next_match(s.inj_cursor, &match) {
+		if int(match.pattern_index) < len(s.inj_preds) &&
+		   !predicate_pass(s.inj_preds[match.pattern_index], &match, nt) {
+			continue
+		}
 		content_ok := false
 		sr, sc, er, ec: int
-		target := Language.Plain
 		lang_name := ""
 		for i in 0 ..< int(match.capture_count) {
 			cap := match.captures[i]
@@ -319,28 +342,34 @@ highlight_inject :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
 			sp := ts.node_start_point(cap.node)
 			ep := ts.node_end_point(cap.node)
 			switch s.inj_names[cap.index] {
-			case "inline":
+			case "injection.content":
 				sr, sc, er, ec = int(sp.row), int(sp.column), int(ep.row), int(ep.column)
 				content_ok = true
-				target = .MarkdownInline
-			case "content":
-				sr, sc, er, ec = int(sp.row), int(sp.column), int(ep.row), int(ep.column)
-				content_ok = true
-			case "language":
+			case "injection.language":
 				lang_name = buffer_text_span(b, int(sp.row), int(sp.column), int(ep.row), int(ep.column))
 			}
 		}
 		if !content_ok {
 			continue
 		}
-		if target == .Plain {
-			target = language_of_name(lang_name)
+		if lang_name == "" && int(match.pattern_index) < len(s.inj_preds) {
+			if set_lang, ok := pattern_injection_language(s.inj_preds[match.pattern_index]); ok {
+				lang_name = set_lang
+			}
 		}
+		target := injection_language(lang_name)
 		if target == .Plain {
 			continue
 		}
 		highlight_inject_region(b, target, sr, sc, er, ec)
 	}
+}
+
+injection_language :: proc(name: string) -> Language {
+	if name == "markdown_inline" {
+		return .MarkdownInline
+	}
+	return language_of_name(name)
 }
 
 highlight_inject_region :: proc(b: ^Buffer, target: Language, sr, sc, er, ec: int) {
@@ -360,10 +389,14 @@ highlight_inject_region :: proc(b: ^Buffer, target: Language, sr, sc, er, ec: in
 
 	// The target cursor may carry a stale point range from a prior main-buffer
 	// paint of this language; widen it so the whole slice is queried.
+	nt := NodeText{src = slice}
 	ts.query_cursor_set_point_range(t.cursor, {0, 0}, {max(u32), 0})
 	ts.query_cursor_exec(t.cursor, t.query, ts.tree_root_node(tree))
 	match: ts.QueryMatch
 	for ts.query_cursor_next_match(t.cursor, &match) {
+		if int(match.pattern_index) < len(t.preds) && !predicate_pass(t.preds[match.pattern_index], &match, nt) {
+			continue
+		}
 		for i in 0 ..< int(match.capture_count) {
 			cap := match.captures[i]
 			if int(cap.index) >= len(t.paint) || !t.paint[cap.index] {
@@ -566,10 +599,14 @@ highlight_lines :: proc(language: Language, lines: []string, out: ^[dynamic][dyn
 	}
 	defer ts.tree_delete(tree)
 
+	nt := NodeText{src = src}
 	ts.query_cursor_set_point_range(s.cursor, {0, 0}, {max(u32), 0})
 	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(tree))
 	match: ts.QueryMatch
 	for ts.query_cursor_next_match(s.cursor, &match) {
+		if int(match.pattern_index) < len(s.preds) && !predicate_pass(s.preds[match.pattern_index], &match, nt) {
+			continue
+		}
 		for i in 0 ..< int(match.capture_count) {
 			cap := match.captures[i]
 			if int(cap.index) >= len(s.paint) || !s.paint[cap.index] {

@@ -34,6 +34,12 @@
 (comment) @comment @spell
 (marginalia) @comment
 
+((literal) @number
+   (#match? @number "^[-+]?%d+$"))
+
+((literal) @float
+  (#match? @float "^[-+]?%d*\.%d*$"))
+
 (parameter) @parameter
 
 [

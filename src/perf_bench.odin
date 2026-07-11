@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
@@ -17,11 +18,120 @@ HIGHLIGHT_BUDGET_MS :: 50.0
 // perf budget live together here.
 @(test)
 test_highlight_incremental :: proc(t: ^testing.T) {
+	// The g_syntaxes cache (parser/query/cursor per language) is process-global and
+	// shared with the e2e harness, which serializes its render sessions on e2e_lock.
+	// This test drives highlighting directly (bypassing the harness), so it must take
+	// the same lock or it races an e2e session painting the same language.
+	sync.mutex_lock(&e2e_lock)
+	defer sync.mutex_unlock(&e2e_lock)
 	defer syntax_shutdown()
 	highlight_queries_compile(t)
+	// A prior test may have left a syntax cache recolored to a transient palette
+	// (config/theme reload bakes s.colors but syntax_ensure won't rebake a cached
+	// language). Rebake from the current globals so color assertions are stable —
+	// this mirrors editor_retheme, which always recolors after a palette change.
+	syntax_recolor()
 	highlight_injection(t)
+	highlight_predicates(t)
 	highlight_correctness(t)
 	highlight_perf(t)
+}
+
+// End-to-end proof that the query predicate evaluator is live: a name-shape
+// heuristic (SCREAMING_CASE -> constant, Capitalized -> type, flag -> constant)
+// now paints, while an identifier that fails the predicate is left plain. Before
+// the evaluator every one of these gated patterns matched unconditionally.
+highlight_predicates :: proc(t: ^testing.T) {
+	at :: proc(b: ^Buffer, row, col: int) -> tb2.Color {
+		cs := highlight_colors(b, row)
+		if col >= len(cs) {
+			return COLOR_FG
+		}
+		return cs[col]
+	}
+	Chk :: struct {
+		row, col: int,
+		color:    tb2.Color,
+		want:     bool,
+		msg:      string,
+	}
+	probe :: proc(t: ^testing.T, lang: Language, path, content: string, checks: []Chk) {
+		b := buffer_new()
+		defer buffer_destroy(&b)
+		delete(b.path)
+		b.path = strings.clone(path)
+		b.language = lang
+		buffer_insert(&b, Cursor{0, 0}, content)
+		highlight_update(&b, 0, len(b.lines) - 1)
+		for c in checks {
+			got := at(&b, c.row, c.col) == c.color
+			testing.expectf(t, got == c.want, "%v: %s (row %d col %d)", lang, c.msg, c.row, c.col)
+		}
+	}
+
+	// Python: MAX (SCREAMING) -> @constant; foo (lowercase) -> plain.
+	probe(t, .Python, "p.py", "MAX = 1\nfoo = 2\n", []Chk{
+		{0, 0, COLOR_SYN_CONSTANT, true, "MAX is constant-colored"},
+		{1, 0, COLOR_SYN_CONSTANT, false, "lowercase foo is NOT constant-colored"},
+	})
+	// C: FOO (SCREAMING) -> @constant; bar -> plain.
+	probe(t, .C, "c.c", "int FOO = 1;\nint bar = 2;\n", []Chk{
+		{0, 4, COLOR_SYN_CONSTANT, true, "FOO is constant-colored"},
+		{1, 4, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
+	})
+	// JavaScript: FOO -> @constant; bar -> plain.
+	probe(t, .JavaScript, "j.js", "const FOO = 1;\nconst bar = 2;\n", []Chk{
+		{0, 6, COLOR_SYN_CONSTANT, true, "FOO is constant-colored"},
+		{1, 6, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
+	})
+	// TypeScript: capitalized identifier reference -> @type; lowercase -> plain.
+	probe(t, .TypeScript, "t.ts", "let x = Bar;\nlet y = baz;\n", []Chk{
+		{0, 8, COLOR_SYN_TYPE, true, "capitalized Bar is type-colored"},
+		{1, 8, COLOR_SYN_TYPE, false, "lowercase baz is NOT type-colored"},
+	})
+	// Odin: MAX -> @constant (lua-match), Foo -> @type (lua-match), bar -> plain.
+	probe(t, .Odin, "o.odin", "package p\nf :: proc() {\n\tx := MAX\n\ty := Foo\n\tz := bar\n}\n", []Chk{
+		{2, 6, COLOR_SYN_CONSTANT, true, "SCREAMING MAX is constant-colored"},
+		{3, 6, COLOR_SYN_TYPE, true, "Capitalized Foo is type-colored"},
+		{4, 6, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
+		{4, 6, COLOR_SYN_TYPE, false, "lowercase bar is NOT type-colored"},
+	})
+	// Lua: MAX -> @constant; print -> @function.builtin (any-of) -> keyword; foo plain.
+	probe(t, .Lua, "l.lua", "MAX = 1\nfoo = 2\nprint(foo)\n", []Chk{
+		{0, 0, COLOR_SYN_CONSTANT, true, "SCREAMING MAX is constant-colored"},
+		{1, 0, COLOR_SYN_CONSTANT, false, "lowercase foo is NOT constant-colored"},
+		{2, 0, COLOR_SYN_KEYWORD, true, "builtin print (#any-of?) is keyword-colored"},
+	})
+	// Go: builtin len (#match list) -> @function.builtin -> keyword; a user call
+	// (identifier) @function stays plain. Plus keyword/string/comment paint.
+	probe(t, .Go, "g.go", "package main\n// note\nvar s = \"hi\"\nfunc f() { len(s); g() }\n", []Chk{
+		{0, 0, COLOR_SYN_KEYWORD, true, "package keyword is keyword-colored"},
+		{1, 0, COLOR_SYN_COMMENT, true, "line comment is comment-colored"},
+		{2, 8, COLOR_SYN_STRING, true, "string literal is string-colored"},
+		{3, 11, COLOR_SYN_KEYWORD, true, "builtin len (#match) is keyword-colored"},
+		{3, 19, COLOR_SYN_KEYWORD, false, "user call g is NOT keyword-colored"},
+	})
+	// Rust: uppercase Foo -> @constructor (#match ^[A-Z]) -> type; lowercase bar in a
+	// call stays plain. Plus keyword/string/comment paint. (The upstream @constant
+	// SCREAMING regex carries a typo and never matches — see PATCHES.md.)
+	probe(t, .Rust, "r.rs", "// note\nfn f() {\n\tlet s = \"hi\";\n\tlet x = Foo;\n\tbar();\n}\n", []Chk{
+		{0, 0, COLOR_SYN_COMMENT, true, "line comment is comment-colored"},
+		{1, 0, COLOR_SYN_KEYWORD, true, "fn keyword is keyword-colored"},
+		{2, 9, COLOR_SYN_STRING, true, "string literal is string-colored"},
+		{3, 9, COLOR_SYN_TYPE, true, "uppercase Foo (#match ^[A-Z]) is type-colored"},
+		{4, 1, COLOR_SYN_TYPE, false, "lowercase bar is NOT type-colored"},
+	})
+	// Bash: -la flag -> @constant (#match ^-); foo arg -> plain.
+	probe(t, .Shell, "s.sh", "ls -la foo\n", []Chk{
+		{0, 3, COLOR_SYN_CONSTANT, true, "-la flag is constant-colored"},
+		{0, 7, COLOR_SYN_CONSTANT, false, "non-flag arg foo is NOT constant-colored"},
+	})
+	// SQL: the #match? "%d" number rule can never match (Lua class under a regex),
+	// so a numeric literal keeps @string, not @number/@constant.
+	probe(t, .Sql, "q.sql", "SELECT 42 FROM t;\n", []Chk{
+		{0, 7, COLOR_SYN_STRING, true, "numeric literal stays string-colored (number rule rejected)"},
+		{0, 7, COLOR_SYN_CONSTANT, false, "numeric literal is NOT constant-colored"},
+	})
 }
 
 // Markdown injection: inline formatting (via the markdown_inline grammar) and
@@ -45,7 +155,7 @@ highlight_injection :: proc(t: ^testing.T) {
 		return false
 	}
 
-	testing.expect(t, row_has(&b, 0, COLOR_SYN_KEYWORD), "heading marker + text should be the title color")
+	testing.expect(t, row_has(&b, 0, color_attr(COLOR_SYN_KEYWORD, .Bold)), "heading text should be the bold title color")
 	testing.expect(t, row_has(&b, 2, COLOR_SYN_KEYWORD), "unchecked [ ] should be the keyword color")
 	testing.expect(t, row_has(&b, 3, COLOR_SYN_STRING), "checked [x] should be the string/green color")
 	testing.expect(t, row_has(&b, 5, color_attr(COLOR_SYN_ATTRIBUTE, .Bold)), "**bold** should be injected (strong)")

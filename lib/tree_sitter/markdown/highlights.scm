@@ -14,7 +14,7 @@
   (atx_h6_marker)
   (setext_h1_underline)
   (setext_h2_underline)
-] @keyword
+] @punctuation.special
 
 [
   (link_title)
@@ -22,9 +22,7 @@
   (fenced_code_block)
 ] @text.literal
 
-; The ``` fences and their info string (```ts) render in the subtle code gray.
-(fenced_code_block_delimiter) @text.code
-(info_string) @text.code
+(fenced_code_block_delimiter) @punctuation.delimiter
 
 (code_fence_content) @none
 
@@ -39,15 +37,16 @@
   (list_marker_dot)
   (list_marker_parenthesis)
   (thematic_break)
-] @keyword
+] @punctuation.special
 
 [
   (block_continuation)
   (block_quote_marker)
-] @keyword
-
-; GFM task-list checkboxes: unchecked yellow (@keyword), checked green (@string).
-(task_list_marker_unchecked) @keyword
-(task_list_marker_checked) @string
+] @punctuation.special
 
 (backslash_escape) @string.escape
+
+; GFM task-list checkboxes (nvim-treesitter adds these in a separate query):
+; unchecked yellow (@keyword), checked green (@string).
+(task_list_marker_unchecked) @keyword
+(task_list_marker_checked) @string

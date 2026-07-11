@@ -45,6 +45,27 @@
   function: (member_expression
     property: (property_identifier) @function.method))
 
+; Special identifiers
+;--------------------
+
+((identifier) @constructor
+ (#match? @constructor "^[A-Z]"))
+
+([
+    (identifier)
+    (shorthand_property_identifier)
+    (shorthand_property_identifier_pattern)
+ ] @constant
+ (#match? @constant "^[A-Z_][A-Z\\d_]+$"))
+
+((identifier) @variable.builtin
+ (#match? @variable.builtin "^(arguments|module|console|window|document)$")
+ (#is-not? local))
+
+((identifier) @function.builtin
+ (#eq? @function.builtin "require")
+ (#is-not? local))
+
 ; Literals
 ;---------
 
@@ -79,15 +100,59 @@
 ] @punctuation.delimiter
 
 [
-  "-"  "--"  "-="  "+"  "++"  "+="  "*"  "*="  "**"  "**="
-  "/"  "/="  "%"  "%="  "<"  "<="  "<<"  "<<="  "="  "=="  "==="
-  "!"  "!="  "!=="  "=>"  ">"  ">="  ">>"  ">>="  ">>>"  ">>>="
-  "~"  "^"  "&"  "|"  "^="  "&="  "|="  "&&"  "||"  "??"
-  "&&="  "||="  "??="
+  "-"
+  "--"
+  "-="
+  "+"
+  "++"
+  "+="
+  "*"
+  "*="
+  "**"
+  "**="
+  "/"
+  "/="
+  "%"
+  "%="
+  "<"
+  "<="
+  "<<"
+  "<<="
+  "="
+  "=="
+  "==="
+  "!"
+  "!="
+  "!=="
+  "=>"
+  ">"
+  ">="
+  ">>"
+  ">>="
+  ">>>"
+  ">>>="
+  "~"
+  "^"
+  "&"
+  "|"
+  "^="
+  "&="
+  "|="
+  "&&"
+  "||"
+  "??"
+  "&&="
+  "||="
+  "??="
 ] @operator
 
 [
-  "("  ")"  "["  "]"  "{"  "}"
+  "("
+  ")"
+  "["
+  "]"
+  "{"
+  "}"
 ]  @punctuation.bracket
 
 (template_substitution
@@ -95,10 +160,45 @@
   "}" @punctuation.special) @embedded
 
 [
-  "as"  "async"  "await"  "break"  "case"  "catch"  "class"
-  "const"  "continue"  "debugger"  "default"  "delete"  "do"
-  "else"  "export"  "extends"  "finally"  "for"  "from"
-  "function"  "get"  "if"  "import"  "in"  "instanceof"  "let"
-  "new"  "of"  "return"  "set"  "static"  "switch"  "target"
-  "throw"  "try"  "typeof"  "var"  "void"  "while"  "with"  "yield"
+  "as"
+  "async"
+  "await"
+  "break"
+  "case"
+  "catch"
+  "class"
+  "const"
+  "continue"
+  "debugger"
+  "default"
+  "delete"
+  "do"
+  "else"
+  "export"
+  "extends"
+  "finally"
+  "for"
+  "from"
+  "function"
+  "get"
+  "if"
+  "import"
+  "in"
+  "instanceof"
+  "let"
+  "new"
+  "of"
+  "return"
+  "set"
+  "static"
+  "switch"
+  "target"
+  "throw"
+  "try"
+  "typeof"
+  "var"
+  "void"
+  "while"
+  "with"
+  "yield"
 ] @keyword

@@ -1,10 +1,13 @@
 ; From nvim-treesitter/nvim-treesitter
-; Inline code and its backticks render in the subtle code gray.
-(code_span) @text.code
-(code_span_delimiter) @text.code
-(link_title) @text.literal
+[
+  (code_span)
+  (link_title)
+] @text.literal
 
-(emphasis_delimiter) @punctuation.delimiter
+[
+  (emphasis_delimiter)
+  (code_span_delimiter)
+] @punctuation.delimiter
 
 (emphasis) @text.emphasis
 
@@ -15,12 +18,11 @@
   (uri_autolink)
 ] @text.uri
 
-; Only real links (with a destination/label) are colored; a bare shortcut_link
-; [text] is left plain so stray brackets and malformed checkboxes don't read as
-; links.
-(link_label) @text.reference
-(inline_link (link_text) @text.reference)
-(image_description) @text.reference
+[
+  (link_label)
+  (link_text)
+  (image_description)
+] @text.reference
 
 [
   (backslash_escape)
@@ -34,7 +36,7 @@
     "]"
     "("
     ")"
-  ] @text.reference)
+  ] @punctuation.delimiter)
 
 (inline_link
   [
@@ -42,7 +44,13 @@
     "]"
     "("
     ")"
-  ] @text.reference)
+  ] @punctuation.delimiter)
+
+(shortcut_link
+  [
+    "["
+    "]"
+  ] @punctuation.delimiter)
 
 ; NOTE: extension not enabled by default
 ; (wiki_link ["[" "|" "]"] @punctuation.delimiter)

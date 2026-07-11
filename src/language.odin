@@ -15,6 +15,8 @@ Language :: enum {
 	TypeScript,
 	Tsx,
 	Python,
+	Go,
+	Rust,
 	Shell,
 	Lua,
 	Sql,
@@ -48,6 +50,8 @@ LANGUAGE_DEFAULTS := [Language]LanguageInfo {
 	.TypeScript = {"typescript", "//", "", "typescript", "", ts.tree_sitter_typescript, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
 	.Tsx        = {"tsx", "//", "", "typescriptreact", "", ts.tree_sitter_tsx, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
 	.Python     = {"python", "#", "", "python", "", ts.tree_sitter_python, #load("../lib/tree_sitter/python/highlights.scm"), nil},
+	.Go         = {"go", "//", "", "go", "", ts.tree_sitter_go, #load("../lib/tree_sitter/go/highlights.scm"), nil},
+	.Rust       = {"rust", "//", "", "rust", "", ts.tree_sitter_rust, #load("../lib/tree_sitter/rust/highlights.scm"), nil},
 	.Shell      = {"shell", "#", "", "shellscript", "", ts.tree_sitter_bash, #load("../lib/tree_sitter/bash/highlights.scm"), nil},
 	.Lua        = {"lua", "--", "", "lua", "", ts.tree_sitter_lua, #load("../lib/tree_sitter/lua/highlights.scm"), nil},
 	.Sql        = {"sql", "--", "", "", "", ts.tree_sitter_sql, #load("../lib/tree_sitter/sql/highlights.scm"), nil},
@@ -179,6 +183,10 @@ language_of_name :: proc(name: string) -> Language {
 		return .Tsx
 	case "py", "python":
 		return .Python
+	case "go", "golang":
+		return .Go
+	case "rs", "rust":
+		return .Rust
 	case "c", "h":
 		return .C
 	case "odin":

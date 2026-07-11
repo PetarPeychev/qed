@@ -48,6 +48,17 @@ QueryError :: enum u32 {
 	Language,
 }
 
+QueryPredicateStepType :: enum u32 {
+	Done = 0,
+	Capture,
+	String,
+}
+
+QueryPredicateStep :: struct {
+	type:     QueryPredicateStepType,
+	value_id: u32,
+}
+
 foreign import ts "libtreesitter.a"
 
 @(default_calling_convention = "c", link_prefix = "ts_")
@@ -66,11 +77,17 @@ foreign ts {
 	node_end_byte :: proc(node: Node) -> u32 ---
 	node_start_point :: proc(node: Node) -> Point ---
 	node_end_point :: proc(node: Node) -> Point ---
+	node_parent :: proc(node: Node) -> Node ---
+	node_type :: proc(node: Node) -> cstring ---
+	node_is_null :: proc(node: Node) -> bool ---
 
 	query_new :: proc(language: Language, source: [^]u8, length: u32, error_offset: ^u32, error_type: ^QueryError) -> ^Query ---
 	query_delete :: proc(self: ^Query) ---
 	query_capture_count :: proc(self: ^Query) -> u32 ---
 	query_capture_name_for_id :: proc(self: ^Query, id: u32, length: ^u32) -> [^]u8 ---
+	query_pattern_count :: proc(self: ^Query) -> u32 ---
+	query_string_value_for_id :: proc(self: ^Query, id: u32, length: ^u32) -> [^]u8 ---
+	query_predicates_for_pattern :: proc(self: ^Query, pattern_index: u32, step_count: ^u32) -> [^]QueryPredicateStep ---
 
 	query_cursor_new :: proc() -> ^QueryCursor ---
 	query_cursor_delete :: proc(self: ^QueryCursor) ---
@@ -84,6 +101,8 @@ foreign ts {
 	tree_sitter_odin :: proc() -> Language ---
 	tree_sitter_json :: proc() -> Language ---
 	tree_sitter_python :: proc() -> Language ---
+	tree_sitter_go :: proc() -> Language ---
+	tree_sitter_rust :: proc() -> Language ---
 	tree_sitter_c :: proc() -> Language ---
 	tree_sitter_javascript :: proc() -> Language ---
 	tree_sitter_typescript :: proc() -> Language ---

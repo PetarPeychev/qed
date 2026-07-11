@@ -114,6 +114,16 @@
       "lsp": "pyright-langserver --stdio",
       "formatter": "ruff format -"
     },
+    "go": {
+      "patterns": ["*.go"],
+      "lsp": "gopls",
+      "formatter": "gofmt"
+    },
+    "rust": {
+      "patterns": ["*.rs"],
+      "lsp": "rust-analyzer",
+      "formatter": "rustfmt --edition 2021"
+    },
     "shell": {
       "patterns": ["*.sh", "*.bash", "*.zsh", ".bashrc", ".bash_profile", ".bash_aliases", ".profile", ".zshrc", ".zshenv", ".zprofile", "PKGBUILD"],
       "lsp": "bash-language-server start",
