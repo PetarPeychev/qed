@@ -255,8 +255,16 @@ cursor_move_up_n :: proc(b: ^Buffer, n: int) {
 		return
 	}
 	c := &b.cursor
-	c.row = max(0, c.row - n)
-	c.col = col_at_visual(b.lines[c.row].text[:], b.goal_col)
+	if c.row - n < 0 {
+		c.row = 0
+		if c.col != 0 {
+			c.col = 0
+			cursor_goal_sync(b)
+		}
+	} else {
+		c.row -= n
+		c.col = col_at_visual(b.lines[c.row].text[:], b.goal_col)
+	}
 }
 
 cursor_move_down_n :: proc(b: ^Buffer, n: int) {
@@ -267,8 +275,18 @@ cursor_move_down_n :: proc(b: ^Buffer, n: int) {
 		return
 	}
 	c := &b.cursor
-	c.row = min(len(b.lines) - 1, c.row + n)
-	c.col = col_at_visual(b.lines[c.row].text[:], b.goal_col)
+	last := len(b.lines) - 1
+	if c.row + n > last {
+		c.row = last
+		end := len(b.lines[last].text)
+		if c.col != end {
+			c.col = end
+			cursor_goal_sync(b)
+		}
+	} else {
+		c.row += n
+		c.col = col_at_visual(b.lines[c.row].text[:], b.goal_col)
+	}
 }
 
 cursor_visual_up :: proc(b: ^Buffer) {
@@ -282,6 +300,9 @@ cursor_visual_up :: proc(b: ^Buffer) {
 		c.row -= 1
 		up := b.lines[c.row].text[:]
 		c.col = cursor_place_in_subrow(up, w, wrap_rows(up, w) - 1, b.goal_col)
+	} else if c.col != 0 {
+		c.col = 0
+		cursor_goal_sync(b)
 	}
 }
 
@@ -295,6 +316,9 @@ cursor_visual_down :: proc(b: ^Buffer) {
 	} else if c.row < len(b.lines) - 1 {
 		c.row += 1
 		c.col = cursor_place_in_subrow(b.lines[c.row].text[:], w, 0, b.goal_col)
+	} else if c.col != len(text) {
+		c.col = len(text)
+		cursor_goal_sync(b)
 	}
 }
 

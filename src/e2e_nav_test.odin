@@ -85,6 +85,100 @@ e2e_nav_soft_wrap :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_arrow_clamp_buffer_edges :: proc(t: ^testing.T) {
+	e := e2e_start("first\nsecond")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+
+	// Wrap off so the plain (non-visual) vertical paths are exercised.
+	e2e_key(&e, .Ctrl_P)
+	e2e_type(&e, "line wrap")
+	e2e_key(&e, .Enter)
+	testing.expect(t, !b.wrap, "wrap turned off")
+
+	// Down on the last line clamps to line end and resets the goal column.
+	b.cursor = {1, 2}
+	cursor_goal_sync(b)
+	e2e_key(&e, .Arrow_Down)
+	testing.expect_value(t, b.cursor.row, 1)
+	testing.expect_value(t, b.cursor.col, len(b.lines[1].text))
+	testing.expect_value(t, b.goal_col, visual_col(b.lines[1].text[:], b.cursor.col))
+
+	// Already at end-of-last-line: a second Down is a no-op.
+	e2e_key(&e, .Arrow_Down)
+	testing.expect_value(t, b.cursor.row, 1)
+	testing.expect_value(t, b.cursor.col, len(b.lines[1].text))
+
+	// Down then Enter appends a fresh line from the clamped end.
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, len(b.lines), 3)
+	testing.expect_value(t, b.cursor.row, 2)
+	testing.expect_value(t, b.cursor.col, 0)
+	testing.expect_value(t, len(b.lines[2].text), 0)
+
+	// Up on the first line clamps to column 0 and resets the goal column.
+	b.cursor = {0, 3}
+	cursor_goal_sync(b)
+	e2e_key(&e, .Arrow_Up)
+	testing.expect_value(t, b.cursor.row, 0)
+	testing.expect_value(t, b.cursor.col, 0)
+	testing.expect_value(t, b.goal_col, 0)
+
+	// Already at col 0 of the first line: a second Up is a no-op.
+	e2e_key(&e, .Arrow_Up)
+	testing.expect_value(t, b.cursor.row, 0)
+	testing.expect_value(t, b.cursor.col, 0)
+}
+
+@(test)
+e2e_nav_arrow_clamp_wrapped_last_line :: proc(t: ^testing.T) {
+	e := e2e_start("TOP\nalpha bravo charlie delta echo foxtrot golf")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	testing.expect(t, b.wrap, "wrap on by default")
+
+	e2e_resize(&e, 22, E2E_H)
+	e2e_render(&e)
+
+	last := b.lines[1].text[:]
+	rows := wrap_rows(last, b.wrap_width)
+	testing.expect(t, rows >= 2, "last line should wrap into multiple visual rows")
+
+	// From the first visual row, Down steps within the logical line first.
+	b.cursor = {1, 0}
+	cursor_goal_sync(b)
+	e2e_key(&e, .Arrow_Down)
+	testing.expect_value(t, b.cursor.row, 1)
+	testing.expect(t, b.cursor.col > 0, "Down advances to the next visual row of the last line")
+
+	// Exhausting the visual rows lands the caret at the logical line end.
+	for _ in 0 ..< rows {
+		e2e_key(&e, .Arrow_Down)
+	}
+	testing.expect_value(t, b.cursor.row, 1)
+	testing.expect_value(t, b.cursor.col, len(last))
+}
+
+@(test)
+e2e_nav_shift_down_last_line :: proc(t: ^testing.T) {
+	e := e2e_start("first\nsecond")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	b.cursor = {1, 2}
+	cursor_goal_sync(b)
+
+	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift)
+	testing.expect(t, selection_active(b), "Shift+Down extends a selection")
+	from, to, ok := selection_range(b)
+	testing.expect(t, ok, "selection range present")
+	testing.expect_value(t, from, Cursor{1, 2})
+	testing.expect_value(t, to, Cursor{1, len(b.lines[1].text)})
+}
+
+@(test)
 e2e_nav_horizontal_scroll :: proc(t: ^testing.T) {
 	e := e2e_start("")
 	defer e2e_stop(&e)
