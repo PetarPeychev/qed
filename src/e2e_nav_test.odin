@@ -347,19 +347,33 @@ e2e_nav_project_search_selection_prefill :: proc(t: ^testing.T) {
 	if !shell_command_exists("rg") {
 		return
 	}
-	e := e2e_root_start("needle_xyz here")
+	e := e2e_root_start("needle_xyz here\nneedle_xyz again\nneedle_xyz third")
 	defer e2e_stop(&e)
 
 	b := editor_buffer(&e.ed)
-	b.selection = Cursor{0, 0}
-	b.cursor = {0, 10} // select "needle_xyz"
+	p := &e.ed.projsearch
 
 	nav_alt(&e, 'F')
-	p := &e.ed.projsearch
+	e2e_type(&e, "needle_xyz")
+	testing.expect(t, len(p.matches) >= 2, "multiple hits for the query")
+	e2e_key(&e, .Arrow_Down)
+	testing.expect_value(t, p.selected, 1)
+	e2e_key(&e, .Esc)
+
+	// Persisted-query reopen (no selection) restores the selected match.
+	nav_alt(&e, 'F')
+	testing.expect_value(t, p.selected, 1)
+	e2e_key(&e, .Esc)
+
+	// A pre-fill replaces the query, so the selection resets to the first match.
+	b.selection = Cursor{0, 0}
+	b.cursor = {0, 10} // select "needle_xyz"
+	nav_alt(&e, 'F')
 	testing.expect_value(t, textfield_str(&p.field), "needle_xyz")
 	testing.expect(t, len(p.matches) > 0, "pre-filled query runs the search on open")
 	testing.expect_value(t, p.field.anchor, 0) // fully selected
 	testing.expect_value(t, p.field.caret, 10)
+	testing.expect_value(t, p.selected, 0)
 	e2e_key(&e, .Esc)
 }
 
