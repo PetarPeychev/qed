@@ -58,7 +58,7 @@
 (string_literal) @string
 (system_lib_string) @string
 
-(null) @constant
+(null) @constant.builtin
 (number_literal) @number
 (char_literal) @number
 
@@ -112,7 +112,7 @@
 ; Constants
 
 (this) @variable.builtin
-(null "nullptr" @constant)
+(null "nullptr" @constant.builtin)
 
 ; Keywords
 

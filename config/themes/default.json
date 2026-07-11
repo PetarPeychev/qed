@@ -68,7 +68,8 @@
     "character": "syntax_string",
     "comment": "syntax_comment",
     "spell": "syntax_comment",
-    "constant": "syntax_constant",
+    "constant": "foreground",
+    "constant.builtin": "syntax_constant",
     "variable.builtin": "syntax_constant",
     "number": "syntax_constant",
     "float": "syntax_constant",
@@ -84,6 +85,16 @@
     "text.emphasis": "syntax_comment italic",
     "markdown": {
       "punctuation.special": "syntax_keyword"
+    },
+    "lua": {
+      "constructor": "foreground"
+    },
+    "toml": {
+      "type": "foreground"
+    },
+    "css": {
+      "attribute": "syntax_keyword",
+      "property": "syntax_attribute"
     }
   },
   "icons": {

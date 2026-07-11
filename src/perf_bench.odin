@@ -37,10 +37,13 @@ test_highlight_incremental :: proc(t: ^testing.T) {
 	highlight_perf(t)
 }
 
-// End-to-end proof that the query predicate evaluator is live: a name-shape
-// heuristic (SCREAMING_CASE -> constant, Capitalized -> type, flag -> constant)
-// now paints, while an identifier that fails the predicate is left plain. Before
-// the evaluator every one of these gated patterns matched unconditionally.
+// End-to-end proof that the query predicate evaluator is live and the capture
+// mapping is applied. Name-shape heuristics still fire (Capitalized -> @type,
+// builtin-function lists -> @function.builtin), while a name that fails the
+// predicate is left plain. SCREAMING_CASE / flag names match @constant, but the
+// default theme maps bare @constant -> foreground, so those render plain; literal
+// values (@constant.builtin, @number) keep the constant color — the contrast is
+// asserted per language below.
 highlight_predicates :: proc(t: ^testing.T) {
 	at :: proc(b: ^Buffer, row, col: int) -> tb2.Color {
 		cs := highlight_colors(b, row)
@@ -69,29 +72,39 @@ highlight_predicates :: proc(t: ^testing.T) {
 		}
 	}
 
-	// Python: MAX (SCREAMING) -> @constant; foo (lowercase) -> plain.
+	// Python: MAX (SCREAMING @constant) -> plain fg; the `1` literal (@number) keeps
+	// the constant color; foo (lowercase) -> plain.
 	probe(t, .Python, "p.py", "MAX = 1\nfoo = 2\n", []Chk{
-		{0, 0, COLOR_SYN_CONSTANT, true, "MAX is constant-colored"},
+		{0, 0, COLOR_FG, true, "MAX (SCREAMING) is default-fg (constant -> foreground)"},
+		{0, 0, COLOR_SYN_CONSTANT, false, "MAX is NOT constant-colored anymore"},
+		{0, 6, COLOR_SYN_CONSTANT, true, "the 1 literal (@number) stays constant-colored"},
 		{1, 0, COLOR_SYN_CONSTANT, false, "lowercase foo is NOT constant-colored"},
 	})
-	// C: FOO (SCREAMING) -> @constant; bar -> plain.
+	// C: FOO (SCREAMING @constant) -> plain fg; the `1` literal (@number) keeps the
+	// constant color; bar -> plain.
 	probe(t, .C, "c.c", "int FOO = 1;\nint bar = 2;\n", []Chk{
-		{0, 4, COLOR_SYN_CONSTANT, true, "FOO is constant-colored"},
+		{0, 4, COLOR_FG, true, "FOO (SCREAMING) is default-fg (constant -> foreground)"},
+		{0, 4, COLOR_SYN_CONSTANT, false, "FOO is NOT constant-colored anymore"},
+		{0, 10, COLOR_SYN_CONSTANT, true, "the 1 literal (@number) stays constant-colored"},
 		{1, 4, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
 	})
 	// C++: the cpp-only `namespace` keyword (additions query) fires, and the inlined
 	// C base's SCREAMING predicate paints MSG while lowercase bar is rejected. Plus
 	// string/comment paint.
-	probe(t, .Cpp, "cpp.cpp", "// note\nnamespace ns {}\nconst char* MSG = \"hi\";\nint bar = 2;\n", []Chk{
+	probe(t, .Cpp, "cpp.cpp", "// note\nnamespace ns {}\nconst char* MSG = \"hi\";\nvoid* p = nullptr;\nint bar = 2;\n", []Chk{
 		{0, 0, COLOR_SYN_COMMENT, true, "line comment is comment-colored"},
 		{1, 0, COLOR_SYN_KEYWORD, true, "cpp namespace keyword is keyword-colored"},
-		{2, 12, COLOR_SYN_CONSTANT, true, "SCREAMING MSG is constant-colored"},
+		{2, 12, COLOR_FG, true, "SCREAMING MSG is default-fg (constant -> foreground)"},
 		{2, 18, COLOR_SYN_STRING, true, "string literal is string-colored"},
-		{3, 4, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
+		{3, 10, COLOR_SYN_CONSTANT, true, "nullptr literal (@constant.builtin) stays constant-colored"},
+		{4, 4, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
 	})
-	// JavaScript: FOO -> @constant; bar -> plain.
+	// JavaScript: FOO (SCREAMING @constant) -> plain fg; the `1` literal keeps the
+	// constant color; bar -> plain.
 	probe(t, .JavaScript, "j.js", "const FOO = 1;\nconst bar = 2;\n", []Chk{
-		{0, 6, COLOR_SYN_CONSTANT, true, "FOO is constant-colored"},
+		{0, 6, COLOR_FG, true, "FOO (SCREAMING) is default-fg (constant -> foreground)"},
+		{0, 6, COLOR_SYN_CONSTANT, false, "FOO is NOT constant-colored anymore"},
+		{0, 12, COLOR_SYN_CONSTANT, true, "the 1 literal (@number) stays constant-colored"},
 		{1, 6, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
 	})
 	// TypeScript: capitalized identifier reference -> @type; lowercase -> plain.
@@ -99,23 +112,30 @@ highlight_predicates :: proc(t: ^testing.T) {
 		{0, 8, COLOR_SYN_TYPE, true, "capitalized Bar is type-colored"},
 		{1, 8, COLOR_SYN_TYPE, false, "lowercase baz is NOT type-colored"},
 	})
-	// Odin: MAX -> @constant (lua-match), Foo -> @type (lua-match), bar -> plain.
-	// The proc-declaration name `f` is tagged @type then @function; @function now
-	// maps to `foreground` (explicit plain) and overwrites the @type paint, so the
-	// proc name renders in the default color.
+	// Odin: MAX (SCREAMING @constant) -> plain fg now, Foo -> @type (lua-match),
+	// bar -> plain. The proc-declaration name `f` is tagged @type then @function;
+	// @function maps to `foreground` (explicit plain) and overwrites the @type paint,
+	// so the proc name renders in the default color.
 	probe(t, .Odin, "o.odin", "package p\nf :: proc() {\n\tx := MAX\n\ty := Foo\n\tz := bar\n}\n", []Chk{
 		{1, 0, COLOR_FG, true, "proc name f is default-fg (function -> foreground overwrites type)"},
 		{1, 0, COLOR_SYN_TYPE, false, "proc name f is NOT type-colored anymore"},
-		{2, 6, COLOR_SYN_CONSTANT, true, "SCREAMING MAX is constant-colored"},
+		{2, 6, COLOR_FG, true, "SCREAMING MAX is default-fg (constant -> foreground)"},
+		{2, 6, COLOR_SYN_CONSTANT, false, "SCREAMING MAX is NOT constant-colored anymore"},
 		{3, 6, COLOR_SYN_TYPE, true, "Capitalized Foo is type-colored"},
 		{4, 6, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
 		{4, 6, COLOR_SYN_TYPE, false, "lowercase bar is NOT type-colored"},
 	})
-	// Lua: MAX -> @constant; print -> @function.builtin (any-of) -> keyword; foo plain.
-	probe(t, .Lua, "l.lua", "MAX = 1\nfoo = 2\nprint(foo)\n", []Chk{
-		{0, 0, COLOR_SYN_CONSTANT, true, "SCREAMING MAX is constant-colored"},
+	// Lua: MAX (SCREAMING @constant) -> plain fg; print -> @function.builtin (any-of)
+	// -> keyword; foo plain. A `{}` table constructor's braces are captured
+	// @constructor, but the per-language override maps lua/constructor -> foreground,
+	// so the braces render plain instead of the (blueish) type color.
+	probe(t, .Lua, "l.lua", "MAX = 1\nfoo = 2\nprint(foo)\nt = {}\n", []Chk{
+		{0, 0, COLOR_FG, true, "SCREAMING MAX is default-fg (constant -> foreground)"},
+		{0, 0, COLOR_SYN_CONSTANT, false, "SCREAMING MAX is NOT constant-colored anymore"},
 		{1, 0, COLOR_SYN_CONSTANT, false, "lowercase foo is NOT constant-colored"},
 		{2, 0, COLOR_SYN_KEYWORD, true, "builtin print (#any-of?) is keyword-colored"},
+		{3, 4, COLOR_FG, true, "table-constructor { is plain (lua/constructor -> foreground)"},
+		{3, 4, COLOR_SYN_TYPE, false, "table-constructor { is NOT type-colored"},
 	})
 	// Go: builtin len (#match list) -> @function.builtin -> keyword; a user call
 	// (identifier) @function stays plain. Plus keyword/string/comment paint.
@@ -136,9 +156,11 @@ highlight_predicates :: proc(t: ^testing.T) {
 		{3, 9, COLOR_SYN_TYPE, true, "uppercase Foo (#match ^[A-Z]) is type-colored"},
 		{4, 1, COLOR_SYN_TYPE, false, "lowercase bar is NOT type-colored"},
 	})
-	// Bash: -la flag -> @constant (#match ^-); foo arg -> plain.
+	// Bash: -la flag matches @constant (#match ^-) but bare @constant -> foreground,
+	// so it renders plain; foo arg -> plain.
 	probe(t, .Shell, "s.sh", "ls -la foo\n", []Chk{
-		{0, 3, COLOR_SYN_CONSTANT, true, "-la flag is constant-colored"},
+		{0, 3, COLOR_FG, true, "-la flag is default-fg (constant -> foreground)"},
+		{0, 3, COLOR_SYN_CONSTANT, false, "-la flag is NOT constant-colored anymore"},
 		{0, 7, COLOR_SYN_CONSTANT, false, "non-flag arg foo is NOT constant-colored"},
 	})
 	// SQL: the #match? "%d" number rule can never match (Lua class under a regex),
@@ -150,30 +172,39 @@ highlight_predicates :: proc(t: ^testing.T) {
 	// HTML: predicate-free query, so basic paints. @tag -> keyword (qed maps the
 	// tag bucket to keyword), @attribute, @string, @constant (doctype), @comment.
 	probe(t, .Html, "h.html", "<!DOCTYPE html>\n<div class=\"x\">hi</div>\n<!-- c -->\n", []Chk{
-		{0, 0, COLOR_SYN_CONSTANT, true, "doctype is constant-colored"},
+		{0, 0, COLOR_SYN_CONSTANT, false, "doctype is no longer constant-colored (constant -> foreground)"},
 		{1, 1, COLOR_SYN_KEYWORD, true, "tag name div is keyword-colored (tag->keyword)"},
 		{1, 5, COLOR_SYN_ATTRIBUTE, true, "attribute name is attribute-colored"},
 		{1, 12, COLOR_SYN_STRING, true, "attribute value is string-colored"},
 		{2, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
 	})
-	// CSS: @tag (type selector) -> keyword, @keyword (@media at-rule), @number,
-	// @type (unit). The only predicate (#match? @variable "^--" for custom props)
-	// gates @variable, which qed leaves unmapped/plain, so nothing observable —
-	// basic paint assertions instead.
-	probe(t, .Css, "c.css", "/* c */\ndiv { color: red; }\n@media (x) {}\na { width: 10px; }\n", []Chk{
+	// CSS: one coherent scheme via the css/ capture overrides. Selector tokens read
+	// as the keyword family — element/universal/nesting (@tag) and pseudo/attribute
+	// selectors (css/attribute -> keyword) — while name identifiers (css/property ->
+	// attribute: class/id/namespace/property/feature) read as the attribute color.
+	// The grammar captures class-selector names AND property names both as @property,
+	// so they unavoidably share one color. Values stay their own colors (@number ->
+	// constant, @unit -> type). @media at-rule stays keyword.
+	probe(t, .Css, "c.css", "/* c */\n.cls { color: red; }\ndiv:hover {}\n@media (x) {}\na { width: 10px; }\n", []Chk{
 		{0, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
-		{1, 0, COLOR_SYN_KEYWORD, true, "type selector div is keyword-colored (tag->keyword)"},
-		{2, 0, COLOR_SYN_KEYWORD, true, "@media at-rule is keyword-colored"},
-		{3, 11, COLOR_SYN_CONSTANT, true, "integer value is number/constant-colored"},
-		{3, 13, COLOR_SYN_TYPE, true, "unit px is type-colored"},
+		{1, 1, COLOR_SYN_ATTRIBUTE, true, "class selector name -> attribute color (was plain)"},
+		{1, 7, COLOR_SYN_ATTRIBUTE, true, "property name -> attribute color (was plain)"},
+		{2, 0, COLOR_SYN_KEYWORD, true, "type selector div is keyword-colored (tag->keyword)"},
+		{2, 4, COLOR_SYN_KEYWORD, true, "pseudo-class :hover name -> keyword (selector family)"},
+		{3, 0, COLOR_SYN_KEYWORD, true, "@media at-rule is keyword-colored"},
+		{4, 11, COLOR_SYN_CONSTANT, true, "integer value is number/constant-colored"},
+		{4, 13, COLOR_SYN_TYPE, true, "unit px is type-colored"},
 	})
-	// TOML: predicate-free query, so a plain keyword/string/comment paint check. A
-	// bare key is @type; a quoted value @string; an integer @number -> constant.
-	probe(t, .Toml, "x.toml", "# note\nkey = \"value\"\nnum = 42\n", []Chk{
+	// TOML: every (bare_key) is @type, which the toml/type override maps to
+	// foreground — pair keys (and [table] header names, same capture) render plain.
+	// Values keep their colors: quoted @string, integer @number -> constant.
+	probe(t, .Toml, "x.toml", "# note\nkey = \"value\"\nnum = 42\n[tbl]\nx = 1\n", []Chk{
 		{0, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
-		{1, 0, COLOR_SYN_TYPE, true, "bare key is type-colored"},
+		{1, 0, COLOR_FG, true, "bare key is default-fg (toml/type -> foreground)"},
+		{1, 0, COLOR_SYN_TYPE, false, "bare key is NOT type-colored anymore"},
 		{1, 6, COLOR_SYN_STRING, true, "quoted value is string-colored"},
 		{2, 6, COLOR_SYN_CONSTANT, true, "integer is constant-colored"},
+		{3, 1, COLOR_SYN_TYPE, false, "table header name is NOT type-colored either (same @type capture)"},
 	})
 	// YAML: predicate-free query, so a plain paint check. Scalars: integer/boolean
 	// -> constant, a double-quoted scalar -> string.
@@ -183,14 +214,28 @@ highlight_predicates :: proc(t: ^testing.T) {
 		{2, 6, COLOR_SYN_CONSTANT, true, "boolean scalar is constant-colored"},
 		{3, 3, COLOR_SYN_STRING, true, "double-quoted scalar is string-colored"},
 	})
-	// Dockerfile: has a #match? predicate — a SCREAMING $HOME expansion variable ->
-	// @constant, a lowercase ${low} rejected -> plain. Plus keyword/comment/string.
+	// Dockerfile: has a #match? predicate — a SCREAMING $HOME expansion variable
+	// matches @constant but bare @constant -> foreground, so it renders plain; a
+	// lowercase ${low} is rejected -> plain too. Plus keyword/comment/string.
 	probe(t, .Dockerfile, "Dockerfile", "# note\nFROM alpine\nENV X=$HOME\nUSER ${low}\nCMD [\"run\"]\n", []Chk{
 		{0, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
 		{1, 0, COLOR_SYN_KEYWORD, true, "FROM instruction is keyword-colored"},
-		{2, 7, COLOR_SYN_CONSTANT, true, "SCREAMING $HOME var (#match) is constant-colored"},
+		{2, 7, COLOR_FG, true, "SCREAMING $HOME var is default-fg (constant -> foreground)"},
+		{2, 7, COLOR_SYN_CONSTANT, false, "SCREAMING $HOME var is NOT constant-colored anymore"},
 		{3, 7, COLOR_SYN_CONSTANT, false, "lowercase ${low} var is NOT constant-colored"},
 		{4, 5, COLOR_SYN_STRING, true, "json string is string-colored"},
+	})
+	// JSX (.jsx, javascript grammar): element tag names and attribute names get the
+	// keyword/tag color, matching the HTML look (upstream ships no JSX captures).
+	probe(t, .Jsx, "c.jsx", "const x = <div className=\"c\">hi</div>;\n", []Chk{
+		{0, 11, COLOR_SYN_KEYWORD, true, "JSX opening tag div is keyword-colored (tag)"},
+		{0, 15, COLOR_SYN_KEYWORD, true, "JSX attribute className is keyword-colored (tag.attribute)"},
+	})
+	// TSX (.tsx, tsx grammar): the JSX captures are appended to the shared typescript
+	// query only for .tsx, so the same tag paint applies.
+	probe(t, .Tsx, "c.tsx", "const x = <div className=\"c\">hi</div>;\n", []Chk{
+		{0, 11, COLOR_SYN_KEYWORD, true, "TSX opening tag div is keyword-colored (tag)"},
+		{0, 15, COLOR_SYN_KEYWORD, true, "TSX attribute className is keyword-colored (tag.attribute)"},
 	})
 }
 

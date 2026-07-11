@@ -202,3 +202,9 @@
   "with"
   "yield"
 ] @keyword
+
+; JSX (qed deviation-by-append: upstream ships no JSX tag captures)
+(jsx_opening_element (identifier) @tag)
+(jsx_closing_element (identifier) @tag)
+(jsx_self_closing_element (identifier) @tag)
+(jsx_attribute (property_identifier) @tag.attribute)

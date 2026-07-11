@@ -7,6 +7,10 @@ import ts "lib:tree_sitter"
 
 HIGHLIGHT_ASYNC_BYTES :: 256 * 1024
 
+// The tsx grammar has JSX nodes the shared typescript grammar lacks, so these
+// captures are appended to the typescript query for .tsx only (see the file).
+TSX_JSX_EXTRA := #load("../lib/tree_sitter/tsx/highlights.scm")
+
 Highlight :: struct {
 	computed: bool,
 	valid:    bool,
@@ -72,9 +76,17 @@ syntax_ensure :: proc(language: Language) -> bool {
 		return false
 	}
 
+	hl_src := info.highlights
+	if language == .Tsx {
+		combined := make([]u8, len(info.highlights) + len(TSX_JSX_EXTRA), context.temp_allocator)
+		copy(combined, info.highlights)
+		copy(combined[len(info.highlights):], TSX_JSX_EXTRA)
+		hl_src = combined
+	}
+
 	err_off: u32
 	err_type: ts.QueryError
-	s.query = ts.query_new(lang, raw_data(info.highlights), u32(len(info.highlights)), &err_off, &err_type)
+	s.query = ts.query_new(lang, raw_data(hl_src), u32(len(hl_src)), &err_off, &err_type)
 	if s.query == nil {
 		g_syntax_error = info.name
 		return false

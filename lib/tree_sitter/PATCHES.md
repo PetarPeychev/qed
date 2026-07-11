@@ -156,6 +156,28 @@ reproduces the old "stripped" behavior for that one pattern.
   `(task_list_marker_checked) @string`); nvim-treesitter ships these in a separate
   query, and upstream's block `highlights.scm` at this pin has none, so verbatim
   alone would drop checkbox coloring. Everything else is verbatim.
+- **`javascript/highlights.scm`** — upstream verbatim **plus** a JSX section
+  appended: upstream ships no JSX tag captures, so a `<div>` element or its
+  attribute names would render plain. The four appended rules capture JSX
+  opening/closing/self-closing element names as `@tag` and JSX attribute names as
+  `@tag.attribute` (both land in the keyword/tag color, matching the HTML look).
+  Used for `.js` and `.jsx` (both use the javascript grammar, which has JSX nodes).
+- **`tsx` JSX** — the same four JSX captures also apply to `.tsx`, but they
+  **cannot** live in the shared `typescript/highlights.scm`: the plain `typescript`
+  grammar has no JSX nodes, so a query naming `jsx_opening_element` fails to compile
+  against it (and that file is loaded by both the `typescript` and `tsx` grammars).
+  Instead the JSX block is vendored as `tsx/highlights.scm` (a fragment) and
+  concatenated onto the typescript query at query-build time **for `.Tsx` only**
+  (`TSX_JSX_EXTRA` in `src/highlight.odin`, appended in `syntax_ensure`).
+- **`c/highlights.scm`**, **`cpp/highlights.scm`** — upstream verbatim except the
+  `(null) @constant` literal rule (and cpp's `(null "nullptr" @constant)`) is
+  retagged `@constant.builtin`. Upstream tags the `NULL`/`nullptr` literal with a
+  bare `@constant`, indistinguishable from the SCREAMING-name heuristic; since the
+  default theme maps bare `@constant` → foreground (see capture-mapping), retagging
+  the literal `@constant.builtin` keeps it constant-colored while SCREAMING names go
+  plain — aligning C/C++ with how python/lua/js/go tag `nil`/`null`/`None`
+  (`@constant.builtin`/`@boolean`). cpp otherwise stays the inlined-C-base + cpp
+  additions described below.
 - **`common/scanner.h` include path** — layout patch (drops the `src/` level),
   documented above; not a query.
 - **`rust/highlights.scm`** — vendored verbatim, including an upstream typo on the
@@ -173,8 +195,12 @@ reproduces the old "stripped" behavior for that one pattern.
   evaluation.
 - **`toml/highlights.scm`**, **`yaml/highlights.scm`** — vendored verbatim,
   predicate-free (no removals, no deviations). TOML tags a `(pair (bare_key))` both
-  `@type` (first) and `@property` (later, unmapped), so table/pair keys keep the
-  earlier **type** color. YAML tags a plain-scalar mapping key both `(string_scalar)
+  `@type` (first) and `@property` (later); the default theme's `toml/type` →
+  `foreground` override paints every `(bare_key)` — pair keys, dotted-key segments
+  and `[table]` header names alike — in the default color (keys read plain; the
+  `@property` route was rejected because that capture is attached to the whole
+  `(pair)` node, so mapping it would repaint the value span too). YAML tags a
+  plain-scalar mapping key both `(string_scalar)
   @string` (via the top-level scalar list) and `@property`; `@property` is unmapped
   and paint never overwrites, so YAML mapping keys render in the **string** color —
   same as scalar string values (an accepted consequence of verbatim vendoring, not
@@ -252,8 +278,16 @@ rewritten.
 
 Bucketing of the currently-firing captures (with predicate heuristics live):
 
-- `@constant*` (incl. `@constant.builtin`), `@number`, `@float`, `@boolean`,
-  `@variable.builtin` → constant color.
+- `@constant.builtin`, `@number`, `@float`, `@boolean`, `@variable.builtin` →
+  constant color. Bare `@constant` → **`foreground`** (explicit plain): a
+  SCREAMING_SNAKE name (the `#match?` heuristic in most grammars) or a `-flag`
+  (bash) renders in the default color, not the constant color. Only *literal
+  values* keep the constant color — hence the explicit `constant.builtin` entry
+  (nil/null/None/true/false/undefined/nullptr across grammars) so prefix fallback
+  doesn't drag them to `foreground`, and the C/C++ `(null)`→`@constant.builtin`
+  retag noted above. Consequences of `@constant`→foreground: HTML `(doctype)` and
+  the bash `-flag` rule also render plain (they are bare `@constant`, not literal
+  values); this is by design.
 - `@type*` (incl. `@type.builtin`) and `@constructor` → type color.
 - `@function.builtin` → keyword color (builtin functions read as language-level);
   `@function` (and `@function.call`, via the `function` prefix) → **`foreground`**
@@ -273,16 +307,34 @@ Bucketing of the currently-firing captures (with predicate heuristics live):
   list / block-quote markers render in the keyword color. It is left **global-plain**
   otherwise, so Odin's `@`/`$` sigils and Python/JS interpolation braces (also
   `@punctuation.special`) stay the default color.
+- Per-language: `lua` `@constructor` → `foreground`. Upstream captures a `{}`
+  table-constructor's braces as `@constructor`, which maps globally to the (blueish)
+  type color; the override paints them plain. Lua uses `@constructor` **only** for
+  those braces, so nothing else is affected.
+- Per-language: `css` `@attribute` → keyword and `@property` → attribute, giving one
+  coherent selector/property scheme. Selector *tokens* read as the keyword family —
+  element/universal/nesting selectors (`@tag`, already keyword) plus pseudo-class /
+  pseudo-element / attribute-selector names (`@attribute` → keyword) — while *name
+  identifiers* (`@property`: class, id, namespace, property, feature names) read as
+  the attribute color. The CSS grammar captures class/id **selector** names AND
+  **property** names both as `@property`, so they cannot be split in the captures
+  table and unavoidably share one color (accepted; documented for anyone tempted to
+  separate them without a query edit). Values keep their own colors (`@number` →
+  constant, `@unit` → type, `@string`/`@color_value` → string). Before this, class /
+  id selectors and property names were unmapped `@property` and rendered plain while
+  element and pseudo selectors were colored — the "random" look.
 
-HTML/CSS specifics: `(doctype) @constant`, `(attribute_value)`/`(string_value)` →
-string, `(color_value) @string.special` → string (the `string` prefix), CSS
-`(integer_value)`/`(float_value) @number` → constant, `(unit) @type` → type,
-`@attribute` (attribute names, pseudo-selectors) → attribute, at-rules (`@media`,
-`(at_keyword)`, `(important)`, `to`/`from`) `@keyword` → keyword. Left plain
-(unmapped): CSS `@property` (class/id/property/feature names), `@operator`
-(combinators + `and`/`or`/`not`/`only`), `@variable` (`--custom-props`, the only
-predicate-gated capture in either query), and every `@punctuation.*` (HTML
-`<`/`>`/`</`/`/>` brackets, CSS delimiters/brackets).
+HTML/CSS specifics: `(doctype) @constant` → foreground (plain, per the constant
+change above), `(attribute_value)`/`(string_value)` → string, `(color_value)
+@string.special` → string (the `string` prefix), CSS `(integer_value)`/`(float_value)
+@number` → constant, `(unit) @type` → type. CSS selectors/properties are grouped by
+the per-language `css` overrides (see above): `@attribute` (pseudo-selectors,
+attribute-selector names) → keyword, `@property` (class/id/namespace/property/feature
+names) → attribute; at-rules (`@media`, `(at_keyword)`, `(important)`, `to`/`from`)
+`@keyword` → keyword. Left plain (unmapped): CSS `@operator` (combinators +
+`and`/`or`/`not`/`only`), `@variable` (`--custom-props`, the only predicate-gated
+capture in either query), and every `@punctuation.*` (HTML `<`/`>`/`</`/`/>` brackets,
+CSS delimiters/brackets).
 
 Captures with no entry (e.g. `@variable`, `@property`, `@parameter`, `@field`,
 `@operator`, `@namespace`, `@label`, `@escape`, `@punctuation.delimiter`) render as
@@ -290,18 +342,22 @@ default text. Go and Rust tag escape sequences with a bare `@escape` (not
 `@string.escape`), left plain like JSON's and Python's — so `\n` inside a Go/Rust
 string reads in the default color. C++ adds no new bucket: its additions reuse
 `@keyword` (class/namespace/template/coroutine/concept keywords), `@type` (`auto`,
-uppercase namespace ids), `@constant` (`nullptr`), `@variable.builtin` (`this`) and
+uppercase namespace ids), `@constant.builtin` (`nullptr`, retagged from bare
+`@constant` — see the c/cpp deviation above), `@variable.builtin` (`this`) and
 `@string` (`raw_string_literal`), all already mapped, and the inlined C base keeps
 its mapping.
 
 TOML, YAML and Dockerfile need **no new color key** — every painted capture already
 falls into an existing one (`@type`, `@string`, `@string.special`, `@number`,
 `@boolean`, `@constant.builtin`, `@constant`, `@comment`, `@keyword`, `@attribute`).
-Left plain by design: YAML `@label` (anchors / aliases), TOML `@property` (pair keys
-— but a bare key also gets the earlier `@type` paint), and the Dockerfile `@none` /
-`@operator` / `@punctuation.special` markers. YAML mapping keys are `@property` but
-paint in the string color because their scalar node also matches the top-level
-`(string_scalar) @string`.
+Per-language: `toml` `@type` → `foreground` — TOML's `(bare_key)` is the only
+`@type` in its query, so every key (pair keys, dotted segments, `[table]` header
+names) renders plain while values keep their colors; the pair-level `@property`
+stays unmapped (it captures the whole `(pair)` node, so mapping it would repaint
+the value). Left plain by design: YAML `@label` (anchors / aliases) and the
+Dockerfile `@none` / `@operator` / `@punctuation.special` markers. YAML mapping
+keys are `@property` but paint in the string color because their scalar node also
+matches the top-level `(string_scalar) @string`.
 
 **Odin proc names.** Upstream tags a proc-declaration name `@type`
 (`(procedure_declaration (identifier) @type)`) and then re-tags it `@function`. The
