@@ -42,7 +42,6 @@ daily-drives it for programming.** Every item here blocks that.
 
 ### UX
 
-- [ ] Message line: toggle to flip back through past messages in place.
 - [ ] Move fuzzy file-open (`Ctrl+O`) into the file tree pane.
 
 ### Docs & onboarding

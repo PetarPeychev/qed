@@ -114,11 +114,12 @@ floating pane over the ring — timestamped rows coloured by level (selection ti
 bg only, keeping the level colour), sticks to the newest, arrow/wheel scroll +
 select, `Shift+↑↓` extends a contiguous selection, `Ctrl+C` copies the selection
 (newline-joined), and a file-tree-style footer whose `d`/`i`/`w`/`e` keys toggle
-per-level visibility (Debug off by default, persisted for the session).
+per-level visibility and `h` past-session history (Debug and history off by
+default, persisted for the session; seeded entries carry `LogEntry.seeded`).
 Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
 UTC fallback). At startup the ring seeds from the disk-log tail (parsed back,
-local→UTC via `datetime_to_utc`, never re-written), so the pane shows previous
-sessions behind `=== qed … ===` marker rows. The pane opens on the welcome screen
+local→UTC via `datetime_to_utc`, never re-written), so the pane can show
+previous sessions behind `=== qed … ===` marker rows. The pane opens on the welcome screen
 too, where a status-bar variant (working root + git branch left, `qed VERSION`
 right) and the message line render under the art, so startup errors are visible. Truecolor output; colors
 (`COLOR_*`), UI glyphs (`ICON_*`), tint strengths (`*_TINT`) and the syntax
@@ -487,8 +488,8 @@ line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line (relative path, git branch + ahead/behind, segment icons),
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
 level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — per-level
-filters, multi-select copy, cross-session history seeded from the disk log, works on
-welcome), welcome-screen status bar (root + branch + version + message line),
+filters, multi-select copy, cross-session history seeded from the disk log behind
+an `h` footer toggle (off by default), works on welcome), welcome-screen status bar (root + branch + version + message line),
 rebind-aware pane self-close chords (`command_matches`), Debug-level internals
 instrumentation (subprocess/AI/FIM/save/config/clipboard/terminal trails), welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
