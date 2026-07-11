@@ -110,10 +110,17 @@ draws `Source: text` and colours by level — `.Info` → `COLOR_FG`, `.Warn` �
 is never logged. The disk log lives at `$XDG_STATE_HOME/qed/qed.log` (append, flushed
 per write, rotated to `qed.log.old` past 1 MB, session-start marker with version);
 disk logging is skipped when `headless`. *Debug: Message Log* (`Alt+l`) opens a
-floating pane over the ring — timestamped rows coloured by level, sticks to the
-newest, arrow/wheel scroll + select, `Ctrl+C` copies the selected entry, and a
-file-tree-style footer whose `d`/`i`/`w`/`e` keys toggle per-level visibility
-(Debug off by default, persisted for the session). Truecolor output; colors
+floating pane over the ring — timestamped rows coloured by level (selection tints
+bg only, keeping the level colour), sticks to the newest, arrow/wheel scroll +
+select, `Shift+↑↓` extends a contiguous selection, `Ctrl+C` copies the selection
+(newline-joined), and a file-tree-style footer whose `d`/`i`/`w`/`e` keys toggle
+per-level visibility (Debug off by default, persisted for the session).
+Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
+UTC fallback). At startup the ring seeds from the disk-log tail (parsed back,
+local→UTC via `datetime_to_utc`, never re-written), so the pane shows previous
+sessions behind `=== qed … ===` marker rows. The pane opens on the welcome screen
+too, where a status-bar variant (working root + git branch left, `qed VERSION`
+right) and the message line render under the art, so startup errors are visible. Truecolor output; colors
 (`COLOR_*`), UI glyphs (`ICON_*`), tint strengths (`*_TINT`) and the syntax
 `captures` mapping come from the active theme — a JSON file with
 `colors`/`captures`/`icons`/`tints` sections, hot-reloaded like config.json.
@@ -221,6 +228,10 @@ Copy/cut/paste shell out via `clipboard.odin`: `wl-copy`/`wl-paste` or `xclip`
 Explicit `switch` on `(key, mod, ch)` → action procs. Rebindable commands live in
 the `commands` table (`palette.odin`), their default binds in the embedded config's
 `keybinds` section; primitive editing/movement and `Ctrl+P` (palette) are fixed.
+Every pane closes/defocuses on its own command's chord via `command_matches`
+(`palette.odin` — resolves the event against the *configured* keybind, so rebinds
+keep the toggle; the fixed `Ctrl+P` and terminal's extra `Alt+T` tolerance stay
+hardcoded); the welcome-screen key whitelist resolves the same way.
 
 Every editable text box (palette/picker/switcher/lang/indent/line-find/project-search
 queries, find/replace, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
@@ -474,7 +485,11 @@ Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default
 line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line (relative path, git branch + ahead/behind, segment icons),
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
-level-coloured line, *Debug: Message Log* pane `Alt+l` with per-level filters), welcome screen, quit guard across
+level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — per-level
+filters, multi-select copy, cross-session history seeded from the disk log, works on
+welcome), welcome-screen status bar (root + branch + version + message line),
+rebind-aware pane self-close chords (`command_matches`), Debug-level internals
+instrumentation (subprocess/AI/FIM/save/config/clipboard/terminal trails), welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
 buffers in stable order + digit instant-jump on empty query, side preview of the
