@@ -18,17 +18,11 @@ daily-drives it for programming.** Every item here blocks that.
 
 ### Language coverage
 
-Scope **provisional**: 1.0 ships the bundled set below, but we may pull more of
-the runtime-grammar arc (Language architecture endgame, deferred) forward before
-1.0 if config-driven languages prove too limiting for a stranger's workflow.
-
-- [ ] Bundle the languages a stranger expects: Go, Rust, C++, HTML, CSS (grammar + highlight; LSP/formatter via config).
 - [ ] Documented add-a-language path: config-driven LSP/formatter for any language + how highlight is wired (bundled-grammar mechanism). Full runtime grammars are post-1.0.
 
 ### Robustness — won't eat my work
 
 - [ ] Crash safety: a panic restores the terminal and never loses unsaved buffers (recovery/backup on abnormal exit).
-- [ ] Malformed user config/theme JSON → clear message + fall back to defaults, never crash.
 
 ### Docs & onboarding
 
@@ -43,6 +37,7 @@ the runtime-grammar arc (Language architecture endgame, deferred) forward before
 - [ ] Unify preview panes (file-open, file-tree, project-search): consistent empty/binary placeholder.
 - [ ] List panes: scroll affordance (count / thumb) when scrolled past the visible rows.
 - [ ] Context-filter the command list (hide commands that don't apply, e.g. on welcome screen).
+- [ ] Status bar: show the `lsp_starting` icon until `initialized` completes — a slow server (bash-language-server scans 17 Windows PATH dirs on WSL, 10s+) reads as ready.
 - [ ] Terminal→editor cwd back-channel: handle OSC 7 from the PTY (shell reports cwd) so `Alt+t` can retarget qed's working root — VSCode's shell-integration model; env vars stay uncrossable.
 - [ ] Per-buffer viewport memory across buffer switches — move scroll state into `Buffer`, see [notes/refactors.md](notes/refactors.md).
 - [ ] Permission/ownership-preserving saves.
@@ -84,7 +79,6 @@ runtime-grammar arc that lets a stranger add *any* language with zero rebuild �
 1.0 ships the bundled set instead. In order:
 
 - [ ] Language registry: replace the `Language` enum with a runtime table; hardcoded per-language behaviors (Python colon-indent, injection wiring, fenced-block aliases) become table fields.
-- [ ] Query predicate evaluator (`#match?`/`#eq?`/…) so upstream `.scm` work unstripped.
 - [ ] Runtime dir for queries + language metadata as files, compiled-in fallback for the core set.
 - [ ] Grammar lock-file build fetch — vendored parser.c out of the repo, build pulls by pinned commit + sha.
 - [ ] Runtime grammar loading via `dlopen` for user-added tail languages (core set stays compiled in).

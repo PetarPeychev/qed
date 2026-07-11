@@ -131,10 +131,10 @@ repetition only once it exists in front of you.
 | Line endings   | Detect & preserve LF/CRLF and trailing-newline per file. |
 | Mouse          | Full: click-position, drag-select, wheel-scroll. |
 | Rendering      | Full redraw per event; termbox diffs internally. Truecolor output. |
-| Colors         | Themes are JSON files in `~/.config/qed/themes/`; config `theme` names the active one. Bundled themes ship in `config/themes/` (embedded, re-materialized when missing); gruber-darker is the default. |
+| Colors         | Themes are JSON (`colors`/`captures`/`icons`/`tints`); embedded `default.json` is the complete base every theme overlays per-key — bundled themes are diffs (colors kept complete by policy), user `themes/<name>.json` overlays the same-name bundled theme. `captures` maps tree-sitter captures → color keys (prefix fallback, per-language overrides). qed never writes theme files. |
 | Gutter         | Left line-number gutter; current line emphasized; git-diff mark column. |
 | Commands       | Direct CTRL keybinds (rebindable by name); floating command palette. |
-| Config         | Embedded `config/config.json` is the source of every default (knobs, keybinds, language patterns/lsp/formatter) — none in Odin source; `~/.config/qed/config.json` overrides, auto-materialized with every key, hot-reloaded on change. |
+| Config         | Embedded `config/config.json` is the source of every default (knobs, keybinds, language patterns/lsp/formatter) — none in Odin source. User `~/.config/qed/config.json` is a **sparse per-key diff** qed never writes (no materialization; UI persistence like the theme picker writes only its own key); unknown keys warn once, malformed JSON falls back to defaults; hot-reloaded on change. The repo files are the reference for all keys. |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |
 | Startup arg    | File → open it; directory → set working root + welcome screen. |

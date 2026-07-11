@@ -101,12 +101,23 @@ Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All writes go through
 `editor_set_message`, which copies into owned storage — a raw `tprintf` string
 would dangle once the per-frame `temp_allocator` is freed. Truecolor output; colors
-(`COLOR_*`), UI glyphs (`ICON_*`) and tint strengths (`*_TINT`) come from the active
-theme — config `theme` names a JSON file in `~/.config/qed/themes/` with
-`colors`/`icons`/`tints` sections, hot-reloaded like config.json. Nine bundled
-themes (two light: solarized-light, catppuccin-latte) ship inside the binary from
-repo `config/themes/` and re-materialize whenever missing; a missing non-bundled
-name errors to defaults. A theme change — via the *Set Theme* picker or the disk
+(`COLOR_*`), UI glyphs (`ICON_*`), tint strengths (`*_TINT`) and the syntax
+`captures` mapping come from the active theme — a JSON file with
+`colors`/`captures`/`icons`/`tints` sections, hot-reloaded like config.json.
+Theme resolution is a sparse overlay chain: embedded `default.json` (the complete
+reference — full palette + capture table) → bundled same-name theme (a diff; nine
+bundled, two light: solarized-light, catppuccin-latte; `colors` kept complete by
+policy, icons/tints diffed) → user `~/.config/qed/themes/<name>.json` per-key.
+qed never writes theme files; a missing non-bundled name errors to defaults.
+`captures` maps tree-sitter capture names → theme color keys (plus
+`bold`/`italic`/`underline`/`reverse`), longest-prefix fallback
+(`comment.documentation` → `comment`), per-language overrides
+(`"markdown": {"punctuation.special": …}`) beating global at each fallback step;
+resolution is baked to capture-id → color arrays at query-build/recolor time, so
+the paint path stays an array index. *Debug: Inspect Tokens* (a **passive**
+floating pane, `inspect.odin` — takes no focus, Esc or the command closes it)
+shows the node ancestry, capture stack, winning resolution chain and predicate
+near-misses under the cursor, live. A theme change — via the *Set Theme* picker or the disk
 poll — funnels through `editor_retheme`: theme colors are baked into two caches
 (each language's `Syntax.colors` palette and every buffer's per-char `hl.colors`),
 so it rebuilds the palettes (`syntax_recolor`) and invalidates the buffers
@@ -251,18 +262,22 @@ re-opens LSP).
   adding one = vendor `parser.c` (+`scanner.c`) + `highlights.scm` under
   `lib/tree_sitter/<lang>/`, add the FFI decl + `build.sh` line, fill the
   `LANGUAGE_DEFAULTS` row (grammar/comment/lsp id) + patterns/lsp/formatter in
-  `config/config.json`. Query is
-  structural-only (predicates stripped, see `lib/tree_sitter/PATCHES.md`). A
+  `config/config.json`. Queries are vendored **upstream-verbatim**: a predicate
+  evaluator (`predicate.odin`) enforces `#eq?`/`#match?`/`#lua-match?`/`#any-of?`/
+  ancestry predicates per match (parsed + regex-compiled once at query build,
+  cached per pattern; unknown predicates are skipped, never reject a pattern —
+  deviations in `lib/tree_sitter/PATCHES.md`). A
   grammar/query that fails to compile surfaces a one-shot status message. Parse is
   incremental + async on big files — [notes/perf.md](notes/perf.md).
-- **Injection** (markdown only): a `LANGUAGES` row may carry an `injections` query.
+- **Injection** (markdown + HTML): a `LANGUAGES` row may carry an `injections` query.
   After the host paint, `highlight_inject` runs it over the viewport, and for each
   region freshly re-parses the embedded language (synchronous, viewport-scoped —
   cheap since paint only reruns on tree/viewport change) and paints its colors over
-  the host at the region's row/col offset. The target language is encoded by
-  capture name (`@inline` → the inline grammar; `@language`+`@content` → the fenced
-  block's named language via `language_of_name`), since qed can't evaluate the
-  upstream `#set!` predicates. `MarkdownInline` is an injection-only `Language`
+  the host at the region's row/col offset. The target language follows the standard
+  convention — `@injection.content` + `@injection.language` / `#set!
+  injection.language` — resolved via `language_of_name`; markdown injects inline +
+  fenced code blocks, HTML injects `<script>`/`<style>` bodies as JS/CSS.
+  `MarkdownInline` is an injection-only `Language`
   (grammar + query, no file extension).
 - **LSP** (`lsp.odin`): JSON-RPC/stdio, multiple servers concurrent
   (`g_lsps` keyed by server command), one per language; UTF-16 columns converted
@@ -386,7 +401,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
-`linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `language` · `lsp` · `completion` · `rename` ·
+`linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -457,16 +472,20 @@ floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
 the shell prompt), jump list
-(back/forward), runtime config (`~/.config/qed/config.json` + active `themes/<name>.json`,
-both hot-reloaded via the disk poll — colors/keybinds/knobs apply live, runtime toggles
+(back/forward), runtime config (**sparse overlays**: embedded `config/config.json`
+is every default, none in Odin source, completeness test-enforced; user
+`~/.config/qed/config.json` is a per-key diff qed never writes — no
+materialization, unknown keys get a one-shot warning, malformed JSON falls back
+to defaults without crashing; UI persistence like the theme picker's Enter writes
+only its own key; both config + active theme hot-reload via the disk poll —
+colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
-their command), JSON themes (config `theme` picks a file from `~/.config/qed/themes/`,
-switchable live via the *Set Theme* fuzzy picker — instant preview as you move,
-Enter persists to config.json / Esc reverts; nine bundled themes, two light,
-embedded from repo `config/themes/`
-and re-materialized whenever missing; every user-facing default — knobs, keybinds,
-language patterns/lsp/formatter — sourced from the embedded `config/config.json`,
-none in Odin source, completeness test-enforced). Every floating pane is
+their command), JSON themes (sparse overlay chain over the embedded `default.json`
+base — see Rendering; *Set Theme* fuzzy picker with instant preview,
+Enter persists / Esc reverts), selection pre-fill (a single-line selection
+pre-populates Find / Replace / Project Search / Line Jump, fully selected so
+typing replaces; multi-line/whitespace selections keep each pane's persisted
+query). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss).
 Preview panes (file-open, file-tree, project-search, buffer switcher, line jump) share one
@@ -483,9 +502,15 @@ inline-diff-view style (dim-red ghost rows, added/modified tint, word-level high
 built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
 
 Language intelligence: config-driven language detection (glob rules + built-in
-dotfiles, per-buffer, `Set Language` override); tree-sitter highlight (Odin, JSON,
-Python, C, JS/JSX, TS/TSX, Shell, Lua, SQL, Markdown w/ inline + fenced-code
-injection, bold headings/strong + italic emphasis); LSP diagnostics (ols, pyright, clangd, typescript-language-server,
+dotfiles, per-buffer, `Set Language` override); tree-sitter highlight with full
+predicate evaluation (Odin, JSON,
+Python, C, C++, Go, Rust, JS/JSX, TS/TSX, HTML w/ script/style injection, CSS,
+Shell, Lua, SQL, TOML, YAML, Dockerfile, Markdown w/ inline + fenced-code
+injection, bold headings/strong + italic emphasis); theme-driven capture→color
+mapping (per-language overrides, prefix fallback) + *Debug: Inspect Tokens*
+live inspector; LSP diagnostics (ols, pyright, clangd C/C++, gopls, rust-analyzer,
+typescript-language-server, vscode-html/css-language-server, taplo,
+yaml-language-server, docker-langserver,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
