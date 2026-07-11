@@ -182,6 +182,10 @@ overlay_list_mouse :: proc(
 	return -1, false
 }
 
+fuzzy_list_center_scrollbar :: proc(l: ^FuzzyList, box: Rect, rows: int) {
+	pane_draw_scrollbar(box.x + box.w - 1, box.y + 3, rows, l.scroll, len(l.matches))
+}
+
 // A "> " prompt prefix followed by the field, as every fuzzy overlay draws it.
 overlay_prompt_render :: proc(x, y, w: int, f: ^TextField) {
 	pane_text(x, y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
@@ -213,13 +217,14 @@ overlay_layout :: proc(editor: ^Editor) -> OverlayLayout {
 	return {box, inner, body_top, body_h, title_sep_y, div_x, left_w, right_x, right_w}
 }
 
-overlay_divider :: proc(lay: OverlayLayout) {
+overlay_divider :: proc(lay: OverlayLayout, offset, total: int) {
 	bottom := lay.box.y + lay.box.h - 1
 	for y in lay.body_top ..< bottom {
 		tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	}
 	tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	tb2.set_cell(i32(lay.div_x), i32(bottom), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, offset, total)
 }
 
 digit_count :: proc(n: int) -> int {

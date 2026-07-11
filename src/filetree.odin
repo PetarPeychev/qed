@@ -900,6 +900,7 @@ filetree_render :: proc(editor: ^Editor) {
 	}
 	tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	tb2.set_cell(i32(lay.div_x), i32(lay.footer_sep_y), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, t.scroll, len(t.entries))
 
 	filetree_render_footer(editor, inner, lay.footer_y)
 }

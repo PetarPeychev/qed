@@ -240,5 +240,5 @@ projsearch_render :: proc(editor: ^Editor) {
 
 	preview_render(&p.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
 
-	overlay_divider(lay)
+	overlay_divider(lay, p.scroll, len(p.matches))
 }

@@ -144,4 +144,6 @@ themepick_render :: proc(editor: ^Editor) {
 		}
 		pane_text(inner.x + 1, y, inner.w - 2, name, fg, bg)
 	}
+
+	fuzzy_list_center_scrollbar(&tp.list, box, rows)
 }

@@ -52,6 +52,23 @@ mouse_in_rect :: proc(ev: tb2.Event, r: Rect) -> bool {
 	return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
 }
 
+pane_scrollbar_thumb :: proc(offset, visible, total: int) -> (start, length: int) {
+	if visible <= 0 || total <= visible {
+		return 0, 0
+	}
+	length = min(visible, max(1, visible * visible / total))
+	span := visible - length
+	start = clamp(offset * span / (total - visible), 0, span)
+	return
+}
+
+pane_draw_scrollbar :: proc(x, y, visible, offset, total: int) {
+	start, length := pane_scrollbar_thumb(offset, visible, total)
+	for i in 0 ..< length {
+		tb2.set_cell(i32(x), i32(y + start + i), '┃', COLOR_PANE_FG, COLOR_PANE_BG)
+	}
+}
+
 pane_hline :: proc(box: Rect, y: int) {
 	left := box.x
 	right := box.x + box.w - 1

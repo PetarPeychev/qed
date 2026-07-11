@@ -296,4 +296,6 @@ palette_render :: proc(editor: ^Editor) {
 		sx := inner.x + inner.w - 1 - len(cmd.shortcut)
 		pane_text(sx, y, len(cmd.shortcut), cmd.shortcut, sc_fg, bg)
 	}
+
+	fuzzy_list_center_scrollbar(&p.list, box, rows)
 }

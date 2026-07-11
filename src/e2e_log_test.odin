@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:strings"
 import "core:testing"
 import "lib:tb2"
@@ -183,6 +184,54 @@ e2e_log_debug_filter :: proc(t: ^testing.T) {
 	testing.expect(t, e.ed.logview.filter[.Debug], "Debug filter persists on reopen")
 	e2e_render(&e)
 	testing.expect(t, strings.contains(e2e_log_screen(&e), "a trace line"), "Debug still visible after reopen")
+}
+
+@(test)
+e2e_log_wheel_scroll_and_thumb :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+
+	for i in 0 ..< 30 {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %02d", i), show = false)
+	}
+	cmd_message_log(&e.ed)
+	e2e_render(&e)
+
+	v := &e.ed.logview
+	lay := logview_layout(&e.ed)
+	h := logview_body_h(&e.ed)
+	n := len(logview_filtered(&e.ed))
+	border_x := lay.box.x + lay.box.w - 1
+	testing.expect(t, n > h + WHEEL_SCROLL_LINES, "the log should overflow the pane")
+	testing.expect_value(t, v.scroll, n - h)
+
+	bottom_start, length := pane_scrollbar_thumb(v.scroll, h, n)
+	testing.expect(t, length > 0, "an overflowing log shows a thumb")
+	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top + bottom_start), '┃')
+	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top), '│')
+
+	e2e_mouse(&e, lay.inner.x + 2, lay.body_top + 1, .Mouse_Wheel_Up)
+	e2e_render(&e)
+	testing.expect(t, !v.stick, "wheel-up unsticks from the newest entry")
+	testing.expect_value(t, v.scroll, n - h - WHEEL_SCROLL_LINES)
+	testing.expect(t, strings.contains(e2e_row(&e, lay.body_top), fmt.tprintf("entry %02d", 30 - h - WHEEL_SCROLL_LINES)), "the top row scrolled up")
+
+	up_start, _ := pane_scrollbar_thumb(v.scroll, h, n)
+	testing.expect(t, up_start < bottom_start, "the thumb tracks the scroll upward")
+	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top + up_start), '┃')
+
+	e2e_mouse(&e, lay.inner.x + 2, lay.body_top + 1, .Mouse_Wheel_Down)
+	e2e_render(&e)
+	testing.expect_value(t, v.scroll, n - h)
+	testing.expect(t, v.stick, "wheel-down to the end re-sticks")
+
+	for _ in 0 ..< h {
+		e2e_key(&e, .Arrow_Up)
+	}
+	e2e_render(&e)
+	testing.expect_value(t, v.scroll, n - h - 1)
+	arrow_start, _ := pane_scrollbar_thumb(v.scroll, h, n)
+	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top + arrow_start), '┃')
 }
 
 @(test)

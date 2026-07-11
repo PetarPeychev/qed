@@ -366,7 +366,7 @@ logview_close :: proc(editor: ^Editor) {
 	editor.logview.active = false
 }
 
-logview_reveal :: proc(editor: ^Editor) {
+logview_reveal :: proc(editor: ^Editor, follow := false) {
 	v := &editor.logview
 	n := len(logview_filtered(editor))
 	h := logview_body_h(editor)
@@ -383,11 +383,13 @@ logview_reveal :: proc(editor: ^Editor) {
 		return
 	}
 	v.selected = clamp(v.selected, 0, max(0, n - 1))
-	if v.selected < v.scroll {
-		v.scroll = v.selected
-	}
-	if h > 0 && v.selected >= v.scroll + h {
-		v.scroll = v.selected - h + 1
+	if follow {
+		if v.selected < v.scroll {
+			v.scroll = v.selected
+		}
+		if h > 0 && v.selected >= v.scroll + h {
+			v.scroll = v.selected - h + 1
+		}
 	}
 	v.scroll = clamp(v.scroll, 0, max(0, n - h))
 }
@@ -405,21 +407,21 @@ logview_move :: proc(editor: ^Editor, delta: int, extend := false) {
 	}
 	v.selected = clamp(v.selected + delta, 0, n - 1)
 	v.stick = v.selected == n - 1
-	logview_reveal(editor)
+	logview_reveal(editor, follow = true)
 }
 
 logview_toggle :: proc(editor: ^Editor, level: LogLevel) {
 	v := &editor.logview
 	v.filter[level] = !v.filter[level]
 	v.anchor = nil
-	logview_reveal(editor)
+	logview_reveal(editor, follow = true)
 }
 
 logview_toggle_history :: proc(editor: ^Editor) {
 	v := &editor.logview
 	v.history = !v.history
 	v.anchor = nil
-	logview_reveal(editor)
+	logview_reveal(editor, follow = true)
 }
 
 logview_copy :: proc(editor: ^Editor) {
@@ -564,6 +566,7 @@ logview_render :: proc(editor: ^Editor) {
 		}
 		pane_text(inner.x + 1, y, inner.w - 2, row, fg, bg)
 	}
+	pane_draw_scrollbar(lay.box.x + lay.box.w - 1, lay.body_top, h, v.scroll, len(filtered))
 
 	pane_hline(lay.box, lay.footer_sep_y)
 	logview_render_footer(editor, inner, lay.footer_y)

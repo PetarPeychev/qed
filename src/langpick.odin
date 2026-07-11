@@ -95,4 +95,6 @@ langpick_render :: proc(editor: ^Editor) {
 		}
 		pane_text(inner.x + 1, y, inner.w - 2, name, fg, bg)
 	}
+
+	fuzzy_list_center_scrollbar(&lp.list, box, rows)
 }

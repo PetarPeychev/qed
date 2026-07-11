@@ -268,10 +268,23 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	testing.expect(t, e.ed.palette.active, "Ctrl+P opens the palette")
 
-	e2e_type(&e, "line wrap")
 	p := &e.ed.palette
+	rows := min(len(p.matches), PALETTE_MAX_ROWS)
+	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)
+	border_x := box.x + box.w - 1
+	testing.expect(t, len(p.matches) > rows, "the command list should overflow the palette")
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, border_x, box.y + 3), '┃')
+	testing.expect_value(t, e2e_cell_fg(&e, border_x, box.y + 3), COLOR_PANE_FG)
+
+	e2e_type(&e, "line wrap")
 	testing.expect(t, len(p.matches) > 0, "fuzzy query should match a command")
 	testing.expect_value(t, palette_command(p, p.selected).name, "Toggle Line Wrap")
+
+	rows = min(len(p.matches), PALETTE_MAX_ROWS)
+	box = pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, box.x + box.w - 1, box.y + 3), '│')
 
 	e2e_key(&e, .Enter)
 	testing.expect(t, !e.ed.palette.active, "Enter closes the palette")
@@ -326,6 +339,35 @@ e2e_nav_file_open_and_close :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_W)
 	testing.expect_value(t, len(e.ed.buffers), 1)
 	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "main.txt"), "closing returns to main.txt")
+}
+
+@(test)
+e2e_nav_scrollbar :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	for i in 0 ..< 20 {
+		path := fmt.tprintf("%s/f%02d.txt", e.ed.working_root, i)
+		nav_write(path, "body")
+	}
+
+	e2e_key(&e, .Ctrl_O)
+	testing.expect(t, e.ed.picker.active, "Ctrl+O opens the picker")
+
+	p := &e.ed.picker
+	lay := overlay_layout(&e.ed)
+	testing.expect(t, len(p.matches) > lay.body_h, "20 files should overflow the picker's body")
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '┃')
+	testing.expect_value(t, e2e_cell_fg(&e, lay.div_x, lay.body_top), COLOR_PANE_FG)
+
+	e2e_type(&e, "f00")
+	testing.expect(t, len(p.matches) <= lay.body_h, "a narrow query should fit without a scrollbar")
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '│')
+
+	e2e_key(&e, .Esc)
+	testing.expect(t, !e.ed.picker.active, "Esc closes the picker")
 }
 
 @(test)
