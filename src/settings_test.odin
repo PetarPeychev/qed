@@ -8,10 +8,6 @@ import "core:sync"
 import "core:testing"
 import "lib:tb2"
 
-// Tests run in parallel; serialize the ones that mutate/read the global
-// language-rule table (single-threaded at runtime, so no production lock).
-g_lang_rules_test_mu: sync.Mutex
-
 @(private = "file")
 reparse :: proc(t: ^testing.T, path: string) -> json.Object {
 	data, err := os.read_entire_file(path, context.temp_allocator)
@@ -327,14 +323,15 @@ test_config_keybind :: proc(t: ^testing.T) {
 	testing.expect(t, !bad2, "unprefixed rejected")
 }
 
-// One sequential test: the file scenarios mutate shared config globals, so they
-// must not run concurrently with each other (the rest of the suite is parallel).
-// The lock also fences off test_language_of_extensions, which reads the same
-// global language-rule table this test rebuilds via config_load_from.
+// One sequential test: the file scenarios mutate shared config globals (colors,
+// language rules, keybinds), so they must not run concurrently with anything
+// else that touches those globals — including the e2e sessions, which hold the
+// same e2e_lock for their whole run. This also fences off test_language_of_extensions,
+// which reads the same global language-rule table this test rebuilds via config_load_from.
 @(test)
 test_config_files :: proc(t: ^testing.T) {
-	sync.lock(&g_lang_rules_test_mu)
-	defer sync.unlock(&g_lang_rules_test_mu)
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	// Restore every touched global to embedded defaults for the rest of the suite.
 	defer {
 		config_defaults_apply()

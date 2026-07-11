@@ -5,8 +5,8 @@ import "core:testing"
 
 @(test)
 test_language_of_extensions :: proc(t: ^testing.T) {
-	sync.lock(&g_lang_rules_test_mu)
-	defer sync.unlock(&g_lang_rules_test_mu)
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 
 	languages_reset_defaults()
 	Case :: struct {
