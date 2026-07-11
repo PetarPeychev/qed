@@ -89,6 +89,11 @@
       "lsp": "clangd",
       "formatter": ""
     },
+    "cpp": {
+      "patterns": ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hh"],
+      "lsp": "clangd",
+      "formatter": ""
+    },
     "javascript": {
       "patterns": ["*.js", "*.mjs", "*.cjs"],
       "lsp": "typescript-language-server --stdio",
@@ -141,17 +146,32 @@
     },
     "yaml": {
       "patterns": ["*.yaml", "*.yml"],
-      "lsp": "",
+      "lsp": "yaml-language-server --stdio",
       "formatter": ""
     },
     "toml": {
       "patterns": ["*.toml"],
-      "lsp": "",
+      "lsp": "taplo lsp stdio",
+      "formatter": "taplo fmt -"
+    },
+    "dockerfile": {
+      "patterns": ["Dockerfile", "*.dockerfile", "Dockerfile.*"],
+      "lsp": "docker-langserver --stdio",
       "formatter": ""
     },
     "json": {
       "patterns": ["*.json"],
       "lsp": "",
+      "formatter": ""
+    },
+    "html": {
+      "patterns": ["*.html", "*.htm"],
+      "lsp": "vscode-html-language-server --stdio",
+      "formatter": ""
+    },
+    "css": {
+      "patterns": ["*.css"],
+      "lsp": "vscode-css-language-server --stdio",
       "formatter": ""
     },
     "markdown": {

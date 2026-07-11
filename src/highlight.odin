@@ -169,6 +169,7 @@ syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
 	     strings.has_prefix(name, "conditional"),
 	     strings.has_prefix(name, "repeat"),
 	     strings.has_prefix(name, "include"),
+	     strings.has_prefix(name, "tag"),
 	     name == "storageclass":
 		return COLOR_SYN_KEYWORD, true
 	case strings.has_prefix(name, "type"), name == "constructor":

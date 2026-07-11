@@ -79,6 +79,16 @@ highlight_predicates :: proc(t: ^testing.T) {
 		{0, 4, COLOR_SYN_CONSTANT, true, "FOO is constant-colored"},
 		{1, 4, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
 	})
+	// C++: the cpp-only `namespace` keyword (additions query) fires, and the inlined
+	// C base's SCREAMING predicate paints MSG while lowercase bar is rejected. Plus
+	// string/comment paint.
+	probe(t, .Cpp, "cpp.cpp", "// note\nnamespace ns {}\nconst char* MSG = \"hi\";\nint bar = 2;\n", []Chk{
+		{0, 0, COLOR_SYN_COMMENT, true, "line comment is comment-colored"},
+		{1, 0, COLOR_SYN_KEYWORD, true, "cpp namespace keyword is keyword-colored"},
+		{2, 12, COLOR_SYN_CONSTANT, true, "SCREAMING MSG is constant-colored"},
+		{2, 18, COLOR_SYN_STRING, true, "string literal is string-colored"},
+		{3, 4, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
+	})
 	// JavaScript: FOO -> @constant; bar -> plain.
 	probe(t, .JavaScript, "j.js", "const FOO = 1;\nconst bar = 2;\n", []Chk{
 		{0, 6, COLOR_SYN_CONSTANT, true, "FOO is constant-colored"},
@@ -131,6 +141,51 @@ highlight_predicates :: proc(t: ^testing.T) {
 	probe(t, .Sql, "q.sql", "SELECT 42 FROM t;\n", []Chk{
 		{0, 7, COLOR_SYN_STRING, true, "numeric literal stays string-colored (number rule rejected)"},
 		{0, 7, COLOR_SYN_CONSTANT, false, "numeric literal is NOT constant-colored"},
+	})
+	// HTML: predicate-free query, so basic paints. @tag -> keyword (qed maps the
+	// tag bucket to keyword), @attribute, @string, @constant (doctype), @comment.
+	probe(t, .Html, "h.html", "<!DOCTYPE html>\n<div class=\"x\">hi</div>\n<!-- c -->\n", []Chk{
+		{0, 0, COLOR_SYN_CONSTANT, true, "doctype is constant-colored"},
+		{1, 1, COLOR_SYN_KEYWORD, true, "tag name div is keyword-colored (tag->keyword)"},
+		{1, 5, COLOR_SYN_ATTRIBUTE, true, "attribute name is attribute-colored"},
+		{1, 12, COLOR_SYN_STRING, true, "attribute value is string-colored"},
+		{2, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
+	})
+	// CSS: @tag (type selector) -> keyword, @keyword (@media at-rule), @number,
+	// @type (unit). The only predicate (#match? @variable "^--" for custom props)
+	// gates @variable, which qed leaves unmapped/plain, so nothing observable —
+	// basic paint assertions instead.
+	probe(t, .Css, "c.css", "/* c */\ndiv { color: red; }\n@media (x) {}\na { width: 10px; }\n", []Chk{
+		{0, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
+		{1, 0, COLOR_SYN_KEYWORD, true, "type selector div is keyword-colored (tag->keyword)"},
+		{2, 0, COLOR_SYN_KEYWORD, true, "@media at-rule is keyword-colored"},
+		{3, 11, COLOR_SYN_CONSTANT, true, "integer value is number/constant-colored"},
+		{3, 13, COLOR_SYN_TYPE, true, "unit px is type-colored"},
+	})
+	// TOML: predicate-free query, so a plain keyword/string/comment paint check. A
+	// bare key is @type; a quoted value @string; an integer @number -> constant.
+	probe(t, .Toml, "x.toml", "# note\nkey = \"value\"\nnum = 42\n", []Chk{
+		{0, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
+		{1, 0, COLOR_SYN_TYPE, true, "bare key is type-colored"},
+		{1, 6, COLOR_SYN_STRING, true, "quoted value is string-colored"},
+		{2, 6, COLOR_SYN_CONSTANT, true, "integer is constant-colored"},
+	})
+	// YAML: predicate-free query, so a plain paint check. Scalars: integer/boolean
+	// -> constant, a double-quoted scalar -> string.
+	probe(t, .Yaml, "x.yaml", "# note\nnum: 42\nflag: true\nq: \"hi\"\n", []Chk{
+		{0, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
+		{1, 5, COLOR_SYN_CONSTANT, true, "integer scalar is constant-colored"},
+		{2, 6, COLOR_SYN_CONSTANT, true, "boolean scalar is constant-colored"},
+		{3, 3, COLOR_SYN_STRING, true, "double-quoted scalar is string-colored"},
+	})
+	// Dockerfile: has a #match? predicate — a SCREAMING $HOME expansion variable ->
+	// @constant, a lowercase ${low} rejected -> plain. Plus keyword/comment/string.
+	probe(t, .Dockerfile, "Dockerfile", "# note\nFROM alpine\nENV X=$HOME\nUSER ${low}\nCMD [\"run\"]\n", []Chk{
+		{0, 0, COLOR_SYN_COMMENT, true, "comment is comment-colored"},
+		{1, 0, COLOR_SYN_KEYWORD, true, "FROM instruction is keyword-colored"},
+		{2, 7, COLOR_SYN_CONSTANT, true, "SCREAMING $HOME var (#match) is constant-colored"},
+		{3, 7, COLOR_SYN_CONSTANT, false, "lowercase ${low} var is NOT constant-colored"},
+		{4, 5, COLOR_SYN_STRING, true, "json string is string-colored"},
 	})
 }
 

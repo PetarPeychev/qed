@@ -104,6 +104,7 @@ foreign ts {
 	tree_sitter_go :: proc() -> Language ---
 	tree_sitter_rust :: proc() -> Language ---
 	tree_sitter_c :: proc() -> Language ---
+	tree_sitter_cpp :: proc() -> Language ---
 	tree_sitter_javascript :: proc() -> Language ---
 	tree_sitter_typescript :: proc() -> Language ---
 	tree_sitter_tsx :: proc() -> Language ---
@@ -112,4 +113,9 @@ foreign ts {
 	tree_sitter_bash :: proc() -> Language ---
 	tree_sitter_lua :: proc() -> Language ---
 	tree_sitter_sql :: proc() -> Language ---
+	tree_sitter_html :: proc() -> Language ---
+	tree_sitter_css :: proc() -> Language ---
+	tree_sitter_toml :: proc() -> Language ---
+	tree_sitter_yaml :: proc() -> Language ---
+	tree_sitter_dockerfile :: proc() -> Language ---
 }

@@ -19,6 +19,8 @@ cc -c -w -O2 -I "$TS/go" "$TS/go/parser.c" -o "$TS/go-parser.o"
 cc -c -w -O2 -I "$TS/rust" "$TS/rust/parser.c" -o "$TS/rust-parser.o"
 cc -c -w -O2 -I "$TS/rust" "$TS/rust/scanner.c" -o "$TS/rust-scanner.o"
 cc -c -w -O2 -I "$TS/c" "$TS/c/parser.c" -o "$TS/c-parser.o"
+cc -c -w -O2 -I "$TS/cpp" "$TS/cpp/parser.c" -o "$TS/cpp-parser.o"
+cc -c -w -O2 -I "$TS/cpp" "$TS/cpp/scanner.c" -o "$TS/cpp-scanner.o"
 cc -c -w -O2 -I "$TS/javascript" "$TS/javascript/parser.c" -o "$TS/javascript-parser.o"
 cc -c -w -O2 -I "$TS/javascript" "$TS/javascript/scanner.c" -o "$TS/javascript-scanner.o"
 cc -c -w -O2 -I "$TS/typescript" "$TS/typescript/parser.c" -o "$TS/typescript-parser.o"
@@ -35,6 +37,16 @@ cc -c -w -O2 -I "$TS/lua" "$TS/lua/parser.c" -o "$TS/lua-parser.o"
 cc -c -w -O2 -I "$TS/lua" "$TS/lua/scanner.c" -o "$TS/lua-scanner.o"
 cc -c -w -O2 -I "$TS/sql" "$TS/sql/parser.c" -o "$TS/sql-parser.o"
 cc -c -w -O2 -I "$TS/sql" "$TS/sql/scanner.c" -o "$TS/sql-scanner.o"
+cc -c -w -O2 -I "$TS/html" "$TS/html/parser.c" -o "$TS/html-parser.o"
+cc -c -w -O2 -I "$TS/html" "$TS/html/scanner.c" -o "$TS/html-scanner.o"
+cc -c -w -O2 -I "$TS/css" "$TS/css/parser.c" -o "$TS/css-parser.o"
+cc -c -w -O2 -I "$TS/css" "$TS/css/scanner.c" -o "$TS/css-scanner.o"
+cc -c -w -O2 -I "$TS/toml" "$TS/toml/parser.c" -o "$TS/toml-parser.o"
+cc -c -w -O2 -I "$TS/toml" "$TS/toml/scanner.c" -o "$TS/toml-scanner.o"
+cc -c -w -O2 -I "$TS/yaml" "$TS/yaml/parser.c" -o "$TS/yaml-parser.o"
+cc -c -w -O2 -I "$TS/yaml" "$TS/yaml/scanner.c" -o "$TS/yaml-scanner.o"
+cc -c -w -O2 -I "$TS/dockerfile" "$TS/dockerfile/parser.c" -o "$TS/dockerfile-parser.o"
+cc -c -w -O2 -I "$TS/dockerfile" "$TS/dockerfile/scanner.c" -o "$TS/dockerfile-scanner.o"
 ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/odin-parser.o" "$TS/odin-scanner.o" \
    "$TS/json-parser.o" \
@@ -42,6 +54,7 @@ ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/go-parser.o" \
    "$TS/rust-parser.o" "$TS/rust-scanner.o" \
    "$TS/c-parser.o" \
+   "$TS/cpp-parser.o" "$TS/cpp-scanner.o" \
    "$TS/javascript-parser.o" "$TS/javascript-scanner.o" \
    "$TS/typescript-parser.o" "$TS/typescript-scanner.o" \
    "$TS/tsx-parser.o" "$TS/tsx-scanner.o" \
@@ -49,7 +62,12 @@ ar rcs "$TS/libtreesitter.a" "$TS/runtime.o" \
    "$TS/markdown_inline-parser.o" "$TS/markdown_inline-scanner.o" \
    "$TS/bash-parser.o" "$TS/bash-scanner.o" \
    "$TS/lua-parser.o" "$TS/lua-scanner.o" \
-   "$TS/sql-parser.o" "$TS/sql-scanner.o"
+   "$TS/sql-parser.o" "$TS/sql-scanner.o" \
+   "$TS/html-parser.o" "$TS/html-scanner.o" \
+   "$TS/css-parser.o" "$TS/css-scanner.o" \
+   "$TS/toml-parser.o" "$TS/toml-scanner.o" \
+   "$TS/yaml-parser.o" "$TS/yaml-scanner.o" \
+   "$TS/dockerfile-parser.o" "$TS/dockerfile-scanner.o"
 
 # Build the vendored libvterm terminal emulator into a static lib
 VT=lib/vterm

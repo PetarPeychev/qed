@@ -16,12 +16,18 @@ approach as `lib/tb2/`.
 | Go grammar | `github.com/tree-sitter/tree-sitter-go` | `6048bfc6e5238eaf062c2221bd934489c39fbb61` (v0.25.0) — no external scanner |
 | Rust grammar | `github.com/tree-sitter/tree-sitter-rust` | `77a3747266f4d621d0757825e6b11edcbf991ca5` (v0.24.2) — C scanner |
 | C grammar | `github.com/tree-sitter/tree-sitter-c` | `7fa1be1b694b6e763686793d97da01f36a0e5c12` (v0.24.1) |
+| C++ grammar | `github.com/tree-sitter/tree-sitter-cpp` | `f41e1a044c8a84ea9fa8577fdd2eab92ec96de02` (v0.23.4) — C scanner |
 | JavaScript grammar | `github.com/tree-sitter/tree-sitter-javascript` | `44c892e0be055ac465d5eeddae6d3e194424e7de` (v0.25.0) |
 | TypeScript grammar | `github.com/tree-sitter/tree-sitter-typescript` | `f975a621f4e7f532fe322e13c4f79495e0a7b2e7` (v0.23.2) — provides `typescript`/`tsx` |
 | Markdown grammar | `github.com/tree-sitter-grammars/tree-sitter-markdown` | `f969cd3ae3f9fbd4e43205431d0ae286014c05b5` (v0.5.3) — provides `markdown` (block) + `markdown_inline` |
 | Bash grammar | `github.com/tree-sitter/tree-sitter-bash` | `56b54c61fb48bce0c63e3dfa2240b5d274384763` (v0.25.0) |
 | Lua grammar | `github.com/tree-sitter-grammars/tree-sitter-lua` | `10fe0054734eec83049514ea2e718b2a56acd0c9` (v0.5.0) |
 | SQL grammar | `github.com/DerekStride/tree-sitter-sql` | `7b51ecda191d36b92f5a90a8d1bc3faef1c7b8b8` (v0.3.11) — `parser.c` is gitignored upstream, generated with `tree-sitter generate` (CLI v0.25.10) |
+| HTML grammar | `github.com/tree-sitter/tree-sitter-html` | `5a5ca8551a179998360b4a4ca2c0f366a35acc03` (v0.23.2) — C scanner + `tag.h` |
+| CSS grammar | `github.com/tree-sitter/tree-sitter-css` | `dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f` (v0.25.0) — C scanner |
+| TOML grammar | `github.com/tree-sitter-grammars/tree-sitter-toml` | `64b56832c2cffe41758f28e05c756a3a98d16f41` (v0.7.0) — C scanner |
+| YAML grammar | `github.com/tree-sitter-grammars/tree-sitter-yaml` | `7708026449bed86239b1cd5bce6e3c34dbca6415` (v0.7.2) — C scanner; `scanner.c` `#include`s `schema.core.c` (default `YAML_SCHEMA`) |
+| Dockerfile grammar | `github.com/camdencheek/tree-sitter-dockerfile` | `868e44ce378deb68aac902a9db68ff82d2299dd0` (v0.2.0) — C scanner |
 
 Each grammar's `src/parser.c` (Odin's is ~15 MB) and `src/scanner.c` (Odin,
 Python; JSON and C have none) are **generated** artifacts committed upstream; we
@@ -41,6 +47,7 @@ python/           parser.c, scanner.c, tree_sitter/*.h, highlights.scm
 go/               parser.c,           tree_sitter/*.h, highlights.scm   (no scanner)
 rust/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm
 c/                parser.c,           tree_sitter/*.h, highlights.scm
+cpp/              parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (C scanner; query inlines the C base)
 javascript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used for .js/.jsx)
 typescript/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (used for .ts and .tsx)
 tsx/              parser.c, scanner.c, tree_sitter/*.h                    (.tsx grammar; shares typescript's query)
@@ -50,6 +57,11 @@ markdown_inline/  parser.c, scanner.c, tree_sitter/*.h, highlights.scm    (inlin
 bash/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm   (.sh/.bash/.zsh)
 lua/              parser.c, scanner.c, tree_sitter/*.h, highlights.scm
 sql/              parser.c, scanner.c, tree_sitter/*.h, highlights.scm
+html/             parser.c, scanner.c, tag.h, tree_sitter/*.h, highlights.scm, injections.scm
+css/              parser.c, scanner.c, tree_sitter/*.h, highlights.scm
+toml/             parser.c, scanner.c, tree_sitter/*.h, highlights.scm
+yaml/             parser.c, scanner.c, schema.core.c, tree_sitter/*.h, highlights.scm
+dockerfile/       parser.c, scanner.c, tree_sitter/*.h, highlights.scm
 ts.odin           Odin FFI bindings          the ~15 procs qed calls
 ```
 
@@ -60,6 +72,10 @@ repo's `common/scanner.h`. Upstream each `<lang>/src/scanner.c` includes it as
 dir so `tree_sitter/parser.h` resolves. The two scanners export distinct
 `tree_sitter_typescript_*` / `tree_sitter_tsx_*` symbols (no link clash); all
 helpers in `common/scanner.h` are `static`.
+
+HTML's `scanner.c` `#include "tag.h"` (a grammar-private header upstream at
+`src/tag.h`); qed drops the `src/` level so `tag.h` sits at `html/tag.h` next to
+`scanner.c` and the quoted include resolves with no patch.
 
 `build.sh` compiles `runtime/src/lib.c` plus each grammar's `parser.c`/
 `scanner.c` into `libtreesitter.a`; `ts.odin`'s `foreign import "libtreesitter.a"`
@@ -124,6 +140,17 @@ reproduces the old "stripped" behavior for that one pattern.
   upstream **javascript** query verbatim followed by the upstream **typescript**
   additions verbatim, concatenated. Used by **both** the `typescript` and `tsx`
   grammars. Layout only; no rules changed.
+- **`cpp/highlights.scm`** — the upstream `tree-sitter-cpp` query is
+  additions-only (it relies on the tree-sitter `inherits: c` convention: only the
+  C++-specific captures — `class`/`namespace`/`template`/… keywords, coroutine and
+  concept keywords, `nullptr`, `auto`, `raw_string_literal`, qualified/template
+  function names), so on its own a `.cpp` file would lose all the C-level paint
+  (primitive types, strings, comments, preproc, the SCREAMING-constant heuristic).
+  The vendored file is therefore the upstream **C** query verbatim followed by the
+  upstream **C++** additions verbatim, concatenated — the same inline-the-base
+  approach used for typescript. This works because tree-sitter-cpp is a superset of
+  tree-sitter-c, so every node type the C query names exists in the C++ grammar.
+  Layout only; no rules changed.
 - **`markdown/highlights.scm`** — upstream verbatim **plus** two GFM task-list
   checkbox rules appended (`(task_list_marker_unchecked) @keyword`,
   `(task_list_marker_checked) @string`); nvim-treesitter ships these in a separate
@@ -144,16 +171,39 @@ reproduces the old "stripped" behavior for that one pattern.
   keeps `(literal) @string` — i.e. numbers render in the **string** color, exactly
   the old stripped behavior. No special-casing; it falls out of correct regex
   evaluation.
+- **`toml/highlights.scm`**, **`yaml/highlights.scm`** — vendored verbatim,
+  predicate-free (no removals, no deviations). TOML tags a `(pair (bare_key))` both
+  `@type` (first) and `@property` (later, unmapped), so table/pair keys keep the
+  earlier **type** color. YAML tags a plain-scalar mapping key both `(string_scalar)
+  @string` (via the top-level scalar list) and `@property`; `@property` is unmapped
+  and paint never overwrites, so YAML mapping keys render in the **string** color —
+  same as scalar string values (an accepted consequence of verbatim vendoring, not
+  a per-key color).
+- **`dockerfile/highlights.scm`** — vendored verbatim. Its one predicate,
+  `((variable) @constant (#match? @constant "^[A-Z][A-Z_0-9]*$"))`, is now live via
+  the evaluator: a SCREAMING `$VAR` reference paints the **constant** color, a
+  lowercase one stays plain.
 
-### Injection (markdown)
+The YAML scanner selects its schema at compile time through a `_file(YAML_SCHEMA)`
+macro that `#include`s `schema.<name>.c`; qed vendors only the default (`core`)
+`schema.core.c` next to `scanner.c`, and never defines `YAML_SCHEMA`, so `core` is
+what compiles. Layout only; no source changes.
+
+### Injection (markdown, html)
 
 `injections.scm` is now vendored **verbatim**. It uses the upstream convention:
 `@injection.content` marks the region, and the target language comes from either
 an `@injection.language` capture (its node text — fenced code blocks) or a
 `#set! injection.language <name>` directive (the `(inline)` → `markdown_inline`
 case). The injection pass (`highlight_inject`) reads both. Languages qed has no
-grammar for — the upstream `html` / `yaml` / `toml` metadata injections — resolve
+grammar for — the upstream `yaml` / `toml` metadata injections — resolve
 to `.Plain` and no-op.
+
+HTML ships the upstream `injections.scm` verbatim too: `(script_element (raw_text))`
+→ `#set! injection.language "javascript"` and `(style_element (raw_text))` →
+`"css"`. Both resolve through `language_of_name` to qed's existing grammars, so the
+markdown injection machinery drives them unchanged — inline `<script>`/`<style>`
+bodies paint as JS/CSS over the HTML host. No new infrastructure.
 
 **Look note:** upstream injects *all* `(inline)` nodes, including a heading's, so
 heading inlines now also run through `markdown_inline` (full fidelity — the old
@@ -174,9 +224,24 @@ captures are mapped as:
 - `@function.builtin` → keyword color (builtin functions read as language-level).
 - `@comment*` (prefix) → comment color, so Rust `@comment.documentation` (`///`
   doc comments) paints like a normal comment instead of falling through to plain.
+- `@tag*` (prefix) → keyword color. HTML tag names, CSS type/nesting/universal
+  selectors, and HTML's `@tag.error` (erroneous end-tag name) all read as
+  language-level structural vocabulary, so they map to keyword rather than type —
+  the CSS `&`/`*` selectors captured as `@tag` would look wrong as a "type". qed
+  has no dedicated tag bucket; keyword is the closest existing philosophy.
 - Markdown: `@text.title` → bold keyword; `@text.literal`/`@text.code` → code
   gray; `@text.uri`/`@text.reference` → type (blue); `@text.strong` → bold
   attribute; `@text.emphasis` → italic comment.
+
+HTML/CSS specifics: `(doctype) @constant`, `(attribute_value)`/`(string_value)` →
+string, `(color_value) @string.special` → string (the `string` prefix), CSS
+`(integer_value)`/`(float_value) @number` → constant, `(unit) @type` → type,
+`@attribute` (attribute names, pseudo-selectors) → attribute, at-rules (`@media`,
+`(at_keyword)`, `(important)`, `to`/`from`) `@keyword` → keyword. Left plain
+(unmapped): CSS `@property` (class/id/property/feature names), `@function`
+(function names), `@operator` (combinators + `and`/`or`/`not`/`only`), `@variable`
+(`--custom-props`, the only predicate-gated capture in either query), and every
+`@punctuation.*` (HTML `<`/`>`/`</`/`/>` brackets, CSS delimiters/brackets).
 
 Captures with no mapping (e.g. `@function`, `@variable`, `@property`, `@parameter`,
 `@field`, `@operator`, `@namespace`, `@label`, `@escape`, `@punctuation.*`,
@@ -184,10 +249,25 @@ Captures with no mapping (e.g. `@function`, `@variable`, `@property`, `@paramete
 operators / identifiers / markdown markers stay plain" scope. Go and Rust both tag
 escape sequences with a bare `@escape` (not `@string.escape`), left plain exactly
 like JSON's and Python's — so `\n` inside a Go/Rust string reads in the default
-color, matching the established behavior for those grammars. `@punctuation.special`
+color, matching the established behavior for those grammars. C++ adds no new
+capture bucket: its additions reuse `@keyword` (class/namespace/template/coroutine/
+concept keywords), `@type` (`auto`, uppercase namespace ids), `@constant`
+(`nullptr`), `@variable.builtin` (`this` → constant) and `@string`
+(`raw_string_literal`), all already mapped, and the inlined C base keeps its C
+mapping — only `@function` (call names, incl. qualified/template functions) stays
+plain, exactly as for C/Go/Rust. `@punctuation.special`
 is deliberately left plain: mapping it would recolor Odin's `@`/`$` sigils and
 Python/JS interpolation braces, so markdown heading/list markers render plain
 (the heading *text* is still the bold title color).
+
+TOML, YAML and Dockerfile need **no new color bucket** — every painted capture
+already falls into an existing one (`@type`, `@string`, `@string.special`,
+`@number`, `@boolean`, `@constant.builtin`, `@constant`, `@comment`, `@keyword`,
+`@attribute`). Left plain by design: YAML `@label` (anchors / aliases),
+TOML `@property` (pair keys — but a bare key also gets the earlier `@type` paint),
+and the Dockerfile `@none` / `@operator` / `@punctuation.special` markers. YAML
+mapping keys are `@property` but paint in the string color because their scalar node
+also matches the top-level `(string_scalar) @string` (see above).
 
 **Known consequence — Odin proc names.** Upstream tags a proc-declaration name
 `@type` (`(procedure_declaration (identifier) @type)`) and then re-tags it

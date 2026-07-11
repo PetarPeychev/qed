@@ -10,6 +10,7 @@ Language :: enum {
 	Plain,
 	Odin,
 	C,
+	Cpp,
 	JavaScript,
 	Jsx,
 	TypeScript,
@@ -22,7 +23,10 @@ Language :: enum {
 	Sql,
 	Yaml,
 	Toml,
+	Dockerfile,
 	Json,
+	Html,
+	Css,
 	Markdown,
 	MarkdownInline,
 }
@@ -45,6 +49,7 @@ LANGUAGE_DEFAULTS := [Language]LanguageInfo {
 	.Plain      = {"text", "//", "", "", "", nil, nil, nil},
 	.Odin       = {"odin", "//", "", "odin", "", ts.tree_sitter_odin, #load("../lib/tree_sitter/odin/highlights.scm"), nil},
 	.C          = {"c", "//", "", "c", "", ts.tree_sitter_c, #load("../lib/tree_sitter/c/highlights.scm"), nil},
+	.Cpp        = {"cpp", "//", "", "cpp", "", ts.tree_sitter_cpp, #load("../lib/tree_sitter/cpp/highlights.scm"), nil},
 	.JavaScript = {"javascript", "//", "", "javascript", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
 	.Jsx        = {"jsx", "//", "", "javascriptreact", "", ts.tree_sitter_javascript, #load("../lib/tree_sitter/javascript/highlights.scm"), nil},
 	.TypeScript = {"typescript", "//", "", "typescript", "", ts.tree_sitter_typescript, #load("../lib/tree_sitter/typescript/highlights.scm"), nil},
@@ -55,9 +60,12 @@ LANGUAGE_DEFAULTS := [Language]LanguageInfo {
 	.Shell      = {"shell", "#", "", "shellscript", "", ts.tree_sitter_bash, #load("../lib/tree_sitter/bash/highlights.scm"), nil},
 	.Lua        = {"lua", "--", "", "lua", "", ts.tree_sitter_lua, #load("../lib/tree_sitter/lua/highlights.scm"), nil},
 	.Sql        = {"sql", "--", "", "", "", ts.tree_sitter_sql, #load("../lib/tree_sitter/sql/highlights.scm"), nil},
-	.Yaml       = {"yaml", "#", "", "", "", nil, nil, nil},
-	.Toml       = {"toml", "#", "", "", "", nil, nil, nil},
+	.Yaml       = {"yaml", "#", "", "yaml", "", ts.tree_sitter_yaml, #load("../lib/tree_sitter/yaml/highlights.scm"), nil},
+	.Toml       = {"toml", "#", "", "toml", "", ts.tree_sitter_toml, #load("../lib/tree_sitter/toml/highlights.scm"), nil},
+	.Dockerfile = {"dockerfile", "#", "", "dockerfile", "", ts.tree_sitter_dockerfile, #load("../lib/tree_sitter/dockerfile/highlights.scm"), nil},
 	.Json       = {"json", "", "", "", "", ts.tree_sitter_json, #load("../lib/tree_sitter/json/highlights.scm"), nil},
+	.Html       = {"html", "", "", "html", "", ts.tree_sitter_html, #load("../lib/tree_sitter/html/highlights.scm"), #load("../lib/tree_sitter/html/injections.scm")},
+	.Css        = {"css", "", "", "css", "", ts.tree_sitter_css, #load("../lib/tree_sitter/css/highlights.scm"), nil},
 	.Markdown   = {"markdown", "", "", "", "", ts.tree_sitter_markdown, #load("../lib/tree_sitter/markdown/highlights.scm"), #load("../lib/tree_sitter/markdown/injections.scm")},
 	.MarkdownInline = {"markdown_inline", "", "", "", "", ts.tree_sitter_markdown_inline, #load("../lib/tree_sitter/markdown_inline/highlights.scm"), nil},
 }
@@ -189,16 +197,28 @@ language_of_name :: proc(name: string) -> Language {
 		return .Rust
 	case "c", "h":
 		return .C
+	case "cpp", "c++", "cxx", "cc", "hpp", "hh":
+		return .Cpp
 	case "odin":
 		return .Odin
 	case "json":
 		return .Json
+	case "html", "htm":
+		return .Html
+	case "css":
+		return .Css
 	case "sh", "bash", "shell", "zsh":
 		return .Shell
 	case "lua":
 		return .Lua
 	case "sql":
 		return .Sql
+	case "toml":
+		return .Toml
+	case "yaml", "yml":
+		return .Yaml
+	case "dockerfile", "docker":
+		return .Dockerfile
 	}
 	return .Plain
 }
