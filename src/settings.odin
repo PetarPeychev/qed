@@ -382,6 +382,9 @@ config_seed_defaults :: proc "contextless" () {
 @(fini)
 settings_destroy :: proc "contextless" () {
 	context = runtime.default_context()
+	theme_maps_clear()
+	delete(g_theme_colors)
+	delete(g_captures)
 	delete(THEME, os.heap_allocator())
 	for &cmd in commands {
 		delete(cmd.shortcut, os.heap_allocator())
@@ -633,13 +636,155 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 
 THEME: string
 
+// Syntax capture -> color mapping, theme-configurable. `g_theme_colors` is the
+// theme's `colors` section resolved to values (known keys plus any user-defined
+// extras); `g_captures` maps a capture name — or a `lang/capture` composite for a
+// per-language override — to a color key + display attrs. Both accumulate through
+// the same overlay chain as the rest of a theme (cleared once per resolve in
+// theme_reset_defaults, then each theme_apply overlays per key). Heap-backed so
+// they outlive any per-test allocator, like g_language_rules.
+CaptureStyle :: struct {
+	color_key: string,
+	attrs:     u64,
+}
+
+g_theme_colors: map[string]tb2.Color
+g_captures:     map[string]CaptureStyle
+
+theme_maps_init :: proc() {
+	if g_theme_colors == nil {
+		g_theme_colors = make(map[string]tb2.Color, 64, os.heap_allocator())
+	}
+	if g_captures == nil {
+		g_captures = make(map[string]CaptureStyle, 128, os.heap_allocator())
+	}
+}
+
+theme_maps_clear :: proc() {
+	theme_maps_init()
+	for k in g_theme_colors {
+		delete(k, os.heap_allocator())
+	}
+	clear(&g_theme_colors)
+	for k, v in g_captures {
+		delete(k, os.heap_allocator())
+		delete(v.color_key, os.heap_allocator())
+	}
+	clear(&g_captures)
+}
+
+theme_color_set :: proc(key: string, col: tb2.Color) {
+	if _, has := g_theme_colors[key]; has {
+		g_theme_colors[key] = col
+		return
+	}
+	g_theme_colors[strings.clone(key, os.heap_allocator())] = col
+}
+
+capture_set :: proc(comp_key: string, style: CaptureStyle) {
+	if old, has := g_captures[comp_key]; has {
+		delete(old.color_key, os.heap_allocator())
+		g_captures[comp_key] = style
+		return
+	}
+	g_captures[strings.clone(comp_key, os.heap_allocator())] = style
+}
+
+parse_capture_style :: proc(v: string) -> CaptureStyle {
+	fields := strings.fields(v, context.temp_allocator)
+	style: CaptureStyle
+	if len(fields) == 0 {
+		style.color_key = strings.clone("", os.heap_allocator())
+		return style
+	}
+	style.color_key = strings.clone(fields[0], os.heap_allocator())
+	for f in fields[1:] {
+		switch f {
+		case "bold":
+			style.attrs |= u64(tb2.Color.Bold)
+		case "italic":
+			style.attrs |= u64(tb2.Color.Italic)
+		case "underline":
+			style.attrs |= u64(tb2.Color.Underline)
+		case "reverse":
+			style.attrs |= u64(tb2.Color.Reverse)
+		}
+	}
+	return style
+}
+
+theme_captures_apply :: proc(obj: json.Object, invalid: ^[dynamic]string) {
+	for key, v in obj {
+		#partial switch t in v {
+		case json.String:
+			capture_set(key, parse_capture_style(string(t)))
+		case json.Object:
+			if _, ok := language_from_name(key); !ok {
+				continue
+			}
+			for sub, sv in t {
+				if s, is_str := sv.(json.String); is_str {
+					capture_set(fmt.tprintf("%s/%s", key, sub), parse_capture_style(string(s)))
+				}
+			}
+		}
+	}
+}
+
+// Language-qualified first, then global, at each prefix-fallback step (strip a
+// trailing `.segment` each round). Query-build path only; never per-node paint.
+capture_style_find :: proc(
+	caps: map[string]CaptureStyle,
+	lang_name, name: string,
+) -> (
+	CaptureStyle,
+	bool,
+) {
+	p := name
+	for {
+		if lang_name != "" {
+			if v, ok := caps[fmt.tprintf("%s/%s", lang_name, p)]; ok {
+				return v, true
+			}
+		}
+		if v, ok := caps[p]; ok {
+			return v, true
+		}
+		dot := strings.last_index_byte(p, '.')
+		if dot < 0 {
+			break
+		}
+		p = p[:dot]
+	}
+	return {}, false
+}
+
+capture_resolve :: proc(
+	caps: map[string]CaptureStyle,
+	colors: map[string]tb2.Color,
+	lang_name, name: string,
+) -> (
+	tb2.Color,
+	bool,
+) {
+	style, ok := capture_style_find(caps, lang_name, name)
+	if !ok {
+		return COLOR_FG, false
+	}
+	base, cok := colors[style.color_key]
+	if !cok {
+		return COLOR_FG, false
+	}
+	return tb2.Color(u64(base) | style.attrs), true
+}
+
 Bundled_Theme :: struct {
 	name: string,
 	data: []u8,
 }
 
 bundled_themes := [?]Bundled_Theme {
-	{"gruber-darker", #load("../config/themes/gruber-darker.json")},
+	{"default", #load("../config/themes/default.json")},
 	{"atom-one-dark", #load("../config/themes/atom-one-dark.json")},
 	{"dracula", #load("../config/themes/dracula.json")},
 	{"nord", #load("../config/themes/nord.json")},
@@ -701,6 +846,7 @@ theme_persist :: proc(name: string) -> bool {
 }
 
 theme_reset_defaults :: proc() {
+	theme_maps_clear()
 	scratch := make([dynamic]string, context.temp_allocator)
 	theme_apply(g_theme_defaults, &scratch)
 }
@@ -715,7 +861,7 @@ theme_msg_join :: proc(a, b: string) -> string {
 	return fmt.tprintf("%s; %s", a, b)
 }
 
-// Resolves a theme name onto the globals: gruber-darker defaults as the crash-safe
+// Resolves a theme name onto the globals: the default theme as the crash-safe
 // base, then the matching bundled theme (if any), then the user file overlaid
 // per-key. `found` is false only when the name matches no bundled theme AND has no
 // user file; `parse_err` flags an unreadable/malformed user file (base still applied).
@@ -783,6 +929,7 @@ theme_load :: proc(cfg_path: string) -> (message: string, is_error: bool) {
 }
 
 theme_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
+	theme_maps_init()
 	if col_val, has := root["colors"]; has {
 		if col_obj, col_is_obj := col_val.(json.Object); col_is_obj {
 			for c in config_colors {
@@ -802,8 +949,25 @@ theme_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 				}
 				c.ptr^ = col
 			}
+			// The colors section is open: any hex-valued key (known or user-defined)
+			// is resolvable by a capture mapping.
+			for key, v in col_obj {
+				if s, is_str := v.(json.String); is_str {
+					if col, cok := parse_hex_color(string(s)); cok {
+						theme_color_set(key, col)
+					}
+				}
+			}
 		} else {
 			append(invalid, "colors")
+		}
+	}
+
+	if cap_val, has := root["captures"]; has {
+		if cap_obj, cap_is_obj := cap_val.(json.Object); cap_is_obj {
+			theme_captures_apply(cap_obj, invalid)
+		} else {
+			append(invalid, "captures")
 		}
 	}
 
@@ -851,12 +1015,14 @@ theme_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 theme_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	for key in root {
 		switch key {
-		case "colors", "icons", "tints":
+		case "colors", "icons", "tints", "captures":
 			continue
 		}
 		append(warnings, fmt.tprintf("unknown key %q", key))
 	}
-	theme_section_unknown(root, "colors", config_colors[:], warnings)
+	// The colors section is deliberately open (captures may reference user-defined
+	// keys), so no per-key unknown check for it.
+	theme_captures_unknown(root, warnings)
 	if ic_obj, ok := root["icons"].(json.Object); ok {
 		for key in ic_obj {
 			found := false
@@ -887,28 +1053,44 @@ theme_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	}
 }
 
-theme_section_unknown :: proc(
-	root: json.Object,
-	section: string,
-	keys: []Config_Color,
-	warnings: ^[dynamic]string,
-) {
-	obj, ok := root[section].(json.Object)
+// A captures value referencing a color key that doesn't resolve in the theme, or
+// a language-override object keyed by an unknown language name, is reported once
+// (and ignored, never rewritten) — same treatment as any unknown theme key.
+theme_captures_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
+	cap_obj, ok := root["captures"].(json.Object)
 	if !ok {
 		return
 	}
-	for key in obj {
-		found := false
-		for c in keys {
-			if c.key == key {
-				found = true
-				break
+	for key, v in cap_obj {
+		#partial switch t in v {
+		case json.String:
+			if !theme_color_key_ok(string(t)) {
+				append(warnings, fmt.tprintf("captures/%s", key))
 			}
-		}
-		if !found {
-			append(warnings, fmt.tprintf("unknown %s/%q", section, key))
+		case json.Object:
+			if _, lok := language_from_name(key); !lok {
+				append(warnings, fmt.tprintf("captures/%q (unknown language)", key))
+				continue
+			}
+			for sub, sv in t {
+				s, is_str := sv.(json.String)
+				if !is_str || !theme_color_key_ok(string(s)) {
+					append(warnings, fmt.tprintf("captures/%s/%s", key, sub))
+				}
+			}
+		case:
+			append(warnings, fmt.tprintf("captures/%s", key))
 		}
 	}
+}
+
+theme_color_key_ok :: proc(v: string) -> bool {
+	fields := strings.fields(v, context.temp_allocator)
+	if len(fields) == 0 {
+		return false
+	}
+	_, ok := g_theme_colors[fields[0]]
+	return ok
 }
 
 languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) {

@@ -214,66 +214,102 @@ up that inline styling over the title.
 
 ## Capture → color mapping
 
-Lives in `src/highlight.odin` (`syntax_capture_color`), mapping capture names /
-prefixes to the `COLOR_SYN_*` constants. With the heuristics live, the newly-firing
-captures are mapped as:
+The capture-name → color mapping is **theme-configurable**, not hardcoded. A theme
+JSON's `captures` section maps a tree-sitter capture name (no `@` prefix) to a
+**color key** — a key in the same theme's `colors` section, which is open to
+user-defined extras (a theme may add `"syntax_numbers": "#e067ea"` and point a
+capture at it). The value is `"<color_key>"` optionally followed by space-separated
+display attrs (`bold`, `italic`, `underline`, `reverse`), e.g. `"text.title":
+"syntax_keyword bold"`. The full default table lives in the bundled default theme
+`config/themes/gruber-darker.json`; every other bundled theme inherits it through
+the theme overlay chain (gruber-darker base → same-name bundled → user file, merged
+per key by `theme_apply` in `src/settings.odin`) and may override individual entries
+by restating them. Only gruber-darker ships a `captures` table.
+
+**Per-language overrides.** A `captures` key that names a qed language (as used in
+config.json's `languages` section) holds a nested capture→color-key object, e.g.
+`"markdown": {"punctuation.special": "syntax_keyword"}`. Lookup for capture `C` in
+language `L` walks prefix fallback (strip a trailing `.segment` each round), and at
+each step tries the language-qualified entry before the global one — for
+`comment.documentation` in rust the order is `rust/comment.documentation`,
+`comment.documentation`, `rust/comment`, `comment`. Entries are stored flat in
+`g_captures` keyed by `capture` (global) or `lang/capture` (override); `g_theme_colors`
+holds the resolved `colors` section. `syntax_capture_color` (`src/highlight.odin`)
+runs this lookup once per capture id at query-build / recolor time
+(`syntax_load_colors`, rebuilt by `syntax_recolor` on theme change / hot-reload) and
+caches the result into per-language capture-id → color arrays, so per-node paint
+stays a plain array index — no string matching on the paint path.
+
+A capture **mapped** to a color paints explicitly: mapping `function` to
+`foreground` writes the default fg and thereby **overwrites** an earlier capture's
+paint on the same node (distinct from an *unmapped* capture, which paints nothing
+and leaves prior paint alone). A `captures` value pointing at a color key that
+doesn't resolve, or a language-override object under an unknown language name, is
+reported once on the message line (like any unknown theme key) and ignored — never
+rewritten.
+
+### The default table (gruber-darker)
+
+Bucketing of the currently-firing captures (with predicate heuristics live):
 
 - `@constant*` (incl. `@constant.builtin`), `@number`, `@float`, `@boolean`,
   `@variable.builtin` → constant color.
 - `@type*` (incl. `@type.builtin`) and `@constructor` → type color.
-- `@function.builtin` → keyword color (builtin functions read as language-level).
-- `@comment*` (prefix) → comment color, so Rust `@comment.documentation` (`///`
-  doc comments) paints like a normal comment instead of falling through to plain.
-- `@tag*` (prefix) → keyword color. HTML tag names, CSS type/nesting/universal
-  selectors, and HTML's `@tag.error` (erroneous end-tag name) all read as
-  language-level structural vocabulary, so they map to keyword rather than type —
-  the CSS `&`/`*` selectors captured as `@tag` would look wrong as a "type". qed
-  has no dedicated tag bucket; keyword is the closest existing philosophy.
-- Markdown: `@text.title` → bold keyword; `@text.literal`/`@text.code` → code
-  gray; `@text.uri`/`@text.reference` → type (blue); `@text.strong` → bold
-  attribute; `@text.emphasis` → italic comment.
+- `@function.builtin` → keyword color (builtin functions read as language-level);
+  `@function` (and `@function.call`, via the `function` prefix) → **`foreground`**
+  (explicit plain — see the Odin note below).
+- `@keyword*`/`@conditional`/`@repeat`/`@include`/`@storageclass`/`@tag*` → keyword
+  color. HTML tag names, CSS type/nesting/universal selectors, and HTML's
+  `@tag.error` all read as language-level structural vocabulary, so `@tag` → keyword
+  rather than type (the CSS `&`/`*` selectors captured as `@tag` would look wrong as
+  a "type"; keyword is the closest existing philosophy).
+- `@string*`/`@character` → string color; `@comment*`/`@spell` → comment color, so
+  Rust `@comment.documentation` (`///`) paints like a normal comment.
+- `@attribute`/`@preproc*` → attribute color.
+- Markdown: `@text.title` → bold keyword; `@text.literal`/`@text.code` → code gray;
+  `@text.uri`/`@text.reference` → type (blue); `@text.strong` → bold attribute;
+  `@text.emphasis` → italic comment.
+- Per-language: `markdown` `@punctuation.special` → keyword, so markdown heading /
+  list / block-quote markers render in the keyword color. It is left **global-plain**
+  otherwise, so Odin's `@`/`$` sigils and Python/JS interpolation braces (also
+  `@punctuation.special`) stay the default color.
 
 HTML/CSS specifics: `(doctype) @constant`, `(attribute_value)`/`(string_value)` →
 string, `(color_value) @string.special` → string (the `string` prefix), CSS
 `(integer_value)`/`(float_value) @number` → constant, `(unit) @type` → type,
 `@attribute` (attribute names, pseudo-selectors) → attribute, at-rules (`@media`,
 `(at_keyword)`, `(important)`, `to`/`from`) `@keyword` → keyword. Left plain
-(unmapped): CSS `@property` (class/id/property/feature names), `@function`
-(function names), `@operator` (combinators + `and`/`or`/`not`/`only`), `@variable`
-(`--custom-props`, the only predicate-gated capture in either query), and every
-`@punctuation.*` (HTML `<`/`>`/`</`/`/>` brackets, CSS delimiters/brackets).
+(unmapped): CSS `@property` (class/id/property/feature names), `@operator`
+(combinators + `and`/`or`/`not`/`only`), `@variable` (`--custom-props`, the only
+predicate-gated capture in either query), and every `@punctuation.*` (HTML
+`<`/`>`/`</`/`/>` brackets, CSS delimiters/brackets).
 
-Captures with no mapping (e.g. `@function`, `@variable`, `@property`, `@parameter`,
-`@field`, `@operator`, `@namespace`, `@label`, `@escape`, `@punctuation.*`,
-`@punctuation.special`) render as default text — the "rich but procedures /
-operators / identifiers / markdown markers stay plain" scope. Go and Rust both tag
-escape sequences with a bare `@escape` (not `@string.escape`), left plain exactly
-like JSON's and Python's — so `\n` inside a Go/Rust string reads in the default
-color, matching the established behavior for those grammars. C++ adds no new
-capture bucket: its additions reuse `@keyword` (class/namespace/template/coroutine/
-concept keywords), `@type` (`auto`, uppercase namespace ids), `@constant`
-(`nullptr`), `@variable.builtin` (`this` → constant) and `@string`
-(`raw_string_literal`), all already mapped, and the inlined C base keeps its C
-mapping — only `@function` (call names, incl. qualified/template functions) stays
-plain, exactly as for C/Go/Rust. `@punctuation.special`
-is deliberately left plain: mapping it would recolor Odin's `@`/`$` sigils and
-Python/JS interpolation braces, so markdown heading/list markers render plain
-(the heading *text* is still the bold title color).
+Captures with no entry (e.g. `@variable`, `@property`, `@parameter`, `@field`,
+`@operator`, `@namespace`, `@label`, `@escape`, `@punctuation.delimiter`) render as
+default text. Go and Rust tag escape sequences with a bare `@escape` (not
+`@string.escape`), left plain like JSON's and Python's — so `\n` inside a Go/Rust
+string reads in the default color. C++ adds no new bucket: its additions reuse
+`@keyword` (class/namespace/template/coroutine/concept keywords), `@type` (`auto`,
+uppercase namespace ids), `@constant` (`nullptr`), `@variable.builtin` (`this`) and
+`@string` (`raw_string_literal`), all already mapped, and the inlined C base keeps
+its mapping.
 
-TOML, YAML and Dockerfile need **no new color bucket** — every painted capture
-already falls into an existing one (`@type`, `@string`, `@string.special`,
-`@number`, `@boolean`, `@constant.builtin`, `@constant`, `@comment`, `@keyword`,
-`@attribute`). Left plain by design: YAML `@label` (anchors / aliases),
-TOML `@property` (pair keys — but a bare key also gets the earlier `@type` paint),
-and the Dockerfile `@none` / `@operator` / `@punctuation.special` markers. YAML
-mapping keys are `@property` but paint in the string color because their scalar node
-also matches the top-level `(string_scalar) @string` (see above).
+TOML, YAML and Dockerfile need **no new color key** — every painted capture already
+falls into an existing one (`@type`, `@string`, `@string.special`, `@number`,
+`@boolean`, `@constant.builtin`, `@constant`, `@comment`, `@keyword`, `@attribute`).
+Left plain by design: YAML `@label` (anchors / aliases), TOML `@property` (pair keys
+— but a bare key also gets the earlier `@type` paint), and the Dockerfile `@none` /
+`@operator` / `@punctuation.special` markers. YAML mapping keys are `@property` but
+paint in the string color because their scalar node also matches the top-level
+`(string_scalar) @string`.
 
-**Known consequence — Odin proc names.** Upstream tags a proc-declaration name
-`@type` (`(procedure_declaration (identifier) @type)`) and then re-tags it
-`@function`. In Neovim `@function` wins (last match) and proc names get the
-function color; qed leaves `@function` unmapped (no color contribution, so it does
-**not** overwrite), and there is no function color bucket, so the earlier `@type`
-paint stays — **Odin procedure-declaration names render in the type color.** This
-is the faithful result within qed's palette (a function color would require a new
-bucket); flagged here because it is a visible change to `.odin` files.
+**Odin proc names.** Upstream tags a proc-declaration name `@type`
+(`(procedure_declaration (identifier) @type)`) and then re-tags it `@function`. The
+default table maps `@function` → `foreground`, so — matching Neovim's last-match-wins
+— the later `@function` paint overwrites the earlier `@type` paint and
+**procedure-declaration names render in the default color**. (Before the table was
+theme-configurable, `@function` was unmapped and the `@type` paint stayed, so proc
+names showed in the type color.) This is the only visible effect of the explicit
+`@function` → `foreground` mapping: everywhere else `@function`/`@function.call`
+lands on nodes with no prior paint, so an explicit fg write is identical to leaving
+them plain.

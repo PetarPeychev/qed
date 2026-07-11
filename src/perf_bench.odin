@@ -100,7 +100,12 @@ highlight_predicates :: proc(t: ^testing.T) {
 		{1, 8, COLOR_SYN_TYPE, false, "lowercase baz is NOT type-colored"},
 	})
 	// Odin: MAX -> @constant (lua-match), Foo -> @type (lua-match), bar -> plain.
+	// The proc-declaration name `f` is tagged @type then @function; @function now
+	// maps to `foreground` (explicit plain) and overwrites the @type paint, so the
+	// proc name renders in the default color.
 	probe(t, .Odin, "o.odin", "package p\nf :: proc() {\n\tx := MAX\n\ty := Foo\n\tz := bar\n}\n", []Chk{
+		{1, 0, COLOR_FG, true, "proc name f is default-fg (function -> foreground overwrites type)"},
+		{1, 0, COLOR_SYN_TYPE, false, "proc name f is NOT type-colored anymore"},
 		{2, 6, COLOR_SYN_CONSTANT, true, "SCREAMING MAX is constant-colored"},
 		{3, 6, COLOR_SYN_TYPE, true, "Capitalized Foo is type-colored"},
 		{4, 6, COLOR_SYN_CONSTANT, false, "lowercase bar is NOT constant-colored"},
@@ -211,6 +216,9 @@ highlight_injection :: proc(t: ^testing.T) {
 	}
 
 	testing.expect(t, row_has(&b, 0, color_attr(COLOR_SYN_KEYWORD, .Bold)), "heading text should be the bold title color")
+	// The `#` heading marker is @punctuation.special; the markdown per-language
+	// override maps it to the (plain, non-bold) keyword color.
+	testing.expect(t, row_has(&b, 0, COLOR_SYN_KEYWORD), "the # heading marker should be the keyword color")
 	testing.expect(t, row_has(&b, 2, COLOR_SYN_KEYWORD), "unchecked [ ] should be the keyword color")
 	testing.expect(t, row_has(&b, 3, COLOR_SYN_STRING), "checked [x] should be the string/green color")
 	testing.expect(t, row_has(&b, 5, color_attr(COLOR_SYN_ATTRIBUTE, .Bold)), "**bold** should be injected (strong)")

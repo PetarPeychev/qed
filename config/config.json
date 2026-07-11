@@ -36,7 +36,7 @@
   "filetree_show_dotfiles": false,
   "filetree_show_ignored": false,
   "terminal_escape_closes": true,
-  "theme": "gruber-darker",
+  "theme": "default",
   "keybinds": {
     "Open File": "Ctrl+o",
     "File Tree": "Alt+f",

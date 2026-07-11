@@ -35,38 +35,212 @@ test_config_hex_color :: proc(t: ^testing.T) {
 	testing.expect(t, !nohash, "missing # rejected")
 }
 
-@(test)
-test_bundled_themes_complete :: proc(t: ^testing.T) {
+@(private = "file")
+bundled_theme_root :: proc(t: ^testing.T, name: string) -> json.Object {
 	for bt in bundled_themes {
+		if bt.name != name {
+			continue
+		}
 		root_val, err := json.parse(bt.data, parse_integers = true, allocator = context.temp_allocator)
-		testing.expectf(t, err == nil, "theme %s parses", bt.name)
+		testing.expectf(t, err == nil, "theme %s parses", name)
 		root, is_obj := root_val.(json.Object)
-		testing.expectf(t, is_obj, "theme %s root is an object", bt.name)
+		testing.expectf(t, is_obj, "theme %s root is an object", name)
+		return root
+	}
+	testing.expectf(t, false, "bundled theme %s exists", name)
+	return nil
+}
+
+// The default theme is the crash-safe base every other theme resolves over, so it
+// alone must be complete: every color/icon/tint key present + valid, plus a
+// captures table whose every value resolves to a color key it defines.
+@(test)
+test_default_theme_complete :: proc(t: ^testing.T) {
+	root := bundled_theme_root(t, "default")
+	colors, cok := root["colors"].(json.Object)
+	testing.expect(t, cok, "default theme has colors")
+	for c in config_colors {
+		s, sok := colors[c.key].(json.String)
+		testing.expectf(t, sok, "default colors/%s present", c.key)
+		_, hok := parse_hex_color(string(s))
+		testing.expectf(t, hok, "default colors/%s valid hex", c.key)
+	}
+	icons, iok := root["icons"].(json.Object)
+	testing.expect(t, iok, "default theme has icons")
+	for it in config_icons {
+		_, sok := icons[it.key].(json.String)
+		testing.expectf(t, sok, "default icons/%s present", it.key)
+	}
+	tints, tok := root["tints"].(json.Object)
+	testing.expect(t, tok, "default theme has tints")
+	for it in config_tints {
+		num_ok := false
+		#partial switch _ in tints[it.key] {
+		case json.Float, json.Integer:
+			num_ok = true
+		}
+		testing.expectf(t, num_ok, "default tints/%s present", it.key)
+	}
+	caps, has := root["captures"].(json.Object)
+	testing.expect(t, has, "default theme has captures")
+	theme_captures_check(t, "default", colors, caps)
+}
+
+// The other bundled themes are diffs over the default for icons/tints (no
+// completeness requirement, known keys only), but their colors section must stay
+// COMPLETE — palette identity is the theme's own, so a future palette tweak to
+// default.json can never leak into another bundled theme. Extra color keys on top
+// remain allowed (colors is open by design).
+@(test)
+test_bundled_themes_known_keys :: proc(t: ^testing.T) {
+	for bt in bundled_themes {
+		if bt.name == "default" {
+			continue
+		}
+		root := bundled_theme_root(t, bt.name)
+		for key in root {
+			switch key {
+			case "colors", "icons", "tints", "captures":
+				continue
+			}
+			testing.expectf(t, false, "theme %s has unknown section %s", bt.name, key)
+		}
 		colors, cok := root["colors"].(json.Object)
 		testing.expectf(t, cok, "theme %s has colors", bt.name)
 		for c in config_colors {
-			s, sok := colors[c.key].(json.String)
-			testing.expectf(t, sok, "theme %s colors/%s present", bt.name, c.key)
-			_, hok := parse_hex_color(string(s))
-			testing.expectf(t, hok, "theme %s colors/%s valid hex", bt.name, c.key)
+			_, present := colors[c.key]
+			testing.expectf(t, present, "theme %s colors/%s present", bt.name, c.key)
 		}
-		icons, iok := root["icons"].(json.Object)
-		testing.expectf(t, iok, "theme %s has icons", bt.name)
+		for key, v in colors {
+			s, sok := v.(json.String)
+			testing.expectf(t, sok, "theme %s colors/%s is a string", bt.name, key)
+			if sok {
+				_, hok := parse_hex_color(string(s))
+				testing.expectf(t, hok, "theme %s colors/%s valid hex", bt.name, key)
+			}
+		}
+		if icons, iok := root["icons"].(json.Object); iok {
+			for key in icons {
+				known := false
+				for it in config_icons {
+					if it.key == key {known = true; break}
+				}
+				testing.expectf(t, known, "theme %s icons/%s is a known key", bt.name, key)
+			}
+		}
+		if tints, tok := root["tints"].(json.Object); tok {
+			for key, v in tints {
+				known := false
+				for it in config_tints {
+					if it.key == key {known = true; break}
+				}
+				testing.expectf(t, known, "theme %s tints/%s is a known key", bt.name, key)
+				num_ok := false
+				#partial switch _ in v {
+				case json.Float, json.Integer:
+					num_ok = true
+				}
+				testing.expectf(t, num_ok, "theme %s tints/%s numeric", bt.name, key)
+			}
+		}
+	}
+}
+
+// Regression guard for the diff model: resolving each bundled theme over the base
+// yields a fully-populated theme (no color/icon/tint key unset, captures resolve).
+// A schema key added to config but missing from default.json fails here.
+@(test)
+test_bundled_themes_resolve_complete :: proc(t: ^testing.T) {
+	base := bundled_theme_root(t, "default")
+	for bt in bundled_themes {
+		root := bundled_theme_root(t, bt.name)
+		colors := theme_merge_section(base, root, "colors")
+		for c in config_colors {
+			s, sok := colors[c.key].(json.String)
+			testing.expectf(t, sok, "theme %s resolved colors/%s present", bt.name, c.key)
+			if sok {
+				_, hok := parse_hex_color(string(s))
+				testing.expectf(t, hok, "theme %s resolved colors/%s valid hex", bt.name, c.key)
+			}
+		}
+		icons := theme_merge_section(base, root, "icons")
 		for it in config_icons {
 			_, sok := icons[it.key].(json.String)
-			testing.expectf(t, sok, "theme %s icons/%s present", bt.name, it.key)
+			testing.expectf(t, sok, "theme %s resolved icons/%s present", bt.name, it.key)
 		}
-		tints, tok := root["tints"].(json.Object)
-		testing.expectf(t, tok, "theme %s has tints", bt.name)
+		tints := theme_merge_section(base, root, "tints")
 		for it in config_tints {
 			num_ok := false
 			#partial switch _ in tints[it.key] {
 			case json.Float, json.Integer:
 				num_ok = true
 			}
-			testing.expectf(t, num_ok, "theme %s tints/%s present", bt.name, it.key)
+			testing.expectf(t, num_ok, "theme %s resolved tints/%s present", bt.name, it.key)
+		}
+		caps := theme_merge_section(base, root, "captures")
+		theme_captures_check(t, bt.name, colors, caps)
+	}
+}
+
+@(private = "file")
+theme_merge_section :: proc(base_root, theme_root: json.Object, sec: string) -> json.Object {
+	m := make(json.Object, context.temp_allocator)
+	if b, ok := base_root[sec].(json.Object); ok {
+		for k, v in b {
+			m[k] = v
 		}
 	}
+	if o, ok := theme_root[sec].(json.Object); ok {
+		for k, v in o {
+			m[k] = v
+		}
+	}
+	return m
+}
+
+@(private = "file")
+theme_captures_check :: proc(t: ^testing.T, name: string, colors, caps: json.Object) {
+	for key, v in caps {
+		#partial switch cv in v {
+		case json.String:
+			testing.expectf(
+				t,
+				theme_captures_key_resolves(colors, string(cv)),
+				"theme %s captures/%s references a defined color key",
+				name,
+				key,
+			)
+		case json.Object:
+			_, known := language_from_name(key)
+			testing.expectf(t, known, "theme %s captures/%s is a known language", name, key)
+			for sub, sv in cv {
+				s, sok := sv.(json.String)
+				testing.expectf(t, sok, "theme %s captures/%s/%s is a string", name, key, sub)
+				if sok {
+					testing.expectf(
+						t,
+						theme_captures_key_resolves(colors, string(s)),
+						"theme %s captures/%s/%s references a defined color key",
+						name,
+						key,
+						sub,
+					)
+				}
+			}
+		case:
+			testing.expectf(t, false, "theme %s captures/%s is a string or language object", name, key)
+		}
+	}
+}
+
+@(private = "file")
+theme_captures_key_resolves :: proc(colors: json.Object, v: string) -> bool {
+	fields := strings.fields(v, context.temp_allocator)
+	if len(fields) == 0 {
+		return false
+	}
+	_, ok := colors[fields[0]]
+	return ok
 }
 
 @(test)
@@ -265,18 +439,18 @@ test_config_files :: proc(t: ^testing.T) {
 	_, _ = config_load_from(reload_path)
 	testing.expect(t, JUMP_THRESHOLD == 10, "deleting user file reverts to embedded default")
 
-	// Same-name theme: user themes/gruber-darker.json overrides one color, the rest
-	// come from the bundled gruber-darker (default theme).
-	gruber_over := fmt.tprintf("%s/themes/gruber-darker.json", dir)
-	_ = os.write_entire_file(gruber_over, transmute([]byte)string(`{"colors": {"foreground": "#010203"}}`))
+	// Same-name theme: user themes/default.json overrides one color, the rest
+	// come from the bundled default theme.
+	default_over := fmt.tprintf("%s/themes/default.json", dir)
+	_ = os.write_entire_file(default_over, transmute([]byte)string(`{"colors": {"foreground": "#010203"}}`))
 	msg, is_err = config_load_from(create_path)
 	testing.expect(t, !is_err, "same-name theme overlay is not an error")
 	testing.expect(t, COLOR_FG == tb2.Color(0x010203), "same-name theme override applied")
 	testing.expect(t, COLOR_BG == tb2.Color(0x181818), "unset key comes from the bundled theme")
-	os.remove(gruber_over)
+	os.remove(default_over)
 
 	// New-name theme (no bundled match): partial user file, missing keys fall back to
-	// the DEFAULT theme (gruber-darker) so a partial file never crashes.
+	// the DEFAULT theme so a partial file never crashes.
 	newname_cfg := fmt.tprintf("%s/newname.json", dir)
 	newname_theme := fmt.tprintf("%s/themes/mytheme.json", dir)
 	_ = os.write_entire_file(newname_cfg, transmute([]byte)string(`{"theme": "mytheme"}`))
@@ -323,6 +497,28 @@ test_config_files :: proc(t: ^testing.T) {
 	fgv, _ := tobj["colors"].(json.Object)
 	fg, fg_ok := fgv["foreground"].(json.String)
 	testing.expect(t, fg_ok && string(fg) == "#nothex", "invalid value preserved in file")
+
+	// Captures overlay: a user theme adds a novel color key and remaps a capture to
+	// it (applied), an unresolvable color key and an unknown-language override are
+	// both warned once, and the file is never rewritten.
+	caps_cfg := fmt.tprintf("%s/capstheme.json", dir)
+	caps_theme := fmt.tprintf("%s/themes/caps.json", dir)
+	_ = os.write_entire_file(caps_cfg, transmute([]byte)string(`{"theme": "caps"}`))
+	_ = os.write_entire_file(
+		caps_theme,
+		transmute([]byte)string(
+			`{"colors": {"syntax_numbers": "#e067ea"}, "captures": {"number": "syntax_numbers", "keyword": "no_such_color", "notalang": {"x": "syntax_keyword"}}}`,
+		),
+	)
+	msg, is_err = config_load_from(caps_cfg)
+	testing.expect(t, is_err, "captures warnings reported")
+	testing.expect(t, strings.contains(msg, "captures/keyword"), "unresolvable capture color key warned")
+	testing.expect(t, strings.contains(msg, "notalang"), "unknown-language capture override warned")
+	col, cok := capture_resolve(g_captures, g_theme_colors, "python", "number")
+	testing.expect(t, cok, "the remapped number capture resolves")
+	testing.expect(t, col == tb2.Color(0xe067ea), "number now resolves to the novel color key")
+	ctobj := reparse(t, caps_theme)
+	testing.expect(t, len(ctobj) == 2, "captures theme file not rewritten")
 
 	// Single-key persist preserves unrelated user content; creates a file if none.
 	persist_path := fmt.tprintf("%s/persist.json", dir)

@@ -52,33 +52,5 @@
     "conflict_theirs": "#bd93f9",
     "conflict_base": "#6272a4",
     "filetree_ignored": "#565761"
-  },
-  "icons": {
-    "status_file": "≡",
-    "status_branch": "⎇",
-    "status_ahead": "↑",
-    "status_behind": "↓",
-    "status_language": "◆",
-    "status_lsp": "◈",
-    "status_indent": "⇥",
-    "modified": "●",
-    "tree_expanded": "▾",
-    "tree_collapsed": "▸",
-    "preview_more": "⋮",
-    "lsp_starting": "…",
-    "lsp_failed": "✗",
-    "diagnostic_error": "»",
-    "diagnostic_warning": "›",
-    "diagnostic_info": "~"
-  },
-  "tints": {
-    "current_line": 0.06,
-    "ai_edit": 0.35,
-    "git_hunk": 0.12,
-    "git_diff_ghost": 0.12,
-    "git_diff_word": 0.34,
-    "conflict": 0.14,
-    "conflict_marker": 0.32,
-    "conflict_word": 0.34
   }
 }

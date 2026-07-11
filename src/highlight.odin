@@ -82,7 +82,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 	s.cursor = ts.query_cursor_new()
 	s.preds = query_predicates_build(s.query)
 
-	syntax_load_colors(s)
+	syntax_load_colors(s, language)
 
 	// Optional injection query (currently markdown). Failure to compile just
 	// disables injection; the host highlights still work.
@@ -106,24 +106,25 @@ syntax_ensure :: proc(language: Language) -> bool {
 	return true
 }
 
-syntax_load_colors :: proc(s: ^Syntax) {
+syntax_load_colors :: proc(s: ^Syntax, lang: Language) {
 	clear(&s.colors)
 	clear(&s.paint)
+	lang_name := LANGUAGES[lang].name
 	n := ts.query_capture_count(s.query)
 	for id in 0 ..< n {
 		length: u32
 		name_ptr := ts.query_capture_name_for_id(s.query, id, &length)
 		name := string(name_ptr[:length])
-		color, ok := syntax_capture_color(name)
+		color, ok := syntax_capture_color(lang_name, name)
 		append(&s.colors, color)
 		append(&s.paint, ok)
 	}
 }
 
 syntax_recolor :: proc() {
-	for &s in g_syntaxes {
+	for &s, lang in g_syntaxes {
 		if s.query != nil {
-			syntax_load_colors(&s)
+			syntax_load_colors(&s, lang)
 		}
 	}
 }
@@ -163,45 +164,8 @@ color_attrs :: proc(c: tb2.Color) -> u64 {
 	return u64(c) &~ COLOR_RGB_MASK
 }
 
-syntax_capture_color :: proc(name: string) -> (tb2.Color, bool) {
-	switch {
-	case strings.has_prefix(name, "keyword"),
-	     strings.has_prefix(name, "conditional"),
-	     strings.has_prefix(name, "repeat"),
-	     strings.has_prefix(name, "include"),
-	     strings.has_prefix(name, "tag"),
-	     name == "storageclass":
-		return COLOR_SYN_KEYWORD, true
-	case strings.has_prefix(name, "type"), name == "constructor":
-		return COLOR_SYN_TYPE, true
-	case strings.has_prefix(name, "string"), name == "character":
-		return COLOR_SYN_STRING, true
-	case strings.has_prefix(name, "comment"), name == "spell":
-		return COLOR_SYN_COMMENT, true
-	case strings.has_prefix(name, "constant"),
-	     name == "variable.builtin",
-	     name == "number",
-	     name == "float",
-	     name == "boolean":
-		return COLOR_SYN_CONSTANT, true
-	case name == "function.builtin":
-		return COLOR_SYN_KEYWORD, true
-	case name == "attribute", strings.has_prefix(name, "preproc"):
-		return COLOR_SYN_ATTRIBUTE, true
-	// Markdown (block + inline) uses nvim-flavored @text.* capture names; mapped
-	// to preserve qed's markdown look. Markers (@punctuation.special) stay plain.
-	case name == "text.title":
-		return color_attr(COLOR_SYN_KEYWORD, .Bold), true
-	case name == "text.literal", name == "text.code":
-		return COLOR_SYN_CODE, true
-	case name == "text.uri", name == "text.reference":
-		return COLOR_SYN_TYPE, true
-	case name == "text.strong":
-		return color_attr(COLOR_SYN_ATTRIBUTE, .Bold), true
-	case name == "text.emphasis":
-		return color_attr(COLOR_SYN_COMMENT, .Italic), true
-	}
-	return COLOR_FG, false
+syntax_capture_color :: proc(lang_name, name: string) -> (tb2.Color, bool) {
+	return capture_resolve(g_captures, g_theme_colors, lang_name, name)
 }
 
 highlight_update :: proc(b: ^Buffer, top, bot: int) {
