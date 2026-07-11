@@ -155,7 +155,9 @@ projsearch_execute :: proc(editor: ^Editor) {
 	m := p.matches[p.selected]
 	full, _ := filepath.join({editor.working_root, m.path}, context.temp_allocator)
 	projsearch_close(editor)
-	editor_open_path(editor, full)
+	if !editor_open_path(editor, full) {
+		return
+	}
 
 	buffer_undo_commit(editor_buffer(editor))
 	editor_goto(editor, m.row, m.col)

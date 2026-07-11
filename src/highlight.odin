@@ -57,6 +57,10 @@ g_syntaxes: [Language]Syntax
 
 // A language that ships a grammar failed to compile it; the editor drains this into the message line once.
 g_syntax_error: string
+// Which stage failed ("grammar"/"query"), drained as Debug detail alongside g_syntax_error.
+g_syntax_error_detail: string
+// A grammar's optional injection query failed to compile (injection silently disabled); drained as Debug once.
+g_syntax_inject_error: string
 
 syntax_for :: proc(language: Language) -> ^Syntax {
 	return &g_syntaxes[language]
@@ -78,6 +82,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 	s.parser = ts.parser_new()
 	if !ts.parser_set_language(s.parser, lang) {
 		g_syntax_error = info.name
+		g_syntax_error_detail = "grammar"
 		return false
 	}
 
@@ -94,6 +99,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 	s.query = ts.query_new(lang, raw_data(hl_src), u32(len(hl_src)), &err_off, &err_type)
 	if s.query == nil {
 		g_syntax_error = info.name
+		g_syntax_error_detail = "query"
 		return false
 	}
 	s.cursor = ts.query_cursor_new()
@@ -116,6 +122,8 @@ syntax_ensure :: proc(language: Language) -> bool {
 				name_ptr := ts.query_capture_name_for_id(s.inj_query, id, &length)
 				append(&s.inj_names, string(name_ptr[:length]))
 			}
+		} else {
+			g_syntax_inject_error = info.name
 		}
 	}
 

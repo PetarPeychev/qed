@@ -70,9 +70,10 @@ llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
 	}
 
 	cmd := fmt.tprintf("%s 2>/dev/null", LLM_CHAT_COMMAND)
-	sub, ok := subprocess_start(cmd, transmute([]u8)prompt, editor.working_root)
+	sub, serr, ok := subprocess_start(cmd, transmute([]u8)prompt, editor.working_root)
 	if !ok {
 		editor_log(editor, .Error, "", "AI edit: could not start command")
+		editor_log(editor, .Debug, "AI", fmt.tprintf("spawn failed: %s (%v)", LLM_CHAT_COMMAND, serr))
 		return
 	}
 
@@ -80,6 +81,7 @@ llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
 		&editor.llm.requests,
 		LlmRequest{sub = sub, buf_path = strings.clone(b.path), original = strings.clone(selection), from = from},
 	)
+	editor_log(editor, .Debug, "AI", fmt.tprintf("request sent: %s (%dB prompt)", LLM_CHAT_COMMAND, len(prompt)))
 	editor_log(editor, .Info, "", fmt.tprintf("AI edit sent (%d running)", len(editor.llm.requests)))
 }
 
@@ -104,8 +106,12 @@ llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
 	if os.get_env("QED_LLM_DEBUG", context.temp_allocator) != "" {
 		_ = os.write_entire_file("/tmp/qed-llm-response.txt", transmute([]u8)raw)
 	}
+	if req.sub.exit_code != 0 {
+		editor_log(editor, .Debug, "AI", fmt.tprintf("command exited %d (%dB reply)", req.sub.exit_code, len(raw)))
+	}
 	core := strings.trim_space(llm_extract_code(raw))
 	if core == "" {
+		editor_log(editor, .Debug, "AI", fmt.tprintf("no usable code block in reply (%dB raw)", len(raw)))
 		editor_log(editor, .Error, "", "AI edit: empty result, discarded")
 		return
 	}
@@ -120,6 +126,7 @@ llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
 		editor_log(editor, .Error, "", "AI edit discarded: block changed")
 		return
 	}
+	editor_log(editor, .Debug, "AI", fmt.tprintf("applied at %d:%d (%dB)", from.row, from.col, len(core)))
 	output := llm_reframe(core, req.original, context.temp_allocator)
 
 	edit_open(b, .Atomic)

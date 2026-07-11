@@ -31,6 +31,7 @@ test_picker_open_then_mark :: proc(t: ^testing.T) {
 	full, _ := filepath.join({root, rel}, context.temp_allocator)
 
 	editor: Editor
+	editor.headless = true
 	editor.buffers = make([dynamic]Buffer, 0, 2, context.temp_allocator)
 	append(&editor.buffers, buffer_new())
 	editor.working_root = root
@@ -47,4 +48,6 @@ test_picker_open_then_mark :: proc(t: ^testing.T) {
 		buffer_destroy(&b)
 	}
 	delete(editor.buffers)
+	editor_log_destroy(&editor)
+	delete(editor.message_store)
 }

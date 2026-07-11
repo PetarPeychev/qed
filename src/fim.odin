@@ -152,12 +152,14 @@ fim_request :: proc(editor: ^Editor) {
 		LLM_COMPLETION_ENDPOINT,
 		LLM_COMPLETION_API_KEY_ENV,
 	)
-	sub, ok := subprocess_start(cmd, transmute([]u8)body, editor.working_root)
+	sub, serr, ok := subprocess_start(cmd, transmute([]u8)body, editor.working_root)
 	if !ok {
 		fim_log("request FAILED to start (working_dir=%q)", editor.working_root)
+		editor_log(editor, .Debug, "FIM", fmt.tprintf("spawn failed: curl (%v)", serr))
 		return
 	}
 	fim_log("request started at (%d,%d) prefix=%dB suffix=%dB", b.cursor.row, b.cursor.col, len(prefix), len(suffix))
+	editor_log(editor, .Debug, "FIM", fmt.tprintf("request fired: prefix=%dB suffix=%dB", len(prefix), len(suffix)))
 
 	f.sub = sub
 	f.req_path = strings.clone(b.path)
@@ -178,6 +180,11 @@ fim_pump :: proc(editor: ^Editor) -> bool {
 	b := editor_buffer(editor)
 	moved := b.path != f.req_path || b.cursor != f.req_at
 	fim_log("response %dB -> parsed %dB, moved=%v sel=%v raw=%q", len(raw), len(text), moved, selection_active(b), raw[:min(len(raw), 200)])
+	if f.sub.exit_code != 0 {
+		editor_log(editor, .Debug, "FIM", fmt.tprintf("curl exited %d (%dB reply)", f.sub.exit_code, len(raw)))
+	} else {
+		editor_log(editor, .Debug, "FIM", fmt.tprintf("response %dB -> %dB suggestion, moved=%v", len(raw), len(text), moved))
+	}
 	if !moved && !selection_active(b) && len(strings.trim_space(text)) > 0 {
 		f.ghost = strings.clone(text)
 		f.ghost_at = b.cursor

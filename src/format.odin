@@ -23,7 +23,7 @@ line_trim_len :: proc(text: []u8, markdown: bool) -> int {
 	return n
 }
 
-buffer_save_fixups :: proc(b: ^Buffer, trim_ws, final_newline: bool) {
+buffer_save_fixups :: proc(b: ^Buffer, trim_ws, final_newline: bool) -> (trimmed_lines: int, added_newline: bool) {
 	md := b.language == .Markdown
 	last_text := b.lines[len(b.lines) - 1].text[:]
 	last_trim := line_trim_len(last_text, md) if trim_ws else 0
@@ -39,7 +39,7 @@ buffer_save_fixups :: proc(b: ^Buffer, trim_ws, final_newline: bool) {
 		}
 	}
 	if !need {
-		return
+		return 0, false
 	}
 
 	cur := b.cursor
@@ -53,6 +53,7 @@ buffer_save_fixups :: proc(b: ^Buffer, trim_ws, final_newline: bool) {
 			if n == 0 {
 				continue
 			}
+			trimmed_lines += 1
 			start := len(text) - n
 			edit_delete(b, {row, start}, {row, len(text)})
 			if cur.row == row && cur.col > start {
@@ -74,6 +75,7 @@ buffer_save_fixups :: proc(b: ^Buffer, trim_ws, final_newline: bool) {
 	if has_anchor {
 		b.selection = anchor
 	}
+	return trimmed_lines, add_newline
 }
 
 format_document :: proc(editor: ^Editor) {
@@ -110,6 +112,7 @@ format_external :: proc(editor: ^Editor, b: ^Buffer, save_after: bool) {
 		return
 	}
 
+	editor_log(editor, .Debug, "Format", fmt.tprintf("ran %s: %dB in, %dB out", tool, len(input), len(out)))
 	body := format_normalize(out)
 	changed := body != input
 	if changed {

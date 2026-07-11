@@ -1048,7 +1048,9 @@ lsp_apply_definition :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	ch, _ := lsp_num(start["character"])
 
 	origin := jump_here(editor)
-	editor_open_path(editor, path)
+	if !editor_open_path(editor, path) {
+		return true
+	}
 	b := editor_buffer(editor)
 	row := clamp(line, 0, len(b.lines) - 1)
 	editor_goto(editor, row, col_from_utf16(b.lines[row].text[:], ch))

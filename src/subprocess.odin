@@ -8,10 +8,11 @@ import "core:sys/posix"
 import "core:time"
 
 Subprocess :: struct {
-	process: os.Process,
-	stdout:  ^os.File,
-	out:     strings.Builder,
-	running: bool,
+	process:   os.Process,
+	stdout:    ^os.File,
+	out:       strings.Builder,
+	running:   bool,
+	exit_code: int,
 }
 
 @(private = "file")
@@ -28,14 +29,14 @@ fd_set_nonblock :: proc(file: ^os.File) {
 // a temp file (not a pipe) so a large body can't deadlock before the child reads,
 // and the temp is unlinked immediately — so the command MUST consume stdin, never a
 // `@file` reference to the temp (see the FIM curl quirk in DESIGN.md).
-subprocess_start :: proc(cmd: string, stdin_body: []u8, working_dir: string) -> (Subprocess, bool) {
+subprocess_start :: proc(cmd: string, stdin_body: []u8, working_dir: string) -> (Subprocess, os.Error, bool) {
 	posix.sigignore(.SIGPIPE)
 
 	g_subprocess_counter += 1
 	tmp := fmt.tprintf("/tmp/qed-subproc-%d-%d.tmp", posix.getpid(), g_subprocess_counter)
 	fd, oerr := os.open(tmp, {.Write, .Create, .Trunc}, os.perm(0o600))
 	if oerr != nil {
-		return {}, false
+		return {}, oerr, false
 	}
 	os.write(fd, stdin_body)
 	os.close(fd)
@@ -43,13 +44,13 @@ subprocess_start :: proc(cmd: string, stdin_body: []u8, working_dir: string) -> 
 	in_file, ierr := os.open(tmp, {.Read})
 	if ierr != nil {
 		os.remove(tmp)
-		return {}, false
+		return {}, ierr, false
 	}
 	out_r, out_w, perr := os.pipe()
 	if perr != nil {
 		os.close(in_file)
 		os.remove(tmp)
-		return {}, false
+		return {}, perr, false
 	}
 
 	process, serr := os.process_start(
@@ -60,11 +61,11 @@ subprocess_start :: proc(cmd: string, stdin_body: []u8, working_dir: string) -> 
 	os.remove(tmp)
 	if serr != nil {
 		os.close(out_r)
-		return {}, false
+		return {}, serr, false
 	}
 
 	fd_set_nonblock(out_r)
-	return Subprocess{process = process, stdout = out_r, out = strings.builder_make(), running = true}, true
+	return Subprocess{process = process, stdout = out_r, out = strings.builder_make(), running = true}, nil, true
 }
 
 // Drain whatever is readable now into `p.out`; returns true once stdout hits EOF
@@ -90,7 +91,8 @@ subprocess_drain :: proc(p: ^Subprocess) -> (done: bool) {
 // The string is backed by `p.out`, valid until subprocess_destroy.
 subprocess_output :: proc(p: ^Subprocess) -> string {
 	os.close(p.stdout)
-	_, _ = os.process_wait(p.process, time.Second)
+	state, _ := os.process_wait(p.process, time.Second)
+	p.exit_code = state.exit_code
 	p.running = false
 	return strings.to_string(p.out)
 }

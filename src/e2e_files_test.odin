@@ -11,7 +11,7 @@ import "lib:tb2"
 // Files-coverage e2e sessions. Some cases need a starting condition e2e_start
 // can't produce (a path that doesn't exist yet, or a pre-existing executable
 // seed), so this mirrors e2e_start with those knobs; e2e_stop tears it down.
-e2e_files_start :: proc(content: string, create := true, mode := os.Permissions{}) -> E2E {
+e2e_files_start :: proc(content: string, create := true, mode := Maybe(os.Permissions){}) -> E2E {
 	sync.mutex_lock(&e2e_lock)
 	sync.once_do(&e2e_once, e2e_backend_init)
 	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
@@ -22,8 +22,8 @@ e2e_files_start :: proc(content: string, create := true, mode := os.Permissions{
 	path := fmt.aprintf("%s/qed_e2e_files_%d_%d.txt", tmp, posix.getpid(), e2e_seq)
 	if create {
 		_ = os.write_entire_file(path, transmute([]u8)content)
-		if mode != {} {
-			_ = os.chmod(path, mode)
+		if m, has := mode.?; has {
+			_ = os.chmod(path, m)
 		}
 	}
 
@@ -95,6 +95,61 @@ e2e_files_save_preserves_mode :: proc(t: ^testing.T) {
 	fi, err := os.stat(e.path, context.temp_allocator)
 	testing.expect_value(t, err, nil)
 	testing.expect(t, .Execute_User in fi.mode, "saved file should stay executable")
+}
+
+@(test)
+e2e_files_open_unreadable_errors :: proc(t: ^testing.T) {
+	if posix.geteuid() == 0 {
+		return // chmod 000 cannot block root
+	}
+	e := e2e_start("base content")
+	defer e2e_stop(&e)
+
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	locked := fmt.tprintf("%s/qed_e2e_locked_%d.txt", tmp, posix.getpid())
+	_ = os.write_entire_file(locked, transmute([]u8)string("secret"))
+	_ = os.chmod(locked, os.perm(0o000))
+	defer os.remove(locked)
+
+	before := e.ed.current
+	nbuf := len(e.ed.buffers)
+	testing.expect(t, !editor_open_path(&e.ed, locked), "unreadable file must fail to open")
+	testing.expect(t, strings.contains(e.ed.message, "Cannot open"), "error lands on the message line")
+	testing.expect_value(t, e.ed.message_level, LogLevel.Error)
+	testing.expect_value(t, e.ed.current, before)
+	testing.expect_value(t, len(e.ed.buffers), nbuf)
+	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "base content")
+}
+
+@(test)
+e2e_files_open_missing_still_empty :: proc(t: ^testing.T) {
+	e := e2e_start("base content")
+	defer e2e_stop(&e)
+
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	missing := fmt.tprintf("%s/qed_e2e_missing_%d_%d.txt", tmp, posix.getpid(), e2e_seq)
+	testing.expect(t, editor_open_path(&e.ed, missing), "nonexistent path opens as an empty buffer")
+
+	b := editor_buffer(&e.ed)
+	testing.expect_value(t, b.path, missing)
+	testing.expect_value(t, len(b.lines), 1)
+	testing.expect_value(t, len(b.lines[0].text), 0)
+	testing.expect_value(t, b.modified, false)
+}
+
+@(test)
+e2e_files_startup_unreadable_lands_on_welcome :: proc(t: ^testing.T) {
+	if posix.geteuid() == 0 {
+		return // chmod 000 cannot block root
+	}
+	e := e2e_files_start("secret", mode = os.perm(0o000))
+	defer e2e_stop(&e)
+
+	testing.expect(t, e.ed.welcome, "startup open failure falls back to the welcome screen")
+	testing.expect(t, strings.contains(e.ed.message, "Cannot open"), "error lands on the message line")
+	b := editor_buffer(&e.ed)
+	testing.expect_value(t, b.path, "")
+	testing.expect_value(t, b.modified, false)
 }
 
 @(test)

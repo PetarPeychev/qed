@@ -67,7 +67,9 @@ jump_record :: proc(editor: ^Editor, origin: Jump) {
 jump_go :: proc(editor: ^Editor, target: Jump) {
 	editor.jump_lock = true
 	if target.path != "" {
-		editor_open_path(editor, target.path)
+		if !editor_open_path(editor, target.path) {
+			return
+		}
 	} else {
 		idx := editor_find_buffer(editor, "")
 		if idx < 0 {

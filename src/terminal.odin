@@ -2,6 +2,7 @@ package main
 
 import "base:runtime"
 import "core:c"
+import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
@@ -203,6 +204,7 @@ term_start :: proc(editor: ^Editor) -> bool {
 	t.cols = cols
 	t.rows = rows
 	t.alive = true
+	editor_log(editor, .Debug, "Terminal", fmt.tprintf("shell spawned: %s (pid %d)", shell, pid))
 	return true
 }
 

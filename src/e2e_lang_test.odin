@@ -133,6 +133,36 @@ e2e_format_on_save :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_format_run_logs_debug :: proc(t: ^testing.T) {
+	e := e2e_start("hello\nworld")
+	defer e2e_stop(&e)
+
+	stub := e2e_stub_script("tr 'a-z' 'A-Z'")
+	defer {
+		os.remove(stub)
+		delete(stub)
+	}
+
+	old := LANGUAGES[.Plain].formatter
+	LANGUAGES[.Plain].formatter = stub
+	defer LANGUAGES[.Plain].formatter = old
+
+	format_document(&e.ed)
+
+	// The user-facing message-line behaviour is unchanged.
+	testing.expect(t, strings.contains(e.ed.message, "Formatted"), "format still messages the line")
+
+	// The silent internal run leaves a Debug trail entry in the ring.
+	found := false
+	for entry in e.ed.log {
+		if entry.level == .Debug && entry.source == "Format" {
+			found = true
+		}
+	}
+	testing.expect(t, found, "format run logged a Debug trail entry")
+}
+
+@(test)
 e2e_trim_trailing_whitespace :: proc(t: ^testing.T) {
 	e := e2e_start("foo   \n\tbar\t\n   \nbaz")
 	defer e2e_stop(&e)

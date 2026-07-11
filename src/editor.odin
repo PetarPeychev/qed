@@ -109,8 +109,14 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		if err != nil {
 			abs = path
 		}
-		buffer_open(&b, abs)
 		editor.working_root, _ = os.get_working_directory(context.allocator)
+		if oerr := buffer_open(&b, abs); oerr != .None {
+			editor.welcome = true
+			editor_log(&editor, .Debug, "Files", fmt.tprintf("open failed: %s (%v)", abs, oerr))
+			editor_log(&editor, .Error, "", fmt.tprintf("Cannot open %s", editor_display_path(&editor, abs)))
+		} else {
+			editor_log(&editor, .Debug, "Lang", fmt.tprintf("detected %s for %s", LANGUAGES[b.language].name, abs))
+		}
 	} else {
 		editor.welcome = true
 		if path != "" {
@@ -121,6 +127,20 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		}
 	}
 	append(&editor.buffers, b)
+	if !headless {
+		clipboard_detect()
+		tool := "in-process register"
+		switch clipboard_tool {
+		case .WlClipboard:
+			tool = "wl-copy"
+		case .Xclip:
+			tool = "xclip"
+		case .Pbcopy:
+			tool = "pbcopy"
+		case .None, .Unknown:
+		}
+		editor_log(&editor, .Debug, "Clipboard", fmt.tprintf("using %s", tool))
+	}
 	return editor
 }
 
@@ -696,18 +716,24 @@ editor_close_current :: proc(editor: ^Editor) {
 	}
 }
 
-editor_open_path :: proc(editor: ^Editor, path: string) {
+editor_open_path :: proc(editor: ^Editor, path: string) -> bool {
 	abs, err := filepath.abs(path, context.temp_allocator)
 	if err != nil {
 		abs = path
 	}
 	if idx := editor_find_buffer(editor, abs); idx >= 0 {
 		editor_switch_to(editor, idx)
-		return
+		return true
 	}
 
 	b := buffer_new()
-	buffer_open(&b, abs)
+	if oerr := buffer_open(&b, abs); oerr != .None {
+		buffer_destroy(&b)
+		editor_log(editor, .Debug, "Files", fmt.tprintf("open failed: %s (%v)", abs, oerr))
+		editor_log(editor, .Error, "", fmt.tprintf("Cannot open %s", editor_display_path(editor, abs)))
+		return false
+	}
+	editor_log(editor, .Debug, "Lang", fmt.tprintf("detected %s for %s", LANGUAGES[b.language].name, editor_display_path(editor, abs)))
 
 	scratch := editor.buffers[0]
 	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
@@ -718,6 +744,7 @@ editor_open_path :: proc(editor: ^Editor, path: string) {
 		append(&editor.buffers, b)
 		editor_switch_to(editor, len(editor.buffers) - 1)
 	}
+	return true
 }
 
 editor_load_buffer :: proc(editor: ^Editor, path: string) -> int {
@@ -779,7 +806,10 @@ editor_save :: proc(editor: ^Editor) {
 }
 
 editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
-	buffer_save_fixups(b, editor.trim_trailing_whitespace_on_save, editor.ensure_final_newline_on_save)
+	trimmed, newlined := buffer_save_fixups(b, editor.trim_trailing_whitespace_on_save, editor.ensure_final_newline_on_save)
+	if trimmed > 0 || newlined {
+		editor_log(editor, .Debug, "Save", fmt.tprintf("fixups: trimmed %d line(s), final-newline=%v", trimmed, newlined))
+	}
 	if editor.format_on_save {
 		if LANGUAGES[b.language].formatter != "" {
 			format_external(editor, b, true)
@@ -859,7 +889,11 @@ editor_force_save :: proc(editor: ^Editor, b: ^Buffer) {
 		lsp_did_save(editor, b)
 	case .NoPath:
 		editor_log(editor, .Error, "", "No file name")
-	case .WriteError, .RenameError:
+	case .WriteError:
+		editor_log(editor, .Debug, "Save", fmt.tprintf("temp write failed: %s", editor_display_path(editor, b.path)))
+		editor_log(editor, .Error, "", "Save failed")
+	case .RenameError:
+		editor_log(editor, .Debug, "Save", fmt.tprintf("atomic rename failed: %s", editor_display_path(editor, b.path)))
 		editor_log(editor, .Error, "", "Save failed")
 	}
 }
@@ -871,6 +905,8 @@ editor_reload_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 		if b == editor_buffer(editor) {
 			editor_scroll(editor)
 			editor_log(editor, .Info, "", "Reloaded from disk")
+		} else {
+			editor_log(editor, .Info, "", fmt.tprintf("reloaded %s from disk", editor_display_path(editor, b.path)), show = false)
 		}
 	case .FileOpenError, .FileReadError:
 		editor_log(editor, .Error, "", "Reload failed")
@@ -919,6 +955,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	if !cfg_changed && !theme_changed {
 		return false
 	}
+	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
 	message, is_error := config_load_from(path)
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
@@ -1029,7 +1066,13 @@ editor_render :: proc(editor: ^Editor) {
 			highlight_update(editor_buffer(editor), editor.scroll_row, editor.scroll_row + vh - 1)
 			if g_syntax_error != "" {
 				editor_log(editor, .Error, "Syntax", fmt.tprintf("failed to load %s grammar", g_syntax_error))
+				editor_log(editor, .Debug, "Syntax", fmt.tprintf("%s %s compile failed", g_syntax_error, g_syntax_error_detail))
 				g_syntax_error = ""
+				g_syntax_error_detail = ""
+			}
+			if g_syntax_inject_error != "" {
+				editor_log(editor, .Debug, "Syntax", fmt.tprintf("injection query compile failed: %s", g_syntax_inject_error))
+				g_syntax_inject_error = ""
 			}
 			git_gutter_update(editor_buffer(editor))
 		}

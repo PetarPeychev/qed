@@ -173,8 +173,9 @@ filetree_scan_start :: proc(editor: ^Editor) {
 		t.scanned = true
 		return
 	}
-	sub, ok := subprocess_start(string(filetree_scan_cmd(root)), nil, root)
+	sub, serr, ok := subprocess_start(string(filetree_scan_cmd(root)), nil, root)
 	if !ok {
+		editor_log(editor, .Debug, "Files", fmt.tprintf("git scan spawn failed (%v)", serr))
 		return
 	}
 	t.scan_sub = sub
@@ -608,8 +609,9 @@ filetree_activate :: proc(editor: ^Editor) {
 	}
 	path := strings.clone(e.path, context.temp_allocator)
 	filetree_close(editor)
-	editor_open_path(editor, path)
-	editor_scroll(editor)
+	if editor_open_path(editor, path) {
+		editor_scroll(editor)
+	}
 }
 
 filetree_target_dir :: proc(editor: ^Editor) -> string {

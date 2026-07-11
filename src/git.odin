@@ -35,9 +35,11 @@ git_stat_maybe_start :: proc(editor: ^Editor) {
 		q,
 		q,
 	)
-	sub, ok := subprocess_start(cmd, nil, root)
+	sub, serr, ok := subprocess_start(cmd, nil, root)
 	if ok {
 		s.sub = sub
+	} else {
+		editor_log(editor, .Debug, "Git", fmt.tprintf("stat spawn failed (%v)", serr))
 	}
 }
 

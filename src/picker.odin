@@ -122,8 +122,9 @@ picker_open_selected :: proc(editor: ^Editor) {
 	rel := p.files[p.matches[p.selected]]
 	full, _ := filepath.join({editor.working_root, rel}, context.temp_allocator)
 	picker_close(editor)
-	editor_open_path(editor, full)
-	editor_scroll(editor)
+	if editor_open_path(editor, full) {
+		editor_scroll(editor)
+	}
 }
 
 picker_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
