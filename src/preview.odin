@@ -1,9 +1,14 @@
 package main
 
 import "core:fmt"
+import "core:io"
+import "core:os"
 import "core:strings"
 import "core:unicode/utf8"
 import "lib:tb2"
+
+PREVIEW_HEX_BYTES :: 16
+PREVIEW_EMPTY_TEXT :: "(empty file)"
 
 PreviewRowKind :: enum {
 	Content,
@@ -37,6 +42,8 @@ Preview :: struct {
 	path:         string,
 	complete:     bool,
 	width:        int,
+	hex:          bool,
+	empty:        bool,
 }
 
 preview_rows_clear :: proc(p: ^Preview) {
@@ -65,6 +72,8 @@ preview_reset :: proc(p: ^Preview) {
 	p.diff = false
 	p.no_highlight = false
 	p.complete = false
+	p.hex = false
+	p.empty = false
 }
 
 preview_destroy :: proc(p: ^Preview) {
@@ -82,8 +91,91 @@ preview_set_file :: proc(p: ^Preview, path: string, focus, view_h: int) {
 	p.path = strings.clone(path)
 	p.language = language_of(path)
 	p.focus = focus
+
+	if data, ok := preview_file_bytes(p.path, PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES); ok {
+		if len(data) == 0 {
+			p.empty = true
+			return
+		}
+		if preview_is_binary(data) {
+			preview_hex_fill(p, data)
+			return
+		}
+	}
+
 	p.scroll = max(0, (focus - 1) - view_h / 2) if focus > 0 else 0
 	preview_ensure(p, view_h)
+}
+
+preview_file_bytes :: proc(path: string, limit: int) -> (data: []u8, ok: bool) {
+	fd, err := os.open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer os.close(fd)
+	buf := make([]u8, limit, context.temp_allocator)
+	total := 0
+	for total < limit {
+		n, rerr := os.read(fd, buf[total:])
+		if n > 0 {
+			total += n
+			continue
+		}
+		if rerr != nil && rerr != io.Error.EOF {
+			return nil, false
+		}
+		break
+	}
+	return buf[:total], true
+}
+
+preview_is_binary :: proc(data: []u8) -> bool {
+	for b in data {
+		if b == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+preview_hex_fill :: proc(p: ^Preview, data: []u8) {
+	p.hex = true
+	p.no_highlight = true
+	p.complete = true
+	p.numw = 0
+	for off := 0; off < len(data) && len(p.src) < PREVIEW_MAX_LINES; off += PREVIEW_HEX_BYTES {
+		end := min(off + PREVIEW_HEX_BYTES, len(data))
+		append(&p.src, hex_dump_line(data[off:end], off))
+	}
+	for s in p.src {
+		append(&p.rows, PreviewRow{text = strings.clone(s), lineno = 0, kind = .Content})
+	}
+	p.parsed_to = len(p.src)
+}
+
+hex_dump_line :: proc(data: []u8, offset: int, allocator := context.allocator) -> string {
+	sb := strings.builder_make(allocator)
+	fmt.sbprintf(&sb, "%08x  ", offset)
+	for j in 0 ..< PREVIEW_HEX_BYTES {
+		if j == PREVIEW_HEX_BYTES / 2 {
+			strings.write_byte(&sb, ' ')
+		}
+		if j < len(data) {
+			fmt.sbprintf(&sb, "%02x ", data[j])
+		} else {
+			strings.write_string(&sb, "   ")
+		}
+	}
+	strings.write_string(&sb, " |")
+	for b in data {
+		c: u8 = '.'
+		if b >= 0x20 && b < 0x7f {
+			c = b
+		}
+		strings.write_byte(&sb, c)
+	}
+	strings.write_byte(&sb, '|')
+	return strings.to_string(sb)
 }
 
 preview_set_buffer :: proc(p: ^Preview, b: ^Buffer, focus, view_h: int) {
@@ -92,6 +184,10 @@ preview_set_buffer :: proc(p: ^Preview, b: ^Buffer, focus, view_h: int) {
 	p.no_highlight = b.big
 	p.complete = true
 	p.focus = focus
+	if len(b.lines) == 1 && len(b.lines[0].text) == 0 {
+		p.empty = true
+		return
+	}
 	for line, i in b.lines {
 		if i >= PREVIEW_MAX_LINES {
 			break
@@ -348,7 +444,7 @@ preview_row_str :: proc(p: ^Preview, i: int) -> (string, PreviewRowKind) {
 
 preview_visual_h :: proc(p: ^Preview, i, textw: int) -> int {
 	text, kind := preview_row_str(p, i)
-	if kind == .Gap || textw <= 0 {
+	if p.hex || kind == .Gap || textw <= 0 {
 		return 1
 	}
 	return len(line_wrap(transmute([]u8)text, textw))
@@ -466,6 +562,10 @@ preview_draw_seg :: proc(x, y, w: int, text: string, colors: []tb2.Color, seg_st
 
 preview_render :: proc(p: ^Preview, x, y, w, h: int) {
 	p.width = w
+	if p.empty {
+		preview_draw_seg(x + 2, y, max(0, w - 2), PREVIEW_EMPTY_TEXT, nil, 0, len(PREVIEW_EMPTY_TEXT), 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
+		return
+	}
 	add_bg := color_over(COLOR_PANE_BG, COLOR_GIT_ADD, GIT_HUNK_TINT)
 	mod_bg := color_over(COLOR_PANE_BG, COLOR_GIT_MOD, GIT_HUNK_TINT)
 	ghost_bg := color_over(COLOR_PANE_BG, COLOR_GIT_DEL, GIT_DIFF_GHOST_TINT)
@@ -506,6 +606,13 @@ preview_render :: proc(p: ^Preview, x, y, w, h: int) {
 				bg = mod_bg
 				word_bg = mod_word
 			}
+		}
+
+		if p.hex {
+			preview_draw_gutter(x, y + sy, p.numw, 0, base_fg, bg)
+			preview_draw_seg(x + gutterw, y + sy, textw, row.text, colors, 0, len(row.text), 0, base_fg, bg, row.span, word_bg)
+			sy += 1
+			continue
 		}
 
 		segs := line_wrap(transmute([]u8)row.text, textw)
