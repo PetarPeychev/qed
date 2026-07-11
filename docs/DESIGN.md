@@ -492,7 +492,9 @@ filters, multi-select copy, cross-session history seeded from the disk log behin
 an `h` footer toggle (off by default), works on welcome), welcome-screen status bar (root + branch + version + message line),
 rebind-aware pane self-close chords (`command_matches`), Debug-level internals
 instrumentation (subprocess/AI/FIM/save/config/clipboard/terminal trails), welcome screen, quit guard across
-modified buffers, floating pane primitive, command palette, fuzzy file-open +
+modified buffers, floating pane primitive, command palette (context-filtered via
+`command_available`: welcome lists only the working whitelist, big-file buffers
+hide the LSP/inspect commands), fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
 buffers in stable order + digit instant-jump on empty query, side preview of the
 selected buffer's in-memory content centered on its cursor), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,

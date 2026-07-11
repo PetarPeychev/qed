@@ -58,7 +58,6 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] File tree: new-file prompt should create missing parent dirs for nested names (`a/b/c.txt`) — it bypasses `buffer_save`.
 - [ ] Unify preview panes (file-open, file-tree, project-search): consistent empty/binary placeholder.
 - [ ] List panes: scroll affordance (count / thumb) when scrolled past the visible rows.
-- [ ] Context-filter the command list (hide commands that don't apply, e.g. on welcome screen).
 - [ ] Terminal→editor cwd back-channel: handle OSC 7 from the PTY (shell reports cwd) so `Alt+t` can retarget qed's working root — VSCode's shell-integration model; env vars stay uncrossable.
 - [ ] Per-buffer viewport memory across buffer switches — move scroll state into `Buffer`, see [notes/refactors.md](notes/refactors.md).
 - [ ] Permission/ownership-preserving saves.
