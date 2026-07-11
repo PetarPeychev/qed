@@ -361,3 +361,61 @@ test_save_preserves_lf_no_final_newline :: proc(t: ^testing.T) {
 test_save_preserves_crlf :: proc(t: ^testing.T) {
 	save_roundtrip(t, "/tmp/qed-test-save-crlf", "a\r\nb\r\n")
 }
+
+@(test)
+test_save_creates_missing_parent_dirs :: proc(t: ^testing.T) {
+	root := "/tmp/qed-test-save-mkdirs"
+	os.remove_all(root)
+	defer os.remove_all(root)
+
+	path := "/tmp/qed-test-save-mkdirs/a/b/file.txt"
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
+	buffer_insert(&b, {0, 0}, "hello\nworld")
+
+	testing.expect_value(t, buffer_save(&b), BufferSaveError.None)
+
+	written, read_err := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, read_err == nil)
+	testing.expect_value(t, string(written), "hello\nworld")
+}
+
+@(test)
+test_save_into_existing_dir :: proc(t: ^testing.T) {
+	root := "/tmp/qed-test-save-existing"
+	os.remove_all(root)
+	testing.expect(t, os.make_directory_all(root) == nil)
+	defer os.remove_all(root)
+
+	path := "/tmp/qed-test-save-existing/file.txt"
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
+	buffer_insert(&b, {0, 0}, "content")
+
+	testing.expect_value(t, buffer_save(&b), BufferSaveError.None)
+
+	written, read_err := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, read_err == nil)
+	testing.expect_value(t, string(written), "content")
+}
+
+@(test)
+test_save_parent_is_file_errors :: proc(t: ^testing.T) {
+	parent := "/tmp/qed-test-save-parentfile"
+	os.remove_all(parent)
+	testing.expect(t, os.write_entire_file(parent, transmute([]u8)string("x")) == nil)
+	defer os.remove_all(parent)
+
+	path := "/tmp/qed-test-save-parentfile/file.txt"
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
+	buffer_insert(&b, {0, 0}, "data")
+
+	testing.expect_value(t, buffer_save(&b), BufferSaveError.WriteError)
+
+	testing.expect(t, !os.is_dir(parent))
+	testing.expect(t, !os.exists(path))
+}

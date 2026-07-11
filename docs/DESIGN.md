@@ -199,7 +199,8 @@ member group is no longer on top).
   reconstructs the file exactly, no separate final-newline flag. Missing path →
   empty buffer, created on first save. Files ≥ `BIG_FILE_BYTES` (2 MB) open with
   `big` set — highlight, git gutter and LSP are skipped (fast plain-text buffer).
-- **Save (atomic):** write a temp file in the same dir, then `rename` over target;
+- **Save (atomic):** write a temp file in the same dir (missing parent dirs
+  created first), then `rename` over target;
   reconstruct bytes by joining lines with `line_ending` (the trailing empty line,
   if any, becomes the trailing newline). No newline is forced — files save exactly
   as shown. The temp is created with the target's existing **mode** (from the disk

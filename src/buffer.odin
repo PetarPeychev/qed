@@ -327,6 +327,10 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 		mode = buffer.disk.mode
 	}
 
+	if dir := os.dir(buffer.path); dir != "" && !os.exists(dir) {
+		os.make_directory_all(dir, os.perm(0o755))
+	}
+
 	tmp := strings.concatenate({buffer.path, ".qed-tmp"}, context.temp_allocator)
 	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, mode)
 	if open_err != nil {
