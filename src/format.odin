@@ -3,6 +3,79 @@ package main
 import "core:fmt"
 import "core:strings"
 
+line_trailing_ws :: proc(text: []u8) -> int {
+	n := 0
+	for n < len(text) && (text[len(text) - 1 - n] == ' ' || text[len(text) - 1 - n] == '\t') {
+		n += 1
+	}
+	return n
+}
+
+line_trim_len :: proc(text: []u8, markdown: bool) -> int {
+	n := line_trailing_ws(text)
+	if n == 0 {
+		return 0
+	}
+	// Two+ trailing spaces on a markdown content line are a hard line break.
+	if markdown && n < len(text) && text[len(text) - 1] == ' ' && text[len(text) - 2] == ' ' {
+		return 0
+	}
+	return n
+}
+
+buffer_save_fixups :: proc(b: ^Buffer, trim_ws, final_newline: bool) {
+	md := b.language == .Markdown
+	last_text := b.lines[len(b.lines) - 1].text[:]
+	last_trim := line_trim_len(last_text, md) if trim_ws else 0
+	add_newline := final_newline && len(last_text) > last_trim
+
+	need := add_newline
+	if trim_ws && !need {
+		for line in b.lines {
+			if line_trim_len(line.text[:], md) > 0 {
+				need = true
+				break
+			}
+		}
+	}
+	if !need {
+		return
+	}
+
+	cur := b.cursor
+	anchor, has_anchor := b.selection.?
+
+	edit_open(b, .Atomic)
+	if trim_ws {
+		for row in 0 ..< len(b.lines) {
+			text := b.lines[row].text[:]
+			n := line_trim_len(text, md)
+			if n == 0 {
+				continue
+			}
+			start := len(text) - n
+			edit_delete(b, {row, start}, {row, len(text)})
+			if cur.row == row && cur.col > start {
+				cur.col = start
+			}
+			if has_anchor && anchor.row == row && anchor.col > start {
+				anchor.col = start
+			}
+		}
+	}
+	if add_newline {
+		last := len(b.lines) - 1
+		edit_insert(b, {last, len(b.lines[last].text)}, "\n")
+	}
+	buffer_undo_commit(b)
+
+	b.cursor = cur
+	cursor_goal_sync(b)
+	if has_anchor {
+		b.selection = anchor
+	}
+}
+
 format_document :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if LANGUAGES[b.language].formatter != "" {

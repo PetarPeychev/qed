@@ -93,6 +93,8 @@ config_ints := [?]Config_Int {
 }
 
 FORMAT_ON_SAVE: bool
+TRIM_TRAILING_WHITESPACE_ON_SAVE: bool
+ENSURE_FINAL_NEWLINE_ON_SAVE: bool
 CURSOR_ACCEL: bool
 AUTO_CLOSE_PAIRS: bool
 GIT_DIFF_VIEW: bool
@@ -103,6 +105,8 @@ TERMINAL_ESCAPE_CLOSES: bool
 
 config_bools := [?]Config_Bool {
 	{"format_on_save", &FORMAT_ON_SAVE},
+	{"trim_trailing_whitespace_on_save", &TRIM_TRAILING_WHITESPACE_ON_SAVE},
+	{"ensure_final_newline_on_save", &ENSURE_FINAL_NEWLINE_ON_SAVE},
 	{"cursor_accel", &CURSOR_ACCEL},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 	{"git_diff_view", &GIT_DIFF_VIEW},

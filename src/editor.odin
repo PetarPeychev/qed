@@ -60,6 +60,10 @@ Editor :: struct {
 	hover_active:    bool,
 	completion:      Completion,
 	format_on_save:  bool,
+	trim_trailing_whitespace_on_save: bool,
+	ensure_final_newline_on_save: bool,
+	save_intent:     SaveIntent,
+	save_intent_path: string,
 	llm:             Llm,
 	aiedit:          AiEdit,
 	fim:             Fim,
@@ -80,6 +84,8 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		format_on_save = FORMAT_ON_SAVE,
+		trim_trailing_whitespace_on_save = TRIM_TRAILING_WHITESPACE_ON_SAVE,
+		ensure_final_newline_on_save = ENSURE_FINAL_NEWLINE_ON_SAVE,
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
 		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED},
 		headless       = headless,
@@ -115,6 +121,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	}
 	delete(editor.buffers)
 	git_stat_destroy(&editor.gitstat)
+	editor_save_intent_clear(editor)
 	delete(editor.working_root)
 	delete(editor.paste_buf)
 	delete(editor.message_store)
@@ -760,7 +767,11 @@ editor_paste :: proc(editor: ^Editor) {
 }
 
 editor_save :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
+	editor_save_full(editor, editor_buffer(editor))
+}
+
+editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
+	buffer_save_fixups(b, editor.trim_trailing_whitespace_on_save, editor.ensure_final_newline_on_save)
 	if editor.format_on_save {
 		if LANGUAGES[b.language].formatter != "" {
 			format_external(editor, b, true)
@@ -781,10 +792,56 @@ editor_save_path :: proc(editor: ^Editor, path: string) {
 
 editor_save_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 	if buffer_disk_changed(b) {
+		editor_save_intent_clear(editor)
 		conflict_dialog_open(editor)
 		return
 	}
 	editor_force_save(editor, b)
+	editor_after_save(editor, b)
+}
+
+SaveIntent :: enum {
+	None,
+	Close,
+	Quit,
+}
+
+editor_save_intent_set :: proc(editor: ^Editor, intent: SaveIntent, path: string) {
+	editor_save_intent_clear(editor)
+	editor.save_intent = intent
+	editor.save_intent_path = strings.clone(path)
+}
+
+editor_save_intent_clear :: proc(editor: ^Editor) {
+	editor.save_intent = .None
+	if len(editor.save_intent_path) > 0 {
+		delete(editor.save_intent_path)
+	}
+	editor.save_intent_path = ""
+}
+
+editor_after_save :: proc(editor: ^Editor, b: ^Buffer) {
+	switch editor.save_intent {
+	case .None:
+	case .Close:
+		if b.path != editor.save_intent_path {
+			return
+		}
+		editor_save_intent_clear(editor)
+		if !b.modified && b == editor_buffer(editor) {
+			editor_close_current(editor)
+		}
+	case .Quit:
+		if lsp_format_pending() {
+			return
+		}
+		editor_save_intent_clear(editor)
+		if editor_any_modified(editor) {
+			editor_set_message(editor, "Save failed", true)
+		} else {
+			editor.quit = true
+		}
+	}
 }
 
 editor_force_save :: proc(editor: ^Editor, b: ^Buffer) {

@@ -74,6 +74,7 @@ while True:
             "hoverProvider": True,
             "definitionProvider": True,
             "renameProvider": True,
+            "documentFormattingProvider": True,
             "completionProvider": {"triggerCharacters": ["."]},
         }})
     elif method in ("textDocument/didOpen", "textDocument/didChange"):
@@ -93,6 +94,9 @@ while True:
             sib: [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 6}},
                    "newText": "renamed"}],
         }})
+    elif method == "textDocument/formatting":
+        reply(mid, [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+                     "newText": "formatted\n"}])
     elif method == "textDocument/completion":
         reply(mid, {"isIncomplete": False, "items": [
             {"label": "alphabet", "additionalTextEdits": [
@@ -188,6 +192,8 @@ pred_hover :: proc(e: ^E2E) -> bool {return e.ed.hover_active}
 pred_two_buffers :: proc(e: ^E2E) -> bool {return len(e.ed.buffers) >= 2}
 @(private = "file")
 pred_def_jump :: proc(e: ^E2E) -> bool {return editor_buffer(&e.ed).cursor.row == 12}
+@(private = "file")
+pred_quit :: proc(e: ^E2E) -> bool {return e.ed.quit}
 
 e2e_alt :: proc(e: ^E2E, ch: rune) {
 	e2e_step(e, tb2.Event{type = .Key, mod = .Alt, ch = ch})
@@ -320,6 +326,32 @@ e2e_lsp_completion :: proc(t: ^testing.T) {
 	b = editor_buffer(&e.ed)
 	testing.expect_value(t, len(b.lines), 2)
 	testing.expect_value(t, string(b.lines[0].text[:]), "top")
+}
+
+@(test)
+e2e_lsp_format_on_save_quit :: proc(t: ^testing.T) {
+	if !shell_command_exists("python3") {
+		return
+	}
+	e := e2e_lsp_start("alpha beta  \nmiddle\nxyzzy")
+	defer e2e_lsp_stop(&e)
+
+	testing.expect(t, e2e_lsp_wait(&e, pred_diags), "server should be ready")
+	e.ed.format_on_save = true
+	e.ed.trim_trailing_whitespace_on_save = true
+
+	e2e_type(&e, "Z")
+	e2e_key(&e, .Ctrl_Q)
+	testing.expect(t, e.ed.quit_dialog.active, "Ctrl+Q on a modified buffer opens the quit dialog")
+	e2e_key(&e, .Enter)
+
+	// The format request is in flight: quit must wait for the chained save.
+	testing.expect(t, !e.ed.quit, "quit is deferred while the format response is pending")
+	testing.expect_value(t, e.ed.save_intent, SaveIntent.Quit)
+
+	testing.expect(t, e2e_lsp_wait(&e, pred_quit), "quit follows the chained format+save")
+	testing.expect_value(t, e2e_read_disk(e.path), "formatted\nZalpha beta\nmiddle\nxyzzy")
+	testing.expect_value(t, editor_buffer(&e.ed).modified, false)
 }
 
 @(test)

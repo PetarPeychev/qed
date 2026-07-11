@@ -245,11 +245,30 @@ lsp_restart :: proc(editor: ^Editor) {
 	editor_set_message(editor, fmt.tprintf("LSP: restarting %s", name))
 }
 
+lsp_format_pending :: proc() -> bool {
+	for _, lsp in g_lsps {
+		for _, p in lsp.pending {
+			if p.kind == .FormatOnSave {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 	if lsp.state != .Running {
 		return
 	}
 	lsp.state = .Failed
+	save_paths := make([dynamic]string, context.temp_allocator)
+	if !editor.quit {
+		for _, p in lsp.pending {
+			if p.kind == .FormatOnSave {
+				append(&save_paths, strings.clone(p.path, context.temp_allocator))
+			}
+		}
+	}
 	lsp_pending_clear(lsp)
 	delete(lsp.recv)
 	lsp.recv = nil
@@ -262,6 +281,9 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 			buffer_lsp_changes_clear(&b)
 			b.lsp_open = false
 		}
+	}
+	for path in save_paths {
+		editor_save_path(editor, path)
 	}
 	editor_set_message(editor, fmt.tprintf("LSP: %s stopped", lsp_display_name(lsp.server)), true)
 }

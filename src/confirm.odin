@@ -27,6 +27,7 @@ quit_dialog_close :: proc(editor: ^Editor) {
 quit_dialog_execute :: proc(editor: ^Editor) {
 	switch editor.quit_dialog.selected {
 	case 0:
+		quit_dialog_close(editor)
 		conflict := false
 		for &b in editor.buffers {
 			if !b.modified {
@@ -36,12 +37,14 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 				conflict = true
 				continue
 			}
-			buffer_save(&b)
+			editor_save_full(editor, &b)
 		}
-		if editor_any_modified(editor) {
-			quit_dialog_close(editor)
-			msg := "File changed on disk — save it with Ctrl+S to resolve" if conflict else "Save failed"
-			editor_set_message(editor, msg, true)
+		if conflict {
+			editor_set_message(editor, "File changed on disk — save it with Ctrl+S to resolve", true)
+		} else if lsp_format_pending() {
+			editor_save_intent_set(editor, .Quit, "")
+		} else if editor_any_modified(editor) {
+			editor_set_message(editor, "Save failed", true)
 		} else {
 			editor.quit = true
 		}
@@ -109,10 +112,8 @@ close_dialog_execute :: proc(editor: ^Editor) {
 			conflict_dialog_open(editor)
 			return
 		}
-		editor_force_save(editor, b)
-		if !b.modified {
-			editor_close_current(editor)
-		}
+		editor_save_intent_set(editor, .Close, b.path)
+		editor_save_full(editor, b)
 	case 1:
 		close_dialog_close(editor)
 		editor_close_current(editor)
@@ -160,7 +161,8 @@ conflict_dialog_execute :: proc(editor: ^Editor) {
 	conflict_dialog_close(editor)
 	switch selected {
 	case 1:
-		editor_force_save(editor, b)
+		b.disk = buffer_disk_stamp(b.path) // accept the disk state so a format-chained save can't re-raise the conflict
+		editor_save_full(editor, b)
 	case 2:
 		editor_reload_buffer(editor, b)
 	}

@@ -133,6 +133,302 @@ e2e_format_on_save :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_trim_trailing_whitespace :: proc(t: ^testing.T) {
+	e := e2e_start("foo   \n\tbar\t\n   \nbaz")
+	defer e2e_stop(&e)
+
+	e.ed.trim_trailing_whitespace_on_save = true
+
+	b := editor_buffer(&e.ed)
+	e2e_key(&e, .Ctrl_S)
+
+	testing.expect_value(t, string(b.lines[0].text[:]), "foo")
+	testing.expect_value(t, string(b.lines[1].text[:]), "\tbar")
+	testing.expect_value(t, string(b.lines[2].text[:]), "")
+	testing.expect_value(t, string(b.lines[3].text[:]), "baz")
+
+	data, rerr := os.read_entire_file(e.path, context.temp_allocator)
+	testing.expect(t, rerr == nil, "file should exist on disk")
+	testing.expect_value(t, string(data), "foo\n\tbar\n\nbaz")
+
+	// One undo step restores the pre-save whitespace.
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, string(b.lines[0].text[:]), "foo   ")
+	testing.expect_value(t, string(b.lines[1].text[:]), "\tbar\t")
+	testing.expect_value(t, string(b.lines[2].text[:]), "   ")
+}
+
+@(test)
+e2e_trim_cursor_clamped :: proc(t: ^testing.T) {
+	e := e2e_start("word    \nnext")
+	defer e2e_stop(&e)
+
+	e.ed.trim_trailing_whitespace_on_save = true
+
+	b := editor_buffer(&e.ed)
+	b.cursor = {0, 7}
+	e2e_key(&e, .Ctrl_S)
+
+	testing.expect_value(t, string(b.lines[0].text[:]), "word")
+	testing.expect_value(t, b.cursor.row, 0)
+	testing.expect_value(t, b.cursor.col, 4)
+}
+
+@(test)
+e2e_ensure_final_newline :: proc(t: ^testing.T) {
+	e := e2e_start("alpha\nbeta")
+	defer e2e_stop(&e)
+
+	e.ed.ensure_final_newline_on_save = true
+
+	b := editor_buffer(&e.ed)
+	e2e_key(&e, .Ctrl_S)
+	testing.expect_value(t, len(b.lines), 3)
+	testing.expect_value(t, string(b.lines[2].text[:]), "")
+
+	data, _ := os.read_entire_file(e.path, context.temp_allocator)
+	testing.expect_value(t, string(data), "alpha\nbeta\n")
+
+	// An already-terminated buffer gains no second empty line.
+	e2e_key(&e, .Ctrl_S)
+	testing.expect_value(t, len(b.lines), 3)
+}
+
+@(test)
+e2e_markdown_save_fixups :: proc(t: ^testing.T) {
+	e := e2e_lang_start("break2  \nbreak3   \none \ntab \t\n   \nlast", "notes.md")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	testing.expect_value(t, b.language, Language.Markdown)
+
+	e.ed.trim_trailing_whitespace_on_save = true
+	e.ed.ensure_final_newline_on_save = true
+
+	e2e_key(&e, .Ctrl_S)
+
+	// 2+ trailing spaces on a content line are a hard break: untouched, never normalized.
+	testing.expect_value(t, string(b.lines[0].text[:]), "break2  ")
+	testing.expect_value(t, string(b.lines[1].text[:]), "break3   ")
+	// One trailing space or a tab-ended run is no hard break: trimmed.
+	testing.expect_value(t, string(b.lines[2].text[:]), "one")
+	testing.expect_value(t, string(b.lines[3].text[:]), "tab")
+	// Whitespace-only lines always trim to empty.
+	testing.expect_value(t, string(b.lines[4].text[:]), "")
+	// The final newline still applies to markdown.
+	testing.expect_value(t, len(b.lines), 7)
+	testing.expect_value(t, string(b.lines[6].text[:]), "")
+
+	data, _ := os.read_entire_file(e.path, context.temp_allocator)
+	testing.expect_value(t, string(data), "break2  \nbreak3   \none\ntab\n\nlast\n")
+}
+
+@(test)
+e2e_trim_newline_no_double :: proc(t: ^testing.T) {
+	e := e2e_start("end\n   ")
+	defer e2e_stop(&e)
+
+	e.ed.trim_trailing_whitespace_on_save = true
+	e.ed.ensure_final_newline_on_save = true
+
+	b := editor_buffer(&e.ed)
+	e2e_key(&e, .Ctrl_S)
+
+	// The trimmed-empty last line already is the final newline: nothing is appended.
+	testing.expect_value(t, len(b.lines), 2)
+	testing.expect_value(t, string(b.lines[1].text[:]), "")
+	testing.expect_value(t, e2e_read_disk(e.path), "end\n")
+}
+
+@(test)
+e2e_save_fixups_off_identical :: proc(t: ^testing.T) {
+	seed := "keep  \ntrailing\t\nno newline"
+	e := e2e_start(seed)
+	defer e2e_stop(&e)
+
+	e.ed.trim_trailing_whitespace_on_save = false
+	e.ed.ensure_final_newline_on_save = false
+
+	b := editor_buffer(&e.ed)
+	undo_before := len(b.undo)
+	e2e_key(&e, .Ctrl_S)
+
+	testing.expect_value(t, len(b.undo), undo_before)
+	data, _ := os.read_entire_file(e.path, context.temp_allocator)
+	testing.expect_value(t, string(data), seed)
+}
+
+@(test)
+e2e_trim_before_format :: proc(t: ^testing.T) {
+	e := e2e_start("foo   \nbar\t")
+	defer e2e_stop(&e)
+
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	sidecar := fmt.aprintf("%s/qed_e2e_fmtin_%d_%d", tmp, posix.getpid(), e2e_seq)
+	defer {
+		os.remove(sidecar)
+		delete(sidecar)
+	}
+	stub := e2e_stub_script(fmt.tprintf("tee %s", shell_quote(sidecar)))
+	defer {
+		os.remove(stub)
+		delete(stub)
+	}
+
+	old_fmt := LANGUAGES[.Plain].formatter
+	LANGUAGES[.Plain].formatter = stub
+	defer LANGUAGES[.Plain].formatter = old_fmt
+	e.ed.trim_trailing_whitespace_on_save = true
+	e.ed.format_on_save = true
+
+	e2e_key(&e, .Ctrl_S)
+
+	// The formatter's stdin is already trimmed: trim runs before format-on-save.
+	seen, serr := os.read_entire_file(sidecar, context.temp_allocator)
+	testing.expect(t, serr == nil, "formatter should have run and teed its stdin")
+	testing.expect_value(t, string(seen), "foo\nbar")
+}
+
+@(test)
+e2e_quit_save_all_fixups_format :: proc(t: ^testing.T) {
+	e := e2e_start("foo  \nbar")
+	defer e2e_stop(&e)
+
+	stub := e2e_stub_script("tr 'a-z' 'A-Z'")
+	defer {
+		os.remove(stub)
+		delete(stub)
+	}
+	old_fmt := LANGUAGES[.Plain].formatter
+	LANGUAGES[.Plain].formatter = stub
+	defer LANGUAGES[.Plain].formatter = old_fmt
+	e.ed.format_on_save = true
+	e.ed.trim_trailing_whitespace_on_save = true
+	e.ed.ensure_final_newline_on_save = true
+
+	e2e_type(&e, "z")
+	testing.expect(t, editor_buffer(&e.ed).modified, "typing dirties the buffer")
+
+	e2e_key(&e, .Ctrl_Q)
+	testing.expect(t, e.ed.quit_dialog.active, "Ctrl+Q on a modified buffer opens the quit dialog")
+	e2e_key(&e, .Enter)
+
+	testing.expect(t, e.ed.quit, "Save All quits after the saves complete")
+	testing.expect_value(t, e2e_read_disk(e.path), "ZFOO\nBAR\n")
+}
+
+@(test)
+e2e_close_save_fixups :: proc(t: ^testing.T) {
+	e := e2e_start("baz  ")
+	defer e2e_stop(&e)
+
+	e.ed.trim_trailing_whitespace_on_save = true
+
+	e2e_type(&e, "!")
+	e2e_key(&e, .Ctrl_W)
+	testing.expect(t, e.ed.close_dialog.active, "Ctrl+W on a modified buffer opens the close dialog")
+	e2e_key(&e, .Enter)
+
+	testing.expect_value(t, e2e_read_disk(e.path), "!baz")
+	testing.expect(t, e.ed.welcome, "saving the last buffer closes it back to the welcome screen")
+}
+
+@(test)
+e2e_conflict_overwrite_fixups_format :: proc(t: ^testing.T) {
+	e := e2e_start("first  \nsecond")
+	defer e2e_stop(&e)
+
+	stub := e2e_stub_script("tr 'a-z' 'A-Z'")
+	defer {
+		os.remove(stub)
+		delete(stub)
+	}
+	old_fmt := LANGUAGES[.Plain].formatter
+	LANGUAGES[.Plain].formatter = stub
+	defer LANGUAGES[.Plain].formatter = old_fmt
+	e.ed.format_on_save = true
+	e.ed.trim_trailing_whitespace_on_save = true
+
+	b := editor_buffer(&e.ed)
+	e2e_type(&e, "X")
+	_ = os.write_entire_file(e.path, transmute([]u8)string("DISK\n"))
+	editor_poll_disk(&e.ed)
+
+	e2e_key(&e, .Ctrl_S)
+	testing.expect(t, e.ed.conflict_dialog.active, "Ctrl+S should open the conflict dialog")
+
+	e2e_key(&e, .Arrow_Down) // Cancel -> Overwrite
+	e2e_key(&e, .Enter)
+
+	testing.expect(t, !e.ed.conflict_dialog.active, "dialog closes after choosing")
+	testing.expect_value(t, b.modified, false)
+	testing.expect_value(t, b.disk_conflict, false)
+	testing.expect_value(t, e2e_read_disk(e.path), "XFIRST\nSECOND")
+}
+
+@(test)
+e2e_toggle_trim_empty_lines :: proc(t: ^testing.T) {
+	e := e2e_start("top\n\n\nbottom")
+	defer e2e_stop(&e)
+
+	cmd_toggle_trim_whitespace_on_save(&e.ed)
+
+	b := editor_buffer(&e.ed)
+	b.cursor = {1, 0}
+	e2e_type(&e, "  ")
+	b.cursor = {2, 0}
+	e2e_type(&e, "   ")
+	testing.expect_value(t, string(b.lines[1].text[:]), "  ")
+	testing.expect_value(t, string(b.lines[2].text[:]), "   ")
+
+	e2e_key(&e, .Ctrl_S)
+
+	testing.expect_value(t, string(b.lines[1].text[:]), "")
+	testing.expect_value(t, string(b.lines[2].text[:]), "")
+	testing.expect_value(t, b.cursor.row, 2)
+	testing.expect_value(t, b.cursor.col, 0)
+	testing.expect_value(t, e2e_read_disk(e.path), "top\n\n\nbottom")
+}
+
+@(test)
+e2e_toggle_save_knobs :: proc(t: ^testing.T) {
+	e := e2e_start("pad  ")
+	defer e2e_stop(&e)
+
+	e.ed.trim_trailing_whitespace_on_save = false
+	e.ed.ensure_final_newline_on_save = false
+
+	cmd_toggle_trim_whitespace_on_save(&e.ed)
+	testing.expect(t, e.ed.trim_trailing_whitespace_on_save, "toggle flips the runtime knob on")
+	testing.expect(t, strings.contains(e.ed.message, "Trim whitespace on save: on"), "toggle reports its state")
+	cmd_toggle_final_newline_on_save(&e.ed)
+	testing.expect(t, e.ed.ensure_final_newline_on_save, "toggle flips the runtime knob on")
+	testing.expect(t, strings.contains(e.ed.message, "Final newline on save: on"), "toggle reports its state")
+
+	// A config reload updates the globals but never clobbers the runtime toggles
+	// (same semantics as format_on_save: the global only seeds editor_init).
+	e2e_seq += 1
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	cfg := fmt.aprintf("%s/qed_e2e_cfg_%d_%d.json", tmp, posix.getpid(), e2e_seq)
+	defer {
+		os.remove(cfg)
+		delete(cfg)
+	}
+	_ = os.write_entire_file(
+		cfg,
+		transmute([]u8)string(`{"trim_trailing_whitespace_on_save": false, "ensure_final_newline_on_save": false}`),
+	)
+	_, cfg_err := config_load_from(cfg)
+	testing.expect(t, !cfg_err, "knob-only config loads cleanly")
+	testing.expect(t, !TRIM_TRAILING_WHITESPACE_ON_SAVE, "reload applied the config value to the global")
+	testing.expect(t, e.ed.trim_trailing_whitespace_on_save, "runtime toggle survives the reload")
+	testing.expect(t, e.ed.ensure_final_newline_on_save, "runtime toggle survives the reload")
+
+	e2e_key(&e, .Ctrl_S)
+	testing.expect_value(t, e2e_read_disk(e.path), "pad\n")
+}
+
+@(test)
 e2e_format_missing_tool :: proc(t: ^testing.T) {
 	e := e2e_start("keep\nthis")
 	defer e2e_stop(&e)
