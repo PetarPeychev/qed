@@ -22,8 +22,8 @@ Diagnostic :: struct {
 }
 
 LspState :: enum {
-	Off,
-	Running,
+	Starting,
+	Ready,
 	Failed,
 }
 
@@ -33,10 +33,13 @@ Lsp :: struct {
 	process:        os.Process,
 	stdin:          ^os.File,
 	stdout:         ^os.File,
+	stderr:         ^os.File,
 	recv:           [dynamic]u8,
+	stderr_buf:     [dynamic]u8,
+	stderr_lines:   int,
+	stderr_flooded: bool,
 	next_id:        int,
 	init_id:        int,
-	initialized:    bool,
 	sync_kind:      int,
 	cap_definition: bool,
 	cap_hover:      bool,
@@ -81,7 +84,7 @@ g_lsps: map[string]^Lsp
 
 lsp_running :: proc() -> bool {
 	for _, lsp in g_lsps {
-		if lsp.state == .Running {
+		if lsp.state != .Failed {
 			return true
 		}
 	}
@@ -104,25 +107,25 @@ lsp_for :: proc(b: ^Buffer) -> (^Lsp, bool) {
 	return lsp, ok
 }
 
-lsp_status_label :: proc(b: ^Buffer) -> string {
+lsp_status_label :: proc(b: ^Buffer) -> (text: string, fg: tb2.Color, ok: bool) {
 	server := LANGUAGES[b.language].lsp_server
 	if server == "" {
-		return ""
+		return "", COLOR_PANE_FG, false
 	}
 	name := lsp_display_name(server)
-	lsp, ok := g_lsps[server]
-	if !ok {
-		return fmt.tprintf("%s %s", name, ICON_LSP_STARTING)
+	lsp, present := g_lsps[server]
+	if !present {
+		return fmt.tprintf("%s %s", name, ICON_LSP_STARTING), COLOR_PANE_SHORTCUT_FG, true
 	}
 	switch lsp.state {
-	case .Running:
-		return name
+	case .Ready:
+		return name, COLOR_PANE_FG, true
+	case .Starting:
+		return fmt.tprintf("%s %s", name, ICON_LSP_STARTING), COLOR_PANE_SHORTCUT_FG, true
 	case .Failed:
-		return fmt.tprintf("%s %s", name, ICON_LSP_FAILED)
-	case .Off:
-		return fmt.tprintf("%s %s", name, ICON_LSP_STARTING)
+		return fmt.tprintf("%s %s", name, ICON_LSP_FAILED), COLOR_ERROR_FG, true
 	}
-	return name
+	return name, COLOR_PANE_FG, true
 }
 
 lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
@@ -144,30 +147,45 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 		lsp.state = .Failed
 		return lsp
 	}
+	err_r, err_w, err_err := os.pipe()
+	if err_err != nil {
+		os.close(in_r)
+		os.close(in_w)
+		os.close(out_r)
+		os.close(out_w)
+		lsp.state = .Failed
+		return lsp
+	}
 
+	editor_log(editor, .Debug, "LSP", fmt.tprintf("spawning: %s", server))
 	process, err := os.process_start({
 		command     = strings.fields(server, context.temp_allocator),
 		working_dir = editor.working_root,
 		stdin       = in_r,
 		stdout      = out_w,
+		stderr      = err_w,
 	})
 	os.close(in_r)
 	os.close(out_w)
+	os.close(err_w)
 	if err != nil {
 		os.close(in_w)
 		os.close(out_r)
+		os.close(err_r)
 		lsp.state = .Failed
 		editor_log(editor, .Error, "LSP", fmt.tprintf("failed to start %s", lsp_display_name(server)))
 		return lsp
 	}
 
 	fd_set_nonblock(out_r)
+	fd_set_nonblock(err_r)
 
 	lsp.process = process
 	lsp.stdin = in_w
 	lsp.stdout = out_r
-	lsp.state = .Running
-	lsp.initialized = false
+	lsp.stderr = err_r
+	lsp.state = .Starting
+	editor_log(editor, .Debug, "LSP", fmt.tprintf("spawned %s", lsp_display_name(server)))
 
 	lsp.next_id += 1
 	lsp.init_id = lsp.next_id
@@ -183,17 +201,20 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 }
 
 lsp_shutdown_one :: proc(editor: ^Editor, lsp: ^Lsp) {
-	if lsp.state != .Running {
+	if lsp.state == .Failed {
 		return
 	}
 	lsp.next_id += 1
 	lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","id":%d,"method":"shutdown","params":null}}`, lsp.next_id))
 	lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"exit","params":null}`)
-	if lsp.state != .Running {
+	if lsp.state == .Failed {
 		return
 	}
 	os.close(lsp.stdin)
+	lsp_stderr_pump(editor, lsp)
+	lsp_stderr_flush(editor, lsp, true)
 	os.close(lsp.stdout)
+	os.close(lsp.stderr)
 	if _, err := os.process_wait(lsp.process, 200 * time.Millisecond); err != nil {
 		_ = os.process_kill(lsp.process)
 	}
@@ -212,6 +233,7 @@ lsp_stop :: proc(editor: ^Editor) {
 		lsp_shutdown_one(editor, lsp)
 		lsp_pending_clear(lsp)
 		delete(lsp.recv)
+		delete(lsp.stderr_buf)
 		delete(lsp.completion_triggers)
 		free(lsp)
 	}
@@ -231,6 +253,7 @@ lsp_restart :: proc(editor: ^Editor) {
 		lsp_shutdown_one(editor, lsp)
 		lsp_pending_clear(lsp)
 		delete(lsp.recv)
+		delete(lsp.stderr_buf)
 		delete(lsp.completion_triggers)
 		free(lsp)
 		delete_key(&g_lsps, server)
@@ -257,7 +280,7 @@ lsp_format_pending :: proc() -> bool {
 }
 
 lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
-	if lsp.state != .Running {
+	if lsp.state == .Failed {
 		return
 	}
 	lsp.state = .Failed
@@ -273,7 +296,12 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 	delete(lsp.recv)
 	lsp.recv = nil
 	os.close(lsp.stdin)
+	lsp_stderr_pump(editor, lsp)
+	lsp_stderr_flush(editor, lsp, true)
 	os.close(lsp.stdout)
+	os.close(lsp.stderr)
+	delete(lsp.stderr_buf)
+	lsp.stderr_buf = nil
 	_ = os.process_kill(lsp.process)
 	for &b in editor.buffers {
 		if LANGUAGES[b.language].lsp_server == lsp.server {
@@ -289,7 +317,7 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 }
 
 lsp_send :: proc(editor: ^Editor, lsp: ^Lsp, body: string) {
-	if lsp.state != .Running {
+	if lsp.state == .Failed {
 		return
 	}
 	msg := fmt.tprintf("Content-Length: %d\r\n\r\n%s", len(body), body)
@@ -311,7 +339,7 @@ lsp_sync :: proc(editor: ^Editor) {
 		if !ok {
 			lsp = lsp_start(editor, server)
 		}
-		if lsp.state != .Running || !lsp.initialized {
+		if lsp.state != .Ready {
 			continue
 		}
 		if !b.lsp_open {
@@ -424,12 +452,83 @@ lsp_did_close :: proc(editor: ^Editor, b: ^Buffer) {
 	buffer_clear_diags(b)
 }
 
+LSP_STDERR_MAX_LINE :: 500
+LSP_STDERR_MAX_LINES :: 500
+
+lsp_stderr_pump :: proc(editor: ^Editor, lsp: ^Lsp) {
+	if lsp.stderr == nil {
+		return
+	}
+	fd := posix.FD(os.fd(lsp.stderr))
+	buf: [4096]u8
+	for {
+		n := posix.read(fd, &buf[0], len(buf))
+		if n <= 0 {
+			break
+		}
+		append(&lsp.stderr_buf, ..buf[:n])
+	}
+	lsp_stderr_flush(editor, lsp, false)
+}
+
+lsp_stderr_flush :: proc(editor: ^Editor, lsp: ^Lsp, final: bool) {
+	for {
+		nl := strings.index_byte(string(lsp.stderr_buf[:]), '\n')
+		if nl < 0 {
+			break
+		}
+		lsp_stderr_emit(editor, lsp, lsp.stderr_buf[:nl])
+		rest := len(lsp.stderr_buf) - (nl + 1)
+		copy(lsp.stderr_buf[:], lsp.stderr_buf[nl + 1:])
+		resize(&lsp.stderr_buf, rest)
+	}
+	if final && len(lsp.stderr_buf) > 0 {
+		lsp_stderr_emit(editor, lsp, lsp.stderr_buf[:])
+		clear(&lsp.stderr_buf)
+	}
+}
+
+lsp_stderr_emit :: proc(editor: ^Editor, lsp: ^Lsp, raw: []u8) {
+	line := raw
+	if len(line) > 0 && line[len(line) - 1] == '\r' {
+		line = line[:len(line) - 1]
+	}
+	if len(line) == 0 || lsp.stderr_flooded {
+		return
+	}
+	name := lsp_display_name(lsp.server)
+	lsp.stderr_lines += 1
+	if lsp.stderr_lines > LSP_STDERR_MAX_LINES {
+		lsp.stderr_flooded = true
+		editor_log(editor, .Debug, "LSP", fmt.tprintf("%s: further stderr suppressed", name))
+		return
+	}
+	text, truncated := lsp_truncate(string(line), LSP_STDERR_MAX_LINE)
+	if truncated {
+		editor_log(editor, .Debug, "LSP", fmt.tprintf("%s: %s…[truncated]", name, text))
+	} else {
+		editor_log(editor, .Debug, "LSP", fmt.tprintf("%s: %s", name, text))
+	}
+}
+
+lsp_truncate :: proc(s: string, max: int) -> (string, bool) {
+	if len(s) <= max {
+		return s, false
+	}
+	end := max
+	for end > 0 && s[end] & 0xC0 == 0x80 {
+		end -= 1
+	}
+	return s[:end], true
+}
+
 lsp_pump :: proc(editor: ^Editor) -> bool {
 	changed := false
 	for _, lsp in g_lsps {
-		if lsp.state != .Running {
+		if lsp.state == .Failed {
 			continue
 		}
+		lsp_stderr_pump(editor, lsp)
 		fd := posix.FD(os.fd(lsp.stdout))
 		buf: [16384]u8
 		failed := false
@@ -533,12 +632,13 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 
 	if id_v, has_id := obj["id"]; has_id {
 		if id, ok := lsp_num(id_v); ok {
-			if id == lsp.init_id && !lsp.initialized {
-				lsp.initialized = true
+			if id == lsp.init_id && lsp.state == .Starting {
+				lsp.state = .Ready
 				lsp.sync_kind = lsp_sync_kind(obj)
 				lsp_parse_caps(lsp, obj)
 				lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
 				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}}}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE))
+				editor_log(editor, .Debug, "LSP", fmt.tprintf("%s initialized (%s)", lsp_display_name(lsp.server), lsp_caps_summary(lsp)))
 				return true
 			}
 			if p, has := lsp.pending[id]; has {
@@ -559,6 +659,26 @@ lsp_config_for_section :: proc(section: string) -> string {
 		return fmt.tprintf(`{{"diagnosticMode":"%s"}}`, LSP_DIAGNOSTIC_MODE)
 	}
 	return "null"
+}
+
+lsp_caps_summary :: proc(lsp: ^Lsp) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, "sync=")
+	strings.write_string(&sb, "incremental" if lsp.sync_kind == LSP_SYNC_INCREMENTAL else "full")
+	caps := [?]struct{on: bool, name: string} {
+		{lsp.cap_definition, "definition"},
+		{lsp.cap_hover, "hover"},
+		{lsp.cap_format, "format"},
+		{lsp.cap_rename, "rename"},
+		{lsp.cap_completion, "completion"},
+	}
+	for c in caps {
+		if c.on {
+			strings.write_byte(&sb, ' ')
+			strings.write_string(&sb, c.name)
+		}
+	}
+	return strings.to_string(sb)
 }
 
 lsp_parse_caps :: proc(lsp: ^Lsp, obj: json.Object) {
@@ -658,7 +778,7 @@ lsp_handle_diagnostics :: proc(editor: ^Editor, obj: json.Object) -> bool {
 
 lsp_ready :: proc(b: ^Buffer) -> (^Lsp, bool) {
 	lsp, ok := lsp_for(b)
-	if !ok || lsp.state != .Running || !lsp.initialized || !b.lsp_open {
+	if !ok || lsp.state != .Ready || !b.lsp_open {
 		return nil, false
 	}
 	return lsp, true

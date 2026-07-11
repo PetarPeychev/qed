@@ -296,7 +296,14 @@ re-opens LSP).
   (`g_lsps` keyed by server command), one per language; UTF-16 columns converted
   to byte offsets. `didChange` is incremental when the server advertises it. Servers
   auto-start lazily; the *LSP: Restart* command tears the current buffer's server
-  down so the next `lsp_sync` respawns it (crash recovery). Client-initiated
+  down so the next `lsp_sync` respawns it (crash recovery). `LspState` is
+  `Starting`→`Ready`→`Failed` (a server absent from `g_lsps` also reads as starting);
+  the status segment shows the name colored by state — dim + `…` while starting,
+  plain when ready, red + `✗` when failed. Server **stderr** is piped and drained
+  non-blocking in `lsp_pump` (partial lines buffered to their newline, drained again
+  on exit); each line logs as `.Debug` source "LSP" prefixed with the server name,
+  capped at `LSP_STDERR_MAX_LINE` bytes and flood-limited at `LSP_STDERR_MAX_LINES`
+  per server. Spawn + initialize (with capabilities) also log at `.Debug`. Client-initiated
   requests (definition/hover/formatting/rename/completion) are capability-gated off the
   `initialize` result and tracked in a per-server `pending` map keyed by request id;
   the async response is dispatched back by request kind. *Completion* (`completion.odin`)
@@ -539,7 +546,9 @@ workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buf
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
-(config `format_on_save`, toggleable), `LSP: Restart`; git diff gutter (live vs `HEAD`)
+(config `format_on_save`, toggleable), `LSP: Restart`, state-colored status segment
+(dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
+`.Debug` message log; git diff gutter (live vs `HEAD`)
 + optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `git_diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines

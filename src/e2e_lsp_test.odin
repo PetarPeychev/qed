@@ -69,6 +69,8 @@ while True:
     method = msg.get("method")
     mid = msg.get("id")
     if method == "initialize":
+        sys.stderr.buffer.write(b"fake stderr line\n")
+        sys.stderr.buffer.flush()
         reply(mid, {"capabilities": {
             "textDocumentSync": 2,
             "hoverProvider": True,
@@ -194,6 +196,15 @@ pred_two_buffers :: proc(e: ^E2E) -> bool {return len(e.ed.buffers) >= 2}
 pred_def_jump :: proc(e: ^E2E) -> bool {return editor_buffer(&e.ed).cursor.row == 12}
 @(private = "file")
 pred_quit :: proc(e: ^E2E) -> bool {return e.ed.quit}
+@(private = "file")
+pred_stderr :: proc(e: ^E2E) -> bool {
+	for entry in e.ed.log {
+		if entry.level == .Debug && entry.source == "LSP" && strings.contains(entry.text, "fake stderr line") {
+			return true
+		}
+	}
+	return false
+}
 
 e2e_alt :: proc(e: ^E2E, ch: rune) {
 	e2e_step(e, tb2.Event{type = .Key, mod = .Alt, ch = ch})
@@ -352,6 +363,47 @@ e2e_lsp_format_on_save_quit :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_lsp_wait(&e, pred_quit), "quit follows the chained format+save")
 	testing.expect_value(t, e2e_read_disk(e.path), "formatted\nZalpha beta\nmiddle\nxyzzy")
 	testing.expect_value(t, editor_buffer(&e.ed).modified, false)
+}
+
+@(test)
+e2e_lsp_status_segment :: proc(t: ^testing.T) {
+	if !shell_command_exists("python3") {
+		return
+	}
+	e := e2e_lsp_start("alpha beta\nmiddle\nxyzzy")
+	defer e2e_lsp_stop(&e)
+	b := editor_buffer(&e.ed)
+
+	// No server spawned yet: the segment reads as starting (dim + ellipsis glyph).
+	txt, fg, ok := lsp_status_label(b)
+	testing.expect(t, ok, "a configured server yields a segment")
+	testing.expect(t, strings.contains(txt, ICON_LSP_STARTING), "starting glyph before spawn")
+	testing.expect_value(t, fg, COLOR_PANE_SHORTCUT_FG)
+
+	// One sync spawns the server but nothing pumps the initialize response yet.
+	lsp_sync(&e.ed)
+	txt, fg, ok = lsp_status_label(b)
+	testing.expect(t, strings.contains(txt, ICON_LSP_STARTING), "starting glyph while awaiting initialize")
+	testing.expect_value(t, fg, COLOR_PANE_SHORTCUT_FG)
+
+	// Once diagnostics arrive the server has initialized: plain name, no glyph.
+	testing.expect(t, e2e_lsp_wait(&e, pred_diags), "server should become ready")
+	txt, fg, ok = lsp_status_label(b)
+	testing.expect(t, !strings.contains(txt, ICON_LSP_STARTING), "no starting glyph once ready")
+	testing.expect(t, !strings.contains(txt, ICON_LSP_FAILED), "not failed once ready")
+	testing.expect_value(t, fg, COLOR_PANE_FG)
+}
+
+@(test)
+e2e_lsp_stderr_log :: proc(t: ^testing.T) {
+	if !shell_command_exists("python3") {
+		return
+	}
+	e := e2e_lsp_start("alpha beta\nmiddle\nxyzzy")
+	defer e2e_lsp_stop(&e)
+
+	testing.expect(t, e2e_lsp_wait(&e, pred_diags), "server should be ready")
+	testing.expect(t, e2e_lsp_wait(&e, pred_stderr), "stderr line lands in the ring as Debug source LSP")
 }
 
 @(test)

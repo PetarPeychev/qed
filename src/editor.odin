@@ -1429,6 +1429,8 @@ editor_render_status :: proc(editor: ^Editor) {
 	full_w := int(tb2.width())
 	_, h := editor_viewport(editor)
 	status, right: string
+	lsp_seg := ""
+	lsp_fg := COLOR_PANE_FG
 	if editor.welcome {
 		status = fmt.tprintf(" %s", editor.working_root)
 		right = fmt.tprintf("qed %s", VERSION)
@@ -1444,8 +1446,10 @@ editor_render_status :: proc(editor: ^Editor) {
 		right = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name)
 		if b.big {
 			right = fmt.tprintf("%s  big", right)
-		} else if lsp := lsp_status_label(b); lsp != "" {
-			right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_LSP, lsp)
+		} else if label, fg, ok := lsp_status_label(b); ok {
+			lsp_seg = fmt.tprintf("%s %s", ICON_STATUS_LSP, label)
+			lsp_fg = fg
+			right = fmt.tprintf("%s  %s", right, lsp_seg)
 		}
 		right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_INDENT, indent)
 		if n := len(editor.llm.requests); n > 0 {
@@ -1467,8 +1471,15 @@ editor_render_status :: proc(editor: ^Editor) {
 	}
 	editor_render_row(0, h, full_w, status, COLOR_PANE_FG, COLOR_PANE_BG)
 	right_w := visual_width(transmute([]u8)right)
+	right_x := max(0, full_w - right_w - 1)
 	right_cstr := strings.clone_to_cstring(right, context.temp_allocator)
-	tb2.print(i32(max(0, full_w - right_w - 1)), i32(h), COLOR_PANE_FG, COLOR_PANE_BG, right_cstr)
+	tb2.print(i32(right_x), i32(h), COLOR_PANE_FG, COLOR_PANE_BG, right_cstr)
+	if lsp_seg != "" && lsp_fg != COLOR_PANE_FG {
+		if off := strings.index(right, lsp_seg); off >= 0 {
+			seg_x := right_x + visual_width(transmute([]u8)right[:off])
+			tb2.print(i32(seg_x), i32(h), lsp_fg, COLOR_PANE_BG, strings.clone_to_cstring(lsp_seg, context.temp_allocator))
+		}
+	}
 	message_fg := COLOR_FG
 	#partial switch editor.message_level {
 	case .Warn:
