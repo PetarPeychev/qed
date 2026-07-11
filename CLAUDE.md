@@ -54,7 +54,11 @@ is `v0.MINOR.PATCH` — **minor** for a feature, **patch** for a fix; `v1.0.0` i
 reserved for the first stable daily-driver build (README/manual, language
 support, config). A pushed `v*` tag runs build **and** tests before it packages,
 so a released binary is always green. (Docs-only / refactor pushes that ship no
-user-visible change don't need a tag.)
+user-visible change don't need a tag.) The **tag annotation is the release
+notes** (the workflow publishes it as the GitHub release body): full-sentence
+markdown bullets (1–3 sentences each), exactly one bullet per change, plus a
+leading summary sentence when the release has a common theme. Never push more
+than 3 tags in one `git push` — GitHub silently skips the workflows.
 
 ## Build & run
 
