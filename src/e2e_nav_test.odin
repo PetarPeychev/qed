@@ -743,3 +743,66 @@ e2e_nav_status_and_message :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, !strings.contains(e2e_row(&e, message_y), "No earlier position"), "message clears on next input")
 }
+
+@(test)
+e2e_nav_filetree_toggle_reopens :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree")
+	nav_alt(&e, 'f')
+	testing.expect(t, !e.ed.filetree.active, "Alt+f again closes it")
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "Alt+f reopens it")
+}
+
+@(test)
+e2e_nav_bufswitch_alt_e_toggles_ctrl_e_inert :: proc(t: ^testing.T) {
+	e := e2e_start("first buffer")
+	defer e2e_stop(&e)
+
+	path2 := e2e_mouse_scratch(".txt")
+	defer {
+		os.remove(path2)
+		delete(path2)
+	}
+	_ = os.write_entire_file(path2, transmute([]u8)string("second buffer"))
+	editor_open_path(&e.ed, path2)
+
+	nav_alt(&e, 'e')
+	testing.expect(t, e.ed.bufswitch.active, "Alt+e (the configured bind) opens the switcher")
+
+	e2e_key(&e, .Ctrl_E)
+	testing.expect(t, e.ed.bufswitch.active, "Ctrl+E is not the configured bind, so it no longer closes it")
+
+	nav_alt(&e, 'e')
+	testing.expect(t, !e.ed.bufswitch.active, "Alt+e again closes it")
+}
+
+@(test)
+e2e_nav_filetree_rebound_bind_toggles :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	idx := -1
+	for cmd, i in commands {
+		if cmd.name == "File Tree" {
+			idx = i
+			break
+		}
+	}
+	testing.expect(t, idx >= 0, "command exists in the table")
+	saved := commands[idx].alt_ch
+	commands[idx].alt_ch = 'z'
+	defer commands[idx].alt_ch = saved
+
+	nav_alt(&e, 'z')
+	testing.expect(t, e.ed.filetree.active, "rebound chord opens the pane")
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "the old chord no longer closes it")
+	nav_alt(&e, 'z')
+	testing.expect(t, !e.ed.filetree.active, "rebound chord closes it")
+	nav_alt(&e, 'f')
+	testing.expect(t, !e.ed.filetree.active, "the old chord no longer opens it")
+}

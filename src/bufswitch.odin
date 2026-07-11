@@ -106,8 +106,12 @@ bufswitch_jump_number :: proc(editor: ^Editor, ch: rune) {
 
 bufswitch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.bufswitch
+	if command_matches(ev, "Switch Buffer") {
+		bufswitch_close(editor)
+		return
+	}
 	#partial switch ev.key {
-	case .Esc, .Ctrl_E:
+	case .Esc:
 		bufswitch_close(editor)
 	case .Enter:
 		bufswitch_select(editor)

@@ -165,8 +165,7 @@ projsearch_execute :: proc(editor: ^Editor) {
 
 projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.projsearch
-	alt := ev_alt(ev)
-	if alt && ev.ch == 'F' {
+	if command_matches(ev, "Find in Files") {
 		projsearch_close(editor)
 		return
 	}

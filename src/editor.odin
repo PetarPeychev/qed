@@ -290,16 +290,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	if editor.welcome {
 		if ev.type == .Key {
-			alt := ev_alt(ev)
-			if alt && ev.ch == 'F' {
+			if command_matches(ev, "Find in Files") {
 				projsearch_open(editor)
 				return
 			}
-			if alt && ev.ch == 'f' {
+			if command_matches(ev, "File Tree") {
 				filetree_open(editor)
 				return
 			}
-			if alt && ev.ch == 't' {
+			if command_matches(ev, "Terminal: Toggle") {
 				term_toggle(editor)
 				return
 			}
@@ -307,11 +306,15 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				logview_open(editor)
 				return
 			}
-			#partial switch ev.key {
-			case .Ctrl_Q:
-				editor_request_quit(editor)
-			case .Ctrl_O:
+			if command_matches(ev, "Open File") {
 				picker_open(editor)
+				return
+			}
+			if command_matches(ev, "Quit") {
+				editor_request_quit(editor)
+				return
+			}
+			#partial switch ev.key {
 			case .Ctrl_P:
 				palette_open(editor)
 			}

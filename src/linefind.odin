@@ -154,8 +154,12 @@ linefind_execute :: proc(editor: ^Editor) {
 
 linefind_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
+	if command_matches(ev, "Find Line") {
+		linefind_close(editor)
+		return
+	}
 	#partial switch ev.key {
-	case .Esc, .Ctrl_G:
+	case .Esc:
 		linefind_close(editor)
 	case .Enter:
 		linefind_execute(editor)

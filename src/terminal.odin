@@ -282,7 +282,13 @@ term_mark_exited :: proc(editor: ^Editor) {
 term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.terminal
 	alt := ev_alt(ev)
-	if alt && (ev.ch == 't' || ev.ch == 'T') {
+	swapped := ev
+	if ev.ch == 't' {
+		swapped.ch = 'T'
+	} else if ev.ch == 'T' {
+		swapped.ch = 't'
+	}
+	if command_matches(ev, "Terminal: Toggle") || command_matches(swapped, "Terminal: Toggle") {
 		t.active = false
 		return
 	}

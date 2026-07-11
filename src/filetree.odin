@@ -795,7 +795,7 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_prompt_key(editor, ev)
 		return
 	}
-	if ev_alt(ev) && ev.ch == 'f' {
+	if command_matches(ev, "File Tree") {
 		filetree_close(editor)
 		return
 	}

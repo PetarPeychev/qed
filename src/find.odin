@@ -244,19 +244,21 @@ find_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		return
 	}
-	#partial switch ev.key {
-	case .Esc:
-		find_close(editor)
-		return
-	case .Ctrl_F:
+	if command_matches(ev, "Find") {
 		f.focus_replace = false
 		textfield_select_all(&f.field)
 		return
-	case .Ctrl_H:
+	}
+	if command_matches(ev, "Replace") {
 		f.replacing = !f.replacing
 		if !f.replacing {
 			f.focus_replace = false
 		}
+		return
+	}
+	#partial switch ev.key {
+	case .Esc:
+		find_close(editor)
 		return
 	case .Ctrl_Z:
 		cmd_undo(editor)
