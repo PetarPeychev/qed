@@ -160,6 +160,20 @@ selection_range :: proc(b: ^Buffer) -> (from, to: Cursor, ok: bool) {
 	return b.cursor, anchor, true
 }
 
+selection_single_line :: proc(b: ^Buffer) -> (text: string, ok: bool) {
+	from, to, sel := selection_range(b)
+	if !sel || from.row != to.row {
+		return "", false
+	}
+	s := string(b.lines[from.row].text[from.col:to.col])
+	for i in 0 ..< len(s) {
+		if s[i] != ' ' && s[i] != '\t' {
+			return s, true
+		}
+	}
+	return "", false
+}
+
 // Last row a selection touches for whole-line edits: an endpoint at col 0 of a
 // later row selects the line break, not that row's content.
 selection_last_row :: proc(from, to: Cursor) -> int {

@@ -281,6 +281,89 @@ e2e_nav_find_replace :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_find_selection_prefill :: proc(t: ^testing.T) {
+	e := e2e_start("foo bar foo\nbaz")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	b.selection = Cursor{0, 0}
+	b.cursor = {0, 3} // single-line selection of "foo"
+
+	e2e_key(&e, .Ctrl_F)
+	f := &e.ed.find
+	testing.expect_value(t, textfield_str(&f.field), "foo")
+	testing.expect_value(t, len(f.matches), 2) // pre-fill highlights matches on open
+	testing.expect_value(t, f.field.anchor, 0) // fully selected
+	testing.expect_value(t, f.field.caret, 3)
+
+	// Fully selected: one keystroke replaces the whole pre-filled query.
+	e2e_type(&e, "z")
+	testing.expect_value(t, textfield_str(&f.field), "z")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_find_selection_no_prefill :: proc(t: ^testing.T) {
+	e := e2e_start("aa   bb\ncc")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+
+	// A multi-line selection does not pre-fill.
+	b.selection = Cursor{0, 0}
+	b.cursor = {1, 2}
+	e2e_key(&e, .Ctrl_F)
+	testing.expect_value(t, textfield_str(&e.ed.find.field), "")
+	e2e_key(&e, .Esc)
+
+	// A whitespace-only selection counts as no selection.
+	b.selection = Cursor{0, 2}
+	b.cursor = {0, 5}
+	e2e_key(&e, .Ctrl_F)
+	testing.expect_value(t, textfield_str(&e.ed.find.field), "")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_line_jump_selection_prefill :: proc(t: ^testing.T) {
+	e := e2e_start("alpha\nbeta\nalpha2\nalpha3")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	b.selection = Cursor{0, 0}
+	b.cursor = {0, 5} // select "alpha"
+
+	e2e_key(&e, .Ctrl_G)
+	p := &e.ed.linefind
+	testing.expect_value(t, textfield_str(&p.field), "alpha")
+	testing.expect_value(t, len(p.matches), 3) // filter ran on the pre-fill
+	testing.expect_value(t, p.field.anchor, 0) // fully selected
+	testing.expect_value(t, p.field.caret, 5)
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_project_search_selection_prefill :: proc(t: ^testing.T) {
+	if !shell_command_exists("rg") {
+		return
+	}
+	e := e2e_root_start("needle_xyz here")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	b.selection = Cursor{0, 0}
+	b.cursor = {0, 10} // select "needle_xyz"
+
+	nav_alt(&e, 'F')
+	p := &e.ed.projsearch
+	testing.expect_value(t, textfield_str(&p.field), "needle_xyz")
+	testing.expect(t, len(p.matches) > 0, "pre-filled query runs the search on open")
+	testing.expect_value(t, p.field.anchor, 0) // fully selected
+	testing.expect_value(t, p.field.caret, 10)
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_nav_line_jump :: proc(t: ^testing.T) {
 	e := e2e_start("alpha\nbeta\ngamma\nalpha2\ndelta\nalpha3")
 	defer e2e_stop(&e)

@@ -46,8 +46,8 @@ find_begin :: proc(editor: ^Editor, replacing: bool) {
 	f.replacing = replacing
 	f.focus_replace = false
 	f.origin = b.cursor
-	if from, to, ok := selection_range(b); ok && from.row == to.row && to.col > from.col {
-		textfield_set(&f.field, string(b.lines[from.row].text[from.col:to.col]))
+	if text, ok := selection_single_line(b); ok {
+		textfield_set(&f.field, text)
 	}
 	textfield_select_all(&f.field)
 	find_scan(editor)

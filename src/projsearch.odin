@@ -47,6 +47,9 @@ projsearch_open :: proc(editor: ^Editor) {
 		return
 	}
 	p.active = true
+	if text, ok := selection_single_line(editor_buffer(editor)); ok {
+		textfield_set(&p.field, text)
+	}
 	textfield_select_all(&p.field)
 	keep := p.selected
 	projsearch_run(editor)

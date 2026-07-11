@@ -75,10 +75,14 @@ linefind_refilter :: proc(p: ^LineFind) {
 linefind_open :: proc(editor: ^Editor) {
 	p := &editor.linefind
 	p.active = true
-	textfield_select_all(&p.field)
 	editor_set_message(editor, "")
 
 	b := editor_buffer(editor)
+	if text, ok := selection_single_line(b); ok {
+		textfield_set(&p.field, text)
+	}
+	textfield_select_all(&p.field)
+
 	clear(&p.lines)
 	for &line in b.lines {
 		append(&p.lines, string(line.text[:]))
