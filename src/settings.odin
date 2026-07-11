@@ -778,6 +778,56 @@ capture_resolve :: proc(
 	return tb2.Color(u64(base) | style.attrs), true
 }
 
+// Verbose sibling of capture_resolve for the token inspector: appends every
+// composite key tried (in order, up to the hit) to `tried` and reports the color
+// key and final color. `mapped` is whether the capture had a style entry;
+// `resolved` is whether that style's color key also resolved. Not on the paint path.
+capture_resolve_verbose :: proc(
+	caps: map[string]CaptureStyle,
+	colors: map[string]tb2.Color,
+	lang_name, name: string,
+	tried: ^[dynamic]string,
+) -> (
+	color_key: string,
+	color: tb2.Color,
+	attrs: u64,
+	mapped: bool,
+	resolved: bool,
+) {
+	p := name
+	style: CaptureStyle
+	find: for {
+		if lang_name != "" {
+			k := fmt.tprintf("%s/%s", lang_name, p)
+			append(tried, k)
+			if v, ok := caps[k]; ok {
+				style = v
+				mapped = true
+				break find
+			}
+		}
+		append(tried, p)
+		if v, ok := caps[p]; ok {
+			style = v
+			mapped = true
+			break find
+		}
+		dot := strings.last_index_byte(p, '.')
+		if dot < 0 {
+			break
+		}
+		p = p[:dot]
+	}
+	if !mapped {
+		return "", COLOR_FG, 0, false, false
+	}
+	base, cok := colors[style.color_key]
+	if !cok {
+		return style.color_key, COLOR_FG, style.attrs, true, false
+	}
+	return style.color_key, tb2.Color(u64(base) | style.attrs), style.attrs, true, true
+}
+
 Bundled_Theme :: struct {
 	name: string,
 	data: []u8,

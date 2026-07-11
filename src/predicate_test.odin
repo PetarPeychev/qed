@@ -1,6 +1,7 @@
 package main
 
 import "core:slice"
+import "core:strings"
 import "core:testing"
 import ts "lib:tree_sitter"
 
@@ -134,6 +135,64 @@ test_predicate_unknown_is_noop :: proc(t: ^testing.T) {
 	defer delete(mixed)
 	testing.expect(t, pred_has(mixed, "foo"), "known #eq? still enforced with unknown sibling")
 	testing.expect(t, !pred_has(mixed, "bar"), "known #eq? rejects bar despite unknown sibling")
+}
+
+// Runs `query_src` over a C parse of `src` and reports on the first match. The
+// failed predicate's kind + rendered description are captured before teardown
+// (their strings point into the query, freed here). Self-contained.
+@(private = "file")
+pred_first_report :: proc(src, query_src: string) -> (passed: bool, kind: PredKind, desc: string) {
+	lang := ts.tree_sitter_c()
+	parser := ts.parser_new()
+	ts.parser_set_language(parser, lang)
+	tree := ts.parser_parse_string(parser, nil, raw_data(src), u32(len(src)))
+
+	eoff: u32
+	etype: ts.QueryError
+	query := ts.query_new(lang, raw_data(query_src), u32(len(query_src)), &eoff, &etype)
+	preds := query_predicates_build(query)
+
+	cursor := ts.query_cursor_new()
+	ts.query_cursor_exec(cursor, query, ts.tree_root_node(tree))
+	nt := NodeText{src = src}
+	match: ts.QueryMatch
+	report := PredicateReport{passed = true}
+	if ts.query_cursor_next_match(cursor, &match) {
+		report = predicate_report(preds[match.pattern_index], &match, nt)
+	}
+	passed = report.passed
+	if !passed {
+		kind = report.failed.kind
+		desc = strings.clone(predicate_describe(report.failed))
+	}
+
+	ts.query_cursor_delete(cursor)
+	query_predicates_destroy(&preds)
+	ts.query_delete(query)
+	ts.tree_delete(tree)
+	ts.parser_delete(parser)
+	return
+}
+
+@(test)
+test_predicate_report :: proc(t: ^testing.T) {
+	// A lowercase identifier is rejected by @constant's SCREAMING_CASE #match?; the
+	// reporting pass names which predicate did the rejecting.
+	passed, kind, desc := pred_first_report("int foo = 1;", `((identifier) @constant (#match? @constant "^[A-Z][A-Z_]*$"))`)
+	defer delete(desc)
+	testing.expect(t, !passed, "lowercase identifier fails the #match? predicate")
+	testing.expect_value(t, kind, PredKind.Match)
+	testing.expect_value(t, desc, `#match? "^[A-Z][A-Z_]*$"`)
+
+	// An all-caps identifier passes the same predicate: no failure reported.
+	pass, _, _ := pred_first_report("int FOO = 1;", `((identifier) @constant (#match? @constant "^[A-Z][A-Z_]*$"))`)
+	testing.expect(t, pass, "SCREAMING_CASE identifier passes the predicate")
+
+	// #any-of? rejection is described with its value list.
+	anyok, _, anydesc := pred_first_report("int bar;", `((identifier) @c (#any-of? @c "foo" "baz"))`)
+	defer delete(anydesc)
+	testing.expect(t, !anyok, "bar is not in the any-of set")
+	testing.expect_value(t, anydesc, "#any-of? foo baz")
 }
 
 @(test)

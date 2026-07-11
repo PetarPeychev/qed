@@ -64,6 +64,7 @@ Editor :: struct {
 	aiedit:          AiEdit,
 	fim:             Fim,
 	terminal:        Terminal,
+	inspect:         Inspect,
 	headless:        bool,
 }
 
@@ -519,6 +520,13 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Ctrl_P:
 		palette_open(editor)
 		return
+	case .Esc:
+		// Passive inspector close, slotted last: overlays, completion and the FIM
+		// ghost all consume Esc before reaching here, so nothing existing changes.
+		if editor.inspect.active {
+			inspect_close(editor)
+		}
+		return
 	case .Enter:
 		if selection_active(b) {
 			buffer_replace_selection(b, "\n")
@@ -961,6 +969,10 @@ editor_render :: proc(editor: ^Editor) {
 			git_gutter_update(editor_buffer(editor))
 		}
 		editor_render_buffer(editor)
+	}
+
+	if editor.inspect.active && !editor.welcome {
+		inspect_render(editor)
 	}
 
 	for ov in editor_overlays(editor) {

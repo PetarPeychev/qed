@@ -1,5 +1,6 @@
 package main
 
+import "core:os"
 import "core:strings"
 import "core:thread"
 import "lib:tb2"
@@ -56,6 +57,10 @@ g_syntaxes: [Language]Syntax
 
 // A language that ships a grammar failed to compile it; the editor drains this into the message line once.
 g_syntax_error: string
+
+syntax_for :: proc(language: Language) -> ^Syntax {
+	return &g_syntaxes[language]
+}
 
 syntax_ensure :: proc(language: Language) -> bool {
 	s := &g_syntaxes[language]
@@ -119,6 +124,15 @@ syntax_ensure :: proc(language: Language) -> bool {
 }
 
 syntax_load_colors :: proc(s: ^Syntax, lang: Language) {
+	// Heap-backed (like preds / g_captures) so the cache outlives any per-test
+	// allocator: syntax_shutdown frees these centrally, long after the context
+	// allocator that first touched a language has gone.
+	if s.colors == nil {
+		s.colors = make([dynamic]tb2.Color, os.heap_allocator())
+	}
+	if s.paint == nil {
+		s.paint = make([dynamic]bool, os.heap_allocator())
+	}
 	clear(&s.colors)
 	clear(&s.paint)
 	lang_name := LANGUAGES[lang].name

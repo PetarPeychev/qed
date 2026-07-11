@@ -1,6 +1,8 @@
 package main
 
+import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:text/match"
 import "core:text/regex"
 import ts "lib:tree_sitter"
@@ -205,6 +207,81 @@ predicate_pass :: proc(pp: PatternPreds, m: ^ts.QueryMatch, nt: NodeText) -> boo
 		}
 	}
 	return true
+}
+
+PredicateReport :: struct {
+	passed: bool,
+	failed: Predicate,
+}
+
+// Reporting sibling of predicate_pass for the token inspector: returns the first
+// rejecting predicate instead of just a bool. Never on the paint path.
+predicate_report :: proc(pp: PatternPreds, m: ^ts.QueryMatch, nt: NodeText) -> PredicateReport {
+	for p in pp.preds {
+		if !predicate_eval(p, m, nt) {
+			return {passed = false, failed = p}
+		}
+	}
+	return {passed = true}
+}
+
+predicate_describe :: proc(p: Predicate) -> string {
+	name := predicate_name(p.kind)
+	#partial switch p.kind {
+	case .Match, .NotMatch, .AnyMatch, .AnyNotMatch, .LuaMatch, .NotLuaMatch:
+		return fmt.tprintf("#%s \"%s\"", name, p.value)
+	case .Eq, .NotEq, .AnyEq, .AnyNotEq:
+		if p.operand != PRED_NO_CAP {
+			return fmt.tprintf("#%s @…", name)
+		}
+		return fmt.tprintf("#%s \"%s\"", name, p.value)
+	case .AnyOf, .NotAnyOf, .HasParent, .NotHasParent, .HasAncestor, .NotHasAncestor:
+		return fmt.tprintf("#%s %s", name, strings.join(p.values, " ", context.temp_allocator))
+	}
+	return fmt.tprintf("#%s", name)
+}
+
+@(private = "file")
+predicate_name :: proc(kind: PredKind) -> string {
+	switch kind {
+	case .Eq:
+		return "eq?"
+	case .NotEq:
+		return "not-eq?"
+	case .AnyEq:
+		return "any-eq?"
+	case .AnyNotEq:
+		return "any-not-eq?"
+	case .Match:
+		return "match?"
+	case .NotMatch:
+		return "not-match?"
+	case .AnyMatch:
+		return "any-match?"
+	case .AnyNotMatch:
+		return "any-not-match?"
+	case .AnyOf:
+		return "any-of?"
+	case .NotAnyOf:
+		return "not-any-of?"
+	case .LuaMatch:
+		return "lua-match?"
+	case .NotLuaMatch:
+		return "not-lua-match?"
+	case .HasParent:
+		return "has-parent?"
+	case .NotHasParent:
+		return "not-has-parent?"
+	case .HasAncestor:
+		return "has-ancestor?"
+	case .NotHasAncestor:
+		return "not-has-ancestor?"
+	case .Set:
+		return "set!"
+	case .Unknown:
+		return "unknown"
+	}
+	return "unknown"
 }
 
 @(private = "file")

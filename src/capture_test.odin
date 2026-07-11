@@ -88,6 +88,50 @@ test_capture_resolve :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_capture_resolve_verbose :: proc(t: ^testing.T) {
+	caps := make(map[string]CaptureStyle, context.temp_allocator)
+	caps["comment"] = sty("syntax_comment")
+	caps["python/constant"] = sty("syntax_keyword", u64(tb2.Color.Bold))
+	caps["broken"] = sty("nonexistent_key")
+
+	colors := make(map[string]tb2.Color, context.temp_allocator)
+	colors["syntax_comment"] = tb2.Color(0x808080)
+	colors["syntax_keyword"] = tb2.Color(0xffdd33)
+
+	// Prefix fallback records every composite key tried, in order, up to the hit:
+	// rust/comment.documentation, comment.documentation, rust/comment, comment.
+	tried := make([dynamic]string, context.temp_allocator)
+	ck, col, attrs, mapped, resolved := capture_resolve_verbose(caps, colors, "rust", "comment.documentation", &tried)
+	testing.expect(t, mapped && resolved, "resolves through prefix fallback")
+	testing.expect_value(t, ck, "syntax_comment")
+	testing.expect_value(t, col, tb2.Color(0x808080))
+	testing.expect_value(t, attrs, u64(0))
+	testing.expect_value(t, len(tried), 4)
+	testing.expect_value(t, tried[0], "rust/comment.documentation")
+	testing.expect_value(t, tried[len(tried) - 1], "comment")
+
+	// Language-qualified hit on the first step, attrs folded in.
+	t2 := make([dynamic]string, context.temp_allocator)
+	ck2, _, at2, m2, r2 := capture_resolve_verbose(caps, colors, "python", "constant", &t2)
+	testing.expect(t, m2 && r2, "language-qualified constant resolves")
+	testing.expect_value(t, ck2, "syntax_keyword")
+	testing.expect_value(t, at2, u64(tb2.Color.Bold))
+	testing.expect_value(t, len(t2), 1)
+	testing.expect_value(t, t2[0], "python/constant")
+
+	// Mapped capture whose color key does not resolve: mapped but not resolved.
+	t3 := make([dynamic]string, context.temp_allocator)
+	ck3, _, _, m3, r3 := capture_resolve_verbose(caps, colors, "python", "broken", &t3)
+	testing.expect(t, m3 && !r3, "capture with an unresolvable color key is mapped but unresolved")
+	testing.expect_value(t, ck3, "nonexistent_key")
+
+	// A capture with no style entry at all is unmapped.
+	t4 := make([dynamic]string, context.temp_allocator)
+	_, _, _, m4, _ := capture_resolve_verbose(caps, colors, "python", "variable", &t4)
+	testing.expect(t, !m4, "unmapped capture reports mapped=false")
+}
+
+@(test)
 test_parse_capture_style :: proc(t: ^testing.T) {
 	s := parse_capture_style("syntax_keyword bold italic")
 	defer delete(s.color_key, os.heap_allocator())

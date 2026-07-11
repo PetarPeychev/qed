@@ -83,6 +83,7 @@ cmd_toggle_inline_completion :: proc(editor: ^Editor) {
 cmd_change_indent :: proc(editor: ^Editor) {indentpick_open(editor)}
 cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
 cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
+cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
 
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
@@ -126,6 +127,7 @@ commands := [?]Command {
 	{name = "LSP: Next Diagnostic", run = cmd_diag_next},
 	{name = "LSP: Previous Diagnostic", run = cmd_diag_prev},
 	{name = "LSP: Restart", run = cmd_lsp_restart},
+	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
 }
 
 command_for_key :: proc(key: tb2.Key) -> (Command, bool) {

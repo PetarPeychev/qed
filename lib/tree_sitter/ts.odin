@@ -80,6 +80,7 @@ foreign ts {
 	node_parent :: proc(node: Node) -> Node ---
 	node_type :: proc(node: Node) -> cstring ---
 	node_is_null :: proc(node: Node) -> bool ---
+	node_named_descendant_for_point_range :: proc(node: Node, start, end: Point) -> Node ---
 
 	query_new :: proc(language: Language, source: [^]u8, length: u32, error_offset: ^u32, error_type: ^QueryError) -> ^Query ---
 	query_delete :: proc(self: ^Query) ---

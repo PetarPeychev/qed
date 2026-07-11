@@ -76,7 +76,8 @@
     "Toggle Line Wrap": "",
     "LSP: Next Diagnostic": "Alt+>",
     "LSP: Previous Diagnostic": "Alt+<",
-    "LSP: Restart": ""
+    "LSP: Restart": "",
+    "Debug: Inspect Tokens": ""
   },
   "languages": {
     "odin": {
