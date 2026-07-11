@@ -39,9 +39,9 @@ projsearch_destroy :: proc(p: ^ProjSearch) {
 
 projsearch_open :: proc(editor: ^Editor) {
 	p := &editor.projsearch
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	if !shell_command_exists("rg") {
-		editor_set_message(editor, "ripgrep (rg) not found", true)
+		editor_log(editor, .Error, "Find", "ripgrep (rg) not found")
 		projsearch_clear_matches(p)
 		preview_reset(&p.preview)
 		return

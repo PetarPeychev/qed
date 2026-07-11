@@ -21,7 +21,12 @@ Editor :: struct {
 	scroll_col:      int,
 	message:         string,
 	message_store:   [dynamic]u8,
-	message_error:   bool,
+	message_source:  string,
+	message_level:   LogLevel,
+	log:             [dynamic]LogEntry,
+	logview:         LogView,
+	log_file:        ^os.File,
+	log_open:        bool,
 	quit_dialog:     QuitDialog,
 	close_dialog:    CloseDialog,
 	conflict_dialog: ConflictDialog,
@@ -81,6 +86,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		tb2.set_input_mode(.Mouse)
 		tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	}
+	clipboard_headless = headless
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		format_on_save = FORMAT_ON_SAVE,
@@ -88,9 +94,13 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		ensure_final_newline_on_save = ENSURE_FINAL_NEWLINE_ON_SAVE,
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
 		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED},
+		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
 		headless       = headless,
 	}
 	g_diff_view = GIT_DIFF_VIEW
+	if !headless {
+		editor_log_seed(&editor)
+	}
 	editor.config_stamp = buffer_disk_stamp(config_path())
 	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
 	b := buffer_new()
@@ -125,6 +135,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.working_root)
 	delete(editor.paste_buf)
 	delete(editor.message_store)
+	editor_log_destroy(editor)
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
@@ -151,21 +162,13 @@ editor_shutdown :: proc(editor: ^Editor) {
 		delete(g_language_rules)
 		syntax_shutdown()
 		clipboard_shutdown()
+		log_tz_shutdown()
 		tb2.shutdown()
 	}
 }
 
 editor_buffer :: proc(editor: ^Editor) -> ^Buffer {
 	return &editor.buffers[editor.current]
-}
-
-// Copy into owned storage: callers pass temp-allocator strings, and the main
-// loop's free_all would leave editor.message dangling into reused temp memory.
-editor_set_message :: proc(editor: ^Editor, msg: string, is_error := false) {
-	clear(&editor.message_store)
-	append(&editor.message_store, ..transmute([]u8)msg)
-	editor.message = string(editor.message_store[:])
-	editor.message_error = is_error
 }
 
 editor_set_language :: proc(editor: ^Editor, lang: Language) {
@@ -179,7 +182,7 @@ editor_set_language :: proc(editor: ^Editor, lang: Language) {
 	b.language = lang
 	highlight_destroy(&b.hl)
 	b.hl = {}
-	editor_set_message(editor, fmt.tprintf("Language: %s", LANGUAGES[lang].name))
+	editor_log(editor, .Info, "", fmt.tprintf("Language: %s", LANGUAGES[lang].name))
 }
 
 editor_gutter_width :: proc(editor: ^Editor) -> int {
@@ -200,9 +203,10 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
+		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
 		{&editor.picker.active, picker_dispatch_key, picker_render, picker_dispatch_mouse, picker_paste},
@@ -279,6 +283,10 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				term_toggle(editor)
 				return
 			}
+			if command_matches(ev, "Debug: Message Log") {
+				logview_open(editor)
+				return
+			}
 			#partial switch ev.key {
 			case .Ctrl_Q:
 				editor_request_quit(editor)
@@ -315,7 +323,7 @@ editor_paste_route :: proc(editor: ^Editor, text: string) {
 	if editor.welcome {
 		return
 	}
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	buffer_paste(editor_buffer(editor), text)
 	editor_scroll(editor)
 }
@@ -341,7 +349,7 @@ editor_wrap_col :: proc(b: ^Buffer, w, row, sub, gutter, x: int) -> int {
 }
 
 editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	editor.hover_active = false
 	completion_dismiss(editor)
 	fim_dismiss(editor)
@@ -491,7 +499,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		fim_dismiss(editor)
 	}
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	editor.hover_active = false
 	b := editor_buffer(editor)
 	ctrl := ev_ctrl(ev)
@@ -837,7 +845,7 @@ editor_after_save :: proc(editor: ^Editor, b: ^Buffer) {
 		}
 		editor_save_intent_clear(editor)
 		if editor_any_modified(editor) {
-			editor_set_message(editor, "Save failed", true)
+			editor_log(editor, .Error, "", "Save failed")
 		} else {
 			editor.quit = true
 		}
@@ -847,12 +855,12 @@ editor_after_save :: proc(editor: ^Editor, b: ^Buffer) {
 editor_force_save :: proc(editor: ^Editor, b: ^Buffer) {
 	switch buffer_save(b) {
 	case .None:
-		editor_set_message(editor, "Saved")
+		editor_log(editor, .Info, "", "Saved")
 		lsp_did_save(editor, b)
 	case .NoPath:
-		editor_set_message(editor, "No file name", true)
+		editor_log(editor, .Error, "", "No file name")
 	case .WriteError, .RenameError:
-		editor_set_message(editor, "Save failed", true)
+		editor_log(editor, .Error, "", "Save failed")
 	}
 }
 
@@ -862,10 +870,10 @@ editor_reload_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 	case .None:
 		if b == editor_buffer(editor) {
 			editor_scroll(editor)
-			editor_set_message(editor, "Reloaded from disk")
+			editor_log(editor, .Info, "", "Reloaded from disk")
 		}
 	case .FileOpenError, .FileReadError:
-		editor_set_message(editor, "Reload failed", true)
+		editor_log(editor, .Error, "", "Reload failed")
 	}
 }
 
@@ -918,7 +926,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	if message == "" {
 		message = "config.json reloaded"
 	}
-	editor_set_message(editor, message, is_error)
+	editor_log(editor, .Warn if is_error else .Info, "", message)
 	return true
 }
 
@@ -933,7 +941,7 @@ editor_poll_disk :: proc(editor: ^Editor) -> bool {
 			if !b.disk_conflict {
 				b.disk_conflict = true
 				if &b == cur {
-					editor_set_message(editor, "File changed on disk — you have unsaved edits", true)
+					editor_log(editor, .Warn, "", "File changed on disk — you have unsaved edits")
 					changed = true
 				}
 			}
@@ -1020,13 +1028,14 @@ editor_render :: proc(editor: ^Editor) {
 		if !editor_buffer(editor).big {
 			highlight_update(editor_buffer(editor), editor.scroll_row, editor.scroll_row + vh - 1)
 			if g_syntax_error != "" {
-				editor_set_message(editor, fmt.tprintf("syntax: failed to load %s grammar", g_syntax_error), true)
+				editor_log(editor, .Error, "Syntax", fmt.tprintf("failed to load %s grammar", g_syntax_error))
 				g_syntax_error = ""
 			}
 			git_gutter_update(editor_buffer(editor))
 		}
 		editor_render_buffer(editor)
 	}
+	editor_render_status(editor)
 
 	if editor.inspect.active && !editor.welcome {
 		inspect_render(editor)
@@ -1264,7 +1273,6 @@ editor_render_hunk_ghosts :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h
 
 editor_render_buffer :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
-	full_w := int(tb2.width())
 	gutter := editor_gutter_width(editor)
 	w, h := editor_viewport(editor)
 
@@ -1415,12 +1423,35 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		}
 	}
 
-	name := editor_display_path(editor, b.path) if b.path != "" else "[No Name]"
-	status := fmt.tprintf(" %s %s", ICON_STATUS_FILE, name)
-	if b.modified {
-		status = fmt.tprintf("%s %s", status, ICON_MODIFIED)
+}
+
+editor_render_status :: proc(editor: ^Editor) {
+	full_w := int(tb2.width())
+	_, h := editor_viewport(editor)
+	status, right: string
+	if editor.welcome {
+		status = fmt.tprintf(" %s", editor.working_root)
+		right = fmt.tprintf("qed %s", VERSION)
+	} else {
+		b := editor_buffer(editor)
+		name := editor_display_path(editor, b.path) if b.path != "" else "[No Name]"
+		status = fmt.tprintf(" %s %s", ICON_STATUS_FILE, name)
+		if b.modified {
+			status = fmt.tprintf("%s %s", status, ICON_MODIFIED)
+		}
+		status = fmt.tprintf("%s  %d/%d", status, b.cursor.row + 1, len(b.lines))
+		indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
+		right = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name)
+		if b.big {
+			right = fmt.tprintf("%s  big", right)
+		} else if lsp := lsp_status_label(b); lsp != "" {
+			right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_LSP, lsp)
+		}
+		right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_INDENT, indent)
+		if n := len(editor.llm.requests); n > 0 {
+			right = fmt.tprintf("AI:%d  %s", n, right)
+		}
 	}
-	status = fmt.tprintf("%s  %d/%d", status, b.cursor.row + 1, len(b.lines))
 	if editor.gitstat.branch != "" {
 		status = fmt.tprintf("%s  %s %s", status, ICON_STATUS_BRANCH, editor.gitstat.branch)
 		if editor.gitstat.ahead > 0 {
@@ -1435,27 +1466,26 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
 	}
 	editor_render_row(0, h, full_w, status, COLOR_PANE_FG, COLOR_PANE_BG)
-	indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
-	right := fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name)
-	if b.big {
-		right = fmt.tprintf("%s  big", right)
-	} else if lsp := lsp_status_label(b); lsp != "" {
-		right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_LSP, lsp)
-	}
-	right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_INDENT, indent)
-	if n := len(editor.llm.requests); n > 0 {
-		right = fmt.tprintf("AI:%d  %s", n, right)
-	}
 	right_w := visual_width(transmute([]u8)right)
 	right_cstr := strings.clone_to_cstring(right, context.temp_allocator)
 	tb2.print(i32(max(0, full_w - right_w - 1)), i32(h), COLOR_PANE_FG, COLOR_PANE_BG, right_cstr)
-	message_fg := COLOR_ERROR_FG if editor.message_error else COLOR_FG
-	editor_render_row(0, h + 1, full_w, editor.message, message_fg, COLOR_BG)
+	message_fg := COLOR_FG
+	#partial switch editor.message_level {
+	case .Warn:
+		message_fg = COLOR_WARN_FG
+	case .Error:
+		message_fg = COLOR_ERROR_FG
+	}
+	msg := editor.message
+	if editor.message_source != "" && editor.message != "" {
+		msg = fmt.tprintf("%s: %s", editor.message_source, editor.message)
+	}
+	editor_render_row(0, h + 1, full_w, msg, message_fg, COLOR_BG)
 }
 
 editor_render_welcome :: proc(editor: ^Editor) {
 	w := int(tb2.width())
-	h := int(tb2.height())
+	h := max(0, int(tb2.height()) - STATUS_ROWS)
 
 	art := [?]string {
 		"  .g8\"\"8q. `7MM\"\"YMMM`7MM\"\"\"Yb.   ",

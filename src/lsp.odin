@@ -157,7 +157,7 @@ lsp_start :: proc(editor: ^Editor, server: string) -> ^Lsp {
 		os.close(in_w)
 		os.close(out_r)
 		lsp.state = .Failed
-		editor_set_message(editor, fmt.tprintf("LSP: failed to start %s", lsp_display_name(server)), true)
+		editor_log(editor, .Error, "LSP", fmt.tprintf("failed to start %s", lsp_display_name(server)))
 		return lsp
 	}
 
@@ -223,7 +223,7 @@ lsp_restart :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	server := LANGUAGES[b.language].lsp_server
 	if server == "" {
-		editor_set_message(editor, "No language server for this buffer", true)
+		editor_log(editor, .Error, "LSP", "No language server for this buffer")
 		return
 	}
 	name := lsp_display_name(server)
@@ -242,7 +242,7 @@ lsp_restart :: proc(editor: ^Editor) {
 			}
 		}
 	}
-	editor_set_message(editor, fmt.tprintf("LSP: restarting %s", name))
+	editor_log(editor, .Info, "LSP", fmt.tprintf("restarting %s", name))
 }
 
 lsp_format_pending :: proc() -> bool {
@@ -285,7 +285,7 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 	for path in save_paths {
 		editor_save_path(editor, path)
 	}
-	editor_set_message(editor, fmt.tprintf("LSP: %s stopped", lsp_display_name(lsp.server)), true)
+	editor_log(editor, .Error, "LSP", fmt.tprintf("%s stopped", lsp_display_name(lsp.server)))
 }
 
 lsp_send :: proc(editor: ^Editor, lsp: ^Lsp, body: string) {
@@ -684,16 +684,16 @@ lsp_pending_add :: proc(lsp: ^Lsp, kind: LspRequest, b: ^Buffer) -> int {
 lsp_definition :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if LANGUAGES[b.language].lsp_server == "" {
-		editor_set_message(editor, "No language server for this buffer", true)
+		editor_log(editor, .Error, "LSP", "No language server for this buffer")
 		return
 	}
 	lsp, ok := lsp_ready(b)
 	if !ok {
-		editor_set_message(editor, "Language server not ready", true)
+		editor_log(editor, .Error, "LSP", "Language server not ready")
 		return
 	}
 	if !lsp.cap_definition {
-		editor_set_message(editor, "Server has no go-to-definition", true)
+		editor_log(editor, .Error, "LSP", "Server has no go-to-definition")
 		return
 	}
 	lsp_ensure_synced(editor, b)
@@ -715,16 +715,16 @@ lsp_definition :: proc(editor: ^Editor) {
 lsp_hover :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if LANGUAGES[b.language].lsp_server == "" {
-		editor_set_message(editor, "No language server for this buffer", true)
+		editor_log(editor, .Error, "LSP", "No language server for this buffer")
 		return
 	}
 	lsp, ok := lsp_ready(b)
 	if !ok {
-		editor_set_message(editor, "Language server not ready", true)
+		editor_log(editor, .Error, "LSP", "Language server not ready")
 		return
 	}
 	if !lsp.cap_hover {
-		editor_set_message(editor, "Server has no hover", true)
+		editor_log(editor, .Error, "LSP", "Server has no hover")
 		return
 	}
 	lsp_ensure_synced(editor, b)
@@ -745,16 +745,16 @@ lsp_hover :: proc(editor: ^Editor) {
 
 lsp_rename_ready :: proc(editor: ^Editor, b: ^Buffer) -> (^Lsp, bool) {
 	if LANGUAGES[b.language].lsp_server == "" {
-		editor_set_message(editor, "No language server for this buffer", true)
+		editor_log(editor, .Error, "LSP", "No language server for this buffer")
 		return nil, false
 	}
 	lsp, ok := lsp_ready(b)
 	if !ok {
-		editor_set_message(editor, "Language server not ready", true)
+		editor_log(editor, .Error, "LSP", "Language server not ready")
 		return nil, false
 	}
 	if !lsp.cap_rename {
-		editor_set_message(editor, "Server has no rename", true)
+		editor_log(editor, .Error, "Rename", "Server has no rename")
 		return nil, false
 	}
 	return lsp, true
@@ -786,7 +786,7 @@ lsp_rename_send :: proc(editor: ^Editor, new_name: string) {
 lsp_apply_rename :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	result, ok := obj["result"].(json.Object)
 	if !ok {
-		editor_set_message(editor, "Cannot rename symbol", true)
+		editor_log(editor, .Error, "Rename", "Cannot rename symbol")
 		return true
 	}
 	files := 0
@@ -822,16 +822,16 @@ lsp_apply_rename :: proc(editor: ^Editor, obj: json.Object) -> bool {
 		}
 	}
 	if files == 0 {
-		editor_set_message(editor, "No rename changes")
+		editor_log(editor, .Info, "Rename", "No rename changes")
 		return true
 	}
 	if touched_current {
 		editor_scroll(editor)
 	}
 	if files < total {
-		editor_set_message(editor, fmt.tprintf("Renamed in %d/%d files (rest unreadable)", files, total), true)
+		editor_log(editor, .Warn, "Rename", fmt.tprintf("Renamed in %d/%d files (rest unreadable)", files, total))
 	} else {
-		editor_set_message(editor, fmt.tprintf("Renamed in %d file%s", files, "" if files == 1 else "s"))
+		editor_log(editor, .Info, "Rename", fmt.tprintf("Renamed in %d file%s", files, "" if files == 1 else "s"))
 	}
 	return true
 }
@@ -839,11 +839,11 @@ lsp_apply_rename :: proc(editor: ^Editor, obj: json.Object) -> bool {
 lsp_format :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if LANGUAGES[b.language].lsp_server == "" {
-		editor_set_message(editor, "No language server for this buffer", true)
+		editor_log(editor, .Error, "LSP", "No language server for this buffer")
 		return
 	}
 	if !lsp_send_format(editor, b, .Format) {
-		editor_set_message(editor, "Formatting not available", true)
+		editor_log(editor, .Error, "Format", "Formatting not available")
 	}
 }
 
@@ -871,7 +871,7 @@ lsp_send_format :: proc(editor: ^Editor, b: ^Buffer, kind: LspRequest) -> bool {
 lsp_handle_response :: proc(editor: ^Editor, p: LspPending, obj: json.Object) -> bool {
 	if e, has := obj["error"].(json.Object); has {
 		msg := e["message"].(string) or_else "request failed"
-		editor_set_message(editor, fmt.tprintf("LSP: %s", msg), true)
+		editor_log(editor, .Error, "LSP", msg)
 		if p.kind == .FormatOnSave {
 			editor_save_path(editor, p.path)
 		}
@@ -920,7 +920,7 @@ lsp_apply_definition :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	uri, rng, ok := lsp_definition_target(obj["result"])
 	start, sok := rng["start"].(json.Object)
 	if !ok || !sok {
-		editor_set_message(editor, "No definition found")
+		editor_log(editor, .Info, "LSP", "No definition found")
 		return true
 	}
 	path := lsp_uri_to_path(uri)
@@ -968,7 +968,7 @@ lsp_apply_hover :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	}
 	text = strings.trim_space(text)
 	if text == "" {
-		editor_set_message(editor, "No hover info")
+		editor_log(editor, .Info, "LSP", "No hover info")
 		return true
 	}
 	clear(&editor.hover)
@@ -987,7 +987,7 @@ lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object, save_
 		if save_after {
 			editor_save_path(editor, p.path)
 		} else {
-			editor_set_message(editor, "Format skipped: buffer changed", true)
+			editor_log(editor, .Warn, "Format", "skipped: buffer changed")
 		}
 		return true
 	}
@@ -1007,9 +1007,9 @@ lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object, save_
 	if save_after {
 		editor_save_path(editor, p.path)
 	} else if applied {
-		editor_set_message(editor, "Formatted")
+		editor_log(editor, .Info, "Format", "Formatted")
 	} else {
-		editor_set_message(editor, "No formatting changes")
+		editor_log(editor, .Info, "Format", "No formatting changes")
 	}
 	return true
 }
@@ -1056,7 +1056,7 @@ cursor_before :: proc(a, b: Cursor) -> bool {
 diag_goto :: proc(editor: ^Editor, dir: int) {
 	b := editor_buffer(editor)
 	if len(b.diags) == 0 {
-		editor_set_message(editor, "No diagnostics")
+		editor_log(editor, .Info, "LSP", "No diagnostics")
 		return
 	}
 	cur := b.cursor

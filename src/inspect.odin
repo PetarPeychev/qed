@@ -18,7 +18,7 @@ InspectLine :: struct {
 
 inspect_toggle :: proc(editor: ^Editor) {
 	editor.inspect.active = !editor.inspect.active
-	editor_set_message(editor, fmt.tprintf("Inspect tokens: %s", "on" if editor.inspect.active else "off"))
+	editor_log(editor, .Info, "", fmt.tprintf("Inspect tokens: %s", "on" if editor.inspect.active else "off"))
 }
 
 inspect_close :: proc(editor: ^Editor) {

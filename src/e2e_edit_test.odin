@@ -303,6 +303,30 @@ e2e_clipboard :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_clipboard_headless_never_spawns :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	// Even with a real tool selected, the headless gate routes every clipboard call to
+	// the in-process register — no subprocess spawn (xclip would daemonize and hang the
+	// suite). This is the choke-point guard shared by all clipboard callers.
+	saved := clipboard_tool
+	saved_reg := clipboard_register
+	clipboard_tool = .Xclip
+	clipboard_register = ""
+	defer {
+		delete(clipboard_register)
+		clipboard_register = saved_reg
+		clipboard_tool = saved
+	}
+	testing.expect(t, clipboard_headless, "headless init sets the clipboard gate")
+
+	clipboard_set("qed_gate")
+	testing.expect_value(t, clipboard_register, "qed_gate")
+	got := clipboard_get(context.temp_allocator)
+	testing.expect_value(t, got, "qed_gate")
+}
+
+@(test)
 e2e_clipboard_whole_line :: proc(t: ^testing.T) {
 	e := e2e_start("aaa\nbbb")
 	defer e2e_stop(&e)

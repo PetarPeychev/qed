@@ -129,7 +129,7 @@ fim_request :: proc(editor: ^Editor) {
 		fim_log("request skipped: $%s empty", LLM_COMPLETION_API_KEY_ENV)
 		if !f.warned {
 			f.warned = true
-			editor_set_message(editor, fmt.tprintf("Inline completion: $%s is not set", LLM_COMPLETION_API_KEY_ENV), true)
+			editor_log(editor, .Warn, "", fmt.tprintf("Inline completion: $%s is not set", LLM_COMPLETION_API_KEY_ENV))
 		}
 		return
 	}

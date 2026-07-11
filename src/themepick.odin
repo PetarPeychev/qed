@@ -23,7 +23,7 @@ themepick_open :: proc(editor: ^Editor) {
 	tp := &editor.themepick
 	tp.active = true
 	fuzzy_list_reset(&tp.list)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 
 	for n in tp.names {
 		delete(n)
@@ -77,7 +77,7 @@ themepick_commit :: proc(editor: ^Editor) {
 	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
 	msg := fmt.tprintf("Theme: %s", name)
 	themepick_close(editor)
-	editor_set_message(editor, msg)
+	editor_log(editor, .Info, "", msg)
 }
 
 themepick_cancel :: proc(editor: ^Editor) {

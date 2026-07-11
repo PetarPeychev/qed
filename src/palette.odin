@@ -54,22 +54,22 @@ cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
 
 cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 	editor.format_on_save = !editor.format_on_save
-	editor_set_message(editor, fmt.tprintf("Format on save: %s", "on" if editor.format_on_save else "off"))
+	editor_log(editor, .Info, "", fmt.tprintf("Format on save: %s", "on" if editor.format_on_save else "off"))
 }
 
 cmd_toggle_trim_whitespace_on_save :: proc(editor: ^Editor) {
 	editor.trim_trailing_whitespace_on_save = !editor.trim_trailing_whitespace_on_save
-	editor_set_message(editor, fmt.tprintf("Trim whitespace on save: %s", "on" if editor.trim_trailing_whitespace_on_save else "off"))
+	editor_log(editor, .Info, "", fmt.tprintf("Trim whitespace on save: %s", "on" if editor.trim_trailing_whitespace_on_save else "off"))
 }
 
 cmd_toggle_final_newline_on_save :: proc(editor: ^Editor) {
 	editor.ensure_final_newline_on_save = !editor.ensure_final_newline_on_save
-	editor_set_message(editor, fmt.tprintf("Final newline on save: %s", "on" if editor.ensure_final_newline_on_save else "off"))
+	editor_log(editor, .Info, "", fmt.tprintf("Final newline on save: %s", "on" if editor.ensure_final_newline_on_save else "off"))
 }
 
 cmd_toggle_diff_view :: proc(editor: ^Editor) {
 	g_diff_view = !g_diff_view
-	editor_set_message(editor, fmt.tprintf("Diff view: %s", "on" if g_diff_view else "off"))
+	editor_log(editor, .Info, "", fmt.tprintf("Diff view: %s", "on" if g_diff_view else "off"))
 }
 
 cmd_toggle_line_wrap :: proc(editor: ^Editor) {
@@ -78,7 +78,7 @@ cmd_toggle_line_wrap :: proc(editor: ^Editor) {
 	editor.scroll_col = 0
 	editor.scroll_sub = 0
 	editor_scroll(editor)
-	editor_set_message(editor, fmt.tprintf("Line wrap: %s", "on" if b.wrap else "off"))
+	editor_log(editor, .Info, "", fmt.tprintf("Line wrap: %s", "on" if b.wrap else "off"))
 }
 
 cmd_toggle_inline_completion :: proc(editor: ^Editor) {
@@ -87,13 +87,14 @@ cmd_toggle_inline_completion :: proc(editor: ^Editor) {
 	if !editor.fim.enabled {
 		fim_dismiss(editor)
 	}
-	editor_set_message(editor, fmt.tprintf("Inline completion: %s", "on" if editor.fim.enabled else "off"))
+	editor_log(editor, .Info, "", fmt.tprintf("Inline completion: %s", "on" if editor.fim.enabled else "off"))
 }
 
 cmd_change_indent :: proc(editor: ^Editor) {indentpick_open(editor)}
 cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
 cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
+cmd_message_log :: proc(editor: ^Editor) {logview_open(editor)}
 
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
@@ -140,6 +141,7 @@ commands := [?]Command {
 	{name = "LSP: Previous Diagnostic", run = cmd_diag_prev},
 	{name = "LSP: Restart", run = cmd_lsp_restart},
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
+	{name = "Debug: Message Log", run = cmd_message_log},
 }
 
 command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
@@ -160,6 +162,19 @@ command_for_alt :: proc(ch: rune) -> (Command, bool) {
 	return {}, false
 }
 
+command_matches :: proc(ev: tb2.Event, name: string) -> bool {
+	if ev_alt(ev) && ev.ch != 0 {
+		if cmd, ok := command_for_alt(ev.ch); ok {
+			return cmd.name == name
+		}
+		return false
+	}
+	if cmd, ok := command_for_key(ev.key); ok {
+		return cmd.name == name
+	}
+	return false
+}
+
 Palette :: struct {
 	using list: FuzzyList,
 	names:      [dynamic]string,
@@ -174,7 +189,7 @@ palette_open :: proc(editor: ^Editor) {
 	p := &editor.palette
 	p.active = true
 	fuzzy_list_reset(&p.list)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	clear(&p.names)
 	for cmd in commands {
 		append(&p.names, cmd.name)

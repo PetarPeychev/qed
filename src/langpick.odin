@@ -18,7 +18,7 @@ langpick_open :: proc(editor: ^Editor) {
 	lp := &editor.langpick
 	lp.active = true
 	fuzzy_list_reset(&lp.list)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	clear(&lp.names)
 	clear(&lp.langs)
 	for info, lang in LANGUAGES {

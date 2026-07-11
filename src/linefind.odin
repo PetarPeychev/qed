@@ -75,7 +75,7 @@ linefind_refilter :: proc(p: ^LineFind) {
 linefind_open :: proc(editor: ^Editor) {
 	p := &editor.linefind
 	p.active = true
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 
 	b := editor_buffer(editor)
 	if text, ok := selection_single_line(b); ok {

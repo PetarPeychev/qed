@@ -98,9 +98,22 @@ dialog (`MergeDialog`, the shared `dialog_*` primitive); cursor outside jumps to
 block. Resolve deletes the marker/side rows bottom-up as one undo group (`merge_resolve`).
 
 Message line clears on the next input event (no timers); an active interactive
-prompt owns the line + input until it resolves. All writes go through
-`editor_set_message`, which copies into owned storage — a raw `tprintf` string
-would dangle once the per-frame `temp_allocator` is freed. Truecolor output; colors
+prompt owns the line + input until it resolves. All user-facing messages go through
+`editor_log(editor, level, source, msg, show)` (`log.odin`): it appends a `LogEntry`
+to a capped in-memory ring (`LOG_MAX`), appends a plain-text line to the disk log,
+and (when `show`) sets the message line — copied into owned storage, since a raw
+`tprintf` string would dangle once the per-frame `temp_allocator` is freed. `source`
+is a short subsystem tag ("LSP", "Format", …; `""` renders bare); the message line
+draws `Source: text` and colours by level — `.Info` → `COLOR_FG`, `.Warn` →
+`COLOR_WARN_FG`, `.Error` → `COLOR_ERROR_FG`. `.Debug` entries are always log-only
+(never touch the line). `editor_clear_message` (or an empty `msg`) blanks the line and
+is never logged. The disk log lives at `$XDG_STATE_HOME/qed/qed.log` (append, flushed
+per write, rotated to `qed.log.old` past 1 MB, session-start marker with version);
+disk logging is skipped when `headless`. *Debug: Message Log* (`Alt+l`) opens a
+floating pane over the ring — timestamped rows coloured by level, sticks to the
+newest, arrow/wheel scroll + select, `Ctrl+C` copies the selected entry, and a
+file-tree-style footer whose `d`/`i`/`w`/`e` keys toggle per-level visibility
+(Debug off by default, persisted for the session). Truecolor output; colors
 (`COLOR_*`), UI glyphs (`ICON_*`), tint strengths (`*_TINT`) and the syntax
 `captures` mapping come from the active theme — a JSON file with
 `colors`/`captures`/`icons`/`tints` sections, hot-reloaded like config.json.
@@ -400,7 +413,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
@@ -452,7 +465,9 @@ pairs (brackets/quotes/backtick: surround selection, type-over, backspace-delete
 Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default on,
 *Toggle Line Wrap*; visual-row cursor motion + sub-row scroll; wraps ghost-text too),
 line-number + git gutter, mouse (position/drag/wheel/multi-click,
-drag auto-scroll), status + message line (relative path, git branch + ahead/behind, segment icons), welcome screen, quit guard across
+drag auto-scroll), status + message line (relative path, git branch + ahead/behind, segment icons),
+structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
+level-coloured line, *Debug: Message Log* pane `Alt+l` with per-level filters), welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette, fuzzy file-open +
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
 buffers in stable order + digit instant-jump on empty query, side preview of the

@@ -17,7 +17,7 @@ aiedit_open :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	from, to, ok := selection_range(b)
 	if !ok {
-		editor_set_message(editor, "AI edit: select a block first", true)
+		editor_log(editor, .Error, "", "AI edit: select a block first")
 		return
 	}
 	a := &editor.aiedit
@@ -25,7 +25,7 @@ aiedit_open :: proc(editor: ^Editor) {
 	a.from = from
 	a.to = to
 	textfield_reset(&a.field)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 }
 
 aiedit_close :: proc(editor: ^Editor) {
@@ -38,7 +38,7 @@ aiedit_submit :: proc(editor: ^Editor) {
 	from, to := a.from, a.to
 	aiedit_close(editor)
 	if len(instruction) == 0 {
-		editor_set_message(editor, "AI edit: empty instruction", true)
+		editor_log(editor, .Error, "", "AI edit: empty instruction")
 		return
 	}
 	llm_chat_send(editor, instruction, from, to)

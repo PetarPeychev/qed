@@ -235,7 +235,7 @@ cmd_merge_resolve :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	conflicts := merge_scan(b)
 	if len(conflicts) == 0 {
-		editor_set_message(editor, "No merge conflicts")
+		editor_log(editor, .Info, "Git", "No merge conflicts")
 		return
 	}
 	if _, ok := merge_at(conflicts, b.cursor.row); ok {
@@ -260,7 +260,7 @@ MergeDialog :: struct {
 merge_dialog_open :: proc(editor: ^Editor) {
 	editor.merge_dialog.active = true
 	editor.merge_dialog.selected = 0
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 }
 
 merge_dialog_close :: proc(editor: ^Editor) {

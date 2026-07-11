@@ -151,7 +151,7 @@ e2e_ai_edit_no_block_untouched :: proc(t: ^testing.T) {
 	testing.expect_value(t, string(b.lines[0].text[:]), "hello")
 	testing.expect_value(t, string(b.lines[1].text[:]), "world")
 	testing.expect_value(t, e.ed.message, "AI edit: empty result, discarded")
-	testing.expect(t, e.ed.message_error, "empty result is an error")
+	testing.expect(t, e.ed.message_level == .Error, "empty result is an error")
 }
 
 FimStub :: struct {

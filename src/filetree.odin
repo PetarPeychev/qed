@@ -484,7 +484,7 @@ filetree_open :: proc(editor: ^Editor) {
 	t.active = true
 	t.mode = .Nav
 	textfield_reset(&t.field)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	if t.scanned {
 		filetree_rebuild(editor)
 		filetree_scan_start(editor)
@@ -659,7 +659,7 @@ filetree_prompt_begin :: proc(editor: ^Editor, mode: FileTreeMode) {
 			textfield_set(&t.field, e.name)
 		}
 	}
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 }
 
 filetree_prompt_commit :: proc(editor: ^Editor) {
@@ -668,19 +668,19 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 	mode := t.mode
 	t.mode = .Nav
 	if name == "" {
-		editor_set_message(editor, "Empty name", true)
+		editor_log(editor, .Error, "Files", "Empty name")
 		return
 	}
 	switch mode {
 	case .NewFile:
 		full, _ := filepath.join({filetree_target_dir(editor), name}, context.temp_allocator)
 		if os.exists(full) {
-			editor_set_message(editor, "Already exists", true)
+			editor_log(editor, .Error, "Files", "Already exists")
 			return
 		}
 		f, err := os.open(full, {.Write, .Create, .Excl}, os.perm(0o644))
 		if err != nil {
-			editor_set_message(editor, "Create failed", true)
+			editor_log(editor, .Error, "Files", "Create failed")
 			return
 		}
 		os.close(f)
@@ -688,11 +688,11 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 	case .NewFolder:
 		full, _ := filepath.join({filetree_target_dir(editor), name}, context.temp_allocator)
 		if os.exists(full) {
-			editor_set_message(editor, "Already exists", true)
+			editor_log(editor, .Error, "Files", "Already exists")
 			return
 		}
 		if os.make_directory(full) != nil {
-			editor_set_message(editor, "Create failed", true)
+			editor_log(editor, .Error, "Files", "Create failed")
 			return
 		}
 		filetree_reveal(editor, full)
@@ -704,7 +704,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		full, _ := filepath.join({filetree_parent_dir(e.path), name}, context.temp_allocator)
 		old := strings.clone(e.path, context.temp_allocator)
 		if os.rename(old, full) != nil {
-			editor_set_message(editor, "Rename failed", true)
+			editor_log(editor, .Error, "Files", "Rename failed")
 			return
 		}
 		filetree_repath_buffers(editor, old, full)
@@ -751,12 +751,12 @@ filetree_delete_commit :: proc(editor: ^Editor) {
 	}
 	path := strings.clone(e.path, context.temp_allocator)
 	if os.remove_all(path) != nil {
-		editor_set_message(editor, "Delete failed", true)
+		editor_log(editor, .Error, "Files", "Delete failed")
 		return
 	}
 	t.selected = max(0, t.selected - 1)
 	filetree_refresh(editor)
-	editor_set_message(editor, "Deleted")
+	editor_log(editor, .Info, "Files", "Deleted")
 }
 
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {

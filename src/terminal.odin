@@ -165,7 +165,7 @@ term_start :: proc(editor: ^Editor) -> bool {
 	t := &editor.terminal
 	cols, rows := term_grid_size(editor)
 	if cols < 1 || rows < 1 {
-		editor_set_message(editor, "Terminal: window too small", true)
+		editor_log(editor, .Error, "Terminal", "window too small")
 		return false
 	}
 	shell := os.get_env("SHELL", context.temp_allocator)
@@ -174,7 +174,7 @@ term_start :: proc(editor: ^Editor) -> bool {
 	}
 	fd, pid := pty.spawn(rows, cols, shell, editor.working_root)
 	if fd < 0 {
-		editor_set_message(editor, "Terminal: failed to start shell", true)
+		editor_log(editor, .Error, "Terminal", "failed to start shell")
 		return false
 	}
 	nfd := posix.FD(fd)
@@ -274,7 +274,7 @@ term_mark_exited :: proc(editor: ^Editor) {
 	posix.close(posix.FD(t.pty_fd))
 	status: c.int
 	posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG})
-	editor_set_message(editor, "Terminal: process exited")
+	editor_log(editor, .Info, "Terminal", "process exited")
 }
 
 term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -486,7 +486,7 @@ term_copy_selection :: proc(editor: ^Editor) {
 		return
 	}
 	clipboard_set(text)
-	editor_set_message(editor, "Terminal: copied selection")
+	editor_log(editor, .Info, "Terminal", "copied selection")
 }
 
 term_paste_overlay :: proc(editor: ^Editor, text: string) {

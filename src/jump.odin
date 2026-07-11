@@ -81,7 +81,7 @@ jump_go :: proc(editor: ^Editor, target: Jump) {
 jump_back :: proc(editor: ^Editor) {
 	jl := &editor.jumps
 	if jl.index <= 0 {
-		editor_set_message(editor, "No earlier position")
+		editor_log(editor, .Info, "", "No earlier position")
 		return
 	}
 	jl.index -= 1
@@ -91,7 +91,7 @@ jump_back :: proc(editor: ^Editor) {
 jump_forward :: proc(editor: ^Editor) {
 	jl := &editor.jumps
 	if jl.index >= len(jl.entries) - 1 {
-		editor_set_message(editor, "No later position")
+		editor_log(editor, .Info, "", "No later position")
 		return
 	}
 	jl.index += 1

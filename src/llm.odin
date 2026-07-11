@@ -59,7 +59,7 @@ llm_build_prompt :: proc(
 
 llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
 	if strings.trim_space(LLM_CHAT_COMMAND) == "" {
-		editor_set_message(editor, "AI edit: llm.chat_command is empty", true)
+		editor_log(editor, .Error, "", "AI edit: llm.chat_command is empty")
 		return
 	}
 	b := editor_buffer(editor)
@@ -72,7 +72,7 @@ llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
 	cmd := fmt.tprintf("%s 2>/dev/null", LLM_CHAT_COMMAND)
 	sub, ok := subprocess_start(cmd, transmute([]u8)prompt, editor.working_root)
 	if !ok {
-		editor_set_message(editor, "AI edit: could not start command", true)
+		editor_log(editor, .Error, "", "AI edit: could not start command")
 		return
 	}
 
@@ -80,7 +80,7 @@ llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
 		&editor.llm.requests,
 		LlmRequest{sub = sub, buf_path = strings.clone(b.path), original = strings.clone(selection), from = from},
 	)
-	editor_set_message(editor, fmt.tprintf("AI edit sent (%d running)", len(editor.llm.requests)))
+	editor_log(editor, .Info, "", fmt.tprintf("AI edit sent (%d running)", len(editor.llm.requests)))
 }
 
 llm_pump :: proc(editor: ^Editor) -> bool {
@@ -106,18 +106,18 @@ llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
 	}
 	core := strings.trim_space(llm_extract_code(raw))
 	if core == "" {
-		editor_set_message(editor, "AI edit: empty result, discarded", true)
+		editor_log(editor, .Error, "", "AI edit: empty result, discarded")
 		return
 	}
 	idx := editor_find_buffer(editor, req.buf_path)
 	if idx < 0 {
-		editor_set_message(editor, "AI edit: buffer closed, discarded", true)
+		editor_log(editor, .Error, "", "AI edit: buffer closed, discarded")
 		return
 	}
 	b := &editor.buffers[idx]
 	from, to, ok := llm_locate(b, req.original, req.from)
 	if !ok {
-		editor_set_message(editor, "AI edit discarded: block changed", true)
+		editor_log(editor, .Error, "", "AI edit discarded: block changed")
 		return
 	}
 	output := llm_reframe(core, req.original, context.temp_allocator)
@@ -136,7 +136,7 @@ llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
 	if idx == editor.current {
 		editor_scroll(editor)
 	}
-	editor_set_message(editor, "AI edit applied")
+	editor_log(editor, .Info, "", "AI edit applied")
 }
 
 // Cancel any in-flight request whose block was edited (llm_locate can no longer
@@ -150,7 +150,7 @@ llm_prune_edited :: proc(editor: ^Editor) {
 			if _, _, ok := llm_locate(&editor.buffers[idx], req.original, req.from); !ok {
 				llm_request_kill(req)
 				ordered_remove(&editor.llm.requests, i)
-				editor_set_message(editor, "AI edit cancelled: block edited")
+				editor_log(editor, .Info, "", "AI edit cancelled: block edited")
 				continue
 			}
 		}
@@ -171,7 +171,7 @@ llm_cancel_all :: proc(editor: ^Editor) {
 	}
 	clear(&editor.llm.requests)
 	if n > 0 {
-		editor_set_message(editor, fmt.tprintf("Cancelled %d AI edit(s)", n))
+		editor_log(editor, .Info, "", fmt.tprintf("Cancelled %d AI edit(s)", n))
 	}
 }
 

@@ -13,6 +13,10 @@ ClipboardTool :: enum {
 clipboard_tool: ClipboardTool = .Unknown
 clipboard_register: string
 
+// Headless (tests) must never spawn a clipboard tool: xclip daemonizes holding the
+// inherited stdout pipe, so `odin test`'s output pipe never sees EOF and hangs.
+clipboard_headless: bool
+
 clipboard_shutdown :: proc() {
 	delete(clipboard_register)
 }
@@ -31,6 +35,10 @@ clipboard_detect :: proc() {
 }
 
 clipboard_set :: proc(text: string) {
+	if clipboard_headless {
+		clipboard_register_set(text)
+		return
+	}
 	if clipboard_tool == .Unknown {
 		clipboard_detect()
 	}
@@ -54,6 +62,9 @@ clipboard_set :: proc(text: string) {
 }
 
 clipboard_get :: proc(allocator := context.allocator) -> string {
+	if clipboard_headless {
+		return strings.clone(clipboard_register, allocator)
+	}
 	if clipboard_tool == .Unknown {
 		clipboard_detect()
 	}

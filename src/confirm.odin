@@ -17,7 +17,7 @@ QuitDialog :: struct {
 quit_dialog_open :: proc(editor: ^Editor) {
 	editor.quit_dialog.active = true
 	editor.quit_dialog.selected = 0
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 }
 
 quit_dialog_close :: proc(editor: ^Editor) {
@@ -40,11 +40,11 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 			editor_save_full(editor, &b)
 		}
 		if conflict {
-			editor_set_message(editor, "File changed on disk — save it with Ctrl+S to resolve", true)
+			editor_log(editor, .Warn, "", "File changed on disk — save it with Ctrl+S to resolve")
 		} else if lsp_format_pending() {
 			editor_save_intent_set(editor, .Quit, "")
 		} else if editor_any_modified(editor) {
-			editor_set_message(editor, "Save failed", true)
+			editor_log(editor, .Error, "", "Save failed")
 		} else {
 			editor.quit = true
 		}
@@ -96,7 +96,7 @@ CloseDialog :: struct {
 close_dialog_open :: proc(editor: ^Editor) {
 	editor.close_dialog.active = true
 	editor.close_dialog.selected = 0
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 }
 
 close_dialog_close :: proc(editor: ^Editor) {
@@ -148,7 +148,7 @@ ConflictDialog :: struct {
 conflict_dialog_open :: proc(editor: ^Editor) {
 	editor.conflict_dialog.active = true
 	editor.conflict_dialog.selected = 0
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 }
 
 conflict_dialog_close :: proc(editor: ^Editor) {

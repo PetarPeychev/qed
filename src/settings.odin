@@ -157,6 +157,7 @@ Config_Float :: struct {
 COLOR_FG: tb2.Color
 COLOR_BG: tb2.Color
 COLOR_ERROR_FG: tb2.Color
+COLOR_WARN_FG: tb2.Color
 COLOR_DIAG_ERROR_FG: tb2.Color
 COLOR_DIAG_WARN_FG: tb2.Color
 COLOR_DIAG_INFO_FG: tb2.Color
@@ -196,6 +197,7 @@ config_colors := [?]Config_Color {
 	{"foreground", &COLOR_FG},
 	{"background", &COLOR_BG},
 	{"error_foreground", &COLOR_ERROR_FG},
+	{"warn_foreground", &COLOR_WARN_FG},
 	{"diagnostic_error_foreground", &COLOR_DIAG_ERROR_FG},
 	{"diagnostic_warning_foreground", &COLOR_DIAG_WARN_FG},
 	{"diagnostic_info_foreground", &COLOR_DIAG_INFO_FG},

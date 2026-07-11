@@ -41,7 +41,7 @@ find_open_replace :: proc(editor: ^Editor) {find_begin(editor, true)}
 find_begin :: proc(editor: ^Editor, replacing: bool) {
 	f := &editor.find
 	b := editor_buffer(editor)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	f.active = true
 	f.replacing = replacing
 	f.focus_replace = false
@@ -222,7 +222,7 @@ find_replace_all :: proc(editor: ^Editor) {
 	f.origin = b.cursor
 	find_scan(editor)
 	find_jump(editor)
-	editor_set_message(editor, fmt.tprintf("Replaced %d match%s", count, "" if count == 1 else "es"))
+	editor_log(editor, .Info, "", fmt.tprintf("Replaced %d match%s", count, "" if count == 1 else "es"))
 }
 
 find_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {

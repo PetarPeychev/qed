@@ -41,7 +41,9 @@ main :: proc() {
 	editor := editor_init(path)
 	defer editor_shutdown(&editor)
 
-	editor_set_message(&editor, config_message, config_error)
+	if config_message != "" {
+		editor_log(&editor, .Warn if config_error else .Info, "", config_message)
+	}
 
 
 	ev: tb2.Event

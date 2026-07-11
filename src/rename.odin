@@ -21,7 +21,7 @@ rename_open :: proc(editor: ^Editor) {
 	r := &editor.rename
 	r.active = true
 	textfield_set(&r.field, word)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 }
 
 rename_close :: proc(editor: ^Editor) {
@@ -33,7 +33,7 @@ rename_submit :: proc(editor: ^Editor) {
 	name := textfield_str(&r.field)
 	rename_close(editor)
 	if len(name) == 0 {
-		editor_set_message(editor, "Empty name", true)
+		editor_log(editor, .Error, "Rename", "Empty name")
 		return
 	}
 	lsp_rename_send(editor, name)

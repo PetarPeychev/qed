@@ -79,7 +79,7 @@ picker_open :: proc(editor: ^Editor) {
 	p := &editor.picker
 	p.active = true
 	fuzzy_list_reset(&p.list)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 
 	picker_clear_files(p)
 	files_list(editor.working_root, &p.files)

@@ -224,6 +224,42 @@ e2e_nav_welcome :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_welcome_status :: proc(t: ^testing.T) {
+	e := e2e_welcome_start()
+	defer e2e_stop(&e)
+
+	editor_log(&e.ed, .Warn, "", "config: bad knob")
+	e2e_render(&e)
+
+	status_row := e2e_row(&e, E2E_H - 2)
+	testing.expect(t, strings.contains(status_row, fmt.tprintf("qed %s", VERSION)), "welcome status bar shows the version")
+	testing.expect(t, strings.contains(status_row, "qed_e2e_welcome"), "welcome status bar shows the working root")
+	testing.expect(t, strings.contains(e2e_row(&e, E2E_H - 1), "config: bad knob"), "startup message renders on the message row")
+}
+
+@(test)
+e2e_nav_welcome_log :: proc(t: ^testing.T) {
+	e := e2e_welcome_start()
+	defer e2e_stop(&e)
+
+	testing.expect(t, e.ed.welcome, "a no-file session shows the welcome screen")
+
+	nav_alt(&e, 'l')
+	testing.expect(t, e.ed.logview.active, "Alt+l opens the log pane from welcome")
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Message Log"), "the log pane renders over welcome")
+
+	nav_alt(&e, 'l')
+	testing.expect(t, !e.ed.logview.active, "Alt+l again closes the pane on welcome")
+	nav_alt(&e, 'l')
+	testing.expect(t, e.ed.logview.active, "and reopens it")
+
+	e2e_key(&e, .Esc)
+	testing.expect(t, !e.ed.logview.active, "Esc closes the log pane")
+	testing.expect(t, e.ed.welcome, "closing returns to the welcome screen")
+}
+
+@(test)
 e2e_nav_palette :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)

@@ -92,7 +92,7 @@ format_external :: proc(editor: ^Editor, b: ^Buffer, save_after: bool) {
 		tool = cmd[:sp]
 	}
 	if !shell_command_exists(tool) {
-		editor_set_message(editor, fmt.tprintf("Formatter not found: %s", tool), true)
+		editor_log(editor, .Error, "Format", fmt.tprintf("Formatter not found: %s", tool))
 		if save_after {
 			editor_save_buffer(editor, b)
 		}
@@ -103,7 +103,7 @@ format_external :: proc(editor: ^Editor, b: ^Buffer, save_after: bool) {
 	defer delete(input)
 	out, ok := shell_filter(cmd, input)
 	if !ok || len(out) == 0 {
-		editor_set_message(editor, fmt.tprintf("%s failed", tool), true)
+		editor_log(editor, .Error, "Format", fmt.tprintf("%s failed", tool))
 		if save_after {
 			editor_save_buffer(editor, b)
 		}
@@ -121,7 +121,7 @@ format_external :: proc(editor: ^Editor, b: ^Buffer, save_after: bool) {
 	if save_after {
 		editor_save_buffer(editor, b)
 	} else {
-		editor_set_message(editor, "Formatted" if changed else "No formatting changes")
+		editor_log(editor, .Info, "Format", "Formatted" if changed else "No formatting changes")
 	}
 }
 

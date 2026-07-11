@@ -81,7 +81,8 @@
     "LSP: Next Diagnostic": "Alt+>",
     "LSP: Previous Diagnostic": "Alt+<",
     "LSP: Restart": "",
-    "Debug: Inspect Tokens": ""
+    "Debug: Inspect Tokens": "",
+    "Debug: Message Log": "Alt+l"
   },
   "languages": {
     "odin": {

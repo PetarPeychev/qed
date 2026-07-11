@@ -40,13 +40,13 @@ bufswitch_label :: proc(editor: ^Editor, b: ^Buffer) -> string {
 
 bufswitch_open :: proc(editor: ^Editor) {
 	if editor.welcome || len(editor.buffers) <= 1 {
-		editor_set_message(editor, "No other buffers")
+		editor_log(editor, .Info, "", "No other buffers")
 		return
 	}
 	p := &editor.bufswitch
 	p.active = true
 	fuzzy_list_reset(&p.list)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 
 	bufswitch_clear_names(p)
 	for &b in editor.buffers {

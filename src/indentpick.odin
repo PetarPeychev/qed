@@ -19,7 +19,7 @@ indentpick_open :: proc(editor: ^Editor) {
 	ip := &editor.indentpick
 	ip.active = true
 	fuzzy_list_reset(&ip.list)
-	editor_set_message(editor, "")
+	editor_clear_message(editor)
 	clear(&ip.names)
 	for opt in INDENT_OPTIONS {
 		append(&ip.names, opt)
@@ -52,7 +52,7 @@ indentpick_execute :: proc(editor: ^Editor) {
 		b.indent_width = int(choice[len("Spaces:")] - '0')
 	}
 	label := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
-	editor_set_message(editor, fmt.tprintf("Indentation: %s", label))
+	editor_log(editor, .Info, "", fmt.tprintf("Indentation: %s", label))
 }
 
 indentpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {

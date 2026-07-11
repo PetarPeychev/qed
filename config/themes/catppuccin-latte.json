@@ -3,6 +3,7 @@
     "foreground": "#4c4f69",
     "background": "#eff1f5",
     "error_foreground": "#d20f39",
+    "warn_foreground": "#df8e1d",
     "diagnostic_error_foreground": "#d20f39",
     "diagnostic_warning_foreground": "#df8e1d",
     "diagnostic_info_foreground": "#1e66f5",

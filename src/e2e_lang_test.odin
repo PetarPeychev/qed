@@ -445,7 +445,7 @@ e2e_format_missing_tool :: proc(t: ^testing.T) {
 
 	// A missing formatter reports an error and leaves the buffer untouched.
 	format_document(&e.ed)
-	testing.expect(t, e.ed.message_error, "missing formatter reports an error")
+	testing.expect(t, e.ed.message_level == .Error, "missing formatter reports an error")
 	testing.expect(t, strings.contains(e.ed.message, "not found"), "message names the missing tool")
 	testing.expect_value(t, string(b.lines[0].text[:]), "keep")
 	testing.expect_value(t, string(b.lines[1].text[:]), "this")
