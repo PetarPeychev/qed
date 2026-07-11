@@ -177,11 +177,41 @@ e2e_log_debug_filter :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, strings.contains(e2e_log_screen(&e), "a trace line"), "Debug row revealed")
 
-	// Filter state persists across close/reopen within the session.
 	e2e_key(&e, .Esc)
 	testing.expect(t, !e.ed.logview.active, "Esc closes the pane")
 	cmd_message_log(&e.ed)
 	testing.expect(t, e.ed.logview.filter[.Debug], "Debug filter persists on reopen")
 	e2e_render(&e)
 	testing.expect(t, strings.contains(e2e_log_screen(&e), "a trace line"), "Debug still visible after reopen")
+}
+
+@(test)
+e2e_log_history_filter :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+
+	editor_log_seed_text(
+		&e.ed,
+		"=== qed v0.9.0 — session started 2026-07-10 09:15:00 ===\n" +
+		"2026-07-10 09:15:01 [INFO] a previous session line\n",
+	)
+	editor_log(&e.ed, .Info, "", "a live line")
+
+	cmd_message_log(&e.ed)
+	e2e_render(&e)
+	testing.expect(t, !strings.contains(e2e_log_screen(&e), "a previous session line"), "history hidden by default")
+	testing.expect(t, strings.contains(e2e_log_screen(&e), "a live line"), "live entries always show")
+
+	editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = 'h'})
+	testing.expect(t, e.ed.logview.history, "h enables the history filter")
+	e2e_render(&e)
+	testing.expect(t, strings.contains(e2e_log_screen(&e), "a previous session line"), "history row revealed")
+	testing.expect(t, strings.contains(e2e_log_screen(&e), "session started"), "old session marker revealed too")
+
+	e2e_key(&e, .Esc)
+	testing.expect(t, !e.ed.logview.active, "Esc closes the pane")
+	cmd_message_log(&e.ed)
+	testing.expect(t, e.ed.logview.history, "History filter persists on reopen")
+	e2e_render(&e)
+	testing.expect(t, strings.contains(e2e_log_screen(&e), "a previous session line"), "history still visible after reopen")
 }

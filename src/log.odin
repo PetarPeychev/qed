@@ -26,6 +26,7 @@ LogEntry :: struct {
 	level:  LogLevel,
 	source: string,
 	text:   string,
+	seeded: bool,
 }
 
 log_level_tag :: proc(level: LogLevel) -> string {
@@ -248,7 +249,7 @@ log_parse_stamp :: proc(s: string) -> (t: time.Time, ok: bool) {
 }
 
 log_seed_entry :: proc(line: string, last: time.Time) -> LogEntry {
-	entry := LogEntry{time = last, level = .Info}
+	entry := LogEntry{time = last, level = .Info, seeded = true}
 	if strings.has_prefix(line, "=== ") {
 		if idx := strings.index(line, "session started "); idx >= 0 {
 			if t, ok := log_parse_stamp(line[idx + len("session started "):]); ok {
@@ -303,6 +304,7 @@ LogView :: struct {
 	scroll:   int,
 	stick:    bool,
 	filter:   [LogLevel]bool,
+	history:  bool,
 }
 
 logview_sel_range :: proc(v: ^LogView) -> (lo, hi: int) {
@@ -338,9 +340,13 @@ logview_layout :: proc(editor: ^Editor) -> LogLayout {
 logview_filtered :: proc(editor: ^Editor) -> [dynamic]int {
 	out := make([dynamic]int, context.temp_allocator)
 	for e, i in editor.log {
-		if editor.logview.filter[e.level] {
-			append(&out, i)
+		if !editor.logview.filter[e.level] {
+			continue
 		}
+		if e.seeded && !editor.logview.history {
+			continue
+		}
+		append(&out, i)
 	}
 	return out
 }
@@ -409,6 +415,13 @@ logview_toggle :: proc(editor: ^Editor, level: LogLevel) {
 	logview_reveal(editor)
 }
 
+logview_toggle_history :: proc(editor: ^Editor) {
+	v := &editor.logview
+	v.history = !v.history
+	v.anchor = nil
+	logview_reveal(editor)
+}
+
 logview_copy :: proc(editor: ^Editor) {
 	v := &editor.logview
 	filtered := logview_filtered(editor)
@@ -466,6 +479,8 @@ logview_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		logview_toggle(editor, .Warn)
 	case 'e':
 		logview_toggle(editor, .Error)
+	case 'h':
+		logview_toggle_history(editor)
 	}
 }
 
@@ -566,6 +581,7 @@ logview_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 		{"i info", v.filter[.Info]},
 		{"w warn", v.filter[.Warn]},
 		{"e error", v.filter[.Error]},
+		{"h history", v.history},
 	}
 	total := 0
 	for tg, i in toggles {
