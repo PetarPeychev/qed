@@ -20,15 +20,37 @@ daily-drives it for programming.** Every item here blocks that.
 
 - [ ] Documented add-a-language path: config-driven LSP/formatter for any language + how highlight is wired (bundled-grammar mechanism). Full runtime grammars are post-1.0.
 
+### LSP
+
+- [ ] Hover docs: render markdown (bold/code/headers) in the popup instead of raw text.
+- [ ] Inline diagnostic virtual text (dimmed end-of-line message).
+- [ ] Code actions / quick-fix (`textDocument/codeAction`) — esp. auto-import for TS/React.
+- [ ] Find references (floating pane / picker).
+- [ ] Completion: interactive snippet placeholder navigation (Tab through `$1`/`$2`) + `completionItem/resolve` for lazy detail/edits.
+- [ ] Symbol search (fuzzy document/workspace symbols).
+- [ ] Signature help.
+- [ ] Inlay hints.
+
 ### Robustness — won't eat my work
 
 - [ ] Crash safety: a panic restores the terminal and never loses unsaved buffers (recovery/backup on abnormal exit).
+- [ ] Autosave: automatic saving of modified buffers (idle/periodic; knob).
+
+### Environment
+
+- [ ] Wider terminal support / environment-agnostic hardening: keybinds must survive macOS terminals, tmux vs non-tmux, and other emulator quirks.
+
+### UX
+
+- [ ] Message line: toggle to flip back through past messages in place.
+- [ ] Move fuzzy file-open (`Ctrl+O`) into the file tree pane.
 
 ### Docs & onboarding
 
-- [ ] README: install + 60-second quickstart.
+- [ ] README: solid hook + feature list, sexy screenshots, install + 60-second quickstart.
 - [ ] Config reference: every knob documented in one place.
-- [ ] Per-language setup: which LSP/formatter to install (ols, pyright, clangd, …). (In-editor keybind discovery is already done — the palette lists every command with its shortcut.)
+- [ ] Dependencies guide in the install docs: per-language LSP/formatter (ols, pyright, clangd, …) plus the other external tools (rg, clipboard, git, …). (In-editor keybind discovery is already done — the palette lists every command with its shortcut.)
+- [ ] In-editor help: discoverable help screen/pane beyond the palette's keybind listing.
 
 ## 1.0 polish — clear the known rough edges
 
@@ -55,7 +77,9 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 - [ ] Save all modified buffers in one command.
 - [ ] Sticky scroll: pin the enclosing scope header (function/block) at the top while scrolled — tree-sitter tree.
 - [ ] Command palette: order entries by recency of use, persisted cross-session (needs a small state file).
-- [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, palette MRU, etc. Figure out scope + format before building.
+- [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, persisted undo history, palette MRU, etc. Figure out scope + format before building.
+- [ ] Hex view/edit for binary files.
+- [ ] Markdown viewer (rendered preview).
 - [ ] File browser: show more detail per entry (size, line count, other `ls -l`-style bits).
 - [ ] Pane swap (NOT FINALISED — design unsure): opening a nav pane's chord while another nav pane is open closes the current + opens the target (1 fewer key, no Esc first); intercept at the `editor_dispatch` choke point, sources = nav panes only (exclude terminal/rename/aiedit/dialogs). Open question: is bisecting behaviour this way (some panes swap, some don't) actually good design?
 
@@ -82,16 +106,6 @@ runtime-grammar arc that lets a stranger add *any* language with zero rebuild �
 - [ ] Runtime dir for queries + language metadata as files, compiled-in fallback for the core set.
 - [ ] Grammar lock-file build fetch — vendored parser.c out of the repo, build pulls by pinned commit + sha.
 - [ ] Runtime grammar loading via `dlopen` for user-added tail languages (core set stays compiled in).
-
-### LSP capabilities
-
-- [ ] Inline diagnostic virtual text (dimmed end-of-line message).
-- [ ] Code actions / quick-fix (`textDocument/codeAction`) — esp. auto-import for TS/React.
-- [ ] Find references (floating pane / picker).
-- [ ] Completion: interactive snippet placeholder navigation (Tab through `$1`/`$2`) + `completionItem/resolve` for lazy detail/edits.
-- [ ] Symbol search (fuzzy document/workspace symbols).
-- [ ] Signature help (later).
-- [ ] Inlay hints (later).
 
 ### Git diff gutter
 
