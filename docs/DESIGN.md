@@ -543,7 +543,11 @@ blank continuation gutter, tab-aware — always on, no horizontal scroll; the sc
 1→viewport+lookahead (`preview_parse_ahead`)
 and re-highlighting from the top as it scrolls, size-gated at `HIGHLIGHT_ASYNC_BYTES`
 (window-only above it), capped at `preview_max_lines`. File source loads lazily via `head`;
-buffer source (switcher/line jump) previews in-memory content. The file-tree **Git** tab
+buffer source (switcher/line jump) previews in-memory content. A file with a NUL
+byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrapped
+rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
+both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a
+nil error with 0 bytes.) The file-tree **Git** tab
 previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
