@@ -144,6 +144,26 @@ commands := [?]Command {
 	{name = "Debug: Message Log", run = cmd_message_log},
 }
 
+command_available :: proc(editor: ^Editor, name: string) -> bool {
+	if editor.welcome {
+		switch name {
+		case "Open File", "File Tree", "Terminal: Toggle", "Find in Files",
+		     "Debug: Message Log", "Set Theme", "Quit":
+			return true
+		}
+		return false
+	}
+	if editor_buffer(editor).big {
+		switch name {
+		case "LSP: Go to Definition", "LSP: Hover", "LSP: Rename Symbol",
+		     "LSP: Next Diagnostic", "LSP: Previous Diagnostic", "LSP: Restart",
+		     "Debug: Inspect Tokens":
+			return false
+		}
+	}
+	return true
+}
+
 command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
 	for cmd in commands {
 		if cmd.alt_ch == 0 && cmd.shortcut != "" && cmd.key == key {
@@ -178,11 +198,13 @@ command_matches :: proc(ev: tb2.Event, name: string) -> bool {
 Palette :: struct {
 	using list: FuzzyList,
 	names:      [dynamic]string,
+	indices:    [dynamic]int,
 }
 
 palette_destroy :: proc(p: ^Palette) {
 	fuzzy_list_destroy(&p.list)
 	delete(p.names)
+	delete(p.indices)
 }
 
 palette_open :: proc(editor: ^Editor) {
@@ -191,11 +213,20 @@ palette_open :: proc(editor: ^Editor) {
 	fuzzy_list_reset(&p.list)
 	editor_clear_message(editor)
 	clear(&p.names)
-	for cmd in commands {
+	clear(&p.indices)
+	for cmd, i in commands {
+		if !command_available(editor, cmd.name) {
+			continue
+		}
 		append(&p.names, cmd.name)
+		append(&p.indices, i)
 	}
 	p.fuzzy = fuzzy_begin(p.names[:])
 	fuzzy_list_refilter(&p.list)
+}
+
+palette_command :: proc(p: ^Palette, match: int) -> Command {
+	return commands[p.indices[p.matches[match]]]
 }
 
 palette_close :: proc(editor: ^Editor) {
@@ -208,7 +239,7 @@ palette_execute :: proc(editor: ^Editor) {
 	if len(p.matches) == 0 {
 		return
 	}
-	cmd := commands[p.matches[p.selected]]
+	cmd := palette_command(p, p.selected)
 	palette_close(editor)
 	cmd.run(editor)
 }
@@ -252,7 +283,7 @@ palette_render :: proc(editor: ^Editor) {
 
 	for i in 0 ..< rows {
 		idx := p.scroll + i
-		cmd := commands[p.matches[idx]]
+		cmd := palette_command(p, idx)
 		y := inner.y + 2 + i
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		sc_fg := COLOR_PANE_SHORTCUT_FG

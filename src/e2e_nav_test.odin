@@ -271,11 +271,37 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	e2e_type(&e, "line wrap")
 	p := &e.ed.palette
 	testing.expect(t, len(p.matches) > 0, "fuzzy query should match a command")
-	testing.expect_value(t, commands[p.matches[p.selected]].name, "Toggle Line Wrap")
+	testing.expect_value(t, palette_command(p, p.selected).name, "Toggle Line Wrap")
 
 	e2e_key(&e, .Enter)
 	testing.expect(t, !e.ed.palette.active, "Enter closes the palette")
 	testing.expect(t, !b.wrap, "the selected command actually ran")
+}
+
+@(test)
+e2e_nav_palette_welcome_filter :: proc(t: ^testing.T) {
+	e := e2e_welcome_start()
+	defer e2e_stop(&e)
+
+	testing.expect(t, e.ed.welcome, "a no-file session shows the welcome screen")
+	e2e_key(&e, .Ctrl_P)
+	p := &e.ed.palette
+	testing.expect(t, p.active, "Ctrl+P opens the palette from welcome")
+
+	has := proc(p: ^Palette, name: string) -> bool {
+		for i in p.indices {
+			if commands[i].name == name {
+				return true
+			}
+		}
+		return false
+	}
+	testing.expect(t, !has(p, "Save"), "a buffer-only command is hidden on welcome")
+	testing.expect(t, !has(p, "Toggle Comment"), "editing commands are hidden on welcome")
+	testing.expect(t, !has(p, "LSP: Go to Definition"), "LSP commands are hidden on welcome")
+	testing.expect(t, has(p, "Open File"), "Open File stays available on welcome")
+	testing.expect(t, has(p, "Set Theme"), "Set Theme stays available on welcome")
+	testing.expect(t, has(p, "Quit"), "Quit stays available on welcome")
 }
 
 @(test)
