@@ -429,7 +429,11 @@ JSON-RPC, in `e2e_lsp_test.odin`). Coverage is one file per area:
 ## Shipped
 
 Core editing: buffer open/save (atomic, permission-preserving, LF/CRLF +
-final-newline preserving; external-change auto-reload + dirty-buffer save clobber guard),
+final-newline preserving; external-change auto-reload + dirty-buffer save clobber guard;
+optional save fixups — `trim_trailing_whitespace_on_save` / `ensure_final_newline_on_save`
+knobs + runtime *Toggle …* commands, markdown two-space hard breaks survive trimming,
+one undo group, run before format-on-save; quit/close/conflict saves run the same
+full fixups+format pipeline, quit deferring until an in-flight LSP format lands),
 insert/delete primitives + grouped undo/redo, bracket/colon-aware auto-indent
 (Enter indents after an opener / Python `:`, splits a matched `{}` pair, closing
 bracket re-aligns to its opener), selection +
@@ -438,7 +442,9 @@ indent in leading whitespace), clipboard (external + fallback; empty-selection `
 full Unicode (grapheme + display width), tab-char display + per-buffer
 tabs/spaces + indent-width detect (`Change Indentation` command: Auto-detect /
 Tabs / Spaces:1–4; literal-tab display width stays the global `tab_width`),
-line-comment toggle, move-lines, paragraph/word/smart-home motion, held-arrow
+line-comment toggle, move-lines, paragraph/word/smart-home motion, buffer-edge
+arrow clamps (Down on the last line → line end, Up on the first → col 0;
+wrap-aware, shift/accel included), held-arrow
 cursor acceleration (smooth fractional-velocity ramp, `cursor_accel*` knobs), auto-close
 pairs (brackets/quotes/backtick: surround selection, type-over, backspace-deletes-pair;
 `auto_close_pairs` knob), matching-bracket underline.
