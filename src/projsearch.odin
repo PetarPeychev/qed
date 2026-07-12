@@ -14,12 +14,14 @@ Match :: struct {
 }
 
 ProjSearch :: struct {
-	active:   bool,
-	field:    TextField,
-	matches:  [dynamic]Match,
-	selected: int,
-	scroll:   int,
-	preview:  Preview,
+	active:    bool,
+	field:     TextField,
+	matches:   [dynamic]Match,
+	selected:  int,
+	scroll:    int,
+	scope:     [dynamic]string,
+	from_tree: bool,
+	preview:   Preview,
 }
 
 projsearch_clear_matches :: proc(p: ^ProjSearch) {
@@ -30,14 +32,40 @@ projsearch_clear_matches :: proc(p: ^ProjSearch) {
 	clear(&p.matches)
 }
 
+projsearch_clear_scope :: proc(p: ^ProjSearch) {
+	for s in p.scope {
+		delete(s)
+	}
+	clear(&p.scope)
+}
+
 projsearch_destroy :: proc(p: ^ProjSearch) {
 	projsearch_clear_matches(p)
+	projsearch_clear_scope(p)
 	preview_destroy(&p.preview)
 	delete(p.matches)
+	delete(p.scope)
 	textfield_destroy(&p.field)
 }
 
 projsearch_open :: proc(editor: ^Editor) {
+	p := &editor.projsearch
+	projsearch_clear_scope(p)
+	p.from_tree = false
+	projsearch_begin(editor)
+}
+
+projsearch_open_scoped :: proc(editor: ^Editor, paths: []string) {
+	p := &editor.projsearch
+	projsearch_clear_scope(p)
+	for path in paths {
+		append(&p.scope, strings.clone(path))
+	}
+	p.from_tree = true
+	projsearch_begin(editor)
+}
+
+projsearch_begin :: proc(editor: ^Editor) {
 	p := &editor.projsearch
 	editor_clear_message(editor)
 	if !shell_command_exists("rg") {
@@ -76,10 +104,20 @@ projsearch_run :: proc(editor: ^Editor) {
 	if len(query) < PROJSEARCH_MIN_QUERY {
 		return
 	}
+	scope_args := ""
+	if len(p.scope) > 0 {
+		sb := strings.builder_make(context.temp_allocator)
+		for path in p.scope {
+			strings.write_byte(&sb, ' ')
+			strings.write_string(&sb, shell_quote(path))
+		}
+		scope_args = strings.to_string(sb)
+	}
 	cmd := fmt.ctprintf(
-		"cd %s && rg --sort path --vimgrep -F -S -e %s 2>/dev/null | head -n %d",
+		"cd %s && rg --sort path --vimgrep -F -S -e %s%s 2>/dev/null | head -n %d",
 		shell_quote(editor.working_root),
 		shell_quote(query),
+		scope_args,
 		PROJSEARCH_MAX,
 	)
 	out, ok := shell_capture(cmd)
@@ -153,10 +191,14 @@ projsearch_execute :: proc(editor: ^Editor) {
 		return
 	}
 	m := p.matches[p.selected]
+	from_tree := p.from_tree
 	full, _ := filepath.join({editor.working_root, m.path}, context.temp_allocator)
 	projsearch_close(editor)
 	if !editor_open_path(editor, full) {
 		return
+	}
+	if from_tree {
+		filetree_close(editor)
 	}
 
 	buffer_undo_commit(editor_buffer(editor))

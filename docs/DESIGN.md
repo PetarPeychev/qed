@@ -503,7 +503,8 @@ literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`rg --sort path` for deterministic
-order), file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
+order — whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Ctrl+F`),
+file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
 fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
 lazy per-dir expand, full-height right-side preview; **type-to-filter** — a `> ` prompt
 fuzzy-matches into a flat, relevance-ranked list of files *and* directories (empty query = the
@@ -514,7 +515,9 @@ delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` r
 new (unified: trailing `/` = directory, else file; nested names create missing parents via
 `path_ensure_parent_dir`), `Ctrl+A` select-all-scope, `Ctrl+W` close open buffers (the **Open**
 tab doubles as the buffer switcher — in-memory preview, `Enter` switches; `Ctrl+W` silent for
-clean buffers, confirm dialog only when any are unsaved) — plus a scoped `Ctrl+P` command palette
+clean buffers, confirm dialog only when any are unsaved), `Ctrl+F` search-in-selection (scoped
+project search — a selected dir recurses, a scoped-tab dir expands to its in-scope files; runs
+over the still-active tree, so `Esc` returns to it and opening a result closes both) — plus a scoped `Ctrl+P` command palette
 (the palette overlay driven by a `filetree_commands` list, floating over the tree);
 keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch delete (one confirm,
 "Delete N items?") and batch open (`Enter`); paste targets the selected dir or a file's parent;

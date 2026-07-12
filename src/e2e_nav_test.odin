@@ -1308,6 +1308,155 @@ e2e_nav_filetree_delete_dialog_confirm_file :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_filetree_search_dir_scope :: proc(t: ^testing.T) {
+	if !shell_command_exists("rg") {
+		return
+	}
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	sub := fmt.aprintf("%s/sub", e.ed.working_root)
+	defer delete(sub)
+	os.make_directory(sub)
+	inner := fmt.aprintf("%s/inner.txt", sub)
+	defer delete(inner)
+	nav_write(inner, "needle_xyz inside sub")
+	outside := fmt.aprintf("%s/outside.txt", e.ed.working_root)
+	defer delete(outside)
+	nav_write(outside, "needle_xyz at root")
+
+	nav_alt(&e, 'f') // All tab
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "sub") // dir sorts first, selected by default
+
+	e2e_key(&e, .Ctrl_F)
+	testing.expect(t, e.ed.filetree.active, "tree stays active underneath the search")
+	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
+	testing.expect(t, e.ed.projsearch.from_tree, "search remembers it was launched from the tree")
+	testing.expect_value(t, len(e.ed.projsearch.scope), 1)
+	testing.expect_value(t, e.ed.projsearch.scope[0], "sub")
+
+	e2e_type(&e, "needle_xyz")
+	p := &e.ed.projsearch
+	testing.expect(t, len(p.matches) > 0, "scoped rg finds the hit under sub/")
+	for m in p.matches {
+		testing.expect(t, strings.has_prefix(m.path, "sub/"), "results confined to the selected dir")
+	}
+
+	// Esc dismisses the search and resumes the tree with its selection intact.
+	e2e_key(&e, .Esc)
+	testing.expect(t, !e.ed.projsearch.active, "Esc closes the search")
+	testing.expect(t, e.ed.filetree.active, "the tree resumes after dismissing the search")
+	testing.expect_value(t, tr.entries[tr.selected].name, "sub")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_search_open_result_closes_tree :: proc(t: ^testing.T) {
+	if !shell_command_exists("rg") {
+		return
+	}
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	hay := fmt.aprintf("%s/hay.txt", e.ed.working_root)
+	defer delete(hay)
+	nav_write(hay, "first line\nneedle_xyz here\n")
+
+	nav_alt(&e, 'f') // All tab
+	tr := &e.ed.filetree
+	for tr.entries[tr.selected].name != "hay.txt" {
+		e2e_key(&e, .Arrow_Down)
+	}
+	e2e_key(&e, .Ctrl_F)
+	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
+
+	e2e_type(&e, "needle_xyz")
+	p := &e.ed.projsearch
+	testing.expect(t, len(p.matches) > 0, "scoped rg finds the hit")
+
+	e2e_key(&e, .Enter)
+	testing.expect(t, !e.ed.projsearch.active, "opening a result closes the search")
+	testing.expect(t, !e.ed.filetree.active, "opening a result also closes the tree")
+	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "hay.txt"), "the opened file is current")
+	testing.expect_value(t, editor_buffer(&e.ed).cursor.row, 1)
+}
+
+@(test)
+e2e_nav_filetree_search_git_scope :: proc(t: ^testing.T) {
+	if !shell_command_exists("rg") || !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("committed needle_xyz\n")
+	defer e2e_stop(&e)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+
+	newf := fmt.aprintf("%s/new.txt", e.dir)
+	defer delete(newf)
+	nav_write(newf, "fresh needle_xyz\n")
+
+	nav_alt(&e, 'f') // first open scans git status synchronously
+	e2e_key(&e, .Arrow_Right) // All -> Open
+	e2e_key(&e, .Arrow_Right) // Open -> Git
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+
+	e2e_key(&e, .Ctrl_A) // select all changed entries
+	e2e_key(&e, .Ctrl_F)
+	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
+
+	e2e_type(&e, "needle_xyz")
+	p := &e.ed.projsearch
+	testing.expect(t, len(p.matches) > 0, "scoped rg finds the hit in the modified file")
+	for m in p.matches {
+		testing.expect(t, strings.has_suffix(m.path, "new.txt"), "results confined to modified files, not the committed file")
+	}
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
+	if !shell_command_exists("rg") || !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("committed needle_xyz\n") // unmodified: not in Git scope
+	defer e2e_stop(&e)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+
+	sub := fmt.aprintf("%s/sub", e.dir)
+	defer delete(sub)
+	os.make_directory(sub)
+	modf := fmt.aprintf("%s/mod.txt", sub)
+	defer delete(modf)
+	nav_write(modf, "fresh needle_xyz\n") // modified, under sub/
+	rootf := fmt.aprintf("%s/root_new.txt", e.dir)
+	defer delete(rootf)
+	nav_write(rootf, "needle_xyz root\n") // modified, but NOT under sub/
+
+	nav_alt(&e, 'f') // first open scans git status synchronously
+	e2e_key(&e, .Arrow_Right) // All -> Open
+	e2e_key(&e, .Arrow_Right) // Open -> Git
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	testing.expect_value(t, tr.entries[0].name, "sub") // dir sorts first, selected by default
+
+	e2e_key(&e, .Ctrl_F) // select just the sub/ directory
+	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
+	testing.expect_value(t, len(e.ed.projsearch.scope), 1)
+	testing.expect_value(t, e.ed.projsearch.scope[0], "sub/mod.txt") // in-scope leaf under sub/
+
+	e2e_type(&e, "needle_xyz")
+	p := &e.ed.projsearch
+	testing.expect(t, len(p.matches) > 0, "scoped rg finds the modified file under sub/")
+	for m in p.matches {
+		testing.expect(t, strings.has_prefix(m.path, "sub/"), "results confined to modified files under the selected dir")
+	}
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_nav_filetree_delete_dialog_directory :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)

@@ -154,6 +154,7 @@ filetree_commands := [?]Command {
 	{name = "Rename", shortcut = "Ctrl+R", run = filetree_cmd_rename},
 	{name = "New", shortcut = "Ctrl+N", run = filetree_cmd_new},
 	{name = "Select All", shortcut = "Ctrl+A", run = filetree_select_all},
+	{name = "Search", shortcut = "Ctrl+F", run = filetree_cmd_search},
 	{name = "Toggle Dotfiles", shortcut = "Alt+.", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", shortcut = "Alt+i", run = filetree_toggle_ignored},
 	{name = "Expand/Collapse All", shortcut = "Alt+e", run = filetree_toggle_expand_all},

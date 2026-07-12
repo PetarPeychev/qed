@@ -39,13 +39,6 @@ daily-drives it for programming.** Every item here blocks that.
 
 - [ ] Wider terminal support / environment-agnostic hardening: keybinds must survive macOS terminals, tmux vs non-tmux, and other emulator quirks.
 
-### File/buffer hub — fold panes into the file tree
-
-Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md). Sequenced phases (each ships + is verified on its own):
-
-- [ ] Phase 4 — search in selection: path-scope `projsearch`, `/` command runs it over the selection (`Ctrl+A` first for a whole tab); standalone `Alt+F` stays whole-project.
-- [ ] File-tree filter perf: `filetree_apply_filter`/`filetree_collect` re-walk the whole working tree from disk (`read_directory_by_path`) on every keystroke — cache the candidate list per filter session (invalidate on scope/toggle/refresh) and re-rank only.
-
 ### Docs & onboarding
 
 - [ ] README: solid hook + feature list, sexy screenshots, install + 60-second quickstart.
@@ -56,7 +49,6 @@ Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md). Se
 ## 1.0 polish — clear the known rough edges
 
 - [ ] File tree: bulk rename over a multi-selection (pattern / sequential, applied as one batch).
-- [ ] File tree: bulk close — close every selected buffer's row (ties into the `Open`-tab buffer-switcher fold-in, [notes/filetree-hub.md](notes/filetree-hub.md)).
 - [ ] Color file names in list panes with git status colors.
 - [ ] Terminal→editor cwd back-channel: handle OSC 7 from the PTY (shell reports cwd) so `Alt+t` can retarget qed's working root — VSCode's shell-integration model; env vars stay uncrossable.
 - [ ] Per-buffer viewport memory across buffer switches — move scroll state into `Buffer`, see [notes/refactors.md](notes/refactors.md).
@@ -119,6 +111,7 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Performance
 
+- [ ] File-tree filter re-walks the whole working tree from disk (`filetree_apply_filter`/`filetree_collect` → `read_directory_by_path`) on every keystroke — cache the candidate list per filter session (invalidate on scope/toggle/refresh) and re-rank only.
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Cache `llm_locate` per (path, rev) — an in-flight AI edit rebuilds + searches the whole buffer every render.
 - [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.

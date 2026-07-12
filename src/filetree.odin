@@ -253,7 +253,9 @@ filetree_scan_pump :: proc(editor: ^Editor) -> bool {
 	}
 	filetree_scan_apply(editor, subprocess_output(&t.scan_sub))
 	subprocess_destroy(&t.scan_sub)
-	if t.active {
+	// Skip the visual rebuild while an overlay covers the tree — it would clear the
+	// selection/anchor; the next normal rebuild picks up the fresh status.
+	if t.active && !editor.projsearch.active && !editor.palette.active {
 		filetree_rebuild(editor)
 	}
 	return true
@@ -1210,6 +1212,69 @@ filetree_select_all :: proc(editor: ^Editor) {
 	filetree_load_preview(editor)
 }
 
+filetree_cmd_search :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	lo, hi := filetree_sel_range(t)
+	if lo < 0 || lo >= len(t.entries) {
+		return
+	}
+	root := editor.working_root
+
+	// scope_paths holds in-scope files plus their ancestor dirs; the files are the leaves.
+	ancestors := make(map[string]bool, context.temp_allocator)
+	if t.scope != .All {
+		for path in t.scope_paths {
+			p := path
+			for strings.has_prefix(p, root) && p != root {
+				np := filetree_parent_dir(p)
+				if np == p {
+					break
+				}
+				p = np
+				ancestors[p] = true
+			}
+		}
+	}
+
+	abs_paths := make([dynamic]string, context.temp_allocator)
+	for i in lo ..= hi {
+		e := t.entries[i]
+		if !e.is_dir {
+			append(&abs_paths, e.path)
+			continue
+		}
+		if t.scope == .All {
+			append(&abs_paths, e.path)
+			continue
+		}
+		prefix := strings.concatenate({e.path, "/"}, context.temp_allocator)
+		for path in t.scope_paths {
+			if path not_in ancestors && strings.has_prefix(path, prefix) {
+				append(&abs_paths, path)
+			}
+		}
+	}
+
+	seen := make(map[string]bool, context.temp_allocator)
+	paths := make([dynamic]string, context.temp_allocator)
+	for abs in abs_paths {
+		rel := abs
+		if strings.has_prefix(rel, root) {
+			rel = strings.trim_left(rel[len(root):], "/")
+		}
+		if rel == "" || rel in seen {
+			continue
+		}
+		seen[rel] = true
+		append(&paths, strings.clone(rel, context.temp_allocator))
+	}
+	if len(paths) == 0 {
+		editor_log(editor, .Info, "Search", "Nothing to search in selection")
+		return
+	}
+	projsearch_open_scoped(editor, paths[:])
+}
+
 filetree_cmd_copy :: proc(editor: ^Editor) {filetree_clip_capture(editor, false)}
 filetree_cmd_cut :: proc(editor: ^Editor) {filetree_clip_capture(editor, true)}
 filetree_cmd_rename :: proc(editor: ^Editor) {filetree_prompt_begin(editor, .Rename)}
@@ -1298,6 +1363,9 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	case .Ctrl_A:
 		filetree_select_all(editor)
+		return
+	case .Ctrl_F:
+		filetree_cmd_search(editor)
 		return
 	case .Esc:
 		if len(t.filter.text) > 0 {
