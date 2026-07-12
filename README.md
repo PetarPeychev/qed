@@ -48,15 +48,15 @@ Runs on Linux and macOS in any truecolor terminal.
 </tr>
 <tr>
 <td width="50%"><img src="docs/screenshots/themes.png" alt="Theme picker"><br><em>Set Theme: instant-preview picker over the bundled themes.</em></td>
+<td width="50%"><img src="docs/screenshots/light.png" alt="Light theme"><br><em>Light theme (catppuccin-latte) with the theme picker open.</em></td>
+</tr>
+<tr>
 <td width="50%"><img src="docs/screenshots/ai.png" alt="AI edit"><br><em>AI edit: select a region, describe the change (<code>Ctrl+K</code>).</em></td>
-</tr>
-<tr>
 <td width="50%"><img src="docs/screenshots/fim.png" alt="Inline completion"><br><em>Inline completion: dimmed FIM ghost-text, accepted with <code>Tab</code>.</em></td>
-<td width="50%"><img src="docs/screenshots/inspect-syntax.png" alt="Inspect Tokens"><br><em>Inspect Tokens: live tree-sitter capture and color resolution.</em></td>
 </tr>
 <tr>
+<td width="50%"><img src="docs/screenshots/inspect-syntax.png" alt="Inspect Tokens"><br><em>Inspect Tokens: live tree-sitter capture and color resolution.</em></td>
 <td width="50%"><img src="docs/screenshots/debug-logs.png" alt="Message log"><br><em>Message Log: timestamped, level-filtered, cross-session.</em></td>
-<td width="50%"></td>
 </tr>
 </table>
 
