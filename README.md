@@ -10,6 +10,15 @@ Runs on Linux and macOS in any truecolor terminal.
   <img src="docs/screenshots/file-pane.png" alt="qed with the file tree and preview open" width="900">
 </p>
 
+## Contents
+
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Dependencies](#dependencies)
+- [Configuration](#configuration)
+
 ## Features
 
 - **Editing:** Unicode/grapheme-aware cursor, soft wrap, multiple buffers,
