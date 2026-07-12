@@ -39,9 +39,12 @@ daily-drives it for programming.** Every item here blocks that.
 
 - [ ] Wider terminal support / environment-agnostic hardening: keybinds must survive macOS terminals, tmux vs non-tmux, and other emulator quirks.
 
-### UX
+### File/buffer hub — fold panes into the file tree
 
-- [ ] Move fuzzy file-open (`Ctrl+O`) into the file tree pane.
+Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md).
+
+- [ ] Fuzzy filter in the file tree — type to fuzzy-match entries; `Ctrl+O` opens the tree in this mode, standalone file-open pane removed.
+- [ ] Buffer switching in the `Open` tab — recency order + digit instant-jump + batch close; `Ctrl+E` opens it here, standalone switcher removed.
 
 ### Docs & onboarding
 
