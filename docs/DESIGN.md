@@ -502,9 +502,10 @@ literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`rg --sort path` for deterministic
-order), file-tree browser (`Alt+f`: modal, `Enter` expands a folder / opens a file,
-lazy per-dir expand, right-side preview, new/rename/delete with recursive-delete confirm;
-rename follows open buffers; footer toggles — `e` expand/collapse-all (skips
+order), file-tree browser (`Alt+f`: modal, `Enter` expands a directory / opens a file,
+lazy per-dir expand, right-side preview, new/rename/delete with recursive-delete confirm
+(nested new/rename names create missing parent dirs via `path_ensure_parent_dir`);
+rename follows open buffers; the open buffer's row keeps an accent fg even selected; footer toggles — `e` expand/collapse-all (skips
 gitignored + hidden dotdirs), `.`/`i` show dotfiles / gitignored (both hidden by
 default, config `filetree_show_dotfiles`/`filetree_show_ignored`), highlighted when on;
 header scope tab bar (`All`/`Open`/`Git`/`Unsaved`, `←`/`→` or click) restricting the
@@ -513,8 +514,8 @@ tree to a pruned, auto-expanded view of matching files + ancestors; git-status b
 via the shared subprocess runner: the first open of a session blocks on it, every
 reopen renders instantly from the cached status/ignored then refreshes in the
 background (`filetree_scan_pump`); a green/yellow `▌` per
-added/modified file propagated up its ancestor folders, ignored files dimmed; unsaved
-open buffers marked with a trailing `●`, propagated to folders),
+added/modified file propagated up its ancestor directories, ignored files dimmed; unsaved
+open buffers marked with a trailing `●`, propagated to directories),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
