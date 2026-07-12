@@ -41,9 +41,6 @@ daily-drives it for programming.** Every item here blocks that.
 
 ### Docs & onboarding
 
-- [ ] README: solid hook + feature list, sexy screenshots, install + 60-second quickstart.
-- [ ] Config reference: every knob documented in one place.
-- [ ] Dependencies guide in the install docs: per-language LSP/formatter (ols, pyright, clangd, …) plus the other external tools (rg, clipboard, git, …). (In-editor keybind discovery is already done — the palette lists every command with its shortcut.)
 - [ ] In-editor help: discoverable help screen/pane beyond the palette's keybind listing.
 
 ## 1.0 polish — clear the known rough edges
