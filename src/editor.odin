@@ -48,7 +48,6 @@ Editor :: struct {
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
 	palette:         Palette,
-	picker:          Picker,
 	bufswitch:       BufSwitch,
 	langpick:        LangPick,
 	themepick:       ThemePick,
@@ -162,7 +161,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
-	picker_destroy(&editor.picker)
 	bufswitch_destroy(&editor.bufswitch)
 	langpick_destroy(&editor.langpick)
 	themepick_destroy(&editor.themepick)
@@ -226,13 +224,12 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
-		{&editor.picker.active, picker_dispatch_key, picker_render, picker_dispatch_mouse, picker_paste},
 		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render, bufswitch_dispatch_mouse, bufswitch_paste},
 		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
 		{&editor.themepick.active, themepick_dispatch_key, themepick_render, themepick_dispatch_mouse, themepick_paste},
@@ -298,7 +295,19 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				return
 			}
 			if command_matches(ev, "File Tree") {
-				filetree_open(editor)
+				filetree_open_all(editor)
+				return
+			}
+			if command_matches(ev, "File Tree: Open") {
+				filetree_open_open(editor)
+				return
+			}
+			if command_matches(ev, "File Tree: Git") {
+				filetree_open_git(editor)
+				return
+			}
+			if command_matches(ev, "File Tree: Unsaved") {
+				filetree_open_unsaved(editor)
 				return
 			}
 			if command_matches(ev, "Terminal: Toggle") {
@@ -307,10 +316,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			}
 			if command_matches(ev, "Debug: Message Log") {
 				logview_open(editor)
-				return
-			}
-			if command_matches(ev, "Open File") {
-				picker_open(editor)
 				return
 			}
 			if command_matches(ev, "Quit") {
@@ -1598,7 +1603,7 @@ editor_render_welcome :: proc(editor: ^Editor) {
 		"       `bmmd'                      ",
 	}
 	hints := [?]string {
-		"Ctrl+O    Open file",
+		"Alt+f     File tree",
 		"Ctrl+P    Command palette",
 		"Ctrl+Q    Quit",
 	}

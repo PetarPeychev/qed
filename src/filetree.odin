@@ -593,6 +593,16 @@ filetree_open :: proc(editor: ^Editor) {
 	}
 }
 
+filetree_open_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
+	editor.filetree.scope = scope
+	filetree_open(editor)
+}
+
+filetree_open_all :: proc(editor: ^Editor) {filetree_open_scope(editor, .All)}
+filetree_open_open :: proc(editor: ^Editor) {filetree_open_scope(editor, .Open)}
+filetree_open_git :: proc(editor: ^Editor) {filetree_open_scope(editor, .Git)}
+filetree_open_unsaved :: proc(editor: ^Editor) {filetree_open_scope(editor, .Unsaved)}
+
 filetree_close :: proc(editor: ^Editor) {
 	editor.filetree.active = false
 	editor.filetree.mode = .Nav
@@ -688,6 +698,14 @@ filetree_set_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
 	}
 	editor.filetree.scope = scope
 	filetree_rebuild(editor)
+}
+
+filetree_tab_chord :: proc(editor: ^Editor, scope: FileTreeScope) {
+	if editor.filetree.scope == scope {
+		filetree_close(editor)
+		return
+	}
+	filetree_set_scope(editor, scope)
 }
 
 filetree_cycle_scope :: proc(editor: ^Editor, delta: int) {
@@ -1131,7 +1149,19 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	}
 	if command_matches(ev, "File Tree") {
-		filetree_close(editor)
+		filetree_tab_chord(editor, .All)
+		return
+	}
+	if command_matches(ev, "File Tree: Open") {
+		filetree_tab_chord(editor, .Open)
+		return
+	}
+	if command_matches(ev, "File Tree: Git") {
+		filetree_tab_chord(editor, .Git)
+		return
+	}
+	if command_matches(ev, "File Tree: Unsaved") {
+		filetree_tab_chord(editor, .Unsaved)
 		return
 	}
 	if ev_alt(ev) && ev.ch != 0 {

@@ -433,7 +433,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
@@ -494,7 +494,7 @@ rebind-aware pane self-close chords (`command_matches`), Debug-level internals
 instrumentation (subprocess/AI/FIM/save/config/clipboard/terminal trails), welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette (context-filtered via
 `command_available`: welcome lists only the working whitelist, big-file buffers
-hide the LSP/inspect commands), fuzzy file-open +
+hide the LSP/inspect commands),
 multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
 buffers in stable order + digit instant-jump on empty query, side preview of the
 selected buffer's in-memory content centered on its cursor), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,
@@ -502,7 +502,8 @@ literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`rg --sort path` for deterministic
-order), file-tree browser (`Alt+f`: modal hub, `Enter` opens a file / toggles a directory,
+order), file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
+fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
 lazy per-dir expand, full-height right-side preview; **type-to-filter** — a `> ` prompt
 fuzzy-matches into a flat, relevance-ranked list of files *and* directories (empty query = the
 browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree);
@@ -518,7 +519,10 @@ cut+paste and rename both repath open buffers; the open buffer's row keeps an ac
 selected; single hint-row footer; view toggles `Alt+e` expand/collapse-all (skips gitignored +
 hidden dotdirs), `Alt+.`/`Alt+i` show dotfiles / gitignored (both hidden by default, config
 `filetree_show_dotfiles`/`filetree_show_ignored`), also listed in the command palette;
-header scope tab bar (`All`/`Open`/`Git`/`Unsaved`, `←`/`→` or click) restricting the
+header scope tab bar (`All`/`Open`/`Git`/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g`/`Alt+u`
+open the pane on that tab from the editor and switch/toggle-close it while open — same chord
+again on its own tab closes — or `←`/`→`/click; also on the welcome screen; `Alt+g` freed from
+*Git: Toggle Diff View* which is now palette-only) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
 `git status --porcelain --ignored --untracked-files=all` (single `sh -c` with `rev-parse`) scanned **async**
 via the shared subprocess runner: the first open of a session blocks on it, every

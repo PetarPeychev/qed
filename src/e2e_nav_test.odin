@@ -212,10 +212,10 @@ e2e_nav_welcome :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(editor_buffer(&e.ed).lines), 1)
 	testing.expect_value(t, len(editor_buffer(&e.ed).lines[0].text), 0)
 
-	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, e.ed.picker.active, "Ctrl+O opens the file picker from welcome")
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree from welcome")
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.picker.active, "Esc closes the picker")
+	testing.expect(t, !e.ed.filetree.active, "Esc closes the file tree")
 
 	e2e_key(&e, .Ctrl_P)
 	testing.expect(t, e.ed.palette.active, "Ctrl+P opens the command palette from welcome")
@@ -312,7 +312,7 @@ e2e_nav_palette_welcome_filter :: proc(t: ^testing.T) {
 	testing.expect(t, !has(p, "Save"), "a buffer-only command is hidden on welcome")
 	testing.expect(t, !has(p, "Toggle Comment"), "editing commands are hidden on welcome")
 	testing.expect(t, !has(p, "LSP: Go to Definition"), "LSP commands are hidden on welcome")
-	testing.expect(t, has(p, "Open File"), "Open File stays available on welcome")
+	testing.expect(t, has(p, "File Tree"), "File Tree stays available on welcome")
 	testing.expect(t, has(p, "Set Theme"), "Set Theme stays available on welcome")
 	testing.expect(t, has(p, "Quit"), "Quit stays available on welcome")
 }
@@ -326,12 +326,12 @@ e2e_nav_file_open_and_close :: proc(t: ^testing.T) {
 	defer delete(second)
 	nav_write(second, "second body")
 
-	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, e.ed.picker.active, "Ctrl+O opens the picker")
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree")
 	e2e_type(&e, "second")
 	e2e_key(&e, .Enter)
 
-	testing.expect(t, !e.ed.picker.active, "picker closes after opening")
+	testing.expect(t, !e.ed.filetree.active, "tree closes after opening")
 	testing.expect_value(t, len(e.ed.buffers), 2)
 	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "second.txt"), "second.txt is now current")
 
@@ -351,23 +351,24 @@ e2e_nav_scrollbar :: proc(t: ^testing.T) {
 		nav_write(path, "body")
 	}
 
-	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, e.ed.picker.active, "Ctrl+O opens the picker")
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree")
 
-	p := &e.ed.picker
-	lay := overlay_layout(&e.ed)
-	testing.expect(t, len(p.matches) > lay.body_h, "20 files should overflow the picker's body")
+	tr := &e.ed.filetree
+	lay := filetree_layout(&e.ed)
+	testing.expect(t, len(tr.entries) > lay.body_h, "20 files should overflow the tree's body")
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '┃')
-	testing.expect_value(t, e2e_cell_fg(&e, lay.div_x, lay.body_top), COLOR_PANE_FG)
 
 	e2e_type(&e, "f00")
-	testing.expect(t, len(p.matches) <= lay.body_h, "a narrow query should fit without a scrollbar")
+	testing.expect(t, len(tr.entries) <= lay.body_h, "a narrow query should fit without a scrollbar")
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '│')
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.picker.active, "Esc closes the picker")
+	testing.expect(t, len(tr.filter.text) == 0, "Esc first clears the filter")
+	e2e_key(&e, .Esc)
+	testing.expect(t, !e.ed.filetree.active, "Esc then closes the tree")
 }
 
 @(test)
@@ -1084,11 +1085,18 @@ e2e_nav_filetree_toggle_reopens :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	nav_alt(&e, 'f')
-	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree")
+	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree on All")
+	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.All)
+	nav_alt(&e, 'g')
+	testing.expect(t, e.ed.filetree.active, "Alt+g while open switches to Git, stays open")
+	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Git)
+	nav_alt(&e, 'g')
+	testing.expect(t, !e.ed.filetree.active, "Alt+g again (same tab) closes it")
 	nav_alt(&e, 'f')
-	testing.expect(t, !e.ed.filetree.active, "Alt+f again closes it")
+	testing.expect(t, e.ed.filetree.active, "Alt+f reopens it on All")
+	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.All)
 	nav_alt(&e, 'f')
-	testing.expect(t, e.ed.filetree.active, "Alt+f reopens it")
+	testing.expect(t, !e.ed.filetree.active, "Alt+f again (same tab) closes it")
 }
 
 @(test)
@@ -1133,10 +1141,8 @@ e2e_nav_filetree_rebound_bind_toggles :: proc(t: ^testing.T) {
 
 	nav_alt(&e, 'z')
 	testing.expect(t, e.ed.filetree.active, "rebound chord opens the pane")
-	nav_alt(&e, 'f')
-	testing.expect(t, e.ed.filetree.active, "the old chord no longer closes it")
 	nav_alt(&e, 'z')
-	testing.expect(t, !e.ed.filetree.active, "rebound chord closes it")
+	testing.expect(t, !e.ed.filetree.active, "rebound chord again (same tab) closes it")
 	nav_alt(&e, 'f')
 	testing.expect(t, !e.ed.filetree.active, "the old chord no longer opens it")
 }

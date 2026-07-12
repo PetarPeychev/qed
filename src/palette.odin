@@ -99,8 +99,10 @@ cmd_message_log :: proc(editor: ^Editor) {logview_open(editor)}
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
 commands := [?]Command {
-	{name = "Open File", run = picker_open},
-	{name = "File Tree", run = filetree_open},
+	{name = "File Tree", run = filetree_open_all},
+	{name = "File Tree: Open", run = filetree_open_open},
+	{name = "File Tree: Git", run = filetree_open_git},
+	{name = "File Tree: Unsaved", run = filetree_open_unsaved},
 	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Find", run = find_open},
 	{name = "Replace", run = find_open_replace},
@@ -160,7 +162,8 @@ filetree_commands := [?]Command {
 command_available :: proc(editor: ^Editor, name: string) -> bool {
 	if editor.welcome {
 		switch name {
-		case "Open File", "File Tree", "Terminal: Toggle", "Find in Files",
+		case "File Tree", "File Tree: Open", "File Tree: Git", "File Tree: Unsaved",
+		     "Terminal: Toggle", "Find in Files",
 		     "Debug: Message Log", "Set Theme", "Quit":
 			return true
 		}

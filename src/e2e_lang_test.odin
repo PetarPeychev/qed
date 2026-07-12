@@ -549,8 +549,8 @@ e2e_git_diff_view_ghost :: proc(t: ^testing.T) {
 
 	// Toggle diff view on; the removed base line renders as a ghost row above the
 	// live modified line, marked by the deletion gutter glyph.
-	e2e_key(&e, tb2.Key(0), .Alt, 'g')
-	testing.expect(t, g_diff_view, "Alt+g enables diff view")
+	cmd_toggle_diff_view(&e.ed)
+	testing.expect(t, g_diff_view, "the command enables diff view")
 	e2e_render(&e)
 
 	gutter := editor_gutter_width(&e.ed)

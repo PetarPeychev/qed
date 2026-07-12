@@ -146,13 +146,13 @@ e2e_mouse_bufswitch_double_click :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.current, 0)
 }
 
-// File-open picker (Ctrl+O): a click outside the box dismisses it.
+// File tree (Alt+f): a click outside the box dismisses it.
 @(test)
-e2e_mouse_picker_click_away :: proc(t: ^testing.T) {
+e2e_mouse_filetree_click_away :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 
-	// An empty scratch root keeps picker_open off the (large) real cwd.
+	// An empty scratch root keeps the tree scan off the (large) real cwd.
 	root := e2e_mouse_scratch("")
 	os.make_directory(root)
 	saved_root := e.ed.working_root
@@ -163,12 +163,12 @@ e2e_mouse_picker_click_away :: proc(t: ^testing.T) {
 		delete(root)
 	}
 
-	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, e.ed.picker.active, "Ctrl+O opens the picker")
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree")
 
 	// (0,0) is outside the centered pane box; a non-motion click there closes it.
 	e2e_mouse(&e, 0, 0)
-	testing.expect(t, !e.ed.picker.active, "click outside dismisses the picker")
+	testing.expect(t, !e.ed.filetree.active, "click outside dismisses the file tree")
 }
 
 // Find bar (Ctrl+F): a click in the query field places the caret; a button-held
