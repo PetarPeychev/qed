@@ -1,26 +1,26 @@
-# qed — Configuration reference
+# Configuration reference
 
-Every tunable qed has, in one place. The defaults are compiled into the binary
-from two files, which are the canonical, always-current reference:
+Every qed tunable, in one place. Defaults are compiled into the binary from two
+files, which are the canonical, always-current reference:
 
-- **[`config/config.json`](../config/config.json)** — knobs, keybinds, and
+- [`config/config.json`](../config/config.json): knobs, keybinds, and
   per-language LSP/formatter wiring.
-- **[`config/themes/default.json`](../config/themes/default.json)** — the
-  complete color, icon, and tint palette every theme overlays.
+- [`config/themes/default.json`](../config/themes/default.json): the complete
+  color, icon, and tint palette every theme overlays.
 
 ## How config works
 
-You never copy either file. `~/.config/qed/config.json` is a **sparse per-key
-diff**: put in only the keys you want to change; everything else keeps its
+You never copy either file. `~/.config/qed/config.json` is a sparse per-key
+diff: put in only the keys you want to change; everything else keeps its
 compiled-in default. qed never writes this file (except the theme picker, which
 persists the single `theme` key when you press Enter on it).
 
-- **Hot-reloaded.** Save the file and the change applies live — colors, keybinds,
-  and knobs all take effect without a restart.
+- **Hot-reloaded.** Save the file and the change applies live: colors, keybinds,
+  and knobs take effect without a restart.
 - **Forgiving.** An unknown key warns once and is ignored; malformed JSON falls
   back to defaults without crashing.
-- **Nested keys are merged per-key**, so overriding one language's `formatter`
-  leaves its `patterns` and `lsp` intact.
+- **Nested keys merge per-key**, so overriding one language's `formatter` leaves
+  its `patterns` and `lsp` intact.
 
 A minimal override looks like:
 
@@ -39,7 +39,7 @@ A minimal override looks like:
 |-----|---------|---------|
 | `tab_width` | `4` | Indent width in spaces; also the display width of a literal tab. |
 | `auto_close_pairs` | `true` | Auto-insert the closing `)`/`]`/`}`/quote/backtick; type-over and paired backspace. |
-| `line_wrap` | `true` | Soft-wrap long lines at word boundaries (per-buffer; *Toggle Line Wrap* flips the current one). Off → horizontal scroll. |
+| `line_wrap` | `true` | Soft-wrap long lines at word boundaries (per-buffer; *Toggle Line Wrap* flips the current one). Off means horizontal scroll. |
 | `cursor_accel` | `true` | Held arrow keys accelerate the longer they repeat. |
 | `cursor_accel_interval_ms` | `55` | A pause longer than this (ms) resets the acceleration ramp. |
 | `cursor_accel_ramp_presses` | `20` | Repeats over which the step ramps to its max. |
@@ -47,7 +47,7 @@ A minimal override looks like:
 
 ## Save behavior
 
-All default off; each has a runtime *Toggle …* command.
+All default off; each has a runtime *Toggle* command.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -101,7 +101,7 @@ All default off; each has a runtime *Toggle …* command.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `big_file_bytes` | `2097152` | Files ≥ this size (2 MB) open as plain text — no highlight, git gutter, or LSP. |
+| `big_file_bytes` | `2097152` | Files at or above this size (2 MB) open as plain text (no highlight, git gutter, or LSP). |
 | `git_diff_max_d` | `2000` | Myers-diff edit-distance cap for the git gutter (protects huge diffs). |
 
 ## Feature toggles
@@ -115,39 +115,39 @@ All default off; each has a runtime *Toggle …* command.
 
 ## Keybinds
 
-`keybinds` maps a **command name** to a key string. Only these commands are
+`keybinds` maps a command name to a key string. Only these commands are
 rebindable; primitive editing/movement and `Ctrl+P` (the palette) are fixed. An
 empty string (`""`) leaves a command unbound but still reachable from the
 palette. Key strings are case-sensitive combinations of `Ctrl+`, `Alt+`, and a
-key (`Ctrl+f`, `Alt+F`, `Alt+{`). See the `keybinds` block in
-[`config/config.json`](../config/config.json) for the full list of command names
+key (`Ctrl+f`, `Alt+F`, `Alt+{`). The `keybinds` block in
+[`config/config.json`](../config/config.json) has the full list of command names
 and their defaults; every command is also listed with its current binding in the
 command palette (`Ctrl+P`).
 
 ## Languages
 
-The `languages` section keys each language by name; every entry has three
+The `languages` section keys each language by name. Every entry has three
 user-overridable fields:
 
-- **`patterns`** — glob list matched against the filename basename
+- **`patterns`**: glob list matched against the filename basename
   (most-specific first), e.g. `["*.py", "*.pyw"]` or dotfiles like `.bashrc`.
-- **`lsp`** — the language-server command (`""` = none), e.g. `pyright-langserver --stdio`.
-- **`formatter`** — an external stdin→stdout filter (`""` = fall back to LSP
+- **`lsp`**: the language-server command (`""` is none), e.g. `pyright-langserver --stdio`.
+- **`formatter`**: an external stdin-to-stdout filter (`""` falls back to LSP
   formatting), e.g. `ruff format -`.
 
 Overriding one field merges over the compiled-in default, so you can swap just a
-formatter or point `lsp` at a different binary. Syntax highlighting is wired in
+formatter or point `lsp` at a different binary. Syntax highlighting is wired into
 the binary (tree-sitter) and is not configured here. *Set Language* overrides the
 detected language for the current session.
 
 ## LLM / AI assist
 
-The `llm` section configures both AI features. See
-[notes/ai.md](notes/ai.md) for the architecture.
+The `llm` section configures both AI features. See [notes/ai.md](notes/ai.md) for
+the architecture.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `chat_command` | `claude -p` | Shell command for *AI: Edit Selection* (`Ctrl+K`); buffer + prompt go in on stdin. |
+| `chat_command` | `claude -p` | Shell command for *AI: Edit Selection* (`Ctrl+K`); buffer and prompt go in on stdin. |
 | `edit_prompt` | *(template)* | The instruction template; `{path}`, `{instruction}`, `{file}` are substituted. |
 | `completion_enabled` | `false` | Enable inline FIM ghost-text completion. *AI: Toggle Inline Completion*. |
 | `completion_endpoint` | Codestral FIM URL | FIM HTTP endpoint. |
@@ -159,8 +159,8 @@ The `llm` section configures both AI features. See
 
 ## Themes & colors
 
-Colors are **not** in `config.json` — they live in themes. Set the active theme
-with the `theme` key (or the *Set Theme* picker, which persists it):
+Colors are not in `config.json`; they live in themes. Set the active theme with
+the `theme` key (or the *Set Theme* picker, which persists it):
 
 ```json
 { "theme": "nord" }
@@ -170,9 +170,9 @@ Bundled themes: `default`, `atom-one-dark`, `catppuccin-mocha`,
 `catppuccin-latte`, `solarized-light`, `dracula`, `gruvbox-dark`, `nord`,
 `tokyo-night` (`catppuccin-latte` and `solarized-light` are light).
 
-To customize colors, create `~/.config/qed/themes/<name>.json` — a sparse per-key
+To customize colors, create `~/.config/qed/themes/<name>.json`, a sparse per-key
 diff over the bundled theme of the same name (or over `default` for a new name).
-The four sections are `colors`, `captures` (tree-sitter capture → color),
+The four sections are `colors`, `captures` (tree-sitter capture to color),
 `icons`, and `tints` (line-background strengths). The complete key list is
 [`config/themes/default.json`](../config/themes/default.json); qed never writes
 theme files.
