@@ -503,7 +503,8 @@ current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`rg --sort path` for deterministic
 order), file-tree browser (`Alt+f`: modal, `Enter` expands a directory / opens a file,
-lazy per-dir expand, right-side preview, new/rename/delete with recursive-delete confirm
+lazy per-dir expand, right-side preview, new/rename/delete with a floating
+recursive-delete confirm dialog (shared `dialog_*` primitive)
 (nested new/rename names create missing parent dirs via `path_ensure_parent_dir`);
 rename follows open buffers; the open buffer's row keeps an accent fg even selected; footer toggles — `e` expand/collapse-all (skips
 gitignored + hidden dotdirs), `.`/`i` show dotfiles / gitignored (both hidden by
