@@ -66,42 +66,40 @@ set underneath.
 
 ## Installation
 
-### Prerequisites
+### Download a release binary (easiest)
 
-- **[Odin](https://odin-lang.org/docs/install/)** — the compiler (bundles LLVM).
-- **A C compiler** (`cc`) and **`ar`** — used to build the vendored termbox2 and
-  tree-sitter static libraries.
-
-### Linux
+Grab the tarball for your platform from the
+[**Releases**](https://github.com/PetarPeychev/qed/releases/latest) page —
+prebuilt for `linux-amd64`, `linux-arm64`, `macos-amd64`, and `macos-arm64`. No
+toolchain required.
 
 ```sh
-# 1. Toolchain (Debian/Ubuntu example — adjust for your distro)
-sudo apt install build-essential git
-#    Install Odin from https://odin-lang.org/docs/install/
-
-# 2. Build
-git clone https://github.com/PetarPeychev/qed.git && cd qed
-./build.sh
-
-# 3. Run
+# Replace VERSION and PLATFORM with the release you downloaded, e.g.
+#   qed-v1.0.0-linux-amd64.tar.gz
+tar xzf qed-VERSION-PLATFORM.tar.gz
+cd qed-VERSION-PLATFORM
 ./qed [PATH]        # PATH is a file or directory; omit for the welcome screen
 ```
 
-Put `qed` on your `PATH` (e.g. symlink it into `~/.local/bin`) to run it from
-anywhere.
+Put `qed` on your `PATH` (e.g. move or symlink it into `~/.local/bin`) to run it
+from anywhere. On macOS, first launch may need
+`xattr -d com.apple.quarantine ./qed` to clear Gatekeeper.
 
-### macOS
+### Build from source
+
+Requires **[Odin](https://odin-lang.org/docs/install/)** (the compiler, bundles
+LLVM) and a **C compiler** (`cc`) + **`ar`** for the vendored termbox2 and
+tree-sitter static libraries.
 
 ```sh
-# 1. Toolchain
-xcode-select --install     # provides cc (clang), ar, git
-brew install odin          # https://odin-lang.org/docs/install/
+# Linux — toolchain (Debian/Ubuntu example; adjust for your distro)
+sudo apt install build-essential git
+# macOS — toolchain
+xcode-select --install && brew install odin
+# Install Odin from https://odin-lang.org/docs/install/ if not via a package manager
 
-# 2. Build
 git clone https://github.com/PetarPeychev/qed.git && cd qed
 ./build.sh
-
-# 3. Run
 ./qed [PATH]
 ```
 
