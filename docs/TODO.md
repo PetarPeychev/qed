@@ -22,7 +22,6 @@ daily-drives it for programming.** Every item here blocks that.
 
 ### LSP
 
-- [ ] Hover docs: render markdown (bold/code/headers) in the popup instead of raw text.
 - [ ] Inline diagnostic virtual text (dimmed end-of-line message).
 - [ ] Code actions / quick-fix (`textDocument/codeAction`) — esp. auto-import for TS/React.
 - [ ] Find references (floating pane / picker).

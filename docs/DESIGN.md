@@ -434,7 +434,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `picker` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
-`linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `completion` · `rename` ·
+`linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -567,6 +567,12 @@ yaml-language-server, docker-langserver,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
+rendered-markdown hover (`mdrender.odin`: markdown → wrapped styled-span lines —
+bold/italic/headers stripped of markers, `---` rules, fenced *and* 4-space/tab-indented
+code blocks tree-sitter-highlighted with fence-tag → `language_of_name` fallback to the
+buffer's language, tab-stop expansion; popup wheel-scrolls while hovered, `contentFormat`
+advertises markdown first; engine is render-only, built for reuse by a future
+markdown-preview pane),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
