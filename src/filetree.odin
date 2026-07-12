@@ -38,22 +38,23 @@ FileEntry :: struct {
 }
 
 FileTree :: struct {
-	active:   bool,
-	entries:  [dynamic]FileEntry,
-	expanded: map[string]bool,
-	selected: int,
-	scroll:   int,
-	mode:     FileTreeMode,
-	field:    TextField,
-	preview:  Preview,
-	status:   map[string]GitMark,
-	ignored:  map[string]bool,
-	show_dotfiles: bool,
-	show_ignored:  bool,
-	scope:         FileTreeScope,
-	scope_paths:   map[string]bool,
-	scan_sub:      Subprocess,
-	scanned:       bool,
+	active:          bool,
+	entries:         [dynamic]FileEntry,
+	expanded:        map[string]bool,
+	selected:        int,
+	scroll:          int,
+	mode:            FileTreeMode,
+	field:           TextField,
+	delete_selected: int,
+	preview:         Preview,
+	status:          map[string]GitMark,
+	ignored:         map[string]bool,
+	show_dotfiles:   bool,
+	show_ignored:    bool,
+	scope:           FileTreeScope,
+	scope_paths:     map[string]bool,
+	scan_sub:        Subprocess,
+	scanned:         bool,
 }
 
 FileTreeLayout :: struct {
@@ -770,14 +771,36 @@ filetree_delete_commit :: proc(editor: ^Editor) {
 	editor_log(editor, .Info, "Files", "Deleted")
 }
 
+filetree_delete_actions := [?]string{"Cancel", "Delete"}
+
+filetree_delete_close :: proc(editor: ^Editor) {
+	editor.filetree.mode = .Nav
+}
+
+filetree_delete_execute :: proc(editor: ^Editor) {
+	switch editor.filetree.delete_selected {
+	case 0:
+		filetree_delete_close(editor)
+	case 1:
+		filetree_delete_commit(editor)
+	}
+}
+
+filetree_delete_question :: proc(t: ^FileTree) -> string {
+	e, ok := filetree_selected(t)
+	if !ok {
+		return "Delete?"
+	}
+	if e.is_dir {
+		return fmt.tprintf("Delete %s/ and its contents?", e.name)
+	}
+	return fmt.tprintf("Delete %s?", e.name)
+}
+
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
 	if t.mode == .ConfirmDelete {
-		if ev.ch == 'y' || ev.ch == 'Y' {
-			filetree_delete_commit(editor)
-		} else {
-			t.mode = .Nav
-		}
+		dialog_key(editor, ev, &t.delete_selected, len(filetree_delete_actions), filetree_delete_execute, filetree_delete_close)
 		return
 	}
 	#partial switch ev.key {
@@ -832,6 +855,7 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		case 'd':
 			if _, ok := filetree_selected(t); ok {
 				t.mode = .ConfirmDelete
+				t.delete_selected = 0
 			}
 		case 'e':
 			filetree_toggle_expand_all(editor)
@@ -914,6 +938,10 @@ filetree_render :: proc(editor: ^Editor) {
 	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, t.scroll, len(t.entries))
 
 	filetree_render_footer(editor, inner, lay.footer_y)
+
+	if t.mode == .ConfirmDelete {
+		dialog_render(editor, filetree_delete_question(t), filetree_delete_actions[:], t.delete_selected)
+	}
 }
 
 filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
@@ -959,9 +987,8 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 
 filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 	t := &editor.filetree
-	prompt := ""
 	switch t.mode {
-	case .Nav:
+	case .Nav, .ConfirmDelete:
 		any_expanded := filetree_any_expanded(t)
 		Toggle :: struct {
 			label: string,
@@ -986,17 +1013,6 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 		tb2.hide_cursor()
 		return
 	case .NewFile, .NewDirectory, .Rename:
-	case .ConfirmDelete:
-		if e, ok := filetree_selected(t); ok {
-			if e.is_dir {
-				prompt = strings.concatenate({"Delete ", e.name, "/ and its contents? (y/n)"}, context.temp_allocator)
-			} else {
-				prompt = strings.concatenate({"Delete ", e.name, "? (y/n)"}, context.temp_allocator)
-			}
-		}
-		pane_text(inner.x + 1, y, inner.w - 2, prompt, COLOR_ERROR_FG, COLOR_PANE_BG)
-		tb2.hide_cursor()
-		return
 	}
 	label := filetree_footer_label(t.mode)
 	pane_text(inner.x + 1, y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
@@ -1007,6 +1023,10 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
+	if t.mode == .ConfirmDelete {
+		dialog_mouse(editor, ev, filetree_delete_question(t), filetree_delete_actions[:], &t.delete_selected, filetree_delete_execute, filetree_delete_close)
+		return
+	}
 	lay := filetree_layout(editor)
 	motion := ev_motion(ev)
 	if !mouse_in_rect(ev, lay.box) {

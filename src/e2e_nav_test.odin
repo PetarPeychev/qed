@@ -935,3 +935,78 @@ e2e_nav_filetree_new_file_nested_dirs :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "a row is selected after reveal")
 	testing.expect(t, strings.has_suffix(sel.path, "c.txt"), "reveal selects the new nested file")
 }
+
+@(test)
+e2e_nav_filetree_delete_dialog_cancel :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "main.txt")
+
+	e2e_type(&e, "d")
+	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmDelete)
+	testing.expect_value(t, tr.delete_selected, 0) // Cancel is default-selected
+	testing.expect_value(t, filetree_delete_question(tr), "Delete main.txt?")
+
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, tr.mode, FileTreeMode.Nav)
+	testing.expect(t, os.exists(e.path), "Esc cancels, file survives")
+	testing.expect(t, tr.active, "Esc on the dialog only closes the dialog, not the tree")
+}
+
+@(test)
+e2e_nav_filetree_delete_dialog_default_enter_cancels :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	nav_alt(&e, 'f')
+	e2e_type(&e, "d")
+	e2e_key(&e, .Enter) // default selection is Cancel
+
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.Nav)
+	testing.expect(t, os.exists(e.path), "Enter on default Cancel does not delete")
+}
+
+@(test)
+e2e_nav_filetree_delete_dialog_confirm_file :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	nav_alt(&e, 'f')
+	e2e_type(&e, "d")
+	e2e_key(&e, .Arrow_Down) // Cancel -> Delete
+	e2e_key(&e, .Enter)
+
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.Nav)
+	testing.expect(t, !os.exists(e.path), "confirming Delete removes the file")
+	testing.expect_value(t, e.ed.message_level, LogLevel.Info)
+}
+
+@(test)
+e2e_nav_filetree_delete_dialog_directory :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	sub := fmt.aprintf("%s/sub", e.ed.working_root)
+	defer delete(sub)
+	os.make_directory(sub)
+	inner := fmt.aprintf("%s/inner.txt", sub)
+	defer delete(inner)
+	nav_write(inner, "inner body")
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "sub") // dirs sort first
+
+	e2e_type(&e, "d")
+	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmDelete)
+	testing.expect_value(t, filetree_delete_question(tr), "Delete sub/ and its contents?")
+
+	e2e_key(&e, .Arrow_Down) // Cancel -> Delete
+	e2e_key(&e, .Enter)
+
+	testing.expect(t, !os.exists(sub), "confirming Delete removes the directory recursively")
+	testing.expect(t, !os.exists(inner), "nested file is gone too")
+}
