@@ -63,6 +63,7 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 
 ### Features
 
+- [ ] Discontinuous file-tree selection (pick non-adjacent files for a command) — deferred: mouse Ctrl/Shift-click is blocked (vendored termbox2 drops mouse modifier bits — patchable — and Windows Terminal itself eats Ctrl/Shift-click), so it needs a keyboard mark key (e.g. Insert toggles the current row) and/or the termbox mouse-mod patch; sound data model is a path-keyed selection set + prune-to-visible on rebuild.
 - [ ] Multi-line find (regex `\n` spanning rows) — current find is single-line, matching the per-line data model; needs whole-buffer scan + cross-row match/highlight.
 - [ ] Save all modified buffers in one command.
 - [ ] Sticky scroll: pin the enclosing scope header (function/block) at the top while scrolled — tree-sitter tree.
