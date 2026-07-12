@@ -534,7 +534,8 @@ pre-populates Find / Replace / Project Search / Line Jump, fully selected so
 typing replaces; multi-line/whitespace selections keep each pane's persisted
 query). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
-prompt fields, click-away dismiss).
+prompt fields, click-away dismiss) and draws a scrollbar thumb
+(`pane_draw_scrollbar`, on the divider or right border) when its list overflows.
 Preview panes (file-open, file-tree, project-search, buffer switcher, line jump) share one
 scrollable, syntax-highlighted `Preview` component (`preview.odin`): wheel-scrollable while
 the pointer is over the right pane, soft-wrapping long lines (word-boundary via `line_wrap`,
