@@ -791,6 +791,89 @@ e2e_nav_filetree_scope_and_dotfiles :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_filetree_filter_dotfile_toggle :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	nav_write(fmt.tprintf("%s/aaa.txt", e.ed.working_root), "x")
+	nav_write(fmt.tprintf("%s/.aaa.txt", e.ed.working_root), "y")
+
+	nav_alt(&e, 'f')
+	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree")
+	tr := &e.ed.filetree
+
+	count_named :: proc(tr: ^FileTree, name: string) -> int {
+		n := 0
+		for entry in tr.entries {
+			if entry.name == name {
+				n += 1
+			}
+		}
+		return n
+	}
+
+	e2e_type(&e, "aaa")
+	testing.expect(t, count_named(tr, "aaa.txt") == 1, "visible file matches the filter")
+	testing.expect_value(t, count_named(tr, ".aaa.txt"), 0) // dotfile excluded while off
+
+	// Toggle dotfiles ON mid-filter: the cached candidate set must re-collect.
+	nav_alt(&e, '.')
+	testing.expect(t, tr.show_dotfiles, "Alt+. turns dotfiles on")
+	testing.expect_value(t, count_named(tr, ".aaa.txt"), 1)
+	testing.expect_value(t, count_named(tr, "aaa.txt"), 1)
+
+	// Toggle back OFF: the dotfile drops out of the filtered results again.
+	nav_alt(&e, '.')
+	testing.expect(t, !tr.show_dotfiles, "Alt+. turns dotfiles off")
+	testing.expect_value(t, count_named(tr, ".aaa.txt"), 0)
+	testing.expect_value(t, count_named(tr, "aaa.txt"), 1)
+
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_open_filter_close :: proc(t: ^testing.T) {
+	e := e2e_root_start("alpha one")
+	defer e2e_stop(&e)
+
+	second := fmt.aprintf("%s/second.txt", e.ed.working_root)
+	defer delete(second)
+	nav_write(second, "bravo one")
+	editor_open_path(&e.ed, second)
+
+	nav_alt(&e, 'o')
+	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Open)
+	tr := &e.ed.filetree
+
+	count_named :: proc(tr: ^FileTree, name: string) -> int {
+		n := 0
+		for entry in tr.entries {
+			if entry.name == name {
+				n += 1
+			}
+		}
+		return n
+	}
+
+	e2e_type(&e, "txt") // matches both open buffers
+	testing.expect_value(t, count_named(tr, "main.txt"), 1)
+	testing.expect_value(t, count_named(tr, "second.txt"), 1)
+
+	for entry, i in tr.entries {
+		if entry.name == "second.txt" {
+			tr.selected = i
+		}
+	}
+	e2e_key(&e, .Ctrl_W) // clean buffer closes without a dialog
+	testing.expect_value(t, tr.mode, FileTreeMode.Nav)
+	// close_commit must invalidate the filter cache: the closed buffer drops out.
+	testing.expect_value(t, count_named(tr, "second.txt"), 0)
+	testing.expect_value(t, count_named(tr, "main.txt"), 1)
+
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	if !shell_command_exists("git") {
 		return

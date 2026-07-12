@@ -60,6 +60,11 @@ FileTree :: struct {
 	scope_paths:     map[string]bool,
 	scan_sub:        Subprocess,
 	scanned:         bool,
+	filter_cands:    [dynamic]FileEntry,
+	filter_valid:    bool,
+	filter_scope:    FileTreeScope,
+	filter_dotfiles: bool,
+	filter_ignored:  bool,
 }
 
 FileTreeLayout :: struct {
@@ -127,6 +132,8 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.scope_paths)
 	filetree_clip_clear(t)
 	delete(t.clipboard)
+	filetree_filter_cache_clear(t)
+	delete(t.filter_cands)
 }
 
 filetree_paths_set :: proc(set: ^map[string]bool, path: string) {
@@ -264,6 +271,7 @@ filetree_scan_pump :: proc(editor: ^Editor) -> bool {
 filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	t := &editor.filetree
 	filetree_clear_status(t)
+	filetree_filter_invalidate(t)
 	t.scanned = true
 	root := editor.working_root
 	out := output
@@ -395,12 +403,47 @@ filetree_collect :: proc(t: ^FileTree, dir: string, out: ^[dynamic]FileEntry) {
 	}
 }
 
+filetree_filter_cache_clear :: proc(t: ^FileTree) {
+	for c in t.filter_cands {
+		delete(c.path)
+	}
+	clear(&t.filter_cands)
+	t.filter_valid = false
+}
+
+filetree_filter_invalidate :: proc(t: ^FileTree) {
+	t.filter_valid = false
+}
+
+filetree_filter_refresh_cache :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	if t.filter_valid &&
+	   (t.filter_scope != t.scope ||
+			   t.filter_dotfiles != t.show_dotfiles ||
+			   t.filter_ignored != t.show_ignored) {
+		t.filter_valid = false
+	}
+	if t.filter_valid {
+		return
+	}
+	filetree_filter_cache_clear(t)
+	cands := make([dynamic]FileEntry, context.temp_allocator)
+	filetree_collect(t, editor.working_root, &cands)
+	for c in cands {
+		append(&t.filter_cands, FileEntry{strings.clone(c.path), "", 0, c.is_dir})
+	}
+	t.filter_scope = t.scope
+	t.filter_dotfiles = t.show_dotfiles
+	t.filter_ignored = t.show_ignored
+	t.filter_valid = true
+}
+
 filetree_apply_filter :: proc(editor: ^Editor) {
 	t := &editor.filetree
 	query := textfield_str(&t.filter)
 	root := editor.working_root
-	cands := make([dynamic]FileEntry, context.temp_allocator)
-	filetree_collect(t, root, &cands)
+	filetree_filter_refresh_cache(editor)
+	cands := t.filter_cands
 	if len(cands) == 0 {
 		return
 	}
@@ -549,6 +592,7 @@ filetree_rebuild :: proc(editor: ^Editor) {
 }
 
 filetree_refresh :: proc(editor: ^Editor) {
+	filetree_filter_invalidate(&editor.filetree)
 	filetree_scan_status(editor)
 	filetree_rebuild(editor)
 }
@@ -594,6 +638,7 @@ filetree_open :: proc(editor: ^Editor) {
 	t.mode = .Nav
 	textfield_reset(&t.field)
 	textfield_reset(&t.filter)
+	filetree_filter_cache_clear(t)
 	editor_clear_message(editor)
 	if t.scanned {
 		filetree_rebuild(editor)
@@ -862,6 +907,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 			}
 			os.close(f)
 		}
+		filetree_filter_invalidate(t)
 		filetree_reveal(editor, full)
 	case .Rename:
 		e, ok := filetree_selected(t)
@@ -876,6 +922,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 			return
 		}
 		filetree_repath_buffers(editor, old, full)
+		filetree_filter_invalidate(t)
 		filetree_reveal(editor, full)
 	case .Nav, .ConfirmDelete, .ConfirmClose:
 	}
@@ -1028,6 +1075,7 @@ filetree_clip_paste :: proc(editor: ^Editor) {
 	if cut {
 		filetree_clip_clear(t)
 	}
+	filetree_filter_invalidate(t)
 	if last != "" {
 		filetree_reveal(editor, last)
 	} else {
@@ -1059,6 +1107,7 @@ filetree_delete_commit :: proc(editor: ^Editor) {
 		}
 	}
 	t.selected = max(0, lo - 1)
+	filetree_filter_invalidate(t)
 	filetree_refresh(editor)
 	deleted := len(paths) - failed
 	if failed > 0 {
@@ -1152,6 +1201,7 @@ filetree_close_commit :: proc(editor: ^Editor) {
 			closed += 1
 		}
 	}
+	filetree_filter_invalidate(t)
 	filetree_rebuild(editor)
 	if closed == 1 {
 		editor_log(editor, .Info, "Files", "Closed buffer")

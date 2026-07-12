@@ -111,7 +111,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Performance
 
-- [ ] File-tree filter re-walks the whole working tree from disk (`filetree_apply_filter`/`filetree_collect` → `read_directory_by_path`) on every keystroke — cache the candidate list per filter session (invalidate on scope/toggle/refresh) and re-rank only.
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Cache `llm_locate` per (path, rev) — an in-flight AI edit rebuilds + searches the whole buffer every render.
 - [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
