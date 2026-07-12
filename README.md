@@ -2,8 +2,9 @@
 
 A terminal text editor written in [Odin](https://odin-lang.org), inspired by
 [micro](https://micro-editor.github.io). Ctrl-based keybinds (`Ctrl+S` save,
-`Ctrl+C`/`Ctrl+V` copy/paste, `Ctrl+F` find) instead of modal editing. Runs on
-Linux and macOS in any truecolor terminal.
+`Ctrl+C`/`Ctrl+V` copy/paste, `Ctrl+F` find) instead of modal editing, plus
+IDE-lite features: syntax highlighting, LSP, git integration, and LLM assist.
+Runs on Linux and macOS in any truecolor terminal.
 
 <p align="center">
   <img src="docs/screenshots/file-pane.png" alt="qed with the file tree and preview open" width="900">
