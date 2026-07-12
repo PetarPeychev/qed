@@ -43,7 +43,6 @@ daily-drives it for programming.** Every item here blocks that.
 
 Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md). Sequenced phases (each ships + is verified on its own):
 
-- [ ] Phase 3 — `Open` tab as buffer switcher (fuzzy + `Enter`, `Ctrl+W` batch close, in-memory preview): remove `bufswitch.odin`/`Alt+e`.
 - [ ] Phase 4 — search in selection: path-scope `projsearch`, `/` command runs it over the selection (`Ctrl+A` first for a whole tab); standalone `Alt+F` stays whole-project.
 - [ ] File-tree filter perf: `filetree_apply_filter`/`filetree_collect` re-walk the whole working tree from disk (`read_directory_by_path`) on every keystroke — cache the candidate list per filter session (invalidate on scope/toggle/refresh) and re-rank only.
 

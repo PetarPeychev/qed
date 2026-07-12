@@ -6,7 +6,6 @@ import "core:strings"
 import "core:sys/posix"
 import "core:testing"
 import "core:time"
-import "lib:tb2"
 
 @(private = "file")
 e2e_mouse_seq: int
@@ -120,29 +119,34 @@ e2e_mouse_linefind_click_row :: proc(t: ^testing.T) {
 	testing.expect(t, e.ed.linefind.active, "a single click only selects, stays open")
 }
 
-// Buffer switcher (Alt+e): a double click activates the row, same as Enter.
+// Open tab (Alt+o): a double click on a row switches to that buffer, same as Enter.
 @(test)
-e2e_mouse_bufswitch_double_click :: proc(t: ^testing.T) {
-	e := e2e_start("first buffer")
+e2e_mouse_open_tab_double_click :: proc(t: ^testing.T) {
+	e := e2e_root_start("first buffer")
 	defer e2e_stop(&e)
 
-	path2 := e2e_mouse_scratch(".txt")
-	defer {
-		os.remove(path2)
-		delete(path2)
-	}
-	_ = os.write_entire_file(path2, transmute([]u8)string("second buffer"))
-	editor_open_path(&e.ed, path2)
+	second := fmt.aprintf("%s/second.txt", e.ed.working_root)
+	defer delete(second)
+	nav_write(second, "second buffer")
+	editor_open_path(&e.ed, second)
 	testing.expect_value(t, e.ed.current, 1)
 
-	// Alt+e is the Switch Buffer bind (an alt-char command).
-	e2e_step(&e, tb2.Event{type = .Key, mod = .Alt, ch = 'e'})
-	testing.expect(t, e.ed.bufswitch.active, "Alt+e opens the switcher")
+	nav_alt(&e, 'o')
+	testing.expect(t, e.ed.filetree.active, "Alt+o opens the Open tab")
 
-	lay := overlay_layout(&e.ed)
-	e2e_mouse(&e, lay.inner.x + 1, lay.body_top)
-	e2e_mouse(&e, lay.inner.x + 1, lay.body_top)
-	testing.expect(t, !e.ed.bufswitch.active, "double click activates and closes")
+	tr := &e.ed.filetree
+	lay := filetree_layout(&e.ed)
+	target := -1
+	for entry, i in tr.entries {
+		if entry.name == "main.txt" {
+			target = i
+		}
+	}
+	testing.expect(t, target >= 0, "main.txt is listed in the Open tab")
+	y := lay.body_top + (target - tr.scroll)
+	e2e_mouse(&e, lay.inner.x + 1, y)
+	e2e_mouse(&e, lay.inner.x + 1, y)
+	testing.expect(t, !e.ed.filetree.active, "double click activates and closes the tree")
 	testing.expect_value(t, e.ed.current, 0)
 }
 

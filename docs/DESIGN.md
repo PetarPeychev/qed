@@ -433,7 +433,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `bufswitch` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
@@ -495,9 +495,10 @@ instrumentation (subprocess/AI/FIM/save/config/clipboard/terminal trails), welco
 modified buffers, floating pane primitive, command palette (context-filtered via
 `command_available`: welcome lists only the working whitelist, big-file buffers
 hide the LSP/inspect commands),
-multiple buffers, close buffer, buffer switcher (`Ctrl+E`: `overlay_layout` two-pane — fuzzy over open
-buffers in stable order + digit instant-jump on empty query, side preview of the
-selected buffer's in-memory content centered on its cursor), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,
+multiple buffers, close buffer (buffer switching folded into the file-tree **Open** tab —
+`Alt+o`, fuzzy + `Enter` switches, in-memory preview centered on the cursor, `Ctrl+W`
+batch-closes the selection, silent for clean buffers and behind a `Close N buffers? (M unsaved)`
+confirm when any are unsaved; standalone switcher removed), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
@@ -511,7 +512,9 @@ selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/p
 clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
 delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` rename, `Ctrl+N`
 new (unified: trailing `/` = directory, else file; nested names create missing parents via
-`path_ensure_parent_dir`), `Ctrl+A` select-all-scope — plus a scoped `Ctrl+P` command palette
+`path_ensure_parent_dir`), `Ctrl+A` select-all-scope, `Ctrl+W` close open buffers (the **Open**
+tab doubles as the buffer switcher — in-memory preview, `Enter` switches; `Ctrl+W` silent for
+clean buffers, confirm dialog only when any are unsaved) — plus a scoped `Ctrl+P` command palette
 (the palette overlay driven by a `filetree_commands` list, floating over the tree);
 keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch delete (one confirm,
 "Delete N items?") and batch open (`Enter`); paste targets the selected dir or a file's parent;
@@ -551,15 +554,17 @@ query). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss) and draws a scrollbar thumb
 (`pane_draw_scrollbar`, on the divider or right border) when its list overflows.
-Preview panes (file-open, file-tree, project-search, buffer switcher, line jump) share one
-scrollable, syntax-highlighted `Preview` component (`preview.odin`): wheel-scrollable while
+Preview panes (file-tree, project-search, line jump) share one
+scrollable, syntax-highlighted `Preview` component (`preview.odin`): the cursor/focus line
+carries the gray selection background band (`COLOR_PANE_SEL_BG`) with its syntax colors kept;
+wheel-scrollable while
 the pointer is over the right pane, soft-wrapping long lines (word-boundary via `line_wrap`,
 blank continuation gutter, tab-aware — always on, no horizontal scroll; the scroll clamp
 `preview_max_scroll` is wrap-aware so a wrapped tail stays reachable), highlighting line
 1→viewport+lookahead (`preview_parse_ahead`)
 and re-highlighting from the top as it scrolls, size-gated at `HIGHLIGHT_ASYNC_BYTES`
 (window-only above it), capped at `preview_max_lines`. File source loads lazily via `head`;
-buffer source (switcher/line jump) previews in-memory content. A file with a NUL
+buffer source (file-tree open buffers / line jump) previews in-memory content. A file with a NUL
 byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrapped
 rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
 both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a

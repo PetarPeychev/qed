@@ -13,6 +13,7 @@ FileTreeMode :: enum {
 	New,
 	Rename,
 	ConfirmDelete,
+	ConfirmClose,
 }
 
 FileTreeScope :: enum {
@@ -49,6 +50,7 @@ FileTree :: struct {
 	field:           TextField,
 	filter:          TextField,
 	delete_selected: int,
+	close_selected:  int,
 	preview:         Preview,
 	status:          map[string]GitMark,
 	ignored:         map[string]bool,
@@ -437,6 +439,12 @@ filetree_load_preview :: proc(editor: ^Editor) {
 	h := filetree_layout(editor).preview_h
 	if t.scope == .Git {
 		preview_set_diff(&t.preview, e.path, h)
+		return
+	}
+	if idx := editor_find_buffer(editor, e.path); idx >= 0 {
+		b := &editor.buffers[idx]
+		focus := clamp(b.cursor.row, 0, max(0, len(b.lines) - 1)) + 1
+		preview_set_buffer(&t.preview, b, focus, h)
 		return
 	}
 	preview_set_file(&t.preview, e.path, 0, h)
@@ -867,7 +875,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		}
 		filetree_repath_buffers(editor, old, full)
 		filetree_reveal(editor, full)
-	case .Nav, .ConfirmDelete:
+	case .Nav, .ConfirmDelete, .ConfirmClose:
 	}
 }
 
@@ -1090,8 +1098,81 @@ filetree_delete_question :: proc(t: ^FileTree) -> string {
 	return fmt.tprintf("Delete %s?", e.name)
 }
 
+filetree_close_actions := [?]string{"Cancel", "Close all"}
+
+filetree_close_targets :: proc(editor: ^Editor) -> (total, unsaved: int) {
+	t := &editor.filetree
+	lo, hi := filetree_sel_range(t)
+	if lo < 0 || lo >= len(t.entries) {
+		return
+	}
+	for i in lo ..= hi {
+		if idx := editor_find_buffer(editor, t.entries[i].path); idx >= 0 {
+			total += 1
+			if editor.buffers[idx].modified {
+				unsaved += 1
+			}
+		}
+	}
+	return
+}
+
+filetree_close_question :: proc(editor: ^Editor) -> string {
+	total, unsaved := filetree_close_targets(editor)
+	plural := "" if total == 1 else "s"
+	if unsaved > 0 {
+		return fmt.tprintf("Close %d buffer%s? (%d unsaved)", total, plural, unsaved)
+	}
+	return fmt.tprintf("Close %d buffer%s?", total, plural)
+}
+
+filetree_close_close :: proc(editor: ^Editor) {
+	editor.filetree.mode = .Nav
+}
+
+filetree_close_commit :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	t.mode = .Nav
+	lo, hi := filetree_sel_range(t)
+	if lo < 0 || lo >= len(t.entries) {
+		return
+	}
+	paths := make([dynamic]string, context.temp_allocator)
+	for i in lo ..= hi {
+		if editor_find_buffer(editor, t.entries[i].path) >= 0 {
+			append(&paths, strings.clone(t.entries[i].path, context.temp_allocator))
+		}
+	}
+	closed := 0
+	for path in paths {
+		if idx := editor_find_buffer(editor, path); idx >= 0 {
+			editor_close_index(editor, idx)
+			closed += 1
+		}
+	}
+	filetree_rebuild(editor)
+	if closed == 1 {
+		editor_log(editor, .Info, "Files", "Closed buffer")
+	} else if closed > 1 {
+		editor_log(editor, .Info, "Files", fmt.tprintf("Closed %d buffers", closed))
+	}
+}
+
+filetree_close_execute :: proc(editor: ^Editor) {
+	switch editor.filetree.close_selected {
+	case 0:
+		filetree_close_close(editor)
+	case 1:
+		filetree_close_commit(editor)
+	}
+}
+
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
+	if t.mode == .ConfirmClose {
+		dialog_key(editor, ev, &t.close_selected, len(filetree_close_actions), filetree_close_execute, filetree_close_close)
+		return
+	}
 	if t.mode == .ConfirmDelete {
 		dialog_key(editor, ev, &t.delete_selected, len(filetree_delete_actions), filetree_delete_execute, filetree_delete_close)
 		return
@@ -1142,6 +1223,21 @@ filetree_cmd_delete :: proc(editor: ^Editor) {
 	}
 }
 
+filetree_cmd_close :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	total, unsaved := filetree_close_targets(editor)
+	if total == 0 {
+		editor_log(editor, .Info, "Files", "No open buffers in selection")
+		return
+	}
+	if unsaved == 0 {
+		filetree_close_commit(editor)
+		return
+	}
+	t.mode = .ConfirmClose
+	t.close_selected = 0
+}
+
 filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
 	if t.mode != .Nav {
@@ -1190,6 +1286,9 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	case .Ctrl_D:
 		filetree_cmd_delete(editor)
+		return
+	case .Ctrl_W:
+		filetree_cmd_close(editor)
 		return
 	case .Ctrl_R:
 		filetree_cmd_rename(editor)
@@ -1306,6 +1405,9 @@ filetree_render :: proc(editor: ^Editor) {
 	if t.mode == .ConfirmDelete {
 		dialog_render(editor, filetree_delete_question(t), filetree_delete_actions[:], t.delete_selected)
 	}
+	if t.mode == .ConfirmClose {
+		dialog_render(editor, filetree_close_question(editor), filetree_close_actions[:], t.close_selected)
+	}
 }
 
 filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
@@ -1341,7 +1443,7 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 		return "New: "
 	case .Rename:
 		return "Rename: "
-	case .Nav, .ConfirmDelete:
+	case .Nav, .ConfirmDelete, .ConfirmClose:
 	}
 	return ""
 }
@@ -1350,7 +1452,7 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	t := &editor.filetree
 	inner := lay.inner
 	switch t.mode {
-	case .Nav, .ConfirmDelete:
+	case .Nav, .ConfirmDelete, .ConfirmClose:
 		pane_text(
 			inner.x + 1,
 			lay.footer_y,
@@ -1371,6 +1473,10 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
+	if t.mode == .ConfirmClose {
+		dialog_mouse(editor, ev, filetree_close_question(editor), filetree_close_actions[:], &t.close_selected, filetree_close_execute, filetree_close_close)
+		return
+	}
 	if t.mode == .ConfirmDelete {
 		dialog_mouse(editor, ev, filetree_delete_question(t), filetree_delete_actions[:], &t.delete_selected, filetree_delete_execute, filetree_delete_close)
 		return

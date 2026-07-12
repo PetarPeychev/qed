@@ -591,8 +591,8 @@ preview_render :: proc(p: ^Preview, x, y, w, h: int) {
 		word_bg := COLOR_PANE_BG
 		colors := row.colors[:]
 		if p.focus > 0 && !p.diff && row.lineno == p.focus {
-			base_fg = COLOR_PANE_PROMPT_FG
-			colors = nil
+			base_fg = COLOR_PANE_SEL_FG
+			bg = COLOR_PANE_SEL_BG
 		} else {
 			#partial switch row.kind {
 			case .Ghost:

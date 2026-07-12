@@ -372,29 +372,103 @@ e2e_nav_scrollbar :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_nav_buffer_switcher :: proc(t: ^testing.T) {
+e2e_nav_open_tab_inmemory_preview :: proc(t: ^testing.T) {
 	e := e2e_root_start("alpha one\nalpha two")
+	defer e2e_stop(&e)
+
+	// Unsaved in-memory edit to the current buffer.
+	b := editor_buffer(&e.ed)
+	b.cursor = {0, 0}
+	cursor_goal_sync(b)
+	e2e_type(&e, "X")
+
+	// The Open tab previews the open buffer's in-memory content, not disk.
+	nav_alt(&e, 'o')
+	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Open)
+	tr := &e.ed.filetree
+	for entry, i in tr.entries {
+		if entry.name == "main.txt" {
+			tr.selected = i
+		}
+	}
+	filetree_load_preview(&e.ed)
+	testing.expect_value(t, string(tr.preview.src[0]), "Xalpha one")
+}
+
+@(test)
+e2e_nav_open_tab_switch_and_close :: proc(t: ^testing.T) {
+	e := e2e_root_start("alpha one")
 	defer e2e_stop(&e)
 
 	second := fmt.aprintf("%s/second.txt", e.ed.working_root)
 	defer delete(second)
-	nav_write(second, "bravo one\nbravo two")
+	nav_write(second, "bravo one")
 	editor_open_path(&e.ed, second)
 	testing.expect_value(t, e.ed.current, 1)
 
-	// Empty-query digit instant-jump: '1' selects the first buffer.
-	nav_alt(&e, 'e')
-	testing.expect(t, e.ed.bufswitch.active, "Alt+e opens the switcher")
-	e2e_type(&e, "1")
+	// Open tab → filter → Enter switches to the other open buffer.
+	nav_alt(&e, 'o')
+	testing.expect(t, e.ed.filetree.active, "Alt+o opens the Open tab")
+	e2e_type(&e, "main")
+	e2e_key(&e, .Enter)
+	testing.expect(t, !e.ed.filetree.active, "Enter switches and closes the tree")
 	testing.expect_value(t, e.ed.current, 0)
+	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "main.txt"), "switched to main.txt")
 
-	// Side preview follows the selection.
-	nav_alt(&e, 'e')
-	pv := &e.ed.bufswitch
-	testing.expect_value(t, string(pv.preview.src[0]), "alpha one")
-	e2e_key(&e, .Arrow_Down)
-	testing.expect_value(t, string(pv.preview.src[0]), "bravo one")
-	e2e_key(&e, .Esc)
+	// Ctrl+W on an all-clean selection closes immediately, no dialog.
+	nav_alt(&e, 'o')
+	tr := &e.ed.filetree
+	for entry, i in tr.entries {
+		if entry.name == "second.txt" {
+			tr.selected = i
+		}
+	}
+	e2e_key(&e, .Ctrl_W)
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.Nav)
+	testing.expect_value(t, len(e.ed.buffers), 1)
+	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "main.txt"), "main.txt remains")
+}
+
+@(test)
+e2e_nav_open_tab_close_unsaved_confirms :: proc(t: ^testing.T) {
+	e := e2e_root_start("alpha one")
+	defer e2e_stop(&e)
+
+	second := fmt.aprintf("%s/second.txt", e.ed.working_root)
+	defer delete(second)
+	nav_write(second, "bravo one")
+	editor_open_path(&e.ed, second)
+	testing.expect_value(t, e.ed.current, 1)
+
+	// Unsaved in-memory edit to second.txt.
+	b := editor_buffer(&e.ed)
+	b.cursor = {0, 0}
+	cursor_goal_sync(b)
+	e2e_type(&e, "Z")
+	testing.expect(t, editor_buffer(&e.ed).modified, "second.txt is unsaved")
+
+	nav_alt(&e, 'o')
+	tr := &e.ed.filetree
+	for entry, i in tr.entries {
+		if entry.name == "second.txt" {
+			tr.selected = i
+		}
+	}
+
+	// An unsaved buffer in the selection routes Ctrl+W through the confirm dialog.
+	e2e_key(&e, .Ctrl_W)
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.ConfirmClose)
+	e2e_key(&e, .Enter) // default action is "Cancel"
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.Nav)
+	testing.expect_value(t, len(e.ed.buffers), 2)
+
+	// Reopen, confirm "Close all" discards the unsaved buffer.
+	e2e_key(&e, .Ctrl_W)
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.ConfirmClose)
+	e2e_key(&e, .Arrow_Down) // move to "Close all"
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, len(e.ed.buffers), 1)
+	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "main.txt"), "main.txt remains")
 }
 
 @(test)
@@ -1097,29 +1171,6 @@ e2e_nav_filetree_toggle_reopens :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.All)
 	nav_alt(&e, 'f')
 	testing.expect(t, !e.ed.filetree.active, "Alt+f again (same tab) closes it")
-}
-
-@(test)
-e2e_nav_bufswitch_alt_e_toggles_ctrl_e_inert :: proc(t: ^testing.T) {
-	e := e2e_start("first buffer")
-	defer e2e_stop(&e)
-
-	path2 := e2e_mouse_scratch(".txt")
-	defer {
-		os.remove(path2)
-		delete(path2)
-	}
-	_ = os.write_entire_file(path2, transmute([]u8)string("second buffer"))
-	editor_open_path(&e.ed, path2)
-
-	nav_alt(&e, 'e')
-	testing.expect(t, e.ed.bufswitch.active, "Alt+e (the configured bind) opens the switcher")
-
-	e2e_key(&e, .Ctrl_E)
-	testing.expect(t, e.ed.bufswitch.active, "Ctrl+E is not the configured bind, so it no longer closes it")
-
-	nav_alt(&e, 'e')
-	testing.expect(t, !e.ed.bufswitch.active, "Alt+e again closes it")
 }
 
 @(test)

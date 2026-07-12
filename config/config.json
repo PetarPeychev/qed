@@ -53,7 +53,6 @@
     "Go to End of File": "Alt+}",
     "Jump Back": "Alt+,",
     "Jump Forward": "Alt+.",
-    "Switch Buffer": "Alt+e",
     "Close Buffer": "Ctrl+w",
     "Save": "Ctrl+s",
     "Quit": "Ctrl+q",

@@ -48,7 +48,6 @@ Editor :: struct {
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
 	palette:         Palette,
-	bufswitch:       BufSwitch,
 	langpick:        LangPick,
 	themepick:       ThemePick,
 	indentpick:      IndentPick,
@@ -161,7 +160,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
-	bufswitch_destroy(&editor.bufswitch)
 	langpick_destroy(&editor.langpick)
 	themepick_destroy(&editor.themepick)
 	indentpick_destroy(&editor.indentpick)
@@ -224,13 +222,12 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
-		{&editor.bufswitch.active, bufswitch_dispatch_key, bufswitch_render, bufswitch_dispatch_mouse, bufswitch_paste},
 		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
 		{&editor.themepick.active, themepick_dispatch_key, themepick_render, themepick_dispatch_mouse, themepick_paste},
 		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse, indentpick_paste},
@@ -720,8 +717,11 @@ editor_close_buffer :: proc(editor: ^Editor) {
 }
 
 editor_close_current :: proc(editor: ^Editor) {
+	editor_close_index(editor, editor.current)
+}
+
+editor_close_index :: proc(editor: ^Editor, idx: int) {
 	editor.jump_lock = true
-	idx := editor.current
 	lsp_did_close(editor, &editor.buffers[idx])
 	buffer_destroy(&editor.buffers[idx])
 	ordered_remove(&editor.buffers, idx)
@@ -732,8 +732,12 @@ editor_close_current :: proc(editor: ^Editor) {
 		editor.scroll_row = 0
 		editor.scroll_sub = 0
 		editor.scroll_col = 0
-	} else {
+		return
+	}
+	if editor.current == idx {
 		editor_switch_to(editor, min(idx, len(editor.buffers) - 1))
+	} else if editor.current > idx {
+		editor.current -= 1
 	}
 }
 
