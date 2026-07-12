@@ -762,6 +762,212 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_filetree_shift_range :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	for name in ([?]string{"a.txt", "b.txt", "c.txt"}) {
+		path := fmt.tprintf("%s/%s", e.ed.working_root, name)
+		nav_write(path, "body")
+	}
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "a.txt")
+
+	// Shift+Down twice extends a contiguous range a..c.
+	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift)
+	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift)
+	lo, hi := filetree_sel_range(tr)
+	testing.expect_value(t, lo, 0)
+	testing.expect_value(t, hi, 2)
+
+	// A plain move collapses the range back to one selection.
+	e2e_key(&e, .Arrow_Down)
+	testing.expect(t, tr.anchor == nil, "plain move clears the anchor")
+	lo, hi = filetree_sel_range(tr)
+	testing.expect_value(t, lo, hi)
+	testing.expect_value(t, tr.selected, 3)
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_copy_paste :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	src := fmt.aprintf("%s/a.txt", e.ed.working_root)
+	defer delete(src)
+	nav_write(src, "original")
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "a.txt")
+
+	e2e_type(&e, "c") // copy a.txt
+	e2e_type(&e, "p") // paste into the working root (a.txt's parent)
+
+	copy := fmt.aprintf("%s/a (copy).txt", e.ed.working_root)
+	defer delete(copy)
+	testing.expect(t, os.exists(copy), "collision suffix copy created")
+	testing.expect(t, os.exists(src), "original survives a copy")
+
+	sel, ok := filetree_selected(tr)
+	testing.expect(t, ok, "a row stays selected after paste")
+	testing.expect(t, strings.has_suffix(sel.path, "a (copy).txt"), "paste reveals the new copy")
+
+	// A copy clipboard persists: pasting again makes a second suffixed copy.
+	e2e_type(&e, "p")
+	copy2 := fmt.aprintf("%s/a (copy 2).txt", e.ed.working_root)
+	defer delete(copy2)
+	testing.expect(t, os.exists(copy2), "copy clipboard persists for repeated paste")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_cut_paste_repaths_buffer :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	sub := fmt.aprintf("%s/sub", e.ed.working_root)
+	defer delete(sub)
+	os.make_directory(sub)
+	foo := fmt.aprintf("%s/foo.txt", e.ed.working_root)
+	defer delete(foo)
+	nav_write(foo, "foo body")
+	editor_open_path(&e.ed, foo)
+	testing.expect(t, editor_find_buffer(&e.ed, foo) >= 0, "foo.txt is open")
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "sub") // dirs sort first
+
+	e2e_key(&e, .Arrow_Down) // onto foo.txt
+	e2e_type(&e, "x") // cut foo.txt
+	e2e_key(&e, .Arrow_Up) // onto sub/
+	e2e_type(&e, "p") // paste into sub
+
+	moved := fmt.aprintf("%s/foo.txt", sub)
+	defer delete(moved)
+	testing.expect(t, os.exists(moved), "cut+paste moves the file into the directory")
+	testing.expect(t, !os.exists(foo), "the original path is gone after a move")
+	testing.expect(t, editor_find_buffer(&e.ed, moved) >= 0, "open buffer repathed to the new location")
+	testing.expect(t, editor_find_buffer(&e.ed, foo) < 0, "no buffer left at the old path")
+
+	// A cut clipboard is consumed: a second paste does nothing.
+	e2e_type(&e, "p")
+	testing.expect(t, len(tr.clipboard) == 0, "cut clipboard consumed on paste")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_footer_two_rows :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	nav_alt(&e, 'f')
+	e2e_render(&e)
+
+	lay := filetree_layout(&e.ed)
+	row1 := e2e_row(&e, lay.footer_top_y)
+	row2 := e2e_row(&e, lay.footer_y)
+
+	// Every action hint stays visible at the 80-col minimum, split across two rows.
+	for hint in ([?]string{"n new", "N directory", "r rename"}) {
+		testing.expect(t, strings.contains(row1, hint), fmt.tprintf("top footer row shows %q", hint))
+	}
+	for hint in ([?]string{"c copy", "x cut", "p paste", "d delete"}) {
+		testing.expect(t, strings.contains(row2, hint), fmt.tprintf("bottom footer row shows %q", hint))
+	}
+	testing.expect(t, strings.contains(row1, "e expand"), "toggles remain on the top footer row")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_copy_preserves_mode :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	src := fmt.aprintf("%s/run.sh", e.ed.working_root)
+	defer delete(src)
+	nav_write(src, "#!/bin/sh\necho hi\n")
+	os.chmod(src, os.perm(0o755))
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	for tr.entries[tr.selected].name != "run.sh" {
+		e2e_key(&e, .Arrow_Down)
+	}
+	e2e_type(&e, "c")
+	e2e_type(&e, "p")
+
+	copy := fmt.aprintf("%s/run (copy).sh", e.ed.working_root)
+	defer delete(copy)
+	testing.expect(t, os.exists(copy), "executable copy created")
+	info, serr := os.stat(copy, context.temp_allocator)
+	testing.expect(t, serr == nil, "stat the copy")
+	testing.expect(t, os.Permission_Flag.Execute_User in info.mode, "copied script keeps its +x bit")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_batch_delete :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	names := [?]string{"a.txt", "b.txt", "c.txt"}
+	for name in names {
+		path := fmt.tprintf("%s/%s", e.ed.working_root, name)
+		nav_write(path, "body")
+	}
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift)
+	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift) // range a..c
+
+	e2e_type(&e, "d")
+	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmDelete)
+	testing.expect_value(t, filetree_delete_question(tr), "Delete 3 items?")
+
+	e2e_key(&e, .Arrow_Down) // Cancel -> Delete
+	e2e_key(&e, .Enter) // one confirmation deletes all
+
+	testing.expect_value(t, tr.mode, FileTreeMode.Nav)
+	for name in names {
+		path := fmt.tprintf("%s/%s", e.ed.working_root, name)
+		testing.expect(t, !os.exists(path), "batch delete removed every selected entry")
+	}
+	testing.expect(t, os.exists(e.path), "main.txt outside the range survives")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_batch_open :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	a := fmt.aprintf("%s/a.txt", e.ed.working_root)
+	defer delete(a)
+	nav_write(a, "a body")
+	b := fmt.aprintf("%s/b.txt", e.ed.working_root)
+	defer delete(b)
+	nav_write(b, "b body")
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "a.txt")
+
+	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift) // range a..b
+
+	e2e_key(&e, .Enter) // batch open every file in the range
+	testing.expect(t, !e.ed.filetree.active, "batch open closes the tree")
+	testing.expect(t, editor_find_buffer(&e.ed, a) >= 0, "a.txt opened")
+	testing.expect(t, editor_find_buffer(&e.ed, b) >= 0, "b.txt opened")
+	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "b.txt"), "last-opened buffer stays focused")
+}
+
+@(test)
 e2e_nav_quit_guard :: proc(t: ^testing.T) {
 	e := e2e_start("hello")
 	defer e2e_stop(&e)

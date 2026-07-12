@@ -42,6 +42,9 @@ FileTree :: struct {
 	entries:         [dynamic]FileEntry,
 	expanded:        map[string]bool,
 	selected:        int,
+	anchor:          Maybe(int),
+	clipboard:       [dynamic]string,
+	clip_cut:        bool,
 	scroll:          int,
 	mode:            FileTreeMode,
 	field:           TextField,
@@ -59,7 +62,8 @@ FileTree :: struct {
 
 FileTreeLayout :: struct {
 	box, inner:                        Rect,
-	body_top, body_h, footer_y:        int,
+	body_top, body_h:                  int,
+	footer_top_y, footer_y:            int,
 	name_sep_y, tab_y:                 int,
 	title_sep_y, footer_sep_y, div_x:  int,
 	left_w, right_x, right_w:          int,
@@ -72,8 +76,9 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 	tab_y := inner.y + 2
 	title_sep_y := inner.y + 3
 	body_top := inner.y + 4
-	footer_sep_y := inner.y + inner.h - 2
 	footer_y := inner.y + inner.h - 1
+	footer_top_y := inner.y + inner.h - 2
+	footer_sep_y := inner.y + inner.h - 3
 	body_h := max(1, footer_sep_y - body_top)
 	left_w := (inner.w - 1) / 2
 	div_x := inner.x + left_w
@@ -84,6 +89,7 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 		inner = inner,
 		body_top = body_top,
 		body_h = body_h,
+		footer_top_y = footer_top_y,
 		footer_y = footer_y,
 		name_sep_y = name_sep_y,
 		tab_y = tab_y,
@@ -111,6 +117,16 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.ignored)
 	filetree_clear_scope(t)
 	delete(t.scope_paths)
+	filetree_clip_clear(t)
+	delete(t.clipboard)
+}
+
+filetree_sel_range :: proc(t: ^FileTree) -> (lo, hi: int) {
+	lo, hi = t.selected, t.selected
+	if a, ok := t.anchor.?; ok {
+		lo, hi = min(a, t.selected), max(a, t.selected)
+	}
+	return
 }
 
 filetree_unsaved :: proc(editor: ^Editor, e: FileEntry) -> bool {
@@ -437,6 +453,7 @@ filetree_rebuild :: proc(editor: ^Editor) {
 		keep = strings.clone(t.entries[t.selected].path, context.temp_allocator)
 	}
 	filetree_clear_entries(t)
+	t.anchor = nil
 	filetree_build_scope(editor)
 	filetree_read_dir(t, editor.working_root, 0)
 	t.selected = 0
@@ -470,11 +487,16 @@ filetree_scroll :: proc(editor: ^Editor) {
 	t.scroll = clamp(t.scroll, 0, max(0, len(t.entries) - rows))
 }
 
-filetree_move :: proc(editor: ^Editor, delta: int) {
+filetree_move :: proc(editor: ^Editor, delta: int, extend := false) {
 	t := &editor.filetree
 	n := len(t.entries)
 	if n == 0 {
 		return
+	}
+	if !extend {
+		t.anchor = nil
+	} else if t.anchor == nil {
+		t.anchor = t.selected
 	}
 	t.selected = clamp(t.selected + delta, 0, n - 1)
 	filetree_scroll(editor)
@@ -606,6 +628,11 @@ filetree_cycle_scope :: proc(editor: ^Editor, delta: int) {
 
 filetree_activate :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	lo, hi := filetree_sel_range(t)
+	if hi > lo {
+		filetree_open_range(editor, lo, hi)
+		return
+	}
 	e, ok := filetree_selected(t)
 	if !ok {
 		return
@@ -618,6 +645,29 @@ filetree_activate :: proc(editor: ^Editor) {
 	path := strings.clone(e.path, context.temp_allocator)
 	filetree_close(editor)
 	if editor_open_path(editor, path) {
+		editor_scroll(editor)
+	}
+}
+
+filetree_open_range :: proc(editor: ^Editor, lo, hi: int) {
+	t := &editor.filetree
+	paths := make([dynamic]string, context.temp_allocator)
+	for i in lo ..= hi {
+		if !t.entries[i].is_dir {
+			append(&paths, strings.clone(t.entries[i].path, context.temp_allocator))
+		}
+	}
+	if len(paths) == 0 {
+		return
+	}
+	filetree_close(editor)
+	opened := 0
+	for path in paths {
+		if editor_open_path(editor, path) {
+			opened += 1
+		}
+	}
+	if opened > 0 {
 		editor_scroll(editor)
 	}
 }
@@ -754,21 +804,164 @@ filetree_repath_buffers :: proc(editor: ^Editor, old, new: string) {
 	}
 }
 
+filetree_clip_clear :: proc(t: ^FileTree) {
+	for p in t.clipboard {
+		delete(p)
+	}
+	clear(&t.clipboard)
+}
+
+filetree_clip_capture :: proc(editor: ^Editor, cut: bool) {
+	t := &editor.filetree
+	lo, hi := filetree_sel_range(t)
+	if lo < 0 || lo >= len(t.entries) {
+		return
+	}
+	filetree_clip_clear(t)
+	for i in lo ..= hi {
+		append(&t.clipboard, strings.clone(t.entries[i].path))
+	}
+	t.clip_cut = cut
+	verb := "Cut" if cut else "Copied"
+	if len(t.clipboard) == 1 {
+		editor_log(editor, .Info, "Files", fmt.tprintf("%s %s", verb, filepath.base(t.clipboard[0])))
+	} else {
+		editor_log(editor, .Info, "Files", fmt.tprintf("%s %d items", verb, len(t.clipboard)))
+	}
+}
+
+filetree_dest_path :: proc(dir, name: string) -> string {
+	full, _ := filepath.join({dir, name}, context.temp_allocator)
+	if !os.exists(full) {
+		return full
+	}
+	stem, ext := name, ""
+	if dot := strings.last_index_byte(name, '.'); dot > 0 {
+		stem, ext = name[:dot], name[dot:]
+	}
+	for i in 1 ..< 1000 {
+		cand: string
+		if i == 1 {
+			cand = fmt.tprintf("%s (copy)%s", stem, ext)
+		} else {
+			cand = fmt.tprintf("%s (copy %d)%s", stem, i, ext)
+		}
+		full, _ = filepath.join({dir, cand}, context.temp_allocator)
+		if !os.exists(full) {
+			return full
+		}
+	}
+	return full
+}
+
+filetree_fs_copy :: proc(src, dst: string) -> bool {
+	info, serr := os.stat(src, context.temp_allocator)
+	if os.is_dir(src) {
+		if os.make_directory_all(dst, os.perm(0o755)) != nil {
+			return false
+		}
+		if serr == nil {
+			os.chmod(dst, info.mode)
+		}
+		infos, err := os.read_directory_by_path(src, -1, context.temp_allocator)
+		if err != nil {
+			return false
+		}
+		for child in infos {
+			cdst, _ := filepath.join({dst, filepath.base(child.fullpath)}, context.temp_allocator)
+			if !filetree_fs_copy(child.fullpath, cdst) {
+				return false
+			}
+		}
+		return true
+	}
+	data, rerr := os.read_entire_file(src, context.temp_allocator)
+	if rerr != nil {
+		return false
+	}
+	if os.write_entire_file(dst, data) != nil {
+		return false
+	}
+	if serr == nil {
+		os.chmod(dst, info.mode)
+	}
+	return true
+}
+
+filetree_clip_paste :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	if len(t.clipboard) == 0 {
+		editor_log(editor, .Info, "Files", "Nothing to paste")
+		return
+	}
+	dst_dir := filetree_target_dir(editor)
+	cut := t.clip_cut
+	done := 0
+	last := ""
+	for src in t.clipboard {
+		if !os.exists(src) {
+			continue
+		}
+		dest := filetree_dest_path(dst_dir, filepath.base(src))
+		if cut {
+			if os.rename(src, dest) != nil {
+				if !filetree_fs_copy(src, dest) {
+					editor_log(editor, .Error, "Files", "Paste failed")
+					continue
+				}
+				os.remove_all(src)
+			}
+			filetree_repath_buffers(editor, src, dest)
+		} else if !filetree_fs_copy(src, dest) {
+			editor_log(editor, .Error, "Files", "Paste failed")
+			continue
+		}
+		done += 1
+		last = strings.clone(dest, context.temp_allocator)
+	}
+	if cut {
+		filetree_clip_clear(t)
+	}
+	if last != "" {
+		filetree_reveal(editor, last)
+	} else {
+		filetree_refresh(editor)
+	}
+	verb := "Moved" if cut else "Pasted"
+	if done == 1 {
+		editor_log(editor, .Info, "Files", fmt.tprintf("%s %s", verb, filepath.base(last)))
+	} else if done > 1 {
+		editor_log(editor, .Info, "Files", fmt.tprintf("%s %d items", verb, done))
+	}
+}
+
 filetree_delete_commit :: proc(editor: ^Editor) {
 	t := &editor.filetree
-	e, ok := filetree_selected(t)
 	t.mode = .Nav
-	if !ok {
+	lo, hi := filetree_sel_range(t)
+	if lo < 0 || lo >= len(t.entries) {
 		return
 	}
-	path := strings.clone(e.path, context.temp_allocator)
-	if os.remove_all(path) != nil {
-		editor_log(editor, .Error, "Files", "Delete failed")
-		return
+	paths := make([dynamic]string, context.temp_allocator)
+	for i in lo ..= hi {
+		append(&paths, strings.clone(t.entries[i].path, context.temp_allocator))
 	}
-	t.selected = max(0, t.selected - 1)
+	failed := 0
+	for path in paths {
+		if os.remove_all(path) != nil {
+			failed += 1
+		}
+	}
+	t.selected = max(0, lo - 1)
 	filetree_refresh(editor)
-	editor_log(editor, .Info, "Files", "Deleted")
+	deleted := len(paths) - failed
+	if failed > 0 {
+		editor_log(editor, .Error, "Files", fmt.tprintf("Deleted %d, %d failed", deleted, failed))
+	} else if deleted == 1 {
+		editor_log(editor, .Info, "Files", "Deleted")
+	} else {
+		editor_log(editor, .Info, "Files", fmt.tprintf("Deleted %d items", deleted))
+	}
 }
 
 filetree_delete_actions := [?]string{"Cancel", "Delete"}
@@ -787,6 +980,10 @@ filetree_delete_execute :: proc(editor: ^Editor) {
 }
 
 filetree_delete_question :: proc(t: ^FileTree) -> string {
+	lo, hi := filetree_sel_range(t)
+	if hi > lo {
+		return fmt.tprintf("Delete %d items?", hi - lo + 1)
+	}
 	e, ok := filetree_selected(t)
 	if !ok {
 		return "Delete?"
@@ -835,9 +1032,9 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	case .Esc:
 		filetree_close(editor)
 	case .Arrow_Down:
-		filetree_move(editor, 1)
+		filetree_move(editor, 1, ev_shift(ev))
 	case .Arrow_Up:
-		filetree_move(editor, -1)
+		filetree_move(editor, -1, ev_shift(ev))
 	case .Arrow_Right:
 		filetree_cycle_scope(editor, 1)
 	case .Arrow_Left:
@@ -852,6 +1049,12 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			filetree_prompt_begin(editor, .NewDirectory)
 		case 'r':
 			filetree_prompt_begin(editor, .Rename)
+		case 'c':
+			filetree_clip_capture(editor, false)
+		case 'x':
+			filetree_clip_capture(editor, true)
+		case 'p':
+			filetree_clip_paste(editor)
 		case 'd':
 			if _, ok := filetree_selected(t); ok {
 				t.mode = .ConfirmDelete
@@ -902,12 +1105,14 @@ filetree_render :: proc(editor: ^Editor) {
 	filetree_render_tabs(t, inner, lay.tab_y)
 	pane_hline(lay.box, lay.title_sep_y)
 
+	sel_lo, sel_hi := filetree_sel_range(t)
 	end := min(t.scroll + lay.body_h, len(t.entries))
 	for i in t.scroll ..< end {
 		e := t.entries[i]
 		y := lay.body_top + (i - t.scroll)
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		if i == t.selected {
+		in_sel := i >= sel_lo && i <= sel_hi
+		if in_sel {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
 			pane_fill_row(inner.x + 1, y, lay.left_w - 1, fg, bg)
 		}
@@ -917,7 +1122,7 @@ filetree_render :: proc(editor: ^Editor) {
 		}
 		if filetree_is_current(editor, e) {
 			fg = COLOR_PANE_PROMPT_FG
-		} else if i != t.selected && filetree_is_ignored(t, e.path) {
+		} else if !in_sel && filetree_is_ignored(t, e.path) {
 			fg = COLOR_FILETREE_IGNORED
 		}
 		label := filetree_row_label(t, e)
@@ -937,7 +1142,7 @@ filetree_render :: proc(editor: ^Editor) {
 	tb2.set_cell(i32(lay.div_x), i32(lay.footer_sep_y), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, t.scroll, len(t.entries))
 
-	filetree_render_footer(editor, inner, lay.footer_y)
+	filetree_render_footer(editor, lay)
 
 	if t.mode == .ConfirmDelete {
 		dialog_render(editor, filetree_delete_question(t), filetree_delete_actions[:], t.delete_selected)
@@ -985,8 +1190,9 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 	return ""
 }
 
-filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
+filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	t := &editor.filetree
+	inner := lay.inner
 	switch t.mode {
 	case .Nav, .ConfirmDelete:
 		any_expanded := filetree_any_expanded(t)
@@ -1004,10 +1210,11 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 		}
 		tx := inner.x + inner.w - 1 - total
 		actions_w := max(0, tx - (inner.x + 1) - 1)
-		pane_text(inner.x + 1, y, actions_w, "n new  N directory  r rename  d delete", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+		pane_text(inner.x + 1, lay.footer_top_y, actions_w, "n new  N directory  r rename", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+		pane_text(inner.x + 1, lay.footer_y, inner.w - 2, "c copy  x cut  p paste  d delete", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 		for tg in toggles {
 			fg := COLOR_PANE_PROMPT_FG if tg.on else COLOR_PANE_SHORTCUT_FG
-			pane_text(tx, y, len(tg.label), tg.label, fg, COLOR_PANE_BG)
+			pane_text(tx, lay.footer_top_y, len(tg.label), tg.label, fg, COLOR_PANE_BG)
 			tx += len(tg.label) + 2
 		}
 		tb2.hide_cursor()
@@ -1015,10 +1222,10 @@ filetree_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 	case .NewFile, .NewDirectory, .Rename:
 	}
 	label := filetree_footer_label(t.mode)
-	pane_text(inner.x + 1, y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	pane_text(inner.x + 1, lay.footer_y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	tx := inner.x + 1 + len(label)
 	tw := inner.x + inner.w - 1 - tx
-	textfield_render(tx, y, tw, &t.field)
+	textfield_render(tx, lay.footer_y, tw, &t.field)
 }
 
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
