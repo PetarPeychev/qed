@@ -41,10 +41,12 @@ daily-drives it for programming.** Every item here blocks that.
 
 ### File/buffer hub — fold panes into the file tree
 
-Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md).
+Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md). Sequenced phases (each ships + is verified on its own):
 
-- [ ] Fuzzy filter in the file tree — type to fuzzy-match entries; `Ctrl+O` opens the tree in this mode, standalone file-open pane removed.
-- [ ] Buffer switching in the `Open` tab — recency order + digit instant-jump + batch close; `Ctrl+E` opens it here, standalone switcher removed.
+- [ ] Phase 2 — tab chords `Alt+f/o/g/u` (open/switch tab) + fold in file-open: remove `picker.odin`/`Ctrl+O`, `Alt+f`+type replaces it; `Git: Toggle Diff View` loses `Alt+g`.
+- [ ] Phase 3 — `Open` tab as buffer switcher (fuzzy + `Enter`, `Ctrl+W` batch close, in-memory preview): remove `bufswitch.odin`/`Alt+e`.
+- [ ] Phase 4 — search in selection: path-scope `projsearch`, `/` command runs it over the selection (`Ctrl+A` first for a whole tab); standalone `Alt+F` stays whole-project.
+- [ ] File-tree filter perf: `filetree_apply_filter`/`filetree_collect` re-walk the whole working tree from disk (`read_directory_by_path`) on every keystroke — cache the candidate list per filter session (invalidate on scope/toggle/refresh) and re-rank only.
 
 ### Docs & onboarding
 
@@ -55,7 +57,6 @@ Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md).
 
 ## 1.0 polish — clear the known rough edges
 
-- [ ] File tree: select-all (`Ctrl+A`) over the current scope, extending the Shift+Arrow multi-select.
 - [ ] File tree: bulk rename over a multi-selection (pattern / sequential, applied as one batch).
 - [ ] File tree: bulk close — close every selected buffer's row (ties into the `Open`-tab buffer-switcher fold-in, [notes/filetree-hub.md](notes/filetree-hub.md)).
 - [ ] Color file names in list panes with git status colors.
@@ -128,8 +129,10 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Refactors
 
+- [ ] Keybind-name consistency pass: every shortcut hint/label is config-driven and uses the exact configured key string — casing matters (`Ctrl+F` ≠ `Ctrl+f`); audit for hardcoded/mis-cased bind text across the editor.
 - [ ] Collapse the four dialogs (quit/close/conflict/merge) into one `Dialog` primitive.
 - [ ] Collapse the centered pickers (palette/langpick/indentpick) + shared two-pane picker key dispatch.
+- [ ] Unify the file-tree and Message Log (`Alt+l`) panes under one generic selectable-list model — fuzzy filter/search, scoped `Ctrl+P` command palette, shared multi-select + filter toggles (the file-tree hub model applied to the log pane).
 - [ ] `buffer_intel_reset` choke point for the language-change / repath / reload teardown dance.
 
 ### E2E test coverage

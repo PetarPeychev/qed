@@ -702,8 +702,8 @@ e2e_nav_filetree_scope_and_dotfiles :: proc(t: ^testing.T) {
 	}
 
 	testing.expect(t, !has_hidden(tr), "dotfiles hidden by default")
-	e2e_type(&e, ".") // toggle dotfiles on
-	testing.expect(t, tr.show_dotfiles, "'.' enables dotfiles")
+	filetree_toggle_dotfiles(&e.ed) // palette command
+	testing.expect(t, tr.show_dotfiles, "toggle enables dotfiles")
 	testing.expect(t, has_hidden(tr), "dotfile now visible")
 
 	// Scope tab bar: Right cycles All -> Open.
@@ -747,10 +747,10 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 		return false
 	}
 
-	// Ignored file hidden until toggled on ('i').
+	// Ignored file hidden until toggled on (palette command).
 	testing.expect(t, !entry_named(tr, "debug.log"), "gitignored file hidden by default")
-	e2e_type(&e, "i")
-	testing.expect(t, tr.show_ignored, "'i' enables ignored")
+	filetree_toggle_ignored(&e.ed)
+	testing.expect(t, tr.show_ignored, "toggle enables ignored")
 	testing.expect(t, entry_named(tr, "debug.log"), "ignored file now visible")
 
 	// Git scope prunes to changed files; the untracked add shows up.
@@ -804,8 +804,8 @@ e2e_nav_filetree_copy_paste :: proc(t: ^testing.T) {
 	tr := &e.ed.filetree
 	testing.expect_value(t, tr.entries[0].name, "a.txt")
 
-	e2e_type(&e, "c") // copy a.txt
-	e2e_type(&e, "p") // paste into the working root (a.txt's parent)
+	e2e_key(&e, .Ctrl_C) // copy a.txt
+	e2e_key(&e, .Ctrl_V) // paste into the working root (a.txt's parent)
 
 	copy := fmt.aprintf("%s/a (copy).txt", e.ed.working_root)
 	defer delete(copy)
@@ -817,7 +817,7 @@ e2e_nav_filetree_copy_paste :: proc(t: ^testing.T) {
 	testing.expect(t, strings.has_suffix(sel.path, "a (copy).txt"), "paste reveals the new copy")
 
 	// A copy clipboard persists: pasting again makes a second suffixed copy.
-	e2e_type(&e, "p")
+	e2e_key(&e, .Ctrl_V)
 	copy2 := fmt.aprintf("%s/a (copy 2).txt", e.ed.working_root)
 	defer delete(copy2)
 	testing.expect(t, os.exists(copy2), "copy clipboard persists for repeated paste")
@@ -843,9 +843,9 @@ e2e_nav_filetree_cut_paste_repaths_buffer :: proc(t: ^testing.T) {
 	testing.expect_value(t, tr.entries[0].name, "sub") // dirs sort first
 
 	e2e_key(&e, .Arrow_Down) // onto foo.txt
-	e2e_type(&e, "x") // cut foo.txt
+	e2e_key(&e, .Ctrl_X) // cut foo.txt
 	e2e_key(&e, .Arrow_Up) // onto sub/
-	e2e_type(&e, "p") // paste into sub
+	e2e_key(&e, .Ctrl_V) // paste into sub
 
 	moved := fmt.aprintf("%s/foo.txt", sub)
 	defer delete(moved)
@@ -855,13 +855,13 @@ e2e_nav_filetree_cut_paste_repaths_buffer :: proc(t: ^testing.T) {
 	testing.expect(t, editor_find_buffer(&e.ed, foo) < 0, "no buffer left at the old path")
 
 	// A cut clipboard is consumed: a second paste does nothing.
-	e2e_type(&e, "p")
+	e2e_key(&e, .Ctrl_V)
 	testing.expect(t, len(tr.clipboard) == 0, "cut clipboard consumed on paste")
 	e2e_key(&e, .Esc)
 }
 
 @(test)
-e2e_nav_filetree_footer_two_rows :: proc(t: ^testing.T) {
+e2e_nav_filetree_footer_single_row :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)
 
@@ -869,17 +869,77 @@ e2e_nav_filetree_footer_two_rows :: proc(t: ^testing.T) {
 	e2e_render(&e)
 
 	lay := filetree_layout(&e.ed)
-	row1 := e2e_row(&e, lay.footer_top_y)
-	row2 := e2e_row(&e, lay.footer_y)
+	footer := e2e_row(&e, lay.footer_y)
 
-	// Every action hint stays visible at the 80-col minimum, split across two rows.
-	for hint in ([?]string{"n new", "N directory", "r rename"}) {
-		testing.expect(t, strings.contains(row1, hint), fmt.tprintf("top footer row shows %q", hint))
+	// One line of how-to-select/run, not per-command hints.
+	for hint in ([?]string{"tabs", "select", "extend", "commands"}) {
+		testing.expect(t, strings.contains(footer, hint), fmt.tprintf("footer shows %q", hint))
 	}
-	for hint in ([?]string{"c copy", "x cut", "p paste", "d delete"}) {
-		testing.expect(t, strings.contains(row2, hint), fmt.tprintf("bottom footer row shows %q", hint))
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_filetree_filter_prunes :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	for name in ([?]string{"editor.odin", "edit.odin", "buffer.odin"}) {
+		nav_write(fmt.tprintf("%s/%s", e.ed.working_root, name), "body")
 	}
-	testing.expect(t, strings.contains(row1, "e expand"), "toggles remain on the top footer row")
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+
+	entry_named :: proc(tr: ^FileTree, name: string) -> bool {
+		for entry in tr.entries {
+			if entry.name == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Typing prunes the tree to fuzzy matches; unrelated files drop out.
+	e2e_type(&e, "edt")
+	testing.expect(t, entry_named(tr, "editor.odin"), "filter keeps a fuzzy match")
+	testing.expect(t, entry_named(tr, "edit.odin"), "filter keeps another fuzzy match")
+	testing.expect(t, !entry_named(tr, "buffer.odin"), "filter prunes a non-match")
+
+	// Esc clears a non-empty query first, then closes.
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, len(tr.filter.text), 0)
+	testing.expect(t, entry_named(tr, "buffer.odin"), "cleared filter restores the full tree")
+	testing.expect(t, tr.active, "first Esc only clears the query")
+	e2e_key(&e, .Esc)
+	testing.expect(t, !tr.active, "second Esc closes the pane")
+}
+
+@(test)
+e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	src := fmt.aprintf("%s/a.txt", e.ed.working_root)
+	defer delete(src)
+	nav_write(src, "original")
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.entries[0].name, "a.txt")
+
+	// Ctrl+P over the tree lists file commands, not the global set.
+	e2e_key(&e, .Ctrl_P)
+	testing.expect(t, e.ed.palette.active, "Ctrl+P opens the palette over the tree")
+	testing.expect(t, e.ed.palette.filetree, "palette sources the file-command table")
+	e2e_type(&e, "copy")
+	e2e_key(&e, .Enter)
+	testing.expect(t, !e.ed.palette.active, "running a command closes the palette")
+	testing.expect_value(t, len(tr.clipboard), 1)
+
+	e2e_key(&e, .Ctrl_V) // paste the copy back
+	copy := fmt.aprintf("%s/a (copy).txt", e.ed.working_root)
+	defer delete(copy)
+	testing.expect(t, os.exists(copy), "palette Copy + Ctrl+V pastes a copy")
 	e2e_key(&e, .Esc)
 }
 
@@ -898,8 +958,8 @@ e2e_nav_filetree_copy_preserves_mode :: proc(t: ^testing.T) {
 	for tr.entries[tr.selected].name != "run.sh" {
 		e2e_key(&e, .Arrow_Down)
 	}
-	e2e_type(&e, "c")
-	e2e_type(&e, "p")
+	e2e_key(&e, .Ctrl_C)
+	e2e_key(&e, .Ctrl_V)
 
 	copy := fmt.aprintf("%s/run (copy).sh", e.ed.working_root)
 	defer delete(copy)
@@ -926,7 +986,7 @@ e2e_nav_filetree_batch_delete :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift)
 	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift) // range a..c
 
-	e2e_type(&e, "d")
+	e2e_key(&e, .Ctrl_D)
 	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmDelete)
 	testing.expect_value(t, filetree_delete_question(tr), "Delete 3 items?")
 
@@ -1126,8 +1186,8 @@ e2e_nav_filetree_new_file_nested_dirs :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	nav_alt(&e, 'f')
-	e2e_type(&e, "n")
-	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.NewFile)
+	e2e_key(&e, .Ctrl_N)
+	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.New)
 	e2e_type(&e, "a/b/c.txt")
 	e2e_key(&e, .Enter)
 
@@ -1151,7 +1211,7 @@ e2e_nav_filetree_delete_dialog_cancel :: proc(t: ^testing.T) {
 	tr := &e.ed.filetree
 	testing.expect_value(t, tr.entries[0].name, "main.txt")
 
-	e2e_type(&e, "d")
+	e2e_key(&e, .Ctrl_D)
 	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmDelete)
 	testing.expect_value(t, tr.delete_selected, 0) // Cancel is default-selected
 	testing.expect_value(t, filetree_delete_question(tr), "Delete main.txt?")
@@ -1168,7 +1228,7 @@ e2e_nav_filetree_delete_dialog_default_enter_cancels :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	nav_alt(&e, 'f')
-	e2e_type(&e, "d")
+	e2e_key(&e, .Ctrl_D)
 	e2e_key(&e, .Enter) // default selection is Cancel
 
 	testing.expect_value(t, e.ed.filetree.mode, FileTreeMode.Nav)
@@ -1181,7 +1241,7 @@ e2e_nav_filetree_delete_dialog_confirm_file :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	nav_alt(&e, 'f')
-	e2e_type(&e, "d")
+	e2e_key(&e, .Ctrl_D)
 	e2e_key(&e, .Arrow_Down) // Cancel -> Delete
 	e2e_key(&e, .Enter)
 
@@ -1206,7 +1266,7 @@ e2e_nav_filetree_delete_dialog_directory :: proc(t: ^testing.T) {
 	tr := &e.ed.filetree
 	testing.expect_value(t, tr.entries[0].name, "sub") // dirs sort first
 
-	e2e_type(&e, "d")
+	e2e_key(&e, .Ctrl_D)
 	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmDelete)
 	testing.expect_value(t, filetree_delete_question(tr), "Delete sub/ and its contents?")
 

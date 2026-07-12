@@ -10,8 +10,7 @@ import "lib:tb2"
 
 FileTreeMode :: enum {
 	Nav,
-	NewFile,
-	NewDirectory,
+	New,
 	Rename,
 	ConfirmDelete,
 }
@@ -48,6 +47,7 @@ FileTree :: struct {
 	scroll:          int,
 	mode:            FileTreeMode,
 	field:           TextField,
+	filter:          TextField,
 	delete_selected: int,
 	preview:         Preview,
 	status:          map[string]GitMark,
@@ -63,23 +63,26 @@ FileTree :: struct {
 FileTreeLayout :: struct {
 	box, inner:                        Rect,
 	body_top, body_h:                  int,
-	footer_top_y, footer_y:            int,
-	name_sep_y, tab_y:                 int,
-	title_sep_y, footer_sep_y, div_x:  int,
+	preview_top, preview_h:            int,
+	filter_y, footer_y:                int,
+	tab_y:                             int,
+	title_sep_y, filter_sep_y, footer_sep_y, div_x: int,
 	left_w, right_x, right_w:          int,
 }
 
 filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 	lay := overlay_layout(editor)
 	inner := lay.inner
-	name_sep_y := inner.y + 1
-	tab_y := inner.y + 2
-	title_sep_y := inner.y + 3
+	tab_y := inner.y
+	title_sep_y := inner.y + 1
+	filter_y := inner.y + 2
+	filter_sep_y := inner.y + 3
 	body_top := inner.y + 4
 	footer_y := inner.y + inner.h - 1
-	footer_top_y := inner.y + inner.h - 2
-	footer_sep_y := inner.y + inner.h - 3
+	footer_sep_y := inner.y + inner.h - 2
 	body_h := max(1, footer_sep_y - body_top)
+	preview_top := title_sep_y + 1
+	preview_h := max(1, footer_sep_y - preview_top)
 	left_w := (inner.w - 1) / 2
 	div_x := inner.x + left_w
 	right_x := div_x + 1
@@ -89,11 +92,13 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 		inner = inner,
 		body_top = body_top,
 		body_h = body_h,
-		footer_top_y = footer_top_y,
+		preview_top = preview_top,
+		preview_h = preview_h,
+		filter_y = filter_y,
 		footer_y = footer_y,
-		name_sep_y = name_sep_y,
 		tab_y = tab_y,
 		title_sep_y = title_sep_y,
+		filter_sep_y = filter_sep_y,
 		footer_sep_y = footer_sep_y,
 		div_x = div_x,
 		left_w = left_w,
@@ -111,14 +116,41 @@ filetree_destroy :: proc(t: ^FileTree) {
 	}
 	delete(t.expanded)
 	textfield_destroy(&t.field)
+	textfield_destroy(&t.filter)
 	preview_destroy(&t.preview)
 	filetree_clear_status(t)
 	delete(t.status)
 	delete(t.ignored)
-	filetree_clear_scope(t)
+	filetree_paths_clear(&t.scope_paths)
 	delete(t.scope_paths)
 	filetree_clip_clear(t)
 	delete(t.clipboard)
+}
+
+filetree_paths_set :: proc(set: ^map[string]bool, path: string) {
+	if path not_in set^ {
+		set^[strings.clone(path)] = true
+	}
+}
+
+filetree_paths_add :: proc(set: ^map[string]bool, root, path: string) {
+	filetree_paths_set(set, path)
+	p := path
+	for strings.has_prefix(p, root) && p != root {
+		np := filetree_parent_dir(p)
+		if np == p {
+			break
+		}
+		p = np
+		filetree_paths_set(set, p)
+	}
+}
+
+filetree_paths_clear :: proc(set: ^map[string]bool) {
+	for key in set^ {
+		delete(key)
+	}
+	clear(set)
 }
 
 filetree_sel_range :: proc(t: ^FileTree) -> (lo, hi: int) {
@@ -305,55 +337,87 @@ filetree_status_set :: proc(t: ^FileTree, path: string, mark: GitMark) {
 	t.status[strings.clone(path)] = mark
 }
 
-filetree_clear_scope :: proc(t: ^FileTree) {
-	for key in t.scope_paths {
-		delete(key)
-	}
-	clear(&t.scope_paths)
-}
-
-filetree_scope_set :: proc(t: ^FileTree, path: string) {
-	if path not_in t.scope_paths {
-		t.scope_paths[strings.clone(path)] = true
-	}
-}
-
-filetree_scope_add :: proc(t: ^FileTree, root, path: string) {
-	filetree_scope_set(t, path)
-	p := path
-	for strings.has_prefix(p, root) && p != root {
-		np := filetree_parent_dir(p)
-		if np == p {
-			break
-		}
-		p = np
-		filetree_scope_set(t, p)
-	}
-}
-
 filetree_build_scope :: proc(editor: ^Editor) {
 	t := &editor.filetree
-	filetree_clear_scope(t)
+	filetree_paths_clear(&t.scope_paths)
 	root := editor.working_root
 	switch t.scope {
 	case .All:
 	case .Git:
 		for path in t.status {
-			filetree_scope_set(t, path)
+			filetree_paths_set(&t.scope_paths, path)
 		}
 	case .Open:
 		for &b in editor.buffers {
 			if b.path != "" && os.exists(b.path) {
-				filetree_scope_add(t, root, b.path)
+				filetree_paths_add(&t.scope_paths, root, b.path)
 			}
 		}
 	case .Unsaved:
 		for &b in editor.buffers {
 			if b.modified && b.path != "" && os.exists(b.path) {
-				filetree_scope_add(t, root, b.path)
+				filetree_paths_add(&t.scope_paths, root, b.path)
 			}
 		}
 	}
+}
+
+filetree_collect :: proc(t: ^FileTree, dir: string, out: ^[dynamic]FileEntry) {
+	infos, err := os.read_directory_by_path(dir, -1, context.temp_allocator)
+	if err != nil {
+		return
+	}
+	scoped := t.scope != .All
+	for info in infos {
+		p := info.fullpath
+		is_dir := info.type == .Directory
+		if scoped {
+			if p not_in t.scope_paths {
+				continue
+			}
+		} else {
+			base := filepath.base(p)
+			if !t.show_dotfiles && strings.has_prefix(base, ".") {
+				continue
+			}
+			if !t.show_ignored && filetree_is_ignored(t, p) {
+				continue
+			}
+		}
+		append(out, FileEntry{p, "", 0, is_dir})
+		if is_dir {
+			filetree_collect(t, p, out)
+		}
+	}
+}
+
+filetree_apply_filter :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	query := textfield_str(&t.filter)
+	root := editor.working_root
+	cands := make([dynamic]FileEntry, context.temp_allocator)
+	filetree_collect(t, root, &cands)
+	if len(cands) == 0 {
+		return
+	}
+	names := make([dynamic]string, 0, len(cands), context.temp_allocator)
+	for c in cands {
+		rel := c.path
+		if strings.has_prefix(c.path, root) {
+			rel = strings.trim_left(c.path[len(root):], "/")
+		}
+		append(&names, rel)
+	}
+	f := fuzzy_begin(names[:])
+	for idx in fuzzy_rank(&f, query) {
+		cloned := strings.clone(cands[idx].path)
+		rel := cloned
+		if strings.has_prefix(cloned, root) {
+			rel = strings.trim_left(cloned[len(root):], "/")
+		}
+		append(&t.entries, FileEntry{cloned, rel, 0, cands[idx].is_dir})
+	}
+	fuzzy_end(&f)
 }
 
 filetree_clear_entries :: proc(t: ^FileTree) {
@@ -370,7 +434,7 @@ filetree_load_preview :: proc(editor: ^Editor) {
 		preview_reset(&t.preview)
 		return
 	}
-	h := filetree_layout(editor).body_h
+	h := filetree_layout(editor).preview_h
 	if t.scope == .Git {
 		preview_set_diff(&t.preview, e.path, h)
 		return
@@ -455,7 +519,11 @@ filetree_rebuild :: proc(editor: ^Editor) {
 	filetree_clear_entries(t)
 	t.anchor = nil
 	filetree_build_scope(editor)
-	filetree_read_dir(t, editor.working_root, 0)
+	if len(t.filter.text) > 0 {
+		filetree_apply_filter(editor)
+	} else {
+		filetree_read_dir(t, editor.working_root, 0)
+	}
 	t.selected = 0
 	if keep != "" {
 		for e, i in t.entries {
@@ -515,6 +583,7 @@ filetree_open :: proc(editor: ^Editor) {
 	t.active = true
 	t.mode = .Nav
 	textfield_reset(&t.field)
+	textfield_reset(&t.filter)
 	editor_clear_message(editor)
 	if t.scanned {
 		filetree_rebuild(editor)
@@ -638,6 +707,13 @@ filetree_activate :: proc(editor: ^Editor) {
 		return
 	}
 	if e.is_dir {
+		if len(t.filter.text) > 0 {
+			dir := strings.clone(e.path, context.temp_allocator)
+			textfield_reset(&t.filter)
+			filetree_set_expanded(t, dir, true)
+			filetree_reveal(editor, dir)
+			return
+		}
 		filetree_set_expanded(t, e.path, !filetree_dir_expanded(t, e.path))
 		filetree_rebuild(editor)
 		return
@@ -732,29 +808,31 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		return
 	}
 	switch mode {
-	case .NewFile:
-		full, _ := filepath.join({filetree_target_dir(editor), name}, context.temp_allocator)
+	case .New:
+		is_dir := strings.has_suffix(name, "/")
+		clean := strings.trim_right(name, "/")
+		if clean == "" {
+			editor_log(editor, .Error, "Files", "Empty name")
+			return
+		}
+		full, _ := filepath.join({filetree_target_dir(editor), clean}, context.temp_allocator)
 		if os.exists(full) {
 			editor_log(editor, .Error, "Files", "Already exists")
 			return
 		}
-		path_ensure_parent_dir(full)
-		f, err := os.open(full, {.Write, .Create, .Excl}, os.perm(0o644))
-		if err != nil {
-			editor_log(editor, .Error, "Files", "Create failed")
-			return
-		}
-		os.close(f)
-		filetree_reveal(editor, full)
-	case .NewDirectory:
-		full, _ := filepath.join({filetree_target_dir(editor), name}, context.temp_allocator)
-		if os.exists(full) {
-			editor_log(editor, .Error, "Files", "Already exists")
-			return
-		}
-		if os.make_directory_all(full, os.perm(0o755)) != nil {
-			editor_log(editor, .Error, "Files", "Create failed")
-			return
+		if is_dir {
+			if os.make_directory_all(full, os.perm(0o755)) != nil {
+				editor_log(editor, .Error, "Files", "Create failed")
+				return
+			}
+		} else {
+			path_ensure_parent_dir(full)
+			f, err := os.open(full, {.Write, .Create, .Excl}, os.perm(0o644))
+			if err != nil {
+				editor_log(editor, .Error, "Files", "Create failed")
+				return
+			}
+			os.close(f)
 		}
 		filetree_reveal(editor, full)
 	case .Rename:
@@ -1013,8 +1091,36 @@ filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 filetree_paste :: proc(editor: ^Editor, text: string) {
 	t := &editor.filetree
 	#partial switch t.mode {
-	case .NewFile, .NewDirectory, .Rename:
+	case .New, .Rename:
 		textfield_insert_flat(&t.field, text)
+	case .Nav:
+		if textfield_insert_flat(&t.filter, text) {
+			filetree_rebuild(editor)
+		}
+	}
+}
+
+filetree_select_all :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	if len(t.entries) == 0 {
+		return
+	}
+	t.anchor = 0
+	t.selected = len(t.entries) - 1
+	filetree_scroll(editor)
+	filetree_load_preview(editor)
+}
+
+filetree_cmd_copy :: proc(editor: ^Editor) {filetree_clip_capture(editor, false)}
+filetree_cmd_cut :: proc(editor: ^Editor) {filetree_clip_capture(editor, true)}
+filetree_cmd_rename :: proc(editor: ^Editor) {filetree_prompt_begin(editor, .Rename)}
+filetree_cmd_new :: proc(editor: ^Editor) {filetree_prompt_begin(editor, .New)}
+
+filetree_cmd_delete :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	if _, ok := filetree_selected(t); ok {
+		t.mode = .ConfirmDelete
+		t.delete_selected = 0
 	}
 }
 
@@ -1028,45 +1134,68 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_close(editor)
 		return
 	}
-	#partial switch ev.key {
-	case .Esc:
-		filetree_close(editor)
-	case .Arrow_Down:
-		filetree_move(editor, 1, ev_shift(ev))
-	case .Arrow_Up:
-		filetree_move(editor, -1, ev_shift(ev))
-	case .Arrow_Right:
-		filetree_cycle_scope(editor, 1)
-	case .Arrow_Left:
-		filetree_cycle_scope(editor, -1)
-	case .Enter:
-		filetree_activate(editor)
-	case:
+	if ev_alt(ev) && ev.ch != 0 {
 		switch ev.ch {
-		case 'n':
-			filetree_prompt_begin(editor, .NewFile)
-		case 'N':
-			filetree_prompt_begin(editor, .NewDirectory)
-		case 'r':
-			filetree_prompt_begin(editor, .Rename)
-		case 'c':
-			filetree_clip_capture(editor, false)
-		case 'x':
-			filetree_clip_capture(editor, true)
-		case 'p':
-			filetree_clip_paste(editor)
-		case 'd':
-			if _, ok := filetree_selected(t); ok {
-				t.mode = .ConfirmDelete
-				t.delete_selected = 0
-			}
-		case 'e':
-			filetree_toggle_expand_all(editor)
 		case '.':
 			filetree_toggle_dotfiles(editor)
 		case 'i':
 			filetree_toggle_ignored(editor)
+		case 'e':
+			filetree_toggle_expand_all(editor)
 		}
+		return
+	}
+	#partial switch ev.key {
+	case .Ctrl_P:
+		palette_open(editor)
+		return
+	case .Ctrl_C:
+		filetree_cmd_copy(editor)
+		return
+	case .Ctrl_X:
+		filetree_cmd_cut(editor)
+		return
+	case .Ctrl_V:
+		filetree_clip_paste(editor)
+		return
+	case .Ctrl_D:
+		filetree_cmd_delete(editor)
+		return
+	case .Ctrl_R:
+		filetree_cmd_rename(editor)
+		return
+	case .Ctrl_N:
+		filetree_cmd_new(editor)
+		return
+	case .Ctrl_A:
+		filetree_select_all(editor)
+		return
+	case .Esc:
+		if len(t.filter.text) > 0 {
+			textfield_reset(&t.filter)
+			filetree_rebuild(editor)
+		} else {
+			filetree_close(editor)
+		}
+		return
+	case .Arrow_Down:
+		filetree_move(editor, 1, ev_shift(ev))
+		return
+	case .Arrow_Up:
+		filetree_move(editor, -1, ev_shift(ev))
+		return
+	case .Arrow_Right:
+		filetree_cycle_scope(editor, 1)
+		return
+	case .Arrow_Left:
+		filetree_cycle_scope(editor, -1)
+		return
+	case .Enter:
+		filetree_activate(editor)
+		return
+	}
+	if textfield_key(&t.filter, ev) {
+		filetree_rebuild(editor)
 	}
 }
 
@@ -1076,7 +1205,8 @@ filetree_row_label :: proc(t: ^FileTree, e: FileEntry) -> string {
 		strings.write_string(&sb, "  ")
 	}
 	if e.is_dir {
-		strings.write_string(&sb, ICON_TREE_EXPANDED if filetree_dir_expanded(t, e.path) else ICON_TREE_COLLAPSED)
+		expanded := len(t.filter.text) == 0 && filetree_dir_expanded(t, e.path)
+		strings.write_string(&sb, ICON_TREE_EXPANDED if expanded else ICON_TREE_COLLAPSED)
 		strings.write_byte(&sb, ' ')
 		strings.write_string(&sb, e.name)
 		strings.write_byte(&sb, '/')
@@ -1092,18 +1222,16 @@ filetree_render :: proc(editor: ^Editor) {
 	lay := filetree_layout(editor)
 	inner := pane_draw_box(lay.box)
 
-	root := editor.working_root
-	title := root
-	if idx := strings.last_index_byte(root, '/'); idx >= 0 {
-		title = root[idx + 1:]
-	}
-	pane_text(inner.x + 1, inner.y, lay.left_w - 1, strings.concatenate({title, "/"}, context.temp_allocator), COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	if e, ok := filetree_selected(t); ok && !e.is_dir {
-		pane_text(lay.right_x + 1, inner.y, lay.right_w - 1, e.name, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	}
-	pane_hline(lay.box, lay.name_sep_y)
 	filetree_render_tabs(t, inner, lay.tab_y)
 	pane_hline(lay.box, lay.title_sep_y)
+	overlay_prompt_render(inner.x + 1, lay.filter_y, lay.left_w - 1, &t.filter)
+	if len(t.filter.text) == 0 {
+		pane_text(inner.x + 3, lay.filter_y, lay.left_w - 4, "type to filter", COLOR_FILETREE_IGNORED, COLOR_PANE_BG)
+	}
+	tb2.set_cell(i32(lay.box.x), i32(lay.filter_sep_y), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	for x in lay.inner.x ..< lay.div_x {
+		tb2.set_cell(i32(x), i32(lay.filter_sep_y), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	}
 
 	sel_lo, sel_hi := filetree_sel_range(t)
 	end := min(t.scroll + lay.body_h, len(t.entries))
@@ -1132,13 +1260,14 @@ filetree_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
 
-	preview_render(&t.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
+	preview_render(&t.preview, lay.right_x + 1, lay.preview_top, lay.right_w - 1, lay.preview_h)
 
 	pane_hline(lay.box, lay.footer_sep_y)
-	for y in lay.body_top ..< lay.footer_sep_y {
+	for y in lay.title_sep_y + 1 ..< lay.footer_sep_y {
 		tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	}
 	tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	tb2.set_cell(i32(lay.div_x), i32(lay.filter_sep_y), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	tb2.set_cell(i32(lay.div_x), i32(lay.footer_sep_y), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, t.scroll, len(t.entries))
 
@@ -1160,7 +1289,6 @@ filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
 		pane_text(x, y, len(tab.label), tab.label, fg, COLOR_PANE_BG)
 		x += len(tab.label)
 	}
-	pane_text(x, y, 5, "  ←→", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 }
 
 filetree_tab_at_x :: proc(inner: Rect, cx: int) -> (FileTreeScope, bool) {
@@ -1179,10 +1307,8 @@ filetree_tab_at_x :: proc(inner: Rect, cx: int) -> (FileTreeScope, bool) {
 
 filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 	switch mode {
-	case .NewFile:
-		return "New file: "
-	case .NewDirectory:
-		return "New directory: "
+	case .New:
+		return "New: "
 	case .Rename:
 		return "Rename: "
 	case .Nav, .ConfirmDelete:
@@ -1195,31 +1321,16 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	inner := lay.inner
 	switch t.mode {
 	case .Nav, .ConfirmDelete:
-		any_expanded := filetree_any_expanded(t)
-		Toggle :: struct {
-			label: string,
-			on:    bool,
-		}
-		toggles := [?]Toggle{{"e expand", any_expanded}, {". dotfiles", t.show_dotfiles}, {"i ignored", t.show_ignored}}
-		total := 0
-		for tg, i in toggles {
-			total += len(tg.label)
-			if i > 0 {
-				total += 2
-			}
-		}
-		tx := inner.x + inner.w - 1 - total
-		actions_w := max(0, tx - (inner.x + 1) - 1)
-		pane_text(inner.x + 1, lay.footer_top_y, actions_w, "n new  N directory  r rename", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-		pane_text(inner.x + 1, lay.footer_y, inner.w - 2, "c copy  x cut  p paste  d delete", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-		for tg in toggles {
-			fg := COLOR_PANE_PROMPT_FG if tg.on else COLOR_PANE_SHORTCUT_FG
-			pane_text(tx, lay.footer_top_y, len(tg.label), tg.label, fg, COLOR_PANE_BG)
-			tx += len(tg.label) + 2
-		}
-		tb2.hide_cursor()
+		pane_text(
+			inner.x + 1,
+			lay.footer_y,
+			inner.w - 2,
+			"←→ tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+P commands",
+			COLOR_PANE_SHORTCUT_FG,
+			COLOR_PANE_BG,
+		)
 		return
-	case .NewFile, .NewDirectory, .Rename:
+	case .New, .Rename:
 	}
 	label := filetree_footer_label(t.mode)
 	pane_text(inner.x + 1, lay.footer_y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
@@ -1252,7 +1363,7 @@ filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		return
 	}
-	if preview_wheel(&t.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
+	if preview_wheel(&t.preview, ev, {lay.right_x, lay.preview_top, lay.right_w, lay.preview_h}, lay.preview_h) {
 		return
 	}
 	#partial switch ev.key {
@@ -1265,6 +1376,10 @@ filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 			if scope, ok := filetree_tab_at_x(lay.inner, int(ev.x)); ok {
 				filetree_set_scope(editor, scope)
 			}
+			return
+		}
+		if int(ev.y) == lay.filter_y {
+			overlay_prompt_mouse(&t.filter, lay.inner.x + 1, lay.filter_y, lay.left_w - 1, ev)
 			return
 		}
 		off := overlay_row_off(ev, Rect{lay.inner.x, lay.body_top, lay.left_w, lay.body_h})

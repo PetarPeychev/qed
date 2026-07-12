@@ -1100,6 +1100,9 @@ editor_render :: proc(editor: ^Editor) {
 		inspect_render(editor)
 	}
 
+	if editor.palette.active && editor.filetree.active {
+		filetree_render(editor)
+	}
 	for ov in editor_overlays(editor) {
 		if ov.active^ {
 			ov.render(editor)

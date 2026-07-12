@@ -144,6 +144,19 @@ commands := [?]Command {
 	{name = "Debug: Message Log", run = cmd_message_log},
 }
 
+filetree_commands := [?]Command {
+	{name = "Copy", shortcut = "Ctrl+C", run = filetree_cmd_copy},
+	{name = "Cut", shortcut = "Ctrl+X", run = filetree_cmd_cut},
+	{name = "Paste", shortcut = "Ctrl+V", run = filetree_clip_paste},
+	{name = "Delete", shortcut = "Ctrl+D", run = filetree_cmd_delete},
+	{name = "Rename", shortcut = "Ctrl+R", run = filetree_cmd_rename},
+	{name = "New", shortcut = "Ctrl+N", run = filetree_cmd_new},
+	{name = "Select All", shortcut = "Ctrl+A", run = filetree_select_all},
+	{name = "Toggle Dotfiles", shortcut = "Alt+.", run = filetree_toggle_dotfiles},
+	{name = "Toggle Ignored", shortcut = "Alt+i", run = filetree_toggle_ignored},
+	{name = "Expand/Collapse All", shortcut = "Alt+e", run = filetree_toggle_expand_all},
+}
+
 command_available :: proc(editor: ^Editor, name: string) -> bool {
 	if editor.welcome {
 		switch name {
@@ -199,6 +212,7 @@ Palette :: struct {
 	using list: FuzzyList,
 	names:      [dynamic]string,
 	indices:    [dynamic]int,
+	filetree:   bool,
 }
 
 palette_destroy :: proc(p: ^Palette) {
@@ -210,23 +224,35 @@ palette_destroy :: proc(p: ^Palette) {
 palette_open :: proc(editor: ^Editor) {
 	p := &editor.palette
 	p.active = true
+	p.filetree = editor.filetree.active
 	fuzzy_list_reset(&p.list)
 	editor_clear_message(editor)
 	clear(&p.names)
 	clear(&p.indices)
-	for cmd, i in commands {
-		if !command_available(editor, cmd.name) {
-			continue
+	if p.filetree {
+		for cmd, i in filetree_commands {
+			append(&p.names, cmd.name)
+			append(&p.indices, i)
 		}
-		append(&p.names, cmd.name)
-		append(&p.indices, i)
+	} else {
+		for cmd, i in commands {
+			if !command_available(editor, cmd.name) {
+				continue
+			}
+			append(&p.names, cmd.name)
+			append(&p.indices, i)
+		}
 	}
 	p.fuzzy = fuzzy_begin(p.names[:])
 	fuzzy_list_refilter(&p.list)
 }
 
 palette_command :: proc(p: ^Palette, match: int) -> Command {
-	return commands[p.indices[p.matches[match]]]
+	idx := p.indices[p.matches[match]]
+	if p.filetree {
+		return filetree_commands[idx]
+	}
+	return commands[idx]
 }
 
 palette_close :: proc(editor: ^Editor) {

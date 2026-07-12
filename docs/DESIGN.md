@@ -502,17 +502,22 @@ literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`rg --sort path` for deterministic
-order), file-tree browser (`Alt+f`: modal, `Enter` expands a directory / opens a file,
-lazy per-dir expand, right-side preview, new/rename/delete with a floating
-recursive-delete confirm dialog (shared `dialog_*` primitive)
-(nested new/rename names create missing parent dirs via `path_ensure_parent_dir`);
-keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model) with copy/cut/paste
-(`c`/`x`/`p` — internal clipboard, recursive mode-preserving copy, cut = move, collision
-`(copy N)` suffix), batch delete (one confirm, "Delete N items?") and batch open (`Enter`);
-paste targets the selected dir or a file's parent; cut+paste and rename both repath open
-buffers; two-row action footer; rename follows open buffers; the open buffer's row keeps an accent fg even selected; footer toggles — `e` expand/collapse-all (skips
-gitignored + hidden dotdirs), `.`/`i` show dotfiles / gitignored (both hidden by
-default, config `filetree_show_dotfiles`/`filetree_show_ignored`), highlighted when on;
+order), file-tree browser (`Alt+f`: modal hub, `Enter` opens a file / toggles a directory,
+lazy per-dir expand, full-height right-side preview; **type-to-filter** — a `> ` prompt
+fuzzy-matches into a flat, relevance-ranked list of files *and* directories (empty query = the
+browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree);
+selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/paste (internal
+clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
+delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` rename, `Ctrl+N`
+new (unified: trailing `/` = directory, else file; nested names create missing parents via
+`path_ensure_parent_dir`), `Ctrl+A` select-all-scope — plus a scoped `Ctrl+P` command palette
+(the palette overlay driven by a `filetree_commands` list, floating over the tree);
+keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch delete (one confirm,
+"Delete N items?") and batch open (`Enter`); paste targets the selected dir or a file's parent;
+cut+paste and rename both repath open buffers; the open buffer's row keeps an accent fg even
+selected; single hint-row footer; view toggles `Alt+e` expand/collapse-all (skips gitignored +
+hidden dotdirs), `Alt+.`/`Alt+i` show dotfiles / gitignored (both hidden by default, config
+`filetree_show_dotfiles`/`filetree_show_ignored`), also listed in the command palette;
 header scope tab bar (`All`/`Open`/`Git`/`Unsaved`, `←`/`→` or click) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
 `git status --porcelain --ignored --untracked-files=all` (single `sh -c` with `rev-parse`) scanned **async**
