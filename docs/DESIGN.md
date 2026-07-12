@@ -506,7 +506,11 @@ order), file-tree browser (`Alt+f`: modal, `Enter` expands a directory / opens a
 lazy per-dir expand, right-side preview, new/rename/delete with a floating
 recursive-delete confirm dialog (shared `dialog_*` primitive)
 (nested new/rename names create missing parent dirs via `path_ensure_parent_dir`);
-rename follows open buffers; the open buffer's row keeps an accent fg even selected; footer toggles — `e` expand/collapse-all (skips
+keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model) with copy/cut/paste
+(`c`/`x`/`p` — internal clipboard, recursive mode-preserving copy, cut = move, collision
+`(copy N)` suffix), batch delete (one confirm, "Delete N items?") and batch open (`Enter`);
+paste targets the selected dir or a file's parent; cut+paste and rename both repath open
+buffers; two-row action footer; rename follows open buffers; the open buffer's row keeps an accent fg even selected; footer toggles — `e` expand/collapse-all (skips
 gitignored + hidden dotdirs), `.`/`i` show dotfiles / gitignored (both hidden by
 default, config `filetree_show_dotfiles`/`filetree_show_ignored`), highlighted when on;
 header scope tab bar (`All`/`Open`/`Git`/`Unsaved`, `←`/`→` or click) restricting the

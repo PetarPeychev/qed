@@ -55,6 +55,9 @@ Direction + locked decisions: [notes/filetree-hub.md](notes/filetree-hub.md).
 
 ## 1.0 polish — clear the known rough edges
 
+- [ ] File tree: select-all (`Ctrl+A`) over the current scope, extending the Shift+Arrow multi-select.
+- [ ] File tree: bulk rename over a multi-selection (pattern / sequential, applied as one batch).
+- [ ] File tree: bulk close — close every selected buffer's row (ties into the `Open`-tab buffer-switcher fold-in, [notes/filetree-hub.md](notes/filetree-hub.md)).
 - [ ] Color file names in list panes with git status colors.
 - [ ] Terminal→editor cwd back-channel: handle OSC 7 from the PTY (shell reports cwd) so `Alt+t` can retarget qed's working root — VSCode's shell-integration model; env vars stay uncrossable.
 - [ ] Per-buffer viewport memory across buffer switches — move scroll state into `Buffer`, see [notes/refactors.md](notes/refactors.md).
