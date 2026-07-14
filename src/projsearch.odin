@@ -2,8 +2,10 @@ package main
 
 import "core:fmt"
 import "core:path/filepath"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
+import "core:time"
 import "lib:tb2"
 
 Match :: struct {
@@ -14,14 +16,18 @@ Match :: struct {
 }
 
 ProjSearch :: struct {
-	active:    bool,
-	field:     TextField,
-	matches:   [dynamic]Match,
-	selected:  int,
-	scroll:    int,
-	scope:     [dynamic]string,
-	from_tree: bool,
-	preview:   Preview,
+	active:       bool,
+	field:        TextField,
+	matches:      [dynamic]Match,
+	selected:     int,
+	scroll:       int,
+	scope:        [dynamic]string,
+	from_tree:    bool,
+	preview:      Preview,
+	sub:          Subprocess,
+	want:         bool,
+	request_at:   time.Tick,
+	pending_keep: int,
 }
 
 projsearch_clear_matches :: proc(p: ^ProjSearch) {
@@ -40,6 +46,7 @@ projsearch_clear_scope :: proc(p: ^ProjSearch) {
 }
 
 projsearch_destroy :: proc(p: ^ProjSearch) {
+	subprocess_kill(&p.sub)
 	projsearch_clear_matches(p)
 	projsearch_clear_scope(p)
 	preview_destroy(&p.preview)
@@ -81,25 +88,57 @@ projsearch_begin :: proc(editor: ^Editor) {
 		keep = 0
 	}
 	textfield_select_all(&p.field)
-	projsearch_run(editor)
-	p.selected = clamp(keep, 0, max(0, len(p.matches) - 1))
-	body_h := overlay_layout(editor).body_h
-	p.scroll = max(0, p.selected - body_h / 2)
-	projsearch_load_preview(editor)
+	p.pending_keep = keep
+	projsearch_queue(editor)
 }
 
 projsearch_close :: proc(editor: ^Editor) {
 	p := &editor.projsearch
 	p.active = false
+	p.want = false
+	subprocess_kill(&p.sub)
 	projsearch_clear_matches(p)
 	preview_reset(&p.preview)
 }
 
-projsearch_run :: proc(editor: ^Editor) {
+projsearch_queue :: proc(editor: ^Editor) {
 	p := &editor.projsearch
-	projsearch_clear_matches(p)
-	p.selected = 0
-	p.scroll = 0
+	p.want = true
+	p.request_at = time.tick_now()
+}
+
+projsearch_edited :: proc(editor: ^Editor) {
+	p := &editor.projsearch
+	p.pending_keep = 0
+	if len(textfield_str(&p.field)) < PROJSEARCH_MIN_QUERY {
+		p.want = false
+		subprocess_kill(&p.sub)
+		projsearch_clear_matches(p)
+		p.selected = 0
+		p.scroll = 0
+		preview_reset(&p.preview)
+		return
+	}
+	projsearch_queue(editor)
+}
+
+projsearch_due :: proc(editor: ^Editor) -> bool {
+	p := &editor.projsearch
+	if !p.want {
+		return false
+	}
+	return time.duration_milliseconds(time.tick_since(p.request_at)) >= f64(PROJSEARCH_DEBOUNCE_MS)
+}
+
+projsearch_running :: proc(editor: ^Editor) -> bool {
+	p := &editor.projsearch
+	return p.sub.running || p.want
+}
+
+projsearch_run_async :: proc(editor: ^Editor) {
+	p := &editor.projsearch
+	p.want = false
+	subprocess_kill(&p.sub)
 	query := textfield_str(&p.field)
 	if len(query) < PROJSEARCH_MIN_QUERY {
 		return
@@ -113,17 +152,29 @@ projsearch_run :: proc(editor: ^Editor) {
 		}
 		scope_args = strings.to_string(sb)
 	}
-	cmd := fmt.ctprintf(
-		"cd %s && rg --sort path --vimgrep -F -S -e %s%s 2>/dev/null | head -n %d",
-		shell_quote(editor.working_root),
+	// stdin is the subprocess runner's (empty) body temp file, so without an
+	// explicit </dev/null rg would search that empty stdin instead of the tree.
+	cmd := fmt.tprintf(
+		"rg --vimgrep -F -S -e %s%s </dev/null 2>/dev/null | head -n %d",
 		shell_quote(query),
 		scope_args,
 		PROJSEARCH_MAX,
 	)
-	out, ok := shell_capture(cmd)
-	if !ok {
-		return
+	sub, serr, ok := subprocess_start(cmd, nil, editor.working_root)
+	if ok {
+		p.sub = sub
+	} else {
+		editor_log(editor, .Debug, "Find", fmt.tprintf("search spawn failed (%v)", serr))
 	}
+}
+
+projsearch_pump :: proc(editor: ^Editor) -> bool {
+	p := &editor.projsearch
+	if !p.sub.running || !subprocess_drain(&p.sub) {
+		return false
+	}
+	out := subprocess_output(&p.sub)
+	projsearch_clear_matches(p)
 	for line in strings.split_lines_iterator(&out) {
 		c1 := strings.index_byte(line, ':')
 		if c1 < 0 {
@@ -154,6 +205,22 @@ projsearch_run :: proc(editor: ^Editor) {
 			},
 		)
 	}
+	subprocess_destroy(&p.sub)
+	slice.sort_by(p.matches[:], proc(a, b: Match) -> bool {
+		if a.path != b.path {
+			return a.path < b.path
+		}
+		if a.row != b.row {
+			return a.row < b.row
+		}
+		return a.col < b.col
+	})
+	p.selected = clamp(p.pending_keep, 0, max(0, len(p.matches) - 1))
+	p.pending_keep = 0
+	body_h := overlay_layout(editor).body_h
+	p.scroll = max(0, p.selected - body_h / 2)
+	projsearch_load_preview(editor)
+	return true
 }
 
 projsearch_load_preview :: proc(editor: ^Editor) {
@@ -222,8 +289,7 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		projsearch_move(editor, -1)
 	case:
 		if textfield_key(&p.field, ev) {
-			projsearch_run(editor)
-			projsearch_load_preview(editor)
+			projsearch_edited(editor)
 		}
 	}
 }
@@ -231,8 +297,7 @@ projsearch_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 projsearch_paste :: proc(editor: ^Editor, text: string) {
 	p := &editor.projsearch
 	if textfield_insert_flat(&p.field, text) {
-		projsearch_run(editor)
-		projsearch_load_preview(editor)
+		projsearch_edited(editor)
 	}
 }
 
