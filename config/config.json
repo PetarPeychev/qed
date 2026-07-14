@@ -13,6 +13,7 @@
   "picker_margin_y": 3,
   "projsearch_max": 500,
   "projsearch_min_query": 2,
+  "projsearch_debounce_ms": 120,
   "preview_max_lines": 4000,
   "preview_parse_ahead": 64,
   "preview_diff_context": 3,

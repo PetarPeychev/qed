@@ -44,6 +44,7 @@ PICKER_MARGIN_X: int
 PICKER_MARGIN_Y: int
 PROJSEARCH_MAX: int
 PROJSEARCH_MIN_QUERY: int
+PROJSEARCH_DEBOUNCE_MS: int
 PREVIEW_MAX_LINES: int
 PREVIEW_PARSE_AHEAD: int
 PREVIEW_DIFF_CONTEXT: int
@@ -75,6 +76,7 @@ config_ints := [?]Config_Int {
 	{"picker_margin_y", &PICKER_MARGIN_Y},
 	{"projsearch_max", &PROJSEARCH_MAX},
 	{"projsearch_min_query", &PROJSEARCH_MIN_QUERY},
+	{"projsearch_debounce_ms", &PROJSEARCH_DEBOUNCE_MS},
 	{"preview_max_lines", &PREVIEW_MAX_LINES},
 	{"preview_parse_ahead", &PREVIEW_PARSE_AHEAD},
 	{"preview_diff_context", &PREVIEW_DIFF_CONTEXT},

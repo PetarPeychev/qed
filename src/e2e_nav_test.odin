@@ -5,12 +5,32 @@ import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "core:testing"
+import "core:thread"
+import "core:time"
 import "lib:tb2"
 
 // Navigation & UI e2e sessions. Some cases need a working root the plain
 // e2e_start can't give (pickers / project-search / file-tree read
 // editor.working_root, which for a file arg is the process cwd), so these local
 // starters open under a scratch dir and point the root at it; e2e_stop removes it.
+
+// Project search is debounced + async; drive the debounce/spawn/pump loop the
+// main loop runs, until the queued search lands.
+e2e_projsearch_await :: proc(e: ^E2E) -> bool {
+	start := time.tick_now()
+	p := &e.ed.projsearch
+	for p.want || p.sub.running {
+		if projsearch_due(&e.ed) {
+			projsearch_run_async(&e.ed)
+		}
+		projsearch_pump(&e.ed)
+		if time.duration_seconds(time.tick_since(start)) > 5 {
+			return false
+		}
+		thread.yield()
+	}
+	return true
+}
 
 e2e_root_start :: proc(primary := "") -> E2E {
 	e2e_enter()
@@ -636,6 +656,7 @@ e2e_nav_project_search_selection_prefill :: proc(t: ^testing.T) {
 
 	nav_alt(&e, 'F')
 	e2e_type(&e, "needle_xyz")
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect(t, len(p.matches) >= 2, "multiple hits for the query")
 	e2e_key(&e, .Arrow_Down)
 	testing.expect_value(t, p.selected, 1)
@@ -643,6 +664,7 @@ e2e_nav_project_search_selection_prefill :: proc(t: ^testing.T) {
 
 	// Persisted-query reopen (no selection) restores the selected match.
 	nav_alt(&e, 'F')
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect_value(t, p.selected, 1)
 	e2e_key(&e, .Esc)
 
@@ -650,6 +672,7 @@ e2e_nav_project_search_selection_prefill :: proc(t: ^testing.T) {
 	b.selection = Cursor{0, 0}
 	b.cursor = {0, 10} // select "needle_xyz"
 	nav_alt(&e, 'F')
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect_value(t, textfield_str(&p.field), "needle_xyz")
 	testing.expect(t, len(p.matches) > 0, "pre-filled query runs the search on open")
 	testing.expect_value(t, p.field.anchor, 0) // fully selected
@@ -728,6 +751,7 @@ e2e_nav_project_search :: proc(t: ^testing.T) {
 	e2e_type(&e, "needle_xyz")
 
 	p := &e.ed.projsearch
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect(t, len(p.matches) > 0, "rg populates results")
 	testing.expect(t, strings.has_suffix(p.matches[p.selected].path, "hay.txt"), "hit is in hay.txt")
 
@@ -1430,6 +1454,7 @@ e2e_nav_filetree_search_dir_scope :: proc(t: ^testing.T) {
 
 	e2e_type(&e, "needle_xyz")
 	p := &e.ed.projsearch
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect(t, len(p.matches) > 0, "scoped rg finds the hit under sub/")
 	for m in p.matches {
 		testing.expect(t, strings.has_prefix(m.path, "sub/"), "results confined to the selected dir")
@@ -1465,6 +1490,7 @@ e2e_nav_filetree_search_open_result_closes_tree :: proc(t: ^testing.T) {
 
 	e2e_type(&e, "needle_xyz")
 	p := &e.ed.projsearch
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect(t, len(p.matches) > 0, "scoped rg finds the hit")
 
 	e2e_key(&e, .Enter)
@@ -1501,6 +1527,7 @@ e2e_nav_filetree_search_git_scope :: proc(t: ^testing.T) {
 
 	e2e_type(&e, "needle_xyz")
 	p := &e.ed.projsearch
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect(t, len(p.matches) > 0, "scoped rg finds the hit in the modified file")
 	for m in p.matches {
 		testing.expect(t, strings.has_suffix(m.path, "new.txt"), "results confined to modified files, not the committed file")
@@ -1543,6 +1570,7 @@ e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
 
 	e2e_type(&e, "needle_xyz")
 	p := &e.ed.projsearch
+	testing.expect(t, e2e_projsearch_await(&e), "search lands")
 	testing.expect(t, len(p.matches) > 0, "scoped rg finds the modified file under sub/")
 	for m in p.matches {
 		testing.expect(t, strings.has_prefix(m.path, "sub/"), "results confined to modified files under the selected dir")
