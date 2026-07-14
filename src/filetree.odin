@@ -6,6 +6,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:sync"
 import "core:sys/posix"
 import "core:thread"
 import "core:time"
@@ -72,6 +73,19 @@ FileTree :: struct {
 	filter_dirty:    bool,
 	filter_at:       time.Tick,
 	filter_walk_ms:  f64,
+	scan_gen:        int,
+	prewarm:         FiletreePrewarm,
+}
+
+FiletreePrewarm :: struct {
+	thread:  ^thread.Thread,
+	snap:    ^FileTree,
+	root:    string,
+	staging: [dynamic]FileEntry,
+	gen:     int,
+	active:  bool,
+	restart: bool,
+	done:    bool,
 }
 
 FileTreeLayout :: struct {
@@ -122,6 +136,7 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 }
 
 filetree_destroy :: proc(t: ^FileTree) {
+	filetree_prewarm_cancel(t)
 	subprocess_kill(&t.scan_sub)
 	filetree_clear_entries(t)
 	delete(t.entries)
@@ -272,6 +287,9 @@ filetree_scan_pump :: proc(editor: ^Editor) -> bool {
 	if t.active && !editor.projsearch.active && !editor.palette.active {
 		filetree_rebuild(editor)
 	}
+	if t.active {
+		filetree_prewarm_start(editor)
+	}
 	return true
 }
 
@@ -279,6 +297,7 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	t := &editor.filetree
 	filetree_clear_status(t)
 	filetree_filter_invalidate(t)
+	t.scan_gen += 1
 	t.scanned = true
 	root := editor.working_root
 	out := output
@@ -562,6 +581,12 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 	if t.filter_valid {
 		return
 	}
+	if t.prewarm.active {
+		if filetree_prewarm_finish(editor) {
+			return
+		}
+		t.prewarm.restart = false
+	}
 	filetree_filter_cache_clear(t)
 	walk_at := time.tick_now()
 	filetree_walk(t, editor.working_root, &t.filter_cands)
@@ -570,6 +595,135 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 	t.filter_dotfiles = t.show_dotfiles
 	t.filter_ignored = t.show_ignored
 	t.filter_valid = true
+}
+
+filetree_prewarm_start :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	pw := &t.prewarm
+	if !FILETREE_PREWARM || !t.scanned || t.scope != .All {
+		return
+	}
+	if pw.active {
+		pw.restart = true
+		return
+	}
+	snap := new(FileTree)
+	snap.scope = .All
+	snap.show_dotfiles = t.show_dotfiles
+	snap.show_ignored = t.show_ignored
+	snap.ignored = make(map[string]bool)
+	for key in t.ignored {
+		snap.ignored[strings.clone(key)] = true
+	}
+	pw.snap = snap
+	pw.root = strings.clone(editor.working_root)
+	pw.gen = t.scan_gen
+	pw.done = false
+	pw.restart = false
+	pw.active = true
+	pw.thread = thread.create(filetree_prewarm_run)
+	pw.thread.data = pw
+	thread.start(pw.thread)
+}
+
+filetree_prewarm_run :: proc(th: ^thread.Thread) {
+	pw := (^FiletreePrewarm)(th.data)
+	filetree_walk(pw.snap, pw.root, &pw.staging)
+	sync.atomic_store(&pw.done, true)
+}
+
+filetree_prewarm_release :: proc(pw: ^FiletreePrewarm) {
+	if pw.snap != nil {
+		for key in pw.snap.ignored {
+			delete(key)
+		}
+		delete(pw.snap.ignored)
+		free(pw.snap)
+		pw.snap = nil
+	}
+	delete(pw.root)
+	pw.root = ""
+}
+
+filetree_prewarm_discard :: proc(pw: ^FiletreePrewarm) {
+	for e in pw.staging {
+		delete(e.path)
+	}
+	delete(pw.staging)
+	pw.staging = {}
+	filetree_prewarm_release(pw)
+}
+
+filetree_prewarm_finish :: proc(editor: ^Editor) -> bool {
+	t := &editor.filetree
+	pw := &t.prewarm
+	thread.join(pw.thread)
+	thread.destroy(pw.thread)
+	pw.thread = nil
+	pw.active = false
+	match :=
+		t.scope == .All &&
+		pw.gen == t.scan_gen &&
+		pw.snap.show_dotfiles == t.show_dotfiles &&
+		pw.snap.show_ignored == t.show_ignored
+	if !match {
+		filetree_prewarm_discard(pw)
+		return false
+	}
+	current :=
+		t.filter_valid &&
+		t.filter_scope == t.scope &&
+		t.filter_dotfiles == t.show_dotfiles &&
+		t.filter_ignored == t.show_ignored
+	if current {
+		for e in pw.staging {
+			delete(e.path)
+		}
+		delete(pw.staging)
+		pw.staging = {}
+		filetree_prewarm_release(pw)
+		return true
+	}
+	filetree_filter_cache_clear(t)
+	delete(t.filter_cands)
+	t.filter_cands = pw.staging
+	pw.staging = {}
+	t.filter_scope = t.scope
+	t.filter_dotfiles = t.show_dotfiles
+	t.filter_ignored = t.show_ignored
+	t.filter_valid = true
+	filetree_prewarm_release(pw)
+	return true
+}
+
+filetree_prewarm_cancel :: proc(t: ^FileTree) {
+	pw := &t.prewarm
+	if !pw.active {
+		return
+	}
+	thread.join(pw.thread)
+	thread.destroy(pw.thread)
+	pw.thread = nil
+	pw.active = false
+	pw.restart = false
+	filetree_prewarm_discard(pw)
+}
+
+filetree_prewarming :: proc(editor: ^Editor) -> bool {
+	return editor.filetree.prewarm.active
+}
+
+filetree_prewarm_pump :: proc(editor: ^Editor) -> bool {
+	pw := &editor.filetree.prewarm
+	if !pw.active || !sync.atomic_load(&pw.done) {
+		return false
+	}
+	filetree_prewarm_finish(editor)
+	if pw.restart {
+		pw.restart = false
+		filetree_prewarm_start(editor)
+	}
+	return true
 }
 
 filetree_apply_filter :: proc(editor: ^Editor) {
@@ -822,6 +976,7 @@ filetree_open :: proc(editor: ^Editor) {
 	editor_clear_message(editor)
 	filetree_rebuild(editor)
 	filetree_scan_start(editor)
+	filetree_prewarm_start(editor)
 }
 
 filetree_open_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
@@ -916,11 +1071,13 @@ filetree_toggle_expand_all :: proc(editor: ^Editor) {
 filetree_toggle_dotfiles :: proc(editor: ^Editor) {
 	editor.filetree.show_dotfiles = !editor.filetree.show_dotfiles
 	filetree_rebuild(editor)
+	filetree_prewarm_start(editor)
 }
 
 filetree_toggle_ignored :: proc(editor: ^Editor) {
 	editor.filetree.show_ignored = !editor.filetree.show_ignored
 	filetree_rebuild(editor)
+	filetree_prewarm_start(editor)
 }
 
 filetree_set_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
@@ -929,6 +1086,7 @@ filetree_set_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
 	}
 	editor.filetree.scope = scope
 	filetree_rebuild(editor)
+	filetree_prewarm_start(editor)
 }
 
 filetree_tab_chord :: proc(editor: ^Editor, scope: FileTreeScope) {

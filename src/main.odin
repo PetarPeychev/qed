@@ -54,7 +54,7 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || filetree_scanning(&editor) || git_stat_running(&editor) || projsearch_running(&editor) || filetree_filter_pending(&editor) {
+			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || filetree_scanning(&editor) || git_stat_running(&editor) || projsearch_running(&editor) || filetree_filter_pending(&editor) || filetree_prewarming(&editor) {
 				if tb2.peek_event(&ev, i32(LSP_POLL_MS)) == .Ok {
 					got_event = true
 				}
@@ -74,6 +74,7 @@ main :: proc() {
 				if filetree_scan_pump(&editor) {
 					redraw = true
 				}
+				filetree_prewarm_pump(&editor)
 				if git_stat_pump(&editor) {
 					redraw = true
 				}

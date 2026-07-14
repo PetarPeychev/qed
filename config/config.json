@@ -40,6 +40,7 @@
   "filetree_show_dotfiles": false,
   "filetree_show_ignored": false,
   "filetree_walk_threads": 0,
+  "filetree_prewarm": true,
   "terminal_escape_closes": true,
   "theme": "default",
   "keybinds": {

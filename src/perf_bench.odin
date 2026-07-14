@@ -491,6 +491,26 @@ bench_filetree_walk :: proc(t: ^testing.T) {
 	fmt.eprintfln("=== filetree walk bench (%d cores) ===", cores)
 	run(root, 1, "serial")
 	run(root, 0, fmt.tprintf("parallel auto (%d threads)", cores))
+
+	// First-filter-after-open latency: without prewarm the keystroke pays the whole
+	// parallel walk; with prewarm it pays only the adopt once the background walk lands.
+	editor: Editor
+	editor.working_root = root
+	editor.filetree.scanned = true
+	editor.filetree.scope = .All
+	filetree_prewarm_start(&editor)
+	for !sync.atomic_load(&editor.filetree.prewarm.done) {
+		thread.yield()
+	}
+	adopt_at := time.tick_now()
+	filetree_prewarm_finish(&editor)
+	fmt.eprintfln(
+		"prewarm adopt (first-filter cost when walk already landed): %.3f ms, %d candidates",
+		ms_since(adopt_at),
+		len(editor.filetree.filter_cands),
+	)
+	filetree_filter_cache_clear(&editor.filetree)
+	delete(editor.filetree.filter_cands)
 }
 
 @(private = "file")
