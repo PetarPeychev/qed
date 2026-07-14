@@ -117,3 +117,30 @@ test_filetree_walk_ignored :: proc(t: ^testing.T) {
 	got2, n2 := walk_collect(&ft, root)
 	walk_expect(t, got2, n2, WALK_BASE[:])
 }
+
+@(test)
+test_filetree_walk_ignored_file :: proc(t: ^testing.T) {
+	root := walk_fixture()
+	defer {os.remove_all(root);delete(root)}
+	ft: FileTree
+	ft.ignored[strings.clone(fmt.tprintf("%s/a.txt", root))] = true
+	defer {
+		for key in ft.ignored {
+			delete(key)
+		}
+		delete(ft.ignored)
+	}
+	got, n := walk_collect(&ft, root)
+	want := [?]WalkWant {
+		{"sub", true},
+		{"sub/b.txt", false},
+		{"sub/deep", true},
+		{"sub/deep/c.txt", false},
+		{"link", false},
+	}
+	walk_expect(t, got, n, want[:])
+
+	ft.show_ignored = true
+	got2, n2 := walk_collect(&ft, root)
+	walk_expect(t, got2, n2, WALK_BASE[:])
+}

@@ -410,7 +410,9 @@ filetree_collect :: proc(t: ^FileTree, dir: string, out: ^[dynamic]FileEntry) {
 			if !t.show_dotfiles && strings.has_prefix(name, ".") {
 				continue
 			}
-			if !t.show_ignored && filetree_is_ignored(t, p) {
+			// Ignored dirs are pruned before we descend, so no ancestor is ever ignored
+			// here — a direct membership check matches filetree_is_ignored's full walk.
+			if !t.show_ignored && t.ignored[p] {
 				continue
 			}
 		}
