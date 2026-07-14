@@ -142,6 +142,9 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		}
 		editor_log(&editor, .Debug, "Clipboard", fmt.tprintf("using %s", tool))
 	}
+	if !headless && editor.working_root != "" {
+		filetree_scan_start(&editor)
+	}
 	return editor
 }
 

@@ -1,65 +1,16 @@
 package main
 
-import "core:fmt"
-import "core:os"
 import "core:slice"
-import "core:strconv"
-import "core:strings"
-import "core:sync"
-
-FuzzyTool :: enum {
-	Unknown,
-	Fzf,
-	None,
-}
-
-fuzzy_tool: FuzzyTool = .Unknown
-
-fuzzy_seq: int
-
-fuzzy_detect :: proc() {
-	if shell_command_exists("fzf") {
-		fuzzy_tool = .Fzf
-	} else {
-		fuzzy_tool = .None
-	}
-}
 
 Fuzzy :: struct {
-	items:    []string,
-	tmp_path: string,
-	has_tmp:  bool,
+	items: []string,
 }
 
 fuzzy_begin :: proc(items: []string) -> Fuzzy {
-	if fuzzy_tool == .Unknown {
-		fuzzy_detect()
-	}
-	f := Fuzzy {
-		items = items,
-	}
-	if fuzzy_tool == .Fzf {
-		sb := strings.builder_make(context.temp_allocator)
-		for item, i in items {
-			fmt.sbprintf(&sb, "%d\t%s\n", i, item)
-		}
-		seq := sync.atomic_add(&fuzzy_seq, 1)
-		path := fmt.tprintf("/tmp/qed-fuzzy-%d-%d", os.get_pid(), seq)
-		if os.write_entire_file(path, strings.to_string(sb)) == nil {
-			f.tmp_path = strings.clone(path)
-			f.has_tmp = true
-		}
-	}
-	return f
+	return Fuzzy{items = items}
 }
 
-fuzzy_end :: proc(f: ^Fuzzy) {
-	if f.has_tmp {
-		os.remove(f.tmp_path)
-		delete(f.tmp_path)
-		f.has_tmp = false
-	}
-}
+fuzzy_end :: proc(f: ^Fuzzy) {}
 
 fuzzy_rank :: proc(f: ^Fuzzy, query: string, allocator := context.temp_allocator) -> [dynamic]int {
 	out := make([dynamic]int, 0, len(f.items), allocator)
@@ -69,33 +20,8 @@ fuzzy_rank :: proc(f: ^Fuzzy, query: string, allocator := context.temp_allocator
 		}
 		return out
 	}
-	if f.has_tmp && fuzzy_rank_fzf(f, query, &out) {
-		return out
-	}
 	fuzzy_rank_builtin(f, query, &out)
 	return out
-}
-
-fuzzy_rank_fzf :: proc(f: ^Fuzzy, query: string, out: ^[dynamic]int) -> bool {
-	cmd := fmt.ctprintf(
-		"fzf --filter=%s --delimiter='\\t' --nth=2 <%s 2>/dev/null",
-		shell_quote(query),
-		shell_quote(f.tmp_path),
-	)
-	result, ok := shell_capture(cmd)
-	if !ok {
-		return false
-	}
-	for line in strings.split_lines_iterator(&result) {
-		tab := strings.index_byte(line, '\t')
-		if tab < 0 {
-			continue
-		}
-		if idx, ok := strconv.parse_int(line[:tab], 10); ok {
-			append(out, idx)
-		}
-	}
-	return true
 }
 
 ScoreIdx :: struct {

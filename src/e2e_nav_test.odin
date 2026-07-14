@@ -46,6 +46,14 @@ nav_write :: proc(path, content: string) {
 	_ = os.write_entire_file(path, transmute([]u8)content)
 }
 
+// The file tree scans git status asynchronously; headless tests never reach the
+// main loop's pump, so drain it to completion before asserting on status.
+nav_scan :: proc(e: ^E2E) {
+	for filetree_scanning(&e.ed) {
+		filetree_scan_pump(&e.ed)
+	}
+}
+
 e2e_row :: proc(e: ^E2E, y: int) -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	for x in 0 ..< int(tb2.width()) {
@@ -893,7 +901,8 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	defer delete(logf)
 	nav_write(logf, "noise")
 
-	nav_alt(&e, 'f') // first open scans git status synchronously
+	nav_alt(&e, 'f') // first open kicks off the async git-status scan
+	nav_scan(&e)
 	tr := &e.ed.filetree
 
 	entry_named :: proc(tr: ^FileTree, name: string) -> bool {
@@ -1479,7 +1488,8 @@ e2e_nav_filetree_search_git_scope :: proc(t: ^testing.T) {
 	defer delete(newf)
 	nav_write(newf, "fresh needle_xyz\n")
 
-	nav_alt(&e, 'f') // first open scans git status synchronously
+	nav_alt(&e, 'f') // first open kicks off the async git-status scan
+	nav_scan(&e)
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
 	tr := &e.ed.filetree
@@ -1518,7 +1528,8 @@ e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
 	defer delete(rootf)
 	nav_write(rootf, "needle_xyz root\n") // modified, but NOT under sub/
 
-	nav_alt(&e, 'f') // first open scans git status synchronously
+	nav_alt(&e, 'f') // first open kicks off the async git-status scan
+	nav_scan(&e)
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
 	tr := &e.ed.filetree
