@@ -8,6 +8,7 @@ import "core:slice"
 import "core:strings"
 import "core:sys/posix"
 import "core:thread"
+import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
 
@@ -68,6 +69,9 @@ FileTree :: struct {
 	filter_scope:    FileTreeScope,
 	filter_dotfiles: bool,
 	filter_ignored:  bool,
+	filter_dirty:    bool,
+	filter_at:       time.Tick,
+	filter_walk_ms:  f64,
 }
 
 FileTreeLayout :: struct {
@@ -548,6 +552,7 @@ filetree_filter_invalidate :: proc(t: ^FileTree) {
 
 filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	t.filter_walk_ms = 0
 	if t.filter_valid &&
 	   (t.filter_scope != t.scope ||
 			   t.filter_dotfiles != t.show_dotfiles ||
@@ -558,7 +563,9 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 		return
 	}
 	filetree_filter_cache_clear(t)
+	walk_at := time.tick_now()
 	filetree_walk(t, editor.working_root, &t.filter_cands)
+	t.filter_walk_ms = time.duration_milliseconds(time.tick_since(walk_at))
 	t.filter_scope = t.scope
 	t.filter_dotfiles = t.show_dotfiles
 	t.filter_ignored = t.show_ignored
@@ -690,8 +697,34 @@ filetree_read_dir :: proc(t: ^FileTree, dir: string, depth: int) {
 	}
 }
 
+filetree_filter_touch :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	t.filter_dirty = true
+	t.filter_at = time.tick_now()
+}
+
+filetree_filter_pending :: proc(editor: ^Editor) -> bool {
+	return editor.filetree.active && editor.filetree.filter_dirty
+}
+
+filetree_filter_due :: proc(editor: ^Editor) -> bool {
+	t := &editor.filetree
+	if !t.filter_dirty {
+		return false
+	}
+	return time.duration_milliseconds(time.tick_since(t.filter_at)) >= f64(FILETREE_FILTER_DEBOUNCE_MS)
+}
+
+filetree_filter_flush :: proc(editor: ^Editor) {
+	if editor.filetree.filter_dirty {
+		filetree_rebuild(editor)
+	}
+}
+
 filetree_rebuild :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	t.filter_dirty = false
+	total_at := time.tick_now()
 	keep := ""
 	if t.selected >= 0 && t.selected < len(t.entries) {
 		keep = strings.clone(t.entries[t.selected].path, context.temp_allocator)
@@ -699,7 +732,8 @@ filetree_rebuild :: proc(editor: ^Editor) {
 	filetree_clear_entries(t)
 	t.anchor = nil
 	filetree_build_scope(editor)
-	if len(t.filter.text) > 0 {
+	filtering := len(t.filter.text) > 0
+	if filtering {
 		filetree_apply_filter(editor)
 	} else {
 		filetree_read_dir(t, editor.working_root, 0)
@@ -716,6 +750,25 @@ filetree_rebuild :: proc(editor: ^Editor) {
 	t.selected = clamp(t.selected, 0, max(0, len(t.entries) - 1))
 	filetree_scroll(editor)
 	filetree_load_preview(editor)
+	if filtering {
+		walk_note := ""
+		if t.filter_walk_ms > 0 {
+			walk_note = fmt.tprintf(" (walk %.0fms)", t.filter_walk_ms)
+		}
+		editor_log(
+			editor,
+			.Debug,
+			"Filetree",
+			fmt.tprintf(
+				"filter %q %.0fms%s  %d/%d",
+				textfield_str(&t.filter),
+				time.duration_milliseconds(time.tick_since(total_at)),
+				walk_note,
+				len(t.entries),
+				len(t.filter_cands),
+			),
+		)
+	}
 }
 
 filetree_refresh :: proc(editor: ^Editor) {
@@ -1369,7 +1422,7 @@ filetree_paste :: proc(editor: ^Editor, text: string) {
 		textfield_insert_flat(&t.field, text)
 	case .Nav:
 		if textfield_insert_flat(&t.filter, text) {
-			filetree_rebuild(editor)
+			filetree_filter_touch(editor)
 		}
 	}
 }
@@ -1565,7 +1618,7 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	}
 	if textfield_key(&t.filter, ev) {
-		filetree_rebuild(editor)
+		filetree_filter_touch(editor)
 	}
 }
 

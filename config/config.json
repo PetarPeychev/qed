@@ -36,6 +36,7 @@
   "auto_close_pairs": true,
   "git_diff_view": false,
   "line_wrap": true,
+  "filetree_filter_debounce_ms": 100,
   "filetree_show_dotfiles": false,
   "filetree_show_ignored": false,
   "filetree_walk_threads": 0,
