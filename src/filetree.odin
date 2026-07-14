@@ -5,6 +5,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:sys/posix"
 import "core:unicode/utf8"
 import "lib:tb2"
 
@@ -375,28 +376,45 @@ filetree_build_scope :: proc(editor: ^Editor) {
 }
 
 filetree_collect :: proc(t: ^FileTree, dir: string, out: ^[dynamic]FileEntry) {
-	infos, err := os.read_directory_by_path(dir, -1, context.temp_allocator)
-	if err != nil {
+	dirp := posix.opendir(strings.clone_to_cstring(dir, context.temp_allocator))
+	if dirp == nil {
 		return
 	}
+	defer posix.closedir(dirp)
 	scoped := t.scope != .All
-	for info in infos {
-		p := info.fullpath
-		is_dir := info.type == .Directory
+	for {
+		entry := posix.readdir(dirp)
+		if entry == nil {
+			break
+		}
+		cname := cstring(raw_data(entry.d_name[:]))
+		name := string(cname)
+		if name == "." || name == ".." {
+			continue
+		}
+		kind := entry.d_type
+		if kind == .UNKNOWN {
+			st: posix.stat_t
+			if posix.fstatat(posix.dirfd(dirp), cname, &st, {.SYMLINK_NOFOLLOW}) != .OK {
+				continue
+			}
+			kind = .DIR if posix.S_ISDIR(st.st_mode) else .REG
+		}
+		is_dir := kind == .DIR
+		p := strings.concatenate({dir, "/", name}, context.temp_allocator)
 		if scoped {
 			if p not_in t.scope_paths {
 				continue
 			}
 		} else {
-			base := filepath.base(p)
-			if !t.show_dotfiles && strings.has_prefix(base, ".") {
+			if !t.show_dotfiles && strings.has_prefix(name, ".") {
 				continue
 			}
 			if !t.show_ignored && filetree_is_ignored(t, p) {
 				continue
 			}
 		}
-		append(out, FileEntry{p, "", 0, is_dir})
+		append(out, FileEntry{strings.clone(p), "", 0, is_dir})
 		if is_dir {
 			filetree_collect(t, p, out)
 		}
@@ -427,11 +445,7 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 		return
 	}
 	filetree_filter_cache_clear(t)
-	cands := make([dynamic]FileEntry, context.temp_allocator)
-	filetree_collect(t, editor.working_root, &cands)
-	for c in cands {
-		append(&t.filter_cands, FileEntry{strings.clone(c.path), "", 0, c.is_dir})
-	}
+	filetree_collect(t, editor.working_root, &t.filter_cands)
 	t.filter_scope = t.scope
 	t.filter_dotfiles = t.show_dotfiles
 	t.filter_ignored = t.show_ignored

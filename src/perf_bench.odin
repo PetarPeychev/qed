@@ -464,6 +464,35 @@ bench_large_file :: proc(t: ^testing.T) {
 	)
 }
 
+@(test)
+bench_filetree_walk :: proc(t: ^testing.T) {
+	env := os.get_env("QED_BENCH", context.temp_allocator)
+	if env == "" {
+		return
+	}
+	root := env
+	if env == "1" {
+		root = os.get_env("HOME", context.temp_allocator)
+	}
+
+	run :: proc(root: string, dotfiles, ignored: bool, label: string) {
+		ft: FileTree
+		ft.show_dotfiles = dotfiles
+		ft.show_ignored = ignored
+		out := make([dynamic]FileEntry)
+		start := time.tick_now()
+		filetree_collect(&ft, root, &out)
+		fmt.eprintfln("filetree_collect %s (%s): %.2f ms, %d candidates", root, label, ms_since(start), len(out))
+		for e in out {
+			delete(e.path)
+		}
+		delete(out)
+	}
+
+	run(root, false, false, "default: dotfiles+ignored hidden")
+	run(root, true, true, "everything shown")
+}
+
 @(private = "file")
 c_buffer :: proc(content: string) -> Buffer {
 	b := buffer_new()
