@@ -640,12 +640,8 @@ filetree_open :: proc(editor: ^Editor) {
 	textfield_reset(&t.filter)
 	filetree_filter_cache_clear(t)
 	editor_clear_message(editor)
-	if t.scanned {
-		filetree_rebuild(editor)
-		filetree_scan_start(editor)
-	} else {
-		filetree_refresh(editor)
-	}
+	filetree_rebuild(editor)
+	filetree_scan_start(editor)
 }
 
 filetree_open_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
