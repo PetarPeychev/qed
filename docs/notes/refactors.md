@@ -53,17 +53,17 @@ gutter" half of the same TODO line.
 ### Migrate interactive-path blocking spawns to the async runner
 
 Two subprocess mechanisms coexist: blocking `popen` (`shell.odin`) and the
-async `subprocess.odin` runner (used by LLM/FIM/file-tree scan). Blocking
-spawns still sit on latency-sensitive paths:
+async `subprocess.odin` runner (used by LLM/FIM/file-tree scan + prewarm/project search).
+Blocking spawns still sit on latency-sensitive paths:
 
-- `projsearch_run`: `rg` per keystroke,
 - `format_external`: freezes the UI for the formatter's full runtime,
-- `fuzzy_rank_fzf`: `fzf` per keystroke in every picker,
 - `preview_file_reload`: `head` per preview load/scroll,
 - `git_base_fetch`: `git show HEAD` on a buffer's first render (also in the
   cold-open perf TODO).
 
-Migration order by feel: format_external (worst stall), projsearch, git base
+(Fuzzy ranking is now fully in-process; project search runs async + debounced.)
+
+Migration order by feel: format_external (worst stall), git base
 fetch. The file-tree scan shows the pattern: render the cached result
 immediately, kick the subprocess, apply on `*_pump`. Keep sync `popen` for
 cheap one-shots (`command_exists`, clipboard).

@@ -502,13 +502,15 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
-matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`rg --sort path` for deterministic
-order — whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Ctrl+F`),
+matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (**async + debounced** `rg`, parallel scan with results sorted in-process for deterministic order, `projsearch_debounce_ms`;
+whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Ctrl+F`),
 file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
 fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
-lazy per-dir expand, full-height right-side preview; **type-to-filter** — a `> ` prompt
-fuzzy-matches into a flat, relevance-ranked list of files *and* directories (empty query = the
-browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree);
+lazy per-dir expand, full-height right-side preview; **type-to-filter** (`> ` prompt, in-process
+fuzzy, debounced `filetree_filter_debounce_ms`) into a flat, relevance-ranked list of files *and* directories (empty query = the
+browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree); the candidate list is a
+**parallel `readdir` walk** (`d_type`, no per-entry stat, single-clone, `filetree_walk_threads`) **prewarmed on a background thread**
+from open/scan-completion (`filetree_prewarm`, immutable ignored-map snapshot + `scan_gen` validation) so the first keystroke hits a warm cache;
 selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/paste (internal
 clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
 delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` rename, `Ctrl+N`
@@ -531,8 +533,8 @@ again on its own tab closes — or `←`/`→`/click; also on the welcome screen
 *Git: Toggle Diff View* which is now palette-only) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
 `git status --porcelain --ignored --untracked-files=all` (single `sh -c` with `rev-parse`) scanned **async**
-via the shared subprocess runner: the first open of a session blocks on it, every
-reopen renders instantly from the cached status/ignored then refreshes in the
+via the shared subprocess runner, prewarmed at startup: every open (first included) renders instantly from the
+cached status/ignored then refreshes in the
 background (`filetree_scan_pump`); a green/yellow `▌` per
 added/modified file propagated up its ancestor directories, ignored files dimmed; unsaved
 open buffers marked with a trailing `●`, propagated to directories),
@@ -618,5 +620,6 @@ push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismis
 LSP popup takes precedence; `llm.completion_enabled` + *AI: Toggle Inline Completion*.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
-query, incremental LSP `didChange`, big-file cutoff. See
-[notes/perf.md](notes/perf.md).
+query, incremental LSP `didChange`, big-file cutoff, in-process fuzzy ranking,
+async + debounced project search, parallel `readdir` file-tree walk (`d_type`, no
+per-entry stat) prewarmed on a background thread. See [notes/perf.md](notes/perf.md).

@@ -112,7 +112,7 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Cache `llm_locate` per (path, rev) — an in-flight AI edit rebuilds + searches the whole buffer every render.
 - [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
-- [ ] Migrate interactive-path blocking spawns (`format_external`, projsearch `rg`, picker `fzf`, preview `head`, `git show`) to the async subprocess runner.
+- [ ] Migrate remaining interactive-path blocking spawns (`format_external`, preview `head`, `git show`) to the async subprocess runner.
 - [ ] Per-frame `line_wrap` memo — measure first, only if profiling shows wrap cost.
 
 ### Refactors
