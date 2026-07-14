@@ -60,6 +60,7 @@ JUMP_THRESHOLD: int
 GIT_DIFF_MAX_D: int
 GIT_STAT_POLL_MS: int
 BIG_FILE_BYTES: int
+FILETREE_WALK_THREADS: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -92,6 +93,7 @@ config_ints := [?]Config_Int {
 	{"git_diff_max_d", &GIT_DIFF_MAX_D},
 	{"git_stat_poll_ms", &GIT_STAT_POLL_MS},
 	{"big_file_bytes", &BIG_FILE_BYTES},
+	{"filetree_walk_threads", &FILETREE_WALK_THREADS},
 }
 
 FORMAT_ON_SAVE: bool

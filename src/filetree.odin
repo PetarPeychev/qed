@@ -1,11 +1,13 @@
 package main
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:sys/posix"
+import "core:thread"
 import "core:unicode/utf8"
 import "lib:tb2"
 
@@ -375,7 +377,22 @@ filetree_build_scope :: proc(editor: ^Editor) {
 	}
 }
 
-filetree_collect :: proc(t: ^FileTree, dir: string, out: ^[dynamic]FileEntry) {
+filetree_walk_admit :: proc(t: ^FileTree, name, p: string, scoped: bool) -> bool {
+	if scoped {
+		return p in t.scope_paths
+	}
+	if !t.show_dotfiles && strings.has_prefix(name, ".") {
+		return false
+	}
+	// Ignored dirs are pruned before we descend, so no ancestor is ever ignored
+	// here — a direct membership check matches filetree_is_ignored's full walk.
+	if !t.show_ignored && t.ignored[p] {
+		return false
+	}
+	return true
+}
+
+filetree_collect :: proc(t: ^FileTree, dir: string, out: ^[dynamic]FileEntry, heap: runtime.Allocator) {
 	dirp := posix.opendir(strings.clone_to_cstring(dir, context.temp_allocator))
 	if dirp == nil {
 		return
@@ -402,24 +419,118 @@ filetree_collect :: proc(t: ^FileTree, dir: string, out: ^[dynamic]FileEntry) {
 		}
 		is_dir := kind == .DIR
 		p := strings.concatenate({dir, "/", name}, context.temp_allocator)
-		if scoped {
-			if p not_in t.scope_paths {
-				continue
-			}
-		} else {
-			if !t.show_dotfiles && strings.has_prefix(name, ".") {
-				continue
-			}
-			// Ignored dirs are pruned before we descend, so no ancestor is ever ignored
-			// here — a direct membership check matches filetree_is_ignored's full walk.
-			if !t.show_ignored && t.ignored[p] {
-				continue
-			}
+		if !filetree_walk_admit(t, name, p, scoped) {
+			continue
 		}
-		append(out, FileEntry{strings.clone(p), "", 0, is_dir})
+		append(out, FileEntry{strings.clone(p, heap), "", 0, is_dir})
 		if is_dir {
-			filetree_collect(t, p, out)
+			filetree_collect(t, p, out, heap)
 		}
+	}
+}
+
+FiletreeWalkJob :: struct {
+	t:    ^FileTree,
+	dirs: [dynamic]string,
+	out:  [dynamic]FileEntry,
+	heap: runtime.Allocator,
+}
+
+filetree_walk_worker :: proc(th: ^thread.Thread) {
+	job := (^FiletreeWalkJob)(th.data)
+	for dir in job.dirs {
+		filetree_collect(job.t, dir, &job.out, job.heap)
+	}
+}
+
+// Static top-level partition: the root is read serially, then each top-level
+// subtree is walked on its own worker (round-robin) into a private buffer and
+// merged. Workers only read t (ignored/scope/show_* are stable while the main
+// thread blocks here), clone owned paths with the shared heap allocator, and use
+// their own thread-local temp for scratch — no shared mutable state.
+filetree_walk :: proc(t: ^FileTree, root: string, out: ^[dynamic]FileEntry, threads := -1) {
+	heap := context.allocator
+	scoped := t.scope != .All
+
+	dirp := posix.opendir(strings.clone_to_cstring(root, context.temp_allocator))
+	if dirp == nil {
+		return
+	}
+	top_dirs := make([dynamic]string, context.temp_allocator)
+	for {
+		entry := posix.readdir(dirp)
+		if entry == nil {
+			break
+		}
+		cname := cstring(raw_data(entry.d_name[:]))
+		name := string(cname)
+		if name == "." || name == ".." {
+			continue
+		}
+		kind := entry.d_type
+		if kind == .UNKNOWN {
+			st: posix.stat_t
+			if posix.fstatat(posix.dirfd(dirp), cname, &st, {.SYMLINK_NOFOLLOW}) != .OK {
+				continue
+			}
+			kind = .DIR if posix.S_ISDIR(st.st_mode) else .REG
+		}
+		is_dir := kind == .DIR
+		p := strings.concatenate({root, "/", name}, context.temp_allocator)
+		if !filetree_walk_admit(t, name, p, scoped) {
+			continue
+		}
+		append(out, FileEntry{strings.clone(p, heap), "", 0, is_dir})
+		if is_dir {
+			append(&top_dirs, strings.clone(p, context.temp_allocator))
+		}
+	}
+	posix.closedir(dirp)
+
+	n := threads
+	if n < 0 {
+		n = FILETREE_WALK_THREADS
+	}
+	if n <= 0 {
+		n = max(1, os.get_processor_core_count())
+	}
+	n = min(n, len(top_dirs))
+
+	if n <= 1 {
+		for d in top_dirs {
+			filetree_collect(t, d, out, heap)
+		}
+		return
+	}
+
+	jobs := make([]FiletreeWalkJob, n, context.temp_allocator)
+	workers := make([]^thread.Thread, n, context.temp_allocator)
+	for &j in jobs {
+		j.t = t
+		j.heap = heap
+		j.dirs = make([dynamic]string, context.temp_allocator)
+		j.out = make([dynamic]FileEntry, heap)
+	}
+	for d, i in top_dirs {
+		append(&jobs[i % n].dirs, d)
+	}
+	for i in 0 ..< n {
+		th := thread.create(filetree_walk_worker)
+		th.data = &jobs[i]
+		workers[i] = th
+		thread.start(th)
+	}
+	for i in 0 ..< n {
+		thread.join(workers[i])
+	}
+	for &j in jobs {
+		for e in j.out {
+			append(out, e)
+		}
+		delete(j.out)
+	}
+	for th in workers {
+		thread.destroy(th)
 	}
 }
 
@@ -447,7 +558,7 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 		return
 	}
 	filetree_filter_cache_clear(t)
-	filetree_collect(t, editor.working_root, &t.filter_cands)
+	filetree_walk(t, editor.working_root, &t.filter_cands)
 	t.filter_scope = t.scope
 	t.filter_dotfiles = t.show_dotfiles
 	t.filter_ignored = t.show_ignored

@@ -475,22 +475,22 @@ bench_filetree_walk :: proc(t: ^testing.T) {
 		root = os.get_env("HOME", context.temp_allocator)
 	}
 
-	run :: proc(root: string, dotfiles, ignored: bool, label: string) {
+	run :: proc(root: string, threads: int, label: string) {
 		ft: FileTree
-		ft.show_dotfiles = dotfiles
-		ft.show_ignored = ignored
 		out := make([dynamic]FileEntry)
 		start := time.tick_now()
-		filetree_collect(&ft, root, &out)
-		fmt.eprintfln("filetree_collect %s (%s): %.2f ms, %d candidates", root, label, ms_since(start), len(out))
+		filetree_walk(&ft, root, &out, threads)
+		fmt.eprintfln("filetree_walk %s (%s): %.2f ms, %d candidates", root, label, ms_since(start), len(out))
 		for e in out {
 			delete(e.path)
 		}
 		delete(out)
 	}
 
-	run(root, false, false, "default: dotfiles+ignored hidden")
-	run(root, true, true, "everything shown")
+	cores := os.get_processor_core_count()
+	fmt.eprintfln("=== filetree walk bench (%d cores) ===", cores)
+	run(root, 1, "serial")
+	run(root, 0, fmt.tprintf("parallel auto (%d threads)", cores))
 }
 
 @(private = "file")
