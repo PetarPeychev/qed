@@ -115,29 +115,14 @@ All default off; each has a runtime *Toggle* command.
 
 ## Keybinds
 
-`keybinds` maps a command name to a key string. Every command is rebindable,
-including *Command Palette* (default `Ctrl+p`) — its one binding opens the editor
-palette, or the file-tree palette when the tree is focused. Only primitive
-editing/movement stays fixed. An empty string (`""`) leaves a command unbound but
-still reachable from the palette.
-
-Key strings combine `Ctrl+`, `Alt+`, and a key, e.g. `Ctrl+f`, `Alt+F`, `Alt+{`.
-`Ctrl+`-letter is case-insensitive; `Alt+` is case-sensitive (`Alt+f` and `Alt+F`
-are distinct bindings). Defaults keep `Ctrl+`-letters lowercase, and every
-on-screen hint renders the configured string verbatim, so a rebind updates the
-welcome screen and pane footers to match.
-
-File-tree pane commands are named with a `File Tree: ` prefix. The ones that
-mirror a global operation — Copy, Cut, Paste, Select All, Close Buffers, Search —
-share the matching global command's bind instead of a separate key, so rebinding
-e.g. *Copy* moves it in both the editor and the tree (this is why the tree's
-search is `Alt+F`, shared with *Find in Files*). Only the file-tree-unique
-commands (Delete, Rename, New, Toggle Dotfiles/Ignored, Expand/Collapse All) have
-their own `File Tree: …` keys.
-
-The `keybinds` block in [`config/config.json`](../config/config.json) has the
-full list of command names and their defaults; every command is also listed with
-its current binding in the command palette (`Ctrl+p`).
+`keybinds` maps a command name to a key string. Only these commands are
+rebindable; primitive editing/movement is fixed. An empty string (`""`) leaves a
+command unbound but still reachable from the palette. Key strings are
+case-sensitive combinations of `Ctrl+`, `Alt+`, and a key (`Ctrl+f`, `Alt+F`,
+`Alt+{`). The `keybinds` block in
+[`config/config.json`](../config/config.json) has the full list of command names
+and their defaults; every command is also listed with its current binding in the
+command palette (`Ctrl+p`).
 
 ## Languages
 
