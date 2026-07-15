@@ -230,12 +230,18 @@ filetree_clear_status :: proc(t: ^FileTree) {
 	clear(&t.ignored)
 }
 
+// One repo when the root is inside a git repo; otherwise walk down, pruning at
+// each discovered repo so we never descend into an ignored node_modules. Each
+// repo's status is prefixed with an `@@REPO@@ <toplevel>` marker so the parser
+// knows the base its relative paths join against.
 filetree_scan_cmd :: proc(root: string) -> cstring {
 	q := shell_quote(root)
 	return fmt.ctprintf(
-		"git -C %s rev-parse --show-toplevel 2>/dev/null && git -C %s status --porcelain --ignored=matching --untracked-files=all 2>/dev/null",
+		`if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then echo "@@REPO@@ $top"; git -C %s status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do echo "@@REPO@@ $repo"; git -C "$repo" status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; done; fi`,
 		q,
 		q,
+		q,
+		"{}",
 	)
 }
 
@@ -305,13 +311,13 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	t.scanned = true
 	root := editor.working_root
 	out := output
-	top, top_ok := strings.split_lines_iterator(&out)
-	top = strings.trim_space(top)
-	if !top_ok || top == "" {
-		return
-	}
+	top := ""
 	for line in strings.split_lines_iterator(&out) {
-		if len(line) < 4 {
+		if strings.has_prefix(line, "@@REPO@@ ") {
+			top = strings.trim_space(line[len("@@REPO@@ "):])
+			continue
+		}
+		if top == "" || len(line) < 4 {
 			continue
 		}
 		code := line[:2]

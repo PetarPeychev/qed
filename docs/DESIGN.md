@@ -534,7 +534,7 @@ open the pane on that tab from the editor and switch/toggle-close it while open 
 again on its own tab closes — or `←`/`→`/click; also on the welcome screen; `Alt+g` freed from
 *Git: Toggle Diff View* which is now palette-only) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
-`git status --porcelain --ignored --untracked-files=all` (single `sh -c` with `rev-parse`) scanned **async**
+`git status --porcelain --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against) scanned **async**
 via the shared subprocess runner, prewarmed at startup: every open (first included) renders instantly from the
 cached status/ignored then refreshes in the
 background (`filetree_scan_pump`); a green/yellow `▌` per
