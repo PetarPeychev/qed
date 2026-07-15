@@ -43,3 +43,20 @@ multi-rune grapheme (combining marks, ZWJ emoji, regional-indicator flags) as a
 single cell. Without it those clusters would render as their base rune only.
 This is a compile flag, not a source edit, so re-vendoring keeps it — but the
 renderer in `src/editor.odin` assumes it is on.
+
+## Split escape sequence completion
+
+A single `read()` (64-byte buffer) under rapid input — notably mouse-wheel
+scrolling, which streams SGR sequences `ESC[<Cb;Cx;Cy(M|m)` back to back — can
+end exactly on the `ESC` that starts the next sequence. That leaves a lone `ESC`
+in the input buffer. In `TB_INPUT_ESC` mode `extract_event` treats a lone `ESC`
+as the Esc key, so it emitted a bogus Esc and the sequence's tail
+(`<Cb;Cx;Cy…`) parsed as individual literal keystrokes — leaking into whatever
+had focus (e.g. the file-tree filter box).
+
+`esc_pull_pending` (called from `extract_event` before the lone-ESC path) does a
+non-blocking `select`+`read` of any bytes already queued on the fd and appends
+them to the input buffer, so the sequence completes and termbox's own parser
+handles it as a real mouse/CSI/SS3 event. If nothing is queued (a genuine Esc
+press), the buffer stays a lone `ESC` and the Esc key is emitted as before, with
+no added latency.

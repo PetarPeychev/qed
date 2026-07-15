@@ -2314,6 +2314,7 @@ static int extract_esc_paste(struct tb_event *event);
 static int extract_esc_user(struct tb_event *event, int is_post);
 static int extract_esc_cap(struct tb_event *event);
 static int extract_esc_mouse(struct tb_event *event);
+static ssize_t esc_pull_pending(void);
 static int resize_cellbufs(void);
 static void handle_resize(int sig);
 static int send_attr(uintattr_t fg, uintattr_t bg);
@@ -3523,6 +3524,24 @@ static int wait_event(struct tb_event *event, int timeout) {
     return rv;
 }
 
+/* qed patch: non-blocking drain of any bytes already queued on the input fd,
+ * used to complete a split escape sequence (see extract_event). */
+static ssize_t esc_pull_pending(void) {
+    if (global.rfd < 0) return 0;
+
+    fd_set fds;
+    struct timeval tv = {0, 0};
+    FD_ZERO(&fds);
+    FD_SET(global.rfd, &fds);
+    if (select(global.rfd + 1, &fds, NULL, NULL, &tv) <= 0) return 0;
+    if (!FD_ISSET(global.rfd, &fds)) return 0;
+
+    char buf[TB_OPT_READ_BUF];
+    ssize_t n = read(global.rfd, buf, sizeof(buf));
+    if (n > 0) bytebuf_nputs(&global.in, buf, (size_t)n);
+    return n > 0 ? n : 0;
+}
+
 static int extract_event(struct tb_event *event) {
     int rv;
     struct bytebuf *in = &global.in;
@@ -3530,6 +3549,16 @@ static int extract_event(struct tb_event *event) {
     if (in->len == 0) return TB_ERR;
 
     if (in->buf[0] == '\x1b') {
+        /* qed patch: a lone ESC may be the split-off head of a CSI/SS3/mouse
+         * sequence whose tail is still queued on the fd (a full 64-byte read
+         * under rapid mouse-wheel input can end exactly on the ESC that starts
+         * the next sequence). Pull any already-available bytes non-blocking so
+         * the sequence completes and parses correctly, instead of emitting a
+         * bogus Esc that leaks the tail as literal keys. See lib/tb2/PATCHES.md. */
+        if ((global.input_mode & TB_INPUT_ESC) && in->len == 1) {
+            esc_pull_pending();
+        }
+
         // Escape sequence?
         // In TB_INPUT_ESC, skip if the buffer is a single escape char
         if (!((global.input_mode & TB_INPUT_ESC) && in->len == 1)) {
