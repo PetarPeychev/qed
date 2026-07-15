@@ -458,6 +458,10 @@ logview_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		logview_close(editor)
 		return
 	}
+	if command_matches(ev, "Copy") {
+		logview_copy(editor)
+		return
+	}
 	#partial switch ev.key {
 	case .Esc:
 		logview_close(editor)
@@ -467,9 +471,6 @@ logview_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	case .Arrow_Down:
 		logview_move(editor, +1, ev_shift(ev))
-		return
-	case .Ctrl_C:
-		logview_copy(editor)
 		return
 	}
 	switch ev.ch {
@@ -595,7 +596,7 @@ logview_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 	}
 	tx := inner.x + inner.w - 1 - total
 	actions_w := max(0, tx - (inner.x + 1) - 1)
-	pane_text(inner.x + 1, y, actions_w, "↑↓ select  Shift+↑↓ extend  Ctrl+C copy", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+	pane_text(inner.x + 1, y, actions_w, fmt.tprintf("↑↓ select  Shift+↑↓ extend  %s copy", command_shortcut("Copy")), COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 	for tg in toggles {
 		fg := COLOR_PANE_PROMPT_FG if tg.on else COLOR_PANE_SHORTCUT_FG
 		pane_text(tx, y, len(tg.label), tg.label, fg, COLOR_PANE_BG)

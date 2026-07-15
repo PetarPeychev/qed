@@ -40,7 +40,7 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 			editor_save_full(editor, &b)
 		}
 		if conflict {
-			editor_log(editor, .Warn, "", "File changed on disk — save it with Ctrl+S to resolve")
+			editor_log(editor, .Warn, "", fmt.tprintf("File changed on disk — save it with %s to resolve", command_shortcut("Save")))
 		} else if lsp_format_pending() {
 			editor_save_intent_set(editor, .Quit, "")
 		} else if editor_any_modified(editor) {

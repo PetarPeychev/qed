@@ -407,6 +407,9 @@ settings_destroy :: proc "contextless" () {
 	for &cmd in commands {
 		delete(cmd.shortcut, os.heap_allocator())
 	}
+	for &cmd in filetree_commands {
+		delete(cmd.shortcut, os.heap_allocator())
+	}
 	for it in config_llm {
 		delete(it.ptr^, os.heap_allocator())
 	}
@@ -462,6 +465,43 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 	return
 }
 
+config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[dynamic]string) {
+	for &cmd in table {
+		if cmd.bind_from != "" {
+			continue
+		}
+		name := cmd.name
+		if cmd.config_name != "" {
+			name = cmd.config_name
+		}
+		v, has := kb_obj[name]
+		if !has {
+			continue
+		}
+		s, is_str := v.(json.String)
+		if !is_str {
+			append(invalid, fmt.tprintf("keybinds/%s", name))
+			continue
+		}
+		if s == "" {
+			cmd.key = tb2.Key(0)
+			cmd.alt_ch = 0
+			delete(cmd.shortcut, os.heap_allocator())
+			cmd.shortcut = ""
+			continue
+		}
+		key, alt_ch, pok := parse_keybind(string(s))
+		if !pok {
+			append(invalid, fmt.tprintf("keybinds/%s", name))
+			continue
+		}
+		cmd.key = key
+		cmd.alt_ch = alt_ch
+		delete(cmd.shortcut, os.heap_allocator())
+		cmd.shortcut = strings.clone(string(s), os.heap_allocator())
+	}
+}
+
 config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	for it in config_ints {
 		v, present := root[it.key]
@@ -502,33 +542,8 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 
 	if kb_val, present := root["keybinds"]; present {
 		if kb_obj, kb_is_obj := kb_val.(json.Object); kb_is_obj {
-			for &cmd in commands {
-				v, has := kb_obj[cmd.name]
-				if !has {
-					continue
-				}
-				s, is_str := v.(json.String)
-				if !is_str {
-					append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
-					continue
-				}
-				if s == "" {
-					cmd.key = tb2.Key(0)
-					cmd.alt_ch = 0
-					delete(cmd.shortcut, os.heap_allocator())
-					cmd.shortcut = ""
-					continue
-				}
-				key, alt_ch, pok := parse_keybind(string(s))
-				if !pok {
-					append(invalid, fmt.tprintf("keybinds/%s", cmd.name))
-					continue
-				}
-				cmd.key = key
-				cmd.alt_ch = alt_ch
-				delete(cmd.shortcut, os.heap_allocator())
-				cmd.shortcut = strings.clone(string(s), os.heap_allocator())
-			}
+			config_apply_keybinds(kb_obj, commands[:], invalid)
+			config_apply_keybinds(kb_obj, filetree_commands[:], invalid)
 		} else {
 			append(invalid, "keybinds")
 		}
@@ -618,9 +633,17 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 		for key in kb_obj {
 			found := false
 			for cmd in commands {
-				if cmd.name == key {
+				if command_config_name(cmd) == key {
 					found = true
 					break
+				}
+			}
+			if !found {
+				for cmd in filetree_commands {
+					if cmd.bind_from == "" && command_config_name(cmd) == key {
+						found = true
+						break
+					}
 				}
 			}
 			if !found {

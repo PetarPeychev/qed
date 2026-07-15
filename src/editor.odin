@@ -322,9 +322,9 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				editor_request_quit(editor)
 				return
 			}
-			#partial switch ev.key {
-			case .Ctrl_P:
+			if command_matches(ev, "Command Palette") {
 				palette_open(editor)
+				return
 			}
 		}
 		return
@@ -573,9 +573,6 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 
 	#partial switch ev.key {
-	case .Ctrl_P:
-		palette_open(editor)
-		return
 	case .Esc:
 		// Passive inspector close, slotted last: overlays, completion and the FIM
 		// ghost all consume Esc before reaching here, so nothing existing changes.
@@ -1609,10 +1606,12 @@ editor_render_welcome :: proc(editor: ^Editor) {
 		"      MMb                          ",
 		"       `bmmd'                      ",
 	}
-	hints := [?]string {
-		"Alt+f     File tree",
-		"Ctrl+P    Command palette",
-		"Ctrl+Q    Quit",
+	hint_specs := [?]struct {
+		cmd, label: string,
+	}{{"File Tree", "File tree"}, {"Command Palette", "Command palette"}, {"Quit", "Quit"}}
+	hints: [len(hint_specs)]string
+	for spec, i in hint_specs {
+		hints[i] = fmt.tprintf("%-9s %s", command_shortcut(spec.cmd), spec.label)
 	}
 
 	hint_w := 0

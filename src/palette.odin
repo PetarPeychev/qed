@@ -4,11 +4,32 @@ import "core:fmt"
 import "lib:tb2"
 
 Command :: struct {
-	name:     string,
-	shortcut: string,
-	key:      tb2.Key,
-	alt_ch:   rune,
-	run:      proc(editor: ^Editor),
+	name:        string,
+	config_name: string,
+	bind_from:   string,
+	shortcut:    string,
+	key:         tb2.Key,
+	alt_ch:      rune,
+	run:         proc(editor: ^Editor),
+}
+
+command_config_name :: proc(cmd: Command) -> string {
+	return cmd.config_name if cmd.config_name != "" else cmd.name
+}
+
+// A file-tree command with `bind_from` set has no config key of its own; it derives
+// its key/alt/shortcut live from the named global command (one source of truth, so a
+// rebind of the global one moves both). Commands without it use their own fields.
+command_effective_bind :: proc(cmd: Command) -> (key: tb2.Key, alt_ch: rune, shortcut: string) {
+	if cmd.bind_from != "" {
+		for g in commands {
+			if g.name == cmd.bind_from {
+				return g.key, g.alt_ch, g.shortcut
+			}
+		}
+		return {}, 0, ""
+	}
+	return cmd.key, cmd.alt_ch, cmd.shortcut
 }
 
 cmd_undo :: proc(editor: ^Editor) {
@@ -99,6 +120,7 @@ cmd_message_log :: proc(editor: ^Editor) {logview_open(editor)}
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
 commands := [?]Command {
+	{name = "Command Palette", run = palette_open},
 	{name = "File Tree", run = filetree_open_all},
 	{name = "File Tree: Open", run = filetree_open_open},
 	{name = "File Tree: Git", run = filetree_open_git},
@@ -146,21 +168,24 @@ commands := [?]Command {
 }
 
 filetree_commands := [?]Command {
-	{name = "Copy", shortcut = "Ctrl+C", run = filetree_cmd_copy},
-	{name = "Cut", shortcut = "Ctrl+X", run = filetree_cmd_cut},
-	{name = "Paste", shortcut = "Ctrl+V", run = filetree_clip_paste},
-	{name = "Delete", shortcut = "Ctrl+D", run = filetree_cmd_delete},
-	{name = "Close Buffers", shortcut = "Ctrl+W", run = filetree_cmd_close},
-	{name = "Rename", shortcut = "Ctrl+R", run = filetree_cmd_rename},
-	{name = "New", shortcut = "Ctrl+N", run = filetree_cmd_new},
-	{name = "Select All", shortcut = "Ctrl+A", run = filetree_select_all},
-	{name = "Search", shortcut = "Ctrl+F", run = filetree_cmd_search},
-	{name = "Toggle Dotfiles", shortcut = "Alt+.", run = filetree_toggle_dotfiles},
-	{name = "Toggle Ignored", shortcut = "Alt+i", run = filetree_toggle_ignored},
-	{name = "Expand/Collapse All", shortcut = "Alt+e", run = filetree_toggle_expand_all},
+	{name = "Copy", bind_from = "Copy", run = filetree_cmd_copy},
+	{name = "Cut", bind_from = "Cut", run = filetree_cmd_cut},
+	{name = "Paste", bind_from = "Paste", run = filetree_clip_paste},
+	{name = "Delete", config_name = "File Tree: Delete", run = filetree_cmd_delete},
+	{name = "Close Buffers", bind_from = "Close Buffer", run = filetree_cmd_close},
+	{name = "Rename", config_name = "File Tree: Rename", run = filetree_cmd_rename},
+	{name = "New", config_name = "File Tree: New", run = filetree_cmd_new},
+	{name = "Select All", bind_from = "Select All", run = filetree_select_all},
+	{name = "Search", bind_from = "Find in Files", run = filetree_cmd_search},
+	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
+	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
+	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
 }
 
 command_available :: proc(editor: ^Editor, name: string) -> bool {
+	if name == "Command Palette" {
+		return false
+	}
 	if editor.welcome {
 		switch name {
 		case "File Tree", "File Tree: Open", "File Tree: Git", "File Tree: Unsaved",
@@ -181,8 +206,8 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 	return true
 }
 
-command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
-	for cmd in commands {
+table_command_for_key :: proc(table: []Command, key: tb2.Key) -> (Command, bool) {
+	for cmd in table {
 		if cmd.alt_ch == 0 && cmd.shortcut != "" && cmd.key == key {
 			return cmd, true
 		}
@@ -190,13 +215,50 @@ command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
 	return {}, false
 }
 
-command_for_alt :: proc(ch: rune) -> (Command, bool) {
-	for cmd in commands {
+table_command_for_alt :: proc(table: []Command, ch: rune) -> (Command, bool) {
+	for cmd in table {
 		if cmd.alt_ch != 0 && cmd.alt_ch == ch {
 			return cmd, true
 		}
 	}
 	return {}, false
+}
+
+command_for_key :: proc(key: tb2.Key) -> (Command, bool) {
+	return table_command_for_key(commands[:], key)
+}
+
+command_for_alt :: proc(ch: rune) -> (Command, bool) {
+	return table_command_for_alt(commands[:], ch)
+}
+
+filetree_command_for_event :: proc(ev: tb2.Event) -> (Command, bool) {
+	alt := ev_alt(ev) && ev.ch != 0
+	for cmd in filetree_commands {
+		key, alt_ch, shortcut := command_effective_bind(cmd)
+		if alt {
+			if alt_ch != 0 && alt_ch == ev.ch {
+				return cmd, true
+			}
+		} else if alt_ch == 0 && shortcut != "" && key == ev.key {
+			return cmd, true
+		}
+	}
+	return {}, false
+}
+
+command_shortcut :: proc(name: string) -> string {
+	for cmd in commands {
+		if command_config_name(cmd) == name {
+			return cmd.shortcut
+		}
+	}
+	for cmd in filetree_commands {
+		if cmd.bind_from == "" && command_config_name(cmd) == name {
+			return cmd.shortcut
+		}
+	}
+	return ""
 }
 
 command_matches :: proc(ev: tb2.Event, name: string) -> bool {
@@ -276,8 +338,12 @@ palette_execute :: proc(editor: ^Editor) {
 
 palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.palette
+	if command_matches(ev, "Command Palette") {
+		palette_close(editor)
+		return
+	}
 	#partial switch ev.key {
-	case .Esc, .Ctrl_P:
+	case .Esc:
 		palette_close(editor)
 	case .Enter:
 		palette_execute(editor)
@@ -322,9 +388,10 @@ palette_render :: proc(editor: ^Editor) {
 			sc_fg = COLOR_PANE_SEL_FG
 			pane_fill_row(inner.x, y, inner.w, fg, bg)
 		}
+		_, _, shortcut := command_effective_bind(cmd)
 		pane_text(inner.x + 1, y, inner.w - 2, cmd.name, fg, bg)
-		sx := inner.x + inner.w - 1 - len(cmd.shortcut)
-		pane_text(sx, y, len(cmd.shortcut), cmd.shortcut, sc_fg, bg)
+		sx := inner.x + inner.w - 1 - len(shortcut)
+		pane_text(sx, y, len(shortcut), shortcut, sc_fg, bg)
 	}
 
 	fuzzy_list_center_scrollbar(&p.list, box, rows)

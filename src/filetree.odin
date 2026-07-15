@@ -1800,48 +1800,18 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_tab_chord(editor, .Unsaved)
 		return
 	}
+	if command_matches(ev, "Command Palette") {
+		palette_open(editor)
+		return
+	}
+	if cmd, ok := filetree_command_for_event(ev); ok {
+		cmd.run(editor)
+		return
+	}
 	if ev_alt(ev) && ev.ch != 0 {
-		switch ev.ch {
-		case '.':
-			filetree_toggle_dotfiles(editor)
-		case 'i':
-			filetree_toggle_ignored(editor)
-		case 'e':
-			filetree_toggle_expand_all(editor)
-		}
 		return
 	}
 	#partial switch ev.key {
-	case .Ctrl_P:
-		palette_open(editor)
-		return
-	case .Ctrl_C:
-		filetree_cmd_copy(editor)
-		return
-	case .Ctrl_X:
-		filetree_cmd_cut(editor)
-		return
-	case .Ctrl_V:
-		filetree_clip_paste(editor)
-		return
-	case .Ctrl_D:
-		filetree_cmd_delete(editor)
-		return
-	case .Ctrl_W:
-		filetree_cmd_close(editor)
-		return
-	case .Ctrl_R:
-		filetree_cmd_rename(editor)
-		return
-	case .Ctrl_N:
-		filetree_cmd_new(editor)
-		return
-	case .Ctrl_A:
-		filetree_select_all(editor)
-		return
-	case .Ctrl_F:
-		filetree_cmd_search(editor)
-		return
 	case .Esc:
 		if len(t.filter.text) > 0 {
 			textfield_reset(&t.filter)
@@ -2014,7 +1984,7 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 			inner.x + 1,
 			lay.footer_y,
 			inner.w - 2,
-			"←→ tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+P commands",
+			fmt.tprintf("←→ tabs  ↑↓ select  Shift+↑↓ extend  %s commands", command_shortcut("Command Palette")),
 			COLOR_PANE_SHORTCUT_FG,
 			COLOR_PANE_BG,
 		)

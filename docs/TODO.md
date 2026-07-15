@@ -117,7 +117,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Refactors
 
-- [ ] Keybind-name consistency pass: every shortcut hint/label is config-driven and uses the exact configured key string — casing matters (`Ctrl+F` ≠ `Ctrl+f`); audit for hardcoded/mis-cased bind text across the editor.
 - [ ] Collapse the four dialogs (quit/close/conflict/merge) into one `Dialog` primitive.
 - [ ] Collapse the centered pickers (palette/langpick/indentpick) + shared two-pane picker key dispatch.
 - [ ] Unify the file-tree and Message Log (`Alt+l`) panes under one generic selectable-list model — fuzzy filter/search, scoped `Ctrl+P` command palette, shared multi-select + filter toggles (the file-tree hub model applied to the log pane).

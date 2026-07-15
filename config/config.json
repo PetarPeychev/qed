@@ -46,6 +46,7 @@
   "terminal_escape_closes": true,
   "theme": "default",
   "keybinds": {
+    "Command Palette": "Ctrl+p",
     "File Tree": "Alt+f",
     "File Tree: Open": "Alt+o",
     "File Tree: Git": "Alt+g",
@@ -89,7 +90,13 @@
     "LSP: Previous Diagnostic": "Alt+<",
     "LSP: Restart": "",
     "Debug: Inspect Tokens": "",
-    "Debug: Message Log": "Alt+l"
+    "Debug: Message Log": "Alt+l",
+    "File Tree: Delete": "Ctrl+d",
+    "File Tree: Rename": "Ctrl+r",
+    "File Tree: New": "Ctrl+n",
+    "File Tree: Toggle Dotfiles": "Alt+.",
+    "File Tree: Toggle Ignored": "Alt+i",
+    "File Tree: Expand/Collapse All": "Alt+e"
   },
   "languages": {
     "odin": {

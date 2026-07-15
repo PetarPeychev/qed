@@ -228,11 +228,25 @@ Copy/cut/paste shell out via `clipboard.odin`: `wl-copy`/`wl-paste` or `xclip`
 ## Input
 
 Explicit `switch` on `(key, mod, ch)` → action procs. Rebindable commands live in
-the `commands` table (`palette.odin`), their default binds in the embedded config's
-`keybinds` section; primitive editing/movement and `Ctrl+P` (palette) are fixed.
-Every pane closes/defocuses on its own command's chord via `command_matches`
-(`palette.odin` — resolves the event against the *configured* keybind, so rebinds
-keep the toggle; the fixed `Ctrl+P` and terminal's extra `Alt+T` tolerance stay
+two tables (`palette.odin`): the global `commands` and the file-tree
+`filetree_commands`. A file-tree command that mirrors a global operation borrows its
+bind via `Command.bind_from` (the global command's name) — no config key of its own,
+key/alt/shortcut resolved live from the referenced global command
+(`command_effective_bind`), so one config entry drives both dispatch paths (e.g. tree
+Copy follows global *Copy*; tree Search follows *Find in Files*, i.e. `Alt+F`). The
+file-tree-unique commands (Delete, Rename, New, Toggle Dotfiles/Ignored,
+Expand/Collapse All) keep their own `File Tree: …`-namespaced config key
+(`config_name` vs the short display `name`). Every command's default bind is a
+`keybinds` entry in the embedded config — including *Command Palette* (default
+`Ctrl+P`), whose single bind opens whichever palette is contextual (editor vs file
+tree). Only primitive editing/movement stays fixed. Dispatch resolves through the
+configured bind (`command_for_key`/`command_for_alt`, or `filetree_command_for_event`
+over the file-tree table), and every keybind hint renders the live configured
+shortcut string verbatim via `command_shortcut(name)` — so a rebind updates the
+welcome screen and every pane footer. Config keybind strings are kept consistently
+cased (lowercase Ctrl letters) so hints read uniformly. Every pane closes/defocuses on its own command's chord via
+`command_matches` (`palette.odin` — resolves the event against the *configured*
+keybind, so rebinds keep the toggle; the terminal's extra `Alt+T` tolerance stays
 hardcoded); the welcome-screen key whitelist resolves the same way.
 
 Every editable text box (palette/picker/switcher/lang/indent/line-find/project-search
@@ -503,7 +517,7 @@ literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (**async + debounced** `rg`, parallel scan with results sorted in-process for deterministic order, `projsearch_debounce_ms`;
-whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Ctrl+F`),
+whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`),
 file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
 fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
 lazy per-dir expand, full-height right-side preview; **type-to-filter** (`> ` prompt, in-process
@@ -519,7 +533,7 @@ delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` r
 new (unified: trailing `/` = directory, else file; nested names create missing parents via
 `path_ensure_parent_dir`), `Ctrl+A` select-all-scope, `Ctrl+W` close open buffers (the **Open**
 tab doubles as the buffer switcher — in-memory preview, `Enter` switches; `Ctrl+W` silent for
-clean buffers, confirm dialog only when any are unsaved), `Ctrl+F` search-in-selection (scoped
+clean buffers, confirm dialog only when any are unsaved), `Alt+F` search-in-selection (scoped
 project search — a selected dir recurses, a scoped-tab dir expands to its in-scope files; runs
 over the still-active tree, so `Esc` returns to it and opening a result closes both) — plus a scoped `Ctrl+P` command palette
 (the palette overlay driven by a `filetree_commands` list, floating over the tree);

@@ -264,13 +264,34 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 	testing.expect(t, found, "embedded theme names a bundled theme")
 	kb, kb_ok := g_config_defaults["keybinds"].(json.Object)
 	testing.expect(t, kb_ok, "embedded keybinds object")
-	for cmd in commands {
-		s, ok := kb[cmd.name].(json.String)
-		testing.expectf(t, ok, "embedded keybind %q present", cmd.name)
-		if ok && s != "" {
-			_, _, pok := parse_keybind(string(s))
-			testing.expectf(t, pok, "embedded keybind %q parses", cmd.name)
+	for table in ([?][]Command{commands[:], filetree_commands[:]}) {
+		for cmd in table {
+			if cmd.bind_from != "" {
+				continue
+			}
+			name := command_config_name(cmd)
+			s, ok := kb[name].(json.String)
+			testing.expectf(t, ok, "embedded keybind %q present", name)
+			if ok && s != "" {
+				_, _, pok := parse_keybind(string(s))
+				testing.expectf(t, pok, "embedded keybind %q parses", name)
+			}
 		}
+	}
+	// A borrowed bind must name a real global command, or the tree command would be
+	// permanently unbound (command_effective_bind returns an empty bind for a typo).
+	for cmd in filetree_commands {
+		if cmd.bind_from == "" {
+			continue
+		}
+		found := false
+		for g in commands {
+			if g.name == cmd.bind_from {
+				found = true
+				break
+			}
+		}
+		testing.expectf(t, found, "file-tree %q borrows a real global command %q", cmd.name, cmd.bind_from)
 	}
 	langs, langs_ok := g_config_defaults["languages"].(json.Object)
 	testing.expect(t, langs_ok, "embedded languages object")
@@ -381,6 +402,27 @@ test_config_files :: proc(t: ^testing.T) {
 	_, is_err = config_load_from(bool_path)
 	testing.expect(t, !is_err, "bool value load is not an error")
 	testing.expect(t, FORMAT_ON_SAVE, "bool value applied")
+
+	// A rebind drives both dispatch and hints. The configured shortcut string renders
+	// verbatim. A shared file-tree command (Copy) borrows the global bind, so rebinding
+	// global "Copy" moves the tree Copy chord too; a unique one (New) keeps its own key.
+	kb_path := fmt.tprintf("%s/keybinds.json", dir)
+	_ = os.write_entire_file(
+		kb_path,
+		transmute([]byte)string(`{"keybinds": {"Command Palette": "Ctrl+g", "Copy": "Ctrl+b", "File Tree: New": "Ctrl+t"}}`),
+	)
+	_, is_err = config_load_from(kb_path)
+	testing.expect(t, !is_err, "rebind load is not an error")
+	testing.expect(t, command_shortcut("Command Palette") == "Ctrl+g", "palette hint renders the configured string verbatim")
+	pcmd, pok := command_for_key(.Ctrl_G)
+	testing.expect(t, pok && pcmd.name == "Command Palette", "rebound palette bind dispatches")
+	testing.expect(t, command_matches(tb2.Event{type = .Key, key = .Ctrl_G}, "Command Palette"), "command_matches honors the rebind")
+	ccmd, ccok := filetree_command_for_event(tb2.Event{type = .Key, key = .Ctrl_B})
+	testing.expect(t, ccok && ccmd.name == "Copy", "tree Copy follows the rebound global Copy bind")
+	_, oldc := filetree_command_for_event(tb2.Event{type = .Key, key = .Ctrl_C})
+	testing.expect(t, !oldc, "tree Copy no longer answers the old Ctrl+C")
+	ncmd, nok := filetree_command_for_event(tb2.Event{type = .Key, key = .Ctrl_T})
+	testing.expect(t, nok && ncmd.name == "New", "unique tree command keeps its own independent bind")
 
 	// Language overrides: per-key merge, patterns drive detection, invalid subkey
 	// reported, unknown key untouched in file.

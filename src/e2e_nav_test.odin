@@ -1513,7 +1513,7 @@ e2e_nav_filetree_search_dir_scope :: proc(t: ^testing.T) {
 	tr := &e.ed.filetree
 	testing.expect_value(t, tr.entries[0].name, "sub") // dir sorts first, selected by default
 
-	e2e_key(&e, .Ctrl_F)
+	nav_alt(&e, 'F')
 	testing.expect(t, e.ed.filetree.active, "tree stays active underneath the search")
 	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
 	testing.expect(t, e.ed.projsearch.from_tree, "search remembers it was launched from the tree")
@@ -1553,8 +1553,8 @@ e2e_nav_filetree_search_open_result_closes_tree :: proc(t: ^testing.T) {
 	for tr.entries[tr.selected].name != "hay.txt" {
 		e2e_key(&e, .Arrow_Down)
 	}
-	e2e_key(&e, .Ctrl_F)
-	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
+	nav_alt(&e, 'F')
+	testing.expect(t, e.ed.projsearch.active, "Alt+F opens scoped project search")
 
 	e2e_type(&e, "needle_xyz")
 	p := &e.ed.projsearch
@@ -1590,8 +1590,8 @@ e2e_nav_filetree_search_git_scope :: proc(t: ^testing.T) {
 	testing.expect_value(t, tr.scope, FileTreeScope.Git)
 
 	e2e_key(&e, .Ctrl_A) // select all changed entries
-	e2e_key(&e, .Ctrl_F)
-	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
+	nav_alt(&e, 'F')
+	testing.expect(t, e.ed.projsearch.active, "Alt+F opens scoped project search")
 
 	e2e_type(&e, "needle_xyz")
 	p := &e.ed.projsearch
@@ -1631,8 +1631,8 @@ e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
 	testing.expect_value(t, tr.scope, FileTreeScope.Git)
 	testing.expect_value(t, tr.entries[0].name, "sub") // dir sorts first, selected by default
 
-	e2e_key(&e, .Ctrl_F) // select just the sub/ directory
-	testing.expect(t, e.ed.projsearch.active, "Ctrl+F opens scoped project search")
+	nav_alt(&e, 'F') // select just the sub/ directory
+	testing.expect(t, e.ed.projsearch.active, "Alt+F opens scoped project search")
 	testing.expect_value(t, len(e.ed.projsearch.scope), 1)
 	testing.expect_value(t, e.ed.projsearch.scope[0], "sub/mod.txt") // in-scope leaf under sub/
 
