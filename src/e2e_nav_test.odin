@@ -1106,6 +1106,74 @@ e2e_nav_filetree_filter_prunes :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_filetree_filter_incremental :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	for name in ([?]string{"alpha.txt", "alps.txt", "beta.txt"}) {
+		nav_write(fmt.tprintf("%s/%s", e.ed.working_root, name), "body")
+	}
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+
+	entry_named :: proc(tr: ^FileTree, name: string) -> bool {
+		for entry in tr.entries {
+			if entry.name == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Base query, ranked from scratch over every candidate.
+	e2e_type(&e, "alp")
+	testing.expect(t, entry_named(tr, "alpha.txt"), "base keeps alpha")
+	testing.expect(t, entry_named(tr, "alps.txt"), "base keeps alps")
+	testing.expect(t, !entry_named(tr, "beta.txt"), "base drops beta")
+
+	// Extending the query re-ranks only the prior match set: `alph` is a
+	// subsequence of alpha but not alps, so a prior match must drop out.
+	e2e_type(&e, "h")
+	testing.expect(t, entry_named(tr, "alpha.txt"), "incremental keeps alpha")
+	testing.expect(t, !entry_named(tr, "alps.txt"), "incremental drops a prior match that no longer matches")
+	testing.expect(t, !entry_named(tr, "beta.txt"), "incremental still drops beta")
+}
+
+@(test)
+e2e_nav_filetree_filter_caps_display :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+
+	total := FILETREE_FILTER_MAX_RESULTS + 20
+	for i in 0 ..< total {
+		nav_write(fmt.tprintf("%s/zqx%d.txt", e.ed.working_root, i), "b")
+	}
+
+	nav_alt(&e, 'f')
+	tr := &e.ed.filetree
+	e2e_type(&e, "zqx")
+
+	// The visible list is capped, but the full ranked match set is retained so
+	// incremental narrowing stays correct.
+	testing.expect_value(t, len(tr.entries), FILETREE_FILTER_MAX_RESULTS)
+	testing.expect(
+		t,
+		len(tr.filter_last_idx) > FILETREE_FILTER_MAX_RESULTS,
+		"full match set is tracked beyond the display cap",
+	)
+
+	// When capped, the filter line shows shown/total.
+	lay := filetree_layout(&e.ed)
+	e2e_render(&e)
+	testing.expect(
+		t,
+		strings.contains(e2e_row(&e, lay.filter_y), fmt.tprintf("%d / %d", FILETREE_FILTER_MAX_RESULTS, total)),
+		"capped filter shows shown/total on the filter line",
+	)
+}
+
+@(test)
 e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)

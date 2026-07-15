@@ -73,6 +73,8 @@ FileTree :: struct {
 	filter_dirty:    bool,
 	filter_at:       time.Tick,
 	filter_walk_ms:  f64,
+	filter_last_query: string,
+	filter_last_idx:   [dynamic]int,
 	scan_gen:        int,
 	prewarm:         FiletreePrewarm,
 }
@@ -82,6 +84,7 @@ FiletreePrewarm :: struct {
 	snap:    ^FileTree,
 	root:    string,
 	staging: [dynamic]FileEntry,
+	heap:    runtime.Allocator,
 	gen:     int,
 	active:  bool,
 	restart: bool,
@@ -156,6 +159,7 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.clipboard)
 	filetree_filter_cache_clear(t)
 	delete(t.filter_cands)
+	delete(t.filter_last_idx)
 }
 
 filetree_paths_set :: proc(set: ^map[string]bool, path: string) {
@@ -563,6 +567,18 @@ filetree_filter_cache_clear :: proc(t: ^FileTree) {
 	}
 	clear(&t.filter_cands)
 	t.filter_valid = false
+	filetree_filter_narrow_reset(t)
+}
+
+// The incremental-narrow cache holds the last query's matched filter_cands
+// indices; it is only valid while filter_cands itself is unchanged, so it resets
+// whenever the candidate list is rebuilt.
+filetree_filter_narrow_reset :: proc(t: ^FileTree) {
+	if len(t.filter_last_query) > 0 {
+		delete(t.filter_last_query)
+	}
+	t.filter_last_query = ""
+	clear(&t.filter_last_idx)
 }
 
 filetree_filter_invalidate :: proc(t: ^FileTree) {
@@ -617,6 +633,7 @@ filetree_prewarm_start :: proc(editor: ^Editor) {
 	}
 	pw.snap = snap
 	pw.root = strings.clone(editor.working_root)
+	pw.heap = context.allocator
 	pw.gen = t.scan_gen
 	pw.done = false
 	pw.restart = false
@@ -628,6 +645,10 @@ filetree_prewarm_start :: proc(editor: ^Editor) {
 
 filetree_prewarm_run :: proc(th: ^thread.Thread) {
 	pw := (^FiletreePrewarm)(th.data)
+	// Clone staging with the allocator the main thread will free it with (its
+	// context.allocator, not this worker thread's default heap), so ownership is
+	// consistent across the thread boundary.
+	context.allocator = pw.heap
 	filetree_walk(pw.snap, pw.root, &pw.staging)
 	sync.atomic_store(&pw.done, true)
 }
@@ -733,26 +754,63 @@ filetree_apply_filter :: proc(editor: ^Editor) {
 	filetree_filter_refresh_cache(editor)
 	cands := t.filter_cands
 	if len(cands) == 0 {
+		filetree_filter_narrow_reset(t)
 		return
 	}
-	names := make([dynamic]string, 0, len(cands), context.temp_allocator)
-	for c in cands {
-		rel := c.path
-		if strings.has_prefix(c.path, root) {
-			rel = strings.trim_left(c.path[len(root):], "/")
+
+	// A longer query is a superset subsequence, so it can only match a subset of
+	// the previous query's hits — when the query strictly extends the last one,
+	// rank the prior match set instead of rescanning every candidate.
+	incremental :=
+		t.filter_last_query != "" &&
+		len(query) > len(t.filter_last_query) &&
+		strings.has_prefix(query, t.filter_last_query)
+
+	base := make([dynamic]int, 0, len(cands), context.temp_allocator)
+	if incremental {
+		for ci in t.filter_last_idx {
+			append(&base, ci)
+		}
+	} else {
+		for i in 0 ..< len(cands) {
+			append(&base, i)
+		}
+	}
+
+	names := make([dynamic]string, 0, len(base), context.temp_allocator)
+	for ci in base {
+		rel := cands[ci].path
+		if strings.has_prefix(rel, root) {
+			rel = strings.trim_left(cands[ci].path[len(root):], "/")
 		}
 		append(&names, rel)
 	}
+
 	f := fuzzy_begin(names[:])
-	for idx in fuzzy_rank(&f, query) {
-		cloned := strings.clone(cands[idx].path)
+	ranked := fuzzy_rank(&f, query)
+	clear(&t.filter_last_idx)
+	for pos, i in ranked {
+		ci := base[pos]
+		// filter_last_idx keeps the full ranked set (incremental narrowing scans
+		// it); only the visible list is capped, since nobody scrolls tens of
+		// thousands of fuzzy hits — you refine the query instead.
+		append(&t.filter_last_idx, ci)
+		if i >= FILETREE_FILTER_MAX_RESULTS {
+			continue
+		}
+		cloned := strings.clone(cands[ci].path)
 		rel := cloned
 		if strings.has_prefix(cloned, root) {
 			rel = strings.trim_left(cloned[len(root):], "/")
 		}
-		append(&t.entries, FileEntry{cloned, rel, 0, cands[idx].is_dir})
+		append(&t.entries, FileEntry{cloned, rel, 0, cands[ci].is_dir})
 	}
 	fuzzy_end(&f)
+
+	if len(t.filter_last_query) > 0 {
+		delete(t.filter_last_query)
+	}
+	t.filter_last_query = strings.clone(query)
 }
 
 filetree_clear_entries :: proc(t: ^FileTree) {
@@ -1805,7 +1863,21 @@ filetree_render :: proc(editor: ^Editor) {
 
 	filetree_render_tabs(t, inner, lay.tab_y)
 	pane_hline(lay.box, lay.title_sep_y)
-	overlay_prompt_render(inner.x + 1, lay.filter_y, lay.left_w - 1, &t.filter)
+	prompt_w := lay.left_w - 1
+	filtering := len(t.filter.text) > 0
+	count := ""
+	if filtering {
+		if len(t.entries) < len(t.filter_last_idx) {
+			count = fmt.tprintf("%d / %d", len(t.entries), len(t.filter_last_idx))
+		} else {
+			count = fmt.tprintf("%d", len(t.filter_last_idx))
+		}
+		prompt_w = max(1, prompt_w - len(count) - 1)
+	}
+	overlay_prompt_render(inner.x + 1, lay.filter_y, prompt_w, &t.filter)
+	if filtering {
+		pane_text(lay.div_x - len(count), lay.filter_y, len(count), count, COLOR_FILETREE_IGNORED, COLOR_PANE_BG)
+	}
 	if len(t.filter.text) == 0 {
 		pane_text(inner.x + 3, lay.filter_y, lay.left_w - 4, "type to filter", COLOR_FILETREE_IGNORED, COLOR_PANE_BG)
 	}
