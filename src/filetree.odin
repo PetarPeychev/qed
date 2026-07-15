@@ -67,6 +67,7 @@ FileTree :: struct {
 	ignored:         map[string]bool,
 	show_dotfiles:   bool,
 	show_ignored:    bool,
+	git_diff_only:   bool,
 	scope:           FileTreeScope,
 	scope_paths:     map[string]bool,
 	scan_sub:        Subprocess,
@@ -868,7 +869,7 @@ filetree_load_preview :: proc(editor: ^Editor) {
 	}
 	h := filetree_layout(editor).preview_h
 	if t.scope == .Git {
-		preview_set_diff(&t.preview, e.path, h)
+		preview_set_diff(&t.preview, e.path, h, t.git_diff_only)
 		return
 	}
 	if idx := editor_find_buffer(editor, e.path); idx >= 0 {
@@ -1175,6 +1176,11 @@ filetree_toggle_ignored :: proc(editor: ^Editor) {
 	editor.filetree.show_ignored = !editor.filetree.show_ignored
 	filetree_rebuild(editor)
 	filetree_prewarm_start(editor)
+}
+
+filetree_toggle_git_diff :: proc(editor: ^Editor) {
+	editor.filetree.git_diff_only = !editor.filetree.git_diff_only
+	filetree_load_preview(editor)
 }
 
 filetree_set_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
@@ -1986,14 +1992,41 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	inner := lay.inner
 	switch t.mode {
 	case .Nav, .ConfirmDelete, .ConfirmClose:
+		Chip :: struct {
+			label: string,
+			on:    bool,
+		}
+		chips: [dynamic]Chip
+		chips.allocator = context.temp_allocator
+		#partial switch t.scope {
+		case .All:
+			append(&chips, Chip{fmt.tprintf("%s ignored", command_shortcut("File Tree: Toggle Ignored")), t.show_ignored})
+			append(&chips, Chip{fmt.tprintf("%s dotfiles", command_shortcut("File Tree: Toggle Dotfiles")), t.show_dotfiles})
+		case .Git:
+			append(&chips, Chip{fmt.tprintf("%s diff", command_shortcut("File Tree: Toggle Diff")), t.git_diff_only})
+		}
+		total := 0
+		for c, i in chips {
+			total += len(c.label)
+			if i > 0 {
+				total += 2
+			}
+		}
+		tx := inner.x + inner.w - 1 - total
+		actions_w := max(0, tx - (inner.x + 1) - 1)
 		pane_text(
 			inner.x + 1,
 			lay.footer_y,
-			inner.w - 2,
+			actions_w,
 			fmt.tprintf("←→ tabs  ↑↓ select  Shift+↑↓ extend  %s commands", command_shortcut("Command Palette")),
 			COLOR_PANE_SHORTCUT_FG,
 			COLOR_PANE_BG,
 		)
+		for c in chips {
+			fg := COLOR_PANE_PROMPT_FG if c.on else COLOR_PANE_SHORTCUT_FG
+			pane_text(tx, lay.footer_y, len(c.label), c.label, fg, COLOR_PANE_BG)
+			tx += len(c.label) + 2
+		}
 		return
 	case .New, .Rename:
 	}

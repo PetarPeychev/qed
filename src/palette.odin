@@ -181,6 +181,7 @@ filetree_commands := [?]Command {
 	{name = "Search", bind_from = "Find in Files", run = filetree_cmd_search},
 	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
+	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", run = filetree_toggle_git_diff},
 	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
 }
 

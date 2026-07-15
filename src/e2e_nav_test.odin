@@ -953,6 +953,44 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	seed := "line 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\n"
+	e := e2e_git_start(seed)
+	defer e2e_stop(&e)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+
+	nav_write(e.path, "line 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nCHANGED\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\n")
+
+	nav_alt(&e, 'f')
+	nav_scan(&e)
+	tr := &e.ed.filetree
+
+	e2e_key(&e, .Arrow_Right) // All -> Open
+	e2e_key(&e, .Arrow_Right) // Open -> Git
+	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	for entry, i in tr.entries {
+		if entry.name == "file.txt" {
+			tr.selected = i
+		}
+	}
+	filetree_load_preview(&e.ed)
+
+	testing.expect(t, tr.git_diff_only, "diff-only on by default")
+	collapsed := len(tr.preview.rows)
+
+	nav_alt(&e, 'd') // File Tree: Toggle Diff
+	testing.expect(t, !tr.git_diff_only, "Alt+d turns full diff on (diff-only off)")
+	full := len(tr.preview.rows)
+
+	testing.expect(t, full > collapsed, "full diff shows more rows than the collapsed view")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_nav_filetree_shift_range :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)
@@ -1062,8 +1100,9 @@ e2e_nav_filetree_footer_single_row :: proc(t: ^testing.T) {
 	lay := filetree_layout(&e.ed)
 	footer := e2e_row(&e, lay.footer_y)
 
-	// One line of how-to-select/run, not per-command hints.
-	for hint in ([?]string{"tabs", "select", "extend", "commands"}) {
+	// One line of how-to-select/run, not per-command hints; the All scope also
+	// shows the right-aligned ignored/dotfiles toggle chips (hint clips to fit).
+	for hint in ([?]string{"tabs", "select", "ignored", "dotfiles"}) {
 		testing.expect(t, strings.contains(footer, hint), fmt.tprintf("footer shows %q", hint))
 	}
 	e2e_key(&e, .Esc)

@@ -73,6 +73,7 @@ GIT_DIFF_VIEW: bool
 LINE_WRAP: bool
 FILETREE_SHOW_DOTFILES: bool
 FILETREE_SHOW_IGNORED: bool
+FILETREE_GIT_DIFF_ONLY: bool
 TERMINAL_ESCAPE_CLOSES: bool
 
 config_bools := [?]Config_Bool {
@@ -85,6 +86,7 @@ config_bools := [?]Config_Bool {
 	{"line_wrap", &LINE_WRAP},
 	{"filetree_show_dotfiles", &FILETREE_SHOW_DOTFILES},
 	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
+	{"filetree_git_diff_only", &FILETREE_GIT_DIFF_ONLY},
 	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
 }
 

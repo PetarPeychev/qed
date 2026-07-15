@@ -288,7 +288,7 @@ preview_content_extend :: proc(p: ^Preview, view_h: int) {
 	p.parsed_to = need
 }
 
-preview_set_diff :: proc(p: ^Preview, path: string, view_h: int) {
+preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool) {
 	preview_reset(p)
 	p.language = language_of(path)
 	base_text, cur, marks, hunks, ok := git_diff_file(path)
@@ -327,13 +327,19 @@ preview_set_diff :: proc(p: ^Preview, path: string, view_h: int) {
 			vis[j] = true
 		}
 	}
-	for m, i in marks {
-		if m != .None {
-			mark_row(visible, i, ctx)
+	if diff_only {
+		for m, i in marks {
+			if m != .None {
+				mark_row(visible, i, ctx)
+			}
 		}
-	}
-	for h in hunks {
-		mark_row(visible, clamp(h.row, 0, n - 1), ctx)
+		for h in hunks {
+			mark_row(visible, clamp(h.row, 0, n - 1), ctx)
+		}
+	} else {
+		for i in 0 ..< n {
+			visible[i] = true
+		}
 	}
 
 	emitted := false

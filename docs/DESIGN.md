@@ -541,7 +541,9 @@ over the still-active tree, so `Esc` returns to it and opening a result closes b
 keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch delete (one confirm,
 "Delete N items?") and batch open (`Enter`); paste targets the selected dir or a file's parent;
 cut+paste and rename both repath open buffers; the open buffer's row keeps an accent fg even
-selected; single hint-row footer; view toggles `Alt+e` expand/collapse-all (skips gitignored +
+selected; hint-row footer with tab-aware right-aligned toggle-state chips (log-pane style, lit
+when on, shortcuts config-driven via `command_shortcut` — `Alt+i ignored`/`Alt+. dotfiles` on
+`All`, `Alt+d diff` on `Git`); view toggles `Alt+e` expand/collapse-all (skips gitignored +
 hidden dotdirs), `Alt+.`/`Alt+i` show dotfiles / gitignored (both hidden by default, config
 `filetree_show_dotfiles`/`filetree_show_ignored`), also listed in the command palette;
 header scope tab bar (`All`/`Open`/`Git`/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g`/`Alt+u`
@@ -594,6 +596,10 @@ nil error with 0 bytes.) The file-tree **Git** tab
 previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
+*File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.git_diff_only` seeded from config
+`filetree_git_diff_only`, default on) switches the Git preview between this collapsed view and the
+whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
+gap-collapsing never fires).
 Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`): navigation only marks the preview
 dirty (`filetree_preview_touch`) and the main loop flushes it once selection settles, so a held arrow
 never blocks on the per-file `git show` diff (the Git tab's cost) and can't back up the input queue.

@@ -23,6 +23,7 @@
   "line_wrap": true,
   "filetree_show_dotfiles": false,
   "filetree_show_ignored": false,
+  "filetree_git_diff_only": true,
   "terminal_escape_closes": true,
   "theme": "default",
   "keybinds": {
@@ -76,6 +77,7 @@
     "File Tree: New": "Ctrl+n",
     "File Tree: Toggle Dotfiles": "Alt+.",
     "File Tree: Toggle Ignored": "Alt+i",
+    "File Tree: Toggle Diff": "Alt+d",
     "File Tree: Expand/Collapse All": "Alt+e"
   },
   "languages": {

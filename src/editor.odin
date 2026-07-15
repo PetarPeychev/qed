@@ -97,7 +97,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		trim_trailing_whitespace_on_save = TRIM_TRAILING_WHITESPACE_ON_SAVE,
 		ensure_final_newline_on_save = ENSURE_FINAL_NEWLINE_ON_SAVE,
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
-		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED},
+		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED, git_diff_only = FILETREE_GIT_DIFF_ONLY},
 		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
 		headless       = headless,
 	}
