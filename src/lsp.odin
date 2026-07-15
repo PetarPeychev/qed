@@ -773,6 +773,7 @@ lsp_handle_diagnostics :: proc(editor: ^Editor, obj: json.Object) -> bool {
 			})
 		}
 	}
+	editor_log(editor, .Debug, "LSP", fmt.tprintf("diagnostics: %d for %s", len(b.diags), editor_display_path(editor, b.path)))
 	return true
 }
 
@@ -790,7 +791,25 @@ lsp_ensure_synced :: proc(editor: ^Editor, b: ^Buffer) {
 	}
 }
 
-lsp_pending_add :: proc(lsp: ^Lsp, kind: LspRequest, b: ^Buffer) -> int {
+lsp_request_name :: proc(kind: LspRequest) -> string {
+	switch kind {
+	case .Definition:
+		return "definition"
+	case .Hover:
+		return "hover"
+	case .Format:
+		return "format"
+	case .FormatOnSave:
+		return "format-on-save"
+	case .Rename:
+		return "rename"
+	case .Completion:
+		return "completion"
+	}
+	return "?"
+}
+
+lsp_pending_add :: proc(editor: ^Editor, lsp: ^Lsp, kind: LspRequest, b: ^Buffer) -> int {
 	lsp.next_id += 1
 	id := lsp.next_id
 	lsp.pending[id] = LspPending {
@@ -798,6 +817,7 @@ lsp_pending_add :: proc(lsp: ^Lsp, kind: LspRequest, b: ^Buffer) -> int {
 		path = strings.clone(b.path),
 		rev  = b.rev,
 	}
+	editor_log(editor, .Debug, "LSP", fmt.tprintf("request: %s #%d %s", lsp_request_name(kind), id, editor_display_path(editor, b.path)))
 	return id
 }
 
@@ -817,7 +837,7 @@ lsp_definition :: proc(editor: ^Editor) {
 		return
 	}
 	lsp_ensure_synced(editor, b)
-	id := lsp_pending_add(lsp, .Definition, b)
+	id := lsp_pending_add(editor, lsp, .Definition, b)
 	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
 	lsp_send(
 		editor,
@@ -848,7 +868,7 @@ lsp_hover :: proc(editor: ^Editor) {
 		return
 	}
 	lsp_ensure_synced(editor, b)
-	id := lsp_pending_add(lsp, .Hover, b)
+	id := lsp_pending_add(editor, lsp, .Hover, b)
 	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
 	lsp_send(
 		editor,
@@ -887,7 +907,7 @@ lsp_rename_send :: proc(editor: ^Editor, new_name: string) {
 		return
 	}
 	lsp_ensure_synced(editor, b)
-	id := lsp_pending_add(lsp, .Rename, b)
+	id := lsp_pending_add(editor, lsp, .Rename, b)
 	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
 	lsp_send(
 		editor,
@@ -973,7 +993,7 @@ lsp_send_format :: proc(editor: ^Editor, b: ^Buffer, kind: LspRequest) -> bool {
 		return false
 	}
 	lsp_ensure_synced(editor, b)
-	id := lsp_pending_add(lsp, kind, b)
+	id := lsp_pending_add(editor, lsp, kind, b)
 	lsp_send(
 		editor,
 		lsp,
@@ -997,6 +1017,7 @@ lsp_handle_response :: proc(editor: ^Editor, p: LspPending, obj: json.Object) ->
 		}
 		return true
 	}
+	editor_log(editor, .Debug, "LSP", fmt.tprintf("response: %s", lsp_request_name(p.kind)))
 	switch p.kind {
 	case .Definition:
 		return lsp_apply_definition(editor, obj)

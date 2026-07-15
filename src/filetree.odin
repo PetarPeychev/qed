@@ -300,6 +300,7 @@ filetree_scan_pump :: proc(editor: ^Editor) -> bool {
 		return false
 	}
 	filetree_scan_apply(editor, subprocess_output(&t.scan_sub))
+	editor_log(editor, .Debug, "Files", fmt.tprintf("git scan: %d changed path(s)", len(t.status)))
 	subprocess_destroy(&t.scan_sub)
 	// Skip the visual rebuild while an overlay covers the tree — it would clear the
 	// selection/anchor; the next normal rebuild picks up the fresh status.

@@ -9,7 +9,7 @@ import "core:time/timezone"
 import "lib:tb2"
 
 LOG_MAX :: 1000
-LOG_ROTATE_BYTES :: 1024 * 1024
+LOG_ROTATE_BYTES :: 4 * 1024 * 1024
 
 LogLevel :: enum {
 	Debug,

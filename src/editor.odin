@@ -148,6 +148,21 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	if !headless && editor.working_root != "" {
 		filetree_scan_start(&editor)
 	}
+	if !headless {
+		editor_log(
+			&editor,
+			.Debug,
+			"Startup",
+			fmt.tprintf(
+				"qed %s · root=%s · %dx%d · %d buffer(s)",
+				VERSION,
+				editor.working_root,
+				tb2.width(),
+				tb2.height(),
+				len(editor.buffers),
+			),
+		)
+	}
 	return editor
 }
 
@@ -913,6 +928,7 @@ editor_after_save :: proc(editor: ^Editor, b: ^Buffer) {
 editor_force_save :: proc(editor: ^Editor, b: ^Buffer) {
 	switch buffer_save(b) {
 	case .None:
+		editor_log(editor, .Debug, "Save", fmt.tprintf("wrote %s (%d lines, %v)", editor_display_path(editor, b.path), len(b.lines), b.line_ending))
 		editor_log(editor, .Info, "", "Saved")
 		lsp_did_save(editor, b)
 	case .NoPath:
@@ -1005,6 +1021,7 @@ editor_poll_disk :: proc(editor: ^Editor) -> bool {
 		if b.modified {
 			if !b.disk_conflict {
 				b.disk_conflict = true
+				editor_log(editor, .Debug, "Files", fmt.tprintf("disk conflict (unsaved edits): %s", editor_display_path(editor, b.path)))
 				if &b == cur {
 					editor_log(editor, .Warn, "", "File changed on disk — you have unsaved edits")
 					changed = true
@@ -1015,6 +1032,7 @@ editor_poll_disk :: proc(editor: ^Editor) -> bool {
 		if highlight_busy(&b) {
 			continue // don't swap content under a running parse; retry next poll
 		}
+		editor_log(editor, .Debug, "Files", fmt.tprintf("disk changed, auto-reloading %s", editor_display_path(editor, b.path)))
 		editor_reload_buffer(editor, &b)
 		changed = true
 	}

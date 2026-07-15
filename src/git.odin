@@ -70,6 +70,9 @@ git_stat_pump :: proc(editor: ^Editor) -> bool {
 		}
 	}
 	changed := branch != s.branch || ahead != s.ahead || behind != s.behind
+	if changed {
+		editor_log(editor, .Debug, "Git", fmt.tprintf("branch %s ahead %d behind %d", branch, ahead, behind))
+	}
 	if branch != s.branch {
 		delete(s.branch)
 		s.branch = strings.clone(branch)

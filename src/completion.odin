@@ -116,7 +116,7 @@ completion_request :: proc(editor: ^Editor) {
 	c := &editor.completion
 	c.anchor_row = b.cursor.row
 	c.anchor_col = completion_word_start(b, b.cursor)
-	id := lsp_pending_add(lsp, .Completion, b)
+	id := lsp_pending_add(editor, lsp, .Completion, b)
 	ch := col_to_utf16(b.lines[b.cursor.row].text[:], b.cursor.col)
 	lsp_send(
 		editor,
@@ -214,6 +214,7 @@ completion_apply :: proc(editor: ^Editor, p: LspPending, obj: json.Object) -> bo
 		}
 		append(&c.items, ci)
 	}
+	editor_log(editor, .Debug, "LSP", fmt.tprintf("completion: %d item(s)%s", len(c.items), " (incomplete)" if incomplete else ""))
 
 	if len(c.items) == 0 || !completion_valid(editor) {
 		completion_dismiss(editor)

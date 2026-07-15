@@ -108,7 +108,7 @@ draws `Source: text` and colours by level — `.Info` → `COLOR_FG`, `.Warn` �
 `COLOR_WARN_FG`, `.Error` → `COLOR_ERROR_FG`. `.Debug` entries are always log-only
 (never touch the line). `editor_clear_message` (or an empty `msg`) blanks the line and
 is never logged. The disk log lives at `$XDG_STATE_HOME/qed/qed.log` (append, flushed
-per write, rotated to `qed.log.old` past 1 MB, session-start marker with version);
+per write, rotated to `qed.log.old` past 4 MB, session-start marker with version);
 disk logging is skipped when `headless`. *Debug: Message Log* (`Alt+l`) opens a
 floating pane over the ring — timestamped rows coloured by level (selection tints
 bg only, keeping the level colour), sticks to the newest, arrow/wheel scroll +
@@ -380,7 +380,7 @@ as **one undo group** with the cursor/selection translated in place (no jump to 
 edit). While a request is in flight its rows carry a faint highlight
 (`COLOR_AI_EDIT_BG`, lighter `COLOR_AI_EDIT_CURRENT_BG` on the cursor line),
 relocated live each render by the same content search so it tracks edits above/below.
-`QED_LLM_DEBUG` dumps the prompt/response to `/tmp` for debugging. The
+The full prompt/response are logged as `.Debug` entries (disk log + ring). The
 selection-replace contract can't touch code outside the region (e.g. add an
 import); that's a TODO. See [notes/ai.md](notes/ai.md).
 
@@ -403,7 +403,7 @@ completion popup takes precedence — ghost is suppressed while it is open. The 
 read from `$CODESTRAL_API_KEY` (config `completion_api_key_env`) by the curl child, never
 held by qed. **External quirk:** the POST body is fed on **stdin** (`--data-binary @-`),
 not `@file` — the async spawn unlinks the temp immediately and curl opens a `@file`
-lazily, so a `@file` races to an empty body. `QED_FIM_DEBUG` logs to `/tmp/qed-fim.log`.
+lazily, so a `@file` races to an empty body. Request/response are traced at `.Debug`.
 
 ## Terminal pane
 
@@ -505,7 +505,9 @@ level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — pe
 filters, multi-select copy, cross-session history seeded from the disk log behind
 an `h` footer toggle (off by default), works on welcome), welcome-screen status bar (root + branch + version + message line),
 rebind-aware pane self-close chords (`command_matches`), Debug-level internals
-instrumentation (subprocess/AI/FIM/save/config/clipboard/terminal trails), welcome screen, quit guard across
+instrumentation (startup context, subprocess/AI/FIM/save/config/clipboard/terminal trails,
+LSP request/response/diagnostics, completion counts, git branch + scan, disk reload/conflict —
+full AI prompt/response bodies logged at Debug, no env-var dumps), welcome screen, quit guard across
 modified buffers, floating pane primitive, command palette (context-filtered via
 `command_available`: welcome lists only the working whitelist, big-file buffers
 hide the LSP/inspect commands),

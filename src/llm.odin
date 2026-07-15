@@ -1,7 +1,6 @@
 package main
 
 import "core:fmt"
-import "core:os"
 import "core:strings"
 
 LlmRequest :: struct {
@@ -65,9 +64,7 @@ llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
 	b := editor_buffer(editor)
 	selection := buffer_text_range(b, from, to, context.temp_allocator)
 	prompt := llm_build_prompt(b, instruction, from, to)
-	if os.get_env("QED_LLM_DEBUG", context.temp_allocator) != "" {
-		_ = os.write_entire_file("/tmp/qed-llm-prompt.txt", transmute([]u8)prompt)
-	}
+	editor_log(editor, .Debug, "AI", fmt.tprintf("prompt (%dB):\n%s", len(prompt), prompt))
 
 	cmd := fmt.tprintf("%s 2>/dev/null", LLM_CHAT_COMMAND)
 	sub, serr, ok := subprocess_start(cmd, transmute([]u8)prompt, editor.working_root)
@@ -103,9 +100,7 @@ llm_pump :: proc(editor: ^Editor) -> bool {
 
 llm_apply :: proc(editor: ^Editor, req: ^LlmRequest) {
 	raw := subprocess_output(&req.sub)
-	if os.get_env("QED_LLM_DEBUG", context.temp_allocator) != "" {
-		_ = os.write_entire_file("/tmp/qed-llm-response.txt", transmute([]u8)raw)
-	}
+	editor_log(editor, .Debug, "AI", fmt.tprintf("response (%dB):\n%s", len(raw), raw))
 	if req.sub.exit_code != 0 {
 		editor_log(editor, .Debug, "AI", fmt.tprintf("command exited %d (%dB reply)", req.sub.exit_code, len(raw)))
 	}
