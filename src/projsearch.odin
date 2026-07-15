@@ -307,7 +307,7 @@ projsearch_paste :: proc(editor: ^Editor, text: string) {
 projsearch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.projsearch
 	lay := overlay_layout(editor)
-	if preview_wheel(&p.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
+	if preview_wheel(&p.preview, ev, {lay.right_x, lay.inner.y, lay.right_w, lay.inner.h}, lay.inner.h) {
 		return
 	}
 	idx, activate := overlay_list_mouse(editor, ev, lay, len(p.matches), &p.scroll, &p.field, projsearch_close)
@@ -326,8 +326,20 @@ projsearch_render :: proc(editor: ^Editor) {
 	lay := overlay_layout(editor)
 	inner := pane_draw_box(lay.box)
 
-	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &p.field)
-	pane_hline(lay.box, lay.title_sep_y)
+	prompt_w := lay.left_w - 1
+	count := ""
+	if len(p.matches) >= PROJSEARCH_MAX {
+		count = fmt.tprintf("%d+", PROJSEARCH_MAX)
+	} else if len(p.matches) > 0 {
+		count = fmt.tprintf("%d", len(p.matches))
+	}
+	if count != "" {
+		prompt_w = max(1, prompt_w - len(count) - 1)
+	}
+	overlay_prompt_render(inner.x + 1, inner.y, prompt_w, &p.field)
+	if count != "" {
+		pane_text(lay.div_x - len(count), inner.y, len(count), count, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+	}
 
 	if len(p.field.text) < PROJSEARCH_MIN_QUERY {
 		hint := fmt.tprintf("Type at least %d characters to search", PROJSEARCH_MIN_QUERY)
@@ -348,7 +360,18 @@ projsearch_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
 
-	preview_render(&p.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
+	preview_render(&p.preview, lay.right_x + 1, inner.y, lay.right_w - 1, inner.h)
 
-	overlay_divider(lay, p.scroll, len(p.matches))
+	bottom := lay.box.y + lay.box.h - 1
+	for y in lay.box.y + 1 ..< bottom {
+		tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	}
+	tb2.set_cell(i32(lay.div_x), i32(lay.box.y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	tb2.set_cell(i32(lay.div_x), i32(bottom), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	tb2.set_cell(i32(lay.box.x), i32(lay.title_sep_y), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	for x in inner.x ..< lay.div_x {
+		tb2.set_cell(i32(x), i32(lay.title_sep_y), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	}
+	tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, p.scroll, len(p.matches))
 }

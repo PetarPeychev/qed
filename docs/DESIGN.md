@@ -517,7 +517,8 @@ literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (**async + debounced** `rg`, parallel scan with results sorted in-process for deterministic order, `PROJSEARCH_DEBOUNCE_MS`;
-whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`),
+whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
+layout — left-half search box, full-height preview, match count (`N`, or `PROJSEARCH_MAX`+ when capped) by the divider),
 file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
 fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
 lazy per-dir expand, full-height right-side preview; **type-to-filter** (`> ` prompt, in-process
@@ -526,7 +527,7 @@ browsable tree; `Enter` on a matched dir clears the query and reveals it in the 
 **parallel `readdir` walk** (`d_type`, no per-entry stat, single-clone, `FILETREE_WALK_THREADS`) **prewarmed on a background thread**
 from open/scan-completion (`FILETREE_PREWARM`, immutable ignored-map snapshot + `scan_gen` validation) so the first keystroke hits a warm cache;
 extending the query re-ranks only the prior match set (a longer subsequence matches a subset), and the visible list is capped at
-`FILETREE_FILTER_MAX_RESULTS` (the full ranked set is retained for narrowing) with the match count — or `shown / total` when capped — on the filter line;
+`FILETREE_FILTER_MAX_RESULTS` (the full ranked set is retained for narrowing) with the match count (`FILETREE_FILTER_MAX_RESULTS`+ when capped) on the filter line;
 selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/paste (internal
 clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
 delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` rename, `Ctrl+N`

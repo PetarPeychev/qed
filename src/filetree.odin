@@ -1877,9 +1877,9 @@ filetree_render :: proc(editor: ^Editor) {
 	count := ""
 	if filtering {
 		if len(t.entries) < len(t.filter_last_idx) {
-			count = fmt.tprintf("%d / %d", len(t.entries), len(t.filter_last_idx))
+			count = fmt.tprintf("%d+", FILETREE_FILTER_MAX_RESULTS)
 		} else {
-			count = fmt.tprintf("%d", len(t.filter_last_idx))
+			count = fmt.tprintf("%d", len(t.entries))
 		}
 		prompt_w = max(1, prompt_w - len(count) - 1)
 	}
