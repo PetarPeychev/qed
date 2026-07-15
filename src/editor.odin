@@ -10,6 +10,9 @@ import "lib:tb2"
 
 STATUS_ROWS :: 2
 HOVER_PANE_MAX_LINES :: 40
+DISK_POLL_MS :: 1000
+DIAG_PANE_MARGIN_X :: 2
+DIAG_PANE_MAX_LINES :: 8
 
 Editor :: struct {
 	buffers:         [dynamic]Buffer,

@@ -64,7 +64,7 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
 path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` — polled async every
-`git_stat_poll_ms` via `GitStat`; right side: language + LSP + indent style / `big`), then a
+`GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`), then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
@@ -210,7 +210,7 @@ member group is no longer on top).
 - **External changes:** each buffer keeps a `DiskStamp` (`mtime`/`size`/`mode`),
   captured on open and refreshed after every save (so our own write never looks
   external). The main loop polls `os.stat` for every open buffer, throttled by
-  `disk_poll_ms` (idle branch uses a timed `peek_event`, so it fires even with no
+  `DISK_POLL_MS` (idle branch uses a timed `peek_event`, so it fires even with no
   input). A changed file that is **clean** auto-reloads (`buffer_reload`: re-read,
   clear undo/redo, drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
   clamp the cursor); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
@@ -388,7 +388,7 @@ import); that's a TODO. See [notes/ai.md](notes/ai.md).
 
 *Ghost-text FIM* (`fim.odin`): with `fim.enabled` (config `llm.completion_enabled`,
 seeded at startup, *AI: Toggle Inline Completion* flips it), typing arms a debounced
-(`completion_debounce_ms`) request. `prefix`/`suffix` are the buffer around the cursor
+(`COMPLETION_DEBOUNCE_MS`) request. `prefix`/`suffix` are the buffer around the cursor
 clamped to `completion_context_lines`, sent to a FIM endpoint (default Codestral
 `/v1/fim/completions`) as an async `curl` subprocess through the shared
 `subprocess.odin` runner (like the AI edit), pumped in the main loop; any edit
@@ -516,17 +516,17 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
-matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (**async + debounced** `rg`, parallel scan with results sorted in-process for deterministic order, `projsearch_debounce_ms`;
+matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (**async + debounced** `rg`, parallel scan with results sorted in-process for deterministic order, `PROJSEARCH_DEBOUNCE_MS`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`),
 file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
 fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
 lazy per-dir expand, full-height right-side preview; **type-to-filter** (`> ` prompt, in-process
-fuzzy, debounced `filetree_filter_debounce_ms`) into a flat, relevance-ranked list of files *and* directories (empty query = the
+fuzzy, debounced `FILETREE_FILTER_DEBOUNCE_MS`) into a flat, relevance-ranked list of files *and* directories (empty query = the
 browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree); the candidate list is a
-**parallel `readdir` walk** (`d_type`, no per-entry stat, single-clone, `filetree_walk_threads`) **prewarmed on a background thread**
-from open/scan-completion (`filetree_prewarm`, immutable ignored-map snapshot + `scan_gen` validation) so the first keystroke hits a warm cache;
+**parallel `readdir` walk** (`d_type`, no per-entry stat, single-clone, `FILETREE_WALK_THREADS`) **prewarmed on a background thread**
+from open/scan-completion (`FILETREE_PREWARM`, immutable ignored-map snapshot + `scan_gen` validation) so the first keystroke hits a warm cache;
 extending the query re-ranks only the prior match set (a longer subsequence matches a subset), and the visible list is capped at
-`filetree_filter_max_results` (the full ranked set is retained for narrowing) with the match count — or `shown / total` when capped — on the filter line;
+`FILETREE_FILTER_MAX_RESULTS` (the full ranked set is retained for narrowing) with the match count — or `shown / total` when capped — on the filter line;
 selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/paste (internal
 clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
 delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` rename, `Ctrl+N`
@@ -582,9 +582,9 @@ wheel-scrollable while
 the pointer is over the right pane, soft-wrapping long lines (word-boundary via `line_wrap`,
 blank continuation gutter, tab-aware — always on, no horizontal scroll; the scroll clamp
 `preview_max_scroll` is wrap-aware so a wrapped tail stays reachable), highlighting line
-1→viewport+lookahead (`preview_parse_ahead`)
+1→viewport+lookahead (`PREVIEW_PARSE_AHEAD`)
 and re-highlighting from the top as it scrolls, size-gated at `HIGHLIGHT_ASYNC_BYTES`
-(window-only above it), capped at `preview_max_lines`. File source loads lazily via `head`;
+(window-only above it), capped at `PREVIEW_MAX_LINES`. File source loads lazily via `head`;
 buffer source (file-tree open buffers / line jump) previews in-memory content. A file with a NUL
 byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrapped
 rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
@@ -593,7 +593,7 @@ nil error with 0 bytes.) The file-tree **Git** tab
 previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
-Preview loading is **debounced** (`filetree_preview_debounce_ms`): navigation only marks the preview
+Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`): navigation only marks the preview
 dirty (`filetree_preview_touch`) and the main loop flushes it once selection settles, so a held arrow
 never blocks on the per-file `git show` diff (the Git tab's cost) and can't back up the input queue.
 

@@ -13,6 +13,12 @@ import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
 
+FILETREE_FILTER_DEBOUNCE_MS :: 100
+FILETREE_PREVIEW_DEBOUNCE_MS :: 80
+FILETREE_FILTER_MAX_RESULTS :: 500
+FILETREE_WALK_THREADS :: 0
+FILETREE_PREWARM :: true
+
 FileTreeMode :: enum {
 	Nav,
 	New,

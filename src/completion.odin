@@ -7,6 +7,9 @@ import "core:strings"
 import "core:time"
 import "lib:tb2"
 
+COMPLETION_DEBOUNCE_MS :: 120
+COMPLETION_MAX_WIDTH :: 40
+
 Completion :: struct {
 	active:     bool,
 	items:      [dynamic]CompletionItem,

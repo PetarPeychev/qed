@@ -3,6 +3,8 @@ package main
 import "core:fmt"
 import "lib:tb2"
 
+PALETTE_WIDTH :: 60
+
 Command :: struct {
 	name:        string,
 	config_name: string,

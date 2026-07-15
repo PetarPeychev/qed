@@ -67,42 +67,24 @@ All default off; each has a runtime *Toggle* command.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `palette_width` | `60` | Command-palette width in columns. |
 | `palette_max_rows` | `8` | Max visible palette rows. |
-| `picker_margin_x` / `picker_margin_y` | `8` / `3` | Screen margin (cols/rows) around full-screen pickers (file tree, project search). |
 | `completion_max_rows` | `8` | Max rows in the LSP completion popup. |
-| `completion_max_width` | `40` | Max width of the completion popup. |
-| `diag_pane_margin_x` | `2` | Horizontal margin of the diagnostics pane. |
-| `diag_pane_max_lines` | `8` | Max lines shown in the diagnostics pane. |
-| `preview_max_lines` | `4000` | Cap on lines rendered in a preview pane. |
-| `preview_parse_ahead` | `64` | Extra lines highlighted beyond the preview viewport. |
 | `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Git diff preview. |
 
 ## Search & navigation
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `projsearch_max` | `500` | Max results returned by project-wide search. |
 | `projsearch_min_query` | `2` | Min query length before project search runs. |
 | `jump_threshold` | `10` | A cursor move farther than this many lines records a jump-list entry. |
 
-## Timing & polling
+## Timing & limits
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `disk_poll_ms` | `1000` | Interval for the external-file-change check. |
-| `git_stat_poll_ms` | `2000` | Interval for the async git branch/ahead-behind poll. |
-| `lsp_poll_ms` | `30` | Interval for pumping LSP/subprocess I/O. |
 | `alt_esc_timeout_ms` | `25` | Window after a bare Esc in which a printable key is re-tagged as `Alt+…`. |
-| `completion_debounce_ms` | `120` | Idle delay before firing an LSP completion request. |
 | `completion_min_chars` | `1` | Word-char count that auto-triggers completion. |
-
-## Limits
-
-| Key | Default | Meaning |
-|-----|---------|---------|
 | `big_file_bytes` | `2097152` | Files at or above this size (2 MB) open as plain text (no highlight, git gutter, or LSP). |
-| `git_diff_max_d` | `2000` | Myers-diff edit-distance cap for the git gutter (protects huge diffs). |
 
 ## Feature toggles
 

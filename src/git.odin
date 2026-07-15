@@ -8,6 +8,9 @@ import "core:strings"
 import "core:time"
 import "lib:tb2"
 
+GIT_DIFF_MAX_D :: 2000
+GIT_STAT_POLL_MS :: 2000
+
 g_diff_view: bool
 
 GitStat :: struct {

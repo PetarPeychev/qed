@@ -34,72 +34,34 @@ SCROLL_MARGIN: int
 TAB_WIDTH: int
 WHEEL_SCROLL_LINES: int
 DOUBLE_CLICK_MS: int
-DISK_POLL_MS: int
 CURSOR_ACCEL_INTERVAL_MS: int
 CURSOR_ACCEL_RAMP_PRESSES: int
 CURSOR_ACCEL_MAX_STEP: int
-PALETTE_WIDTH: int
 PALETTE_MAX_ROWS: int
-PICKER_MARGIN_X: int
-PICKER_MARGIN_Y: int
-PROJSEARCH_MAX: int
 PROJSEARCH_MIN_QUERY: int
-PROJSEARCH_DEBOUNCE_MS: int
-FILETREE_FILTER_DEBOUNCE_MS: int
-FILETREE_PREVIEW_DEBOUNCE_MS: int
-FILETREE_FILTER_MAX_RESULTS: int
-PREVIEW_MAX_LINES: int
-PREVIEW_PARSE_AHEAD: int
 PREVIEW_DIFF_CONTEXT: int
 ALT_ESC_TIMEOUT_MS: int
-LSP_POLL_MS: int
-DIAG_PANE_MARGIN_X: int
-DIAG_PANE_MAX_LINES: int
-COMPLETION_DEBOUNCE_MS: int
 COMPLETION_MAX_ROWS: int
-COMPLETION_MAX_WIDTH: int
 COMPLETION_MIN_CHARS: int
 JUMP_THRESHOLD: int
-GIT_DIFF_MAX_D: int
-GIT_STAT_POLL_MS: int
 BIG_FILE_BYTES: int
-FILETREE_WALK_THREADS: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
 	{"tab_width", &TAB_WIDTH},
 	{"wheel_scroll_lines", &WHEEL_SCROLL_LINES},
 	{"double_click_ms", &DOUBLE_CLICK_MS},
-	{"disk_poll_ms", &DISK_POLL_MS},
 	{"cursor_accel_interval_ms", &CURSOR_ACCEL_INTERVAL_MS},
 	{"cursor_accel_ramp_presses", &CURSOR_ACCEL_RAMP_PRESSES},
 	{"cursor_accel_max_step", &CURSOR_ACCEL_MAX_STEP},
-	{"palette_width", &PALETTE_WIDTH},
 	{"palette_max_rows", &PALETTE_MAX_ROWS},
-	{"picker_margin_x", &PICKER_MARGIN_X},
-	{"picker_margin_y", &PICKER_MARGIN_Y},
-	{"projsearch_max", &PROJSEARCH_MAX},
 	{"projsearch_min_query", &PROJSEARCH_MIN_QUERY},
-	{"projsearch_debounce_ms", &PROJSEARCH_DEBOUNCE_MS},
-	{"filetree_filter_debounce_ms", &FILETREE_FILTER_DEBOUNCE_MS},
-	{"filetree_preview_debounce_ms", &FILETREE_PREVIEW_DEBOUNCE_MS},
-	{"filetree_filter_max_results", &FILETREE_FILTER_MAX_RESULTS},
-	{"preview_max_lines", &PREVIEW_MAX_LINES},
-	{"preview_parse_ahead", &PREVIEW_PARSE_AHEAD},
 	{"preview_diff_context", &PREVIEW_DIFF_CONTEXT},
 	{"alt_esc_timeout_ms", &ALT_ESC_TIMEOUT_MS},
-	{"lsp_poll_ms", &LSP_POLL_MS},
-	{"diag_pane_margin_x", &DIAG_PANE_MARGIN_X},
-	{"diag_pane_max_lines", &DIAG_PANE_MAX_LINES},
-	{"completion_debounce_ms", &COMPLETION_DEBOUNCE_MS},
 	{"completion_max_rows", &COMPLETION_MAX_ROWS},
-	{"completion_max_width", &COMPLETION_MAX_WIDTH},
 	{"completion_min_chars", &COMPLETION_MIN_CHARS},
 	{"jump_threshold", &JUMP_THRESHOLD},
-	{"git_diff_max_d", &GIT_DIFF_MAX_D},
-	{"git_stat_poll_ms", &GIT_STAT_POLL_MS},
 	{"big_file_bytes", &BIG_FILE_BYTES},
-	{"filetree_walk_threads", &FILETREE_WALK_THREADS},
 }
 
 FORMAT_ON_SAVE: bool
@@ -111,7 +73,6 @@ GIT_DIFF_VIEW: bool
 LINE_WRAP: bool
 FILETREE_SHOW_DOTFILES: bool
 FILETREE_SHOW_IGNORED: bool
-FILETREE_PREWARM: bool
 TERMINAL_ESCAPE_CLOSES: bool
 
 config_bools := [?]Config_Bool {
@@ -124,7 +85,6 @@ config_bools := [?]Config_Bool {
 	{"line_wrap", &LINE_WRAP},
 	{"filetree_show_dotfiles", &FILETREE_SHOW_DOTFILES},
 	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
-	{"filetree_prewarm", &FILETREE_PREWARM},
 	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
 }
 

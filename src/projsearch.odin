@@ -8,6 +8,9 @@ import "core:strings"
 import "core:time"
 import "lib:tb2"
 
+PROJSEARCH_MAX :: 500
+PROJSEARCH_DEBOUNCE_MS :: 120
+
 Match :: struct {
 	path: string,
 	row:  int,

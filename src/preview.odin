@@ -9,6 +9,8 @@ import "lib:tb2"
 
 PREVIEW_HEX_BYTES :: 16
 PREVIEW_EMPTY_TEXT :: "(empty file)"
+PREVIEW_MAX_LINES :: 4000
+PREVIEW_PARSE_AHEAD :: 64
 
 PreviewRowKind :: enum {
 	Content,

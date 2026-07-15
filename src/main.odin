@@ -6,6 +6,8 @@ import "lib:tb2"
 
 VERSION :: #config(QED_VERSION, "dev")
 
+LSP_POLL_MS :: 30
+
 print_help :: proc() {
 	fmt.println("Usage: qed [FILE]")
 	fmt.println("       qed --version")

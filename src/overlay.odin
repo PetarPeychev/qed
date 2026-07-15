@@ -3,6 +3,9 @@ package main
 import "core:time"
 import "lib:tb2"
 
+PICKER_MARGIN_X :: 8
+PICKER_MARGIN_Y :: 3
+
 FuzzyList :: struct {
 	active:   bool,
 	field:    TextField,
