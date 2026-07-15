@@ -579,6 +579,9 @@ nil error with 0 bytes.) The file-tree **Git** tab
 previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
+Preview loading is **debounced** (`filetree_preview_debounce_ms`): navigation only marks the preview
+dirty (`filetree_preview_touch`) and the main loop flushes it once selection settles, so a held arrow
+never blocks on the per-file `git show` diff (the Git tab's cost) and can't back up the input queue.
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight with full

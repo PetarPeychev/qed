@@ -46,6 +46,7 @@ PROJSEARCH_MAX: int
 PROJSEARCH_MIN_QUERY: int
 PROJSEARCH_DEBOUNCE_MS: int
 FILETREE_FILTER_DEBOUNCE_MS: int
+FILETREE_PREVIEW_DEBOUNCE_MS: int
 FILETREE_FILTER_MAX_RESULTS: int
 PREVIEW_MAX_LINES: int
 PREVIEW_PARSE_AHEAD: int
@@ -81,6 +82,7 @@ config_ints := [?]Config_Int {
 	{"projsearch_min_query", &PROJSEARCH_MIN_QUERY},
 	{"projsearch_debounce_ms", &PROJSEARCH_DEBOUNCE_MS},
 	{"filetree_filter_debounce_ms", &FILETREE_FILTER_DEBOUNCE_MS},
+	{"filetree_preview_debounce_ms", &FILETREE_PREVIEW_DEBOUNCE_MS},
 	{"filetree_filter_max_results", &FILETREE_FILTER_MAX_RESULTS},
 	{"preview_max_lines", &PREVIEW_MAX_LINES},
 	{"preview_parse_ahead", &PREVIEW_PARSE_AHEAD},

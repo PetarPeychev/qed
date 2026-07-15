@@ -72,6 +72,8 @@ FileTree :: struct {
 	filter_ignored:  bool,
 	filter_dirty:    bool,
 	filter_at:       time.Tick,
+	preview_dirty:   bool,
+	preview_at:      time.Tick,
 	filter_walk_ms:  f64,
 	filter_last_query: string,
 	filter_last_idx:   [dynamic]int,
@@ -826,8 +828,33 @@ filetree_clear_entries :: proc(t: ^FileTree) {
 	clear(&t.entries)
 }
 
+filetree_preview_touch :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	t.preview_dirty = true
+	t.preview_at = time.tick_now()
+}
+
+filetree_preview_pending :: proc(editor: ^Editor) -> bool {
+	return editor.filetree.active && editor.filetree.preview_dirty
+}
+
+filetree_preview_due :: proc(editor: ^Editor) -> bool {
+	t := &editor.filetree
+	if !t.preview_dirty {
+		return false
+	}
+	return time.duration_milliseconds(time.tick_since(t.preview_at)) >= f64(FILETREE_PREVIEW_DEBOUNCE_MS)
+}
+
+filetree_preview_flush :: proc(editor: ^Editor) {
+	if editor.filetree.preview_dirty {
+		filetree_load_preview(editor)
+	}
+}
+
 filetree_load_preview :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	t.preview_dirty = false
 	e, ok := filetree_selected(t)
 	if !ok || e.is_dir {
 		preview_reset(&t.preview)
@@ -967,7 +994,7 @@ filetree_rebuild :: proc(editor: ^Editor) {
 	}
 	t.selected = clamp(t.selected, 0, max(0, len(t.entries) - 1))
 	filetree_scroll(editor)
-	filetree_load_preview(editor)
+	filetree_preview_touch(editor)
 	if filtering {
 		walk_note := ""
 		if t.filter_walk_ms > 0 {
@@ -1020,7 +1047,7 @@ filetree_move :: proc(editor: ^Editor, delta: int, extend := false) {
 	}
 	t.selected = clamp(t.selected + delta, 0, n - 1)
 	filetree_scroll(editor)
-	filetree_load_preview(editor)
+	filetree_preview_touch(editor)
 }
 
 filetree_selected :: proc(t: ^FileTree) -> (FileEntry, bool) {
@@ -1251,7 +1278,7 @@ filetree_reveal :: proc(editor: ^Editor, path: string) {
 		if e.path == path {
 			t.selected = i
 			filetree_scroll(editor)
-			filetree_load_preview(editor)
+			filetree_preview_touch(editor)
 			return
 		}
 	}
@@ -1657,7 +1684,7 @@ filetree_select_all :: proc(editor: ^Editor) {
 	t.anchor = 0
 	t.selected = len(t.entries) - 1
 	filetree_scroll(editor)
-	filetree_load_preview(editor)
+	filetree_preview_touch(editor)
 }
 
 filetree_cmd_search :: proc(editor: ^Editor) {
@@ -2057,7 +2084,7 @@ filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 			return
 		}
 		t.selected = idx
-		filetree_load_preview(editor)
+		filetree_preview_touch(editor)
 		if !motion && overlay_double_click(editor, idx) {
 			filetree_activate(editor)
 		}
