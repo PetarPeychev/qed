@@ -1163,13 +1163,13 @@ e2e_nav_filetree_filter_caps_display :: proc(t: ^testing.T) {
 		"full match set is tracked beyond the display cap",
 	)
 
-	// When capped, the filter line shows shown/total.
+	// When capped, the filter line shows the cap with a trailing +.
 	lay := filetree_layout(&e.ed)
 	e2e_render(&e)
 	testing.expect(
 		t,
-		strings.contains(e2e_row(&e, lay.filter_y), fmt.tprintf("%d / %d", FILETREE_FILTER_MAX_RESULTS, total)),
-		"capped filter shows shown/total on the filter line",
+		strings.contains(e2e_row(&e, lay.filter_y), fmt.tprintf("%d+", FILETREE_FILTER_MAX_RESULTS)),
+		"capped filter shows the cap+ on the filter line",
 	)
 }
 
