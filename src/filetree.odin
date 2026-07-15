@@ -233,7 +233,7 @@ filetree_clear_status :: proc(t: ^FileTree) {
 filetree_scan_cmd :: proc(root: string) -> cstring {
 	q := shell_quote(root)
 	return fmt.ctprintf(
-		"git -C %s rev-parse --show-toplevel 2>/dev/null && git -C %s status --porcelain --ignored --untracked-files=all 2>/dev/null",
+		"git -C %s rev-parse --show-toplevel 2>/dev/null && git -C %s status --porcelain --ignored=matching --untracked-files=all 2>/dev/null",
 		q,
 		q,
 	)
