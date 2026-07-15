@@ -511,6 +511,8 @@ fuzzy, debounced `filetree_filter_debounce_ms`) into a flat, relevance-ranked li
 browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree); the candidate list is a
 **parallel `readdir` walk** (`d_type`, no per-entry stat, single-clone, `filetree_walk_threads`) **prewarmed on a background thread**
 from open/scan-completion (`filetree_prewarm`, immutable ignored-map snapshot + `scan_gen` validation) so the first keystroke hits a warm cache;
+extending the query re-ranks only the prior match set (a longer subsequence matches a subset), and the visible list is capped at
+`filetree_filter_max_results` (the full ranked set is retained for narrowing) with the match count — or `shown / total` when capped — on the filter line;
 selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/paste (internal
 clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
 delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` rename, `Ctrl+N`
