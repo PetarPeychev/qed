@@ -374,7 +374,7 @@ completion_keeps :: proc(ev: tb2.Event) -> bool {
 completion_key :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	mod := ev_ctrl(ev) || ev_alt(ev)
 	#partial switch ev.key {
-	case .Tab:
+	case .Enter:
 		completion_accept(editor)
 		return true
 	case .Esc:
@@ -471,11 +471,17 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 		ax = gutter + visual_col(atext, c.anchor_col) - editor.scroll_col
 	}
 	x := clamp(ax, 0, max(0, sw - pane_w))
-	y := cy + 1
-	if y + pane_h > vh {
-		y = cy - pane_h
+	below_y, above_y := cy + 1, cy - pane_h
+	below_fits, above_fits := below_y + pane_h <= vh, above_y >= 0
+	// A multi-line ghost occupies the rows below the caret; float above it so both
+	// the ghost and the popup stay fully visible.
+	y: int
+	if fim_ghost_gap(editor) > 0 {
+		y = above_y if above_fits else below_y
+	} else {
+		y = below_y if below_fits else above_y
 	}
-	if y < 0 {
+	if y < 0 || y + pane_h > vh {
 		return
 	}
 

@@ -337,9 +337,9 @@ e2e_lsp_completion :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_grid_has(&e, "alphabet"), "popup shows the canned item")
 	testing.expect(t, !e2e_grid_has(&e, "beta"), "popup is filtered by the 'al' prefix")
 
-	// Tab accepts: the current word becomes "alphabet" AND the auto-import edit
+	// Enter accepts: the current word becomes "alphabet" AND the auto-import edit
 	// lands at the top of the file, both in one undo group.
-	e2e_key(&e, .Tab)
+	e2e_key(&e, .Enter)
 	b = editor_buffer(&e.ed)
 	testing.expect_value(t, len(b.lines), 3)
 	testing.expect_value(t, string(b.lines[0].text[:]), "import added")

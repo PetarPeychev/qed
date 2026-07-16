@@ -33,7 +33,7 @@ fim_ghost_active :: proc(editor: ^Editor) -> bool {
 // first line adds none). The buffer render pushes real rows down by this much so
 // the continuation lines land on blank rows instead of over existing text.
 fim_ghost_gap :: proc(editor: ^Editor) -> int {
-	if editor.completion.active || !fim_ghost_active(editor) {
+	if !fim_ghost_active(editor) {
 		return 0
 	}
 	return strings.count(editor.fim.ghost, "\n")
@@ -73,7 +73,7 @@ fim_queue :: proc(editor: ^Editor) {
 
 fim_after :: proc(editor: ^Editor, ev: tb2.Event) {
 	f := &editor.fim
-	if !f.enabled || editor.completion.active {
+	if !f.enabled {
 		return
 	}
 	b := editor_buffer(editor)
@@ -95,7 +95,7 @@ fim_after :: proc(editor: ^Editor, ev: tb2.Event) {
 
 fim_due :: proc(editor: ^Editor) -> bool {
 	f := &editor.fim
-	if !f.want || editor.completion.active {
+	if !f.want {
 		return false
 	}
 	return time.duration_milliseconds(time.tick_since(f.request_at)) >= f64(LLM_COMPLETION_DEBOUNCE_MS)

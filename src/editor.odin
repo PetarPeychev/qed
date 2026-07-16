@@ -552,7 +552,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			completion_dismiss(editor)
 		}
 	}
-	if !editor.completion.active && fim_ghost_active(editor) {
+	if fim_ghost_active(editor) {
 		if fim_ghost_key(editor, ev) {
 			return
 		}
@@ -1166,17 +1166,19 @@ editor_render :: proc(editor: ^Editor) {
 			tb2.hide_cursor()
 		} else {
 			tb2.set_cursor(i32(cx), i32(cy))
+			ghost := fim_ghost_active(editor)
+			// A wrapped buffer draws the ghost inline in editor_render_buffer.
+			if ghost && !(b.wrap && w > 0) {
+				fim_render(editor, cx, cy)
+			}
 			if editor.completion.active {
 				completion_render(editor, cx, cy)
-			} else if fim_ghost_active(editor) {
-				// A wrapped buffer draws the ghost inline in editor_render_buffer.
-				if !(b.wrap && w > 0) {
-					fim_render(editor, cx, cy)
+			} else if !ghost {
+				if editor.hover_active {
+					editor_render_hover_pane(editor, cx, cy)
+				} else {
+					editor_render_diag_pane(editor, cx, cy)
 				}
-			} else if editor.hover_active {
-				editor_render_hover_pane(editor, cx, cy)
-			} else {
-				editor_render_diag_pane(editor, cx, cy)
 			}
 		}
 	}
@@ -1415,7 +1417,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	gap := fim_ghost_gap(editor)
 	// While a ghost shows, the cursor line is drawn only up to the caret; the
 	// suffix is relocated after the ghost by fim_render (else it'd paint over it).
-	ghost_cut := !editor.completion.active && fim_ghost_active(editor)
+	ghost_cut := fim_ghost_active(editor)
 	screen_y := 0
 	for row := editor.scroll_row; row < len(b.lines) && screen_y < h; row += 1 {
 		current := row == b.cursor.row

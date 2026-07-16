@@ -124,4 +124,4 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### E2E test coverage
 
-- [ ] FIM ghost × LSP completion-popup precedence — needs the FIM stub and the fake LSP wired into one session.
+- [ ] FIM ghost × LSP completion-popup coexistence e2e — needs the FIM stub and the fake LSP wired into one session (assert both render, `Tab` accepts ghost, `Enter` the menu).

@@ -338,8 +338,9 @@ re-opens LSP).
   queues a debounced `textDocument/completion`; the popup then filters client-side against the
   typed prefix (dismissing on an invalid edit) and re-requests when the result was `isIncomplete`.
   `snippetSupport:false` is advertised so items arrive as plain text; a stray snippet is truncated
-  at its first placeholder. `Tab` accepts — replacing the whole current word and applying any
-  `additionalTextEdits` (auto-import) in the same undo group; `Esc`/movement/non-word input dismisses.
+  at its first placeholder. `Enter` accepts — replacing the whole current word and applying any
+  `additionalTextEdits` (auto-import) in the same undo group (`Tab` is reserved for the FIM ghost,
+  which coexists with the popup); `Esc`/movement/non-word input dismisses.
   Formatting carries the
   buffer `rev` so a stale result (doc changed mid-request) is dropped, and
   format-on-save chains the save onto the response. *Rename* (`rename.odin`, `Alt+r`)
@@ -398,8 +399,10 @@ The reply's `choices[0].message.content` is stored as dimmed virtual text
 suggestions reserve blank rows via `fim_ghost_gap` (the buffer render offsets rows below
 the cursor down) so continuation lines don't paint over real text. Ghost is valid only
 while the cursor sits at `ghost_at`. `Tab` accepts all, `Ctrl+Right` a word (both one
-`buffer_insert_text` undo group); other keys / mouse / cursor move dismiss. The LSP
-completion popup takes precedence — ghost is suppressed while it is open. The API key is
+`buffer_insert_text` undo group); other keys / mouse / cursor move dismiss. The ghost and the
+LSP completion popup **coexist** — both render and stay live as you type; the keys disambiguate
+(`Tab` accepts the ghost, `Enter` the menu), and a multi-line ghost floats the popup above the
+caret so both stay visible (`completion_render`). The API key is
 read from `$CODESTRAL_API_KEY` (config `completion_api_key_env`) by the curl child, never
 held by qed. **External quirk:** the POST body is fed on **stdin** (`--data-binary @-`),
 not `@file` — the async spawn unlinks the temp immediately and curl opens a `@file`
@@ -645,7 +648,8 @@ as one undo group with whitespace framing preserved. Inline FIM completion
 (ghost-text): auto-triggered debounced suggestions from a FIM endpoint (default
 Codestral `/v1/fim/completions` via `curl`), dimmed virtual text with multi-line
 push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismiss,
-LSP popup takes precedence; `llm.completion_enabled` + *AI: Toggle Inline Completion*.
+coexists with the LSP popup (`Tab` ghost / `Enter` menu, popup floats above a multi-line ghost);
+`llm.completion_enabled` + *AI: Toggle Inline Completion*.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff, in-process fuzzy ranking,
