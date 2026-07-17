@@ -74,6 +74,8 @@ cmd_lsp_rename :: proc(editor: ^Editor) {rename_open(editor)}
 cmd_format :: proc(editor: ^Editor) {format_document(editor)}
 cmd_diag_next :: proc(editor: ^Editor) {diag_goto(editor, +1)}
 cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
+cmd_git_next :: proc(editor: ^Editor) {git_goto(editor, +1)}
+cmd_git_prev :: proc(editor: ^Editor) {git_goto(editor, -1)}
 
 cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 	editor.format_on_save = !editor.format_on_save
@@ -160,6 +162,8 @@ commands := [?]Command {
 	{name = "Toggle Trim Whitespace on Save", run = cmd_toggle_trim_whitespace_on_save},
 	{name = "Toggle Final Newline on Save", run = cmd_toggle_final_newline_on_save},
 	{name = "Git: Toggle Diff View", run = cmd_toggle_diff_view},
+	{name = "Git: Next Change", run = cmd_git_next},
+	{name = "Git: Previous Change", run = cmd_git_prev},
 	{name = "Git: Resolve Conflict", run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", run = cmd_diag_next},

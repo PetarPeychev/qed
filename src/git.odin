@@ -412,6 +412,35 @@ git_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]GitOp,
 	return ops[:], true
 }
 
+git_goto :: proc(editor: ^Editor, dir: int) {
+	b := editor_buffer(editor)
+	git_gutter_update(b)
+	marks := b.git.marks[:]
+	any, next, prev := false, -1, -1
+	for row in 0 ..< len(marks) {
+		if marks[row] == .None || (row > 0 && marks[row - 1] != .None) {
+			continue
+		}
+		any = true
+		if row > b.cursor.row && next < 0 {
+			next = row
+		}
+		if row < b.cursor.row {
+			prev = row
+		}
+	}
+	if !any {
+		editor_log(editor, .Info, "Git", "No changes")
+		return
+	}
+	target := next if dir > 0 else prev
+	if target < 0 {
+		editor_log(editor, .Info, "Git", "No next change" if dir > 0 else "No previous change")
+		return
+	}
+	editor_goto(editor, target, 0)
+}
+
 git_mark_glyph :: proc(m: GitMark) -> (rune, tb2.Color) {
 	switch m {
 	case .Added:

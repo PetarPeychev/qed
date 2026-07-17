@@ -637,6 +637,8 @@ document formatting (external formatter e.g. `ruff format -`, else LSP) + format
 `.Debug` message log; git diff gutter (live vs `HEAD`)
 + optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `git_diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
+hunk navigation (`Git: Next/Previous Change`, `Alt+'`/`Alt+;`, `git_goto`): jumps the cursor,
+centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
 merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines
 emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
 theirs / both, or jump to next conflict).
