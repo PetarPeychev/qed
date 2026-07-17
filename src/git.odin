@@ -551,9 +551,6 @@ git_diff_file :: proc(
 
 	bt := git_split_lines(blob)
 	cl := git_split_lines(string(data))
-	if len(cl) > PREVIEW_MAX_LINES {
-		resize(&cl, PREVIEW_MAX_LINES)
-	}
 
 	bh := make([dynamic]u64, 0, len(bt), context.temp_allocator)
 	for s in bt {

@@ -337,7 +337,7 @@ preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool
 			mark_row(visible, clamp(h.row, 0, n - 1), ctx)
 		}
 	} else {
-		for i in 0 ..< n {
+		for i in 0 ..< min(n, PREVIEW_MAX_LINES) {
 			visible[i] = true
 		}
 	}
