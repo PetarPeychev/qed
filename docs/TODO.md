@@ -98,7 +98,6 @@ runtime-grammar arc that lets a stranger add *any* language with zero rebuild â€
 ### Git diff gutter
 
 - [ ] Git diff viewer (design TBD): a pane showing the full diff, beyond the gutter marks.
-- [ ] Hunk preview + revert.
 - [ ] Stage / unstage hunks (later).
 - [ ] Idea: reuse the gutter to mark lines changed since last save (buffer vs disk).
 

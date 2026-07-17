@@ -84,7 +84,10 @@ on both the ghost and the live line (`git_word_span`, prefix/suffix trim). The g
 keeps the HEAD blob + per-line text (`base_text`) so old text is available; `git_diff`
 emits `GitHunk`s + per-row `above`/`below` ghost counts. Ghost rows are virtual (one
 clipped row each, never wrapped) and shift everything below, so the counts fold into
-the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `git_above`/`below`);
+the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `git_above`/`below`).
+`git_diff` also emits a flat `GitChange` list (`{new_lo,new_hi,old_lo,old_hi}`, current
+rows ↔ base rows) as the **revert unit** — independent of `g_diff_view`, consumed by
+*Git: Revert Hunk*;
 cursor *motion* is unaffected (it walks real rows via `cursor_visual_*`). All ghost math
 no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 
@@ -639,6 +642,8 @@ document formatting (external formatter e.g. `ruff format -`, else LSP) + format
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 hunk navigation (`Git: Next/Previous Change`, `Alt+'`/`Alt+;`, `git_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
+hunk revert (`Git: Revert Hunk`, `Alt+z`, `git_revert`): restores the HEAD lines for the
+hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-HEAD) as one undo group;
 merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines
 emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
 theirs / both, or jump to next conflict).

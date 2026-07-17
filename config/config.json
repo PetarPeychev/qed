@@ -67,6 +67,7 @@
     "Git: Toggle Diff View": "",
     "Git: Next Change": "Alt+'",
     "Git: Previous Change": "Alt+;",
+    "Git: Revert Hunk": "Alt+z",
     "Git: Resolve Conflict": "Alt+m",
     "Toggle Line Wrap": "",
     "LSP: Next Diagnostic": "Alt+>",

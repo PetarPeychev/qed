@@ -76,6 +76,7 @@ cmd_diag_next :: proc(editor: ^Editor) {diag_goto(editor, +1)}
 cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
 cmd_git_next :: proc(editor: ^Editor) {git_goto(editor, +1)}
 cmd_git_prev :: proc(editor: ^Editor) {git_goto(editor, -1)}
+cmd_git_revert :: proc(editor: ^Editor) {git_revert(editor)}
 
 cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 	editor.format_on_save = !editor.format_on_save
@@ -164,6 +165,7 @@ commands := [?]Command {
 	{name = "Git: Toggle Diff View", run = cmd_toggle_diff_view},
 	{name = "Git: Next Change", run = cmd_git_next},
 	{name = "Git: Previous Change", run = cmd_git_prev},
+	{name = "Git: Revert Hunk", run = cmd_git_revert},
 	{name = "Git: Resolve Conflict", run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", run = cmd_diag_next},

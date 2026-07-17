@@ -101,14 +101,14 @@ e2e_log_rebound_bind_toggles :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, idx >= 0, "command exists in the table")
 	saved := commands[idx].alt_ch
-	commands[idx].alt_ch = 'z'
+	commands[idx].alt_ch = 'j'
 	defer commands[idx].alt_ch = saved
 
-	e2e_alt(&e, 'z')
+	e2e_alt(&e, 'j')
 	testing.expect(t, e.ed.logview.active, "rebound chord opens the pane")
 	e2e_alt(&e, 'l')
 	testing.expect(t, e.ed.logview.active, "the old chord no longer closes it")
-	e2e_alt(&e, 'z')
+	e2e_alt(&e, 'j')
 	testing.expect(t, !e.ed.logview.active, "rebound chord closes it")
 	e2e_alt(&e, 'l')
 	testing.expect(t, !e.ed.logview.active, "the old chord no longer opens it")

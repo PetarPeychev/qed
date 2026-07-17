@@ -105,6 +105,14 @@ GitHunk :: struct {
 	new_n:  int,
 }
 
+// One contiguous change as a revert unit: current rows [new_lo,new_hi) restore to
+// base_text[old_lo:old_hi). A pure addition has old_lo==old_hi; a pure deletion has
+// new_lo==new_hi (its base lines re-insert at row new_lo).
+GitChange :: struct {
+	new_lo, new_hi: int,
+	old_lo, old_hi: int,
+}
+
 GitGutter :: struct {
 	tried:     bool,
 	enabled:   bool,
@@ -117,6 +125,7 @@ GitGutter :: struct {
 	above:     [dynamic]int,
 	below:     [dynamic]int,
 	hunks:     [dynamic]GitHunk,
+	changes:   [dynamic]GitChange,
 }
 
 git_destroy :: proc(g: ^GitGutter) {
@@ -126,6 +135,7 @@ git_destroy :: proc(g: ^GitGutter) {
 	delete(g.above)
 	delete(g.below)
 	delete(g.hunks)
+	delete(g.changes)
 	if g.blob != "" {
 		delete(g.blob)
 	}
@@ -210,6 +220,7 @@ git_recompute :: proc(b: ^Buffer) {
 		g.below[i] = 0
 	}
 	clear(&g.hunks)
+	clear(&g.changes)
 	if !g.enabled {
 		return
 	}
@@ -218,7 +229,7 @@ git_recompute :: proc(b: ^Buffer) {
 	for line in b.lines {
 		append(&cur, git_hash(line.text[:]))
 	}
-	git_diff(g.base[:], cur[:], g.marks[:], &g.hunks)
+	git_diff(g.base[:], cur[:], g.marks[:], &g.hunks, &g.changes)
 
 	for h in g.hunks {
 		n := h.hi - h.lo
@@ -233,7 +244,13 @@ git_recompute :: proc(b: ^Buffer) {
 	}
 }
 
-git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk) {
+git_change_add :: proc(changes: ^[dynamic]GitChange, new_lo, new_hi, old_lo, old_hi: int) {
+	if changes != nil {
+		append(changes, GitChange{new_lo, new_hi, old_lo, old_hi})
+	}
+}
+
+git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk, changes: ^[dynamic]GitChange = nil) {
 	lo := 0
 	for lo < len(base) && lo < len(cur) && base[lo] == cur[lo] {
 		lo += 1
@@ -254,11 +271,13 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk) {
 		for i in lo ..< hi_cur {
 			marks[i] = .Added
 		}
+		git_change_add(changes, lo, hi_cur, hi_base, hi_base)
 		return
 	}
 	if len(new_lines) == 0 {
 		git_mark_deletion(marks, lo)
 		git_hunk_deletion(hunks, lo, len(marks), lo, hi_base)
+		git_change_add(changes, lo, lo, lo, hi_base)
 		return
 	}
 
@@ -269,6 +288,7 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk) {
 			marks[lo + k] = .Modified if k < nmod else .Added
 		}
 		append(hunks, GitHunk{row = lo, above = true, lo = lo, hi = hi_base, new_n = len(new_lines)})
+		git_change_add(changes, lo, hi_cur, lo, hi_base)
 		return
 	}
 
@@ -295,6 +315,7 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk) {
 			}
 			i += 1
 		}
+		git_change_add(changes, hunk_ci, hunk_ci + adds, hunk_bi, hunk_bi + dels)
 		if adds == 0 {
 			git_mark_deletion(marks, hunk_ci)
 			git_hunk_deletion(hunks, hunk_ci, len(marks), hunk_bi, hunk_bi + dels)
@@ -439,6 +460,108 @@ git_goto :: proc(editor: ^Editor, dir: int) {
 		return
 	}
 	editor_goto(editor, target, 0)
+}
+
+// A pure deletion has no current row; its glyph sits on the line before the gap
+// (or row 0 at the file top), so a cursor there targets it.
+git_change_touched :: proc(c: GitChange, r0, r1: int) -> bool {
+	if c.new_lo < c.new_hi {
+		return c.new_lo <= r1 && c.new_hi > r0
+	}
+	anchor := c.new_lo - 1 if c.new_lo > 0 else 0
+	return anchor >= r0 && anchor <= r1
+}
+
+git_revert_change :: proc(b: ^Buffer, g: ^GitGutter, c: GitChange) {
+	lo := clamp(c.old_lo, 0, len(g.base_text))
+	hi := clamp(c.old_hi, 0, len(g.base_text))
+	base := g.base_text[lo:hi]
+	joined := strings.join(base, "\n", context.temp_allocator)
+	n := len(b.lines)
+
+	if c.new_lo < c.new_hi {
+		if c.new_hi < n {
+			at := Cursor{c.new_lo, 0}
+			edit_delete(b, at, {c.new_hi, 0})
+			if len(base) > 0 {
+				edit_insert(b, at, strings.concatenate({joined, "\n"}, context.temp_allocator))
+			}
+			return
+		}
+		// Change reaches EOF: the last row stores no trailing newline, so consume
+		// the newline before it and re-emit the base lines with a leading one.
+		at := Cursor{0, 0}
+		if c.new_lo > 0 {
+			at = {c.new_lo - 1, len(b.lines[c.new_lo - 1].text)}
+		}
+		edit_delete(b, at, {n - 1, len(b.lines[n - 1].text)})
+		if len(base) > 0 {
+			text := joined
+			if c.new_lo > 0 {
+				text = strings.concatenate({"\n", joined}, context.temp_allocator)
+			}
+			edit_insert(b, at, text)
+		}
+		return
+	}
+
+	if len(base) == 0 {
+		return
+	}
+	if c.new_lo < n {
+		edit_insert(b, {c.new_lo, 0}, strings.concatenate({joined, "\n"}, context.temp_allocator))
+	} else {
+		edit_insert(b, {n - 1, len(b.lines[n - 1].text)}, strings.concatenate({"\n", joined}, context.temp_allocator))
+	}
+}
+
+git_revert :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	if b.big {
+		editor_log(editor, .Info, "Git", "Disabled for big files")
+		return
+	}
+	git_gutter_update(b)
+	g := &b.git
+	if !g.enabled {
+		editor_log(editor, .Info, "Git", "Not tracked by git")
+		return
+	}
+
+	r0, r1 := b.cursor.row, b.cursor.row
+	if from, to, ok := selection_range(b); ok {
+		r0 = from.row
+		r1 = selection_last_row(from, to)
+	}
+
+	count, top := 0, 0
+	for c in g.changes {
+		if git_change_touched(c, r0, r1) {
+			if count == 0 {
+				top = c.new_lo
+			}
+			count += 1
+		}
+	}
+	if count == 0 {
+		editor_log(editor, .Info, "Git", "No change under cursor")
+		return
+	}
+
+	// Apply bottom-up so an earlier revert can't shift a later change's rows.
+	edit_open(b, .Atomic)
+	#reverse for c in g.changes {
+		if git_change_touched(c, r0, r1) {
+			git_revert_change(b, g, c)
+		}
+	}
+	buffer_undo_commit(b)
+
+	b.selection = nil
+	b.cursor = {clamp(top, 0, len(b.lines) - 1), 0}
+	cursor_goal_sync(b)
+	editor_scroll(editor)
+	editor_log(editor, .Info, "Git", fmt.tprintf("Reverted %d hunk%s", count, "" if count == 1 else "s"))
 }
 
 git_mark_glyph :: proc(m: GitMark) -> (rune, tb2.Color) {
