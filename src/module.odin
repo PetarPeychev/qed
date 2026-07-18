@@ -34,4 +34,7 @@ module_enabled :: proc(m: Module) -> bool {
 // no-op when the module's state already matches). Per-module sync procs are
 // appended here by their subsystem.
 editor_modules_sync :: proc(editor: ^Editor) {
+	git_module_sync(editor)
+	lsp_module_sync(editor)
+	ai_module_sync(editor)
 }
