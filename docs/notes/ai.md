@@ -44,11 +44,12 @@ to one thing: an **async subprocess runner with cancellation** (see below).
 
 ## Config schema
 
-Lives under the `llm` section of the embedded `config/config.json`, materialized into
-`~/.config/qed/config.json` like every other knob. Sketch:
+Lives under the `modules.ai` section of the embedded `config/config.json`, a sparse
+per-key diff in `~/.config/qed/config.json` like every other knob. Target sketch for the
+provider-neutral redesign (differs from today's flat `modules.ai.*`):
 
 ```json
-"llm": {
+"ai": {
   "completion": {
     "enabled": true,
     "provider": "codestral",

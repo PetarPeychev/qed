@@ -139,6 +139,7 @@ repetition only once it exists in front of you.
 | Gutter         | Left line-number gutter; current line emphasized; git-diff mark column. |
 | Commands       | Direct CTRL keybinds (rebindable by name); floating command palette. |
 | Config         | Embedded `config/config.json` is the source of every default (knobs, keybinds, language patterns/lsp/formatter) — none in Odin source. User `~/.config/qed/config.json` is a **sparse per-key diff** qed never writes (no materialization; UI persistence like the theme picker writes only its own key); unknown keys warn once, malformed JSON falls back to defaults; hot-reloaded on change. The repo files are the reference for all keys. |
+| Modules        | `git`/`lsp`/`ai` are gated subsystems under `modules.<name>` (an `enabled` flag + that module's whole config subtree). `module_enabled(m)` gates commands (palette + dispatch), rendering, and subprocesses; disabling removes the module entirely. Git auto-off when the binary is absent. Live toggle-off tears down via `editor_modules_sync`. Add a module = enum value + `config_module_defs` entry + seam guards. |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |
 | Startup arg    | File → open it; directory → set working root + welcome screen. |

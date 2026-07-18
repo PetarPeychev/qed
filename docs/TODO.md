@@ -77,7 +77,7 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 
 - [ ] Context + prompt: floating prompt pane, cursor-context aware, insert/replace.
 - [ ] Let an AI edit touch code outside the selection (add a missing import etc.) — whole-file rewrite or agentic mode; `Ctrl+K` today is selection-replace only.
-- [ ] `llm` config section: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
+- [ ] `modules.ai` config: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
 - [ ] Shared inline virtual-text primitive (ghost-text + inline diagnostics) — unify with git ghost rows first, see [notes/refactors.md](notes/refactors.md).
 
 ### Syntax highlighting (tree-sitter)

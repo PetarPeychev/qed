@@ -68,7 +68,6 @@ All default off; each has a runtime *Toggle* command.
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `palette_max_rows` | `8` | Max visible palette rows. |
-| `completion_max_rows` | `8` | Max rows in the LSP completion popup. |
 | `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Git diff preview. |
 
 ## Search & navigation
@@ -83,14 +82,12 @@ All default off; each has a runtime *Toggle* command.
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `alt_esc_timeout_ms` | `25` | Window after a bare Esc in which a printable key is re-tagged as `Alt+…`. |
-| `completion_min_chars` | `1` | Word-char count that auto-triggers completion. |
 | `big_file_bytes` | `2097152` | Files at or above this size (2 MB) open as plain text (no highlight, git gutter, or LSP). |
 
 ## Feature toggles
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `git_diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines). *Git: Toggle Diff View*. |
 | `filetree_show_dotfiles` | `false` | Show dotfiles in the file tree. *Alt+.* |
 | `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *Alt+i* |
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
@@ -122,16 +119,50 @@ formatter or point `lsp` at a different binary. Syntax highlighting is wired int
 the binary (tree-sitter) and is not configured here. *Set Language* overrides the
 detected language for the current session.
 
-## LLM / AI assist
+## Modules
 
-The `llm` section configures both AI features. See [notes/ai.md](notes/ai.md) for
-the architecture.
+`git`, `lsp`, and `ai` are self-contained subsystems under the `modules` section.
+Each has an `enabled` flag (default `true`); setting it `false` removes that
+module entirely — its commands leave the palette and their keybinds go dead, its
+UI (gutter marks, diagnostics, ghost text…) stops rendering, and it never spawns
+a subprocess. Git also auto-disables when the `git` binary isn't on `PATH`. All of
+a module's own config lives inside its namespace, so everything about it is in one
+place.
+
+```json
+{ "modules": { "ai": { "enabled": false } } }
+```
+
+### `modules.git`
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `chat_command` | `claude -p` | Shell command for *AI: Edit Selection* (`Ctrl+K`); buffer and prompt go in on stdin. |
+| `enabled` | `true` | Master switch. Off removes the diff gutter, the branch in the status bar, the file-tree **Git** tab, diff view, hunk nav/revert, and merge-conflict highlighting/resolve. |
+| `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines). *Git: Toggle Diff View* (`Alt+g`). |
+| `filetree_diff_only` | `true` | File-tree Git preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
+
+### `modules.lsp`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `true` | Master switch. Off stops every language server — no diagnostics, completion, hover, go-to-definition, or rename; formatting falls back to the external `formatter`. |
+| `completion_max_rows` | `8` | Max rows in the completion popup. |
+| `completion_min_chars` | `1` | Word-char count that auto-triggers completion. |
+
+Per-language server commands live in the [`languages`](#languages) section, not
+here — a server is a property of its language.
+
+### `modules.ai`
+
+Configures both AI features (selection edit + inline FIM completion). See
+[notes/ai.md](notes/ai.md) for the architecture.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `true` | Master switch. Off removes *AI: Edit Selection* (`Ctrl+K`) and inline completion, and cancels anything in flight. |
+| `chat_command` | `claude -p` | Shell command for the AI edit; buffer and prompt go in on stdin. |
 | `edit_prompt` | *(template)* | The instruction template; `{path}`, `{instruction}`, `{file}` are substituted. |
-| `completion_enabled` | `false` | Enable inline FIM ghost-text completion. *AI: Toggle Inline Completion*. |
+| `completion_enabled` | `false` | Enable inline FIM ghost-text completion (an independent sub-toggle; needs the module on). *AI: Toggle Inline Completion*. |
 | `completion_endpoint` | Codestral FIM URL | FIM HTTP endpoint. |
 | `completion_model` | `codestral-latest` | FIM model name. |
 | `completion_api_key_env` | `CODESTRAL_API_KEY` | Env var the `curl` child reads the API key from (qed never holds it). |

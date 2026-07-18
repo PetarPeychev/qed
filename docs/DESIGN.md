@@ -74,7 +74,7 @@ stacked bottom→top: optional git-hunk row tint → AI-edit tint → current-li
 (a semi-transparent white lift over whatever's beneath). Tint strengths
 (`*_TINT`) and tint colors are both theme-overridable. The
 row tint is part of **diff view** (*Git: Toggle Diff View*, `Alt+g`, config
-`git_diff_view`, off by default), separate from the always-on gutter mark — see
+`modules.git.diff_view`, off by default), separate from the always-on gutter mark — see
 Git diff view below.
 
 **Git diff view** (`git.odin`, global `g_diff_view`): with diff view on, a hunk's
@@ -283,6 +283,25 @@ documented in `lib/tb2/PATCHES.md`:
   text field via `Overlay.paste` (flattened to one line, so a pasted newline
   can't fire Enter mid-paste); dialogs ignore it.
 
+## Modules
+
+`git`, `lsp`, `ai` are gated subsystems (`module.odin`, `Module` enum). Each has a
+`modules.<name>.enabled` config flag (default on) and owns its whole config
+subtree under `modules.<name>` — git's `diff_view`/`filetree_diff_only`, lsp's
+completion-popup knobs, ai's former `llm.*` block (the settings parser walks
+`config_module_defs`, one typed str/int/bool table set per module). `module_enabled(m)`
+is the single gate: `LSP_ENABLED`/`AI_ENABLED` are knob-only; `.Git` also ANDs
+`GIT_BINARY_PRESENT`, probed once at startup (collapsing the old per-call
+`shell_command_exists("git")` forks). Commands carry a `.module`; `command_available`
+and keybind dispatch no-op a disabled module's commands, so palette + chords drop out
+automatically. Rendering/pump/subprocess seams each guard on `module_enabled` (git:
+gutter/branch/diff-view/conflict + filetree Git tab; lsp: server spawn/completion/status
+segment; ai: FIM/edit/chat). After a config hot-reload, `editor_modules_sync` calls each
+module's idempotent `*_module_sync` to tear down live state a toggle-off orphaned (stop
+servers, clear gutters/diagnostics, cancel in-flight AI). Merge-conflict highlight/resolve
+(`conflict.odin`) rides with `.Git` by decision, though its diff helpers
+(`git_myers`/`git_word_span`/`git_hash`) are dependency-free and stay compiled.
+
 ## Language detection
 
 Each `Buffer` carries a `language: Language`, set once at open (`language_of`).
@@ -369,7 +388,7 @@ re-opens LSP).
 *Selection + prompt* (`Ctrl+K`, `aiedit.odin` → `llm.odin`): a caret prompt takes an
 instruction; qed sends the whole buffer — with the selection wrapped in
 `<<<SELECT…SELECT>>>` — plus the instruction to a configurable chat command
-(`llm.chat_command`, default `claude -p`; `llm.edit_prompt` is the template). The
+(`modules.ai.chat_command`, default `claude -p`; `modules.ai.edit_prompt` is the template). The
 command runs through the shared **async subprocess** runner (`subprocess.odin`:
 spawn-with-stdin-body + non-blocking stdout drain + cancel, pumped next to `lsp_pump`);
 multiple run concurrently and are cancellable (*AI: Cancel Edits* / shutdown kill
@@ -390,7 +409,7 @@ import); that's a TODO. See [notes/ai.md](notes/ai.md).
 
 ## Inline completion
 
-*Ghost-text FIM* (`fim.odin`): with `fim.enabled` (config `llm.completion_enabled`,
+*Ghost-text FIM* (`fim.odin`): with `fim.enabled` (config `modules.ai.completion_enabled`,
 seeded at startup, *AI: Toggle Inline Completion* flips it), typing arms a debounced
 (`COMPLETION_DEBOUNCE_MS`) request. `prefix`/`suffix` are the buffer around the cursor
 clamped to `completion_context_lines`, sent to a FIM endpoint (default Codestral
@@ -452,7 +471,8 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
-defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
+defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable gate +
+hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `filetree` · `fuzzy` ·
 `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
@@ -577,7 +597,9 @@ to defaults without crashing; UI persistence like the theme picker's Enter write
 only its own key; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
-their command), JSON themes (sparse overlay chain over the embedded `default.json`
+their command), gated modules (`modules.git`/`lsp`/`ai`, each `enabled` + its own config
+subtree; disabling drops the module's commands/UI/subprocesses, git auto-off when the
+binary is absent; live toggle-off tears down via `editor_modules_sync`), JSON themes (sparse overlay chain over the embedded `default.json`
 base — see Rendering; *Set Theme* fuzzy picker with instant preview,
 Enter persists / Esc reverts), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
@@ -605,7 +627,7 @@ previews a diff instead — changed hunks + `preview_diff_context` lines of cont
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
 *File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.git_diff_only` seeded from config
-`filetree_git_diff_only`, default on) switches the Git preview between this collapsed view and the
+`modules.git.filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
 gap-collapsing never fires).
 Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`): navigation only marks the preview
@@ -638,7 +660,7 @@ document formatting (external formatter e.g. `ruff format -`, else LSP) + format
 (config `format_on_save`, toggleable), `LSP: Restart`, state-colored status segment
 (dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
 `.Debug` message log; git diff gutter (live vs `HEAD`)
-+ optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `git_diff_view`): row
++ optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `modules.git.diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 hunk navigation (`Git: Next/Previous Change`, `Alt+'`/`Alt+;`, `git_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
@@ -649,14 +671,14 @@ emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: kee
 theirs / both, or jump to next conflict).
 
 AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command
-(`llm.chat_command`, default `claude -p`) — whole-file context, concurrent
+(`modules.ai.chat_command`, default `claude -p`) — whole-file context, concurrent
 cancellable async subprocesses, fenced-block extraction, content-relocated apply
 as one undo group with whitespace framing preserved. Inline FIM completion
 (ghost-text): auto-triggered debounced suggestions from a FIM endpoint (default
 Codestral `/v1/fim/completions` via `curl`), dimmed virtual text with multi-line
 push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismiss,
 coexists with the LSP popup (`Tab` ghost / `Enter` menu, popup floats above a multi-line ghost);
-`llm.completion_enabled` + *AI: Toggle Inline Completion*.
+`modules.ai.completion_enabled` + *AI: Toggle Inline Completion*.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff, in-process fuzzy ranking,
