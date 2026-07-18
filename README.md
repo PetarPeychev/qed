@@ -158,7 +158,7 @@ can be swapped in config (see the
 | YAML | ✓ | [yaml-language-server](https://github.com/redhat-developer/yaml-language-server) | |
 | TOML | ✓ | [taplo](https://taplo.tamasfe.dev) | `taplo fmt -` |
 | Dockerfile | ✓ | [docker-langserver](https://github.com/rcjsuen/dockerfile-language-server) | |
-| JSON | ✓ | | |
+| JSON | ✓ | | [prettier](https://github.com/prettier/prettier) |
 | SQL | ✓ | | |
 | Markdown | ✓ | | |
 
