@@ -167,7 +167,7 @@
     "sql": {
       "patterns": ["*.sql"],
       "lsp": "",
-      "formatter": ""
+      "formatter": "sql-formatter"
     },
     "yaml": {
       "patterns": ["*.yaml", "*.yml"],

@@ -159,7 +159,7 @@ can be swapped in config (see the
 | TOML | ✓ | [taplo](https://taplo.tamasfe.dev) | `taplo fmt -` |
 | Dockerfile | ✓ | [docker-langserver](https://github.com/rcjsuen/dockerfile-language-server) | |
 | JSON | ✓ | | [prettier](https://github.com/prettier/prettier) |
-| SQL | ✓ | | |
+| SQL | ✓ | | [sql-formatter](https://github.com/sql-formatter-org/sql-formatter) |
 | Markdown | ✓ | | |
 
 ## Configuration
