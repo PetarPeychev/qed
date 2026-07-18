@@ -38,6 +38,9 @@ merge_marker :: proc(line: []u8, ch: u8) -> bool {
 
 merge_scan :: proc(b: ^Buffer, allocator := context.temp_allocator) -> []MergeConflict {
 	out := make([dynamic]MergeConflict, allocator)
+	if !module_enabled(.Git) {
+		return out[:]
+	}
 	i := 0
 	for i < len(b.lines) {
 		if merge_marker(b.lines[i].text[:], '<') {

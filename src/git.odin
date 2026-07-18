@@ -27,7 +27,7 @@ git_stat_maybe_start :: proc(editor: ^Editor) {
 	}
 	s.poll = time.tick_now()
 	root := editor.working_root
-	if root == "" || !shell_command_exists("git") {
+	if root == "" || !module_enabled(.Git) {
 		return
 	}
 	q := shell_quote(root)
@@ -86,6 +86,34 @@ git_stat_pump :: proc(editor: ^Editor) -> bool {
 git_stat_destroy :: proc(s: ^GitStat) {
 	subprocess_kill(&s.sub)
 	delete(s.branch)
+}
+
+git_module_sync :: proc(editor: ^Editor) {
+	if module_enabled(.Git) {
+		return
+	}
+	for &b in editor.buffers {
+		g := &b.git
+		clear(&g.marks)
+		clear(&g.above)
+		clear(&g.below)
+		clear(&g.hunks)
+		clear(&g.changes)
+		git_invalidate(&b)
+	}
+	s := &editor.gitstat
+	if s.branch != "" {
+		delete(s.branch)
+		s.branch = ""
+	}
+	s.ahead = 0
+	s.behind = 0
+	if editor.filetree.scope == .Git {
+		editor.filetree.scope = .All
+		if editor.filetree.active {
+			filetree_rebuild(editor)
+		}
+	}
 }
 
 GitMark :: enum u8 {
@@ -174,7 +202,7 @@ git_base_fetch :: proc(b: ^Buffer) {
 		g.blob = ""
 	}
 
-	if b.path == "" || !shell_command_exists("git") {
+	if b.path == "" || !module_enabled(.Git) {
 		return
 	}
 
@@ -585,15 +613,19 @@ git_mark_at :: proc(b: ^Buffer, row: int) -> GitMark {
 	return b.git.marks[row]
 }
 
+git_diff_view :: proc() -> bool {
+	return g_diff_view && module_enabled(.Git)
+}
+
 git_above :: proc(b: ^Buffer, row: int) -> int {
-	if !g_diff_view || row < 0 || row >= len(b.git.above) {
+	if !git_diff_view() || row < 0 || row >= len(b.git.above) {
 		return 0
 	}
 	return b.git.above[row]
 }
 
 git_below :: proc(b: ^Buffer, row: int) -> int {
-	if !g_diff_view || row < 0 || row >= len(b.git.below) {
+	if !git_diff_view() || row < 0 || row >= len(b.git.below) {
 		return 0
 	}
 	return b.git.below[row]
@@ -601,7 +633,7 @@ git_below :: proc(b: ^Buffer, row: int) -> int {
 
 // The hunk whose old lines render above/below `row` (nil if none).
 git_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (GitHunk, bool) {
-	if !g_diff_view {
+	if !git_diff_view() {
 		return {}, false
 	}
 	for h in b.git.hunks {
@@ -615,7 +647,7 @@ git_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (GitHunk, bool) {
 // For a live (current-buffer) row inside a modification, the base line it is
 // paired with for word-level diffing.
 git_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
-	if !g_diff_view {
+	if !git_diff_view() {
 		return "", false
 	}
 	for h in b.git.hunks {
@@ -687,7 +719,7 @@ git_diff_file :: proc(
 	hunks: []GitHunk,
 	ok: bool,
 ) {
-	if path == "" || !shell_command_exists("git") {
+	if path == "" || !module_enabled(.Git) {
 		return
 	}
 	data, derr := os.read_entire_file(path, context.temp_allocator)

@@ -320,7 +320,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				filetree_open_open(editor)
 				return
 			}
-			if command_matches(ev, "File Tree: Git") {
+			if module_enabled(.Git) && command_matches(ev, "File Tree: Git") {
 				filetree_open_git(editor)
 				return
 			}
@@ -1478,12 +1478,12 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			}
 			colors = mc
 		}
-		line_bg := editor_line_bg(current, ai_edit, mark, g_diff_view, side, cmark)
+		line_bg := editor_line_bg(current, ai_edit, mark, git_diff_view(), side, cmark)
 
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
 		diff_bg := tb2.Color(0)
-		if g_diff_view && mark == .Modified {
+		if git_diff_view() && mark == .Modified {
 			if old, ok := git_pair_old(b, row); ok {
 				_, nspan := git_word_span(old, string(text[:]))
 				diff_from, diff_to = nspan[0], nspan[1]
@@ -1583,7 +1583,7 @@ editor_render_status :: proc(editor: ^Editor) {
 			right = fmt.tprintf("AI:%d  %s", n, right)
 		}
 	}
-	if editor.gitstat.branch != "" {
+	if module_enabled(.Git) && editor.gitstat.branch != "" {
 		status = fmt.tprintf("%s  %s %s", status, ICON_STATUS_BRANCH, editor.gitstat.branch)
 		if editor.gitstat.ahead > 0 {
 			status = fmt.tprintf("%s %s%d", status, ICON_STATUS_AHEAD, editor.gitstat.ahead)

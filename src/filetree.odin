@@ -41,6 +41,10 @@ FileTreeTab :: struct {
 
 filetree_tabs := [?]FileTreeTab{{"All", .All}, {"Open", .Open}, {"Git", .Git}, {"Unsaved", .Unsaved}}
 
+filetree_tab_visible :: proc(scope: FileTreeScope) -> bool {
+	return scope != .Git || module_enabled(.Git)
+}
+
 FileEntry :: struct {
 	path:   string,
 	name:   string,
@@ -256,7 +260,7 @@ filetree_scan_cmd :: proc(root: string) -> cstring {
 
 filetree_scan_status :: proc(editor: ^Editor) {
 	root := editor.working_root
-	if root == "" {
+	if root == "" || !module_enabled(.Git) {
 		filetree_clear_status(&editor.filetree)
 		editor.filetree.scanned = true
 		return
@@ -274,7 +278,7 @@ filetree_scan_start :: proc(editor: ^Editor) {
 		subprocess_kill(&t.scan_sub)
 	}
 	root := editor.working_root
-	if root == "" {
+	if root == "" || !module_enabled(.Git) {
 		filetree_clear_status(t)
 		t.scanned = true
 		return
@@ -869,7 +873,7 @@ filetree_load_preview :: proc(editor: ^Editor) {
 		return
 	}
 	h := filetree_layout(editor).preview_h
-	if t.scope == .Git {
+	if t.scope == .Git && module_enabled(.Git) {
 		preview_set_diff(&t.preview, e.path, h, t.git_diff_only)
 		return
 	}
@@ -1185,7 +1189,7 @@ filetree_toggle_git_diff :: proc(editor: ^Editor) {
 }
 
 filetree_set_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
-	if editor.filetree.scope == scope {
+	if !filetree_tab_visible(scope) || editor.filetree.scope == scope {
 		return
 	}
 	editor.filetree.scope = scope
@@ -1202,8 +1206,18 @@ filetree_tab_chord :: proc(editor: ^Editor, scope: FileTreeScope) {
 }
 
 filetree_cycle_scope :: proc(editor: ^Editor, delta: int) {
-	next := clamp(int(editor.filetree.scope) + delta, 0, len(filetree_tabs) - 1)
-	filetree_set_scope(editor, FileTreeScope(next))
+	n := len(filetree_tabs)
+	i := int(editor.filetree.scope)
+	for {
+		i += delta
+		if i < 0 || i >= n {
+			return
+		}
+		if filetree_tab_visible(FileTreeScope(i)) {
+			filetree_set_scope(editor, FileTreeScope(i))
+			return
+		}
+	}
 }
 
 filetree_activate :: proc(editor: ^Editor) {
@@ -1805,7 +1819,7 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_tab_chord(editor, .Open)
 		return
 	}
-	if command_matches(ev, "File Tree: Git") {
+	if module_enabled(.Git) && command_matches(ev, "File Tree: Git") {
 		filetree_tab_chord(editor, .Git)
 		return
 	}
@@ -1952,27 +1966,37 @@ filetree_render :: proc(editor: ^Editor) {
 
 filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
 	x := inner.x + 1
-	for tab, i in filetree_tabs {
-		if i > 0 {
+	drawn := 0
+	for tab in filetree_tabs {
+		if !filetree_tab_visible(tab.scope) {
+			continue
+		}
+		if drawn > 0 {
 			pane_text(x, y, 3, " │ ", COLOR_PANE_BORDER, COLOR_PANE_BG)
 			x += 3
 		}
 		fg := COLOR_PANE_PROMPT_FG if t.scope == tab.scope else COLOR_PANE_SHORTCUT_FG
 		pane_text(x, y, len(tab.label), tab.label, fg, COLOR_PANE_BG)
 		x += len(tab.label)
+		drawn += 1
 	}
 }
 
 filetree_tab_at_x :: proc(inner: Rect, cx: int) -> (FileTreeScope, bool) {
 	x := inner.x + 1
-	for tab, i in filetree_tabs {
-		if i > 0 {
+	drawn := 0
+	for tab in filetree_tabs {
+		if !filetree_tab_visible(tab.scope) {
+			continue
+		}
+		if drawn > 0 {
 			x += 3
 		}
 		if cx >= x && cx < x + len(tab.label) {
 			return tab.scope, true
 		}
 		x += len(tab.label)
+		drawn += 1
 	}
 	return .All, false
 }
