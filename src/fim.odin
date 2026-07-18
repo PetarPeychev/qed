@@ -73,7 +73,7 @@ fim_queue :: proc(editor: ^Editor) {
 
 fim_after :: proc(editor: ^Editor, ev: tb2.Event) {
 	f := &editor.fim
-	if !f.enabled {
+	if !module_enabled(.Ai) || !f.enabled {
 		return
 	}
 	b := editor_buffer(editor)
@@ -104,6 +104,9 @@ fim_due :: proc(editor: ^Editor) -> bool {
 fim_request :: proc(editor: ^Editor) {
 	f := &editor.fim
 	f.want = false
+	if !module_enabled(.Ai) {
+		return
+	}
 	b := editor_buffer(editor)
 	if b.big || selection_active(b) {
 		return
@@ -339,4 +342,12 @@ fim_render :: proc(editor: ^Editor, cx, cy: int) {
 		bg := line_bg if y == cy else COLOR_BG
 		emit(suffix, gutter, full_w, y, bx, COLOR_FG, bg)
 	}
+}
+
+ai_module_sync :: proc(editor: ^Editor) {
+	if module_enabled(.Ai) {
+		return
+	}
+	llm_cancel_all(editor)
+	fim_dismiss(editor)
 }

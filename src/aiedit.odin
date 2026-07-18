@@ -14,6 +14,9 @@ aiedit_destroy :: proc(a: ^AiEdit) {
 }
 
 aiedit_open :: proc(editor: ^Editor) {
+	if !module_enabled(.Ai) {
+		return
+	}
 	b := editor_buffer(editor)
 	from, to, ok := selection_range(b)
 	if !ok {

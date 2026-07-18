@@ -57,6 +57,9 @@ llm_build_prompt :: proc(
 }
 
 llm_chat_send :: proc(editor: ^Editor, instruction: string, from, to: Cursor) {
+	if !module_enabled(.Ai) {
+		return
+	}
 	if strings.trim_space(LLM_CHAT_COMMAND) == "" {
 		editor_log(editor, .Error, "", "AI edit: llm.chat_command is empty")
 		return
