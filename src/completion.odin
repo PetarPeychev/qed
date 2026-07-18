@@ -104,6 +104,9 @@ completion_is_trigger :: proc(lsp: ^Lsp, r: rune) -> bool {
 }
 
 completion_request :: proc(editor: ^Editor) {
+	if !module_enabled(.Lsp) {
+		return
+	}
 	b := editor_buffer(editor)
 	if b.big {
 		return
@@ -415,6 +418,9 @@ completion_after :: proc(editor: ^Editor, ev: tb2.Event) {
 }
 
 completion_maybe_open :: proc(editor: ^Editor, ev: tb2.Event) {
+	if !module_enabled(.Lsp) {
+		return
+	}
 	b := editor_buffer(editor)
 	if b.big || selection_active(b) || ev.ch == 0 {
 		return

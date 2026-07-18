@@ -862,7 +862,7 @@ editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
 			format_external(editor, b, true)
 			return
 		}
-		if lsp_send_format(editor, b, .FormatOnSave) {
+		if module_enabled(.Lsp) && lsp_send_format(editor, b, .FormatOnSave) {
 			return
 		}
 	}
@@ -1571,10 +1571,12 @@ editor_render_status :: proc(editor: ^Editor) {
 		right = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name)
 		if b.big {
 			right = fmt.tprintf("%s  big", right)
-		} else if label, fg, ok := lsp_status_label(b); ok {
-			lsp_seg = fmt.tprintf("%s %s", ICON_STATUS_LSP, label)
-			lsp_fg = fg
-			right = fmt.tprintf("%s  %s", right, lsp_seg)
+		} else if module_enabled(.Lsp) {
+			if label, fg, ok := lsp_status_label(b); ok {
+				lsp_seg = fmt.tprintf("%s %s", ICON_STATUS_LSP, label)
+				lsp_fg = fg
+				right = fmt.tprintf("%s  %s", right, lsp_seg)
+			}
 		}
 		right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_INDENT, indent)
 		if n := len(editor.llm.requests); n > 0 {

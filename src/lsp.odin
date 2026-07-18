@@ -241,6 +241,21 @@ lsp_stop :: proc(editor: ^Editor) {
 	g_lsps = nil
 }
 
+lsp_module_sync :: proc(editor: ^Editor) {
+	if module_enabled(.Lsp) {
+		return
+	}
+	if len(g_lsps) > 0 {
+		lsp_stop(editor)
+	}
+	for &b in editor.buffers {
+		buffer_clear_diags(&b)
+		buffer_lsp_changes_clear(&b)
+		b.lsp_open = false
+	}
+	completion_dismiss(editor)
+}
+
 lsp_restart :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	server := LANGUAGES[b.language].lsp_server
@@ -327,6 +342,9 @@ lsp_send :: proc(editor: ^Editor, lsp: ^Lsp, body: string) {
 }
 
 lsp_sync :: proc(editor: ^Editor) {
+	if !module_enabled(.Lsp) {
+		return
+	}
 	for &b in editor.buffers {
 		if b.big {
 			continue

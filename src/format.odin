@@ -84,6 +84,10 @@ format_document :: proc(editor: ^Editor) {
 		format_external(editor, b, false)
 		return
 	}
+	if !module_enabled(.Lsp) {
+		editor_log(editor, .Error, "Format", "No formatter for this buffer")
+		return
+	}
 	lsp_format(editor)
 }
 
