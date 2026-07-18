@@ -58,8 +58,6 @@ config_ints := [?]Config_Int {
 	{"projsearch_min_query", &PROJSEARCH_MIN_QUERY},
 	{"preview_diff_context", &PREVIEW_DIFF_CONTEXT},
 	{"alt_esc_timeout_ms", &ALT_ESC_TIMEOUT_MS},
-	{"completion_max_rows", &COMPLETION_MAX_ROWS},
-	{"completion_min_chars", &COMPLETION_MIN_CHARS},
 	{"jump_threshold", &JUMP_THRESHOLD},
 	{"big_file_bytes", &BIG_FILE_BYTES},
 }
@@ -75,6 +73,10 @@ FILETREE_SHOW_DOTFILES: bool
 FILETREE_SHOW_IGNORED: bool
 FILETREE_GIT_DIFF_ONLY: bool
 TERMINAL_ESCAPE_CLOSES: bool
+GIT_ENABLED: bool
+LSP_ENABLED: bool
+AI_ENABLED: bool
+GIT_BINARY_PRESENT: bool
 
 config_bools := [?]Config_Bool {
 	{"format_on_save", &FORMAT_ON_SAVE},
@@ -82,11 +84,9 @@ config_bools := [?]Config_Bool {
 	{"ensure_final_newline_on_save", &ENSURE_FINAL_NEWLINE_ON_SAVE},
 	{"cursor_accel", &CURSOR_ACCEL},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
-	{"git_diff_view", &GIT_DIFF_VIEW},
 	{"line_wrap", &LINE_WRAP},
 	{"filetree_show_dotfiles", &FILETREE_SHOW_DOTFILES},
 	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
-	{"filetree_git_diff_only", &FILETREE_GIT_DIFF_ONLY},
 	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
 }
 
@@ -105,7 +105,29 @@ LLM_COMPLETION_DEBOUNCE_MS: int
 LLM_COMPLETION_CONTEXT_LINES: int
 LLM_COMPLETION_ENABLED: bool
 
-config_llm := [?]Config_Str {
+Config_Module :: struct {
+	name:  string,
+	strs:  []Config_Str,
+	ints:  []Config_Int,
+	bools: []Config_Bool,
+}
+
+config_git_bools := [?]Config_Bool {
+	{"enabled", &GIT_ENABLED},
+	{"diff_view", &GIT_DIFF_VIEW},
+	{"filetree_diff_only", &FILETREE_GIT_DIFF_ONLY},
+}
+
+config_lsp_ints := [?]Config_Int {
+	{"completion_max_rows", &COMPLETION_MAX_ROWS},
+	{"completion_min_chars", &COMPLETION_MIN_CHARS},
+}
+
+config_lsp_bools := [?]Config_Bool {
+	{"enabled", &LSP_ENABLED},
+}
+
+config_ai_strs := [?]Config_Str {
 	{"chat_command", &LLM_CHAT_COMMAND},
 	{"edit_prompt", &LLM_EDIT_PROMPT},
 	{"completion_endpoint", &LLM_COMPLETION_ENDPOINT},
@@ -113,14 +135,21 @@ config_llm := [?]Config_Str {
 	{"completion_api_key_env", &LLM_COMPLETION_API_KEY_ENV},
 }
 
-config_llm_ints := [?]Config_Int {
+config_ai_ints := [?]Config_Int {
 	{"completion_max_tokens", &LLM_COMPLETION_MAX_TOKENS},
 	{"completion_debounce_ms", &LLM_COMPLETION_DEBOUNCE_MS},
 	{"completion_context_lines", &LLM_COMPLETION_CONTEXT_LINES},
 }
 
-config_llm_bools := [?]Config_Bool {
+config_ai_bools := [?]Config_Bool {
+	{"enabled", &AI_ENABLED},
 	{"completion_enabled", &LLM_COMPLETION_ENABLED},
+}
+
+config_module_defs := [?]Config_Module {
+	{"git", nil, nil, config_git_bools[:]},
+	{"lsp", nil, config_lsp_ints[:], config_lsp_bools[:]},
+	{"ai", config_ai_strs[:], config_ai_ints[:], config_ai_bools[:]},
 }
 
 Config_Float :: struct {
@@ -372,7 +401,7 @@ settings_destroy :: proc "contextless" () {
 	for &cmd in filetree_commands {
 		delete(cmd.shortcut, os.heap_allocator())
 	}
-	for it in config_llm {
+	for it in config_ai_strs {
 		delete(it.ptr^, os.heap_allocator())
 	}
 	for it in config_icons {
@@ -464,9 +493,13 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 	}
 }
 
-config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
-	for it in config_ints {
-		v, present := root[it.key]
+config_key_label :: proc(prefix, key: string) -> string {
+	return key if prefix == "" else fmt.tprintf("%s/%s", prefix, key)
+}
+
+config_apply_ints :: proc(obj: json.Object, tbl: []Config_Int, prefix: string, invalid: ^[dynamic]string) {
+	for it in tbl {
+		v, present := obj[it.key]
 		if !present {
 			continue
 		}
@@ -476,22 +509,43 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 		case json.Float:
 			it.ptr^ = int(n)
 		case:
-			append(invalid, it.key)
+			append(invalid, config_key_label(prefix, it.key))
 		}
 	}
+}
 
-	for it in config_bools {
-		v, present := root[it.key]
+config_apply_bools :: proc(obj: json.Object, tbl: []Config_Bool, prefix: string, invalid: ^[dynamic]string) {
+	for it in tbl {
+		v, present := obj[it.key]
 		if !present {
 			continue
 		}
-		#partial switch b in v {
-		case json.Boolean:
+		if b, ok := v.(json.Boolean); ok {
 			it.ptr^ = bool(b)
-		case:
-			append(invalid, it.key)
+		} else {
+			append(invalid, config_key_label(prefix, it.key))
 		}
 	}
+}
+
+config_apply_strs :: proc(obj: json.Object, tbl: []Config_Str, prefix: string, invalid: ^[dynamic]string) {
+	for it in tbl {
+		v, present := obj[it.key]
+		if !present {
+			continue
+		}
+		if s, ok := v.(json.String); ok {
+			delete(it.ptr^, os.heap_allocator())
+			it.ptr^ = strings.clone(string(s), os.heap_allocator())
+		} else {
+			append(invalid, config_key_label(prefix, it.key))
+		}
+	}
+}
+
+config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
+	config_apply_ints(root, config_ints[:], "", invalid)
+	config_apply_bools(root, config_bools[:], "", invalid)
 
 	if theme_val, present := root["theme"]; present {
 		if s, is_str := theme_val.(json.String); is_str {
@@ -519,48 +573,25 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 		}
 	}
 
-	if llm_val, present := root["llm"]; present {
-		if llm_obj, is_obj := llm_val.(json.Object); is_obj {
-			for it in config_llm {
-				v, has := llm_obj[it.key]
+	if mods_val, present := root["modules"]; present {
+		if mods_obj, is_obj := mods_val.(json.Object); is_obj {
+			for def in config_module_defs {
+				mv, has := mods_obj[def.name]
 				if !has {
 					continue
 				}
-				s, is_str := v.(json.String)
-				if !is_str {
-					append(invalid, fmt.tprintf("llm/%s", it.key))
+				mo, ok := mv.(json.Object)
+				if !ok {
+					append(invalid, fmt.tprintf("modules/%s", def.name))
 					continue
 				}
-				delete(it.ptr^, os.heap_allocator())
-				it.ptr^ = strings.clone(string(s), os.heap_allocator())
-			}
-			for it in config_llm_ints {
-				v, has := llm_obj[it.key]
-				if !has {
-					continue
-				}
-				#partial switch n in v {
-				case json.Integer:
-					it.ptr^ = int(n)
-				case json.Float:
-					it.ptr^ = int(n)
-				case:
-					append(invalid, fmt.tprintf("llm/%s", it.key))
-				}
-			}
-			for it in config_llm_bools {
-				v, has := llm_obj[it.key]
-				if !has {
-					continue
-				}
-				if b, is_bool := v.(json.Boolean); is_bool {
-					it.ptr^ = bool(b)
-				} else {
-					append(invalid, fmt.tprintf("llm/%s", it.key))
-				}
+				prefix := fmt.tprintf("modules/%s", def.name)
+				config_apply_strs(mo, def.strs, prefix, invalid)
+				config_apply_ints(mo, def.ints, prefix, invalid)
+				config_apply_bools(mo, def.bools, prefix, invalid)
 			}
 		} else {
-			append(invalid, "llm")
+			append(invalid, "modules")
 		}
 	}
 }
@@ -568,7 +599,7 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	for key in root {
 		switch key {
-		case "theme", "keybinds", "languages", "llm":
+		case "theme", "keybinds", "languages", "modules":
 			continue
 		}
 		known := false
@@ -614,27 +645,47 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 		}
 	}
 
-	if llm_obj, ok := root["llm"].(json.Object); ok {
-		for key in llm_obj {
-			found := false
-			for it in config_llm {
-				if it.key == key {found = true; break}
+	if mods_obj, ok := root["modules"].(json.Object); ok {
+		for mod_key, mod_val in mods_obj {
+			def, def_ok := config_module_def(mod_key)
+			if !def_ok {
+				append(warnings, fmt.tprintf("unknown modules/%q", mod_key))
+				continue
 			}
-			if !found {
-				for it in config_llm_ints {
+			sub, sub_ok := mod_val.(json.Object)
+			if !sub_ok {
+				continue
+			}
+			for key in sub {
+				found := false
+				for it in def.strs {
 					if it.key == key {found = true; break}
 				}
-			}
-			if !found {
-				for it in config_llm_bools {
-					if it.key == key {found = true; break}
+				if !found {
+					for it in def.ints {
+						if it.key == key {found = true; break}
+					}
 				}
-			}
-			if !found {
-				append(warnings, fmt.tprintf("unknown llm/%q", key))
+				if !found {
+					for it in def.bools {
+						if it.key == key {found = true; break}
+					}
+				}
+				if !found {
+					append(warnings, fmt.tprintf("unknown modules/%s/%q", mod_key, key))
+				}
 			}
 		}
 	}
+}
+
+config_module_def :: proc(name: string) -> (Config_Module, bool) {
+	for def in config_module_defs {
+		if def.name == name {
+			return def, true
+		}
+	}
+	return {}, false
 }
 
 THEME: string

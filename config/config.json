@@ -10,8 +10,6 @@
   "projsearch_min_query": 2,
   "preview_diff_context": 3,
   "alt_esc_timeout_ms": 25,
-  "completion_max_rows": 8,
-  "completion_min_chars": 1,
   "jump_threshold": 10,
   "big_file_bytes": 2097152,
   "format_on_save": false,
@@ -19,12 +17,34 @@
   "ensure_final_newline_on_save": false,
   "cursor_accel": true,
   "auto_close_pairs": true,
-  "git_diff_view": false,
   "line_wrap": true,
   "filetree_show_dotfiles": false,
   "filetree_show_ignored": false,
-  "filetree_git_diff_only": true,
   "terminal_escape_closes": true,
+  "modules": {
+    "git": {
+      "enabled": true,
+      "diff_view": false,
+      "filetree_diff_only": true
+    },
+    "lsp": {
+      "enabled": true,
+      "completion_max_rows": 8,
+      "completion_min_chars": 1
+    },
+    "ai": {
+      "enabled": true,
+      "chat_command": "claude -p",
+      "edit_prompt": "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region — and nothing else — inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}",
+      "completion_endpoint": "https://codestral.mistral.ai/v1/fim/completions",
+      "completion_model": "codestral-latest",
+      "completion_api_key_env": "CODESTRAL_API_KEY",
+      "completion_max_tokens": 256,
+      "completion_debounce_ms": 350,
+      "completion_context_lines": 200,
+      "completion_enabled": false
+    }
+  },
   "theme": "default",
   "keybinds": {
     "Command Palette": "Ctrl+p",
@@ -184,16 +204,5 @@
       "lsp": "",
       "formatter": ""
     }
-  },
-  "llm": {
-    "chat_command": "claude -p",
-    "edit_prompt": "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region — and nothing else — inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}",
-    "completion_endpoint": "https://codestral.mistral.ai/v1/fim/completions",
-    "completion_model": "codestral-latest",
-    "completion_api_key_env": "CODESTRAL_API_KEY",
-    "completion_max_tokens": 256,
-    "completion_debounce_ms": 350,
-    "completion_context_lines": 200,
-    "completion_enabled": false
   }
 }

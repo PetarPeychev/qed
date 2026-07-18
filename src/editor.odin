@@ -567,13 +567,17 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	if alt && ev.ch != 0 {
 		if cmd, ok := command_for_alt(ev.ch); ok {
-			cmd.run(editor)
+			if module_enabled(cmd.module) {
+				cmd.run(editor)
+			}
 		}
 		return
 	}
 
 	if cmd, ok := command_for_key(ev.key); ok {
-		cmd.run(editor)
+		if module_enabled(cmd.module) {
+			cmd.run(editor)
+		}
 		return
 	}
 
@@ -1004,6 +1008,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
+	editor_modules_sync(editor)
 	if message == "" {
 		message = "config.json reloaded"
 	}

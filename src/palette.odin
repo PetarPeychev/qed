@@ -12,6 +12,7 @@ Command :: struct {
 	shortcut:    string,
 	key:         tb2.Key,
 	alt_ch:      rune,
+	module:      Module,
 	run:         proc(editor: ^Editor),
 }
 
@@ -128,7 +129,7 @@ commands := [?]Command {
 	{name = "Command Palette", run = palette_open},
 	{name = "File Tree", run = filetree_open_all},
 	{name = "File Tree: Open", run = filetree_open_open},
-	{name = "File Tree: Git", run = filetree_open_git},
+	{name = "File Tree: Git", module = .Git, run = filetree_open_git},
 	{name = "File Tree: Unsaved", run = filetree_open_unsaved},
 	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Find", run = find_open},
@@ -152,25 +153,25 @@ commands := [?]Command {
 	{name = "Change Indentation", run = cmd_change_indent},
 	{name = "Set Language", run = cmd_set_language},
 	{name = "Set Theme", run = cmd_set_theme},
-	{name = "LSP: Go to Definition", run = cmd_lsp_definition},
-	{name = "LSP: Hover", run = cmd_lsp_hover},
-	{name = "LSP: Rename Symbol", run = cmd_lsp_rename},
-	{name = "AI: Edit Selection", run = cmd_ai_edit},
-	{name = "AI: Cancel Edits", run = cmd_ai_cancel},
-	{name = "AI: Toggle Inline Completion", run = cmd_toggle_inline_completion},
+	{name = "LSP: Go to Definition", module = .Lsp, run = cmd_lsp_definition},
+	{name = "LSP: Hover", module = .Lsp, run = cmd_lsp_hover},
+	{name = "LSP: Rename Symbol", module = .Lsp, run = cmd_lsp_rename},
+	{name = "AI: Edit Selection", module = .Ai, run = cmd_ai_edit},
+	{name = "AI: Cancel Edits", module = .Ai, run = cmd_ai_cancel},
+	{name = "AI: Toggle Inline Completion", module = .Ai, run = cmd_toggle_inline_completion},
 	{name = "Format Document", run = cmd_format},
 	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
 	{name = "Toggle Trim Whitespace on Save", run = cmd_toggle_trim_whitespace_on_save},
 	{name = "Toggle Final Newline on Save", run = cmd_toggle_final_newline_on_save},
-	{name = "Git: Toggle Diff View", run = cmd_toggle_diff_view},
-	{name = "Git: Next Change", run = cmd_git_next},
-	{name = "Git: Previous Change", run = cmd_git_prev},
-	{name = "Git: Revert Hunk", run = cmd_git_revert},
-	{name = "Git: Resolve Conflict", run = cmd_merge_resolve},
+	{name = "Git: Toggle Diff View", module = .Git, run = cmd_toggle_diff_view},
+	{name = "Git: Next Change", module = .Git, run = cmd_git_next},
+	{name = "Git: Previous Change", module = .Git, run = cmd_git_prev},
+	{name = "Git: Revert Hunk", module = .Git, run = cmd_git_revert},
+	{name = "Git: Resolve Conflict", module = .Git, run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
-	{name = "LSP: Next Diagnostic", run = cmd_diag_next},
-	{name = "LSP: Previous Diagnostic", run = cmd_diag_prev},
-	{name = "LSP: Restart", run = cmd_lsp_restart},
+	{name = "LSP: Next Diagnostic", module = .Lsp, run = cmd_diag_next},
+	{name = "LSP: Previous Diagnostic", module = .Lsp, run = cmd_diag_prev},
+	{name = "LSP: Restart", module = .Lsp, run = cmd_lsp_restart},
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
 	{name = "Debug: Message Log", run = cmd_message_log},
 }
@@ -187,12 +188,29 @@ filetree_commands := [?]Command {
 	{name = "Search", bind_from = "Find in Files", run = filetree_cmd_search},
 	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
-	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", run = filetree_toggle_git_diff},
+	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", module = .Git, run = filetree_toggle_git_diff},
 	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
+}
+
+command_module :: proc(name: string) -> Module {
+	for cmd in commands {
+		if cmd.name == name {
+			return cmd.module
+		}
+	}
+	for cmd in filetree_commands {
+		if cmd.name == name {
+			return cmd.module
+		}
+	}
+	return .None
 }
 
 command_available :: proc(editor: ^Editor, name: string) -> bool {
 	if name == "Command Palette" {
+		return false
+	}
+	if !module_enabled(command_module(name)) {
 		return false
 	}
 	if editor.welcome {

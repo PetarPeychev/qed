@@ -308,23 +308,32 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 		_, f_ok := sub["formatter"].(json.String)
 		testing.expectf(t, f_ok, "embedded language %s has formatter", key)
 	}
-	llm, llm_ok := g_config_defaults["llm"].(json.Object)
-	testing.expect(t, llm_ok, "embedded llm object")
-	for it in config_llm {
-		_, ok := llm[it.key].(json.String)
-		testing.expectf(t, ok, "embedded llm %s", it.key)
-	}
-	for it in config_llm_ints {
-		num_ok := false
-		#partial switch _ in llm[it.key] {
-		case json.Integer, json.Float:
-			num_ok = true
+	mods, mods_ok := g_config_defaults["modules"].(json.Object)
+	testing.expect(t, mods_ok, "embedded modules object")
+	for def in config_module_defs {
+		sub_val, has := mods[def.name]
+		testing.expectf(t, has, "embedded modules/%s present", def.name)
+		sub, sub_ok := sub_val.(json.Object)
+		testing.expectf(t, sub_ok, "embedded modules/%s is an object", def.name)
+		if !sub_ok {
+			continue
 		}
-		testing.expectf(t, num_ok, "embedded llm %s", it.key)
-	}
-	for it in config_llm_bools {
-		_, ok := llm[it.key].(json.Boolean)
-		testing.expectf(t, ok, "embedded llm %s", it.key)
+		for it in def.strs {
+			_, ok := sub[it.key].(json.String)
+			testing.expectf(t, ok, "embedded modules/%s/%s", def.name, it.key)
+		}
+		for it in def.ints {
+			num_ok := false
+			#partial switch _ in sub[it.key] {
+			case json.Integer, json.Float:
+				num_ok = true
+			}
+			testing.expectf(t, num_ok, "embedded modules/%s/%s", def.name, it.key)
+		}
+		for it in def.bools {
+			_, ok := sub[it.key].(json.Boolean)
+			testing.expectf(t, ok, "embedded modules/%s/%s", def.name, it.key)
+		}
 	}
 }
 
