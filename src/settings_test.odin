@@ -456,6 +456,33 @@ test_config_files :: proc(t: ^testing.T) {
 	_, py2_lsp := py2["lsp"]
 	testing.expect(t, !py2_lsp, "omitted python lsp is NOT filled into user file")
 
+	// Module namespace: a sparse override applies the present keys, sibling keys and
+	// other modules keep defaults; a nested string knob overlays; an invalid type and
+	// an unknown subkey are both reported with a modules/<name>/<key> path.
+	mod_path := fmt.tprintf("%s/modules.json", dir)
+	_ = os.write_entire_file(
+		mod_path,
+		transmute([]byte)string(`{"modules": {"git": {"enabled": false}, "ai": {"chat_command": "echo hi"}}}`),
+	)
+	GIT_ENABLED = true
+	LSP_ENABLED = true
+	_, is_err = config_load_from(mod_path)
+	testing.expect(t, !is_err, "module override is not an error")
+	testing.expect(t, !GIT_ENABLED, "modules.git.enabled override applied")
+	testing.expect(t, !GIT_DIFF_VIEW, "omitted modules.git.diff_view keeps default")
+	testing.expect(t, LSP_ENABLED, "omitted modules.lsp keeps default enabled")
+	testing.expect(t, LLM_CHAT_COMMAND == "echo hi", "modules.ai string override applied")
+
+	mod_bad := fmt.tprintf("%s/modbad.json", dir)
+	_ = os.write_entire_file(
+		mod_bad,
+		transmute([]byte)string(`{"modules": {"lsp": {"enabled": 3}, "git": {"bogus": true}}}`),
+	)
+	msg, is_err = config_load_from(mod_bad)
+	testing.expect(t, is_err, "invalid module value reports an error")
+	testing.expect(t, strings.contains(msg, "modules/lsp/enabled"), "names the invalid module subkey")
+	testing.expect(t, strings.contains(msg, `modules/git/"bogus"`), "warns the unknown module subkey")
+
 	// Unknown top-level key: warned, file untouched.
 	unknown_path := fmt.tprintf("%s/unknown.json", dir)
 	_ = os.write_entire_file(unknown_path, transmute([]byte)string(`{"totally_bogus": 5}`))
