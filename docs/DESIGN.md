@@ -641,7 +641,7 @@ wheel-scrollable while
 the pointer is over the right pane, soft-wrapping long lines (word-boundary via `line_wrap`,
 blank continuation gutter, tab-aware — always on, no horizontal scroll; the scroll clamp
 `preview_max_scroll` is wrap-aware so a wrapped tail stays reachable, cached on
-width/height/total). Rows are built once on load, capped at `PREVIEW_MAX_LINES`; under
+width/height/total). Rows are built once on load, capped at `PREVIEW_MAX_LINES` and the file read at `PREVIEW_MAX_BYTES` (4MB); under
 `HIGHLIGHT_ASYNC_BYTES` the whole source is highlighted once, above it only the visible window
 ± `PREVIEW_PARSE_AHEAD`, re-highlighted when scrolling leaves the colored range. File source is
 read in-process up to the line cap; buffer source (file-tree open buffers / line jump) previews in-memory content. A file with a NUL

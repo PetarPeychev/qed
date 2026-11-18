@@ -10,6 +10,7 @@ import "lib:tb2"
 PREVIEW_HEX_BYTES :: 16
 PREVIEW_EMPTY_TEXT :: "(empty file)"
 PREVIEW_MAX_LINES :: 4000
+PREVIEW_MAX_BYTES :: 4 * 1024 * 1024
 PREVIEW_PARSE_AHEAD :: 64
 
 PreviewRowKind :: enum {
@@ -133,7 +134,7 @@ preview_file_bytes :: proc(path: string, min_bytes, max_lines: int) -> (data: []
 	buf := make([dynamic]u8, 0, min_bytes, context.temp_allocator)
 	chunk: [64 * 1024]u8
 	lines := 0
-	for len(buf) < min_bytes || lines < max_lines {
+	for len(buf) < PREVIEW_MAX_BYTES && (len(buf) < min_bytes || lines < max_lines) {
 		n, rerr := os.read(fd, chunk[:])
 		if n > 0 {
 			for b in chunk[:n] {
@@ -149,7 +150,7 @@ preview_file_bytes :: proc(path: string, min_bytes, max_lines: int) -> (data: []
 		}
 		break
 	}
-	return buf[:], true
+	return buf[:min(len(buf), PREVIEW_MAX_BYTES)], true
 }
 
 preview_is_binary :: proc(data: []u8) -> bool {

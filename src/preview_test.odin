@@ -68,6 +68,25 @@ test_preview_set_file_small_binary :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_preview_set_file_caps_bytes :: proc(t: ^testing.T) {
+	content := make([]u8, PREVIEW_MAX_BYTES + 200 * 1024, context.temp_allocator)
+	for &b in content {
+		b = 'a'
+	}
+	path := preview_test_file("big.txt", content)
+	defer {os.remove(path);delete(path)}
+	p: Preview
+	defer preview_destroy(&p)
+	preview_set_file(&p, path, 0, 20)
+	total := 0
+	for line in p.src {
+		total += len(line)
+	}
+	testing.expect(t, total > 0)
+	testing.expect(t, total <= PREVIEW_MAX_BYTES)
+}
+
+@(test)
 test_preview_set_file_text_stays_text :: proc(t: ^testing.T) {
 	path := preview_test_file("text.txt", transmute([]u8)string("plain text\nline two\n"))
 	defer {os.remove(path);delete(path)}
