@@ -97,7 +97,6 @@ runtime-grammar arc that lets a stranger add *any* language with zero rebuild â€
 
 ### Git diff gutter
 
-- [ ] Git tab lists deleted and renamed files (vs the diff base), with a ghost-only / rename preview.
 - [ ] Git diff viewer (design TBD): a pane showing the full diff, beyond the gutter marks.
 - [ ] Stage / unstage hunks (later).
 - [ ] Idea: reuse the gutter to mark lines changed since last save (buffer vs disk).
