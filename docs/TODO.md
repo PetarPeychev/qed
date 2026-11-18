@@ -54,6 +54,21 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] Cheaper cold `git_gutter_update` + `buffer_open` per-line-allocation floor before first paint — see [notes/perf.md](notes/perf.md).
 - [ ] `subprocess_output` can block the main loop up to 1s in `process_wait` after stdout EOF — reap non-blocking.
 
+## Plugin system
+
+Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/plugins.md) §8.
+
+- [ ] Phase 0: vendored Lua, plugin loader, `qed.log/message/command/run`, dynamic commands, minimal Plugins pane.
+- [ ] Phase 1: `Buffer.id`, `qed.buf.*`, `qed.edit`, `qed.goto`, fs/json/path/config/opt, type stub + lua-ls settings.
+- [ ] Phase 2: coroutine scheduler, `spawn`/`spawn_bg`, timers, `plugin_pump`, budgets, events with hook timeouts, `test.lua` runner.
+- [ ] Phase 3: port `format` to a bundled plugin, delete the Odin formatter path.
+- [ ] Phase 4: `pick`/`prompt`/`confirm`/`pane`, port the pickers.
+- [ ] Phase 5: `commands` plugin, file-tree `ctx.file/files`.
+- [ ] Phase 6: hot reload, live enable/disable, full Plugins pane.
+- [ ] Phase 7: N terminal sessions, `qed.term`, `tasks` plugin.
+- [ ] Phase 8: decoration store, `status.set`, diff-base primitive.
+- [ ] Phase 9: port `git`, `modules.git` becomes `plugins.git`.
+
 ## Post-1.0 — deferred
 
 Enhancements beyond the daily-driver baseline; none blocks 1.0.

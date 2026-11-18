@@ -1,8 +1,6 @@
 # Note: plugin system (Lua 5.4)
 
-Design for a plugin system. Status: decided, not built. It reverses the
-CLAUDE.md "no plugins" lock: when phase 0 lands, update CLAUDE.md's Out of scope
-section and the Modules row of Locked design decisions.
+Design for a plugin system. Status: decided. Build phases are tracked in TODO.md.
 
 ## 1. Goals / non-goals
 
@@ -121,7 +119,7 @@ The API is one global, `qed`.
 |---|---|---|
 | `startup` | | |
 | `buf_open`, `buf_close`, `buf_enter` | `b` | |
-| `buf_pre_save` | `b` | **yes**, bounded by `plugin_save_timeout_ms`. On timeout the save proceeds, logging `.Warn` with the slow plugin's name. |
+| `buf_pre_save` | `b` | **yes**, bounded by `plugin_hook_timeout_ms`. On timeout the save proceeds, logging `.Warn` with the slow plugin's name. |
 | `buf_save`, `buf_reload` | `b` | |
 | `buf_changed` | `b`, `rev` | coalesced |
 | `cursor_moved` | `b` | coalesced |
@@ -129,7 +127,7 @@ The API is one global, `qed`.
 | `root_changed` | `old`, `new` | |
 | `config_changed`, `theme_changed` | | |
 | `term_exit` | `name`, `code` | |
-| `quit` | | yes, bounded by `plugin_quit_timeout_ms` |
+| `quit` | | yes, bounded by `plugin_hook_timeout_ms` |
 
 There is deliberately no `key` event.
 
@@ -319,9 +317,6 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 9. `modules.ai` stays core until decorations exist; then aiedit moves first and fim last.
 10. One Lua state with a per-plugin `_ENV`.
 11. A user plugin with a bundled name replaces the bundled one.
-
-## 10. Open questions
-
-1. **Tasks split** (direction chosen, flagged for confirmation): core `qed.term` sessions plus a bundled `tasks` plugin. The alternative is tasks as a fully core feature, with no Lua dependency for a daily-driver workflow but a fixed UI.
-2. **Bundled plugins in the Plugins pane `Enter`**: open the embedded source read-only (recommended), or copy it to the user dir to fork in place. Copying writes a user file, which would be a first.
-3. **Save and quit timeouts**: `plugin_save_timeout_ms` defaulting to 3000 (a formatter on a large file can be slow), with quit getting the same value. Alternatively, a single shared knob.
+12. Tasks are core `qed.term` sessions plus a bundled `tasks` plugin.
+13. `Enter` on a bundled plugin in the Plugins pane opens its embedded source read-only. A separate explicit *Fork Plugin* command may come later.
+14. One shared knob, `plugin_hook_timeout_ms`, bounds both `buf_pre_save` and `quit`.

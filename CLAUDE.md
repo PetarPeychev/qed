@@ -2,7 +2,8 @@
 
 `qed` is a personal terminal text editor written in Odin, in the spirit of
 micro/nano but with GUI-style keybinds. It targets a single author (Petar) — so
-there are **no plugins and no backwards-compatibility obligations**. Tunable
+there are **no backwards-compatibility obligations**, and plugins are global Lua
+written by him (no package manager, no sandbox). Tunable
 knobs (colors, sizes, timeouts, keybinds) default from the JSON files in
 `config/` (embedded into the binary at build); `~/.config/qed/` overrides them,
 hot-reloaded. Exactly one place per knob.
@@ -139,14 +140,15 @@ repetition only once it exists in front of you.
 | Gutter         | Left line-number gutter; current line emphasized; git-diff mark column. |
 | Commands       | Direct CTRL keybinds (rebindable by name); floating command palette. |
 | Config         | Embedded `config/config.json` is the source of every default (knobs, keybinds, language patterns/lsp/formatter) — none in Odin source. User `~/.config/qed/config.json` is a **sparse per-key diff** qed never writes (no materialization; UI persistence like the theme picker writes only its own key); unknown keys warn once, malformed JSON falls back to defaults; hot-reloaded on change. The repo files are the reference for all keys. |
-| Modules        | `git`/`lsp`/`ai` are gated subsystems under `modules.<name>` (an `enabled` flag + that module's whole config subtree). `module_enabled(m)` gates commands (palette + dispatch), rendering, and subprocesses; disabling removes the module entirely. Git auto-off when the binary is absent. Live toggle-off tears down via `editor_modules_sync`. Add a module = enum value + `config_module_defs` entry + seam guards. |
+| Modules        | `git`/`lsp`/`ai` are gated subsystems under `modules.<name>` (an `enabled` flag + that module's whole config subtree). `module_enabled(m)` gates commands (palette + dispatch), rendering, and subprocesses; disabling removes the module entirely. Git auto-off when the binary is absent. Live toggle-off tears down via `editor_modules_sync`. Add a module = enum value + `config_module_defs` entry + seam guards. Modules are legacy: `git` becomes a plugin (`plugins.git`); new optional features are plugins, not modules. |
+| Plugins        | Lua 5.4, vendored and static. Global only: bundled `plugins/` (embedded) + `~/.config/qed/plugins/`, config under `plugins.<name>`. One `lua_State`, per-plugin `_ENV`. Lua never runs on a render or raw-keystroke path. See [docs/notes/plugins.md](docs/notes/plugins.md). |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |
 | Startup arg    | File → open it; directory → set working root + welcome screen. |
 
 ## Out of scope (deliberately)
 
-Plugin system, split panes, tabs. There is
+Split panes, tabs, project-local plugins, a plugin package manager. There is
 exactly one visible text buffer; everything else (file tree, autocomplete, search
 overlay, inline diagnostics) is an auxiliary pane or floating window layered over
 it — built only when we get there.
