@@ -201,11 +201,15 @@ cwdpick_confirm_question :: proc(editor: ^Editor) -> string {
 cwdpick_confirm_execute :: proc(editor: ^Editor) {
 	cp := &editor.cwdpick
 	if cp.confirm_selected != 1 {
-		cwdpick_close(editor)
+		cwdpick_confirm_cancel(editor)
 		return
 	}
 	cwdpick_close(editor)
 	editor_change_root(editor, cp.target)
+}
+
+cwdpick_confirm_cancel :: proc(editor: ^Editor) {
+	editor.cwdpick.confirm = false
 }
 
 editor_change_root :: proc(editor: ^Editor, root: string) {
@@ -229,7 +233,7 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 cwdpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	cp := &editor.cwdpick
 	if cp.confirm {
-		dialog_key(editor, ev, &cp.confirm_selected, len(filetree_close_actions), cwdpick_confirm_execute, cwdpick_close)
+		dialog_key(editor, ev, &cp.confirm_selected, len(filetree_close_actions), cwdpick_confirm_execute, cwdpick_confirm_cancel)
 		return
 	}
 	if command_matches(ev, "Change Working Directory") {
@@ -278,7 +282,7 @@ cwdpick_paste :: proc(editor: ^Editor, text: string) {
 cwdpick_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	cp := &editor.cwdpick
 	if cp.confirm {
-		dialog_mouse(editor, ev, cwdpick_confirm_question(editor), filetree_close_actions[:], &cp.confirm_selected, cwdpick_confirm_execute, cwdpick_close)
+		dialog_mouse(editor, ev, cwdpick_confirm_question(editor), filetree_close_actions[:], &cp.confirm_selected, cwdpick_confirm_execute, cwdpick_confirm_cancel)
 		return
 	}
 	fuzzy_list_center_mouse(editor, &cp.list, ev, cwdpick_complete, cwdpick_close)

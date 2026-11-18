@@ -330,17 +330,26 @@ e2e_cwd_unsaved_confirm :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.working_root, root)
 	e2e_render(&e)
 
+	query := strings.clone(cwd_query(&e), context.temp_allocator)
+	caret := cp.field.caret
+	selected := cp.selected
 	e2e_key(&e, .Enter)
-	testing.expect(t, !cp.active, "Cancel closes the picker")
+	testing.expect(t, cp.active && !cp.confirm, "Cancel returns to the picker")
+	testing.expect_value(t, cwd_query(&e), query)
+	testing.expect_value(t, cp.field.caret, caret)
+	testing.expect_value(t, cp.selected, selected)
 	testing.expect_value(t, e.ed.working_root, root)
 	testing.expect_value(t, len(e.ed.buffers), 1)
 	testing.expect(t, editor_buffer(&e.ed).modified, "unsaved buffer survives cancel")
 
-	e2e_key(&e, .Ctrl_O)
-	e2e_type(&e, "alpha")
 	e2e_key(&e, .Enter)
+	testing.expect(t, cp.confirm, "Enter re-opens the confirm")
 	e2e_key(&e, .Esc)
-	testing.expect(t, !cp.active, "Esc in the confirm aborts")
+	testing.expect(t, cp.active && !cp.confirm, "Esc in the confirm returns to the picker")
+	testing.expect_value(t, cwd_query(&e), query)
+	testing.expect_value(t, e.ed.working_root, root)
+	e2e_key(&e, .Esc)
+	testing.expect(t, !cp.active, "second Esc closes the picker")
 	testing.expect_value(t, e.ed.working_root, root)
 
 	e2e_key(&e, .Ctrl_O)
