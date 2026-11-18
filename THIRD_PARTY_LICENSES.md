@@ -11,6 +11,7 @@ License (see `LICENSE`).
 |-----------|----------|---------------|---------|
 | termbox2 | github.com/termbox/termbox2 | vendored, patched (`lib/tb2/PATCHES.md`) | MIT |
 | libvterm | www.leonerd.org.uk/code/libvterm | vendored, patched (`lib/vterm/PATCHES.md`) | MIT |
+| Lua | www.lua.org | 5.4.9 (`lib/lua/src`, unmodified) | MIT |
 | tree-sitter (runtime) | github.com/tree-sitter/tree-sitter | v0.26.10 | MIT |
 | tree-sitter-odin | github.com/tree-sitter-grammars/tree-sitter-odin | v1.3.0 | MIT |
 | tree-sitter-json | github.com/tree-sitter/tree-sitter-json | v0.24.8 | MIT |
@@ -31,6 +32,7 @@ by the respective upstream authors of each project:
 
 - termbox2 — Copyright (c) 2015-2026 Adam Saponara <as@php.net>
 - libvterm — Copyright (c) 2008 Paul Evans <leonerd@leonerd.org.uk>
+- Lua — Copyright (C) 1994-2026 Lua.org, PUC-Rio
 - tree-sitter and the `tree-sitter/*` grammars (json, python, c, javascript,
   typescript, bash) — Copyright (c) 2018 Max Brunsfeld and the tree-sitter authors
 - the `tree-sitter-grammars/*` grammars (odin, lua, markdown) — Copyright (c) the

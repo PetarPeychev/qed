@@ -80,5 +80,12 @@ ar rcs "$VT/libvterm.a" "$VT"/src/*.o
 cc -c -w -O2 lib/pty/pty.c -o lib/pty/pty.o
 ar rcs lib/pty/libqedpty.a lib/pty/pty.o
 
+# Build the vendored Lua 5.4 interpreter (no lua.c/luac.c) into a static lib
+LUA=lib/lua
+for f in "$LUA"/src/*.c; do
+   cc -c -w -O2 -DLUA_USE_POSIX "$f" -o "${f%.c}.o"
+done
+ar rcs "$LUA/liblua.a" "$LUA"/src/*.o
+
 # Build the editor, exposing vendor/ as a collection
 odin build src -collection:lib=lib -define:QED_VERSION="${QED_VERSION:-dev}" -out:qed
