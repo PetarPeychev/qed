@@ -198,7 +198,9 @@ member group is no longer on top).
   see `wrap.odin`). When the caret is scrolled out of the viewport it is hidden,
   not clamped to an edge.
 - Mouse: click positions, drag extends (auto-scrolls past the edge), wheel
-  scrolls, double/triple-click selects word/line.
+  scrolls, double/triple-click selects word/line. `editor_step` coalesces a
+  burst of queued same-direction wheel events (0 ms peek) into one dispatch run
+  with a single render, for every consumer.
 
 ## Files
 
@@ -638,11 +640,11 @@ carries the gray selection background band (`COLOR_PANE_SEL_BG`) with its syntax
 wheel-scrollable while
 the pointer is over the right pane, soft-wrapping long lines (word-boundary via `line_wrap`,
 blank continuation gutter, tab-aware — always on, no horizontal scroll; the scroll clamp
-`preview_max_scroll` is wrap-aware so a wrapped tail stays reachable), highlighting line
-1→viewport+lookahead (`PREVIEW_PARSE_AHEAD`)
-and re-highlighting from the top as it scrolls, size-gated at `HIGHLIGHT_ASYNC_BYTES`
-(window-only above it), capped at `PREVIEW_MAX_LINES`. File source loads lazily via `head`;
-buffer source (file-tree open buffers / line jump) previews in-memory content. A file with a NUL
+`preview_max_scroll` is wrap-aware so a wrapped tail stays reachable, cached on
+width/height/total). Rows are built once on load, capped at `PREVIEW_MAX_LINES`; under
+`HIGHLIGHT_ASYNC_BYTES` the whole source is highlighted once, above it only the visible window
+± `PREVIEW_PARSE_AHEAD`, re-highlighted when scrolling leaves the colored range. File source is
+read in-process up to the line cap; buffer source (file-tree open buffers / line jump) previews in-memory content. A file with a NUL
 byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrapped
 rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
 both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a

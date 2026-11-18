@@ -6,6 +6,7 @@ import "core:strings"
 import "core:sys/posix"
 import "core:testing"
 import "core:time"
+import "lib:tb2"
 
 @(private = "file")
 e2e_mouse_seq: int
@@ -62,6 +63,33 @@ e2e_mouse_wheel_scroll :: proc(t: ^testing.T) {
 	e2e_mouse(&e, g + 0, 3, .Mouse_Wheel_Up)
 	testing.expect_value(t, e.ed.scroll_row, 0)
 	testing.expect_value(t, b.cursor.row, 0)
+}
+
+@(test)
+e2e_mouse_wheel_coalesce :: proc(t: ^testing.T) {
+	e := e2e_start(strings.repeat("x\n", 200, context.temp_allocator))
+	defer e2e_stop(&e)
+	e2e_render(&e)
+
+	b := editor_buffer(&e.ed)
+	g := editor_gutter_width(&e.ed)
+	down := tb2.Event{type = .Mouse, key = .Mouse_Wheel_Down, x = i32(g), y = 3}
+	up := down
+	up.key = .Mouse_Wheel_Up
+
+	e2e_step(&e, down, down, down, down)
+	testing.expect_value(t, e.ed.scroll_row, 4 * WHEEL_SCROLL_LINES)
+	testing.expect_value(t, e2e_peek_pos, e2e_peek_len)
+
+	e2e_step(&e, down, down, up, tb2.Event{type = .Key, key = .Arrow_Down})
+	testing.expect_value(t, e.ed.scroll_row, 6 * WHEEL_SCROLL_LINES - WHEEL_SCROLL_LINES)
+	testing.expect_value(t, e2e_peek_pos, 2)
+	testing.expect_value(t, b.cursor.row, 0)
+
+	moved := down
+	moved.y = 4
+	e2e_step(&e, up, up, moved)
+	testing.expect_value(t, e.ed.scroll_row, 5 * WHEEL_SCROLL_LINES - 2 * WHEEL_SCROLL_LINES + WHEEL_SCROLL_LINES)
 }
 
 @(test)

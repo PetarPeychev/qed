@@ -157,7 +157,25 @@ editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.
 			}
 		}
 	}
-	editor_dispatch(editor, ev)
+	count := 1
+	if ev.type == .Mouse && (ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down) {
+		for {
+			next, ok := peek(0)
+			if !ok {
+				break
+			}
+			if next.type == ev.type && next.key == ev.key && next.x == ev.x && next.y == ev.y && next.mod == ev.mod {
+				count += 1
+				continue
+			}
+			pending = next
+			pending_ok = true
+			break
+		}
+	}
+	for _ in 0 ..< count {
+		editor_dispatch(editor, ev)
+	}
 	if pending_ok {
 		editor_dispatch(editor, pending)
 	}

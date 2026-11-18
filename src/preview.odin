@@ -28,9 +28,6 @@ PreviewRow :: struct {
 	span:   [2]int,
 }
 
-// A scrollable, syntax-highlighted preview of a file, buffer, or git diff. Content
-// mode highlights line 1 → viewport + lookahead, extending as it scrolls; diff mode
-// builds the changed hunks (+ context) up front in the inline-diff-view style.
 Preview :: struct {
 	rows:         [dynamic]PreviewRow,
 	src:          [dynamic]string,
@@ -38,14 +35,17 @@ Preview :: struct {
 	focus:        int,
 	numw:         int,
 	language:     Language,
-	parsed_to:    int,
+	hl_lo:        int,
+	hl_hi:        int,
 	diff:         bool,
 	no_highlight: bool,
 	path:         string,
-	complete:     bool,
 	width:        int,
 	hex:          bool,
 	empty:        bool,
+	max_key:      [3]int,
+	max_scroll:   int,
+	max_ok:       bool,
 }
 
 preview_rows_clear :: proc(p: ^Preview) {
@@ -54,7 +54,9 @@ preview_rows_clear :: proc(p: ^Preview) {
 		delete(r.text)
 	}
 	clear(&p.rows)
-	p.parsed_to = 0
+	p.hl_lo = 0
+	p.hl_hi = 0
+	p.max_ok = false
 }
 
 preview_reset :: proc(p: ^Preview) {
@@ -73,7 +75,6 @@ preview_reset :: proc(p: ^Preview) {
 	p.width = 0
 	p.diff = false
 	p.no_highlight = false
-	p.complete = false
 	p.hex = false
 	p.empty = false
 }
@@ -98,33 +99,49 @@ preview_set_file :: proc(p: ^Preview, path: string, focus, view_h: int) {
 	p.language = language_of(path)
 	p.focus = focus
 
-	if data, ok := preview_file_bytes(p.path, PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES); ok {
-		if len(data) == 0 {
-			p.empty = true
-			return
-		}
-		if preview_is_binary(data) {
-			preview_hex_fill(p, data)
-			return
-		}
+	head := PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES
+	data, ok := preview_file_bytes(p.path, head, PREVIEW_MAX_LINES)
+	if !ok {
+		return
 	}
-
+	if len(data) == 0 {
+		p.empty = true
+		return
+	}
+	if preview_is_binary(data[:min(len(data), head)]) {
+		preview_hex_fill(p, data[:min(len(data), head)])
+		return
+	}
+	text := string(data)
+	for line in strings.split_lines_iterator(&text) {
+		if len(p.src) >= PREVIEW_MAX_LINES {
+			break
+		}
+		append(&p.src, strings.clone(line))
+	}
+	preview_content_build(p)
 	p.scroll = max(0, (focus - 1) - view_h / 2) if focus > 0 else 0
 	preview_ensure(p, view_h)
 }
 
-preview_file_bytes :: proc(path: string, limit: int) -> (data: []u8, ok: bool) {
+preview_file_bytes :: proc(path: string, min_bytes, max_lines: int) -> (data: []u8, ok: bool) {
 	fd, err := os.open(path)
 	if err != nil {
 		return nil, false
 	}
 	defer os.close(fd)
-	buf := make([]u8, limit, context.temp_allocator)
-	total := 0
-	for total < limit {
-		n, rerr := os.read(fd, buf[total:])
+	buf := make([dynamic]u8, 0, min_bytes, context.temp_allocator)
+	chunk: [64 * 1024]u8
+	lines := 0
+	for len(buf) < min_bytes || lines < max_lines {
+		n, rerr := os.read(fd, chunk[:])
 		if n > 0 {
-			total += n
+			for b in chunk[:n] {
+				if b == '\n' {
+					lines += 1
+				}
+			}
+			append(&buf, ..chunk[:n])
 			continue
 		}
 		if rerr != nil && rerr != io.Error.EOF {
@@ -132,7 +149,7 @@ preview_file_bytes :: proc(path: string, limit: int) -> (data: []u8, ok: bool) {
 		}
 		break
 	}
-	return buf[:total], true
+	return buf[:], true
 }
 
 preview_is_binary :: proc(data: []u8) -> bool {
@@ -147,7 +164,6 @@ preview_is_binary :: proc(data: []u8) -> bool {
 preview_hex_fill :: proc(p: ^Preview, data: []u8) {
 	p.hex = true
 	p.no_highlight = true
-	p.complete = true
 	p.numw = 0
 	for off := 0; off < len(data) && len(p.src) < PREVIEW_MAX_LINES; off += PREVIEW_HEX_BYTES {
 		end := min(off + PREVIEW_HEX_BYTES, len(data))
@@ -156,7 +172,6 @@ preview_hex_fill :: proc(p: ^Preview, data: []u8) {
 	for s in p.src {
 		append(&p.rows, PreviewRow{text = strings.clone(s), lineno = 0, kind = .Content})
 	}
-	p.parsed_to = len(p.src)
 }
 
 hex_dump_line :: proc(data: []u8, offset: int, allocator := context.allocator) -> string {
@@ -188,7 +203,6 @@ preview_set_buffer :: proc(p: ^Preview, b: ^Buffer, focus, view_h: int) {
 	preview_reset(p)
 	p.language = b.language
 	p.no_highlight = b.big
-	p.complete = true
 	p.focus = focus
 	if len(b.lines) == 1 && len(b.lines[0].text) == 0 {
 		p.empty = true
@@ -200,96 +214,63 @@ preview_set_buffer :: proc(p: ^Preview, b: ^Buffer, focus, view_h: int) {
 		}
 		append(&p.src, strings.clone(string(line.text[:])))
 	}
+	preview_content_build(p)
 	p.scroll = max(0, (focus - 1) - view_h / 2)
 	preview_ensure(p, view_h)
 }
 
-preview_file_reload :: proc(p: ^Preview, want: int) {
-	cmd := fmt.ctprintf("head -n %d %s 2>/dev/null", want, shell_quote(p.path))
-	out, ok := shell_capture(cmd)
-	if !ok {
-		p.complete = true
+preview_content_build :: proc(p: ^Preview) {
+	preview_rows_clear(p)
+	p.numw = digit_count(max(1, len(p.src)))
+	for s, i in p.src {
+		append(&p.rows, PreviewRow{text = strings.clone(s), lineno = i + 1, kind = .Content})
+	}
+	if p.no_highlight || len(p.src) == 0 || preview_src_big(p) {
 		return
 	}
+	preview_highlight_range(p, 0, len(p.src))
+}
+
+preview_src_big :: proc(p: ^Preview) -> bool {
+	bytes := 0
 	for s in p.src {
-		delete(s)
+		bytes += len(s) + 1
+		if bytes >= HIGHLIGHT_ASYNC_BYTES {
+			return true
+		}
 	}
-	clear(&p.src)
-	p.parsed_to = 0
-	count := 0
-	for line in strings.split_lines_iterator(&out) {
-		append(&p.src, strings.clone(line))
-		count += 1
+	return false
+}
+
+preview_highlight_range :: proc(p: ^Preview, lo, hi: int) {
+	for i in p.hl_lo ..< p.hl_hi {
+		delete(p.rows[i].colors)
+		p.rows[i].colors = nil
 	}
-	p.complete = count < want
+	tmp: [dynamic][dynamic]tb2.Color
+	highlight_lines(p.language, p.src[lo:hi], &tmp)
+	for i in lo ..< hi {
+		p.rows[i].colors = tmp[i - lo]
+		tmp[i - lo] = nil
+	}
+	highlight_lines_destroy(&tmp)
+	p.hl_lo = lo
+	p.hl_hi = hi
 }
 
 preview_ensure :: proc(p: ^Preview, view_h: int) {
 	if p.diff {
 		return
 	}
-	want := min(PREVIEW_MAX_LINES, p.scroll + view_h + PREVIEW_PARSE_AHEAD)
-	if p.path != "" && !p.complete && want > len(p.src) {
-		preview_file_reload(p, want)
-	}
 	p.scroll = clamp(p.scroll, 0, preview_max_scroll(p, view_h))
-	preview_content_extend(p, view_h)
-}
-
-preview_content_extend :: proc(p: ^Preview, view_h: int) {
-	need := min(len(p.src), p.scroll + view_h + PREVIEW_PARSE_AHEAD)
-	if need <= p.parsed_to && len(p.rows) >= need {
+	if p.no_highlight || len(p.src) == 0 {
 		return
 	}
-	preview_rows_clear(p)
-	p.numw = digit_count(max(1, len(p.src)))
-	if need == 0 {
+	vis_hi := min(len(p.src), p.scroll + view_h)
+	if p.scroll >= p.hl_lo && vis_hi <= p.hl_hi {
 		return
 	}
-
-	if p.no_highlight {
-		for i in 0 ..< need {
-			append(&p.rows, PreviewRow{text = strings.clone(p.src[i]), lineno = i + 1, kind = .Content})
-		}
-		p.parsed_to = need
-		return
-	}
-
-	bytes := 0
-	for i in 0 ..< need {
-		bytes += len(p.src[i]) + 1
-	}
-
-	tmp: [dynamic][dynamic]tb2.Color
-	if bytes >= HIGHLIGHT_ASYNC_BYTES {
-		// Above the async gate, color only the window (occasionally imprecise at
-		// the top edge) to bound keypress latency, like project-search.
-		highlight_lines(p.language, p.src[p.scroll:need], &tmp)
-		for i in 0 ..< need {
-			row: PreviewRow = {text = strings.clone(p.src[i]), lineno = i + 1, kind = .Content}
-			w := i - p.scroll
-			if w >= 0 && w < len(tmp) {
-				row.colors = tmp[w]
-				tmp[w] = nil
-			}
-			append(&p.rows, row)
-		}
-	} else {
-		highlight_lines(p.language, p.src[:need], &tmp)
-		for i in 0 ..< need {
-			row: PreviewRow = {text = strings.clone(p.src[i]), lineno = i + 1, kind = .Content}
-			if i < len(tmp) {
-				row.colors = tmp[i]
-				tmp[i] = nil
-			}
-			append(&p.rows, row)
-		}
-	}
-	for row in tmp {
-		delete(row)
-	}
-	delete(tmp)
-	p.parsed_to = need
+	preview_highlight_range(p, max(0, p.scroll - PREVIEW_PARSE_AHEAD), min(len(p.src), vis_hi + PREVIEW_PARSE_AHEAD))
 }
 
 preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool) {
@@ -310,19 +291,18 @@ preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool
 	if !changed && len(hunks) == 0 {
 		// Selected file matches HEAD after all — show plain content.
 		p.language = language_of(path)
-		p.complete = true
 		for s, i in cur {
 			if i >= PREVIEW_MAX_LINES {
 				break
 			}
 			append(&p.src, strings.clone(s))
 		}
+		preview_content_build(p)
 		preview_ensure(p, view_h)
 		return
 	}
 
 	p.diff = true
-	p.complete = true
 	n := len(cur)
 	ctx := PREVIEW_DIFF_CONTEXT
 	visible := make([]bool, n, context.temp_allocator)
@@ -467,6 +447,17 @@ preview_visual_h :: proc(p: ^Preview, i, textw: int) -> int {
 // until the first render records the pane width.
 preview_max_scroll :: proc(p: ^Preview, view_h: int) -> int {
 	total := preview_total(p)
+	key := [3]int{p.width, view_h, total}
+	if p.max_ok && p.max_key == key {
+		return p.max_scroll
+	}
+	p.max_key = key
+	p.max_ok = true
+	p.max_scroll = preview_max_scroll_compute(p, total, view_h)
+	return p.max_scroll
+}
+
+preview_max_scroll_compute :: proc(p: ^Preview, total, view_h: int) -> int {
 	textw := p.width - (p.numw + 2)
 	if p.width <= 0 || textw <= 0 {
 		return max(0, total - view_h)
