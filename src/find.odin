@@ -60,9 +60,10 @@ find_close :: proc(editor: ^Editor) {
 }
 
 find_ci :: proc(f: ^Find, q: string) -> bool {
-	if f.case_sensitive {
-		return false
-	}
+	return !f.case_sensitive && smart_case_insensitive(q)
+}
+
+smart_case_insensitive :: proc(q: string) -> bool {
 	for r in q {
 		if unicode.is_upper(r) {
 			return false

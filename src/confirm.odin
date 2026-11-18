@@ -136,6 +136,14 @@ close_dialog_question :: proc(editor: ^Editor) -> string {
 	return fmt.tprintf("Save changes to %s?", name)
 }
 
+close_question :: proc(total, unsaved: int) -> string {
+	plural := "" if total == 1 else "s"
+	if unsaved > 0 {
+		return fmt.tprintf("Close %d buffer%s? (%d unsaved)", total, plural, unsaved)
+	}
+	return fmt.tprintf("Close %d buffer%s?", total, plural)
+}
+
 close_dialog_render :: proc(editor: ^Editor) {
 	dialog_render(editor, close_dialog_question(editor), close_actions[:], editor.close_dialog.selected)
 }

@@ -221,7 +221,14 @@ member group is no longer on top).
   clobbering. Reload skips a buffer while its highlight parse thread is busy
   (retries next poll). Deletion on disk is ignored (buffer stays; save recreates).
 - **Startup arg:** file → open it; directory → set working root + welcome screen;
-  absent → welcome screen. Working root is the future root for cross-file features.
+  absent → welcome screen.
+- **Working root change** (`cwdpick.odin`): *Change Working Directory* (`Ctrl+o`) is a
+  path field prefilled with the root (prefix + smart-case match over the typed base's
+  subdirs; `/`/Tab drill into the highlight, Backspace after `/` drops a segment, Enter
+  commits the path as written). In the file tree the same chord commits the selected dir
+  (a file → its parent). `editor_change_root` closes buffers outside the new root (unsaved →
+  confirm), restarts every LSP server and resets file tree / project search / git stat. The
+  process cwd never changes; subprocesses get the root explicitly.
 
 ## Clipboard
 
@@ -474,7 +481,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `filetree` · `fuzzy` ·
-`linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
+`cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -588,7 +595,8 @@ open buffers marked with a trailing `●`, propagated to directories),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
-the shell prompt), jump list
+the shell prompt), runtime working-root change (`Ctrl+o` path picker + file-tree
+`Ctrl+o` on a dir), jump list
 (back/forward), runtime config (**sparse overlays**: embedded `config/config.json`
 is every default, none in Odin source, completeness test-enforced; user
 `~/.config/qed/config.json` is a per-key diff qed never writes — no

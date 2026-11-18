@@ -25,6 +25,7 @@ FileTreeMode :: enum {
 	Rename,
 	ConfirmDelete,
 	ConfirmClose,
+	ConfirmRoot,
 }
 
 FileTreeScope :: enum {
@@ -66,6 +67,7 @@ FileTree :: struct {
 	filter:          TextField,
 	delete_selected: int,
 	close_selected:  int,
+	root_target:     string,
 	preview:         Preview,
 	status:          map[string]GitMark,
 	ignored:         map[string]bool,
@@ -173,6 +175,35 @@ filetree_destroy :: proc(t: ^FileTree) {
 	filetree_filter_cache_clear(t)
 	delete(t.filter_cands)
 	delete(t.filter_last_idx)
+	delete(t.root_target)
+}
+
+filetree_root_reset :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	filetree_prewarm_cancel(t)
+	filetree_clear_entries(t)
+	for key in t.expanded {
+		delete(key)
+	}
+	clear(&t.expanded)
+	t.selected = 0
+	t.scroll = 0
+	t.anchor = nil
+	t.filter_dirty = false
+	t.preview_dirty = false
+	preview_reset(&t.preview)
+	filetree_paths_clear(&t.scope_paths)
+	filetree_filter_cache_clear(t)
+	filetree_clear_status(t)
+	t.scanned = false
+	t.scan_gen += 1
+	t.mode = .Nav
+	textfield_reset(&t.filter)
+	filetree_scan_start(editor)
+	if t.active {
+		filetree_rebuild(editor)
+		filetree_prewarm_start(editor)
+	}
 }
 
 filetree_paths_set :: proc(set: ^map[string]bool, path: string) {
@@ -1376,7 +1407,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		filetree_repath_buffers(editor, old, full)
 		filetree_filter_invalidate(t)
 		filetree_reveal(editor, full)
-	case .Nav, .ConfirmDelete, .ConfirmClose:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
 	}
 }
 
@@ -1622,11 +1653,7 @@ filetree_close_targets :: proc(editor: ^Editor) -> (total, unsaved: int) {
 
 filetree_close_question :: proc(editor: ^Editor) -> string {
 	total, unsaved := filetree_close_targets(editor)
-	plural := "" if total == 1 else "s"
-	if unsaved > 0 {
-		return fmt.tprintf("Close %d buffer%s? (%d unsaved)", total, plural, unsaved)
-	}
-	return fmt.tprintf("Close %d buffer%s?", total, plural)
+	return close_question(total, unsaved)
 }
 
 filetree_close_close :: proc(editor: ^Editor) {
@@ -1671,8 +1698,40 @@ filetree_close_execute :: proc(editor: ^Editor) {
 	}
 }
 
+filetree_root_question :: proc(editor: ^Editor) -> string {
+	return close_question(editor_outside_buffers(editor, editor.filetree.root_target))
+}
+
+filetree_root_execute :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	t.mode = .Nav
+	if t.close_selected == 1 {
+		editor_change_root(editor, t.root_target)
+	}
+}
+
+filetree_cmd_set_root :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	target := filetree_target_dir(editor)
+	if target == editor.working_root {
+		return
+	}
+	if _, unsaved := editor_outside_buffers(editor, target); unsaved > 0 {
+		delete(t.root_target)
+		t.root_target = strings.clone(target)
+		t.mode = .ConfirmRoot
+		t.close_selected = 0
+		return
+	}
+	editor_change_root(editor, target)
+}
+
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
+	if t.mode == .ConfirmRoot {
+		dialog_key(editor, ev, &t.close_selected, len(filetree_close_actions), filetree_root_execute, filetree_close_close)
+		return
+	}
 	if t.mode == .ConfirmClose {
 		dialog_key(editor, ev, &t.close_selected, len(filetree_close_actions), filetree_close_execute, filetree_close_close)
 		return
@@ -1962,6 +2021,9 @@ filetree_render :: proc(editor: ^Editor) {
 	if t.mode == .ConfirmClose {
 		dialog_render(editor, filetree_close_question(editor), filetree_close_actions[:], t.close_selected)
 	}
+	if t.mode == .ConfirmRoot {
+		dialog_render(editor, filetree_root_question(editor), filetree_close_actions[:], t.close_selected)
+	}
 }
 
 filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
@@ -2007,7 +2069,7 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 		return "New: "
 	case .Rename:
 		return "Rename: "
-	case .Nav, .ConfirmDelete, .ConfirmClose:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
 	}
 	return ""
 }
@@ -2016,7 +2078,7 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	t := &editor.filetree
 	inner := lay.inner
 	switch t.mode {
-	case .Nav, .ConfirmDelete, .ConfirmClose:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
 		Chip :: struct {
 			label: string,
 			on:    bool,
@@ -2064,6 +2126,10 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
+	if t.mode == .ConfirmRoot {
+		dialog_mouse(editor, ev, filetree_root_question(editor), filetree_close_actions[:], &t.close_selected, filetree_root_execute, filetree_close_close)
+		return
+	}
 	if t.mode == .ConfirmClose {
 		dialog_mouse(editor, ev, filetree_close_question(editor), filetree_close_actions[:], &t.close_selected, filetree_close_execute, filetree_close_close)
 		return

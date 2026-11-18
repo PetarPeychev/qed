@@ -58,6 +58,18 @@ projsearch_destroy :: proc(p: ^ProjSearch) {
 	textfield_destroy(&p.field)
 }
 
+projsearch_root_reset :: proc(p: ^ProjSearch) {
+	p.want = false
+	subprocess_kill(&p.sub)
+	projsearch_clear_matches(p)
+	projsearch_clear_scope(p)
+	p.from_tree = false
+	p.selected = 0
+	p.scroll = 0
+	p.pending_keep = 0
+	preview_reset(&p.preview)
+}
+
 projsearch_open :: proc(editor: ^Editor) {
 	p := &editor.projsearch
 	projsearch_clear_scope(p)

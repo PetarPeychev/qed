@@ -245,6 +245,10 @@ lsp_module_sync :: proc(editor: ^Editor) {
 	if module_enabled(.Lsp) {
 		return
 	}
+	lsp_restart_all(editor)
+}
+
+lsp_restart_all :: proc(editor: ^Editor) {
 	if len(g_lsps) > 0 {
 		lsp_stop(editor)
 	}

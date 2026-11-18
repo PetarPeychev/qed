@@ -54,6 +54,7 @@ Editor :: struct {
 	langpick:        LangPick,
 	themepick:       ThemePick,
 	indentpick:      IndentPick,
+	cwdpick:         CwdPick,
 	linefind:        LineFind,
 	find:            Find,
 	projsearch:      ProjSearch,
@@ -184,6 +185,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	langpick_destroy(&editor.langpick)
 	themepick_destroy(&editor.themepick)
 	indentpick_destroy(&editor.indentpick)
+	cwdpick_destroy(&editor.cwdpick)
 	linefind_destroy(&editor.linefind)
 	find_destroy(&editor.find)
 	projsearch_destroy(&editor.projsearch)
@@ -243,7 +245,7 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
@@ -252,6 +254,7 @@ editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
 		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
 		{&editor.themepick.active, themepick_dispatch_key, themepick_render, themepick_dispatch_mouse, themepick_paste},
 		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse, indentpick_paste},
+		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
 		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render, projsearch_dispatch_mouse, projsearch_paste},
@@ -334,6 +337,10 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			}
 			if command_matches(ev, "Debug: Message Log") {
 				logview_open(editor)
+				return
+			}
+			if command_matches(ev, "Change Working Directory") {
+				cwdpick_open(editor)
 				return
 			}
 			if command_matches(ev, "Quit") {

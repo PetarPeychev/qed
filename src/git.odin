@@ -83,6 +83,17 @@ git_stat_pump :: proc(editor: ^Editor) -> bool {
 	return changed
 }
 
+git_stat_reset :: proc(editor: ^Editor) {
+	s := &editor.gitstat
+	subprocess_kill(&s.sub)
+	delete(s.branch)
+	s.branch = ""
+	s.ahead = 0
+	s.behind = 0
+	s.poll = {}
+	git_stat_maybe_start(editor)
+}
+
 git_stat_destroy :: proc(s: ^GitStat) {
 	subprocess_kill(&s.sub)
 	delete(s.branch)
