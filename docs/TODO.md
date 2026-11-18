@@ -97,6 +97,7 @@ runtime-grammar arc that lets a stranger add *any* language with zero rebuild â€
 
 ### Git diff gutter
 
+- [ ] Diff size `+N -N` (worktree vs HEAD, untracked counted as +): repo total in status bar, per file in file tree Git tab.
 - [ ] Git diff viewer (design TBD): a pane showing the full diff, beyond the gutter marks.
 - [ ] Stage / unstage hunks (later).
 - [ ] Idea: reuse the gutter to mark lines changed since last save (buffer vs disk).
