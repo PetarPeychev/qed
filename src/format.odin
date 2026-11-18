@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:path/filepath"
 import "core:strings"
 
 line_trailing_ws :: proc(text: []u8) -> int {
@@ -105,9 +106,14 @@ format_external :: proc(editor: ^Editor, b: ^Buffer, save_after: bool) {
 		return
 	}
 
+	file := b.path
+	if file == "" {
+		file, _ = filepath.join({editor.working_root, "untitled"}, context.temp_allocator)
+	}
+	run, _ := strings.replace_all(cmd, "{file}", shell_quote(file), context.temp_allocator)
 	input := buffer_snapshot(b)
 	defer delete(input)
-	out, ok := shell_filter(cmd, input)
+	out, ok := shell_filter(run, input, filepath.dir(file))
 	if !ok || len(out) == 0 {
 		editor_log(editor, .Error, "Format", fmt.tprintf("%s failed", tool))
 		if save_after {

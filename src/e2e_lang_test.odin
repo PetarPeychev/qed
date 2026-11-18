@@ -162,6 +162,51 @@ e2e_format_run_logs_debug :: proc(t: ^testing.T) {
 	testing.expect(t, found, "format run logged a Debug trail entry")
 }
 
+e2e_format_probe :: proc(t: ^testing.T, formatter_args: string, filter: string, want_args: proc(file: string) -> string, want_line: string) {
+	e2e_enter()
+	e2e_seq += 1
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	dir := fmt.aprintf("%s/qed_e2e_fmt dir_%d_%d", tmp, posix.getpid(), e2e_seq)
+	os.make_directory(dir)
+	file := fmt.aprintf("%s/a b.txt", dir)
+	_ = os.write_entire_file(file, transmute([]u8)string("hello"))
+	e := E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
+	defer e2e_stop(&e)
+
+	pwd_out := fmt.tprintf("%s/pwd.out", dir)
+	args_out := fmt.tprintf("%s/args.out", dir)
+	stub := e2e_stub_script(fmt.tprintf("pwd > %s\nprintf '%%s\\n' \"$@\" > %s\n%s", shell_quote(pwd_out), shell_quote(args_out), filter))
+	defer {
+		os.remove(stub)
+		delete(stub)
+	}
+	old := LANGUAGES[.Plain].formatter
+	LANGUAGES[.Plain].formatter = fmt.tprintf("%s%s", stub, formatter_args)
+	defer LANGUAGES[.Plain].formatter = old
+
+	format_document(&e.ed)
+
+	pwd, _ := os.read_entire_file(pwd_out, context.temp_allocator)
+	testing.expect_value(t, strings.trim_right_space(string(pwd)), dir)
+	args, _ := os.read_entire_file(args_out, context.temp_allocator)
+	testing.expect_value(t, string(args), want_args(file))
+	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), want_line)
+}
+
+@(test)
+e2e_format_file_placeholder :: proc(t: ^testing.T) {
+	e2e_format_probe(t, " --stdin-filename {file} -", "cat", proc(file: string) -> string {
+		return fmt.tprintf("--stdin-filename\n%s\n-\n", file)
+	}, "hello")
+}
+
+@(test)
+e2e_format_without_placeholder :: proc(t: ^testing.T) {
+	e2e_format_probe(t, "", "tr 'a-z' 'A-Z'", proc(file: string) -> string {
+		return "\n"
+	}, "HELLO")
+}
+
 @(test)
 e2e_trim_trailing_whitespace :: proc(t: ^testing.T) {
 	e := e2e_start("foo   \n\tbar\t\n   \nbaz")

@@ -49,7 +49,7 @@ shell_feed :: proc(cmd: cstring, input: string) -> (ok: bool) {
 // Run `cmd` as a stdin→stdout filter over `input`. The input goes through a temp
 // file (not a pipe) so writing it can't deadlock against the filter's output; the
 // filter's stderr is discarded so it never corrupts the TUI. `ok` is the exit-0 status.
-shell_filter :: proc(cmd: string, input: string, allocator := context.temp_allocator) -> (out: string, ok: bool) {
+shell_filter :: proc(cmd: string, input: string, dir: string, allocator := context.temp_allocator) -> (out: string, ok: bool) {
 	tmp := fmt.tprintf("/tmp/qed-fmt-%d.tmp", posix.getpid())
 	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, os.perm(0o600))
 	if open_err != nil {
@@ -63,7 +63,7 @@ shell_filter :: proc(cmd: string, input: string, allocator := context.temp_alloc
 	}
 	defer os.remove(tmp)
 
-	full := fmt.ctprintf("%s < %s 2>/dev/null", cmd, shell_quote(tmp))
+	full := fmt.ctprintf("cd %s 2>/dev/null && %s < %s 2>/dev/null", shell_quote(dir), cmd, shell_quote(tmp))
 	stream := popen(full, "r")
 	if stream == nil {
 		return "", false

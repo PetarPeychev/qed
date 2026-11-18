@@ -112,7 +112,9 @@ user-overridable fields:
   (most-specific first), e.g. `["*.py", "*.pyw"]` or dotfiles like `.bashrc`.
 - **`lsp`**: the language-server command (`""` is none), e.g. `pyright-langserver --stdio`.
 - **`formatter`**: an external stdin-to-stdout filter (`""` falls back to LSP
-  formatting), e.g. `ruff format -`.
+  formatting), e.g. `ruff format -`. It runs in the file's directory; `{file}` is
+  replaced with the file's quoted absolute path, for tools that take a
+  stdin-filename flag (`ruff format --stdin-filename {file} -`).
 
 Overriding one field merges over the compiled-in default, so you can swap just a
 formatter or point `lsp` at a different binary. Syntax highlighting is wired into

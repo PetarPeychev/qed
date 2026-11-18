@@ -156,7 +156,7 @@ can be swapped in config (see the
 | Shell | ✓ | [bash-language-server](https://github.com/bash-lsp/bash-language-server) | |
 | Lua | ✓ | [lua-language-server](https://github.com/LuaLS/lua-language-server) | |
 | YAML | ✓ | [yaml-language-server](https://github.com/redhat-developer/yaml-language-server) | |
-| TOML | ✓ | [taplo](https://taplo.tamasfe.dev) | `taplo fmt -` |
+| TOML | ✓ | [taplo](https://taplo.tamasfe.dev) | `taplo fmt` |
 | Dockerfile | ✓ | [docker-langserver](https://github.com/rcjsuen/dockerfile-language-server) | |
 | JSON | ✓ | | [prettier](https://github.com/prettier/prettier) |
 | SQL | ✓ | | [sql-formatter](https://github.com/sql-formatter-org/sql-formatter) |

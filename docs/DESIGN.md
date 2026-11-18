@@ -385,7 +385,10 @@ re-opens LSP).
   language's external `formatter` (a `LANGUAGES` field, e.g. Python → `ruff format -`)
   over the LSP path. The buffer is piped through the tool as a stdin→stdout filter
   (`shell_filter`: temp-file input so writing can't deadlock the output, stderr
-  discarded so it can't corrupt the TUI), and the result is applied as one undo
+  discarded so it can't corrupt the TUI). The tool runs with cwd = the file's dir
+  (`cd` in the subshell, so its config discovery works; path-less → `working_root`),
+  and `{file}` in the command becomes the shell-quoted absolute path (path-less →
+  `<working_root>/untitled`). The result is applied as one undo
   group (whole-buffer replace, cursor clamped). A missing tool / non-zero exit
   reports a message and leaves the buffer untouched (on save, it saves unformatted).
   `format_on_save` is a config knob seeding `editor.format_on_save` at startup.

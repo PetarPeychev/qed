@@ -143,7 +143,7 @@
     "python": {
       "patterns": ["*.py", "*.pyw"],
       "lsp": "pyright-langserver --stdio",
-      "formatter": "ruff format -"
+      "formatter": "ruff format --stdin-filename {file} -"
     },
     "go": {
       "patterns": ["*.go"],
@@ -178,7 +178,7 @@
     "toml": {
       "patterns": ["*.toml"],
       "lsp": "taplo lsp stdio",
-      "formatter": "taplo fmt -"
+      "formatter": "taplo fmt --stdin-filepath {file} -"
     },
     "dockerfile": {
       "patterns": ["Dockerfile", "*.dockerfile", "Dockerfile.*"],
@@ -188,7 +188,7 @@
     "json": {
       "patterns": ["*.json"],
       "lsp": "",
-      "formatter": "prettier --parser json"
+      "formatter": "prettier --parser json --stdin-filepath {file}"
     },
     "html": {
       "patterns": ["*.html", "*.htm"],
