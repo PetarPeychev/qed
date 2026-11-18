@@ -2072,6 +2072,10 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		cmd.run(editor)
 		return
 	}
+	if cmd, ok := plugin_command_for_event(editor, ev, true); ok {
+		plugin_command_chord(editor, cmd)
+		return
+	}
 	if ev_alt(ev) && ev.ch != 0 {
 		return
 	}

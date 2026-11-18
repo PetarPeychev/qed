@@ -14,6 +14,19 @@ Command :: struct {
 	alt_ch:      rune,
 	module:      Module,
 	run:         proc(editor: ^Editor),
+	owner:       string,
+	ref:         i32,
+	when_ref:    i32,
+	filetree:    bool,
+	key_default: string,
+}
+
+command_run :: proc(editor: ^Editor, cmd: Command) {
+	if cmd.owner != "" {
+		plugin_command_run(editor, cmd)
+		return
+	}
+	cmd.run(editor)
 }
 
 command_config_name :: proc(cmd: Command) -> string {
@@ -123,6 +136,7 @@ cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
 cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
 cmd_message_log :: proc(editor: ^Editor) {logview_open(editor)}
+cmd_plugins :: proc(editor: ^Editor) {pluginview_open(editor)}
 
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
@@ -177,6 +191,7 @@ commands := [?]Command {
 	{name = "LSP: Restart", module = .Lsp, run = cmd_lsp_restart},
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
 	{name = "Debug: Message Log", run = cmd_message_log},
+	{name = "Debug: Plugins", run = cmd_plugins},
 }
 
 filetree_commands := [?]Command {
@@ -222,7 +237,7 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 		switch name {
 		case "File Tree", "File Tree: Open", "File Tree: Git", "File Tree: Unsaved",
 		     "Terminal: Toggle", "Find in Files",
-		     "Debug: Message Log", "Set Theme", "Change Working Directory", "Quit":
+		     "Debug: Message Log", "Debug: Plugins", "Set Theme", "Change Working Directory", "Quit":
 			return true
 		}
 		return false
@@ -341,12 +356,27 @@ palette_open :: proc(editor: ^Editor) {
 			append(&p.indices, i)
 		}
 	}
+	if !editor.welcome || p.filetree {
+		base := len(filetree_commands) if p.filetree else len(commands)
+		for cmd, i in editor.plugins.commands {
+			if cmd.filetree != p.filetree || !plugin_command_when(editor, cmd) {
+				continue
+			}
+			append(&p.names, cmd.name)
+			append(&p.indices, base + i)
+		}
+	}
 	p.fuzzy = fuzzy_begin(p.names[:])
 	fuzzy_list_refilter(&p.list)
 }
 
-palette_command :: proc(p: ^Palette, match: int) -> Command {
+palette_command :: proc(editor: ^Editor, match: int) -> Command {
+	p := &editor.palette
 	idx := p.indices[p.matches[match]]
+	base := len(filetree_commands) if p.filetree else len(commands)
+	if idx >= base {
+		return editor.plugins.commands[idx - base]
+	}
 	if p.filetree {
 		return filetree_commands[idx]
 	}
@@ -363,9 +393,9 @@ palette_execute :: proc(editor: ^Editor) {
 	if len(p.matches) == 0 {
 		return
 	}
-	cmd := palette_command(p, p.selected)
+	cmd := palette_command(editor, p.selected)
 	palette_close(editor)
-	cmd.run(editor)
+	command_run(editor, cmd)
 }
 
 palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -411,7 +441,7 @@ palette_render :: proc(editor: ^Editor) {
 
 	for i in 0 ..< rows {
 		idx := p.scroll + i
-		cmd := palette_command(p, idx)
+		cmd := palette_command(editor, idx)
 		y := inner.y + 2 + i
 		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
 		sc_fg := COLOR_PANE_SHORTCUT_FG

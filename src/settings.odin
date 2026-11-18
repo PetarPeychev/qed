@@ -51,6 +51,7 @@ CODE_LIST_MIN_WIDTH: int
 CODE_LIST_MAX_WIDTH: int
 PREVIEW_MIN_WIDTH: int
 PREVIEW_MAX_WIDTH: int
+PLUGIN_MEMORY_MB: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -72,6 +73,7 @@ config_ints := [?]Config_Int {
 	{"code_list_max_width", &CODE_LIST_MAX_WIDTH},
 	{"preview_min_width", &PREVIEW_MIN_WIDTH},
 	{"preview_max_width", &PREVIEW_MAX_WIDTH},
+	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
 }
 
 FORMAT_ON_SAVE: bool
@@ -379,6 +381,7 @@ embedded_config_data := #load("../config/config.json")
 
 g_config_defaults: json.Object
 g_theme_defaults: json.Object
+g_config_user: json.Object
 
 // Runs before main (and before tests): the valueless globals in config.odin get
 // their defaults from the embedded config/ JSON; soundness is enforced by tests.
@@ -423,6 +426,15 @@ settings_destroy :: proc "contextless" () {
 	for it in config_icons {
 		delete(it.ptr^, os.heap_allocator())
 	}
+	config_user_set(nil)
+}
+
+config_user_set :: proc(root: json.Object) {
+	json.destroy_value(g_config_user, os.heap_allocator())
+	g_config_user = nil
+	if root != nil {
+		g_config_user = json.clone_value(root, os.heap_allocator()).(json.Object)
+	}
 }
 
 config_defaults_apply :: proc() {
@@ -431,17 +443,19 @@ config_defaults_apply :: proc() {
 	config_apply(g_config_defaults, &scratch)
 }
 
-config_load :: proc() -> (message: string, is_error: bool) {
+config_load :: proc(plugin_commands: []string = nil) -> (message: string, is_error: bool) {
 	path := config_path()
 	if path == "" {
 		config_defaults_apply()
+		config_user_set(nil)
 		return theme_load(path)
 	}
-	return config_load_from(path)
+	return config_load_from(path, plugin_commands)
 }
 
-config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
+config_load_from :: proc(path: string, plugin_commands: []string = nil) -> (message: string, is_error: bool) {
 	config_defaults_apply()
+	config_user_set(nil)
 
 	problems := make([dynamic]string, context.temp_allocator)
 	is_error = false
@@ -457,7 +471,8 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			is_error = true
 		} else {
 			config_apply(root, &problems)
-			config_collect_unknown(root, &problems)
+			config_collect_unknown(root, &problems, plugin_commands)
+			config_user_set(root)
 			if len(problems) > 0 {
 				list := strings.join(problems[:], ", ", context.temp_allocator)
 				message = fmt.tprintf("config.json: ignoring %s", list)
@@ -610,12 +625,24 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 			append(invalid, "modules")
 		}
 	}
+
+	if plugins_val, present := root["plugins"]; present {
+		if plugins_obj, is_obj := plugins_val.(json.Object); is_obj {
+			for name, v in plugins_obj {
+				if _, ok := v.(json.Object); !ok {
+					append(invalid, fmt.tprintf("plugins/%s", name))
+				}
+			}
+		} else {
+			append(invalid, "plugins")
+		}
+	}
 }
 
-config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
+config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string, plugin_commands: []string = nil) {
 	for key in root {
 		switch key {
-		case "theme", "keybinds", "languages", "modules":
+		case "theme", "keybinds", "languages", "modules", "plugins":
 			continue
 		}
 		known := false
@@ -655,7 +682,7 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 					}
 				}
 			}
-			if !found {
+			if !found && !slice.contains(plugin_commands, key) {
 				append(warnings, fmt.tprintf("unknown keybinds/%q", key))
 			}
 		}

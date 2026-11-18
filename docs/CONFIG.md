@@ -172,6 +172,26 @@ Configures both AI features (selection edit + inline FIM completion). See
 | `completion_debounce_ms` | `350` | Idle delay before firing a FIM request. |
 | `completion_context_lines` | `200` | Lines of prefix/suffix context sent with each FIM request. |
 
+## Plugins
+
+Lua plugins: bundled ones ship in the binary, your own go in
+`~/.config/qed/plugins/` as `name.lua` or `name/init.lua`. See
+[notes/plugins.md](notes/plugins.md). *Debug: Plugins* lists them with their state
+and last error.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugin_memory_mb` | `64` | Memory cap for the Lua state; a plugin that exceeds it errors instead of growing. `0` means no cap. |
+| `plugins.<name>.enabled` | `true` | Off skips loading that plugin. |
+| `plugins.<name>.<key>` | plugin's `defaults` | Per-key override of the plugin's own config; objects merge per key, arrays replace. |
+
+A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
+like any builtin (`""` unbinds).
+
+```json
+{ "plugins": { "mytool": { "enabled": false } } }
+```
+
 ## Themes & colors
 
 Colors are not in `config.json`; they live in themes. Set the active theme with

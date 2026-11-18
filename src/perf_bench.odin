@@ -514,6 +514,44 @@ bench_filetree_walk :: proc(t: ^testing.T) {
 	delete(editor.filetree.filter_cands)
 }
 
+@(test)
+bench_plugin_startup :: proc(t: ^testing.T) {
+	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
+		return
+	}
+	run :: proc(label: string, bundled: []PluginFile) {
+		ed := Editor{headless = true}
+		start := time.tick_now()
+		editor_plugins_start(&ed, bundled, "", nil, PLUGIN_MEMORY_MB * 1024 * 1024)
+		total := ms_since(start)
+		fmt.eprintfln("%s: Lua init %.3f ms, %d plugin(s), total %.3f ms", label, ed.plugins.init_ms, len(ed.plugins.list), total)
+		for pl in ed.plugins.list {
+			if pl.state == .Errored {
+				fmt.eprintfln("  %s errored: %s", pl.name, pl.last_error)
+			}
+		}
+		plugins_shutdown(&ed.plugins)
+		editor_log_destroy(&ed)
+		delete(ed.message_store)
+	}
+	fmt.eprintln("=== plugin startup bench (budget: 5 ms before first paint) ===")
+	run("bundled set", g_bundled_plugins)
+	synthetic := make([]PluginFile, 20, context.temp_allocator)
+	for &f, i in synthetic {
+		f.path = fmt.tprintf("p%02d.lua", i)
+		f.data = fmt.tprintf(`
+			return {{
+				defaults = {{a = 1, nested = {{b = 2}}}},
+				setup = function(cfg)
+					for k = 1, 5 do
+						qed.command{{name = "Bench %02d: " .. k, key = "", run = function() qed.message("x") end}}
+					end
+				end,
+			}}`, i)
+	}
+	run("20 synthetic plugins x 5 commands", synthetic)
+}
+
 @(private = "file")
 c_buffer :: proc(content: string) -> Buffer {
 	b := buffer_new()
@@ -555,7 +593,6 @@ bench_avg :: proc(iters: int, work: proc(b: ^Buffer), b: ^Buffer) -> f64 {
 	return time.duration_milliseconds(total) / f64(iters)
 }
 
-@(private = "file")
 ms_since :: proc(t: time.Tick) -> f64 {
 	return time.duration_milliseconds(time.tick_since(t))
 }

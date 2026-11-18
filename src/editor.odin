@@ -28,6 +28,8 @@ Editor :: struct {
 	message_level:   LogLevel,
 	log:             [dynamic]LogEntry,
 	logview:         LogView,
+	plugins:         Plugins,
+	pluginview:      PluginView,
 	log_file:        ^os.File,
 	log_open:        bool,
 	quit_dialog:     QuitDialog,
@@ -150,6 +152,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	if !headless && editor.working_root != "" {
 		filetree_scan_start(&editor)
 	}
+	editor_plugins_start(&editor, g_bundled_plugins, "" if headless else plugin_user_dir(), editor_config_user(&editor), PLUGIN_MEMORY_MB * 1024 * 1024)
 	if !headless {
 		editor_log(
 			&editor,
@@ -200,6 +203,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	fim_dismiss(editor)
 	aiedit_destroy(&editor.aiedit)
 	term_destroy(editor)
+	plugins_shutdown(&editor.plugins)
 	// Process-global singletons (seeded once at @(init) / lazily, shared across
 	// every editor); real main tears them down once at exit. A headless test reuses
 	// them across many sessions, so freeing them here would dangle the next one.
@@ -248,10 +252,11 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [19]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
+		{&editor.pluginview.active, pluginview_dispatch_key, pluginview_render, pluginview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
 		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
@@ -342,6 +347,10 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			}
 			if command_matches(ev, "Debug: Message Log") {
 				logview_open(editor)
+				return
+			}
+			if command_matches(ev, "Debug: Plugins") {
+				pluginview_open(editor)
 				return
 			}
 			if command_matches(ev, "Change Working Directory") {
@@ -594,6 +603,8 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			if module_enabled(cmd.module) {
 				cmd.run(editor)
 			}
+		} else if pcmd, pok := plugin_command_for_event(editor, ev, false); pok {
+			plugin_command_chord(editor, pcmd)
 		}
 		return
 	}
@@ -602,6 +613,11 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		if module_enabled(cmd.module) {
 			cmd.run(editor)
 		}
+		return
+	}
+
+	if pcmd, pok := plugin_command_for_event(editor, ev, false); pok {
+		plugin_command_chord(editor, pcmd)
 		return
 	}
 
@@ -1028,7 +1044,8 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		return false
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
-	message, is_error := config_load_from(path)
+	message, is_error := config_load_from(path, plugin_command_names(&editor.plugins))
+	plugins_rebind(editor, editor_config_user(editor))
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)

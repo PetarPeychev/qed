@@ -331,6 +331,33 @@ servers, clear gutters/diagnostics, cancel in-flight AI). Merge-conflict highlig
 (`conflict.odin`) rides with `.Git` by decision, though its diff helpers
 (`git_myers`/`git_word_span`/`git_hash`) are dependency-free and stay compiled.
 
+## Plugins
+
+Lua 5.4 (`lib/lua`, vendored source built static by `build.sh`; trimmed bindings in
+`lib/lua/lua.odin`). Design and phase plan: [notes/plugins.md](notes/plugins.md).
+`plugin.odin` owns one `lua_State` per editor (`editor.plugins`), started at the end of
+`editor_init`. Bundled plugins are embedded from repo `plugins/` (`#load_directory`, one
+`bundled_plugin_dirs` entry per dir plugin since the directive does not recurse); user
+plugins come from `~/.config/qed/plugins/` (skipped headless). Shape is `name.lua` or
+`name/init.lua` returning `{defaults, setup}`; order is bundled then user, alphabetical, a
+user plugin shadows a same-name bundled one. Each plugin gets its own `_ENV` (globals
+fall through to `_G`), its own `qed` table (C closures carrying the owner name), a
+`require` that resolves only inside its dir (single-file plugins: stdlib only), and a
+`print` that logs. Every Odin→Lua call goes through `plugin_call` (pcall + traceback);
+`plugin_enter` stashes the `^Editor` and Odin `context` in the registry per call, so
+callbacks never hold a pointer that a moved `Editor` would dangle. Load/setup errors
+mark the plugin `Errored` and `plugin_unload` drops its registrations; command errors
+only log. Errors log `.Error` under the plugin name, traceback at `.Debug`, last error
+kept per plugin. The allocator caps the state at `plugin_memory_mb` (OOM →
+`LUA_ERRMEM`). Config: `plugins.<name>` (embedded config.json, then user) merges per key
+over the Lua `defaults` (objects recurse, arrays replace, unknown keys and plugin names
+warn); `enabled: false` skips loading. Commands live in `plugins.commands`
+(`Command.owner/ref/when_ref/filetree`); palette and chord dispatch consult builtins
+first, then plugin commands; `when` gates both; config `keybinds[name]` overrides the
+plugin `key` (`plugins_rebind` on config reload). API so far: `qed.log`, `qed.message`,
+`qed.command`, `qed.run`. *Debug: Plugins* is a read-only core pane (name, source,
+state, load ms, last error) that works without Lua.
+
 ## Language detection
 
 Each `Buffer` carries a `language: Language`, set once at open (`language_of`).
@@ -507,8 +534,9 @@ defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable g
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
-Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
+`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, `qed` API, *Debug: Plugins* pane) · `perf_bench`.
+Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
+Bundled Lua plugins live in `plugins/` at the repo root.
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -526,8 +554,10 @@ many sessions reuse them; a mutex serializes sessions (the termbox singleton
 doesn't survive re-init). Harness capabilities: `e2e_mouse` / `e2e_paste` /
 `e2e_resize` (TIOCSWINSZ + SIGWINCH, size restored on stop), a temp-git-repo
 fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
-formatter / chat command / FIM endpoint), and a fake stdio LSP server (canned
-JSON-RPC, in `e2e_lsp_test.odin`). Coverage is one file per area:
+formatter / chat command / FIM endpoint), a fake stdio LSP server (canned
+JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` (injects a user plugin
+through the real loader). Plugin bindings are unit-tested on a headless state in
+`plugin_test.odin`. Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
 

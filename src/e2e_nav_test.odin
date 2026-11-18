@@ -307,7 +307,7 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 
 	e2e_type(&e, "line wrap")
 	testing.expect(t, len(p.matches) > 0, "fuzzy query should match a command")
-	testing.expect_value(t, palette_command(p, p.selected).name, "Toggle Line Wrap")
+	testing.expect_value(t, palette_command(&e.ed, p.selected).name, "Toggle Line Wrap")
 
 	rows = min(len(p.matches), PALETTE_MAX_ROWS)
 	box = pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)

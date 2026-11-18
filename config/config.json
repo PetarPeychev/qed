@@ -18,6 +18,7 @@
   "code_list_max_width": 100,
   "preview_min_width": 70,
   "preview_max_width": 130,
+  "plugin_memory_mb": 64,
   "format_on_save": false,
   "trim_trailing_whitespace_on_save": false,
   "ensure_final_newline_on_save": false,
@@ -51,6 +52,7 @@
       "completion_enabled": false
     }
   },
+  "plugins": {},
   "theme": "default",
   "keybinds": {
     "Command Palette": "Ctrl+p",
@@ -103,6 +105,7 @@
     "LSP: Restart": "",
     "Debug: Inspect Tokens": "",
     "Debug: Message Log": "Alt+l",
+    "Debug: Plugins": "",
     "File Tree: Delete": "Ctrl+d",
     "File Tree: Rename": "Ctrl+r",
     "File Tree: New": "Ctrl+n",

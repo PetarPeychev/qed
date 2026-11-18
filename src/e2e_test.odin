@@ -213,6 +213,17 @@ e2e_stub_script :: proc(body: string) -> string {
 	return path
 }
 
+e2e_plugin :: proc(e: ^E2E, name, src: string) -> ^Plugin {
+	e2e_seq += 1
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	path := fmt.tprintf("%s/qed_e2e_plugin_%d_%d_%s.lua", tmp, posix.getpid(), e2e_seq, name)
+	_ = os.write_entire_file(path, transmute([]u8)src)
+	defer os.remove(path)
+	pl := plugins_add(&e.ed.plugins, Plugin{name = name, main = path}, false)
+	plugin_load(&e.ed, pl)
+	return pl
+}
+
 e2e_type :: proc(e: ^E2E, s: string) {
 	for r in s {
 		if r == '\n' {
