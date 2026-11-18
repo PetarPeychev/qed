@@ -1590,6 +1590,8 @@ editor_render_status :: proc(editor: ^Editor) {
 			right = fmt.tprintf("AI:%d  %s", n, right)
 		}
 	}
+	diff_label := ""
+	diff_x := 0
 	if module_enabled(.Git) && editor.gitstat.branch != "" {
 		status = fmt.tprintf("%s  %s %s", status, ICON_STATUS_BRANCH, editor.gitstat.branch)
 		if editor.gitstat.ahead > 0 {
@@ -1599,11 +1601,18 @@ editor_render_status :: proc(editor: ^Editor) {
 			sep := "" if editor.gitstat.ahead > 0 else " "
 			status = fmt.tprintf("%s%s%s%d", status, sep, ICON_STATUS_BEHIND, editor.gitstat.behind)
 		}
+		diff_label = git_diffsize_label(editor.gitstat.diff)
+		if diff_label != "" {
+			status = fmt.tprintf("%s  ", status)
+			diff_x = visual_width(transmute([]u8)status)
+			status = fmt.tprintf("%s%s", status, diff_label)
+		}
 	}
 	if len(editor.buffers) > 1 {
 		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
 	}
 	editor_render_row(0, h, full_w, status, COLOR_PANE_FG, COLOR_PANE_BG)
+	git_diffsize_paint(diff_x, h, full_w, diff_label, COLOR_PANE_BG)
 	right_w := visual_width(transmute([]u8)right)
 	right_x := max(0, full_w - right_w - 1)
 	right_cstr := strings.clone_to_cstring(right, context.temp_allocator)

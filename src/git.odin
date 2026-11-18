@@ -13,9 +13,14 @@ GIT_STAT_POLL_MS :: 2000
 
 g_diff_view: bool
 
+GitDiffSize :: struct {
+	added, deleted: int,
+}
+
 GitStat :: struct {
 	branch:        string,
 	ahead, behind: int,
+	diff:          GitDiffSize,
 	sub:           Subprocess,
 	poll:          time.Tick,
 }
@@ -33,10 +38,12 @@ git_stat_maybe_start :: proc(editor: ^Editor) {
 	q := shell_quote(root)
 	// odin fmt parses {} placeholders, hence {{u}} for a literal @{u}
 	cmd := fmt.tprintf(
-		"git -C %s symbolic-ref --short -q HEAD 2>/dev/null || git -C %s rev-parse --short HEAD 2>/dev/null; git -C %s rev-list --left-right --count '@{{u}}...HEAD' 2>/dev/null",
+		"git -C %s symbolic-ref --short -q HEAD 2>/dev/null || git -C %s rev-parse --short HEAD 2>/dev/null || echo; git -C %s rev-list --left-right --count '@{{u}}...HEAD' 2>/dev/null || echo; top=$(git -C %s rev-parse --show-toplevel 2>/dev/null) && (%s)",
 		q,
 		q,
 		q,
+		q,
+		git_diffsize_cmd(`"$top"`),
 	)
 	sub, serr, ok := subprocess_start(cmd, nil, root)
 	if ok {
@@ -69,9 +76,10 @@ git_stat_pump :: proc(editor: ^Editor) -> bool {
 			ahead, _ = strconv.parse_int(counts[1])
 		}
 	}
-	changed := branch != s.branch || ahead != s.ahead || behind != s.behind
+	diff := git_diffsize_total(lines)
+	changed := branch != s.branch || ahead != s.ahead || behind != s.behind || diff != s.diff
 	if changed {
-		editor_log(editor, .Debug, "Git", fmt.tprintf("branch %s ahead %d behind %d", branch, ahead, behind))
+		editor_log(editor, .Debug, "Git", fmt.tprintf("branch %s ahead %d behind %d diff +%d -%d", branch, ahead, behind, diff.added, diff.deleted))
 	}
 	if branch != s.branch {
 		delete(s.branch)
@@ -79,6 +87,7 @@ git_stat_pump :: proc(editor: ^Editor) -> bool {
 	}
 	s.ahead = ahead
 	s.behind = behind
+	s.diff = diff
 	subprocess_destroy(&s.sub)
 	return changed
 }
@@ -90,8 +99,80 @@ git_stat_reset :: proc(editor: ^Editor) {
 	s.branch = ""
 	s.ahead = 0
 	s.behind = 0
+	s.diff = {}
 	s.poll = {}
 	git_stat_maybe_start(editor)
+}
+
+// git diff skips untracked files, so grep counts their lines (-I: binaries count 0)
+git_diffsize_cmd :: proc(dir: string) -> string {
+	return fmt.tprintf(
+		"echo @@NUMSTAT@@; git -C %s diff HEAD --numstat --no-renames 2>/dev/null; echo @@UNTRACKED@@; (cd %s && git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' --) 2>/dev/null",
+		dir,
+		dir,
+	)
+}
+
+git_numstat_line :: proc(line: string, untracked: bool) -> (path: string, size: GitDiffSize, ok: bool) {
+	if untracked {
+		i := strings.last_index_byte(line, ':')
+		if i <= 0 {
+			return
+		}
+		n, nok := strconv.parse_int(line[i + 1:])
+		if !nok {
+			return
+		}
+		return line[:i], {n, 0}, true
+	}
+	parts := strings.split_n(line, "\t", 3, context.temp_allocator)
+	if len(parts) != 3 {
+		return
+	}
+	a, aok := strconv.parse_int(parts[0])
+	d, dok := strconv.parse_int(parts[1])
+	if !aok || !dok {
+		return
+	}
+	return strings.trim(parts[2], "\""), {a, d}, true
+}
+
+git_diffsize_total :: proc(lines: []string) -> (total: GitDiffSize) {
+	section := ""
+	for line in lines {
+		if line == "@@NUMSTAT@@" || line == "@@UNTRACKED@@" {
+			section = line
+			continue
+		}
+		if section == "" {
+			continue
+		}
+		if _, size, ok := git_numstat_line(line, section == "@@UNTRACKED@@"); ok {
+			total.added += size.added
+			total.deleted += size.deleted
+		}
+	}
+	return
+}
+
+git_diffsize_label :: proc(s: GitDiffSize) -> string {
+	if s.added == 0 && s.deleted == 0 {
+		return ""
+	}
+	return fmt.tprintf("+%d -%d", s.added, s.deleted)
+}
+
+git_diffsize_paint :: proc(x, y, max_x: int, label: string, bg: tb2.Color) {
+	fg := COLOR_GIT_ADD
+	for i in 0 ..< len(label) {
+		if x + i >= max_x {
+			return
+		}
+		if label[i] == '-' {
+			fg = COLOR_GIT_DEL
+		}
+		tb2.set_cell(i32(x + i), i32(y), rune(label[i]), fg, bg)
+	}
 }
 
 git_stat_destroy :: proc(s: ^GitStat) {

@@ -71,6 +71,7 @@ FileTree :: struct {
 	preview:         Preview,
 	status:          map[string]GitMark,
 	ignored:         map[string]bool,
+	diffsize:        map[string]GitDiffSize,
 	show_dotfiles:   bool,
 	show_ignored:    bool,
 	git_diff_only:   bool,
@@ -168,6 +169,7 @@ filetree_destroy :: proc(t: ^FileTree) {
 	filetree_clear_status(t)
 	delete(t.status)
 	delete(t.ignored)
+	delete(t.diffsize)
 	filetree_paths_clear(&t.scope_paths)
 	delete(t.scope_paths)
 	filetree_clip_clear(t)
@@ -272,6 +274,10 @@ filetree_clear_status :: proc(t: ^FileTree) {
 		delete(key)
 	}
 	clear(&t.ignored)
+	for key in t.diffsize {
+		delete(key)
+	}
+	clear(&t.diffsize)
 }
 
 // One repo when the root is inside a git repo; otherwise walk down, pruning at
@@ -281,8 +287,8 @@ filetree_clear_status :: proc(t: ^FileTree) {
 filetree_scan_cmd :: proc(root: string) -> cstring {
 	q := shell_quote(root)
 	return fmt.ctprintf(
-		`if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then echo "@@REPO@@ $top"; git -C %s status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do echo "@@REPO@@ $repo"; git -C "$repo" status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; done; fi`,
-		q,
+		`scan() (echo "@@REPO@@ $1"; git -C "$1" status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
+		git_diffsize_cmd(`"$1"`),
 		q,
 		q,
 		"{}",
@@ -357,12 +363,31 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	root := editor.working_root
 	out := output
 	top := ""
+	section := ""
 	for line in strings.split_lines_iterator(&out) {
 		if strings.has_prefix(line, "@@REPO@@ ") {
 			top = strings.trim_space(line[len("@@REPO@@ "):])
+			section = ""
 			continue
 		}
-		if top == "" || len(line) < 4 {
+		if line == "@@NUMSTAT@@" || line == "@@UNTRACKED@@" {
+			section = line
+			continue
+		}
+		if top == "" {
+			continue
+		}
+		if section != "" {
+			rel, size, ok := git_numstat_line(line, section == "@@UNTRACKED@@")
+			if ok && (size.added > 0 || size.deleted > 0) {
+				abs, _ := filepath.join({top, rel}, context.temp_allocator)
+				if abs not_in t.diffsize {
+					t.diffsize[strings.clone(abs)] = size
+				}
+			}
+			continue
+		}
+		if len(line) < 4 {
 			continue
 		}
 		code := line[:2]
@@ -2000,6 +2025,12 @@ filetree_render :: proc(editor: ^Editor) {
 			label = strings.concatenate({label, " ", ICON_MODIFIED}, context.temp_allocator)
 		}
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
+		if t.scope == .Git && !e.is_dir {
+			if size, ok := t.diffsize[e.path]; ok {
+				x := inner.x + 2 + visual_width(transmute([]u8)label)
+				git_diffsize_paint(x, y, inner.x + lay.left_w, git_diffsize_label(size), bg)
+			}
+		}
 	}
 
 	preview_render(&t.preview, lay.right_x + 1, lay.preview_top, lay.right_w - 1, lay.preview_h)

@@ -2,6 +2,33 @@ package main
 
 import "core:testing"
 
+@(test)
+git_numstat_line_parse :: proc(t: ^testing.T) {
+	path, size, ok := git_numstat_line("3\t1\tsrc/a b.odin", false)
+	testing.expect(t, ok)
+	testing.expect_value(t, path, "src/a b.odin")
+	testing.expect_value(t, size, GitDiffSize{3, 1})
+
+	_, _, ok = git_numstat_line("-\t-\timg.png", false)
+	testing.expect(t, !ok, "binary skipped")
+
+	path, size, ok = git_numstat_line("dir/x:y.txt:7", true)
+	testing.expect(t, ok)
+	testing.expect_value(t, path, "dir/x:y.txt")
+	testing.expect_value(t, size, GitDiffSize{7, 0})
+
+	_, _, ok = git_numstat_line("garbage", true)
+	testing.expect(t, !ok)
+}
+
+@(test)
+git_diffsize_total_sections :: proc(t: ^testing.T) {
+	lines := []string{"main", "0\t2", "@@NUMSTAT@@", "4\t2\ta.txt", "-\t-\tb.bin", "@@UNTRACKED@@", "new.txt:5", "blob.dat:0", ""}
+	testing.expect_value(t, git_diffsize_total(lines), GitDiffSize{9, 2})
+	testing.expect_value(t, git_diffsize_label({}), "")
+	testing.expect_value(t, git_diffsize_label({9, 2}), "+9 -2")
+}
+
 @(private = "file")
 diff_marks :: proc(base, cur: []u64) -> []GitMark {
 	marks := make([]GitMark, len(cur))

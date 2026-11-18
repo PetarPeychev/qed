@@ -63,7 +63,9 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
-path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` — polled async every
+path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` + repo diff size
+`+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs HEAD via `git diff HEAD --numstat`, untracked
+files' lines counted by `grep -Ic` as adds, binaries skipped; `git_diffsize_cmd`) — polled async every
 `GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`), then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
@@ -535,7 +537,7 @@ pairs (brackets/quotes/backtick: surround selection, type-over, backspace-delete
 Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default on,
 *Toggle Line Wrap*; visual-row cursor motion + sub-row scroll; wraps ghost-text too),
 line-number + git gutter, mouse (position/drag/wheel/multi-click,
-drag auto-scroll), status + message line (relative path, git branch + ahead/behind, segment icons),
+drag auto-scroll), status + message line (relative path, git branch + ahead/behind + diff size, segment icons),
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
 level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — per-level
 filters, multi-select copy, cross-session history seeded from the disk log behind
@@ -589,7 +591,7 @@ open the pane on that tab from the editor and switch/toggle-close it while open 
 again on its own tab closes — or `←`/`→`/click; also on the welcome screen; `Alt+g` freed from
 *Git: Toggle Diff View* which is now palette-only) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
-`git status --porcelain --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against) scanned **async**
+`git status --porcelain --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against, followed by the same `git_diffsize_cmd` numstat sections, giving each changed file a colored `+N -N` on the Git tab) scanned **async**
 via the shared subprocess runner, prewarmed at startup: every open (first included) renders instantly from the
 cached status/ignored then refreshes in the
 background (`filetree_scan_pump`); a green/yellow `▌` per

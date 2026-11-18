@@ -953,6 +953,66 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_git_diffsize :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("committed\n")
+	defer e2e_stop(&e)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+
+	nav_write(e.path, "changed\nextra\n")
+	newf := fmt.aprintf("%s/new.txt", e.dir)
+	defer delete(newf)
+	nav_write(newf, "n1\nn2")
+	ignore := fmt.aprintf("%s/.gitignore", e.dir)
+	defer delete(ignore)
+	nav_write(ignore, "*.log\n")
+	logf := fmt.aprintf("%s/debug.log", e.dir)
+	defer delete(logf)
+	nav_write(logf, "a\nb\nc\n")
+	binf := fmt.aprintf("%s/blob.dat", e.dir)
+	defer delete(binf)
+	nav_write(binf, "\x00\x01\n\x02\n")
+
+	git_stat_reset(&e.ed)
+	for git_stat_running(&e.ed) {
+		git_stat_pump(&e.ed)
+	}
+	testing.expect_value(t, e.ed.gitstat.diff, GitDiffSize{5, 1})
+
+	e2e_render(&e)
+	_, h := editor_viewport(&e.ed)
+	row := e2e_row(&e, h)
+	off := strings.index(row, "+5 -1")
+	testing.expectf(t, off >= 0, "status bar shows diff size: %q", row)
+	if off >= 0 {
+		x := visual_width(transmute([]u8)row[:off])
+		testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x, h)), e2e_rgb(COLOR_GIT_ADD))
+		testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x + 3, h)), e2e_rgb(COLOR_GIT_DEL))
+	}
+
+	nav_alt(&e, 'g')
+	nav_scan(&e)
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	testing.expect_value(t, tr.diffsize[e.path], GitDiffSize{2, 1})
+	testing.expect_value(t, tr.diffsize[newf], GitDiffSize{2, 0})
+	testing.expect(t, binf not_in tr.diffsize, "binary untracked skipped")
+	testing.expect(t, logf not_in tr.diffsize, "ignored file skipped")
+	e2e_render(&e)
+	found := false
+	for y in 0 ..< int(tb2.height()) {
+		if strings.contains(e2e_row(&e, y), "new.txt +2 -0") {
+			found = true
+		}
+	}
+	testing.expect(t, found, "Git tab row shows per-file diff size")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	if !shell_command_exists("git") {
 		return
