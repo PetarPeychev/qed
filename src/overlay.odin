@@ -233,9 +233,7 @@ overlay_layout :: proc(editor: ^Editor, list := SplitList.None) -> OverlayLayout
 	if !editor.welcome {
 		sh -= STATUS_ROWS
 	}
-	lmin := FILETREE_LIST_MIN_WIDTH if list == .FileTree else CODE_LIST_MIN_WIDTH
-	mx := clamp((sw - (lmin + PREVIEW_MIN_WIDTH + 3)) / 2, 0, PICKER_MARGIN_X)
-	box := Rect{mx, PICKER_MARGIN_Y, max(0, sw - 2 * mx), max(0, sh - 2 * PICKER_MARGIN_Y)}
+	box := Rect{PICKER_MARGIN_X, PICKER_MARGIN_Y, max(0, sw - 2 * PICKER_MARGIN_X), max(0, sh - 2 * PICKER_MARGIN_Y)}
 	inner_w := box.w - 2
 	left_w, right_w, preview := inner_w, 0, false
 	switch list {

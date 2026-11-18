@@ -285,8 +285,7 @@ min/max (`filetree_list_*_width`; `code_list_*_width` for project search + line 
 and the box is centered (extra width becomes margin). Below that, the deficit is taken equally from
 each side down to its min, the other side absorbing the rest. W under both mins hides the preview
 (`lay.preview` false: list takes the full inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
-`editor_previews_sync`). The `PICKER_MARGIN_X` side margin shrinks column by column
-so list min + preview min still fits (0 below that); non-split panes use the code list min as reference.
+`editor_previews_sync`). The `PICKER_MARGIN_X` side margin is fixed at every width.
 Most panes reset their query on open; **line-find and project-search persist it** —
 reopened with the text fully selected (`textfield_select_all`) so a keystroke replaces it,
 else edit/arrow to refine. Project-search also restores its selected match; the file tree
@@ -549,7 +548,7 @@ Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default
 *Toggle Line Wrap*; visual-row cursor motion + sub-row scroll; wraps ghost-text too),
 line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line (relative path, git branch + ahead/behind + diff size, segment icons;
-narrow-width fitting), narrow-width panes (preview hides below the list/preview minimums, side margins shrink first),
+narrow-width fitting), narrow-width panes (preview hides below the list/preview minimums),
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
 level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — per-level
 filters, multi-select copy, cross-session history seeded from the disk log behind
