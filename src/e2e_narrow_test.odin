@@ -50,7 +50,9 @@ e2e_narrow_filetree_hides_preview :: proc(t: ^testing.T) {
 	filetree_load_preview(&e.ed)
 	lay := filetree_layout(&e.ed)
 	testing.expect(t, lay.preview)
-	testing.expect_value(t, lay.left_w, LIST_MAX_WIDTH)
+	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X)
+	testing.expect_value(t, lay.left_w, 30)
+	testing.expect_value(t, lay.right_w, 91)
 	e2e_render(&e)
 	testing.expect(t, narrow_box_has(&e, "NARROWPREVIEWMARK"), "preview shows at 140 cols")
 
@@ -68,4 +70,71 @@ e2e_narrow_filetree_hides_preview :: proc(t: ^testing.T) {
 	filetree_preview_flush(&e.ed)
 	e2e_render(&e)
 	testing.expect(t, narrow_box_has(&e, "NARROWPREVIEWMARK"), "preview returns when widened")
+}
+
+@(test)
+e2e_narrow_filetree_centers_wide :: proc(t: ^testing.T) {
+	e := e2e_root_start("WIDEPREVIEWMARK")
+	defer e2e_stop(&e)
+
+	e2e_resize(&e, 300, E2E_H)
+	nav_alt(&e, 'f')
+	nav_scan(&e)
+	tr := &e.ed.filetree
+	lay := filetree_layout(&e.ed)
+	testing.expect(t, lay.preview)
+	testing.expect_value(t, lay.left_w, FILETREE_LIST_MAX_WIDTH)
+	testing.expect_value(t, lay.right_w, PREVIEW_MAX_WIDTH)
+	testing.expect_value(t, lay.box.w, 60 + 1 + 130 + 2)
+	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X + (300 - 2 * PICKER_MARGIN_X - lay.box.w) / 2)
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, lay.box.x, lay.box.y), '┌')
+	testing.expect_value(t, e2e_cell(&e, lay.box.x + lay.box.w - 1, lay.box.y), '┐')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.title_sep_y), '┬')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.filter_sep_y), '┤')
+	testing.expect_value(t, e2e_cell(&e, lay.box.x, lay.filter_sep_y), '├')
+	testing.expect(t, e2e_cell(&e, lay.inner.x + 1, lay.tab_y) != ' ', "tab bar follows the box")
+	testing.expect(t, e2e_cell(&e, lay.inner.x + 1, lay.footer_y) != ' ', "footer follows the box")
+
+	if len(tr.entries) > 1 {
+		tr.selected = 0
+		e2e_mouse(&e, lay.inner.x + 3, lay.body_top + 1)
+		testing.expect_value(t, tr.selected, 1)
+	}
+	e2e_mouse(&e, lay.box.x - 2, lay.body_top)
+	testing.expect(t, !tr.active, "a click in the centering margin closes the tree")
+}
+
+@(test)
+e2e_narrow_linefind_code_split :: proc(t: ^testing.T) {
+	e := e2e_root_start("one\ntwo\nthree")
+	defer e2e_stop(&e)
+
+	e2e_resize(&e, 300, E2E_H)
+	linefind_open(&e.ed)
+	lay := overlay_layout(&e.ed, .Code)
+	testing.expect(t, lay.preview)
+	testing.expect_value(t, lay.left_w, CODE_LIST_MAX_WIDTH)
+	testing.expect_value(t, lay.right_w, PREVIEW_MAX_WIDTH)
+	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X + (300 - 2 * PICKER_MARGIN_X - lay.box.w) / 2)
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, lay.box.x, lay.box.y), '┌')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.title_sep_y), '┬')
+	testing.expect(t, preview_loaded(&e.ed.linefind.preview))
+
+	e2e_resize(&e, 200, E2E_H)
+	lay = overlay_layout(&e.ed, .Code)
+	testing.expect(t, lay.preview)
+	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X)
+	testing.expect_value(t, lay.left_w, 76)
+	testing.expect_value(t, lay.right_w, 105)
+	testing.expect_value(t, lay.left_w + 1 + lay.right_w, lay.inner.w)
+
+	e2e_resize(&e, 130, E2E_H)
+	lay = overlay_layout(&e.ed, .Code)
+	testing.expect(t, !lay.preview)
+	testing.expect_value(t, lay.left_w, lay.inner.w)
+
+	e2e_mouse(&e, lay.box.x - 2, lay.body_top)
+	testing.expect(t, !e.ed.linefind.active, "a click outside the box closes line jump")
 }

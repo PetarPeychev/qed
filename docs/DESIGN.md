@@ -279,10 +279,12 @@ a click in the query/prompt field places the caret and a button-held drag select
 click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). Shared row/
 field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
 `overlay_prompt_mouse`, `dialog_mouse`; `textfield_mouse` maps a click to a caret).
-List | preview panes (file tree, project search, line jump) split via `overlay_split`: 50/50 (file
-tree list capped at `list_max_width`), the list shrinks first to keep `preview_min_width`, and once
-it would drop under `list_min_width` the preview is hidden (`lay.preview` false: list takes the full
-inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
+List | preview panes (file tree, project search, line jump) split via `overlay_split` with per-list
+min/max (`filetree_list_*_width`; `code_list_*_width` for project search + line jump) and a global
+`preview_min_width`/`preview_max_width`. Inner width W (minus the divider) >= both maxes: both at max
+and the box is centered (extra width becomes margin). Below that, the deficit is taken equally from
+each side down to its min, the other side absorbing the rest. W under both mins hides the preview
+(`lay.preview` false: list takes the full inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
 `editor_previews_sync`). Below `narrow_width` columns (0 = off) `overlay_layout` drops the
 `PICKER_MARGIN_X` side margins.
 Most panes reset their query on open; **line-find and project-search persist it** —
@@ -601,7 +603,7 @@ open the pane on that tab from the editor and switch/toggle-close it while open 
 again on its own tab closes — or `←`/`→`/click; also on the welcome screen; `Alt+g` freed from
 *Git: Toggle Diff View* which is now palette-only) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
-`git status --porcelain --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against, followed by the same `git_diffsize_cmd` numstat sections, giving each changed file a colored `+N -N` on the Git tab) scanned **async**
+`git status --porcelain --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against, followed by the same `git_diffsize_cmd` numstat sections, giving each changed file a colored `+N -N` on the Git tab, right-aligned with `+`/`-` columns padded over the visible rows, label clipped with `…`, numbers dropped when even a short label cannot fit) scanned **async**
 via the shared subprocess runner, prewarmed at startup: every open (first included) renders instantly from the
 cached status/ignored then refreshes in the
 background (`filetree_scan_pump`); a green/yellow `▌` per

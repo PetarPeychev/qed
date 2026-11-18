@@ -403,6 +403,7 @@ e2e_nav_scrollbar :: proc(t: ^testing.T) {
 e2e_nav_open_tab_inmemory_preview :: proc(t: ^testing.T) {
 	e := e2e_root_start("alpha one\nalpha two")
 	defer e2e_stop(&e)
+	e2e_resize(&e, 200, E2E_H)
 
 	// Unsaved in-memory edit to the current buffer.
 	b := editor_buffer(&e.ed)
@@ -1002,13 +1003,29 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 	testing.expect(t, binf not_in tr.diffsize, "binary untracked skipped")
 	testing.expect(t, logf not_in tr.diffsize, "ignored file skipped")
 	e2e_render(&e)
-	found := false
-	for y in 0 ..< int(tb2.height()) {
-		if strings.contains(e2e_row(&e, y), "new.txt +2 -0") {
-			found = true
+	lay := filetree_layout(&e.ed)
+	found := 0
+	for y in lay.body_top ..< lay.body_top + lay.body_h {
+		row := e2e_row(&e, y)
+		want := ""
+		if strings.contains(row, "new.txt") {
+			want = "+2  -0"
+		} else if strings.contains(row, "file.txt") {
+			want = "+2  -1"
+		} else {
+			continue
+		}
+		off := strings.index(row, want)
+		testing.expectf(t, off >= 0, "Git tab row shows per-file diff size: %q", row)
+		if off >= 0 {
+			x := visual_width(transmute([]u8)row[:off])
+			testing.expect_value(t, x + len(want), lay.div_x)
+			testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x, y)), e2e_rgb(COLOR_GIT_ADD))
+			testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x + 4, y)), e2e_rgb(COLOR_GIT_DEL))
+			found += 1
 		}
 	}
-	testing.expect(t, found, "Git tab row shows per-file diff size")
+	testing.expect_value(t, found, 2)
 	e2e_key(&e, .Esc)
 }
 
@@ -1020,6 +1037,7 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	seed := "line 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\n"
 	e := e2e_git_start(seed)
 	defer e2e_stop(&e)
+	e2e_resize(&e, 200, E2E_H)
 	delete(e.ed.working_root)
 	e.ed.working_root = strings.clone(e.dir)
 

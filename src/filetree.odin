@@ -18,6 +18,7 @@ FILETREE_PREVIEW_DEBOUNCE_MS :: 80
 FILETREE_FILTER_MAX_RESULTS :: 500
 FILETREE_WALK_THREADS :: 0
 FILETREE_PREWARM :: true
+FILETREE_DIFFSIZE_MIN_LABEL :: 8
 
 FileTreeMode :: enum {
 	Nav,
@@ -119,7 +120,7 @@ FileTreeLayout :: struct {
 }
 
 filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
-	lay := overlay_layout(editor, LIST_MAX_WIDTH)
+	lay := overlay_layout(editor, .FileTree)
 	inner := lay.inner
 	tab_y := inner.y
 	title_sep_y := inner.y + 1
@@ -2005,6 +2006,15 @@ filetree_render :: proc(editor: ^Editor) {
 
 	sel_lo, sel_hi := filetree_sel_range(t)
 	end := min(t.scroll + lay.body_h, len(t.entries))
+	addw, delw := 0, 0
+	if t.scope == .Git {
+		for e in t.entries[t.scroll:end] {
+			if size, ok := t.diffsize[e.path]; ok && !e.is_dir && git_diffsize_label(size) != "" {
+				addw = max(addw, digit_count(size.added))
+				delw = max(delw, digit_count(size.deleted))
+			}
+		}
+	}
 	for i in t.scroll ..< end {
 		e := t.entries[i]
 		y := lay.body_top + (i - t.scroll)
@@ -2027,12 +2037,21 @@ filetree_render :: proc(editor: ^Editor) {
 		if filetree_unsaved(editor, e) {
 			label = strings.concatenate({label, " ", ICON_MODIFIED}, context.temp_allocator)
 		}
-		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
-		if t.scope == .Git && !e.is_dir {
-			if size, ok := t.diffsize[e.path]; ok {
-				x := inner.x + 2 + visual_width(transmute([]u8)label)
-				git_diffsize_paint(x, y, inner.x + lay.left_w, git_diffsize_label(size), bg)
+		label_w := lay.left_w - 1
+		sizes := ""
+		if size, ok := t.diffsize[e.path]; ok && t.scope == .Git && !e.is_dir && git_diffsize_label(size) != "" {
+			sizes = fmt.tprintf("%*s  %*s", addw + 1, fmt.tprintf("+%d", size.added), delw + 1, fmt.tprintf("-%d", size.deleted))
+			room := label_w - len(sizes) - 1
+			if room >= min(visual_width(transmute([]u8)label), FILETREE_DIFFSIZE_MIN_LABEL) {
+				label_w = room
+				label = status_clip(label, room)
+			} else {
+				sizes = ""
 			}
+		}
+		pane_text(inner.x + 1, y, label_w, label, fg, bg)
+		if sizes != "" {
+			git_diffsize_paint(lay.div_x - len(sizes), y, lay.div_x, sizes, bg)
 		}
 	}
 

@@ -369,10 +369,10 @@ editor_previews_sync :: proc(editor: ^Editor) {
 	if editor.filetree.active && filetree_layout(editor).preview && !preview_loaded(&editor.filetree.preview) {
 		filetree_preview_touch(editor)
 	}
-	if editor.projsearch.active && overlay_layout(editor).preview && !preview_loaded(&editor.projsearch.preview) {
+	if editor.projsearch.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.projsearch.preview) {
 		projsearch_load_preview(editor)
 	}
-	if editor.linefind.active && overlay_layout(editor).preview && !preview_loaded(&editor.linefind.preview) {
+	if editor.linefind.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.linefind.preview) {
 		linefind_load_preview(editor)
 	}
 }

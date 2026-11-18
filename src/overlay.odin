@@ -203,19 +203,31 @@ OverlayLayout :: struct {
 	preview:                          bool,
 }
 
-overlay_split :: proc(inner_w, list_max: int) -> (left_w: int, preview: bool) {
-	left_w = (inner_w - 1) / 2
-	if list_max > 0 {
-		left_w = min(left_w, list_max)
-	}
-	left_w = min(left_w, inner_w - 1 - PREVIEW_MIN_WIDTH)
-	if left_w < LIST_MIN_WIDTH {
-		return inner_w, false
-	}
-	return left_w, true
+SplitList :: enum {
+	None,
+	FileTree,
+	Code,
 }
 
-overlay_layout :: proc(editor: ^Editor, list_max := 0) -> OverlayLayout {
+overlay_split :: proc(inner_w, lmin, lmax: int) -> (left_w, right_w: int, preview: bool) {
+	w := inner_w - 1
+	pmin, pmax := PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH
+	if w >= lmax + pmax {
+		return lmax, pmax, true
+	}
+	if w < lmin + pmin {
+		return inner_w, 0, false
+	}
+	deficit := lmax + pmax - w
+	list_loss := min(deficit / 2, lmax - lmin)
+	if preview_loss := deficit - list_loss; preview_loss > pmax - pmin {
+		list_loss += preview_loss - (pmax - pmin)
+	}
+	left_w = lmax - list_loss
+	return left_w, w - left_w, true
+}
+
+overlay_layout :: proc(editor: ^Editor, list := SplitList.None) -> OverlayLayout {
 	sw := int(tb2.width())
 	sh := int(tb2.height())
 	if !editor.welcome {
@@ -223,14 +235,26 @@ overlay_layout :: proc(editor: ^Editor, list_max := 0) -> OverlayLayout {
 	}
 	mx := 0 if sw < NARROW_WIDTH else PICKER_MARGIN_X
 	box := Rect{mx, PICKER_MARGIN_Y, max(0, sw - 2 * mx), max(0, sh - 2 * PICKER_MARGIN_Y)}
+	inner_w := box.w - 2
+	left_w, right_w, preview := inner_w, 0, false
+	switch list {
+	case .None:
+	case .FileTree:
+		left_w, right_w, preview = overlay_split(inner_w, FILETREE_LIST_MIN_WIDTH, FILETREE_LIST_MAX_WIDTH)
+	case .Code:
+		left_w, right_w, preview = overlay_split(inner_w, CODE_LIST_MIN_WIDTH, CODE_LIST_MAX_WIDTH)
+	}
+	if preview && left_w + 1 + right_w < inner_w {
+		w := left_w + 1 + right_w + 2
+		box.x += (box.w - w) / 2
+		box.w = w
+	}
 	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
 	title_sep_y := inner.y + 1
 	body_top := inner.y + 2
 	body_h := max(0, inner.h - 2)
-	left_w, preview := overlay_split(inner.w, list_max)
 	div_x := inner.x + left_w
 	right_x := div_x + 1
-	right_w := max(0, inner.x + inner.w - right_x)
 	return {box, inner, body_top, body_h, title_sep_y, div_x, left_w, right_x, right_w, preview}
 }
 

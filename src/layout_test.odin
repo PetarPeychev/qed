@@ -92,31 +92,47 @@ test_status_path_shorten :: proc(t: ^testing.T) {
 	testing.expect_value(t, p, "…/petar/qed")
 }
 
+split_expect :: proc(t: ^testing.T, inner_w, lmin, lmax, want_l, want_r: int, want_preview: bool, loc := #caller_location) {
+	l, r, preview := overlay_split(inner_w, lmin, lmax)
+	testing.expect_value(t, preview, want_preview, loc)
+	testing.expect_value(t, l, want_l, loc)
+	testing.expect_value(t, r, want_r, loc)
+}
+
 @(test)
-test_overlay_split :: proc(t: ^testing.T) {
-	left_w, preview := overlay_split(201, 0)
-	testing.expect(t, preview)
-	testing.expect_value(t, left_w, 100)
+test_overlay_split_defaults :: proc(t: ^testing.T) {
+	testing.expect_value(t, FILETREE_LIST_MIN_WIDTH, 30)
+	testing.expect_value(t, FILETREE_LIST_MAX_WIDTH, 60)
+	testing.expect_value(t, CODE_LIST_MIN_WIDTH, 50)
+	testing.expect_value(t, CODE_LIST_MAX_WIDTH, 100)
+	testing.expect_value(t, PREVIEW_MIN_WIDTH, 70)
+	testing.expect_value(t, PREVIEW_MAX_WIDTH, 130)
+}
 
-	left_w, preview = overlay_split(75, 0)
-	testing.expect(t, preview)
-	testing.expect_value(t, left_w, 75 - 1 - PREVIEW_MIN_WIDTH)
+@(test)
+test_overlay_split_filetree :: proc(t: ^testing.T) {
+	lmin, lmax := 30, 60
+	split_expect(t, 1 + 400, lmin, lmax, 60, 130, true)
+	split_expect(t, 1 + 190, lmin, lmax, 60, 130, true)
+	split_expect(t, 1 + 189, lmin, lmax, 60, 129, true)
+	split_expect(t, 1 + 150, lmin, lmax, 40, 110, true)
+	split_expect(t, 1 + 145, lmin, lmax, 38, 107, true)
+	split_expect(t, 1 + 120, lmin, lmax, 30, 90, true)
+	split_expect(t, 1 + 101, lmin, lmax, 30, 71, true)
+	split_expect(t, 1 + 100, lmin, lmax, 30, 70, true)
+	split_expect(t, 1 + 99, lmin, lmax, 100, 0, false)
+	split_expect(t, 10, lmin, lmax, 10, 0, false)
+}
 
-	left_w, preview = overlay_split(1 + PREVIEW_MIN_WIDTH + LIST_MIN_WIDTH, 0)
-	testing.expect(t, preview)
-	testing.expect_value(t, left_w, LIST_MIN_WIDTH)
-
-	left_w, preview = overlay_split(PREVIEW_MIN_WIDTH + LIST_MIN_WIDTH, 0)
-	testing.expect(t, !preview)
-	testing.expect_value(t, left_w, PREVIEW_MIN_WIDTH + LIST_MIN_WIDTH)
-
-	left_w, preview = overlay_split(201, 60)
-	testing.expect(t, preview)
-	testing.expect_value(t, left_w, 60)
-
-	left_w, preview = overlay_split(75, 60)
-	testing.expect_value(t, left_w, 75 - 1 - PREVIEW_MIN_WIDTH)
-
-	left_w, preview = overlay_split(PREVIEW_MIN_WIDTH + LIST_MIN_WIDTH, 60)
-	testing.expect(t, !preview)
+@(test)
+test_overlay_split_code :: proc(t: ^testing.T) {
+	lmin, lmax := 50, 100
+	split_expect(t, 1 + 400, lmin, lmax, 100, 130, true)
+	split_expect(t, 1 + 230, lmin, lmax, 100, 130, true)
+	split_expect(t, 1 + 229, lmin, lmax, 100, 129, true)
+	split_expect(t, 1 + 228, lmin, lmax, 99, 129, true)
+	split_expect(t, 1 + 175, lmin, lmax, 73, 102, true)
+	split_expect(t, 1 + 130, lmin, lmax, 50, 80, true)
+	split_expect(t, 1 + 120, lmin, lmax, 50, 70, true)
+	split_expect(t, 1 + 119, lmin, lmax, 120, 0, false)
 }

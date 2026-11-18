@@ -98,7 +98,7 @@ linefind_open :: proc(editor: ^Editor) {
 			p.selected = i
 		}
 	}
-	body_h := overlay_layout(editor).body_h
+	body_h := overlay_layout(editor, .Code).body_h
 	p.scroll = max(0, p.selected - body_h / 2)
 	linefind_load_preview(editor)
 }
@@ -117,7 +117,7 @@ linefind_load_preview :: proc(editor: ^Editor) {
 		preview_reset(&p.preview)
 		return
 	}
-	lay := overlay_layout(editor)
+	lay := overlay_layout(editor, .Code)
 	if !lay.preview {
 		preview_reset(&p.preview)
 		return
@@ -129,7 +129,7 @@ linefind_load_preview :: proc(editor: ^Editor) {
 
 linefind_move :: proc(editor: ^Editor, delta: int) {
 	p := &editor.linefind
-	fuzzy_list_move(&p.list, delta, overlay_layout(editor).body_h)
+	fuzzy_list_move(&p.list, delta, overlay_layout(editor, .Code).body_h)
 	linefind_load_preview(editor)
 }
 
@@ -190,7 +190,7 @@ linefind_paste :: proc(editor: ^Editor, text: string) {
 
 linefind_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
-	lay := overlay_layout(editor)
+	lay := overlay_layout(editor, .Code)
 	if lay.preview && preview_wheel(&p.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
 		return
 	}
@@ -213,7 +213,7 @@ linefind_label :: proc(numw, row: int, text: string) -> string {
 
 linefind_render :: proc(editor: ^Editor) {
 	p := &editor.linefind
-	lay := overlay_layout(editor)
+	lay := overlay_layout(editor, .Code)
 	inner := pane_draw_box(lay.box)
 	numw := digit_count(len(p.lines))
 

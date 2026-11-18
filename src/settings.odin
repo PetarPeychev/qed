@@ -45,9 +45,12 @@ COMPLETION_MAX_ROWS: int
 COMPLETION_MIN_CHARS: int
 JUMP_THRESHOLD: int
 BIG_FILE_BYTES: int
+FILETREE_LIST_MIN_WIDTH: int
+FILETREE_LIST_MAX_WIDTH: int
+CODE_LIST_MIN_WIDTH: int
+CODE_LIST_MAX_WIDTH: int
 PREVIEW_MIN_WIDTH: int
-LIST_MIN_WIDTH: int
-LIST_MAX_WIDTH: int
+PREVIEW_MAX_WIDTH: int
 NARROW_WIDTH: int
 
 config_ints := [?]Config_Int {
@@ -64,9 +67,12 @@ config_ints := [?]Config_Int {
 	{"alt_esc_timeout_ms", &ALT_ESC_TIMEOUT_MS},
 	{"jump_threshold", &JUMP_THRESHOLD},
 	{"big_file_bytes", &BIG_FILE_BYTES},
+	{"filetree_list_min_width", &FILETREE_LIST_MIN_WIDTH},
+	{"filetree_list_max_width", &FILETREE_LIST_MAX_WIDTH},
+	{"code_list_min_width", &CODE_LIST_MIN_WIDTH},
+	{"code_list_max_width", &CODE_LIST_MAX_WIDTH},
 	{"preview_min_width", &PREVIEW_MIN_WIDTH},
-	{"list_min_width", &LIST_MIN_WIDTH},
-	{"list_max_width", &LIST_MAX_WIDTH},
+	{"preview_max_width", &PREVIEW_MAX_WIDTH},
 	{"narrow_width", &NARROW_WIDTH},
 }
 

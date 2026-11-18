@@ -232,7 +232,7 @@ projsearch_pump :: proc(editor: ^Editor) -> bool {
 	})
 	p.selected = clamp(p.pending_keep, 0, max(0, len(p.matches) - 1))
 	p.pending_keep = 0
-	body_h := overlay_layout(editor).body_h
+	body_h := overlay_layout(editor, .Code).body_h
 	p.scroll = max(0, p.selected - body_h / 2)
 	projsearch_load_preview(editor)
 	return true
@@ -244,7 +244,7 @@ projsearch_load_preview :: proc(editor: ^Editor) {
 		preview_reset(&p.preview)
 		return
 	}
-	lay := overlay_layout(editor)
+	lay := overlay_layout(editor, .Code)
 	if !lay.preview {
 		preview_reset(&p.preview)
 		return
@@ -261,7 +261,7 @@ projsearch_move :: proc(editor: ^Editor, delta: int) {
 		return
 	}
 	p.selected = clamp(p.selected + delta, 0, n - 1)
-	body_h := overlay_layout(editor).body_h
+	body_h := overlay_layout(editor, .Code).body_h
 	if p.selected < p.scroll {
 		p.scroll = p.selected
 	}
@@ -323,7 +323,7 @@ projsearch_paste :: proc(editor: ^Editor, text: string) {
 
 projsearch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.projsearch
-	lay := overlay_layout(editor)
+	lay := overlay_layout(editor, .Code)
 	if lay.preview && preview_wheel(&p.preview, ev, {lay.right_x, lay.inner.y, lay.right_w, lay.inner.h}, lay.inner.h) {
 		return
 	}
@@ -340,7 +340,7 @@ projsearch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 
 projsearch_render :: proc(editor: ^Editor) {
 	p := &editor.projsearch
-	lay := overlay_layout(editor)
+	lay := overlay_layout(editor, .Code)
 	inner := pane_draw_box(lay.box)
 
 	prompt_w := lay.left_w - 1
