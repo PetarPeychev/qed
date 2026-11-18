@@ -52,6 +52,7 @@ Editor :: struct {
 	overlay_click_idx:  int,
 	palette:         Palette,
 	langpick:        LangPick,
+	basepick:        BasePick,
 	themepick:       ThemePick,
 	indentpick:      IndentPick,
 	cwdpick:         CwdPick,
@@ -183,6 +184,8 @@ editor_shutdown :: proc(editor: ^Editor) {
 	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
 	langpick_destroy(&editor.langpick)
+	basepick_destroy(&editor.basepick)
+	git_base_set("", "", false)
 	themepick_destroy(&editor.themepick)
 	indentpick_destroy(&editor.indentpick)
 	cwdpick_destroy(&editor.cwdpick)
@@ -245,13 +248,14 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
 		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
+		{&editor.basepick.active, basepick_dispatch_key, basepick_render, basepick_dispatch_mouse, basepick_paste},
 		{&editor.themepick.active, themepick_dispatch_key, themepick_render, themepick_dispatch_mouse, themepick_paste},
 		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse, indentpick_paste},
 		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
@@ -1728,7 +1732,7 @@ editor_render_status :: proc(editor: ^Editor) {
 		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_INDENT, indent), fg = fg, drop = 1})
 	}
 	if module_enabled(.Git) && editor.gitstat.branch != "" {
-		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_BRANCH, editor.gitstat.branch), fg = fg, drop = 8})
+		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_BRANCH, editor.gitstat.branch), fg = fg, drop = 9})
 		ahead_behind := ""
 		if editor.gitstat.ahead > 0 {
 			ahead_behind = fmt.tprintf("%s%d", ICON_STATUS_AHEAD, editor.gitstat.ahead)
@@ -1739,12 +1743,15 @@ editor_render_status :: proc(editor: ^Editor) {
 		if ahead_behind != "" {
 			append(&left, StatusSeg{sep = " ", text = ahead_behind, fg = fg, drop = 7})
 		}
+		if g_diff_base.ref != "" {
+			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, g_diff_base.label), fg = fg, drop = 8})
+		}
 		if label := git_diffsize_label(editor.gitstat.diff); label != "" {
 			append(&left, StatusSeg{sep = "  ", text = label, kind = .Diff, drop = 6})
 		}
 	}
 	if len(editor.buffers) > 1 {
-		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("[%d/%d]", editor.current + 1, len(editor.buffers)), fg = fg, drop = 9})
+		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("[%d/%d]", editor.current + 1, len(editor.buffers)), fg = fg, drop = 10})
 	}
 	status_fit(left[:], right[:], full_w)
 	editor_render_row(0, h, full_w, "", fg, COLOR_PANE_BG)

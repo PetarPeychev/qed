@@ -285,8 +285,16 @@ filetree_clear_status :: proc(t: ^FileTree) {
 // knows the base its relative paths join against.
 filetree_scan_cmd :: proc(root: string) -> cstring {
 	q := shell_quote(root)
+	base := ""
+	if g_diff_base.ref != "" {
+		base = fmt.tprintf(
+			`b=%s; if [ "$b" != HEAD ]; then echo @@BASE@@; git -C "$1" diff --name-status --no-renames "$b" 2>/dev/null; echo @@STATUS@@; fi; `,
+			git_base_rev(`"$1"`),
+		)
+	}
 	return fmt.ctprintf(
-		`scan() (echo "@@REPO@@ $1"; git -C "$1" status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
+		`scan() (echo "@@REPO@@ $1"; %sgit -C "$1" status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
+		base,
 		git_diffsize_cmd(`"$1"`),
 		q,
 		q,
@@ -363,17 +371,31 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	out := output
 	top := ""
 	section := ""
+	based := false
 	for line in strings.split_lines_iterator(&out) {
 		if strings.has_prefix(line, "@@REPO@@ ") {
 			top = strings.trim_space(line[len("@@REPO@@ "):])
 			section = ""
+			based = false
 			continue
 		}
-		if line == "@@NUMSTAT@@" || line == "@@UNTRACKED@@" {
+		if line == "@@NUMSTAT@@" || line == "@@UNTRACKED@@" || line == "@@BASE@@" {
 			section = line
+			based ||= line == "@@BASE@@"
+			continue
+		}
+		if line == "@@STATUS@@" {
+			section = ""
 			continue
 		}
 		if top == "" {
+			continue
+		}
+		if section == "@@BASE@@" {
+			if rel, mark, ok := git_name_status_line(line); ok {
+				abs, _ := filepath.join({top, rel}, context.temp_allocator)
+				filetree_status_add(t, root, abs, mark)
+			}
 			continue
 		}
 		if section != "" {
@@ -403,6 +425,9 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 		abs, _ := filepath.join({top, rel}, context.temp_allocator)
 		if code == "!!" {
 			t.ignored[strings.clone(abs)] = true
+			continue
+		}
+		if based && code != "??" {
 			continue
 		}
 		filetree_status_add(t, root, abs, filetree_status_mark(code))

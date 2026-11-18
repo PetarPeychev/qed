@@ -290,7 +290,6 @@ preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool
 		}
 	}
 	if !changed && len(hunks) == 0 {
-		// Selected file matches HEAD after all — show plain content.
 		p.language = language_of(path)
 		for s, i in cur {
 			if i >= PREVIEW_MAX_LINES {

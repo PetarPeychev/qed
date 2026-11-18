@@ -78,6 +78,7 @@ cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
 cmd_git_next :: proc(editor: ^Editor) {git_goto(editor, +1)}
 cmd_git_prev :: proc(editor: ^Editor) {git_goto(editor, -1)}
 cmd_git_revert :: proc(editor: ^Editor) {git_revert(editor)}
+cmd_git_set_base :: proc(editor: ^Editor) {basepick_open(editor)}
 
 cmd_toggle_format_on_save :: proc(editor: ^Editor) {
 	editor.format_on_save = !editor.format_on_save
@@ -168,6 +169,7 @@ commands := [?]Command {
 	{name = "Git: Next Change", module = .Git, run = cmd_git_next},
 	{name = "Git: Previous Change", module = .Git, run = cmd_git_prev},
 	{name = "Git: Revert Hunk", module = .Git, run = cmd_git_revert},
+	{name = "Git: Set Diff Base", module = .Git, run = cmd_git_set_base},
 	{name = "Git: Resolve Conflict", module = .Git, run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", module = .Lsp, run = cmd_diag_next},

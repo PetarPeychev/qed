@@ -63,13 +63,13 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
-path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` + repo diff size
-`+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs HEAD via `git diff HEAD --numstat`, untracked
+path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` + `±label` diff base (when not HEAD) + repo diff size
+`+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs diff base via `git diff <base> --numstat`, untracked
 files' lines counted by `grep -Ic` as adds, binaries skipped; `git_diffsize_cmd`) — polled async every
 `GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`). Both sides are
 `StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap: shorten the path from
 the left (`…/dir/name`, down to the bare name), then drop segments by `drop` rank (indent, LSP, `big`,
-language, AI count, then diff size, ahead/behind, branch, `[n/m]`), then clip the filename; then a
+language, AI count, then diff size, ahead/behind, diff base, branch, `[n/m]`), then clip the filename; then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
@@ -86,7 +86,7 @@ Git diff view below.
 removed/base lines render inline as dim-red **ghost rows** (`editor_render_hunk_ghosts`)
 — above a modification, below a pure deletion — with the changed span word-highlighted
 on both the ghost and the live line (`git_word_span`, prefix/suffix trim). The gutter
-keeps the HEAD blob + per-line text (`base_text`) so old text is available; `git_diff`
+keeps the base blob + per-line text (`base_text`) so old text is available; `git_diff`
 emits `GitHunk`s + per-row `above`/`below` ghost counts. Ghost rows are virtual (one
 clipped row each, never wrapped) and shift everything below, so the counts fold into
 the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `git_above`/`below`).
@@ -95,6 +95,12 @@ rows ↔ base rows) as the **revert unit** — independent of `g_diff_view`, con
 *Git: Revert Hunk*;
 cursor *motion* is unaffected (it walks real rows via `cursor_visual_*`). All ghost math
 no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
+
+**Diff base** (`basepick.odin`, `g_diff_base`, session-only): the "old" side of every git
+surface. Branch and merge-base picks are live refs, re-resolved per command by `git_base_rev`
+(literal `HEAD` when unset; falls back to HEAD in a repo where the ref doesn't resolve); commit
+picks are a fixed sha. The scan's per-repo `@@BASE@@` name-status section replaces that repo's
+tracked `status` lines. A working-root change resets the base.
 
 **Merge conflicts** (`conflict.odin`): content-driven, always on, no git dependency —
 `merge_scan` finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks by line prefix. Render
@@ -497,7 +503,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim).
@@ -651,7 +657,7 @@ both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a
 nil error with 0 bytes.) The file-tree **Git** tab
 previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
-built by `git_diff_file` (HEAD-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
+built by `git_diff_file` (base-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
 *File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.git_diff_only` seeded from config
 `modules.git.filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
@@ -685,13 +691,13 @@ incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
 (config `format_on_save`, toggleable), `LSP: Restart`, state-colored status segment
 (dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
-`.Debug` message log; git diff gutter (live vs `HEAD`)
+`.Debug` message log; git diff gutter (live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
 + optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `modules.git.diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 hunk navigation (`Git: Next/Previous Change`, `Alt+'`/`Alt+;`, `git_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
-hunk revert (`Git: Revert Hunk`, `Alt+z`, `git_revert`): restores the HEAD lines for the
-hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-HEAD) as one undo group;
+hunk revert (`Git: Revert Hunk`, `Alt+z`, `git_revert`): restores the base lines for the
+hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-base) as one undo group;
 merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines
 emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
 theirs / both, or jump to next conflict).

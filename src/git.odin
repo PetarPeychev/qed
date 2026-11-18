@@ -12,6 +12,32 @@ GIT_DIFF_MAX_D :: 2000
 GIT_STAT_POLL_MS :: 2000
 
 g_diff_view: bool
+g_diff_base: GitBase
+
+GitBase :: struct {
+	ref, label: string,
+	merge:      bool,
+}
+
+git_base_set :: proc(ref, label: string, merge: bool) {
+	delete(g_diff_base.ref)
+	delete(g_diff_base.label)
+	g_diff_base = {}
+	if ref != "" {
+		g_diff_base = {strings.clone(ref), strings.clone(label), merge}
+	}
+}
+
+// resolved per command so a moved branch is followed; a repo lacking the ref falls back to HEAD
+git_base_rev :: proc(dir: string) -> string {
+	if g_diff_base.ref == "" {
+		return "HEAD"
+	}
+	if g_diff_base.merge {
+		return fmt.tprintf(`"$(git -C %s merge-base %s HEAD 2>/dev/null || echo HEAD)"`, dir, shell_quote(g_diff_base.ref))
+	}
+	return fmt.tprintf(`"$(git -C %s rev-parse -q --verify %s 2>/dev/null || echo HEAD)"`, dir, shell_quote(fmt.tprintf("%s^0", g_diff_base.ref)))
+}
 
 GitDiffSize :: struct {
 	added, deleted: int,
@@ -104,11 +130,27 @@ git_stat_reset :: proc(editor: ^Editor) {
 	git_stat_maybe_start(editor)
 }
 
+git_base_change :: proc(editor: ^Editor, ref, label: string, merge: bool) {
+	git_base_set(ref, label, merge)
+	for &b in editor.buffers {
+		git_invalidate(&b)
+	}
+	s := &editor.gitstat
+	subprocess_kill(&s.sub)
+	s.poll = {}
+	git_stat_maybe_start(editor)
+	filetree_scan_start(editor)
+	if editor.filetree.active {
+		filetree_preview_touch(editor)
+	}
+}
+
 // git diff skips untracked files, so grep counts their lines (-I: binaries count 0)
 git_diffsize_cmd :: proc(dir: string) -> string {
 	return fmt.tprintf(
-		"echo @@NUMSTAT@@; git -C %s diff HEAD --numstat --no-renames 2>/dev/null; echo @@UNTRACKED@@; (cd %s && git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' --) 2>/dev/null",
+		"echo @@NUMSTAT@@; git -C %s diff %s --numstat --no-renames 2>/dev/null; echo @@UNTRACKED@@; (cd %s && git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' --) 2>/dev/null",
 		dir,
+		git_base_rev(dir),
 		dir,
 	)
 }
@@ -135,6 +177,13 @@ git_numstat_line :: proc(line: string, untracked: bool) -> (path: string, size: 
 		return
 	}
 	return strings.trim(parts[2], "\""), {a, d}, true
+}
+
+git_name_status_line :: proc(line: string) -> (path: string, mark: GitMark, ok: bool) {
+	if len(line) < 3 || line[1] != '\t' || line[0] == 'D' {
+		return
+	}
+	return strings.trim(line[2:], "\""), .Added if line[0] == 'A' else .Modified, true
 }
 
 git_diffsize_total :: proc(lines: []string) -> (total: GitDiffSize) {
@@ -309,7 +358,8 @@ git_base_fetch :: proc(b: ^Buffer) {
 	}
 	g.enabled = true
 
-	show_cmd := fmt.ctprintf("git -C %s show HEAD:./%s 2>/dev/null", shell_quote(dir), shell_quote(name))
+	qdir := shell_quote(dir)
+	show_cmd := fmt.ctprintf("git -C %s show %s:./%s 2>/dev/null", qdir, git_base_rev(qdir), shell_quote(name))
 	blob, blob_ok := shell_capture(show_cmd, context.allocator)
 	if !blob_ok || len(blob) == 0 {
 		if blob_ok {
@@ -800,7 +850,7 @@ git_split_lines :: proc(s: string, allocator := context.temp_allocator) -> [dyna
 	return out
 }
 
-// HEAD-vs-worktree diff for an arbitrary file (not an open buffer). Reuses the
+// Base-vs-worktree diff for an arbitrary file (not an open buffer). Reuses the
 // gutter's line-hash diff so a preview renders identically to the inline diff view.
 git_diff_file :: proc(
 	path: string,
@@ -822,7 +872,8 @@ git_diff_file :: proc(
 	slash := strings.last_index_byte(path, '/')
 	dir := path[:slash] if slash >= 0 else "."
 	name := path[slash + 1:] if slash >= 0 else path
-	show_cmd := fmt.ctprintf("git -C %s show HEAD:./%s 2>/dev/null", shell_quote(dir), shell_quote(name))
+	qdir := shell_quote(dir)
+	show_cmd := fmt.ctprintf("git -C %s show %s:./%s 2>/dev/null", qdir, git_base_rev(qdir), shell_quote(name))
 	blob, _ := shell_capture(show_cmd)
 
 	bt := git_split_lines(blob)

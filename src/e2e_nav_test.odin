@@ -1789,3 +1789,80 @@ e2e_nav_filetree_delete_dialog_directory :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(sub), "confirming Delete removes the directory recursively")
 	testing.expect(t, !os.exists(inner), "nested file is gone too")
 }
+
+@(test)
+e2e_nav_git_diff_base :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("one\ntwo\nthree\n")
+	defer e2e_stop(&e)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+
+	b := editor_buffer(&e.ed)
+	b.cursor = {1, len(b.lines[1].text)}
+	e2e_type(&e, "X")
+	editor_save(&e.ed)
+	branch := "zb'ase"
+	e2e_run(fmt.tprintf("cd %s && git commit -q -am second && git branch %s HEAD~1", shell_quote(e.dir), shell_quote(branch)))
+
+	nav_alt(&e, 'g')
+	nav_scan(&e)
+	tr := &e.ed.filetree
+	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	testing.expect(t, !entry_named(tr, "file.txt"), "committed file is clean against HEAD")
+	e2e_key(&e, .Esc)
+
+	basepick_open(&e.ed)
+	testing.expect(t, e.ed.basepick.active, "picker opens")
+	e2e_type(&e, "seed")
+	e2e_key(&e, .Enter)
+	testing.expect(t, !e.ed.basepick.active, "picker closes on pick")
+	testing.expect_value(t, len(g_diff_base.ref), 40)
+	testing.expect(t, !g_diff_base.merge, "commit pick is a fixed sha")
+	for git_stat_running(&e.ed) {
+		git_stat_pump(&e.ed)
+	}
+
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
+	testing.expect_value(t, git_mark_at(b, 0), GitMark.None)
+	_, h := editor_viewport(&e.ed)
+	row := e2e_row(&e, h)
+	testing.expectf(t, strings.contains(row, fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, g_diff_base.label)), "status bar shows base: %q", row)
+	testing.expectf(t, strings.contains(row, "+1 -1"), "diff size is against the base: %q", row)
+
+	nav_alt(&e, 'g')
+	nav_scan(&e)
+	testing.expect(t, entry_named(tr, "file.txt"), "Git tab lists the file changed since the base")
+	e2e_key(&e, .Esc)
+
+	basepick_open(&e.ed)
+	e2e_type(&e, "zb'")
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, g_diff_base.ref, branch)
+	git_invalidate(b)
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
+
+	e2e_run(fmt.tprintf("cd %s && git branch -f %s HEAD", shell_quote(e.dir), shell_quote(branch)))
+	git_invalidate(b)
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
+	nav_alt(&e, 'g')
+	nav_scan(&e)
+	testing.expect(t, !entry_named(tr, "file.txt"), "moved branch is followed by the Git tab")
+	e2e_key(&e, .Esc)
+	git_stat_reset(&e.ed)
+	for git_stat_running(&e.ed) {
+		git_stat_pump(&e.ed)
+	}
+	testing.expect_value(t, e.ed.gitstat.diff, GitDiffSize{})
+
+	basepick_open(&e.ed)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, g_diff_base.ref, "")
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
+}

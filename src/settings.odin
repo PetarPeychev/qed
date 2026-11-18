@@ -268,6 +268,7 @@ ICON_STATUS_FILE: string
 ICON_STATUS_BRANCH: string
 ICON_STATUS_AHEAD: string
 ICON_STATUS_BEHIND: string
+ICON_STATUS_DIFF_BASE: string
 ICON_STATUS_LANG: string
 ICON_STATUS_LSP: string
 ICON_STATUS_INDENT: string
@@ -286,6 +287,7 @@ config_icons := [?]Config_Str {
 	{"status_branch", &ICON_STATUS_BRANCH},
 	{"status_ahead", &ICON_STATUS_AHEAD},
 	{"status_behind", &ICON_STATUS_BEHIND},
+	{"status_diff_base", &ICON_STATUS_DIFF_BASE},
 	{"status_language", &ICON_STATUS_LANG},
 	{"status_lsp", &ICON_STATUS_LSP},
 	{"status_indent", &ICON_STATUS_INDENT},

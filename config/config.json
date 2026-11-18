@@ -95,6 +95,7 @@
     "Git: Next Change": "Alt+'",
     "Git: Previous Change": "Alt+;",
     "Git: Revert Hunk": "Alt+z",
+    "Git: Set Diff Base": "",
     "Git: Resolve Conflict": "Alt+m",
     "Toggle Line Wrap": "",
     "LSP: Next Diagnostic": "Alt+>",

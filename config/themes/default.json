@@ -101,6 +101,7 @@
   "icons": {
     "status_file": "≡",
     "status_branch": "⎇",
+    "status_diff_base": "±",
     "status_ahead": "↑",
     "status_behind": "↓",
     "status_language": "◆",
