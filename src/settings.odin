@@ -51,7 +51,6 @@ CODE_LIST_MIN_WIDTH: int
 CODE_LIST_MAX_WIDTH: int
 PREVIEW_MIN_WIDTH: int
 PREVIEW_MAX_WIDTH: int
-NARROW_WIDTH: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -73,7 +72,6 @@ config_ints := [?]Config_Int {
 	{"code_list_max_width", &CODE_LIST_MAX_WIDTH},
 	{"preview_min_width", &PREVIEW_MIN_WIDTH},
 	{"preview_max_width", &PREVIEW_MAX_WIDTH},
-	{"narrow_width", &NARROW_WIDTH},
 }
 
 FORMAT_ON_SAVE: bool

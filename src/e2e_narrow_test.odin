@@ -56,6 +56,13 @@ e2e_narrow_filetree_hides_preview :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, narrow_box_has(&e, "NARROWPREVIEWMARK"), "preview shows at 140 cols")
 
+	e2e_resize(&e, 110, E2E_H)
+	filetree_load_preview(&e.ed)
+	lay = filetree_layout(&e.ed)
+	testing.expect(t, lay.preview, "preview survives at 110 cols")
+	testing.expect_value(t, lay.box.x, 3)
+	testing.expect_value(t, lay.left_w + 1 + lay.right_w, lay.inner.w)
+
 	e2e_resize(&e, 60, E2E_H)
 	filetree_load_preview(&e.ed)
 	lay = filetree_layout(&e.ed)
@@ -130,9 +137,10 @@ e2e_narrow_linefind_code_split :: proc(t: ^testing.T) {
 	testing.expect_value(t, lay.right_w, 105)
 	testing.expect_value(t, lay.left_w + 1 + lay.right_w, lay.inner.w)
 
-	e2e_resize(&e, 130, E2E_H)
+	e2e_resize(&e, 120, E2E_H)
 	lay = overlay_layout(&e.ed, .Code)
 	testing.expect(t, !lay.preview)
+	testing.expect_value(t, lay.box.x, 0)
 	testing.expect_value(t, lay.left_w, lay.inner.w)
 
 	e2e_mouse(&e, lay.box.x - 2, lay.body_top)
