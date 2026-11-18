@@ -200,27 +200,45 @@ OverlayLayout :: struct {
 	body_top, body_h:                 int,
 	title_sep_y:                      int,
 	div_x, left_w, right_x, right_w:  int,
+	preview:                          bool,
 }
 
-overlay_layout :: proc(editor: ^Editor) -> OverlayLayout {
+overlay_split :: proc(inner_w, list_max: int) -> (left_w: int, preview: bool) {
+	left_w = (inner_w - 1) / 2
+	if list_max > 0 {
+		left_w = min(left_w, list_max)
+	}
+	left_w = min(left_w, inner_w - 1 - PREVIEW_MIN_WIDTH)
+	if left_w < LIST_MIN_WIDTH {
+		return inner_w, false
+	}
+	return left_w, true
+}
+
+overlay_layout :: proc(editor: ^Editor, list_max := 0) -> OverlayLayout {
 	sw := int(tb2.width())
 	sh := int(tb2.height())
 	if !editor.welcome {
 		sh -= STATUS_ROWS
 	}
-	box := Rect{PICKER_MARGIN_X, PICKER_MARGIN_Y, max(0, sw - 2 * PICKER_MARGIN_X), max(0, sh - 2 * PICKER_MARGIN_Y)}
+	mx := 0 if sw < NARROW_WIDTH else PICKER_MARGIN_X
+	box := Rect{mx, PICKER_MARGIN_Y, max(0, sw - 2 * mx), max(0, sh - 2 * PICKER_MARGIN_Y)}
 	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
 	title_sep_y := inner.y + 1
 	body_top := inner.y + 2
 	body_h := max(0, inner.h - 2)
-	left_w := (inner.w - 1) / 2
+	left_w, preview := overlay_split(inner.w, list_max)
 	div_x := inner.x + left_w
 	right_x := div_x + 1
 	right_w := max(0, inner.x + inner.w - right_x)
-	return {box, inner, body_top, body_h, title_sep_y, div_x, left_w, right_x, right_w}
+	return {box, inner, body_top, body_h, title_sep_y, div_x, left_w, right_x, right_w, preview}
 }
 
 overlay_divider :: proc(lay: OverlayLayout, offset, total: int) {
+	if !lay.preview {
+		pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, offset, total)
+		return
+	}
 	bottom := lay.box.y + lay.box.h - 1
 	for y in lay.body_top ..< bottom {
 		tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)

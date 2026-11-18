@@ -45,6 +45,10 @@ COMPLETION_MAX_ROWS: int
 COMPLETION_MIN_CHARS: int
 JUMP_THRESHOLD: int
 BIG_FILE_BYTES: int
+PREVIEW_MIN_WIDTH: int
+LIST_MIN_WIDTH: int
+LIST_MAX_WIDTH: int
+NARROW_WIDTH: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -60,6 +64,10 @@ config_ints := [?]Config_Int {
 	{"alt_esc_timeout_ms", &ALT_ESC_TIMEOUT_MS},
 	{"jump_threshold", &JUMP_THRESHOLD},
 	{"big_file_bytes", &BIG_FILE_BYTES},
+	{"preview_min_width", &PREVIEW_MIN_WIDTH},
+	{"list_min_width", &LIST_MIN_WIDTH},
+	{"list_max_width", &LIST_MAX_WIDTH},
+	{"narrow_width", &NARROW_WIDTH},
 }
 
 FORMAT_ON_SAVE: bool

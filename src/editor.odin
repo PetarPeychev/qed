@@ -305,6 +305,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				if editor.terminal.active {
 					term_resize(editor)
 				}
+				editor_previews_sync(editor)
 			}
 			return
 		}
@@ -361,6 +362,18 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		editor_dispatch_mouse(editor, ev)
 	case .Resize:
 		editor_scroll(editor)
+	}
+}
+
+editor_previews_sync :: proc(editor: ^Editor) {
+	if editor.filetree.active && filetree_layout(editor).preview && !preview_loaded(&editor.filetree.preview) {
+		filetree_preview_touch(editor)
+	}
+	if editor.projsearch.active && overlay_layout(editor).preview && !preview_loaded(&editor.projsearch.preview) {
+		projsearch_load_preview(editor)
+	}
+	if editor.linefind.active && overlay_layout(editor).preview && !preview_loaded(&editor.linefind.preview) {
+		linefind_load_preview(editor)
 	}
 }
 
@@ -1557,71 +1570,187 @@ editor_render_buffer :: proc(editor: ^Editor) {
 
 }
 
+StatusSegKind :: enum {
+	Plain,
+	Path,
+	Diff,
+}
+
+StatusSeg :: struct {
+	sep, text: string,
+	fg:        tb2.Color,
+	kind:      StatusSegKind,
+	drop:      int,
+	hidden:    bool,
+}
+
+status_width :: proc(segs: []StatusSeg) -> int {
+	w := 0
+	first := true
+	for s in segs {
+		if s.hidden {
+			continue
+		}
+		if !first {
+			w += visual_width(transmute([]u8)s.sep)
+		}
+		w += visual_width(transmute([]u8)s.text)
+		first = false
+	}
+	return w
+}
+
+status_overflow :: proc(left, right: []StatusSeg, width: int) -> int {
+	need := status_width(left)
+	if rw := status_width(right); rw > 0 {
+		need += 1 + rw + 1
+	}
+	return need - width
+}
+
+status_path_shorten :: proc(path: string) -> (string, bool) {
+	if strings.has_prefix(path, "…/") {
+		rest := path[len("…/"):]
+		if i := strings.index_byte(rest, '/'); i >= 0 {
+			return fmt.tprintf("…/%s", rest[i + 1:]), true
+		}
+		return rest, true
+	}
+	if len(path) < 2 {
+		return path, false
+	}
+	if i := strings.index_byte(path[1:], '/'); i >= 0 {
+		return fmt.tprintf("…/%s", path[i + 2:]), true
+	}
+	return path, false
+}
+
+status_clip :: proc(text: string, w: int) -> string {
+	bytes := transmute([]u8)text
+	if visual_width(bytes) <= w {
+		return text
+	}
+	if w <= 0 {
+		return ""
+	}
+	c := col_at_visual(bytes, w - 1)
+	if visual_width(bytes[:c]) > w - 1 {
+		c = col_at_visual(bytes, w - 2)
+	}
+	return fmt.tprintf("%s…", text[:c])
+}
+
+status_fit :: proc(left, right: []StatusSeg, width: int) {
+	path := -1
+	for s, i in left {
+		if s.kind == .Path {
+			path = i
+		}
+	}
+	for status_overflow(left, right, width) > 0 {
+		if path >= 0 {
+			if short, ok := status_path_shorten(left[path].text); ok {
+				left[path].text = short
+				continue
+			}
+		}
+		victim: ^StatusSeg
+		for side in ([2][]StatusSeg{left, right}) {
+			for &s in side {
+				if !s.hidden && s.drop > 0 && (victim == nil || s.drop < victim.drop) {
+					victim = &s
+				}
+			}
+		}
+		if victim == nil {
+			break
+		}
+		victim.hidden = true
+	}
+	if over := status_overflow(left, right, width); over > 0 && path >= 0 {
+		pw := visual_width(transmute([]u8)left[path].text)
+		left[path].text = status_clip(left[path].text, pw - over)
+	}
+}
+
+status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
+	x := x
+	first := true
+	for s in segs {
+		if s.hidden {
+			continue
+		}
+		if !first {
+			x += visual_width(transmute([]u8)s.sep)
+		}
+		first = false
+		if s.kind == .Diff {
+			git_diffsize_paint(x, y, max_x, s.text, COLOR_PANE_BG)
+		} else if x < max_x {
+			tb2.print(i32(x), i32(y), s.fg, COLOR_PANE_BG, strings.clone_to_cstring(s.text, context.temp_allocator))
+		}
+		x += visual_width(transmute([]u8)s.text)
+	}
+}
+
 editor_render_status :: proc(editor: ^Editor) {
 	full_w := int(tb2.width())
 	_, h := editor_viewport(editor)
-	status, right: string
-	lsp_seg := ""
-	lsp_fg := COLOR_PANE_FG
+	left := make([dynamic]StatusSeg, context.temp_allocator)
+	right := make([dynamic]StatusSeg, context.temp_allocator)
+	fg := COLOR_PANE_FG
 	if editor.welcome {
-		status = fmt.tprintf(" %s", editor.working_root)
-		right = fmt.tprintf("qed %s", VERSION)
+		append(&left, StatusSeg{text = " ", fg = fg})
+		append(&left, StatusSeg{text = editor.working_root, fg = fg, kind = .Path})
+		append(&right, StatusSeg{text = fmt.tprintf("qed %s", VERSION), fg = fg, drop = 5})
 	} else {
 		b := editor_buffer(editor)
 		name := editor_display_path(editor, b.path) if b.path != "" else "[No Name]"
-		status = fmt.tprintf(" %s %s", ICON_STATUS_FILE, name)
+		append(&left, StatusSeg{text = fmt.tprintf(" %s", ICON_STATUS_FILE), fg = fg})
+		append(&left, StatusSeg{sep = " ", text = name, fg = fg, kind = .Path})
 		if b.modified {
-			status = fmt.tprintf("%s %s", status, ICON_MODIFIED)
+			append(&left, StatusSeg{sep = " ", text = ICON_MODIFIED, fg = fg})
 		}
-		status = fmt.tprintf("%s  %d/%d", status, b.cursor.row + 1, len(b.lines))
-		indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
-		right = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name)
+		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%d/%d", b.cursor.row + 1, len(b.lines)), fg = fg})
+
+		if n := len(editor.llm.requests); n > 0 {
+			append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("AI:%d", n), fg = fg, drop = 5})
+		}
+		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name), fg = fg, drop = 4})
 		if b.big {
-			right = fmt.tprintf("%s  big", right)
+			append(&right, StatusSeg{sep = "  ", text = "big", fg = fg, drop = 3})
 		} else if module_enabled(.Lsp) {
-			if label, fg, ok := lsp_status_label(b); ok {
-				lsp_seg = fmt.tprintf("%s %s", ICON_STATUS_LSP, label)
-				lsp_fg = fg
-				right = fmt.tprintf("%s  %s", right, lsp_seg)
+			if label, lsp_fg, ok := lsp_status_label(b); ok {
+				append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LSP, label), fg = lsp_fg, drop = 2})
 			}
 		}
-		right = fmt.tprintf("%s  %s %s", right, ICON_STATUS_INDENT, indent)
-		if n := len(editor.llm.requests); n > 0 {
-			right = fmt.tprintf("AI:%d  %s", n, right)
-		}
+		indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
+		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_INDENT, indent), fg = fg, drop = 1})
 	}
-	diff_label := ""
-	diff_x := 0
 	if module_enabled(.Git) && editor.gitstat.branch != "" {
-		status = fmt.tprintf("%s  %s %s", status, ICON_STATUS_BRANCH, editor.gitstat.branch)
+		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_BRANCH, editor.gitstat.branch), fg = fg, drop = 8})
+		ahead_behind := ""
 		if editor.gitstat.ahead > 0 {
-			status = fmt.tprintf("%s %s%d", status, ICON_STATUS_AHEAD, editor.gitstat.ahead)
+			ahead_behind = fmt.tprintf("%s%d", ICON_STATUS_AHEAD, editor.gitstat.ahead)
 		}
 		if editor.gitstat.behind > 0 {
-			sep := "" if editor.gitstat.ahead > 0 else " "
-			status = fmt.tprintf("%s%s%s%d", status, sep, ICON_STATUS_BEHIND, editor.gitstat.behind)
+			ahead_behind = fmt.tprintf("%s%s%d", ahead_behind, ICON_STATUS_BEHIND, editor.gitstat.behind)
 		}
-		diff_label = git_diffsize_label(editor.gitstat.diff)
-		if diff_label != "" {
-			status = fmt.tprintf("%s  ", status)
-			diff_x = visual_width(transmute([]u8)status)
-			status = fmt.tprintf("%s%s", status, diff_label)
+		if ahead_behind != "" {
+			append(&left, StatusSeg{sep = " ", text = ahead_behind, fg = fg, drop = 7})
+		}
+		if label := git_diffsize_label(editor.gitstat.diff); label != "" {
+			append(&left, StatusSeg{sep = "  ", text = label, kind = .Diff, drop = 6})
 		}
 	}
 	if len(editor.buffers) > 1 {
-		status = fmt.tprintf("%s  [%d/%d]", status, editor.current + 1, len(editor.buffers))
+		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("[%d/%d]", editor.current + 1, len(editor.buffers)), fg = fg, drop = 9})
 	}
-	editor_render_row(0, h, full_w, status, COLOR_PANE_FG, COLOR_PANE_BG)
-	git_diffsize_paint(diff_x, h, full_w, diff_label, COLOR_PANE_BG)
-	right_w := visual_width(transmute([]u8)right)
-	right_x := max(0, full_w - right_w - 1)
-	right_cstr := strings.clone_to_cstring(right, context.temp_allocator)
-	tb2.print(i32(right_x), i32(h), COLOR_PANE_FG, COLOR_PANE_BG, right_cstr)
-	if lsp_seg != "" && lsp_fg != COLOR_PANE_FG {
-		if off := strings.index(right, lsp_seg); off >= 0 {
-			seg_x := right_x + visual_width(transmute([]u8)right[:off])
-			tb2.print(i32(seg_x), i32(h), lsp_fg, COLOR_PANE_BG, strings.clone_to_cstring(lsp_seg, context.temp_allocator))
-		}
+	status_fit(left[:], right[:], full_w)
+	editor_render_row(0, h, full_w, "", fg, COLOR_PANE_BG)
+	status_draw(left[:], 0, h, full_w)
+	if rw := status_width(right[:]); rw > 0 {
+		status_draw(right[:], full_w - rw - 1, h, full_w)
 	}
 	message_fg := COLOR_FG
 	#partial switch editor.message_level {

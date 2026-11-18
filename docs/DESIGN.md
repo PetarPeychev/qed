@@ -66,7 +66,10 @@ Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` + repo diff size
 `+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs HEAD via `git diff HEAD --numstat`, untracked
 files' lines counted by `grep -Ic` as adds, binaries skipped; `git_diffsize_cmd`) — polled async every
-`GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`), then a
+`GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`). Both sides are
+`StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap: shorten the path from
+the left (`…/dir/name`, down to the bare name), then drop segments by `drop` rank (indent, LSP, `big`,
+language, AI count, then diff size, ahead/behind, branch, `[n/m]`), then clip the filename; then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
@@ -276,6 +279,12 @@ a click in the query/prompt field places the caret and a button-held drag select
 click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). Shared row/
 field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
 `overlay_prompt_mouse`, `dialog_mouse`; `textfield_mouse` maps a click to a caret).
+List | preview panes (file tree, project search, line jump) split via `overlay_split`: 50/50 (file
+tree list capped at `list_max_width`), the list shrinks first to keep `preview_min_width`, and once
+it would drop under `list_min_width` the preview is hidden (`lay.preview` false: list takes the full
+inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
+`editor_previews_sync`). Below `narrow_width` columns (0 = off) `overlay_layout` drops the
+`PICKER_MARGIN_X` side margins.
 Most panes reset their query on open; **line-find and project-search persist it** —
 reopened with the text fully selected (`textfield_select_all`) so a keystroke replaces it,
 else edit/arrow to refine. Project-search also restores its selected match; the file tree
@@ -508,7 +517,7 @@ doesn't survive re-init). Harness capabilities: `e2e_mouse` / `e2e_paste` /
 fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
 formatter / chat command / FIM endpoint), and a fake stdio LSP server (canned
 JSON-RPC, in `e2e_lsp_test.odin`). Coverage is one file per area:
-`e2e_edit/files/nav/lang/ai/mouse/lsp_test.odin`; scope + assertion surfaces:
+`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
 
 ## Shipped
@@ -537,7 +546,8 @@ pairs (brackets/quotes/backtick: surround selection, type-over, backspace-delete
 Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default on,
 *Toggle Line Wrap*; visual-row cursor motion + sub-row scroll; wraps ghost-text too),
 line-number + git gutter, mouse (position/drag/wheel/multi-click,
-drag auto-scroll), status + message line (relative path, git branch + ahead/behind + diff size, segment icons),
+drag auto-scroll), status + message line (relative path, git branch + ahead/behind + diff size, segment icons;
+narrow-width fitting), narrow-width panes (preview hides below the list/preview minimums, zero side margins),
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
 level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — per-level
 filters, multi-select copy, cross-session history seeded from the disk log behind

@@ -84,6 +84,10 @@ preview_destroy :: proc(p: ^Preview) {
 	delete(p.src)
 }
 
+preview_loaded :: proc(p: ^Preview) -> bool {
+	return p.path != "" || len(p.src) > 0 || len(p.rows) > 0 || p.empty
+}
+
 preview_total :: proc(p: ^Preview) -> int {
 	return len(p.rows) if p.diff else len(p.src)
 }

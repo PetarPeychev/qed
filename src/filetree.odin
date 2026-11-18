@@ -115,10 +115,11 @@ FileTreeLayout :: struct {
 	tab_y:                             int,
 	title_sep_y, filter_sep_y, footer_sep_y, div_x: int,
 	left_w, right_x, right_w:          int,
+	preview:                           bool,
 }
 
 filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
-	lay := overlay_layout(editor)
+	lay := overlay_layout(editor, LIST_MAX_WIDTH)
 	inner := lay.inner
 	tab_y := inner.y
 	title_sep_y := inner.y + 1
@@ -130,10 +131,6 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 	body_h := max(1, footer_sep_y - body_top)
 	preview_top := title_sep_y + 1
 	preview_h := max(1, footer_sep_y - preview_top)
-	left_w := (inner.w - 1) / 2
-	div_x := inner.x + left_w
-	right_x := div_x + 1
-	right_w := max(0, inner.x + inner.w - right_x)
 	return FileTreeLayout {
 		box = lay.box,
 		inner = inner,
@@ -147,10 +144,11 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 		title_sep_y = title_sep_y,
 		filter_sep_y = filter_sep_y,
 		footer_sep_y = footer_sep_y,
-		div_x = div_x,
-		left_w = left_w,
-		right_x = right_x,
-		right_w = right_w,
+		div_x = lay.div_x,
+		left_w = lay.left_w,
+		right_x = lay.right_x,
+		right_w = lay.right_w,
+		preview = lay.preview,
 	}
 }
 
@@ -928,7 +926,12 @@ filetree_load_preview :: proc(editor: ^Editor) {
 		preview_reset(&t.preview)
 		return
 	}
-	h := filetree_layout(editor).preview_h
+	lay := filetree_layout(editor)
+	if !lay.preview {
+		preview_reset(&t.preview)
+		return
+	}
+	h := lay.preview_h
 	if t.scope == .Git && module_enabled(.Git) {
 		preview_set_diff(&t.preview, e.path, h, t.git_diff_only)
 		return
@@ -2033,15 +2036,16 @@ filetree_render :: proc(editor: ^Editor) {
 		}
 	}
 
-	preview_render(&t.preview, lay.right_x + 1, lay.preview_top, lay.right_w - 1, lay.preview_h)
-
 	pane_hline(lay.box, lay.footer_sep_y)
-	for y in lay.title_sep_y + 1 ..< lay.footer_sep_y {
-		tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	if lay.preview {
+		preview_render(&t.preview, lay.right_x + 1, lay.preview_top, lay.right_w - 1, lay.preview_h)
+		for y in lay.title_sep_y + 1 ..< lay.footer_sep_y {
+			tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		}
+		tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		tb2.set_cell(i32(lay.div_x), i32(lay.footer_sep_y), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	}
-	tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	tb2.set_cell(i32(lay.div_x), i32(lay.filter_sep_y), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	tb2.set_cell(i32(lay.div_x), i32(lay.footer_sep_y), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, t.scroll, len(t.entries))
 
 	filetree_render_footer(editor, lay)
@@ -2187,7 +2191,7 @@ filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		return
 	}
-	if preview_wheel(&t.preview, ev, {lay.right_x, lay.preview_top, lay.right_w, lay.preview_h}, lay.preview_h) {
+	if lay.preview && preview_wheel(&t.preview, ev, {lay.right_x, lay.preview_top, lay.right_w, lay.preview_h}, lay.preview_h) {
 		return
 	}
 	#partial switch ev.key {

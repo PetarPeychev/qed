@@ -244,9 +244,14 @@ projsearch_load_preview :: proc(editor: ^Editor) {
 		preview_reset(&p.preview)
 		return
 	}
+	lay := overlay_layout(editor)
+	if !lay.preview {
+		preview_reset(&p.preview)
+		return
+	}
 	m := p.matches[p.selected]
 	full, _ := filepath.join({editor.working_root, m.path}, context.temp_allocator)
-	preview_set_file(&p.preview, full, m.row + 1, overlay_layout(editor).body_h)
+	preview_set_file(&p.preview, full, m.row + 1, lay.body_h)
 }
 
 projsearch_move :: proc(editor: ^Editor, delta: int) {
@@ -319,7 +324,7 @@ projsearch_paste :: proc(editor: ^Editor, text: string) {
 projsearch_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.projsearch
 	lay := overlay_layout(editor)
-	if preview_wheel(&p.preview, ev, {lay.right_x, lay.inner.y, lay.right_w, lay.inner.h}, lay.inner.h) {
+	if lay.preview && preview_wheel(&p.preview, ev, {lay.right_x, lay.inner.y, lay.right_w, lay.inner.h}, lay.inner.h) {
 		return
 	}
 	idx, activate := overlay_list_mouse(editor, ev, lay, len(p.matches), &p.scroll, &p.field, projsearch_close)
@@ -372,14 +377,15 @@ projsearch_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, lay.left_w - 1, label, fg, bg)
 	}
 
-	preview_render(&p.preview, lay.right_x + 1, inner.y, lay.right_w - 1, inner.h)
-
-	bottom := lay.box.y + lay.box.h - 1
-	for y in lay.box.y + 1 ..< bottom {
-		tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	if lay.preview {
+		preview_render(&p.preview, lay.right_x + 1, inner.y, lay.right_w - 1, inner.h)
+		bottom := lay.box.y + lay.box.h - 1
+		for y in lay.box.y + 1 ..< bottom {
+			tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		}
+		tb2.set_cell(i32(lay.div_x), i32(lay.box.y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		tb2.set_cell(i32(lay.div_x), i32(bottom), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	}
-	tb2.set_cell(i32(lay.div_x), i32(lay.box.y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	tb2.set_cell(i32(lay.div_x), i32(bottom), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	tb2.set_cell(i32(lay.box.x), i32(lay.title_sep_y), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	for x in inner.x ..< lay.div_x {
 		tb2.set_cell(i32(x), i32(lay.title_sep_y), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)

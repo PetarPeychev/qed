@@ -117,9 +117,14 @@ linefind_load_preview :: proc(editor: ^Editor) {
 		preview_reset(&p.preview)
 		return
 	}
+	lay := overlay_layout(editor)
+	if !lay.preview {
+		preview_reset(&p.preview)
+		return
+	}
 	b := editor_buffer(editor)
 	focus := p.matches[p.selected] + 1
-	preview_set_buffer(&p.preview, b, focus, overlay_layout(editor).body_h)
+	preview_set_buffer(&p.preview, b, focus, lay.body_h)
 }
 
 linefind_move :: proc(editor: ^Editor, delta: int) {
@@ -186,7 +191,7 @@ linefind_paste :: proc(editor: ^Editor, text: string) {
 linefind_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	p := &editor.linefind
 	lay := overlay_layout(editor)
-	if preview_wheel(&p.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
+	if lay.preview && preview_wheel(&p.preview, ev, {lay.right_x, lay.body_top, lay.right_w, lay.body_h}, lay.body_h) {
 		return
 	}
 	idx, activate := overlay_list_mouse(editor, ev, lay, len(p.matches), &p.scroll, &p.field, linefind_close)
@@ -227,7 +232,9 @@ linefind_render :: proc(editor: ^Editor) {
 		pane_text(inner.x + 1, y, lay.left_w - 1, linefind_label(numw, row, p.lines[row]), fg, bg)
 	}
 
-	preview_render(&p.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
+	if lay.preview {
+		preview_render(&p.preview, lay.right_x + 1, lay.body_top, lay.right_w - 1, lay.body_h)
+	}
 
 	overlay_divider(lay, p.scroll, len(p.matches))
 }
