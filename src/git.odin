@@ -47,6 +47,7 @@ GitStat :: struct {
 	branch:        string,
 	ahead, behind: int,
 	diff:          GitDiffSize,
+	base:          string,
 	sub:           Subprocess,
 	poll:          time.Tick,
 }
@@ -64,10 +65,12 @@ git_stat_maybe_start :: proc(editor: ^Editor) {
 	q := shell_quote(root)
 	// odin fmt parses {} placeholders, hence {{u}} for a literal @{u}
 	cmd := fmt.tprintf(
-		"git -C %s symbolic-ref --short -q HEAD 2>/dev/null || git -C %s rev-parse --short HEAD 2>/dev/null || echo; git -C %s rev-list --left-right --count '@{{u}}...HEAD' 2>/dev/null || echo; top=$(git -C %s rev-parse --show-toplevel 2>/dev/null) && (%s)",
+		"git -C %s symbolic-ref --short -q HEAD 2>/dev/null || git -C %s rev-parse --short HEAD 2>/dev/null || echo; git -C %s rev-list --left-right --count '@{{u}}...HEAD' 2>/dev/null || echo; git -C %s rev-parse -q --verify %s 2>/dev/null || echo; top=$(git -C %s rev-parse --show-toplevel 2>/dev/null) && (%s)",
 		q,
 		q,
 		q,
+		q,
+		git_base_rev(q),
 		q,
 		git_diffsize_cmd(`"$top"`),
 	)
@@ -102,8 +105,23 @@ git_stat_pump :: proc(editor: ^Editor) -> bool {
 			ahead, _ = strconv.parse_int(counts[1])
 		}
 	}
+	base := ""
+	if len(lines) > 2 {
+		base = strings.trim_space(lines[2])
+	}
+	moved := s.base != "" && base != s.base
+	if moved {
+		editor_log(editor, .Debug, "Git", fmt.tprintf("diff base moved to %s", base))
+		for &b in editor.buffers {
+			git_invalidate(&b)
+		}
+	}
+	if base != s.base {
+		delete(s.base)
+		s.base = strings.clone(base)
+	}
 	diff := git_diffsize_total(lines)
-	changed := branch != s.branch || ahead != s.ahead || behind != s.behind || diff != s.diff
+	changed := moved || branch != s.branch || ahead != s.ahead || behind != s.behind || diff != s.diff
 	if changed {
 		editor_log(editor, .Debug, "Git", fmt.tprintf("branch %s ahead %d behind %d diff +%d -%d", branch, ahead, behind, diff.added, diff.deleted))
 	}
@@ -126,8 +144,14 @@ git_stat_reset :: proc(editor: ^Editor) {
 	s.ahead = 0
 	s.behind = 0
 	s.diff = {}
+	git_stat_base_clear(s)
 	s.poll = {}
 	git_stat_maybe_start(editor)
+}
+
+git_stat_base_clear :: proc(s: ^GitStat) {
+	delete(s.base)
+	s.base = ""
 }
 
 git_base_change :: proc(editor: ^Editor, ref, label: string, merge: bool) {
@@ -137,6 +161,7 @@ git_base_change :: proc(editor: ^Editor, ref, label: string, merge: bool) {
 	}
 	s := &editor.gitstat
 	subprocess_kill(&s.sub)
+	git_stat_base_clear(s)
 	s.poll = {}
 	git_stat_maybe_start(editor)
 	filetree_scan_start(editor)
@@ -300,6 +325,7 @@ git_diffsize_paint :: proc(x, y, max_x: int, label: string, bg: tb2.Color) {
 git_stat_destroy :: proc(s: ^GitStat) {
 	subprocess_kill(&s.sub)
 	delete(s.branch)
+	delete(s.base)
 }
 
 git_module_sync :: proc(editor: ^Editor) {

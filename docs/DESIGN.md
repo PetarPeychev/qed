@@ -100,7 +100,9 @@ no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 surface. Branch and merge-base picks are live refs, re-resolved per command by `git_base_rev`
 (literal `HEAD` when unset; falls back to HEAD in a repo where the ref doesn't resolve); commit
 picks are a fixed sha. The scan's per-repo `@@BASE@@` name-status section replaces that repo's
-tracked `status` lines. A working-root change resets the base.
+tracked `status` lines. A working-root change resets the base. The status-bar stat poll also
+resolves the base sha; when it changes (a moved branch, or HEAD under the default base) every open
+buffer's gutter is invalidated, so gutters follow without their own polling.
 
 **Merge conflicts** (`conflict.odin`): content-driven, always on, no git dependency —
 `merge_scan` finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks by line prefix. Render

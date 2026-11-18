@@ -1888,6 +1888,14 @@ nav_screen_find :: proc(e: ^E2E, text: string) -> (x, y: int, ok: bool) {
 	return
 }
 
+nav_stat_refresh :: proc(e: ^E2E) {
+	e.ed.gitstat.poll = {}
+	git_stat_maybe_start(&e.ed)
+	for git_stat_running(&e.ed) {
+		git_stat_pump(&e.ed)
+	}
+}
+
 @(test)
 e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	if !shell_command_exists("git") {
@@ -1983,4 +1991,45 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 	e2e_run(fmt.tprintf("cd %s && git commit -qam moved", q))
 	git_base_set("HEAD~1", "HEAD~1", false)
 	check(t, &e)
+}
+
+@(test)
+e2e_nav_git_base_moved_gutter :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("one\ntwo\nthree\n")
+	defer e2e_stop(&e)
+	defer git_base_set("", "", false)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+	q := shell_quote(e.dir)
+
+	b := editor_buffer(&e.ed)
+	b.cursor = {1, len(b.lines[1].text)}
+	e2e_type(&e, "X")
+	editor_save(&e.ed)
+	nav_stat_refresh(&e)
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
+
+	e2e_run(fmt.tprintf("cd %s && git commit -qam second", q))
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
+	nav_stat_refresh(&e)
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
+
+	e2e_run(fmt.tprintf("cd %s && git branch base HEAD~1", q))
+	git_base_change(&e.ed, "base", "base", false)
+	nav_stat_refresh(&e)
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
+
+	e2e_run(fmt.tprintf("cd %s && git branch -f base HEAD", q))
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
+	nav_stat_refresh(&e)
+	e2e_render(&e)
+	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
 }
