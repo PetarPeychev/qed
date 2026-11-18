@@ -300,12 +300,12 @@ filetree_scan_cmd :: proc(root: string) -> cstring {
 	base := ""
 	if g_diff_base.ref != "" {
 		base = fmt.tprintf(
-			`b=%s; if [ "$b" != HEAD ]; then echo @@BASE@@; git -C "$1" diff --name-status --find-renames "$b" 2>/dev/null; echo @@STATUS@@; fi; `,
+			`b=%s; if [ "$b" != HEAD ]; then echo @@BASE@@; git -c core.quotePath=false -C "$1" diff --name-status --find-renames "$b" 2>/dev/null; echo @@STATUS@@; fi; `,
 			git_base_rev(`"$1"`),
 		)
 	}
 	return fmt.ctprintf(
-		`scan() (echo "@@REPO@@ $1"; %sgit -C "$1" status --porcelain --find-renames --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
+		`scan() (echo "@@REPO@@ $1"; %sgit -c core.quotePath=false -C "$1" status --porcelain --find-renames --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
 		base,
 		git_diffsize_cmd(`"$1"`),
 		q,
@@ -440,7 +440,6 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	}
 }
 
-// a deletion whose path exists again on disk (re-created, conflict) is listed as a plain modification
 filetree_change_add :: proc(t: ^FileTree, root, top, rel, old: string, mark: GitMark) {
 	abs, _ := filepath.join({top, rel}, context.temp_allocator)
 	m := mark
@@ -455,7 +454,7 @@ filetree_change_add :: proc(t: ^FileTree, root, top, rel, old: string, mark: Git
 }
 
 filetree_entry_deleted :: proc(t: ^FileTree, e: FileEntry) -> bool {
-	return !e.is_dir && t.status[e.path] == .Deleted
+	return !e.is_dir && t.status[e.path] == .Deleted && !os.exists(e.path)
 }
 
 filetree_sel_gone :: proc(editor: ^Editor) -> bool {
@@ -488,8 +487,9 @@ filetree_is_ignored :: proc(t: ^FileTree, path: string) -> bool {
 filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: GitMark) {
 	filetree_status_set(t, path, mark)
 	up := GitMark.Modified if mark == .Deleted else mark
+	under := strings.concatenate({root, "/"}, context.temp_allocator)
 	p := path
-	for strings.has_prefix(p, root) && p != root {
+	for strings.has_prefix(p, under) {
 		np := filetree_parent_dir(p)
 		if np == p {
 			break
@@ -737,11 +737,11 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 	walk_at := time.tick_now()
 	filetree_walk(t, editor.working_root, &t.filter_cands)
 	if t.scope == .Git {
-		root := editor.working_root
+		under := strings.concatenate({editor.working_root, "/"}, context.temp_allocator)
 		seen := make(map[string]bool, context.temp_allocator)
 		for d in t.deleted {
 			p := d
-			for strings.has_prefix(p, root) && p != root && !(p in seen) && !os.exists(p) {
+			for strings.has_prefix(p, under) && !(p in seen) && !os.exists(p) {
 				seen[p] = true
 				append(&t.filter_cands, FileEntry{strings.clone(p), "", 0, p != d})
 				p = filetree_parent_dir(p)
@@ -1644,6 +1644,10 @@ filetree_clip_paste :: proc(editor: ^Editor) {
 		return
 	}
 	dst_dir := filetree_target_dir(editor)
+	if !os.is_dir(dst_dir) {
+		editor_log(editor, .Info, "Files", "Deleted directory: restore a file in it first")
+		return
+	}
 	cut := t.clip_cut
 	done := 0
 	last := ""

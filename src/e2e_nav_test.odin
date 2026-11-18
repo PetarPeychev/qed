@@ -2033,3 +2033,30 @@ e2e_nav_git_base_moved_gutter :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
 }
+
+@(test)
+e2e_nav_git_deleted_unicode :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("one\n")
+	defer e2e_stop(&e)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+	gone := fmt.tprintf("%s/é.txt", e.dir)
+	nav_write(gone, "x\n")
+	e2e_run(fmt.tprintf("cd %s && git add . && git commit -q -m u && rm é.txt", shell_quote(e.dir)))
+
+	nav_alt(&e, 'g')
+	nav_scan(&e)
+	tr := &e.ed.filetree
+	testing.expect(t, nav_select(tr, "é.txt"), "unicode deleted name listed verbatim")
+	testing.expect(t, filetree_entry_deleted(tr, tr.entries[tr.selected]))
+
+	nav_write(gone, "new\n")
+	testing.expect(t, !filetree_entry_deleted(tr, tr.entries[tr.selected]), "recreated since the scan is not deleted")
+	e2e_key(&e, .Enter)
+	testing.expect(t, tr.mode != .ConfirmRestore, "no restore prompt over a recreated file")
+	data, _ := os.read_entire_file(gone, context.temp_allocator)
+	testing.expect_value(t, string(data), "new\n")
+}

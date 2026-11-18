@@ -48,6 +48,7 @@ GitStat :: struct {
 	ahead, behind: int,
 	diff:          GitDiffSize,
 	base:          string,
+	base_known:    bool,
 	sub:           Subprocess,
 	poll:          time.Tick,
 }
@@ -109,11 +110,15 @@ git_stat_pump :: proc(editor: ^Editor) -> bool {
 	if len(lines) > 2 {
 		base = strings.trim_space(lines[2])
 	}
-	moved := s.base != "" && base != s.base
+	moved := s.base_known && base != s.base
+	s.base_known = true
 	if moved {
 		editor_log(editor, .Debug, "Git", fmt.tprintf("diff base moved to %s", base))
 		for &b in editor.buffers {
 			git_invalidate(&b)
+		}
+		if editor.filetree.active {
+			filetree_scan_start(editor)
 		}
 	}
 	if base != s.base {
@@ -152,6 +157,7 @@ git_stat_reset :: proc(editor: ^Editor) {
 git_stat_base_clear :: proc(s: ^GitStat) {
 	delete(s.base)
 	s.base = ""
+	s.base_known = false
 }
 
 git_base_change :: proc(editor: ^Editor, ref, label: string, merge: bool) {
@@ -173,7 +179,7 @@ git_base_change :: proc(editor: ^Editor, ref, label: string, merge: bool) {
 // git diff skips untracked files, so grep counts their lines (-I: binaries count 0)
 git_diffsize_cmd :: proc(dir: string) -> string {
 	return fmt.tprintf(
-		"echo @@NUMSTAT@@; git -C %s diff %s --numstat --find-renames 2>/dev/null; echo @@UNTRACKED@@; (cd %s && git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' --) 2>/dev/null",
+		"echo @@NUMSTAT@@; git -c core.quotePath=false -C %s diff %s --numstat --find-renames 2>/dev/null; echo @@UNTRACKED@@; (cd %s && git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' --) 2>/dev/null",
 		dir,
 		git_base_rev(dir),
 		dir,
@@ -1022,7 +1028,7 @@ git_restore :: proc(path: string) -> bool {
 	qrel := shell_quote(rel)
 	rev := git_base_rev(qdir)
 	cmd := fmt.ctprintf(
-		"cd %s && if git ls-files --error-unmatch -- %s >/dev/null 2>&1; then git restore --source=%s --worktree -- %s; else git restore --source=%s --staged --worktree -- %s; fi >/dev/null 2>&1 && echo ok",
+		"cd %s && if git --literal-pathspecs ls-files --error-unmatch -- %s >/dev/null 2>&1; then git --literal-pathspecs restore --source=%s --worktree -- %s; else git --literal-pathspecs restore --source=%s --staged --worktree -- %s; fi >/dev/null 2>&1 && echo ok",
 		qdir,
 		qrel,
 		rev,
