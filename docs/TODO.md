@@ -37,7 +37,6 @@ daily-drives it for programming.** Every item here blocks that.
 
 ### Environment
 
-- [ ] Narrow widths (tmux splits): status bar shortens path then drops segments instead of overlapping; split panes keep preview >= min until list hits min, then hide preview; margins 0 when narrow.
 - [ ] Wider terminal support / environment-agnostic hardening: keybinds must survive macOS terminals, tmux vs non-tmux, and other emulator quirks.
 
 ### Docs & onboarding
@@ -98,7 +97,6 @@ runtime-grammar arc that lets a stranger add *any* language with zero rebuild â€
 
 ### Git diff gutter
 
-- [ ] Diff size `+N -N` (worktree vs HEAD, untracked counted as +): repo total in status bar, per file in file tree Git tab.
 - [ ] Git diff viewer (design TBD): a pane showing the full diff, beyond the gutter marks.
 - [ ] Stage / unstage hunks (later).
 - [ ] Idea: reuse the gutter to mark lines changed since last save (buffer vs disk).
