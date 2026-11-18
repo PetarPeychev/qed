@@ -193,6 +193,7 @@ filetree_commands := [?]Command {
 	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
 	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", module = .Git, run = filetree_toggle_git_diff},
+	{name = "Restore File", config_name = "File Tree: Restore File", module = .Git, run = filetree_cmd_restore},
 	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
 }
 

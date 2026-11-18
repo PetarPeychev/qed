@@ -275,6 +275,7 @@ ICON_STATUS_INDENT: string
 ICON_MODIFIED: string
 ICON_TREE_EXPANDED: string
 ICON_TREE_COLLAPSED: string
+ICON_TREE_RENAMED: string
 ICON_PREVIEW_MORE: string
 ICON_LSP_STARTING: string
 ICON_LSP_FAILED: string
@@ -294,6 +295,7 @@ config_icons := [?]Config_Str {
 	{"modified", &ICON_MODIFIED},
 	{"tree_expanded", &ICON_TREE_EXPANDED},
 	{"tree_collapsed", &ICON_TREE_COLLAPSED},
+	{"tree_renamed", &ICON_TREE_RENAMED},
 	{"preview_more", &ICON_PREVIEW_MORE},
 	{"lsp_starting", &ICON_LSP_STARTING},
 	{"lsp_failed", &ICON_LSP_FAILED},

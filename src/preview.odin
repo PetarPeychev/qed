@@ -274,11 +274,17 @@ preview_ensure :: proc(p: ^Preview, view_h: int) {
 	preview_highlight_range(p, max(0, p.scroll - PREVIEW_PARSE_AHEAD), min(len(p.src), vis_hi + PREVIEW_PARSE_AHEAD))
 }
 
-preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool) {
+preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool, old_path := "") {
 	preview_reset(p)
 	p.language = language_of(path)
-	base_text, cur, marks, hunks, ok := git_diff_file(path)
+	base_text, cur, marks, hunks, ok := git_diff_file(path, old_path)
 	if !ok {
+		return
+	}
+	if len(cur) == 0 && len(base_text) > 0 {
+		p.diff = true
+		p.numw = 1
+		preview_emit_ghosts(p, GitHunk{hi = min(len(base_text), PREVIEW_MAX_LINES)}, base_text, cur, false)
 		return
 	}
 

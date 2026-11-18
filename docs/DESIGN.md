@@ -64,7 +64,7 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
 path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` + `±label` diff base (when not HEAD) + repo diff size
-`+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs diff base via `git diff <base> --numstat`, untracked
+`+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs diff base via `git diff <base> --numstat --find-renames`, untracked
 files' lines counted by `grep -Ic` as adds, binaries skipped; `git_diffsize_cmd`) — polled async every
 `GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`). Both sides are
 `StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap: shorten the path from
@@ -610,11 +610,16 @@ open the pane on that tab from the editor and switch/toggle-close it while open 
 again on its own tab closes — or `←`/`→`/click; also on the welcome screen; `Alt+g` freed from
 *Git: Toggle Diff View* which is now palette-only) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
-`git status --porcelain --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against, followed by the same `git_diffsize_cmd` numstat sections, giving each changed file a colored `+N -N` on the Git tab, right-aligned with `+`/`-` columns padded over the visible rows, label clipped with `…`, numbers dropped when even a short label cannot fit) scanned **async**
+`git status --porcelain --find-renames --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against, followed by the same `git_diffsize_cmd` numstat sections, giving each changed file a colored `+N -N` on the Git tab, right-aligned with `+`/`-` columns padded over the visible rows, label clipped with `…`, numbers dropped when even a short label cannot fit) scanned **async**
 via the shared subprocess runner, prewarmed at startup: every open (first included) renders instantly from the
 cached status/ignored then refreshes in the
 background (`filetree_scan_pump`); a green/yellow `▌` per
-added/modified file propagated up its ancestor directories, ignored files dimmed; unsaved
+added/modified file propagated up its ancestor directories, ignored files dimmed; deleted files
+(`git_porcelain_line`/`git_name_status_line` → `.Deleted`, unless the path exists again) listed on
+the Git tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter` or
+*Restore File* confirms then `git restore --source=<base>` (worktree only, plus index when the
+deletion is staged), other file commands refuse them; renames listed once at the new path labeled
+`new  ← old` (`FileTree.renames`, numstat `old => new` keyed on the new path); unsaved
 open buffers marked with a trailing `●`, propagated to directories),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
@@ -657,7 +662,8 @@ both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a
 nil error with 0 bytes.) The file-tree **Git** tab
 previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
-built by `git_diff_file` (base-vs-worktree for a non-open file, reusing the gutter's line-hash diff).
+built by `git_diff_file` (base-vs-worktree for a non-open file, reusing the gutter's line-hash diff; a rename diffs
+against the old path's base blob, a deleted file previews entirely as ghost rows).
 *File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.git_diff_only` seeded from config
 `modules.git.filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,

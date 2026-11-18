@@ -148,7 +148,7 @@ git_base_change :: proc(editor: ^Editor, ref, label: string, merge: bool) {
 // git diff skips untracked files, so grep counts their lines (-I: binaries count 0)
 git_diffsize_cmd :: proc(dir: string) -> string {
 	return fmt.tprintf(
-		"echo @@NUMSTAT@@; git -C %s diff %s --numstat --no-renames 2>/dev/null; echo @@UNTRACKED@@; (cd %s && git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' --) 2>/dev/null",
+		"echo @@NUMSTAT@@; git -C %s diff %s --numstat --find-renames 2>/dev/null; echo @@UNTRACKED@@; (cd %s && git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' --) 2>/dev/null",
 		dir,
 		git_base_rev(dir),
 		dir,
@@ -176,14 +176,87 @@ git_numstat_line :: proc(line: string, untracked: bool) -> (path: string, size: 
 	if !aok || !dok {
 		return
 	}
-	return strings.trim(parts[2], "\""), {a, d}, true
+	return git_numstat_path(parts[2]), {a, d}, true
 }
 
-git_name_status_line :: proc(line: string) -> (path: string, mark: GitMark, ok: bool) {
-	if len(line) < 3 || line[1] != '\t' || line[0] == 'D' {
+// a rename prints `old => new` or `dir/{old => new}/f`; sizes key on the new path
+git_numstat_path :: proc(s: string) -> string {
+	p := strings.trim(s, "\"")
+	arrow := strings.index(p, " => ")
+	if arrow < 0 {
+		return p
+	}
+	lb := strings.last_index_byte(p[:arrow], '{')
+	rb := strings.index_byte(p[arrow:], '}')
+	if lb < 0 || rb < 0 {
+		return p[arrow + 4:]
+	}
+	rb += arrow
+	joined := strings.concatenate({p[:lb], p[arrow + 4:rb], p[rb + 1:]}, context.temp_allocator)
+	out, _ := strings.replace_all(joined, "//", "/", context.temp_allocator)
+	return strings.trim_left(out, "/")
+}
+
+git_path_clean :: proc(s: string) -> string {
+	return strings.trim_right(strings.trim(strings.trim_space(s), "\""), "/")
+}
+
+git_name_status_line :: proc(line: string) -> (path, old: string, mark: GitMark, ok: bool) {
+	parts := strings.split(line, "\t", context.temp_allocator)
+	if len(parts) < 2 || len(parts[0]) == 0 {
 		return
 	}
-	return strings.trim(line[2:], "\""), .Added if line[0] == 'A' else .Modified, true
+	switch parts[0][0] {
+	case 'R':
+		if len(parts) != 3 {
+			return
+		}
+		return git_path_clean(parts[2]), git_path_clean(parts[1]), .Modified, true
+	case 'D':
+		mark = .Deleted
+	case 'A':
+		mark = .Added
+	case:
+		mark = .Modified
+	}
+	path = git_path_clean(parts[1])
+	return path, "", mark, path != ""
+}
+
+git_porcelain_line :: proc(line: string) -> (path, old: string, mark: GitMark, ok: bool) {
+	if len(line) < 4 {
+		return
+	}
+	code := line[:2]
+	rel := line[3:]
+	if idx := strings.index(rel, " -> "); idx >= 0 {
+		old = git_path_clean(rel[:idx])
+		rel = rel[idx + 4:]
+	}
+	path = git_path_clean(rel)
+	if path == "" {
+		return
+	}
+	x, y := code[0], code[1]
+	switch {
+	case code == "??":
+		mark = .Added
+	case code == "!!":
+		mark = .None
+	case x == 'A' && y == 'D':
+		return
+	case x == 'R' && y == 'D':
+		path, mark = old, .Deleted
+	case x == 'D' || y == 'D':
+		mark = .Deleted
+	case x == 'R':
+		return path, old, .Modified, true
+	case x == 'A' || y == 'A':
+		mark = .Added
+	case:
+		mark = .Modified
+	}
+	return path, "", mark, path != ""
 }
 
 git_diffsize_total :: proc(lines: []string) -> (total: GitDiffSize) {
@@ -854,6 +927,7 @@ git_split_lines :: proc(s: string, allocator := context.temp_allocator) -> [dyna
 // gutter's line-hash diff so a preview renders identically to the inline diff view.
 git_diff_file :: proc(
 	path: string,
+	old_path := "",
 ) -> (
 	base_text: []string,
 	cur: []string,
@@ -864,16 +938,18 @@ git_diff_file :: proc(
 	if path == "" || !module_enabled(.Git) {
 		return
 	}
-	data, derr := os.read_entire_file(path, context.temp_allocator)
-	if derr != nil || len(data) > BIG_FILE_BYTES {
-		return
+	data: []u8
+	if os.exists(path) {
+		d, derr := os.read_entire_file(path, context.temp_allocator)
+		if derr != nil || len(d) > BIG_FILE_BYTES {
+			return
+		}
+		data = d
 	}
 
-	slash := strings.last_index_byte(path, '/')
-	dir := path[:slash] if slash >= 0 else "."
-	name := path[slash + 1:] if slash >= 0 else path
+	dir, rel := git_path_anchor(old_path if old_path != "" else path)
 	qdir := shell_quote(dir)
-	show_cmd := fmt.ctprintf("git -C %s show %s:./%s 2>/dev/null", qdir, git_base_rev(qdir), shell_quote(name))
+	show_cmd := fmt.ctprintf("git -C %s show %s:./%s 2>/dev/null", qdir, git_base_rev(qdir), shell_quote(rel))
 	blob, _ := shell_capture(show_cmd)
 
 	bt := git_split_lines(blob)
@@ -892,4 +968,42 @@ git_diff_file :: proc(
 	hk := make([dynamic]GitHunk, context.temp_allocator)
 	git_diff(bh[:], ch[:], m, &hk)
 	return bt[:], cl[:], m, hk[:], true
+}
+
+// a deleted or renamed path's own dir may be gone, so git runs from its nearest existing ancestor
+git_path_anchor :: proc(path: string) -> (dir, rel: string) {
+	dir = filetree_parent_dir(path)
+	for !os.is_dir(dir) {
+		np := filetree_parent_dir(dir)
+		if np == dir {
+			break
+		}
+		dir = np
+	}
+	if len(path) > len(dir) + 1 {
+		rel = path[len(dir) + 1:]
+	}
+	return
+}
+
+// a staged deletion has no index entry; restoring the worktree alone would leave the file untracked
+git_restore :: proc(path: string) -> bool {
+	if !module_enabled(.Git) {
+		return false
+	}
+	dir, rel := git_path_anchor(path)
+	qdir := shell_quote(dir)
+	qrel := shell_quote(rel)
+	rev := git_base_rev(qdir)
+	cmd := fmt.ctprintf(
+		"cd %s && if git ls-files --error-unmatch -- %s >/dev/null 2>&1; then git restore --source=%s --worktree -- %s; else git restore --source=%s --staged --worktree -- %s; fi >/dev/null 2>&1 && echo ok",
+		qdir,
+		qrel,
+		rev,
+		qrel,
+		rev,
+		qrel,
+	)
+	out, _ := shell_capture(cmd)
+	return strings.trim_space(out) == "ok"
 }

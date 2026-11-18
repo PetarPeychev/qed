@@ -110,6 +110,7 @@
     "modified": "●",
     "tree_expanded": "▾",
     "tree_collapsed": "▸",
+    "tree_renamed": "←",
     "preview_more": "⋮",
     "lsp_starting": "…",
     "lsp_failed": "✗",

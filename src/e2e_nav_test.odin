@@ -1866,3 +1866,121 @@ e2e_nav_git_diff_base :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
 }
+
+nav_select :: proc(tr: ^FileTree, name: string) -> bool {
+	for entry, i in tr.entries {
+		if entry.name == name {
+			tr.selected = i
+			tr.anchor = nil
+			return true
+		}
+	}
+	return false
+}
+
+nav_screen_find :: proc(e: ^E2E, text: string) -> (x, y: int, ok: bool) {
+	for row in 0 ..< E2E_H {
+		line := e2e_row(e, row)
+		if i := strings.index(line, text); i >= 0 {
+			return strings.rune_count(line[:i]), row, true
+		}
+	}
+	return
+}
+
+@(test)
+e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("one\n")
+	defer e2e_stop(&e)
+	e2e_resize(&e, 200, E2E_H)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+	q := shell_quote(e.dir)
+	gone := fmt.tprintf("%s/sub/gone.txt", e.dir)
+	os.make_directory(fmt.tprintf("%s/sub", e.dir))
+	nav_write(gone, "alpha\nbeta\n")
+	e2e_run(fmt.tprintf("cd %s && git add sub && git commit -q -m sub && rm -r sub", q))
+
+	nav_alt(&e, 'g')
+	nav_scan(&e)
+	tr := &e.ed.filetree
+	testing.expect(t, nav_select(tr, "sub"), "vanished dir listed virtually")
+	testing.expect(t, nav_select(tr, "gone.txt"), "deleted file listed under its old dir")
+	testing.expect(t, filetree_entry_deleted(tr, tr.entries[tr.selected]))
+	filetree_load_preview(&e.ed)
+	testing.expect_value(t, len(tr.preview.rows), 2)
+	want := []string{"alpha", "beta"}
+	for r, i in tr.preview.rows {
+		testing.expect_value(t, r.kind, PreviewRowKind.Ghost)
+		testing.expect_value(t, r.text, want[i])
+	}
+
+	e2e_render(&e)
+	x, y, found := nav_screen_find(&e, "gone.txt")
+	testing.expect(t, found, "deleted row renders")
+	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x, y)), e2e_rgb(COLOR_GIT_DEL))
+
+	e2e_key(&e, .Ctrl_R)
+	testing.expect_value(t, tr.mode, FileTreeMode.Nav)
+	testing.expect(t, strings.contains(e.ed.message, "restore it first"), "rename refuses a deleted entry")
+	e2e_key(&e, .Ctrl_D)
+	testing.expect_value(t, tr.mode, FileTreeMode.Nav)
+
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmRestore)
+	testing.expect_value(t, filetree_restore_question(tr), "Restore gone.txt from HEAD?")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	data, err := os.read_entire_file(gone, context.temp_allocator)
+	testing.expect(t, err == nil, "restored on disk")
+	testing.expect_value(t, string(data), "alpha\nbeta\n")
+	testing.expect(t, !nav_select(tr, "gone.txt"), "restored file is clean again")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\n", "old.txt")
+	defer e2e_stop(&e)
+	defer git_base_set("", "", false)
+	e2e_resize(&e, 200, E2E_H)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+	q := shell_quote(e.dir)
+	e2e_run(fmt.tprintf("cd %s && git mv old.txt new.txt", q))
+	nav_write(fmt.tprintf("%s/new.txt", e.dir), "l1\nl2\nl3\nCHANGED\nl5\nl6\nl7\nl8\n")
+
+	check :: proc(t: ^testing.T, e: ^E2E) {
+		nav_alt(e, 'g')
+		nav_scan(e)
+		tr := &e.ed.filetree
+		testing.expect(t, !nav_select(tr, "old.txt"), "old path not listed")
+		testing.expect(t, nav_select(tr, "new.txt"), "rename listed at the new path")
+		filetree_load_preview(&e.ed)
+		kinds: [dynamic]PreviewRowKind
+		kinds.allocator = context.temp_allocator
+		for r in tr.preview.rows {
+			if r.kind == .Ghost || r.kind == .Modified {
+				append(&kinds, r.kind)
+			}
+		}
+		testing.expectf(t, len(kinds) == 2 && kinds[0] == .Ghost && kinds[1] == .Modified, "preview diffs old vs new: %v", kinds)
+		e2e_render(e)
+		_, _, found := nav_screen_find(e, fmt.tprintf("new.txt  %s old.txt", ICON_TREE_RENAMED))
+		testing.expect(t, found, "row label shows the old path")
+		_, _, sized := nav_screen_find(e, "+1  -1")
+		testing.expect(t, sized, "diff size is the rename diff, not a full add")
+		e2e_key(e, .Esc)
+	}
+	check(t, &e)
+
+	e2e_run(fmt.tprintf("cd %s && git commit -qam moved", q))
+	git_base_set("HEAD~1", "HEAD~1", false)
+	check(t, &e)
+}

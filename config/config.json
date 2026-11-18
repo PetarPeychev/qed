@@ -109,6 +109,7 @@
     "File Tree: Toggle Dotfiles": "Alt+.",
     "File Tree: Toggle Ignored": "Alt+i",
     "File Tree: Toggle Diff": "Alt+d",
+    "File Tree: Restore File": "",
     "File Tree: Expand/Collapse All": "Alt+e"
   },
   "languages": {

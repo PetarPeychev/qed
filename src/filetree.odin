@@ -27,6 +27,7 @@ FileTreeMode :: enum {
 	ConfirmDelete,
 	ConfirmClose,
 	ConfirmRoot,
+	ConfirmRestore,
 }
 
 FileTreeScope :: enum {
@@ -68,11 +69,14 @@ FileTree :: struct {
 	filter:          TextField,
 	delete_selected: int,
 	close_selected:  int,
+	restore_selected: int,
 	root_target:     string,
 	preview:         Preview,
 	status:          map[string]GitMark,
 	ignored:         map[string]bool,
 	diffsize:        map[string]GitDiffSize,
+	renames:         map[string]string,
+	deleted:         [dynamic]string,
 	show_dotfiles:   bool,
 	show_ignored:    bool,
 	git_diff_only:   bool,
@@ -169,6 +173,8 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.status)
 	delete(t.ignored)
 	delete(t.diffsize)
+	delete(t.renames)
+	delete(t.deleted)
 	filetree_paths_clear(&t.scope_paths)
 	delete(t.scope_paths)
 	filetree_clip_clear(t)
@@ -277,6 +283,12 @@ filetree_clear_status :: proc(t: ^FileTree) {
 		delete(key)
 	}
 	clear(&t.diffsize)
+	for key, old in t.renames {
+		delete(key)
+		delete(old)
+	}
+	clear(&t.renames)
+	clear(&t.deleted)
 }
 
 // One repo when the root is inside a git repo; otherwise walk down, pruning at
@@ -288,12 +300,12 @@ filetree_scan_cmd :: proc(root: string) -> cstring {
 	base := ""
 	if g_diff_base.ref != "" {
 		base = fmt.tprintf(
-			`b=%s; if [ "$b" != HEAD ]; then echo @@BASE@@; git -C "$1" diff --name-status --no-renames "$b" 2>/dev/null; echo @@STATUS@@; fi; `,
+			`b=%s; if [ "$b" != HEAD ]; then echo @@BASE@@; git -C "$1" diff --name-status --find-renames "$b" 2>/dev/null; echo @@STATUS@@; fi; `,
 			git_base_rev(`"$1"`),
 		)
 	}
 	return fmt.ctprintf(
-		`scan() (echo "@@REPO@@ $1"; %sgit -C "$1" status --porcelain --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
+		`scan() (echo "@@REPO@@ $1"; %sgit -C "$1" status --porcelain --find-renames --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
 		base,
 		git_diffsize_cmd(`"$1"`),
 		q,
@@ -392,9 +404,8 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 			continue
 		}
 		if section == "@@BASE@@" {
-			if rel, mark, ok := git_name_status_line(line); ok {
-				abs, _ := filepath.join({top, rel}, context.temp_allocator)
-				filetree_status_add(t, root, abs, mark)
+			if rel, old, mark, ok := git_name_status_line(line); ok {
+				filetree_change_add(t, root, top, rel, old, mark)
 			}
 			continue
 		}
@@ -408,30 +419,55 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 			}
 			continue
 		}
-		if len(line) < 4 {
+		rel, old, mark, ok := git_porcelain_line(line)
+		if !ok {
 			continue
 		}
-		code := line[:2]
-		rel := line[3:]
-		if idx := strings.index(rel, " -> "); idx >= 0 {
-			rel = rel[idx + 4:]
-		}
-		rel = strings.trim_space(rel)
-		rel = strings.trim(rel, "\"")
-		rel = strings.trim_right(rel, "/")
-		if rel == "" {
-			continue
-		}
-		abs, _ := filepath.join({top, rel}, context.temp_allocator)
-		if code == "!!" {
+		if strings.has_prefix(line, "!!") {
+			abs, _ := filepath.join({top, rel}, context.temp_allocator)
 			t.ignored[strings.clone(abs)] = true
 			continue
 		}
-		if based && code != "??" {
+		if based && !strings.has_prefix(line, "??") {
 			continue
 		}
-		filetree_status_add(t, root, abs, filetree_status_mark(code))
+		filetree_change_add(t, root, top, rel, old, mark)
 	}
+	for path, mark in t.status {
+		if mark == .Deleted {
+			append(&t.deleted, path)
+		}
+	}
+}
+
+// a deletion whose path exists again on disk (re-created, conflict) is listed as a plain modification
+filetree_change_add :: proc(t: ^FileTree, root, top, rel, old: string, mark: GitMark) {
+	abs, _ := filepath.join({top, rel}, context.temp_allocator)
+	m := mark
+	if m == .Deleted && os.exists(abs) {
+		m = .Modified
+	}
+	if old != "" && abs not_in t.renames {
+		o, _ := filepath.join({top, old}, context.temp_allocator)
+		t.renames[strings.clone(abs)] = strings.clone(o)
+	}
+	filetree_status_add(t, root, abs, m)
+}
+
+filetree_entry_deleted :: proc(t: ^FileTree, e: FileEntry) -> bool {
+	return !e.is_dir && t.status[e.path] == .Deleted
+}
+
+filetree_sel_gone :: proc(editor: ^Editor) -> bool {
+	t := &editor.filetree
+	lo, hi := filetree_sel_range(t)
+	for i in max(0, lo) ..< min(hi + 1, len(t.entries)) {
+		if !os.exists(t.entries[i].path) {
+			editor_log(editor, .Info, "Files", "Deleted file: restore it first")
+			return true
+		}
+	}
+	return false
 }
 
 filetree_is_ignored :: proc(t: ^FileTree, path: string) -> bool {
@@ -449,15 +485,9 @@ filetree_is_ignored :: proc(t: ^FileTree, path: string) -> bool {
 	return false
 }
 
-filetree_status_mark :: proc(code: string) -> GitMark {
-	if code == "??" || code[0] == 'A' || code[1] == 'A' {
-		return .Added
-	}
-	return .Modified
-}
-
 filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: GitMark) {
 	filetree_status_set(t, path, mark)
+	up := GitMark.Modified if mark == .Deleted else mark
 	p := path
 	for strings.has_prefix(p, root) && p != root {
 		np := filetree_parent_dir(p)
@@ -465,7 +495,7 @@ filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: GitMark) {
 			break
 		}
 		p = np
-		filetree_status_set(t, p, mark)
+		filetree_status_set(t, p, up)
 	}
 }
 
@@ -706,6 +736,18 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 	filetree_filter_cache_clear(t)
 	walk_at := time.tick_now()
 	filetree_walk(t, editor.working_root, &t.filter_cands)
+	if t.scope == .Git {
+		root := editor.working_root
+		seen := make(map[string]bool, context.temp_allocator)
+		for d in t.deleted {
+			p := d
+			for strings.has_prefix(p, root) && p != root && !(p in seen) && !os.exists(p) {
+				seen[p] = true
+				append(&t.filter_cands, FileEntry{strings.clone(p), "", 0, p != d})
+				p = filetree_parent_dir(p)
+			}
+		}
+	}
 	t.filter_walk_ms = time.duration_milliseconds(time.tick_since(walk_at))
 	t.filter_scope = t.scope
 	t.filter_dotfiles = t.show_dotfiles
@@ -959,7 +1001,7 @@ filetree_load_preview :: proc(editor: ^Editor) {
 	}
 	h := lay.preview_h
 	if t.scope == .Git && module_enabled(.Git) {
-		preview_set_diff(&t.preview, e.path, h, t.git_diff_only)
+		preview_set_diff(&t.preview, e.path, h, t.git_diff_only, t.renames[e.path])
 		return
 	}
 	if idx := editor_find_buffer(editor, e.path); idx >= 0 {
@@ -994,10 +1036,7 @@ filetree_parent_dir :: proc(path: string) -> string {
 }
 
 filetree_read_dir :: proc(t: ^FileTree, dir: string, depth: int) {
-	infos, err := os.read_directory_by_path(dir, -1, context.temp_allocator)
-	if err != nil {
-		return
-	}
+	infos, _ := os.read_directory_by_path(dir, -1, context.temp_allocator)
 	Row :: struct {
 		path:   string,
 		is_dir: bool,
@@ -1005,6 +1044,22 @@ filetree_read_dir :: proc(t: ^FileTree, dir: string, depth: int) {
 	rows := make([dynamic]Row, context.temp_allocator)
 	for info in infos {
 		append(&rows, Row{info.fullpath, info.type == .Directory})
+	}
+	if t.scope == .Git {
+		prefix := strings.concatenate({dir, "/"}, context.temp_allocator)
+		virtual: for d in t.deleted {
+			if !strings.has_prefix(d, prefix) {
+				continue
+			}
+			slash := strings.index_byte(d[len(prefix):], '/')
+			child := d if slash < 0 else d[:len(prefix) + slash]
+			for r in rows {
+				if r.path == child {
+					continue virtual
+				}
+			}
+			append(&rows, Row{child, slash >= 0})
+		}
 	}
 	slice.sort_by(rows[:], proc(a, b: Row) -> bool {
 		if a.is_dir != b.is_dir {
@@ -1328,6 +1383,10 @@ filetree_activate :: proc(editor: ^Editor) {
 		filetree_rebuild(editor)
 		return
 	}
+	if filetree_entry_deleted(t, e) {
+		filetree_cmd_restore(editor)
+		return
+	}
 	path := strings.clone(e.path, context.temp_allocator)
 	filetree_close(editor)
 	if editor_open_path(editor, path) {
@@ -1339,7 +1398,7 @@ filetree_open_range :: proc(editor: ^Editor, lo, hi: int) {
 	t := &editor.filetree
 	paths := make([dynamic]string, context.temp_allocator)
 	for i in lo ..= hi {
-		if !t.entries[i].is_dir {
+		if !t.entries[i].is_dir && !filetree_entry_deleted(t, t.entries[i]) {
 			append(&paths, strings.clone(t.entries[i].path, context.temp_allocator))
 		}
 	}
@@ -1461,7 +1520,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		filetree_repath_buffers(editor, old, full)
 		filetree_filter_invalidate(t)
 		filetree_reveal(editor, full)
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot, .ConfirmRestore:
 	}
 }
 
@@ -1766,6 +1825,9 @@ filetree_root_execute :: proc(editor: ^Editor) {
 
 filetree_cmd_set_root :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	if filetree_sel_gone(editor) {
+		return
+	}
 	target := filetree_target_dir(editor)
 	if target == editor.working_root {
 		return
@@ -1782,6 +1844,10 @@ filetree_cmd_set_root :: proc(editor: ^Editor) {
 
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
+	if t.mode == .ConfirmRestore {
+		dialog_key(editor, ev, &t.restore_selected, len(filetree_restore_actions), filetree_restore_execute, filetree_close_close)
+		return
+	}
 	if t.mode == .ConfirmRoot {
 		dialog_key(editor, ev, &t.close_selected, len(filetree_close_actions), filetree_root_execute, filetree_close_close)
 		return
@@ -1830,7 +1896,7 @@ filetree_select_all :: proc(editor: ^Editor) {
 filetree_cmd_search :: proc(editor: ^Editor) {
 	t := &editor.filetree
 	lo, hi := filetree_sel_range(t)
-	if lo < 0 || lo >= len(t.entries) {
+	if lo < 0 || lo >= len(t.entries) || filetree_sel_gone(editor) {
 		return
 	}
 	root := editor.working_root
@@ -1890,13 +1956,67 @@ filetree_cmd_search :: proc(editor: ^Editor) {
 	projsearch_open_scoped(editor, paths[:])
 }
 
-filetree_cmd_copy :: proc(editor: ^Editor) {filetree_clip_capture(editor, false)}
-filetree_cmd_cut :: proc(editor: ^Editor) {filetree_clip_capture(editor, true)}
-filetree_cmd_rename :: proc(editor: ^Editor) {filetree_prompt_begin(editor, .Rename)}
+filetree_cmd_copy :: proc(editor: ^Editor) {
+	if !filetree_sel_gone(editor) {
+		filetree_clip_capture(editor, false)
+	}
+}
+
+filetree_cmd_cut :: proc(editor: ^Editor) {
+	if !filetree_sel_gone(editor) {
+		filetree_clip_capture(editor, true)
+	}
+}
+
+filetree_cmd_rename :: proc(editor: ^Editor) {
+	if !filetree_sel_gone(editor) {
+		filetree_prompt_begin(editor, .Rename)
+	}
+}
+
 filetree_cmd_new :: proc(editor: ^Editor) {filetree_prompt_begin(editor, .New)}
+
+filetree_cmd_restore :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	e, ok := filetree_selected(t)
+	if !ok || !filetree_entry_deleted(t, e) {
+		editor_log(editor, .Info, "Git", "Not a deleted file")
+		return
+	}
+	t.mode = .ConfirmRestore
+	t.restore_selected = 0
+}
+
+filetree_restore_actions := [?]string{"Cancel", "Restore"}
+
+filetree_restore_question :: proc(t: ^FileTree) -> string {
+	e, _ := filetree_selected(t)
+	base := g_diff_base.label if g_diff_base.ref != "" else "HEAD"
+	return fmt.tprintf("Restore %s from %s?", filepath.base(e.path), base)
+}
+
+filetree_restore_execute :: proc(editor: ^Editor) {
+	t := &editor.filetree
+	t.mode = .Nav
+	e, ok := filetree_selected(t)
+	if t.restore_selected != 1 || !ok {
+		return
+	}
+	path := strings.clone(e.path, context.temp_allocator)
+	if !git_restore(path) {
+		editor_log(editor, .Error, "Git", fmt.tprintf("Restore failed: %s", filepath.base(path)))
+		return
+	}
+	filetree_filter_invalidate(t)
+	filetree_reveal(editor, path)
+	editor_log(editor, .Info, "Git", fmt.tprintf("Restored %s", filepath.base(path)))
+}
 
 filetree_cmd_delete :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	if filetree_sel_gone(editor) {
+		return
+	}
 	if _, ok := filetree_selected(t); ok {
 		t.mode = .ConfirmDelete
 		t.delete_selected = 0
@@ -2050,15 +2170,27 @@ filetree_render :: proc(editor: ^Editor) {
 			pane_fill_row(inner.x + 1, y, lay.left_w - 1, fg, bg)
 		}
 		if mark, ok := t.status[e.path]; ok {
-			bar := COLOR_GIT_ADD if mark == .Added else COLOR_GIT_MOD
+			bar := COLOR_GIT_MOD
+			#partial switch mark {
+			case .Added:
+				bar = COLOR_GIT_ADD
+			case .Deleted:
+				bar = COLOR_GIT_DEL
+			}
 			tb2.set_cell(i32(inner.x), i32(y), '▌', bar, COLOR_PANE_BG)
 		}
-		if filetree_is_current(editor, e) {
+		if filetree_entry_deleted(t, e) {
+			fg = COLOR_GIT_DEL
+		} else if filetree_is_current(editor, e) {
 			fg = COLOR_PANE_PROMPT_FG
 		} else if !in_sel && filetree_is_ignored(t, e.path) {
 			fg = COLOR_FILETREE_IGNORED
 		}
 		label := filetree_row_label(t, e)
+		if old, ok := t.renames[e.path]; ok && t.scope == .Git && !e.is_dir {
+			rel, _ := filepath.rel(editor.working_root, old, context.temp_allocator)
+			label = fmt.tprintf("%s  %s %s", label, ICON_TREE_RENAMED, rel)
+		}
 		if filetree_unsaved(editor, e) {
 			label = strings.concatenate({label, " ", ICON_MODIFIED}, context.temp_allocator)
 		}
@@ -2102,6 +2234,9 @@ filetree_render :: proc(editor: ^Editor) {
 	}
 	if t.mode == .ConfirmRoot {
 		dialog_render(editor, filetree_root_question(editor), filetree_close_actions[:], t.close_selected)
+	}
+	if t.mode == .ConfirmRestore {
+		dialog_render(editor, filetree_restore_question(t), filetree_restore_actions[:], t.restore_selected)
 	}
 }
 
@@ -2148,7 +2283,7 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 		return "New: "
 	case .Rename:
 		return "Rename: "
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot, .ConfirmRestore:
 	}
 	return ""
 }
@@ -2157,7 +2292,7 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	t := &editor.filetree
 	inner := lay.inner
 	switch t.mode {
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot, .ConfirmRestore:
 		Chip :: struct {
 			label: string,
 			on:    bool,
@@ -2205,6 +2340,10 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
+	if t.mode == .ConfirmRestore {
+		dialog_mouse(editor, ev, filetree_restore_question(t), filetree_restore_actions[:], &t.restore_selected, filetree_restore_execute, filetree_close_close)
+		return
+	}
 	if t.mode == .ConfirmRoot {
 		dialog_mouse(editor, ev, filetree_root_question(editor), filetree_close_actions[:], &t.close_selected, filetree_root_execute, filetree_close_close)
 		return

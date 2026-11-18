@@ -19,6 +19,18 @@ git_numstat_line_parse :: proc(t: ^testing.T) {
 
 	_, _, ok = git_numstat_line("garbage", true)
 	testing.expect(t, !ok)
+
+	path, size, ok = git_numstat_line("0\t4\tgone.txt", false)
+	testing.expect(t, ok)
+	testing.expect_value(t, path, "gone.txt")
+	testing.expect_value(t, size, GitDiffSize{0, 4})
+
+	testing.expect_value(t, git_numstat_path("old.txt => new.txt"), "new.txt")
+	testing.expect_value(t, git_numstat_path("src/{a => b}/f.odin"), "src/b/f.odin")
+	testing.expect_value(t, git_numstat_path("src/{ => sub}/f.odin"), "src/sub/f.odin")
+	testing.expect_value(t, git_numstat_path("src/{sub => }/f.odin"), "src/f.odin")
+	testing.expect_value(t, git_numstat_path("{old => }/f.odin"), "f.odin")
+	testing.expect_value(t, git_numstat_path("dir/{x.txt => y.txt}"), "dir/y.txt")
 }
 
 @(test)
