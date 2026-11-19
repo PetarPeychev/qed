@@ -33,6 +33,7 @@ qed_api := [?]lua.L_Reg {
 	{"jump", qed_jump},
 	{"root", qed_root},
 	{"config", qed_config},
+	{"options", qed_options},
 	{"opt", qed_opt},
 	{"shell_quote", qed_shell_quote},
 	{"parse_locations", qed_parse_locations},
@@ -1063,6 +1064,26 @@ qed_config :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.cfg))
 	plugin_table_copy(L, -1)
+	return 1
+}
+
+qed_options :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	pl := plugin_owner(L, entry.editor)
+	if pl == nil || entry.editor.plugins.setup != pl {
+		return plugin_raise(L, "qed.options() is only callable during setup")
+	}
+	if pl.defaults != lua.NOREF {
+		return plugin_raise(L, "qed.options() is callable once per load")
+	}
+	if lua.type(L, 1) != .TABLE {
+		return lua.L_argerror(L, 1, "defaults table expected")
+	}
+	lua.settop(L, 1)
+	plugin_table_copy(L, 1)
+	pl.defaults = lua.L_ref(L, lua.REGISTRYINDEX)
+	plugin_config_push(entry.editor, pl, 1)
 	return 1
 }
 

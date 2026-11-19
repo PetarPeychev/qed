@@ -239,12 +239,14 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 	ed := reload_editor({
 		{"plain.lua", `
 			loads = (loads or 0) + 1
-			return {defaults = {greeting = "hi"}, setup = function(cfg)
+			return {setup = function()
+				local cfg = qed.options{greeting = "hi"}
 				qed.command{name = "Plain: Greet", run = function() qed.message(cfg.greeting) end}
 			end}`},
 		{"aware.lua", `
 			aware_loads = (aware_loads or 0) + 1
-			return {defaults = {greeting = "hi"}, setup = function(cfg)
+			return {setup = function()
+				qed.options{greeting = "hi"}
 				qed.on("config_changed", function() seen = qed.config().greeting end)
 			end}`},
 	}, "")
@@ -259,6 +261,7 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 	testing.expect_value(t, sched_var(ed, "seen"), "hey")
 	testing.expect_value(t, sched_var(ed, "aware_loads"), "1")
 	testing.expect_value(t, plugin_find(&ed.plugins, "aware").cfg_sig, plugin_cfg_sig("aware", ed.plugins.config_override.?))
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "unknown"), "keys declared by qed.options are known after a reload")
 
 	editor_clear_message(ed)
 	plugins_config_apply(ed, false)
@@ -305,8 +308,8 @@ plugin_reload_keybind_order :: proc(t: ^testing.T) {
 					handles[#handles + 1] = qed.command{name = s.name, key = s.key, run = function() end}
 				end
 			end
-			return {defaults = {list = {}}, setup = function(cfg)
-				register(cfg.list)
+			return {setup = function()
+				register(qed.options{list = {}}.list)
 				qed.on("config_changed", function() register(qed.config().list) end)
 			end}`},
 	}, dir)

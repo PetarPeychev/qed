@@ -35,6 +35,7 @@ Plugin :: struct {
 	last_error: string,
 	stamp:      u64,
 	cfg_sig:    string,
+	unknown:    string,
 }
 
 PluginFile :: struct {
@@ -79,7 +80,8 @@ Plugins :: struct {
 	names:    [dynamic]string,
 	user_dir: string,
 	bound:    bool,
-	binds_deferred: bool,
+	applying: bool,
+	setup:    ^Plugin,
 	colors:   [dynamic]string,
 	deco_ns:  [dynamic]PluginNs,
 	ns_seq:   u32,
@@ -393,6 +395,7 @@ plugin_strings_free :: proc(pl: ^Plugin) {
 	delete(pl.main)
 	delete(pl.last_error)
 	delete(pl.cfg_sig)
+	delete(pl.unknown)
 }
 
 plugins_add :: proc(p: ^Plugins, pl: Plugin, bundled: bool) -> ^Plugin {
@@ -465,6 +468,12 @@ plugins_config_warn :: proc(editor: ^Editor) {
 	if len(problems) > 0 {
 		slice.sort(problems[:])
 		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
+	}
+}
+
+plugin_keys_warn :: proc(editor: ^Editor, pl: ^Plugin) {
+	if pl.state == .Enabled && pl.unknown != "" {
+		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring unknown %s", pl.unknown))
 	}
 }
 
@@ -566,6 +575,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	ok, msg, tb := plugin_call(editor, 1, 0)
 	killed := plugin_slice_end(editor, prev_slice, pl.name, .Setup, "setup")
 	p.loading = false
+	p.setup = nil
 	if killed {
 		ok, msg, tb = false, fmt.tprintf("setup exceeded its %.0f ms budget", plugin_budgets[.Setup].hard_ms), ""
 	}
@@ -574,6 +584,9 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 		return
 	}
 	editor_log(editor, .Debug, "Plugins", fmt.tprintf("loaded %s (%s) in %.2f ms", pl.name, "bundled" if pl.bundled else "user", ms_since(start)))
+	if !p.applying {
+		plugin_keys_warn(editor, pl)
+	}
 	if p.bound && !p.startup_due {
 		plugin_queue(editor, {event = .Startup, only = pl.name})
 	}
@@ -728,7 +741,7 @@ plugins_config_sync :: proc(editor: ^Editor) {
 
 plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool, parsed := true) {
 	p := &editor.plugins
-	p.binds_deferred = true
+	p.applying = true
 	plugins_config_refresh(editor)
 	if parsed {
 		plugins_config_sync(editor)
@@ -738,8 +751,11 @@ plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool, parsed := tru
 		plugin_queue(editor, {event = .Theme_Changed})
 	}
 	plugin_flush(editor)
-	p.binds_deferred = false
+	p.applying = false
 	plugins_rebind(editor)
+	for &pl in p.list {
+		plugin_keys_warn(editor, &pl)
+	}
 	plugins_config_warn(editor)
 }
 
@@ -756,28 +772,23 @@ plugin_load_c :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setupvalue(L, -2, 1)
 	lua.call(L, 0, 1)
 	if lua.type(L, -1) != .TABLE {
-		return plugin_raise(L, fmt.tprintf("%s must return a table {defaults, setup}", pl.main))
+		return plugin_raise(L, fmt.tprintf("%s must return a table {setup}", pl.main))
 	}
 	spec := lua.gettop(L)
-	lua.pushodinstring(L, "defaults")
-	defaults_type := lua.rawget(L, spec)
-	if defaults_type != .TABLE && defaults_type != .NIL {
-		return plugin_raise(L, "spec.defaults must be a table")
-	}
 	lua.pushodinstring(L, "setup")
 	setup_type := lua.rawget(L, spec)
 	if setup_type != .FUNCTION && setup_type != .NIL {
 		return plugin_raise(L, "spec.setup must be a function")
 	}
+	lua.pushnil(L)
+	plugin_config_push(entry.editor, pl, lua.gettop(L))
+	lua.settop(L, spec + 1)
 	if setup_type == .NIL {
 		return 0
 	}
-	if defaults_type == .TABLE {
-		plugin_table_copy(L, spec + 1)
-		pl.defaults = lua.L_ref(L, lua.REGISTRYINDEX)
-	}
-	plugin_config_push(entry.editor, pl, spec + 1)
-	lua.call(L, 1, 0)
+	entry.editor.plugins.setup = pl
+	lua.call(L, 0, 0)
+	entry.editor.plugins.setup = nil
 	return 0
 }
 
@@ -1105,7 +1116,7 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		ref         = ref,
 		when_ref    = when_ref,
 	}
-	if problem, from_user := plugin_command_bind(&cmd, editor_config_user(editor)); problem != "" && p.bound && !p.binds_deferred {
+	if problem, from_user := plugin_command_bind(&cmd, editor_config_user(editor)); problem != "" && p.bound && !p.applying {
 		if from_user {
 			editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", problem))
 		} else {
@@ -1462,9 +1473,9 @@ plugin_json_push :: proc(L: ^lua.State, v: json.Value) {
 
 plugin_table_copy :: proc(L: ^lua.State, idx: c.int, depth := 0) {
 	if depth > PLUGIN_TABLE_DEPTH_MAX {
-		plugin_raise(L, "spec.defaults is nested too deeply")
+		plugin_raise(L, "table is nested too deeply")
 	}
-	lua.L_checkstack(L, 5, "spec.defaults is nested too deeply")
+	lua.L_checkstack(L, 5, "table is nested too deeply")
 	idx := lua.absindex(L, idx)
 	lua.newtable(L)
 	lua.pushnil(L)
@@ -1507,8 +1518,6 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 		lua.newtable(L)
 	}
 	cfg := lua.gettop(L)
-	embedded := plugin_cfg_entry(g_config_defaults, pl.name)
-	plugin_table_merge(L, cfg, embedded)
 	user := make(json.Object, context.temp_allocator)
 	unknown := make([dynamic]string, context.temp_allocator)
 	for k, v in plugin_cfg_entry(editor_config_user(editor), pl.name) {
@@ -1516,9 +1525,7 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 			continue
 		}
 		known := false
-		if _, in_embedded := embedded[k]; in_embedded {
-			known = true
-		} else if has_defaults {
+		if has_defaults {
 			lua.pushodinstring(L, k)
 			known = lua.rawget(L, defaults_idx) != .NIL
 			lua.pop(L, 1)
@@ -1538,10 +1545,9 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	}
 	plugin_table_copy(L, cfg)
 	pl.cfg = lua.L_ref(L, lua.REGISTRYINDEX)
-	if len(unknown) > 0 {
-		slice.sort(unknown[:])
-		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring unknown %s", strings.join(unknown[:], ", ", context.temp_allocator)))
-	}
+	slice.sort(unknown[:])
+	delete(pl.unknown)
+	pl.unknown = strings.join(unknown[:], ", ")
 }
 
 PluginView :: struct {

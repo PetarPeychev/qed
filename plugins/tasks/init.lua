@@ -203,9 +203,8 @@ local function pick()
 end
 
 return {
-	defaults = {list = {}},
-	setup = function(cfg)
-		apply(cfg)
+	setup = function()
+		apply(qed.options{list = {}})
 		qed.command{name = "Tasks", welcome = true, run = pick}
 		qed.on("config_changed", function() apply(qed.config()) end)
 		qed.on("term_exit", function(name, code)

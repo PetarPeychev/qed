@@ -72,7 +72,7 @@ plugin_load_ok :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"hello.lua", `
 			return {
-				setup = function(cfg)
+				setup = function()
 					qed.command{name = "Hello: Greet", run = function(ctx)
 						qed.message("hi " .. ctx.path .. " " .. ctx.language .. " " .. ctx.root)
 					end}
@@ -252,35 +252,79 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 plugin_config_merge :: proc(t: ^testing.T) {
 	cfg := plugin_test_cfg(`{"plugins": {
 		"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1, "enabled": true},
-		"off": {"enabled": false},
+		"bare": {"stray": 1},
+		"off": {"enabled": false, "typo": 1},
+		"broken": {"typo": 1},
 		"ghost": {}
 	}}`)
 	ed := plugin_test_editor({
 		{"merge.lua", `
 			local defaults = {a = 1, nested = {b = 2, c = 3}, list = {1, 2}}
 			return {
-				defaults = defaults,
-				setup = function(cfg)
+				setup = function(...)
+					assert(select("#", ...) == 0, "setup gets no arguments")
+					assert(next(qed.config()) == nil, "no keys before qed.options")
+					local cfg = qed.options(defaults)
 					assert(cfg.a == 1, "default kept")
 					assert(cfg.nested.b == 20 and cfg.nested.c == 3, "nested objects merge per key")
 					assert(#cfg.list == 1 and cfg.list[1] == 9, "arrays replace wholesale")
 					assert(cfg.bogus == nil, "unknown keys are ignored")
 					assert(cfg.enabled == nil, "enabled is not part of the plugin config")
 					assert(defaults.nested.b == 2, "defaults are not mutated")
+					cfg.a = 99
+					assert(qed.config().a == 1 and qed.config().nested.b == 20, "qed.config matches and the result is a copy")
 				end,
 			}`},
-		{"off.lua", `return {setup = function() error("disabled plugins never run") end}`},
+		{"bare.lua", `return {setup = function() assert(next(qed.config()) == nil) end}`},
+		{"off.lua", `return {setup = function() qed.options{a = 1} end}`},
+		{"broken.lua", `return {setup = function() qed.options{} error("setup failed") end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
 	merge := plugin_find(&ed.plugins, "merge")
 	testing.expect_value(t, merge.last_error, "")
 	testing.expect_value(t, merge.state, PluginState.Enabled)
+	testing.expect_value(t, plugin_find(&ed.plugins, "bare").last_error, "")
 	off := plugin_find(&ed.plugins, "off")
 	testing.expect_value(t, off.state, PluginState.Disabled)
 	testing.expect_value(t, off.last_error, "")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/merge/"bogus"`), "unknown plugin key warns")
+	testing.expect_value(t, plugin_find(&ed.plugins, "broken").state, PluginState.Errored)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `plugins/merge/"bogus"`), 1)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/bare/"stray"`), "a plugin without qed.options has no keys")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/off/`), "a disabled plugin's keys are not checked")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/broken/`), "an errored plugin's keys are not checked")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/"ghost"`), "unknown plugin name warns")
+
+	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1}, "off": {"typo": 1}}}`)
+	plugins_config_apply(ed, false)
+	testing.expect_value(t, off.state, PluginState.Enabled)
+	testing.expect_value(t, merge.state, PluginState.Enabled)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `plugins/off/"typo"`), 1)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `plugins/merge/"bogus"`), 2)
+}
+
+@(test)
+plugin_options_misuse :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"top.lua", `
+			local ok, err = pcall(qed.options, {a = 1})
+			top_err = tostring(err)
+			return {setup = function()
+				qed.command{name = "Top: Late", run = function() qed.options{a = 1} end}
+			end}`},
+		{"twice.lua", `return {setup = function() qed.options{a = 1} qed.options{a = 2} end}`},
+		{"notable.lua", `return {setup = function() qed.options(1) end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	testing.expect(t, strings.contains(sched_var(ed, "top_err"), "only callable during setup"), "the main chunk cannot call qed.options")
+	cmd, _ := plugin_test_command(ed, "Top: Late")
+	command_run(ed, cmd)
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "top").last_error, "only callable during setup"), "a command cannot call qed.options")
+	twice := plugin_find(&ed.plugins, "twice")
+	testing.expect_value(t, twice.state, PluginState.Errored)
+	testing.expect(t, strings.contains(twice.last_error, "once per load"), "a second call raises")
+	testing.expect_value(t, plugin_find(&ed.plugins, "notable").state, PluginState.Errored)
 }
 
 @(test)

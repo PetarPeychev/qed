@@ -102,6 +102,12 @@ function qed.jump(target, pos) end
 ---@return string
 function qed.root() end
 
+---Declares this plugin's config keys and defaults; returns the merged config (`plugins.<name>` over `defaults`). Setup only, once per load.
+---@generic T: table
+---@param defaults T
+---@return T
+function qed.options(defaults) end
+
 ---This plugin's merged config (a fresh copy each call).
 ---@return table
 function qed.config() end

@@ -547,8 +547,8 @@ bench_plugin_startup :: proc(t: ^testing.T) {
 		f.path = fmt.tprintf("p%02d.lua", i)
 		f.data = fmt.tprintf(`
 			return {{
-				defaults = {{a = 1, nested = {{b = 2}}}},
-				setup = function(cfg)
+				setup = function()
+					qed.options{{a = 1, nested = {{b = 2}}}}
 					for k = 1, 5 do
 						qed.command{{name = "Bench %02d: " .. k, key = "", run = function() qed.message("x") end}}
 					end

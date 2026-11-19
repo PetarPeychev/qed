@@ -15,8 +15,8 @@ api_test_editor :: proc(code: string, lines: ..string, cfg_user: json.Object = n
 	ed.working_root = strings.clone("/tmp")
 	append(&ed.buffers, test_buffer(..lines))
 	src := strings.concatenate({`return {
-		defaults = {opt = 1, nested = {x = "y"}},
-		setup = function(cfg)
+		setup = function()
+			qed.options{opt = 1, nested = {x = "y"}}
 			qed.command{name = "T: Run", run = function(ctx)
 `, code, `
 			end}

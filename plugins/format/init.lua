@@ -144,8 +144,20 @@ local function toggle(name, knob, label)
 end
 
 return {
-	setup = function(cfg)
-		apply(cfg)
+	setup = function()
+		apply(qed.options{
+			format_on_save = false,
+			trim_trailing_whitespace_on_save = false,
+			ensure_final_newline_on_save = false,
+			commands = {
+				python = "ruff format --stdin-filename {file} -",
+				go = "gofmt",
+				rust = "rustfmt --edition 2021",
+				sql = "sql-formatter",
+				toml = "taplo fmt --stdin-filepath {file} -",
+				json = "prettier --parser json --stdin-filepath {file}",
+			},
+		})
 		qed.command{
 			name = "Format Document",
 			when = function(ctx) return ctx.buf ~= nil end,

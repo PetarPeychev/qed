@@ -1,7 +1,7 @@
 local MAX = 500
 local MAX_COLUMNS = 300
 
-local min_query = 2
+local min_query
 local query, selected = "", 1
 local has_rg = false
 
@@ -122,8 +122,8 @@ local function search_tree(ctx)
 end
 
 return {
-	setup = function(cfg)
-		min_query = cfg.min_query
+	setup = function()
+		min_query = qed.options{min_query = 2}.min_query
 		qed.command{name = "Find in Files", welcome = true, run = search}
 		qed.command{name = "Search", keybind = "Find in Files", scope = "filetree", run = search_tree}
 		qed.on("config_changed", function() min_query = qed.config().min_query end)
