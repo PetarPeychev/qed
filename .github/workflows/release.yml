@@ -11,7 +11,7 @@ jobs:
   test:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: laytan/setup-odin@v2
         with:
@@ -35,12 +35,12 @@ jobs:
           - name: linux-arm64
             runner: ubuntu-22.04-arm
           - name: macos-arm64
-            runner: macos-14
+            runner: macos-15
           - name: macos-amd64
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: laytan/setup-odin@v2
         with:
@@ -59,7 +59,7 @@ jobs:
           cp qed LICENSE THIRD_PARTY_LICENSES.md README.md "$dir/"
           tar czf "$dir.tar.gz" "$dir"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: qed-*.tar.gz
@@ -68,7 +68,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Tag annotation
         id: tag
@@ -80,12 +80,12 @@ jobs:
             echo 'QED_TAG_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           body: ${{ steps.tag.outputs.body }}
           files: dist/*.tar.gz
