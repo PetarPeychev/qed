@@ -72,9 +72,6 @@ Editor :: struct {
 	hover_lang:      Language,
 	hover_rect:      Rect,
 	completion:      Completion,
-	format_on_save:  bool,
-	trim_trailing_whitespace_on_save: bool,
-	ensure_final_newline_on_save: bool,
 	save_intent:     SaveIntent,
 	save_intent_path: string,
 	llm:             Llm,
@@ -97,9 +94,6 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	clipboard_headless = headless
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
-		format_on_save = FORMAT_ON_SAVE,
-		trim_trailing_whitespace_on_save = TRIM_TRAILING_WHITESPACE_ON_SAVE,
-		ensure_final_newline_on_save = ENSURE_FINAL_NEWLINE_ON_SAVE,
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
 		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED, git_diff_only = FILETREE_GIT_DIFF_ONLY},
 		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
@@ -925,26 +919,7 @@ editor_save_id :: proc(editor: ^Editor, id: u64) {
 		editor_log(editor, .Warn, "", fmt.tprintf("%s changed on disk, not saved", editor_display_path(editor, b.path)))
 		return
 	}
-	trimmed, newlined := buffer_save_fixups(b, editor.trim_trailing_whitespace_on_save, editor.ensure_final_newline_on_save)
-	if trimmed > 0 || newlined {
-		editor_log(editor, .Debug, "Save", fmt.tprintf("fixups: trimmed %d line(s), final-newline=%v", trimmed, newlined))
-	}
-	if editor.format_on_save {
-		if LANGUAGES[b.language].formatter != "" {
-			format_external(editor, b, true)
-			return
-		}
-		if module_enabled(.Lsp) && lsp_send_format(editor, b, .FormatOnSave) {
-			return
-		}
-	}
 	editor_save_buffer(editor, b)
-}
-
-editor_save_path :: proc(editor: ^Editor, path: string) {
-	if idx := editor_find_buffer(editor, path); idx >= 0 {
-		editor_save_buffer(editor, &editor.buffers[idx])
-	}
 }
 
 editor_save_buffer :: proc(editor: ^Editor, b: ^Buffer) {
@@ -989,7 +964,7 @@ editor_after_save :: proc(editor: ^Editor, b: ^Buffer) {
 			editor_close_current(editor)
 		}
 	case .Quit:
-		if lsp_format_pending() || len(editor.plugins.saves) > 0 {
+		if len(editor.plugins.saves) > 0 {
 			return
 		}
 		editor_save_intent_clear(editor)

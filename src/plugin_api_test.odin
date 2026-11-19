@@ -51,6 +51,29 @@ api_test_text :: proc(b: ^Buffer) -> string {
 }
 
 @(test)
+plugin_api_set_text_and_lsp_format :: proc(t: ^testing.T) {
+	ed := api_test_editor(`
+		local b = qed.buf.current()
+		qed.buf.set_cursor(b, {row = 3, col = 2})
+		local rev = qed.buf.rev(b)
+		assert(not qed.buf.set_text(b, "x", {rev = rev + 1}), "stale rev refused")
+		assert(qed.buf.text(b) == "one\ntwo\nthree", "untouched")
+		assert(qed.buf.set_text(b, "zero\r\none\nTWO\nthree", {rev = rev}), "fresh rev applies")
+		assert(qed.buf.text(b) == "zero\none\nTWO\nthree", "CRLF normalized")
+		local c = qed.buf.cursor(b)
+		assert(c.row == 4 and c.col == 2, "the cursor follows its line")
+		assert(not pcall(qed.buf.set_text, b, "\xff"), "invalid UTF-8 rejected")
+		local ok, err = qed.lsp.format(b)
+		assert(ok == false and err == "no server", "no server: " .. tostring(err))
+		assert(not pcall(qed.edit, b, function() qed.lsp.format(b) end), "cannot wait inside qed.edit")
+	`, "one", "two", "three")
+	defer api_test_destroy(ed)
+	ed.buffers[0].language = .Plain
+	api_test_run(t, ed)
+	testing.expect_value(t, len(ed.buffers[0].undo), 1)
+}
+
+@(test)
 plugin_api_buf_read :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local b = qed.buf.current()

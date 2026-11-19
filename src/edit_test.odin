@@ -339,3 +339,55 @@ test_undo_redo_multiline :: proc(t: ^testing.T) {
 	testing.expect_value(t, buffer_string(&b), "a1\n22\n333c")
 	testing.expect_value(t, b.cursor, Cursor{2, 3})
 }
+
+@(test)
+test_set_text_minimal_diff :: proc(t: ^testing.T) {
+	cases := [?]struct {
+		from, to: string,
+	} {
+		{"a\nb\nc", "a\nB\nc"},
+		{"a\nb\nc", "x\na\nb\nc"},
+		{"a\nb\nc", "a\nb\nc\nd\n"},
+		{"a\nb\nc\nd", "a\nd"},
+		{"a\nb\nc", "a"},
+		{"a\nb\nc", "c"},
+		{"a\nb", ""},
+		{"", "one\ntwo"},
+		{"keep\nx=1\ny=2\nkeep\nz", "keep\nx = 1\nnew\ny = 2\nkeep"},
+	}
+	for tc in cases {
+		b := test_buffer(..strings.split(tc.from, "\n", context.temp_allocator))
+		defer buffer_destroy(&b)
+		testing.expect(t, buffer_set_text(&b, tc.to))
+		testing.expect_value(t, buffer_string(&b), tc.to)
+		testing.expect_value(t, len(b.undo), 1)
+		buffer_undo(&b)
+		testing.expect_value(t, buffer_string(&b), tc.from)
+	}
+}
+
+@(test)
+test_set_text_maps_cursor :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b=2", "c", "d")
+	defer buffer_destroy(&b)
+	b.cursor = {3, 1}
+	b.selection = Cursor{1, 3}
+	testing.expect(t, !buffer_set_text(&b, "a\nb=2\nc\nd"), "identical text is a no-op")
+	testing.expect_value(t, len(b.undo), 0)
+
+	testing.expect(t, buffer_set_text(&b, "top\na\nb = 2\nc\nd"))
+	testing.expect_value(t, b.cursor, Cursor{4, 1})
+	testing.expect_value(t, b.selection, Maybe(Cursor)(Cursor{2, 3}))
+
+	b.cursor = {2, 5}
+	testing.expect(t, buffer_set_text(&b, "top\na\nb\nc\nd"))
+	testing.expect_value(t, b.cursor, Cursor{2, 1})
+
+	u := test_buffer("x", "héllo")
+	defer buffer_destroy(&u)
+	u.cursor = {1, 3}
+	testing.expect(t, buffer_set_text(&u, "x\nhé"))
+	testing.expect_value(t, u.cursor, Cursor{1, 3})
+	testing.expect(t, buffer_set_text(&u, "x\naaéé"))
+	testing.expect_value(t, u.cursor, Cursor{1, 2})
+}

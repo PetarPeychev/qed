@@ -391,6 +391,10 @@ started at the end of `editor_init`. Invariants the code can't show:
   raises and drops the hook count to 1 until the slice ends; the soft limit is a
   Debug line measured after the resume. A nested entry's time is credited back to
   the outer slice. `__close` handlers run by `closethread` get the event budget.
+- `qed.lsp.format` sends a core LSP format request tagged with a token and waits
+  (`.Lsp`); `plugin_lsp_done` queues the outcome, `plugin_pump` resumes the task.
+- Bundled dir plugins are listed in `bundled_plugin_dirs` (`plugin.odin`), embedded
+  as `<name>/<file>`.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
   non-blocking `process_wait`). With `on_line`, delivered lines are cut from `out`
   and reads are capped per pump, so a streaming process stays bounded. A
@@ -402,10 +406,10 @@ started at the end of `editor_init`. Invariants the code can't show:
 
 Each `Buffer` carries a `language: Language`, set once at open (`language_of`).
 File→language is **not hardcoded**: the config `languages` section is keyed by
-language name, each entry an object with `patterns` (glob list), `lsp` (server
-command) and `formatter` (external filter) — all user-overridable, per-key merged
-back like every other knob. `LANGUAGE_DEFAULTS` (`language.odin`) is compiled-in
-wiring only (comment token, lsp id, grammar); default patterns/`lsp`/`formatter`
+language name, each entry an object with `patterns` (glob list) and `lsp` (server
+command), both user-overridable, per-key merged back like every other knob (formatter
+commands live in `plugins.format.commands`). `LANGUAGE_DEFAULTS` (`language.odin`) is compiled-in
+wiring only (comment token, lsp id, grammar); default patterns/`lsp`
 come from the embedded config's `languages` section. `LANGUAGES` is the working
 copy each load resets then overlays. Patterns are `*`-globs matched against the basename, most-specific-first (exact
 before glob, longer before shorter); built-in defaults cover extensions plus common
@@ -419,8 +423,8 @@ re-opens LSP).
 - **Syntax** (`highlight.odin`, `language.odin`): per-language `[Language]Syntax`;
   adding one = vendor `parser.c` (+`scanner.c`) + `highlights.scm` under
   `lib/tree_sitter/<lang>/`, add the FFI decl + `build.sh` line, fill the
-  `LANGUAGE_DEFAULTS` row (grammar/comment/lsp id) + patterns/lsp/formatter in
-  `config/config.json`. Queries are vendored **upstream-verbatim**: a predicate
+  `LANGUAGE_DEFAULTS` row (grammar/comment/lsp id) + patterns/lsp in
+  `config/config.json` (+ an optional `plugins.format.commands` entry). Queries are vendored **upstream-verbatim**: a predicate
   evaluator (`predicate.odin`) enforces `#eq?`/`#match?`/`#lua-match?`/`#any-of?`/
   ancestry predicates per match (parsed + regex-compiled once at query build,
   cached per pattern; unknown predicates are skipped, never reject a pattern —
@@ -459,9 +463,9 @@ re-opens LSP).
   at its first placeholder. `Enter` accepts — replacing the whole current word and applying any
   `additionalTextEdits` (auto-import) in the same undo group (`Tab` is reserved for the FIM ghost,
   which coexists with the popup); `Esc`/movement/non-word input dismisses.
-  Formatting carries the
-  buffer `rev` so a stale result (doc changed mid-request) is dropped, and
-  format-on-save chains the save onto the response. *Rename* (`rename.odin`, `Alt+r`)
+  Formatting (`qed.lsp.format`) carries the buffer `rev` so a stale result (doc
+  changed mid-request) is dropped; the response, a server error or a server stop
+  resumes the waiting plugin task through `plugin_lsp_done`. *Rename* (`rename.odin`, `Alt+r`)
   prompts in a small caret-editable box, then applies the server's WorkspaceEdit
   (`changes`/`documentChanges`) across every file — loading unopened ones as modified
   buffers (`editor_load_buffer`) — as one cross-buffer undo transaction. `initialize`
@@ -470,17 +474,21 @@ re-opens LSP).
   `text` (ols re-indexes from it — omitting it drops the file's symbols). pyright's
   open-files-only default is flipped via `LSP_DIAGNOSTIC_MODE` answered on the config
   pull + pushed on `didChangeConfiguration`.
-- **Formatting** (`format.odin`): *Format Document* / format-on-save prefer a
-  language's external `formatter` (a `LANGUAGES` field, e.g. Python → `ruff format -`)
-  over the LSP path. The buffer is piped through the tool as a stdin→stdout filter
-  (`shell_filter`: temp-file input so writing can't deadlock the output, stderr
-  discarded so it can't corrupt the TUI). The tool runs with cwd = the file's dir
-  (`cd` in the subshell, so its config discovery works; path-less → `working_root`),
-  and `{file}` in the command becomes the shell-quoted absolute path (path-less →
-  `<working_root>/untitled`). The result is applied as one undo
-  group (whole-buffer replace, cursor clamped). A missing tool / non-zero exit
-  reports a message and leaves the buffer untouched (on save, it saves unformatted).
-  `format_on_save` is a config knob seeding `editor.format_on_save` at startup.
+- **Formatting** is the bundled `format` plugin (`plugins/format/`). Its `buf_pre_save`
+  handler runs the save fixups (trim trailing whitespace, markdown hard breaks kept;
+  final newline; one `qed.edit` step) and then, with format-on-save on, formats.
+  *Format Document* / format-on-save prefer `plugins.format.commands.<language>`
+  (e.g. Python → `ruff format …`) over `qed.lsp.format`. The command is a
+  stdin→stdout filter via `qed.spawn` (`sh -c`, stderr captured, never shown), cwd =
+  the file's dir (path-less → root), `{file}` → the shell-quoted absolute path
+  (path-less → `<root>/untitled`). The result lands through `qed.buf.set_text`
+  with the pre-spawn rev: a minimal line diff (`buffer_set_text`, `git_myers` over
+  line hashes) as one undo step, cursor and selection mapped onto their lines. A
+  missing tool (exit 127) / non-zero exit / empty output messages and leaves the
+  buffer untouched; on save it saves unformatted. A format-on-save that waits parks
+  the save, bounded by `plugin_hook_timeout_ms`. The `format_on_save` /
+  `trim_trailing_whitespace_on_save` / `ensure_final_newline_on_save` knobs seed
+  the plugin's toggles at load.
 
 ## AI edit
 
@@ -574,9 +582,9 @@ defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable g
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `perf_bench`.
+`git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root.
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -595,8 +603,13 @@ doesn't survive re-init). Harness capabilities: `e2e_mouse` / `e2e_paste` /
 `e2e_resize` (TIOCSWINSZ + SIGWINCH, size restored on stop), a temp-git-repo
 fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
 formatter / chat command / FIM endpoint), a fake stdio LSP server (canned
-JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` / `e2e_spawn_fake` (injects a user plugin / fakes a `qed.spawn`
-through the real loader). Plugin bindings are unit-tested on a headless state in
+JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` / `e2e_spawn_fake` /
+`e2e_plugin_config` (injects a user plugin / fakes a `qed.spawn` / overrides a
+plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns a
+table of test functions; `e2e_plugins_test.odin` runs each in a fresh session with a
+`t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
+`fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
+`poll_disk`); a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
@@ -605,10 +618,10 @@ through the real loader). Plugin bindings are unit-tested on a headless state in
 
 Core editing: buffer open/save (atomic, permission-preserving, LF/CRLF +
 final-newline preserving; external-change auto-reload + dirty-buffer save clobber guard;
-optional save fixups — `trim_trailing_whitespace_on_save` / `ensure_final_newline_on_save`
-knobs + runtime *Toggle …* commands, markdown two-space hard breaks survive trimming,
+optional save fixups in the `format` plugin — `plugins.format.trim_trailing_whitespace_on_save` /
+`ensure_final_newline_on_save` knobs + runtime *Toggle …* commands, markdown two-space hard breaks survive trimming,
 one undo group, run before format-on-save; quit/close/conflict saves run the same
-full fixups+format pipeline, quit deferring until an in-flight LSP format lands),
+full fixups+format pipeline, quit deferring until a parked save lands),
 insert/delete primitives + grouped undo/redo, bracket/colon-aware auto-indent
 (Enter indents after an opener / Python `:`, splits a matched `{}` pair, closing
 bracket re-aligns to its opener), selection +
@@ -766,8 +779,8 @@ markdown-preview pane),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
-document formatting (external formatter e.g. `ruff format -`, else LSP) + format-on-save
-(config `format_on_save`, toggleable), `LSP: Restart`, state-colored status segment
+document formatting (`format` plugin: external command e.g. `ruff format -`, else LSP) + format-on-save
+(config `plugins.format.format_on_save`, toggleable), `LSP: Restart`, state-colored status segment
 (dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
 `.Debug` message log; git diff gutter (live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
 + optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `modules.git.diff_view`): row

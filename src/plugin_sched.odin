@@ -76,6 +76,7 @@ PluginWaitKind :: enum {
 	Sleep,
 	Proc,
 	Save,
+	Lsp,
 }
 
 PluginWait :: struct {
@@ -146,6 +147,12 @@ PluginQueued :: struct {
 	buf:   u64,
 	n:     i64,
 	a, b:  string,
+}
+
+PluginLspResult :: struct {
+	id:     u64,
+	ok:     bool,
+	reason: string,
 }
 
 PluginFake :: struct {
@@ -736,9 +743,26 @@ plugin_due :: proc(editor: ^Editor) -> bool {
 	return editor.plugins.L != nil && plugin_timeout_ms(editor, 1) == 0
 }
 
+plugin_lsp_done :: proc(editor: ^Editor, id: u64, ok: bool, reason: string) {
+	p := &editor.plugins
+	if p.L == nil || id == 0 {
+		return
+	}
+	append(&p.lsp_results, PluginLspResult{id, ok, reason})
+}
+
+plugin_lsp_result :: proc(p: ^Plugins, id: u64) -> (PluginLspResult, bool) {
+	for r in p.lsp_results {
+		if r.id == id {
+			return r, true
+		}
+	}
+	return {}, false
+}
+
 plugin_busy :: proc(editor: ^Editor) -> bool {
 	p := &editor.plugins
-	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 {
+	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 {
 		return true
 	}
 	for pr in p.procs {
@@ -908,6 +932,24 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		}
 	}
 
+	if len(p.lsp_results) > 0 {
+		results := p.lsp_results
+		p.lsp_results = {}
+		for r in results {
+			append(&p.lsp_results, r)
+			for w in plugin_waiters(p, .Lsp, r.id) {
+				plugin_task_resume(editor, w, 0)
+			}
+			for x, i in p.lsp_results {
+				if x.id == r.id {
+					ordered_remove(&p.lsp_results, i)
+					break
+				}
+			}
+		}
+		delete(results)
+	}
+
 	clear(&due)
 	for s in p.saves {
 		append(&due, s.id)
@@ -1021,4 +1063,5 @@ plugin_sched_shutdown :: proc(p: ^Plugins) {
 	delete(p.hooks)
 	delete(p.timers)
 	delete(p.fakes)
+	delete(p.lsp_results)
 }

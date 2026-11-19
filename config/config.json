@@ -20,9 +20,6 @@
   "preview_max_width": 130,
   "plugin_memory_mb": 64,
   "plugin_hook_timeout_ms": 2000,
-  "format_on_save": false,
-  "trim_trailing_whitespace_on_save": false,
-  "ensure_final_newline_on_save": false,
   "cursor_accel": true,
   "auto_close_pairs": true,
   "line_wrap": true,
@@ -53,7 +50,22 @@
       "completion_enabled": false
     }
   },
-  "plugins": {},
+  "plugins": {
+    "format": {
+      "enabled": true,
+      "format_on_save": false,
+      "trim_trailing_whitespace_on_save": false,
+      "ensure_final_newline_on_save": false,
+      "commands": {
+        "python": "ruff format --stdin-filename {file} -",
+        "go": "gofmt",
+        "rust": "rustfmt --edition 2021",
+        "sql": "sql-formatter",
+        "toml": "taplo fmt --stdin-filepath {file} -",
+        "json": "prettier --parser json --stdin-filepath {file}"
+      }
+    }
+  },
   "theme": "default",
   "keybinds": {
     "Command Palette": "Ctrl+p",
@@ -119,103 +131,83 @@
   "languages": {
     "odin": {
       "patterns": ["*.odin"],
-      "lsp": "ols",
-      "formatter": ""
+      "lsp": "ols"
     },
     "c": {
       "patterns": ["*.c", "*.h"],
-      "lsp": "clangd",
-      "formatter": ""
+      "lsp": "clangd"
     },
     "cpp": {
       "patterns": ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hh"],
-      "lsp": "clangd",
-      "formatter": ""
+      "lsp": "clangd"
     },
     "javascript": {
       "patterns": ["*.js", "*.mjs", "*.cjs"],
-      "lsp": "typescript-language-server --stdio",
-      "formatter": ""
+      "lsp": "typescript-language-server --stdio"
     },
     "jsx": {
       "patterns": ["*.jsx"],
-      "lsp": "typescript-language-server --stdio",
-      "formatter": ""
+      "lsp": "typescript-language-server --stdio"
     },
     "typescript": {
       "patterns": ["*.ts", "*.mts", "*.cts"],
-      "lsp": "typescript-language-server --stdio",
-      "formatter": ""
+      "lsp": "typescript-language-server --stdio"
     },
     "tsx": {
       "patterns": ["*.tsx"],
-      "lsp": "typescript-language-server --stdio",
-      "formatter": ""
+      "lsp": "typescript-language-server --stdio"
     },
     "python": {
       "patterns": ["*.py", "*.pyw"],
-      "lsp": "pyright-langserver --stdio",
-      "formatter": "ruff format --stdin-filename {file} -"
+      "lsp": "pyright-langserver --stdio"
     },
     "go": {
       "patterns": ["*.go"],
-      "lsp": "gopls",
-      "formatter": "gofmt"
+      "lsp": "gopls"
     },
     "rust": {
       "patterns": ["*.rs"],
-      "lsp": "rust-analyzer",
-      "formatter": "rustfmt --edition 2021"
+      "lsp": "rust-analyzer"
     },
     "shell": {
       "patterns": ["*.sh", "*.bash", "*.zsh", ".bashrc", ".bash_profile", ".bash_aliases", ".profile", ".zshrc", ".zshenv", ".zprofile", "PKGBUILD"],
-      "lsp": "bash-language-server start",
-      "formatter": ""
+      "lsp": "bash-language-server start"
     },
     "lua": {
       "patterns": ["*.lua", ".luacheckrc"],
-      "lsp": "lua-language-server",
-      "formatter": ""
+      "lsp": "lua-language-server"
     },
     "sql": {
       "patterns": ["*.sql"],
-      "lsp": "",
-      "formatter": "sql-formatter"
+      "lsp": ""
     },
     "yaml": {
       "patterns": ["*.yaml", "*.yml"],
-      "lsp": "yaml-language-server --stdio",
-      "formatter": ""
+      "lsp": "yaml-language-server --stdio"
     },
     "toml": {
       "patterns": ["*.toml"],
-      "lsp": "taplo lsp stdio",
-      "formatter": "taplo fmt --stdin-filepath {file} -"
+      "lsp": "taplo lsp stdio"
     },
     "dockerfile": {
       "patterns": ["Dockerfile", "*.dockerfile", "Dockerfile.*"],
-      "lsp": "docker-langserver --stdio",
-      "formatter": ""
+      "lsp": "docker-langserver --stdio"
     },
     "json": {
       "patterns": ["*.json"],
-      "lsp": "",
-      "formatter": "prettier --parser json --stdin-filepath {file}"
+      "lsp": ""
     },
     "html": {
       "patterns": ["*.html", "*.htm"],
-      "lsp": "vscode-html-language-server --stdio",
-      "formatter": ""
+      "lsp": "vscode-html-language-server --stdio"
     },
     "css": {
       "patterns": ["*.css"],
-      "lsp": "vscode-css-language-server --stdio",
-      "formatter": ""
+      "lsp": "vscode-css-language-server --stdio"
     },
     "markdown": {
       "patterns": ["*.md", "*.markdown"],
-      "lsp": "",
-      "formatter": ""
+      "lsp": ""
     }
   }
 }

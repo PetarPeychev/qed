@@ -305,8 +305,8 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 		testing.expectf(t, p_ok, "embedded language %s has patterns", key)
 		_, l_ok := sub["lsp"].(json.String)
 		testing.expectf(t, l_ok, "embedded language %s has lsp", key)
-		_, f_ok := sub["formatter"].(json.String)
-		testing.expectf(t, f_ok, "embedded language %s has formatter", key)
+		_, f_has := sub["formatter"]
+		testing.expectf(t, !f_has, "embedded language %s has no formatter (plugins.format.commands owns it)", key)
 	}
 	mods, mods_ok := g_config_defaults["modules"].(json.Object)
 	testing.expect(t, mods_ok, "embedded modules object")
@@ -406,11 +406,11 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, jt_ok && jt == 99, "present value preserved in file")
 
 	bool_path := fmt.tprintf("%s/bool.json", dir)
-	_ = os.write_entire_file(bool_path, transmute([]byte)string(`{"format_on_save": true}`))
-	FORMAT_ON_SAVE = false
+	_ = os.write_entire_file(bool_path, transmute([]byte)string(`{"filetree_show_dotfiles": true}`))
+	FILETREE_SHOW_DOTFILES = false
 	_, is_err = config_load_from(bool_path)
 	testing.expect(t, !is_err, "bool value load is not an error")
-	testing.expect(t, FORMAT_ON_SAVE, "bool value applied")
+	testing.expect(t, FILETREE_SHOW_DOTFILES, "bool value applied")
 
 	// A rebind drives both dispatch and hints. The configured shortcut string renders
 	// verbatim. A shared file-tree command (Copy) borrows the global bind, so rebinding
@@ -446,7 +446,7 @@ test_config_files :: proc(t: ^testing.T) {
 	msg, is_err = config_load_from(lang_path)
 	testing.expect(t, is_err, "invalid lsp type reports an error")
 	testing.expect(t, strings.contains(msg, "languages/lua/lsp"), "names the invalid subkey")
-	testing.expect(t, LANGUAGES[.Python].formatter == "black -", "python formatter override applied")
+	testing.expect(t, strings.contains(msg, "languages/python/formatter"), "the moved formatter key is reported")
 	testing.expect(t, LANGUAGES[.Python].lsp_server == saved_py_lsp, "omitted lsp keeps default")
 	testing.expect(t, language_of("x.myext") == .Python, "custom pattern drives detection")
 	testing.expect(t, language_of("x.py") == .Python, "listed pattern still detected")

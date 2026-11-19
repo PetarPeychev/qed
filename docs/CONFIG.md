@@ -3,8 +3,8 @@
 Every qed tunable, in one place. Defaults are compiled into the binary from two
 files, which are the canonical, always-current reference:
 
-- [`config/config.json`](../config/config.json): knobs, keybinds, and
-  per-language LSP/formatter wiring.
+- [`config/config.json`](../config/config.json): knobs, keybinds,
+  per-language LSP wiring, and bundled plugin config (formatters).
 - [`config/themes/default.json`](../config/themes/default.json): the complete
   color, icon, and tint palette every theme overlays.
 
@@ -19,15 +19,15 @@ persists the single `theme` key when you press Enter on it).
   and knobs take effect without a restart.
 - **Forgiving.** An unknown key warns once and is ignored; malformed JSON falls
   back to defaults without crashing.
-- **Nested keys merge per-key**, so overriding one language's `formatter` leaves
-  its `patterns` and `lsp` intact.
+- **Nested keys merge per-key**, so overriding one language's `lsp` leaves
+  its `patterns` intact.
 
 A minimal override looks like:
 
 ```json
 {
   "line_wrap": false,
-  "format_on_save": true,
+  "plugins": { "format": { "format_on_save": true } },
   "theme": "gruvbox-dark",
   "keybinds": { "Find in Files": "Ctrl+e" }
 }
@@ -45,15 +45,29 @@ A minimal override looks like:
 | `cursor_accel_ramp_presses` | `20` | Repeats over which the step ramps to its max. |
 | `cursor_accel_max_step` | `6` | Largest per-repeat step at full acceleration (rows/cols). |
 
-## Save behavior
+## Save behavior and formatting
 
-All default off; each has a runtime *Toggle* command.
+Owned by the bundled `format` plugin, under `plugins.format`. The three knobs
+default off and seed runtime *Toggle* commands (*Toggle Format on Save*, *Toggle
+Trim Whitespace on Save*, *Toggle Final Newline on Save*). *Format Document*
+formats on demand.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `format_on_save` | `false` | Run the language formatter (external tool, else LSP) on every save. |
-| `trim_trailing_whitespace_on_save` | `false` | Strip trailing whitespace (markdown two-space hard breaks are kept). |
-| `ensure_final_newline_on_save` | `false` | Guarantee exactly one trailing newline. |
+| `plugins.format.format_on_save` | `false` | Format on every save (after the fixups below). |
+| `plugins.format.trim_trailing_whitespace_on_save` | `false` | Strip trailing whitespace (markdown two-space hard breaks are kept). |
+| `plugins.format.ensure_final_newline_on_save` | `false` | Guarantee exactly one trailing newline. |
+| `plugins.format.commands.<language>` | see `config.json` | External stdin-to-stdout formatter for that language, e.g. `"python": "ruff format --stdin-filename {file} -"`. Absent or `""` falls back to LSP formatting. |
+
+A formatter command runs under `sh -c` in the file's directory; `{file}` is replaced
+with the file's quoted absolute path, for tools that take a stdin-filename flag. A
+missing tool or non-zero exit leaves the buffer untouched with a message (a save
+still goes ahead, unformatted). A save waits for formatting up to
+`plugin_hook_timeout_ms`.
+
+```json
+{ "plugins": { "format": { "format_on_save": true, "commands": { "lua": "stylua -" } } } }
+```
 
 ## Scrolling & mouse
 
@@ -105,19 +119,16 @@ command palette (`Ctrl+p`).
 
 ## Languages
 
-The `languages` section keys each language by name. Every entry has three
+The `languages` section keys each language by name. Every entry has two
 user-overridable fields:
 
 - **`patterns`**: glob list matched against the filename basename
   (most-specific first), e.g. `["*.py", "*.pyw"]` or dotfiles like `.bashrc`.
 - **`lsp`**: the language-server command (`""` is none), e.g. `pyright-langserver --stdio`.
-- **`formatter`**: an external stdin-to-stdout filter (`""` falls back to LSP
-  formatting), e.g. `ruff format -`. It runs in the file's directory; `{file}` is
-  replaced with the file's quoted absolute path, for tools that take a
-  stdin-filename flag (`ruff format --stdin-filename {file} -`).
 
-Overriding one field merges over the compiled-in default, so you can swap just a
-formatter or point `lsp` at a different binary. Syntax highlighting is wired into
+Formatter commands live in [`plugins.format.commands`](#save-behavior-and-formatting).
+Overriding one field merges over the compiled-in default, so you can point `lsp`
+at a different binary. Syntax highlighting is wired into
 the binary (tree-sitter) and is not configured here. *Set Language* overrides the
 detected language for the current session.
 
@@ -147,7 +158,7 @@ place.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `enabled` | `true` | Master switch. Off stops every language server — no diagnostics, completion, hover, go-to-definition, or rename; formatting falls back to the external `formatter`. |
+| `enabled` | `true` | Master switch. Off stops every language server — no diagnostics, completion, hover, go-to-definition, or rename; *Format Document* works only for languages with a `plugins.format.commands` entry. |
 | `completion_max_rows` | `8` | Max rows in the completion popup. |
 | `completion_min_chars` | `1` | Word-char count that auto-triggers completion. |
 

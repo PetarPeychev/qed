@@ -47,7 +47,7 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 		}
 		if conflict {
 			editor_log(editor, .Warn, "", fmt.tprintf("File changed on disk — save it with %s to resolve", command_shortcut("Save")))
-		} else if lsp_format_pending() || len(editor.plugins.saves) > 0 {
+		} else if len(editor.plugins.saves) > 0 {
 			editor_save_intent_set(editor, .Quit, "")
 		} else if editor_any_modified(editor) {
 			editor_log(editor, .Error, "", "Save failed")

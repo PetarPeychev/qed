@@ -54,7 +54,6 @@ LspRequest :: enum {
 	Definition,
 	Hover,
 	Format,
-	FormatOnSave,
 	Rename,
 	Completion,
 }
@@ -62,9 +61,10 @@ LspRequest :: enum {
 // A request awaiting its response. `path`/`rev` locate the target buffer and
 // guard against applying stale results (formatting) after the doc has changed.
 LspPending :: struct {
-	kind: LspRequest,
-	path: string,
-	rev:  u64,
+	kind:  LspRequest,
+	path:  string,
+	rev:   u64,
+	token: u64,
 }
 
 // One entry in a `textDocument/didChange` batch: an LSP range (UTF-16 columns)
@@ -220,8 +220,11 @@ lsp_shutdown_one :: proc(editor: ^Editor, lsp: ^Lsp) {
 	}
 }
 
-lsp_pending_clear :: proc(lsp: ^Lsp) {
+lsp_pending_clear :: proc(editor: ^Editor, lsp: ^Lsp) {
 	for _, p in lsp.pending {
+		if p.kind == .Format {
+			plugin_lsp_done(editor, p.token, false, "error")
+		}
 		delete(p.path)
 	}
 	delete(lsp.pending)
@@ -231,7 +234,7 @@ lsp_pending_clear :: proc(lsp: ^Lsp) {
 lsp_stop :: proc(editor: ^Editor) {
 	for _, lsp in g_lsps {
 		lsp_shutdown_one(editor, lsp)
-		lsp_pending_clear(lsp)
+		lsp_pending_clear(editor, lsp)
 		delete(lsp.recv)
 		delete(lsp.stderr_buf)
 		delete(lsp.completion_triggers)
@@ -270,7 +273,7 @@ lsp_restart :: proc(editor: ^Editor) {
 	name := lsp_display_name(server)
 	if lsp, ok := g_lsps[server]; ok {
 		lsp_shutdown_one(editor, lsp)
-		lsp_pending_clear(lsp)
+		lsp_pending_clear(editor, lsp)
 		delete(lsp.recv)
 		delete(lsp.stderr_buf)
 		delete(lsp.completion_triggers)
@@ -287,31 +290,12 @@ lsp_restart :: proc(editor: ^Editor) {
 	editor_log(editor, .Info, "LSP", fmt.tprintf("restarting %s", name))
 }
 
-lsp_format_pending :: proc() -> bool {
-	for _, lsp in g_lsps {
-		for _, p in lsp.pending {
-			if p.kind == .FormatOnSave {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 	if lsp.state == .Failed {
 		return
 	}
 	lsp.state = .Failed
-	save_paths := make([dynamic]string, context.temp_allocator)
-	if !editor.quit {
-		for _, p in lsp.pending {
-			if p.kind == .FormatOnSave {
-				append(&save_paths, strings.clone(p.path, context.temp_allocator))
-			}
-		}
-	}
-	lsp_pending_clear(lsp)
+	lsp_pending_clear(editor, lsp)
 	delete(lsp.recv)
 	lsp.recv = nil
 	os.close(lsp.stdin)
@@ -328,9 +312,6 @@ lsp_fail :: proc(editor: ^Editor, lsp: ^Lsp) {
 			buffer_lsp_changes_clear(&b)
 			b.lsp_open = false
 		}
-	}
-	for path in save_paths {
-		editor_save_path(editor, path)
 	}
 	editor_log(editor, .Error, "LSP", fmt.tprintf("%s stopped", lsp_display_name(lsp.server)))
 }
@@ -831,8 +812,6 @@ lsp_request_name :: proc(kind: LspRequest) -> string {
 		return "hover"
 	case .Format:
 		return "format"
-	case .FormatOnSave:
-		return "format-on-save"
 	case .Rename:
 		return "rename"
 	case .Completion:
@@ -841,13 +820,14 @@ lsp_request_name :: proc(kind: LspRequest) -> string {
 	return "?"
 }
 
-lsp_pending_add :: proc(editor: ^Editor, lsp: ^Lsp, kind: LspRequest, b: ^Buffer) -> int {
+lsp_pending_add :: proc(editor: ^Editor, lsp: ^Lsp, kind: LspRequest, b: ^Buffer, token: u64 = 0) -> int {
 	lsp.next_id += 1
 	id := lsp.next_id
 	lsp.pending[id] = LspPending {
-		kind = kind,
-		path = strings.clone(b.path),
-		rev  = b.rev,
+		kind  = kind,
+		path  = strings.clone(b.path),
+		rev   = b.rev,
+		token = token,
 	}
 	editor_log(editor, .Debug, "LSP", fmt.tprintf("request: %s #%d %s", lsp_request_name(kind), id, editor_display_path(editor, b.path)))
 	return id
@@ -1008,24 +988,26 @@ lsp_apply_rename :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	return true
 }
 
-lsp_format :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
+lsp_format_unavailable :: proc(b: ^Buffer) -> string {
+	if !module_enabled(.Lsp) {
+		return "disabled"
+	}
 	if LANGUAGES[b.language].lsp_server == "" {
-		editor_log(editor, .Error, "LSP", "No language server for this buffer")
-		return
+		return "no server"
 	}
-	if !lsp_send_format(editor, b, .Format) {
-		editor_log(editor, .Error, "Format", "Formatting not available")
+	if lsp, ok := lsp_ready(b); !ok || !lsp.cap_format {
+		return "unavailable"
 	}
+	return ""
 }
 
-lsp_send_format :: proc(editor: ^Editor, b: ^Buffer, kind: LspRequest) -> bool {
+lsp_send_format :: proc(editor: ^Editor, b: ^Buffer, token: u64) -> bool {
 	lsp, ok := lsp_ready(b)
 	if !ok || !lsp.cap_format {
 		return false
 	}
 	lsp_ensure_synced(editor, b)
-	id := lsp_pending_add(editor, lsp, kind, b)
+	id := lsp_pending_add(editor, lsp, .Format, b, token)
 	lsp_send(
 		editor,
 		lsp,
@@ -1044,8 +1026,8 @@ lsp_handle_response :: proc(editor: ^Editor, p: LspPending, obj: json.Object) ->
 	if e, has := obj["error"].(json.Object); has {
 		msg := e["message"].(string) or_else "request failed"
 		editor_log(editor, .Error, "LSP", msg)
-		if p.kind == .FormatOnSave {
-			editor_save_path(editor, p.path)
+		if p.kind == .Format {
+			plugin_lsp_done(editor, p.token, false, "error")
 		}
 		return true
 	}
@@ -1056,9 +1038,7 @@ lsp_handle_response :: proc(editor: ^Editor, p: LspPending, obj: json.Object) ->
 	case .Hover:
 		return lsp_apply_hover(editor, obj)
 	case .Format:
-		return lsp_apply_format(editor, p, obj, false)
-	case .FormatOnSave:
-		return lsp_apply_format(editor, p, obj, true)
+		return lsp_apply_format(editor, p, obj)
 	case .Rename:
 		return lsp_apply_rename(editor, obj)
 	case .Completion:
@@ -1154,18 +1134,15 @@ lsp_apply_hover :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	return true
 }
 
-lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object, save_after: bool) -> bool {
+lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object) -> bool {
 	idx := editor_find_buffer(editor, p.path)
 	if idx < 0 {
+		plugin_lsp_done(editor, p.token, false, "stale")
 		return false
 	}
 	b := &editor.buffers[idx]
 	if b.rev != p.rev {
-		if save_after {
-			editor_save_path(editor, p.path)
-		} else {
-			editor_log(editor, .Warn, "Format", "skipped: buffer changed")
-		}
+		plugin_lsp_done(editor, p.token, false, "stale")
 		return true
 	}
 	applied := false
@@ -1181,13 +1158,7 @@ lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object, save_
 			editor_scroll(editor)
 		}
 	}
-	if save_after {
-		editor_save_path(editor, p.path)
-	} else if applied {
-		editor_log(editor, .Info, "Format", "Formatted")
-	} else {
-		editor_log(editor, .Info, "Format", "No formatting changes")
-	}
+	plugin_lsp_done(editor, p.token, true, "")
 	return true
 }
 

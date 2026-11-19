@@ -83,6 +83,130 @@ edit_delete :: proc(b: ^Buffer, from, to: Cursor) {
 	append(&b.open.edits, Edit{.Insert, from, removed})
 }
 
+TextHunk :: struct {
+	old_lo, old_n, new_lo, new_n: int,
+}
+
+text_hunks :: proc(b: ^Buffer, lines: []string) -> []TextHunk {
+	n, m := len(b.lines), len(lines)
+	pre := 0
+	for pre < n && pre < m && string(b.lines[pre].text[:]) == lines[pre] {
+		pre += 1
+	}
+	suf := 0
+	for suf < n - pre && suf < m - pre && string(b.lines[n - 1 - suf].text[:]) == lines[m - 1 - suf] {
+		suf += 1
+	}
+	hunks := make([dynamic]TextHunk, context.temp_allocator)
+	if pre == n && pre == m {
+		return hunks[:]
+	}
+	a := make([]u64, n - pre - suf, context.temp_allocator)
+	for &h, i in a {
+		h = git_hash(b.lines[pre + i].text[:])
+	}
+	c := make([]u64, m - pre - suf, context.temp_allocator)
+	for &h, i in c {
+		h = git_hash(transmute([]u8)lines[pre + i])
+	}
+	ops, ok := git_myers(a, c)
+	if !ok {
+		append(&hunks, TextHunk{pre, len(a), pre, len(c)})
+		return hunks[:]
+	}
+	oi, ni := pre, pre
+	open := false
+	for op in ops {
+		// A hash collision must not keep a changed line.
+		if op == .Equal && string(b.lines[oi].text[:]) == lines[ni] {
+			open = false
+			oi += 1
+			ni += 1
+			continue
+		}
+		if !open {
+			append(&hunks, TextHunk{oi, 0, ni, 0})
+			open = true
+		}
+		h := &hunks[len(hunks) - 1]
+		if op != .Insert {
+			h.old_n += 1
+			oi += 1
+		}
+		if op != .Delete {
+			h.new_n += 1
+			ni += 1
+		}
+	}
+	return hunks[:]
+}
+
+text_hunks_map :: proc(hunks: []TextHunk, p: Cursor) -> Cursor {
+	delta := 0
+	for h in hunks {
+		if p.row < h.old_lo {
+			break
+		}
+		if p.row < h.old_lo + h.old_n {
+			return {h.new_lo + min(p.row - h.old_lo, max(h.new_n - 1, 0)), p.col}
+		}
+		delta += h.new_n - h.old_n
+	}
+	return {p.row + delta, p.col}
+}
+
+buffer_pos_clamp :: proc(b: ^Buffer, p: Cursor) -> Cursor {
+	row := clamp(p.row, 0, len(b.lines) - 1)
+	text := b.lines[row].text[:]
+	col := clamp(p.col, 0, len(text))
+	for col > 0 && col < len(text) && text[col] & 0xC0 == 0x80 {
+		col -= 1
+	}
+	return {row, col}
+}
+
+buffer_set_text :: proc(b: ^Buffer, text: string) -> bool {
+	lines := strings.split(text, "\n", context.temp_allocator)
+	hunks := text_hunks(b, lines)
+	if len(hunks) == 0 {
+		return false
+	}
+	cursor := text_hunks_map(hunks, b.cursor)
+	anchor, has_anchor := b.selection.?
+	if has_anchor {
+		anchor = text_hunks_map(hunks, anchor)
+	}
+	edit_open(b, .Atomic)
+	#reverse for h in hunks {
+		body := strings.join(lines[h.new_lo:h.new_lo + h.new_n], "\n", context.temp_allocator)
+		last := len(b.lines) - 1
+		switch {
+		case h.old_n > 0 && h.new_n > 0:
+			end := h.old_lo + h.old_n - 1
+			edit_delete(b, {h.old_lo, 0}, {end, len(b.lines[end].text)})
+			if body != "" {
+				edit_insert(b, {h.old_lo, 0}, body)
+			}
+		case h.old_n == 0 && h.old_lo <= last:
+			edit_insert(b, {h.old_lo, 0}, strings.concatenate({body, "\n"}, context.temp_allocator))
+		case h.old_n == 0:
+			edit_insert(b, {last, len(b.lines[last].text)}, strings.concatenate({"\n", body}, context.temp_allocator))
+		case h.old_lo + h.old_n <= last:
+			edit_delete(b, {h.old_lo, 0}, {h.old_lo + h.old_n, 0})
+		case:
+			edit_delete(b, {h.old_lo - 1, len(b.lines[h.old_lo - 1].text)}, {last, len(b.lines[last].text)})
+		}
+	}
+	buffer_undo_commit(b)
+	b.cursor = buffer_pos_clamp(b, cursor)
+	b.selection = nil
+	if has_anchor {
+		b.selection = buffer_pos_clamp(b, anchor)
+	}
+	cursor_goal_sync(b)
+	return true
+}
+
 cursor_advance :: proc(at: Cursor, text: string) -> Cursor {
 	end := at
 	nl := strings.last_index_byte(text, '\n')

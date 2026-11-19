@@ -85,28 +85,12 @@ cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
 cmd_lsp_definition :: proc(editor: ^Editor) {lsp_definition(editor)}
 cmd_lsp_hover :: proc(editor: ^Editor) {lsp_hover(editor)}
 cmd_lsp_rename :: proc(editor: ^Editor) {rename_open(editor)}
-cmd_format :: proc(editor: ^Editor) {format_document(editor)}
 cmd_diag_next :: proc(editor: ^Editor) {diag_goto(editor, +1)}
 cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
 cmd_git_next :: proc(editor: ^Editor) {git_goto(editor, +1)}
 cmd_git_prev :: proc(editor: ^Editor) {git_goto(editor, -1)}
 cmd_git_revert :: proc(editor: ^Editor) {git_revert(editor)}
 cmd_git_set_base :: proc(editor: ^Editor) {basepick_open(editor)}
-
-cmd_toggle_format_on_save :: proc(editor: ^Editor) {
-	editor.format_on_save = !editor.format_on_save
-	editor_log(editor, .Info, "", fmt.tprintf("Format on save: %s", "on" if editor.format_on_save else "off"))
-}
-
-cmd_toggle_trim_whitespace_on_save :: proc(editor: ^Editor) {
-	editor.trim_trailing_whitespace_on_save = !editor.trim_trailing_whitespace_on_save
-	editor_log(editor, .Info, "", fmt.tprintf("Trim whitespace on save: %s", "on" if editor.trim_trailing_whitespace_on_save else "off"))
-}
-
-cmd_toggle_final_newline_on_save :: proc(editor: ^Editor) {
-	editor.ensure_final_newline_on_save = !editor.ensure_final_newline_on_save
-	editor_log(editor, .Info, "", fmt.tprintf("Final newline on save: %s", "on" if editor.ensure_final_newline_on_save else "off"))
-}
 
 cmd_toggle_diff_view :: proc(editor: ^Editor) {
 	g_diff_view = !g_diff_view
@@ -175,10 +159,6 @@ commands := [?]Command {
 	{name = "AI: Edit Selection", module = .Ai, run = cmd_ai_edit},
 	{name = "AI: Cancel Edits", module = .Ai, run = cmd_ai_cancel},
 	{name = "AI: Toggle Inline Completion", module = .Ai, run = cmd_toggle_inline_completion},
-	{name = "Format Document", run = cmd_format},
-	{name = "Toggle Format on Save", run = cmd_toggle_format_on_save},
-	{name = "Toggle Trim Whitespace on Save", run = cmd_toggle_trim_whitespace_on_save},
-	{name = "Toggle Final Newline on Save", run = cmd_toggle_final_newline_on_save},
 	{name = "Git: Toggle Diff View", module = .Git, run = cmd_toggle_diff_view},
 	{name = "Git: Next Change", module = .Git, run = cmd_git_next},
 	{name = "Git: Previous Change", module = .Git, run = cmd_git_prev},

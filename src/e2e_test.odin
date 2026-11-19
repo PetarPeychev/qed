@@ -1,5 +1,6 @@
 package main
 
+import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -36,6 +37,7 @@ E2E :: struct {
 	path:    string,
 	dir:     string, // scratch dir (git fixture); removed recursively on stop
 	resized: bool,   // restore the shared 80×24 backend on stop
+	cfg:     json.Value,
 }
 
 e2e_backend_init :: proc() {
@@ -91,6 +93,7 @@ e2e_start :: proc(content := "") -> E2E {
 
 e2e_stop :: proc(e: ^E2E) {
 	editor_shutdown(&e.ed)
+	json.destroy_value(e.cfg)
 	if e.resized {
 		e2e_apply_size(E2E_W, E2E_H)
 	}
@@ -204,7 +207,7 @@ e2e_git_start :: proc(seed: string, name := "file.txt") -> E2E {
 
 // Writes an executable `#!/bin/sh` stub with `body` (canned output or a
 // stdin→stdout filter) to a temp path, for wiring into config `llm.chat_command`,
-// a language `formatter`, or the FIM curl command. Caller frees the returned path.
+// a format command, or the FIM curl command. Caller frees the returned path.
 e2e_stub_script :: proc(body: string) -> string {
 	e2e_seq += 1
 	tmp, _ := os.temp_dir(context.temp_allocator)
@@ -223,6 +226,19 @@ e2e_plugin :: proc(e: ^E2E, name, src: string) -> ^Plugin {
 	pl := plugins_add(&e.ed.plugins, Plugin{name = name, main = path}, false)
 	plugin_load(&e.ed, pl)
 	return pl
+}
+
+e2e_plugin_config :: proc(e: ^E2E, name, cfg: string) {
+	src := fmt.tprintf(`{{"plugins": {{%q: %s}}}}`, name, cfg)
+	v, err := json.parse_string(src, parse_integers = true)
+	assert(err == nil, "plugin test config parses")
+	json.destroy_value(e.cfg)
+	e.cfg = v
+	e.ed.plugins.config_override = v.(json.Object)
+	if pl := plugin_find(&e.ed.plugins, name); pl != nil {
+		plugin_unload(&e.ed, pl)
+		plugin_load(&e.ed, pl)
+	}
 }
 
 e2e_spawn_fake :: proc(e: ^E2E, pattern, stdout: string, code := 0, delay_ms := 0, stderr := "") {
@@ -409,31 +425,6 @@ e2e_git_gutter_mark :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
 	testing.expect_value(t, git_mark_at(b, 0), GitMark.None)
-}
-
-@(test)
-e2e_stub_formatter :: proc(t: ^testing.T) {
-	e := e2e_start("hello\nworld")
-	defer e2e_stop(&e)
-
-	stub := e2e_stub_script("tr 'a-z' 'A-Z'")
-	defer {
-		os.remove(stub)
-		delete(stub)
-	}
-
-	b := editor_buffer(&e.ed)
-	old := LANGUAGES[.Plain].formatter
-	LANGUAGES[.Plain].formatter = stub
-	defer LANGUAGES[.Plain].formatter = old
-
-	format_document(&e.ed)
-	testing.expect_value(t, string(b.lines[0].text[:]), "HELLO")
-	testing.expect_value(t, string(b.lines[1].text[:]), "WORLD")
-
-	// The whole format is one undo group.
-	e2e_key(&e, .Ctrl_Z)
-	testing.expect_value(t, string(b.lines[0].text[:]), "hello")
 }
 
 @(test)

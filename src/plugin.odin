@@ -60,6 +60,7 @@ Plugins :: struct {
 	saves:    [dynamic]PluginSave,
 	queue:    [dynamic]PluginQueued,
 	fakes:    [dynamic]PluginFake,
+	lsp_results: [dynamic]PluginLspResult,
 	slice:    PluginSlice,
 	seq:      u64,
 	presave:  u64,
@@ -75,15 +76,26 @@ PluginEntry :: struct {
 
 bundled_plugin_files := #load_directory("../plugins")
 
+bundled_plugin_dirs := [?]struct {
+	name:  string,
+	files: []runtime.Load_Directory_File,
+}{{"format", #load_directory("../plugins/format")}}
+
 g_bundled_plugins: []PluginFile
 
 @(init)
 plugin_bundled_init :: proc "contextless" () {
 	context = runtime.default_context()
-	g_bundled_plugins = make([]PluginFile, len(bundled_plugin_files), os.heap_allocator())
-	for f, i in bundled_plugin_files {
-		g_bundled_plugins[i] = {strings.clone(f.name, os.heap_allocator()), string(f.data)}
+	files := make([dynamic]PluginFile, os.heap_allocator())
+	for f in bundled_plugin_files {
+		append(&files, PluginFile{strings.clone(f.name, os.heap_allocator()), string(f.data)})
 	}
+	for d in bundled_plugin_dirs {
+		for f in d.files {
+			append(&files, PluginFile{strings.concatenate({d.name, "/", f.name}, os.heap_allocator()), string(f.data)})
+		}
+	}
+	g_bundled_plugins = files[:]
 }
 
 @(fini)

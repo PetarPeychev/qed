@@ -235,6 +235,14 @@ function qed.buf.delete(b, from, to) end
 ---@return qed.Pos end_pos
 function qed.buf.replace(b, from, to, text) end
 
+---Replace the whole text with a minimal line diff, so the cursor, undo and highlight
+---keep their place. One undo step. Returns false without editing if `opts.rev` is stale.
+---@param b qed.Buf
+---@param text string
+---@param opts? {rev?: integer}
+---@return boolean
+function qed.buf.set_text(b, text, opts) end
+
 ---@param b qed.Buf
 ---@return qed.Pos
 function qed.buf.cursor(b) end
@@ -325,6 +333,16 @@ function qed.path.rel(p, base) end
 ---@param p string
 ---@return string
 function qed.path.abs(p) end
+
+qed.lsp = {}
+
+---Waits for the language server to format `b` and applies the edits as one undo step.
+---Fails with "disabled" (LSP module off), "no server", "unavailable" (not ready or no
+---formatting support), "stale" (buffer changed meanwhile) or "error" (already logged).
+---@param b qed.Buf
+---@return boolean ok
+---@return "disabled"|"no server"|"unavailable"|"stale"|"error"|nil err
+function qed.lsp.format(b) end
 
 qed.text = {}
 

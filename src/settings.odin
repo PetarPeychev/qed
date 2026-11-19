@@ -78,9 +78,6 @@ config_ints := [?]Config_Int {
 	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
 }
 
-FORMAT_ON_SAVE: bool
-TRIM_TRAILING_WHITESPACE_ON_SAVE: bool
-ENSURE_FINAL_NEWLINE_ON_SAVE: bool
 CURSOR_ACCEL: bool
 AUTO_CLOSE_PAIRS: bool
 GIT_DIFF_VIEW: bool
@@ -95,9 +92,6 @@ AI_ENABLED: bool
 GIT_BINARY_PRESENT: bool
 
 config_bools := [?]Config_Bool {
-	{"format_on_save", &FORMAT_ON_SAVE},
-	{"trim_trailing_whitespace_on_save", &TRIM_TRAILING_WHITESPACE_ON_SAVE},
-	{"ensure_final_newline_on_save", &ENSURE_FINAL_NEWLINE_ON_SAVE},
 	{"cursor_accel", &CURSOR_ACCEL},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 	{"line_wrap", &LINE_WRAP},
@@ -1276,11 +1270,9 @@ languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) {
 				append(invalid, fmt.tprintf("languages/%s/lsp", name))
 			}
 		}
-		if fv, fhas := sub["formatter"]; fhas {
-			if s, is := fv.(json.String); is {
-				LANGUAGES[lang].formatter = strings.clone(string(s), os.heap_allocator())
-			} else {
-				append(invalid, fmt.tprintf("languages/%s/formatter", name))
+		for key in sub {
+			if key != "patterns" && key != "lsp" {
+				append(invalid, fmt.tprintf("languages/%s/%s", name, key))
 			}
 		}
 	}

@@ -39,7 +39,8 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 
 	// A background error entry (not shown on the line) plus a toggle confirmation.
 	editor_log(&e.ed, .Error, "LSP", "boom", show = false)
-	cmd_toggle_format_on_save(&e.ed)
+	toggle, _ := plugin_test_command(&e.ed, "Toggle Format on Save")
+	plugin_command_run(&e.ed, toggle)
 	testing.expect(t, strings.contains(e.ed.message, "Format on save"), "toggle sets the message line")
 
 	cmd_message_log(&e.ed)

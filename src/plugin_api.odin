@@ -60,6 +60,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"insert", qed_buf_insert},
 	{"delete", qed_buf_delete},
 	{"replace", qed_buf_replace},
+	{"set_text", qed_buf_set_text},
 	{"cursor", qed_buf_cursor},
 	{"set_cursor", qed_buf_set_cursor},
 	{"selection", qed_buf_selection},
@@ -97,6 +98,12 @@ qed_path_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
+qed_lsp_api := [?]lua.L_Reg {
+	{"format", qed_lsp_format},
+	{nil, nil},
+}
+
+@(private = "file")
 qed_text_api := [?]lua.L_Reg {
 	{"width", qed_text_width},
 	{nil, nil},
@@ -111,7 +118,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -515,6 +522,81 @@ qed_buf_replace :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+api_rev_stale :: proc(L: ^lua.State, idx: c.int, b: ^Buffer) -> bool {
+	t := lua.type(L, idx)
+	if t == .NIL || t == .NONE {
+		return false
+	}
+	if t != .TABLE {
+		lua.L_argerror(L, idx, "options table expected")
+	}
+	lua.pushodinstring(L, "rev")
+	defer lua.pop(L, 1)
+	if lua.rawget(L, idx) <= .NIL {
+		return false
+	}
+	isnum: b32
+	rev := lua.tointeger(L, -1, &isnum)
+	if !isnum {
+		plugin_raise(L, "opts.rev must be an integer")
+	}
+	return u64(rev) != b.rev
+}
+
+qed_buf_set_text :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, idx := api_buf(L, editor, 1)
+	text := api_text_arg(L, 2)
+	if api_rev_stale(L, 3, b) {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if buffer_set_text(b, text) && idx == editor.current {
+		editor_scroll(editor)
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_lsp_format :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	b, _ := api_buf(L, editor, 1)
+	task := api_await(L, p, "qed.lsp.format").id
+	reason := lsp_format_unavailable(b)
+	token := plugin_next_id(p)
+	if reason == "" && !lsp_send_format(editor, b, token) {
+		reason = "unavailable"
+	}
+	if reason != "" {
+		lua.pushboolean(L, false)
+		lua.pushodinstring(L, reason)
+		return 2
+	}
+	p.tasks[plugin_task_index(p, task)].wait = {kind = .Lsp, id = token}
+	return lua.yieldk(L, 0, lua.KContext(token), qed_lsp_format_k)
+}
+
+qed_lsp_format_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil || entry.editor.plugins.current != L {
+		return lua.yieldk(L, 0, ctx, qed_lsp_format_k)
+	}
+	context = entry.ctx
+	r, found := plugin_lsp_result(&entry.editor.plugins, u64(ctx))
+	if found && r.ok {
+		lua.pushboolean(L, true)
+		return 1
+	}
+	lua.pushboolean(L, false)
+	lua.pushodinstring(L, r.reason if found else "error")
+	return 2
+}
+
 qed_buf_cursor :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
@@ -606,21 +688,9 @@ qed_edit :: proc "c" (L: ^lua.State) -> c.int {
 	if lua.type(L, 2) != .FUNCTION {
 		lua.L_argerror(L, 2, "function expected")
 	}
-	if t := lua.type(L, 3); t == .TABLE {
-		lua.pushodinstring(L, "rev")
-		if lua.rawget(L, 3) > .NIL {
-			isnum: b32
-			rev := lua.tointeger(L, -1, &isnum)
-			if !isnum {
-				return plugin_raise(L, "opts.rev must be an integer")
-			}
-			if u64(rev) != b.rev {
-				lua.pushboolean(L, false)
-				return 1
-			}
-		}
-	} else if t > .NIL {
-		lua.L_argerror(L, 3, "options table expected")
+	if api_rev_stale(L, 3, b) {
+		lua.pushboolean(L, false)
+		return 1
 	}
 	id := b.id
 	lua.settop(L, 2)

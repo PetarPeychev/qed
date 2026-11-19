@@ -171,6 +171,7 @@ e2e_lsp_wait :: proc(e: ^E2E, pred: proc(e: ^E2E) -> bool, timeout_ms := 5000) -
 	for time.duration_milliseconds(time.tick_since(start)) < f64(timeout_ms) {
 		lsp_sync(&e.ed)
 		lsp_pump(&e.ed)
+		plugin_pump(&e.ed)
 		if completion_due(&e.ed) {
 			e.ed.completion.want = false
 			completion_request(&e.ed)
@@ -361,8 +362,7 @@ e2e_lsp_format_on_save_quit :: proc(t: ^testing.T) {
 	defer e2e_lsp_stop(&e)
 
 	testing.expect(t, e2e_lsp_wait(&e, pred_diags), "server should be ready")
-	e.ed.format_on_save = true
-	e.ed.trim_trailing_whitespace_on_save = true
+	e2e_plugin_config(&e, "format", `{"format_on_save": true, "trim_trailing_whitespace_on_save": true}`)
 
 	e2e_type(&e, "Z")
 	e2e_key(&e, .Ctrl_Q)
@@ -376,6 +376,38 @@ e2e_lsp_format_on_save_quit :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_lsp_wait(&e, pred_quit), "quit follows the chained format+save")
 	testing.expect_value(t, e2e_read_disk(e.path), "formatted\nZalpha beta\nmiddle\nxyzzy")
 	testing.expect_value(t, editor_buffer(&e.ed).modified, false)
+}
+
+@(private = "file")
+pred_formatted :: proc(e: ^E2E) -> bool {return e.ed.message == "Formatted"}
+
+@(test)
+e2e_lsp_format_document :: proc(t: ^testing.T) {
+	if !shell_command_exists("python3") {
+		return
+	}
+	e := e2e_lsp_start("alpha beta\nmiddle\nxyzzy")
+	defer e2e_lsp_stop(&e)
+
+	testing.expect(t, e2e_lsp_wait(&e, pred_diags), "server should be ready")
+	b := editor_buffer(&e.ed)
+	cmd, ok := plugin_test_command(&e.ed, "Format Document")
+	testing.expect(t, ok, "the format plugin registers Format Document")
+	command_run(&e.ed, cmd)
+	testing.expect(t, e2e_lsp_wait(&e, pred_formatted), "no external command falls back to qed.lsp.format")
+	testing.expect_value(t, e.ed.message_source, "format")
+	testing.expect_value(t, string(b.lines[0].text[:]), "formatted")
+	testing.expect_value(t, string(b.lines[1].text[:]), "alpha beta")
+
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, string(b.lines[0].text[:]), "alpha beta")
+	testing.expect(t, !b.modified, "the LSP edits are one undo step")
+
+	command_run(&e.ed, cmd)
+	e2e_type(&e, "Q")
+	pred_skipped :: proc(e: ^E2E) -> bool {return e.ed.message == "skipped: buffer changed"}
+	testing.expect(t, e2e_lsp_wait(&e, pred_skipped), "a response for an older rev is dropped")
+	testing.expect_value(t, string(b.lines[0].text[:]), "Qalpha beta")
 }
 
 @(test)
