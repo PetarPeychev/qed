@@ -773,6 +773,9 @@ qed_prompt :: proc "c" (L: ^lua.State) -> c.int {
 	prefix := fmt.tprintf("%s ", prompt) if prompt != "" else "> "
 	fields := []PaneField{{prompt = prefix}}
 	pn := plugin_ask_open(editor, pl.name, {size = .Palette, fields = fields})
+	if pn == nil {
+		return api_busy(L)
+	}
 	textfield_set(&pn.fields[0].field, text)
 	return plugin_ask_wait(L, p, task, pn.handle)
 }
@@ -810,6 +813,9 @@ qed_confirm :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	text := []string{question}
 	pn := plugin_ask_open(editor, pl.name, {text = text, list = {items = choices[:]}})
+	if pn == nil {
+		return api_busy(L)
+	}
 	return plugin_ask_wait(L, p, task, pn.handle)
 }
 

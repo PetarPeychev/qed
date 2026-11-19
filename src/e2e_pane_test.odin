@@ -53,3 +53,66 @@ e2e_pane_safety_on_top :: proc(t: ^testing.T) {
 	testing.expect_value(t, pane_test_hits, 2)
 	testing.expect_value(t, len(e.ed.panes), 0)
 }
+
+@(test)
+e2e_pane_safety_idempotent :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	editor_buffer(&e.ed).modified = true
+	editor_request_quit(&e.ed)
+	editor_request_quit(&e.ed)
+	testing.expect_value(t, len(e.ed.panes), 1)
+	b := editor_buffer(&e.ed)
+	conflict_dialog_open(&e.ed, b)
+	conflict_dialog_open(&e.ed, b)
+	testing.expect_value(t, len(e.ed.panes), 2)
+}
+
+@(test)
+e2e_pane_close_dialog_targets_its_buffer :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	first := editor_buffer(&e.ed).id
+	editor_buffer(&e.ed).modified = true
+	close_dialog_open(&e.ed)
+	append(&e.ed.buffers, buffer_new())
+	editor_switch_to(&e.ed, 1)
+	second := editor_buffer(&e.ed).id
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, len(e.ed.buffers), 1)
+	testing.expect_value(t, e.ed.buffers[0].id, second)
+	b, _ := api_buf_find(&e.ed, first)
+	testing.expect(t, b == nil, "Discard closes the buffer the dialog named")
+
+	editor_buffer(&e.ed).modified = true
+	close_dialog_open(&e.ed)
+	append(&e.ed.buffers, buffer_new())
+	editor_close_index(&e.ed, 0)
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "Buffer closed while the dialog was open")
+	testing.expect_value(t, len(e.ed.buffers), 1)
+}
+
+@(test)
+e2e_pane_child_of_safety :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	editor_buffer(&e.ed).modified = true
+	editor_request_quit(&e.ed)
+	quit := pane_find(&e.ed, "quit").handle
+	items := []string{"Go"}
+	pane_open(&e.ed, {id = "child", kind = .Child, parent = quit, list = {items = items}})
+	pane_open(&e.ed, {id = "root", list = {items = items}})
+	testing.expect_value(t, e.ed.panes[0].id, "root")
+	testing.expect_value(t, e.ed.panes[1].id, "quit")
+	testing.expect_value(t, e.ed.panes[2].id, "child")
+	testing.expect_value(t, pane_focus(&e.ed).id, "child")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, pane_focus(&e.ed).id, "quit")
+	pane_open(&e.ed, {id = "child", kind = .Child, parent = quit, list = {items = items}})
+	pane_end(&e.ed, quit, false)
+	testing.expect_value(t, len(e.ed.panes), 1)
+	testing.expect_value(t, pane_focus(&e.ed).id, "root")
+}

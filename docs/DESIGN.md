@@ -322,7 +322,7 @@ documented in `lib/tb2/PATCHES.md`:
   `Mod.Alt` (so `Alt+f`/`Alt+F` are distinct, unlike `Ctrl+letter`).
 - **Bracketed paste:** patched termbox surfaces `Paste_Begin`/`Paste_End`; qed
   accumulates the keys between them and routes the whole paste to whatever has
-  focus — the buffer (one undo group), the terminal pane, or the focused pane's
+  focus: the buffer (one undo group), the terminal pane, or the focused pane's
   or active overlay's text field via `pane_paste` / `Overlay.paste` (flattened to one line,
   so a pasted newline can't fire Enter mid-paste); dialogs ignore it.
 
@@ -333,13 +333,17 @@ M0: centered, `Dialog`/`Palette` size class, input fields (one in use), a text b
 list, with Odin `on.activate`/`on.close` handlers. `Editor.panes` is the stack:
 - The topmost non-passive pane takes keys, mouse and paste (`pane_stack_dispatch`). Passive panes
   never do and draw under everything focused.
-- Kinds: Exclusive (default; opening one closes the open non-safety exclusive pane), Child
-  (`parent` handle), Passive. Safety dialogs (`safety`: quit, close, conflict) stay on top:
-  `pane_open` inserts every other pane below them.
-- `pane_end(handle, activate)` takes the pane and its descendants off the stack, then runs the
-  children's `on.close` and the pane's `on.activate` or `on.close`, so a handler that opens
-  another pane never sees the old one.
-- `Pane.id` names core panes (`quit`, `close`, `conflict`, `merge`); `handle` is unique per open.
+- Kinds: Exclusive (default; opening one closes the open non-safety exclusive pane, or returns
+  nil while a plugin's confirm/prompt is open), Child (`parent` handle), Passive. Safety dialogs
+  (`safety`: quit, close, conflict; one each) stay on top: other root panes are inserted below them.
+- Invariant: a pane's descendants follow it contiguously (a child goes right after its parent's
+  subtree). `pane_end(handle, activate)` takes that run off the stack, then runs the children's
+  `on.close` and the pane's `on.activate` or `on.close`, so a handler that opens another pane
+  never sees the old one. A pane is live only if its parent chain is.
+- `Pane.id` names core panes (`quit`, `close`, `conflict`, `merge`); `handle` is unique per open;
+  `ctx.buf` is the buffer a core dialog acts on, resolved in its handler.
+- Plugin unload only marks its panes `dead`; `pane_stack_sync` closes them later, so no Lua runs
+  inside an unload.
 
 Ported: the quit/close/conflict/merge dialogs and plugin `qed.confirm`/`qed.prompt`.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
@@ -451,7 +455,7 @@ started at the end of `editor_init`. Invariants the code can't show:
   killed on each change and on resolve, so a waiting handler can't apply a stale
   preview. `qed.pane` is a non-waiting read-only overlay (`Plugins.pane`).
   Unloading the owner closes both and its panes with their children (another plugin's
-  child resolves `nil`; the owner's own waiters are not resumed). A modal records the command whose task opened it
+  child resolves `nil` at the next `pane_stack_sync`; the owner's own waiters are not resumed). A modal records the command whose task opened it
   (`PluginTask.command`); that command's chord closes it like Esc.
 - **Query-driven picks** (`on_query`): typing only marks `query_due`; `plugin_ui_pump`
   (in `plugin_pump`, joined to `plugin_busy` and the poll timeout) starts the handler as a

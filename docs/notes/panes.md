@@ -137,6 +137,8 @@ The plugin picks the kind per open. There is no user setting.
 |---|---|---|
 | Exclusive | default | Opening one closes the open exclusive pane. State (query, selection, expanded dirs, tab, scroll) persists by `id`, so reopening restores it. This replaces the pane swap TODO. |
 | Child | `parent = ctx.view`, or any `qed.confirm/prompt/pick` opened while a pane is open | Stacks on its parent and takes input. Esc returns to the parent. Closing the parent closes its children. |
+
+While a plugin's confirm or prompt is open, opening another exclusive pane returns `"busy"` instead of cancelling it (decided at M0 review). Core safety dialogs still go on top.
 | Passive | `focus = false` | Never takes input; drawn under focused panes. |
 
 Core safety dialogs (quit, close, conflict) are always on top. `"busy"` is returned only while one is showing.
@@ -360,13 +362,14 @@ How the stack and the old `Overlay` path coexist is in DESIGN.md (Panes). Deviat
 
 | Area | Built | Why |
 |---|---|---|
-| Struct | `Pane` has only the fields M0 uses (`id`, `owner`, `kind`, `parent`, `size`, `fields`, `text`, `list`, `on`) plus `handle`, `safety`, `over`. `place`, `title`, `tabs`, `footer`, `scope`, `toggle` come with the step that needs them. | No speculative fields. |
+| Struct | `Pane` has only the fields M0 uses (`id`, `owner`, `kind`, `parent`, `size`, `fields`, `text`, `list`, `on`) plus `handle`, `safety`, `dead`, `over` and a `ctx` payload (target buffer id; M1 adds the Lua refs there). `place`, `title`, `tabs`, `footer`, `scope`, `toggle` come with the step that needs them. | No speculative fields. |
 | Ids | `id` is the string name (core: `quit`, `close`, `conflict`, `merge`); `handle` is a per-open `u64` that waits and `parent` use. | `id` keeps its §5 meaning (persisted state); one string can be open twice. |
-| Safety | A `safety` flag on an Exclusive pane, not a fourth kind. Opening one closes nothing; every other pane is inserted below it. | D5 says "always on top"; replacing an open pane would drop a plugin's wait. |
+| Safety | A `safety` flag on an Exclusive pane, not a fourth kind. Opening one closes nothing and is a no-op while the same dialog is open; other root panes are inserted below it, children right after their parent's subtree. | D5 says "always on top"; replacing an open pane would drop a plugin's wait. |
 | Legacy parent | A child over an unported overlay stores the overlay's `active` flag in `over`; `pane_stack_sync` closes it when the overlay closes. An Exclusive pane does not close an open overlay. | Temporary, removed with the last overlay. |
 | Events | `qed.confirm/prompt` still resume their waiter from dispatch (`Plugins.answer`), not through a queue. | The D8 queue lands with `qed.ui.open` in M1. |
 | Nested confirms | The file tree's and cwd picker's confirms stay inside those overlays, through `dialog_*` adapters over the pane procs. | They move with M2 (cwd picker) and M4 (tree). |
-| Dialog text | Built once at open (the quit dialog lists modified buffers at open, not per frame). | Nothing can change it while the dialog has input. |
+| Dialog text | Built once at open. Close, conflict and merge act on the buffer in `ctx.buf` (a plugin may switch buffers meanwhile) and bail if it is gone; quit re-checks every buffer at execute, so only its text can lag. | Plugin tasks keep running while a dialog has input. |
+| Unload | Marks the owner's panes `dead`; `pane_stack_sync` closes them and resolves other plugins' children with `nil` later. | No Lua runs inside an unload or the reload loop. |
 
 ## 8. Decisions
 

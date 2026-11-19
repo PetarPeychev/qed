@@ -548,6 +548,62 @@ e2e_plugin_ui_prompt_over_prompt :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_plugin_ui_exclusive_refused_over_ask :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Confirm")
+	merge_dialog_open(&e.ed)
+	testing.expect(t, pane_find(&e.ed, "merge") == nil, "an exclusive open is refused over a plugin ask")
+	testing.expect_value(t, e.ed.message, "busy")
+	testing.expect_value(t, pane_focus(&e.ed).owner, "ui")
+	editor_buffer(&e.ed).modified = true
+	editor_request_quit(&e.ed)
+	testing.expect_value(t, pane_focus(&e.ed).id, "quit")
+	e2e_key(&e, .Esc)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "1")
+}
+
+@(test)
+e2e_plugin_ui_grandchild_of_closed_overlay :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	filetree_open_all(&e.ed)
+	cmd: Command
+	for c in e.ed.plugins.commands {
+		if c.name == "UI: Tree Confirm" {
+			cmd = c
+		}
+	}
+	plugin_command_run(&e.ed, cmd)
+	ui_run(t, &e, "UI: Prompt")
+	testing.expect_value(t, len(e.ed.panes), 2)
+	filetree_close(&e.ed)
+	testing.expect(t, pane_focus(&e.ed) == nil, "a grandchild of a closed overlay is not focusable")
+	pane_stack_sync(&e.ed)
+	testing.expect_value(t, len(e.ed.panes), 0)
+}
+
+@(test)
+e2e_plugin_ui_prompt_mouse_box :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Prompt")
+	p := pane_focus(&e.ed)
+	textfield_set(&p.fields[0].field, "abcdef")
+	box := pane_box(&e.ed, p)
+	tx := box.x + 2 + len("Name: ")
+	e2e_mouse(&e, tx + 2, box.y)
+	testing.expect_value(t, p.fields[0].caret, 2)
+	e2e_mouse(&e, tx + 5, box.y + box.h + 1, motion = true)
+	testing.expect_value(t, p.fields[0].caret, 5)
+	testing.expect_value(t, p.fields[0].anchor, 2)
+	testing.expect(t, pane_focus(&e.ed) == p, "a drag out of the box keeps the prompt")
+	e2e_mouse(&e, 0, 0)
+	testing.expect_value(t, e.ed.message, "nil")
+}
+
+@(test)
 e2e_plugin_ui_busy_under_safety :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
@@ -581,6 +637,9 @@ e2e_plugin_ui_unload_closes_children :: proc(t: ^testing.T) {
 	ui_run(t, &e, "Ask")
 	testing.expect_value(t, len(e.ed.panes), 2)
 	plugin_unload(&e.ed, pl)
+	testing.expect(t, pane_focus(&e.ed) == nil, "the owner's panes and their children lose focus at once")
+	testing.expect(t, e.ed.message != "ui2 nil", "no Lua runs during the unload")
+	pane_stack_sync(&e.ed)
 	testing.expect_value(t, len(e.ed.panes), 0)
 	testing.expect_value(t, e.ed.message, "ui2 nil")
 }

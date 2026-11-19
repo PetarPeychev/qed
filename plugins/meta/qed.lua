@@ -244,14 +244,14 @@ function Picker:set(items, opts) end
 function qed.pick(spec) end
 
 ---Waits for a line of text. `nil` on Esc. Opens over an open pane (Esc returns to it; closing that pane closes this one with `nil`).
----Returns `nil, "busy"` only while a quit, close or conflict dialog shows.
+---Returns `nil, "busy"` only while a quit, close or conflict dialog shows. While it is open, other exclusive panes are refused as busy.
 ---@param spec {prompt: string, text?: string}
 ---@return string|nil
 ---@return "busy"|nil err
 function qed.prompt(spec) end
 
 ---Waits for a choice. Returns its 1-based index, `nil` on Esc. Opens over an open pane (Esc returns to it; closing that pane closes this one with `nil`).
----Returns `nil, "busy"` only while a quit, close or conflict dialog shows.
+---Returns `nil, "busy"` only while a quit, close or conflict dialog shows. While it is open, other exclusive panes are refused as busy.
 ---@param question string
 ---@param choices? string[] defaults to `{"Yes", "No"}`
 ---@return integer|nil

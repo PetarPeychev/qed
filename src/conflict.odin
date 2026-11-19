@@ -253,13 +253,18 @@ cmd_merge_resolve :: proc(editor: ^Editor) {
 merge_actions := [?]string{"Keep Ours", "Keep Theirs", "Keep Both"}
 
 merge_dialog_open :: proc(editor: ^Editor) {
-	text := []string{"Resolve merge conflict:"}
-	pane_open(editor, {id = "merge", text = text, list = {items = merge_actions[:]}, on = {activate = merge_dialog_execute}})
 	editor_clear_message(editor)
+	text := []string{"Resolve merge conflict:"}
+	if pane_open(editor, {id = "merge", ctx = {buf = editor_buffer(editor).id}, text = text, list = {items = merge_actions[:]}, on = {activate = merge_dialog_execute}}) == nil {
+		editor_log(editor, .Warn, "Git", "busy")
+	}
 }
 
 merge_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
-	b := editor_buffer(editor)
+	b, _ := pane_buffer(editor, p)
+	if b == nil {
+		return
+	}
 	c, ok := merge_at(merge_scan(b), b.cursor.row)
 	if !ok {
 		return

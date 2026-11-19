@@ -134,15 +134,21 @@ PaneList :: struct {
 
 PaneHandler :: proc(editor: ^Editor, p: ^Pane)
 
+PaneCtx :: struct {
+	buf: u64,
+}
+
 Pane :: struct {
 	handle: u64,
 	id:     string,
 	owner:  string,
 	kind:   PaneKind,
 	safety: bool,
+	dead:   bool,
 	parent: u64,
 	over:   ^bool, // legacy Overlay this child sits on; goes away once every overlay is a Pane
 	size:   PaneSize,
+	ctx:    PaneCtx,
 	fields: []PaneField,
 	text:   []string,
 	list:   PaneList,
@@ -153,9 +159,32 @@ Pane :: struct {
 
 pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	if spec.kind == .Exclusive && !spec.safety {
+		for &q in editor.panes {
+			if q.owner != "" && q.kind != .Passive && pane_live(editor, &q) {
+				return nil
+			}
+		}
 		for i := len(editor.panes) - 1; i >= 0; i -= 1 {
 			if i < len(editor.panes) && editor.panes[i].kind == .Exclusive && !editor.panes[i].safety {
 				pane_end(editor, editor.panes[i].handle, false)
+			}
+		}
+	}
+	at := len(editor.panes)
+	if spec.parent != 0 {
+		i := pane_index(editor, spec.parent)
+		if i < 0 {
+			return nil
+		}
+		at = i + 1
+		for at < len(editor.panes) && pane_descends(editor, &editor.panes[at], spec.parent) {
+			at += 1
+		}
+	} else if !spec.safety {
+		for q, i in editor.panes {
+			if q.safety {
+				at = i
+				break
 			}
 		}
 	}
@@ -175,15 +204,6 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	for f, i in spec.fields {
 		p.fields[i].prompt = strings.clone(f.prompt)
 		p.fields[i].anchor = -1
-	}
-	at := len(editor.panes)
-	if !p.safety {
-		for q, i in editor.panes {
-			if q.safety {
-				at = i
-				break
-			}
-		}
 	}
 	inject_at(&editor.panes, at, p)
 	return &editor.panes[at]
@@ -215,26 +235,41 @@ pane_index :: proc(editor: ^Editor, handle: u64) -> int {
 	return -1
 }
 
+pane_descends :: proc(editor: ^Editor, p: ^Pane, ancestor: u64) -> bool {
+	for parent := p.parent; parent != 0; {
+		if parent == ancestor {
+			return true
+		}
+		i := pane_index(editor, parent)
+		if i < 0 {
+			return false
+		}
+		parent = editor.panes[i].parent
+	}
+	return false
+}
+
+pane_buffer :: proc(editor: ^Editor, p: ^Pane) -> (^Buffer, int) {
+	b, idx := api_buf_find(editor, p.ctx.buf)
+	if b == nil {
+		editor_log(editor, .Warn, "", "Buffer closed while the dialog was open")
+	}
+	return b, idx
+}
+
+// a pane's descendants always follow it contiguously (pane_open), so they are the run after it
 pane_end :: proc(editor: ^Editor, handle: u64, activate: bool) {
 	i := pane_index(editor, handle)
 	if i < 0 {
 		return
 	}
-	gone := make([dynamic]Pane, context.temp_allocator)
-	handles := make(map[u64]bool, context.temp_allocator)
-	handles[handle] = true
-	append(&gone, editor.panes[i])
-	for j := i + 1; j < len(editor.panes); j += 1 {
-		if editor.panes[j].parent in handles {
-			handles[editor.panes[j].handle] = true
-			append(&gone, editor.panes[j])
-		}
+	n := 1
+	for i + n < len(editor.panes) && pane_descends(editor, &editor.panes[i + n], handle) {
+		n += 1
 	}
-	for j := len(editor.panes) - 1; j >= i; j -= 1 {
-		if editor.panes[j].handle in handles {
-			ordered_remove(&editor.panes, j)
-		}
-	}
+	gone := make([]Pane, n, context.temp_allocator)
+	copy(gone, editor.panes[i:i + n])
+	remove_range(&editor.panes, i, i + n)
 	// children first, so a parent's handler never sees its children open
 	#reverse for &p in gone {
 		h := p.on.activate if activate && p.handle == handle else p.on.close
@@ -245,13 +280,20 @@ pane_end :: proc(editor: ^Editor, handle: u64, activate: bool) {
 	}
 }
 
-pane_live :: proc(p: ^Pane) -> bool {
-	return p.over == nil || p.over^
+pane_live :: proc(editor: ^Editor, p: ^Pane) -> bool {
+	if p.dead || (p.over != nil && !p.over^) {
+		return false
+	}
+	if p.parent == 0 {
+		return true
+	}
+	i := pane_index(editor, p.parent)
+	return i >= 0 && pane_live(editor, &editor.panes[i])
 }
 
 pane_focus :: proc(editor: ^Editor) -> ^Pane {
 	#reverse for &p in editor.panes {
-		if p.kind != .Passive && pane_live(&p) {
+		if p.kind != .Passive && pane_live(editor, &p) {
 			return &p
 		}
 	}
@@ -277,22 +319,27 @@ pane_safety_open :: proc(editor: ^Editor) -> bool {
 }
 
 pane_stack_sync :: proc(editor: ^Editor) {
-	for i := len(editor.panes) - 1; i >= 0; i -= 1 {
-		if i < len(editor.panes) && !pane_live(&editor.panes[i]) {
-			pane_end(editor, editor.panes[i].handle, false)
+	for {
+		h: u64
+		for &p in editor.panes {
+			if !pane_live(editor, &p) {
+				h = p.handle
+				break
+			}
 		}
+		if h == 0 {
+			return
+		}
+		pane_end(editor, h, false)
 	}
 }
 
+// deferred to pane_stack_sync: no Lua may run while a plugin unloads
 pane_unload :: proc(editor: ^Editor, owner: string) {
 	for &p in editor.panes {
 		if p.owner == owner {
 			p.on = {}
-		}
-	}
-	for i := len(editor.panes) - 1; i >= 0; i -= 1 {
-		if i < len(editor.panes) && editor.panes[i].owner == owner {
-			pane_end(editor, editor.panes[i].handle, false)
+			p.dead = true
 		}
 	}
 }
@@ -335,7 +382,7 @@ pane_stack_paste :: proc(editor: ^Editor, text: string) -> bool {
 
 pane_stack_render :: proc(editor: ^Editor, passive: bool) -> (drew: bool) {
 	for &p in editor.panes {
-		if (p.kind == .Passive) == passive && pane_live(&p) {
+		if (p.kind == .Passive) == passive && pane_live(editor, &p) {
 			pane_render(editor, &p)
 			drew = true
 		}
@@ -425,22 +472,20 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		return .None
 	}
 	box := pane_box(editor, p)
-	motion := ev_motion(ev)
-	if !mouse_in_rect(ev, box) {
-		return .None if motion else .Close
-	}
 	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
-	if f := int(ev.y) - inner.y; f >= 0 && f < len(p.fields) {
-		overlay_prompt_mouse(&p.fields[f].field, inner.x + 1, inner.y + f, inner.w - 2, ev, p.fields[f].prompt)
+	motion := ev_motion(ev)
+	if off := overlay_row_off(ev, Rect{inner.x, pane_list_top(p, inner), inner.w, len(p.list.items)}); off >= 0 {
+		p.list.sel = off
+		return .Activate if !motion && overlay_double_click(editor, off) else .None
+	}
+	if len(p.fields) > 0 && (motion || mouse_in_rect(ev, box)) {
+		fe := ev
+		fe.y = i32(inner.y)
+		overlay_prompt_mouse(&p.fields[0].field, inner.x + 1, inner.y, inner.w - 2, fe, p.fields[0].prompt)
 		return .None
 	}
-	off := overlay_row_off(ev, Rect{inner.x, pane_list_top(p, inner), inner.w, len(p.list.items)})
-	if off < 0 {
-		return .None
-	}
-	p.list.sel = off
-	if !motion && overlay_double_click(editor, off) {
-		return .Activate
+	if !mouse_in_rect(ev, box) && !motion {
+		return .Close
 	}
 	return .None
 }

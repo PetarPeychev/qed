@@ -924,7 +924,7 @@ editor_save_id :: proc(editor: ^Editor, id: u64) {
 editor_save_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 	if buffer_disk_changed(b) {
 		editor_save_intent_clear(editor)
-		conflict_dialog_open(editor)
+		conflict_dialog_open(editor, b)
 		return
 	}
 	editor_force_save(editor, b)
