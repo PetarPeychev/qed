@@ -42,10 +42,6 @@ main :: proc() {
 	config_message, config_error := config_load()
 	editor := editor_init(path)
 	defer editor_shutdown(&editor)
-	if len(editor.plugins.commands) > 0 {
-		config_message, config_error = config_load(plugin_command_names(&editor.plugins))
-		plugins_rebind(&editor, editor_config_user(&editor))
-	}
 
 	if config_message != "" {
 		editor_log(&editor, .Warn if config_error else .Info, "", config_message)

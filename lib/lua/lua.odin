@@ -8,7 +8,9 @@ foreign import _m "system:m"
 MAXSTACK :: 1000000
 REGISTRYINDEX :: -MAXSTACK - 1000
 
+RIDX_MAINTHREAD :: 1
 RIDX_GLOBALS :: 2
+EXTRASPACE :: size_of(rawptr)
 LOADED_TABLE :: "_LOADED"
 NOREF :: -2
 
@@ -64,6 +66,7 @@ L_Reg :: struct {
 foreign lib {
 	newstate :: proc(f: Alloc, ud: rawptr) -> ^State ---
 	close :: proc(L: ^State) ---
+	atpanic :: proc(L: ^State, panicf: CFunction) -> CFunction ---
 
 	absindex :: proc(L: ^State, idx: c.int) -> c.int ---
 	gettop :: proc(L: ^State) -> c.int ---
@@ -76,6 +79,9 @@ foreign lib {
 	toboolean :: proc(L: ^State, idx: c.int) -> b32 ---
 	tolstring :: proc(L: ^State, idx: c.int, len: ^c.size_t) -> cstring ---
 	touserdata :: proc(L: ^State, idx: c.int) -> rawptr ---
+	tothread :: proc(L: ^State, idx: c.int) -> ^State ---
+	@(link_name = "lua_tointegerx")
+	tointeger :: proc(L: ^State, idx: c.int, isnum: ^b32 = nil) -> Integer ---
 
 	pushnil :: proc(L: ^State) ---
 	pushnumber :: proc(L: ^State, n: Number) ---
@@ -114,12 +120,17 @@ foreign lib {
 	@(link_name = "luaL_tolstring")
 	L_tostring :: proc(L: ^State, idx: c.int, len: ^c.size_t = nil) -> cstring ---
 	L_argerror :: proc(L: ^State, arg: c.int, extramsg: cstring) -> c.int ---
+	L_checkstack :: proc(L: ^State, sz: c.int, msg: cstring) ---
 	L_ref :: proc(L: ^State, t: c.int) -> c.int ---
 	L_unref :: proc(L: ^State, t: c.int, ref: c.int) ---
 	@(link_name = "luaL_loadbufferx")
 	L_loadbuffer :: proc(L: ^State, buff: [^]byte, sz: c.size_t, name: cstring, mode: cstring = nil) -> Status ---
 	L_setfuncs :: proc(L: ^State, l: [^]L_Reg, nup: c.int) ---
 	L_traceback :: proc(L: ^State, L1: ^State, msg: cstring, level: c.int) ---
+}
+
+getextraspace :: #force_inline proc "c" (L: ^State) -> ^rawptr {
+	return (^rawptr)(uintptr(L) - EXTRASPACE)
 }
 
 pop :: #force_inline proc "c" (L: ^State, n: c.int) {

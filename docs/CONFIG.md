@@ -186,7 +186,9 @@ and last error.
 | `plugins.<name>.<key>` | plugin's `defaults` | Per-key override of the plugin's own config; objects merge per key, arrays replace. |
 
 A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
-like any builtin (`""` unbinds).
+like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
+warning. Keybinds and `plugin_memory_mb` hot-reload; changes under `plugins.<name>`
+(and new or edited plugin files) need a restart for now.
 
 ```json
 { "plugins": { "mytool": { "enabled": false } } }

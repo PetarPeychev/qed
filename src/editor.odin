@@ -152,7 +152,8 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	if !headless && editor.working_root != "" {
 		filetree_scan_start(&editor)
 	}
-	editor_plugins_start(&editor, g_bundled_plugins, "" if headless else plugin_user_dir(), editor_config_user(&editor), PLUGIN_MEMORY_MB * 1024 * 1024)
+	editor_plugins_start(&editor, g_bundled_plugins, "" if headless else plugin_user_dir(), PLUGIN_MEMORY_MB * 1024 * 1024)
+	plugins_rebind(&editor)
 	if !headless {
 		editor_log(
 			&editor,
@@ -1044,8 +1045,8 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		return false
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
-	message, is_error := config_load_from(path, plugin_command_names(&editor.plugins))
-	plugins_rebind(editor, editor_config_user(editor))
+	message, is_error := config_load_from(path)
+	plugins_rebind(editor)
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)

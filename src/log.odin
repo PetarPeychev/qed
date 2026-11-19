@@ -603,3 +603,7 @@ logview_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
 		tx += len(tg.label) + 2
 	}
 }
+
+ms_since :: proc(t: time.Tick) -> f64 {
+	return time.duration_milliseconds(time.tick_since(t))
+}

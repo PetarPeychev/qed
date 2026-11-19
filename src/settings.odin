@@ -443,17 +443,17 @@ config_defaults_apply :: proc() {
 	config_apply(g_config_defaults, &scratch)
 }
 
-config_load :: proc(plugin_commands: []string = nil) -> (message: string, is_error: bool) {
+config_load :: proc() -> (message: string, is_error: bool) {
 	path := config_path()
 	if path == "" {
 		config_defaults_apply()
 		config_user_set(nil)
 		return theme_load(path)
 	}
-	return config_load_from(path, plugin_commands)
+	return config_load_from(path)
 }
 
-config_load_from :: proc(path: string, plugin_commands: []string = nil) -> (message: string, is_error: bool) {
+config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 	config_defaults_apply()
 	config_user_set(nil)
 
@@ -471,7 +471,7 @@ config_load_from :: proc(path: string, plugin_commands: []string = nil) -> (mess
 			is_error = true
 		} else {
 			config_apply(root, &problems)
-			config_collect_unknown(root, &problems, plugin_commands)
+			config_collect_unknown(root, &problems)
 			config_user_set(root)
 			if len(problems) > 0 {
 				list := strings.join(problems[:], ", ", context.temp_allocator)
@@ -639,7 +639,7 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	}
 }
 
-config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string, plugin_commands: []string = nil) {
+config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	for key in root {
 		switch key {
 		case "theme", "keybinds", "languages", "modules", "plugins":
@@ -662,29 +662,6 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string, pl
 		}
 		if !known {
 			append(warnings, fmt.tprintf("unknown key %q", key))
-		}
-	}
-
-	if kb_obj, ok := root["keybinds"].(json.Object); ok {
-		for key in kb_obj {
-			found := false
-			for cmd in commands {
-				if command_config_name(cmd) == key {
-					found = true
-					break
-				}
-			}
-			if !found {
-				for cmd in filetree_commands {
-					if cmd.bind_from == "" && command_config_name(cmd) == key {
-						found = true
-						break
-					}
-				}
-			}
-			if !found && !slice.contains(plugin_commands, key) {
-				append(warnings, fmt.tprintf("unknown keybinds/%q", key))
-			}
 		}
 	}
 
@@ -720,6 +697,33 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string, pl
 			}
 		}
 	}
+}
+
+config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []string) -> [dynamic]string {
+	warnings := make([dynamic]string, context.temp_allocator)
+	if kb_obj, ok := root["keybinds"].(json.Object); ok {
+		for key in kb_obj {
+			found := false
+			for cmd in commands {
+				if command_config_name(cmd) == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				for cmd in filetree_commands {
+					if cmd.bind_from == "" && command_config_name(cmd) == key {
+						found = true
+						break
+					}
+				}
+			}
+			if !found && !slice.contains(plugin_commands, key) {
+				append(&warnings, fmt.tprintf("unknown keybinds/%q", key))
+			}
+		}
+	}
+	return warnings
 }
 
 config_module_def :: proc(name: string) -> (Config_Module, bool) {

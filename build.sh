@@ -82,10 +82,13 @@ ar rcs lib/pty/libqedpty.a lib/pty/pty.o
 
 # Build the vendored Lua 5.4 interpreter (no lua.c/luac.c) into a static lib
 LUA=lib/lua
-for f in "$LUA"/src/*.c; do
-   cc -c -w -O2 -DLUA_USE_POSIX "$f" -o "${f%.c}.o"
-done
-ar rcs "$LUA/liblua.a" "$LUA"/src/*.o
+if [ ! -f "$LUA/liblua.a" ] || [ -n "$(find "$LUA/src" -newer "$LUA/liblua.a" -name '*.[ch]')" ]; then
+   for f in "$LUA"/src/*.c; do
+      cc -c -w -O2 -DLUA_USE_POSIX "$f" -o "${f%.c}.o"
+   done
+   rm -f "$LUA/liblua.a"
+   ar rcs "$LUA/liblua.a" "$LUA"/src/*.o
+fi
 
 # Build the editor, exposing vendor/ as a collection
 odin build src -collection:lib=lib -define:QED_VERSION="${QED_VERSION:-dev}" -out:qed

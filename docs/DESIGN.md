@@ -333,30 +333,20 @@ servers, clear gutters/diagnostics, cancel in-flight AI). Merge-conflict highlig
 
 ## Plugins
 
-Lua 5.4 (`lib/lua`, vendored source built static by `build.sh`; trimmed bindings in
-`lib/lua/lua.odin`). Design and phase plan: [notes/plugins.md](notes/plugins.md).
-`plugin.odin` owns one `lua_State` per editor (`editor.plugins`), started at the end of
-`editor_init`. Bundled plugins are embedded from repo `plugins/` (`#load_directory`, one
-`bundled_plugin_dirs` entry per dir plugin since the directive does not recurse); user
-plugins come from `~/.config/qed/plugins/` (skipped headless). Shape is `name.lua` or
-`name/init.lua` returning `{defaults, setup}`; order is bundled then user, alphabetical, a
-user plugin shadows a same-name bundled one. Each plugin gets its own `_ENV` (globals
-fall through to `_G`), its own `qed` table (C closures carrying the owner name), a
-`require` that resolves only inside its dir (single-file plugins: stdlib only), and a
-`print` that logs. Every Odin→Lua call goes through `plugin_call` (pcall + traceback);
-`plugin_enter` stashes the `^Editor` and Odin `context` in the registry per call, so
-callbacks never hold a pointer that a moved `Editor` would dangle. Load/setup errors
-mark the plugin `Errored` and `plugin_unload` drops its registrations; command errors
-only log. Errors log `.Error` under the plugin name, traceback at `.Debug`, last error
-kept per plugin. The allocator caps the state at `plugin_memory_mb` (OOM →
-`LUA_ERRMEM`). Config: `plugins.<name>` (embedded config.json, then user) merges per key
-over the Lua `defaults` (objects recurse, arrays replace, unknown keys and plugin names
-warn); `enabled: false` skips loading. Commands live in `plugins.commands`
-(`Command.owner/ref/when_ref/filetree`); palette and chord dispatch consult builtins
-first, then plugin commands; `when` gates both; config `keybinds[name]` overrides the
-plugin `key` (`plugins_rebind` on config reload). API so far: `qed.log`, `qed.message`,
-`qed.command`, `qed.run`. *Debug: Plugins* is a read-only core pane (name, source,
-state, load ms, last error) that works without Lua.
+Lua 5.4, vendored in `lib/lua` and built static. Design, API and phases:
+[notes/plugins.md](notes/plugins.md). `plugin.odin` owns one `lua_State` per editor,
+started at the end of `editor_init`. Invariants the code can't show:
+- **No Lua API call outside a pcall.** Any stack building (env, config merge, `ctx`)
+  runs in a C trampoline under `plugin_call`; `lua_atpanic` restores the terminal as
+  a last resort.
+- **The `^Editor` is never stored in Lua.** `plugin_enter` puts it (plus the Odin
+  `context`) in the main thread's extraspace for the duration of a call; outside a
+  call (`__gc` during unload/close) the `qed` API raises.
+- **Ownership:** every registration records its plugin; `plugin_unload` releases the
+  refs so the plugin's env is collectable.
+- `#load_directory` doesn't recurse: a bundled dir plugin needs its own embed.
+- User config is read through `editor_config_user` only (never cached); plugin
+  `plugins.<name>` changes apply at startup, keybinds on hot reload.
 
 ## Language detection
 

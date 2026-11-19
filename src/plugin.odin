@@ -13,7 +13,6 @@ import lua "lib:lua"
 import "lib:tb2"
 
 PLUGIN_TABLE_DEPTH_MAX :: 32
-PLUGIN_ENTRY_KEY :: "qed.entry"
 
 PluginState :: enum {
 	Enabled,
@@ -47,8 +46,9 @@ Plugins :: struct {
 	list:     [dynamic]Plugin,
 	commands: [dynamic]Command,
 	bundled:  []PluginFile,
-	cfg_user: json.Object,
 	init_ms:  f64,
+	loading:  bool,
+	config_override: Maybe(json.Object),
 }
 
 PluginEntry :: struct {
@@ -56,26 +56,17 @@ PluginEntry :: struct {
 	ctx:    runtime.Context,
 }
 
-BundledPluginDir :: struct {
-	prefix: string,
-	files:  []runtime.Load_Directory_File,
-}
-
-bundled_plugin_dirs := [?]BundledPluginDir{{"", #load_directory("../plugins")}}
+bundled_plugin_files := #load_directory("../plugins")
 
 g_bundled_plugins: []PluginFile
 
 @(init)
 plugin_bundled_init :: proc "contextless" () {
 	context = runtime.default_context()
-	out := make([dynamic]PluginFile, os.heap_allocator())
-	for d in bundled_plugin_dirs {
-		for f in d.files {
-			path := strings.clone(f.name, os.heap_allocator()) if d.prefix == "" else fmt.aprintf("%s/%s", d.prefix, f.name, allocator = os.heap_allocator())
-			append(&out, PluginFile{path, string(f.data)})
-		}
+	g_bundled_plugins = make([]PluginFile, len(bundled_plugin_files), os.heap_allocator())
+	for f, i in bundled_plugin_files {
+		g_bundled_plugins[i] = {strings.clone(f.name, os.heap_allocator()), string(f.data)}
 	}
-	g_bundled_plugins = out[:]
 }
 
 @(fini)
@@ -125,6 +116,19 @@ plugin_msgh :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+plugin_panic :: proc "c" (L: ^lua.State) -> c.int {
+	context = runtime.default_context()
+	msg, _ := lua.toodinstring(L, -1)
+	tb2.shutdown()
+	fmt.eprintfln("qed: unrecoverable Lua error: %s", msg)
+	os.exit(1)
+}
+
+plugin_openlibs :: proc "c" (L: ^lua.State) -> c.int {
+	lua.L_openlibs(L)
+	return 0
+}
+
 plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 	start := time.tick_now()
 	p.mem = new(PluginMem)
@@ -135,7 +139,16 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 		p.mem = nil
 		return false
 	}
-	lua.L_openlibs(p.L)
+	lua.atpanic(p.L, plugin_panic)
+	lua.getextraspace(p.L)^ = nil
+	lua.pushcfunction(p.L, plugin_openlibs)
+	if lua.pcall(p.L, 0, 0, 0) != .OK {
+		lua.close(p.L)
+		p.L = nil
+		free(p.mem)
+		p.mem = nil
+		return false
+	}
 	p.init_ms = ms_since(start)
 	return true
 }
@@ -159,14 +172,13 @@ plugins_shutdown :: proc(p: ^Plugins) {
 	p^ = {}
 }
 
-editor_plugins_start :: proc(editor: ^Editor, bundled: []PluginFile, user_dir: string, cfg_user: json.Object, mem_cap: int) {
+editor_plugins_start :: proc(editor: ^Editor, bundled: []PluginFile, user_dir: string, mem_cap: int) {
 	p := &editor.plugins
 	if !plugins_open(p, mem_cap) {
 		editor_log(editor, .Error, "Plugins", "Lua failed to start, plugins disabled")
 		return
 	}
 	p.bundled = bundled
-	p.cfg_user = cfg_user
 	start := time.tick_now()
 	plugins_discover(editor, user_dir)
 	for &pl in p.list {
@@ -287,7 +299,7 @@ plugin_cfg_enabled :: proc(name: string, cfg_user: json.Object) -> bool {
 }
 
 plugins_config_warn :: proc(editor: ^Editor) {
-	plugins, _ := editor.plugins.cfg_user["plugins"].(json.Object)
+	plugins, _ := editor_config_user(editor)["plugins"].(json.Object)
 	problems := make([dynamic]string, context.temp_allocator)
 	for name in plugins {
 		if plugin_find(&editor.plugins, name) == nil {
@@ -301,27 +313,27 @@ plugins_config_warn :: proc(editor: ^Editor) {
 }
 
 plugin_enter :: proc(editor: ^Editor, entry: ^PluginEntry) -> rawptr {
-	L := editor.plugins.L
-	lua.getfield(L, lua.REGISTRYINDEX, PLUGIN_ENTRY_KEY)
-	prev := lua.touserdata(L, -1)
-	lua.pop(L, 1)
+	slot := lua.getextraspace(editor.plugins.L)
+	prev := slot^
 	entry^ = {editor, context}
-	lua.pushlightuserdata(L, entry)
-	lua.setfield(L, lua.REGISTRYINDEX, PLUGIN_ENTRY_KEY)
+	slot^ = entry
 	return prev
 }
 
 plugin_leave :: proc(editor: ^Editor, prev: rawptr) {
-	L := editor.plugins.L
-	lua.pushlightuserdata(L, prev)
-	lua.setfield(L, lua.REGISTRYINDEX, PLUGIN_ENTRY_KEY)
+	lua.getextraspace(editor.plugins.L)^ = prev
 }
 
 plugin_entry :: proc "c" (L: ^lua.State) -> ^PluginEntry {
-	lua.getfield(L, lua.REGISTRYINDEX, PLUGIN_ENTRY_KEY)
-	e := (^PluginEntry)(lua.touserdata(L, -1))
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.RIDX_MAINTHREAD)
+	main := lua.tothread(L, -1)
 	lua.pop(L, 1)
-	return e
+	return (^PluginEntry)(lua.getextraspace(main)^)
+}
+
+plugin_unavailable :: proc "c" (L: ^lua.State) -> c.int {
+	lua.pushodinstring(L, "qed API unavailable here")
+	return lua.error(L)
 }
 
 plugin_call :: proc(editor: ^Editor, nargs, nresults: c.int) -> (ok: bool, message, traceback: string) {
@@ -359,66 +371,36 @@ plugin_error :: proc(editor: ^Editor, pl: ^Plugin, message, traceback: string, d
 	}
 }
 
+PluginLoad :: struct {
+	pl:  ^Plugin,
+	src: string,
+}
+
 plugin_load :: proc(editor: ^Editor, pl: ^Plugin) {
 	p := &editor.plugins
-	L := p.L
-	if !plugin_cfg_enabled(pl.name, p.cfg_user) {
+	if !plugin_cfg_enabled(pl.name, editor_config_user(editor)) {
 		pl.state = .Disabled
 		return
 	}
 	pl.state = .Enabled
 	start := time.tick_now()
 	defer pl.load_ms = ms_since(start)
-
+	if p.L == nil {
+		plugin_error(editor, pl, "Lua is not running", "", false)
+		pl.state = .Errored
+		return
+	}
 	src, found := plugin_source(p, pl, pl.main)
 	if !found {
 		plugin_error(editor, pl, fmt.tprintf("cannot read %s", pl.main), "", true)
 		return
 	}
-	plugin_env_create(L, pl)
-	if lua.L_loadbuffer(L, raw_data(src), c.size_t(len(src)), plugin_chunkname(pl, pl.main), "t") != .OK {
-		msg, _ := lua.toodinstring(L, -1)
-		msg = strings.clone(msg, context.temp_allocator)
-		lua.pop(L, 1)
-		plugin_error(editor, pl, msg, "", true)
-		return
-	}
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.env))
-	lua.setupvalue(L, -2, 1)
-	if ok, msg, tb := plugin_call(editor, 0, 1); !ok {
-		plugin_error(editor, pl, msg, tb, true)
-		return
-	}
-	if lua.type(L, -1) != .TABLE {
-		lua.pop(L, 1)
-		plugin_error(editor, pl, fmt.tprintf("%s must return a table {defaults, setup}", pl.main), "", true)
-		return
-	}
-	spec := lua.gettop(L)
-	defaults_type := lua.getfield(L, spec, "defaults")
-	if defaults_type != .TABLE && defaults_type != .NIL {
-		lua.settop(L, spec - 1)
-		plugin_error(editor, pl, "spec.defaults must be a table", "", true)
-		return
-	}
-	setup_type := lua.getfield(L, spec, "setup")
-	if setup_type != .FUNCTION && setup_type != .NIL {
-		lua.settop(L, spec - 1)
-		plugin_error(editor, pl, "spec.setup must be a function", "", true)
-		return
-	}
-	if setup_type == .NIL {
-		lua.settop(L, spec - 1)
-		return
-	}
-	cfg_ok, cfg_msg := plugin_config_push(editor, pl, spec + 1)
-	if !cfg_ok {
-		lua.settop(L, spec - 1)
-		plugin_error(editor, pl, cfg_msg, "", true)
-		return
-	}
+	args := PluginLoad{pl, src}
+	lua.pushcfunction(p.L, plugin_load_c)
+	lua.pushlightuserdata(p.L, &args)
+	p.loading = true
 	ok, msg, tb := plugin_call(editor, 1, 0)
-	lua.settop(L, spec - 1)
+	p.loading = false
 	if !ok {
 		plugin_error(editor, pl, msg, tb, true)
 		return
@@ -426,10 +408,48 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin) {
 	editor_log(editor, .Debug, "Plugins", fmt.tprintf("loaded %s (%s) in %.2f ms", pl.name, "bundled" if pl.bundled else "user", ms_since(start)))
 }
 
+plugin_load_c :: proc "c" (L: ^lua.State) -> c.int {
+	entry := plugin_entry(L)
+	context = entry.ctx
+	args := (^PluginLoad)(lua.touserdata(L, 1))
+	pl := args.pl
+	plugin_env_create(L, pl)
+	if lua.L_loadbuffer(L, raw_data(args.src), c.size_t(len(args.src)), plugin_chunkname(pl, pl.main), "t") != .OK {
+		return lua.error(L)
+	}
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.env))
+	lua.setupvalue(L, -2, 1)
+	lua.call(L, 0, 1)
+	if lua.type(L, -1) != .TABLE {
+		return plugin_raise(L, fmt.tprintf("%s must return a table {defaults, setup}", pl.main))
+	}
+	spec := lua.gettop(L)
+	lua.pushodinstring(L, "defaults")
+	defaults_type := lua.rawget(L, spec)
+	if defaults_type != .TABLE && defaults_type != .NIL {
+		return plugin_raise(L, "spec.defaults must be a table")
+	}
+	lua.pushodinstring(L, "setup")
+	setup_type := lua.rawget(L, spec)
+	if setup_type != .FUNCTION && setup_type != .NIL {
+		return plugin_raise(L, "spec.setup must be a function")
+	}
+	if setup_type == .NIL {
+		return 0
+	}
+	plugin_config_push(entry.editor, pl, spec + 1)
+	lua.call(L, 1, 0)
+	return 0
+}
+
 plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	p := &editor.plugins
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
+			lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].ref))
+			if p.commands[i].when_ref != 0 {
+				lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].when_ref))
+			}
 			plugin_command_free(&p.commands[i])
 			ordered_remove(&p.commands, i)
 		}
@@ -438,6 +458,8 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.env)
 		pl.env = lua.NOREF
 	}
+	// Twice: a __gc object survives one cycle and its closure keeps the env alive.
+	lua.gc(p.L, .COLLECT)
 	lua.gc(p.L, .COLLECT)
 }
 
@@ -487,6 +509,9 @@ plugin_owner :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
 
 plugin_require :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
+	}
 	context = entry.ctx
 	editor := entry.editor
 	p := &editor.plugins
@@ -556,6 +581,9 @@ plugin_log_level :: proc(s: string) -> (LogLevel, bool) {
 
 plugin_print :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
+	}
 	context = entry.ctx
 	pl := plugin_owner(L, entry.editor)
 	n := lua.gettop(L)
@@ -576,6 +604,9 @@ plugin_print :: proc "c" (L: ^lua.State) -> c.int {
 
 qed_log :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
+	}
 	context = entry.ctx
 	pl := plugin_owner(L, entry.editor)
 	lvl_s, _ := lua.toodinstring(L, 1)
@@ -592,6 +623,9 @@ qed_log :: proc "c" (L: ^lua.State) -> c.int {
 
 qed_message :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
+	}
 	context = entry.ctx
 	pl := plugin_owner(L, entry.editor)
 	lua.settop(L, 2)
@@ -614,6 +648,9 @@ qed_message :: proc "c" (L: ^lua.State) -> c.int {
 
 qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
+	}
 	context = entry.ctx
 	editor := entry.editor
 	p := &editor.plugins
@@ -658,34 +695,43 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if pl == nil || pl.state != .Enabled {
 		return plugin_raise(L, "plugin is not loaded")
 	}
-	cmd := Command {
-		name     = strings.clone(name),
-		owner    = pl.name,
-		filetree = filetree,
-		key_default = strings.clone(key_s) if key_t == .STRING else "",
-	}
 	lua.pushvalue(L, 3)
-	cmd.ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	when_ref: i32
 	if when_t == .FUNCTION {
 		lua.pushvalue(L, 4)
-		cmd.when_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+		when_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
 	}
-	plugin_command_bind(&cmd, p.cfg_user)
+	cmd := Command {
+		name        = strings.clone(name),
+		owner       = pl.name,
+		filetree    = filetree,
+		key_default = strings.clone(key_s) if key_t == .STRING else "",
+		ref         = ref,
+		when_ref    = when_ref,
+	}
+	plugin_command_bind(&cmd, editor_config_user(editor))
 	append(&p.commands, cmd)
 	return 0
 }
 
 qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
+	}
 	context = entry.ctx
 	editor := entry.editor
 	if lua.type(L, 1) != .STRING {
 		return lua.L_argerror(L, 1, "command name expected")
 	}
+	if editor.plugins.loading {
+		return plugin_raise(L, "qed.run is unavailable while plugins load")
+	}
 	name, _ := lua.toodinstring(L, 1)
 	for cmd in commands {
 		if cmd.name == name {
-			ran := module_enabled(cmd.module)
+			ran := command_available(editor, name)
 			if ran {
 				cmd.run(editor)
 			}
@@ -729,43 +775,82 @@ plugin_command_free :: proc(cmd: ^Command) {
 }
 
 editor_config_user :: proc(editor: ^Editor) -> json.Object {
+	if o, ok := editor.plugins.config_override.?; ok {
+		return o
+	}
 	return nil if editor.headless else g_config_user
 }
 
-plugin_keybind :: proc(cfg: json.Object, name: string) -> (string, bool) {
+plugin_keybind :: proc(cfg: json.Object, name: string) -> (json.Value, bool) {
 	kb, _ := cfg["keybinds"].(json.Object)
-	s, ok := kb[name].(json.String)
-	return string(s), ok
+	v, ok := kb[name]
+	return v, ok
 }
 
-plugin_command_bind :: proc(cmd: ^Command, cfg_user: json.Object) {
-	bind := cmd.key_default
-	if s, ok := plugin_keybind(g_config_defaults, cmd.name); ok {
-		bind = s
+plugin_bind_taken :: proc(key: tb2.Key, alt_ch: rune, filetree: bool) -> string {
+	for cmd in (filetree_commands[:] if filetree else commands[:]) {
+		k, a, sc := command_effective_bind(cmd)
+		if sc != "" && a == alt_ch && (alt_ch != 0 || k == key) {
+			return cmd.name
+		}
 	}
-	if s, ok := plugin_keybind(cfg_user, cmd.name); ok {
-		bind = s
+	return ""
+}
+
+plugin_command_bind :: proc(cmd: ^Command, cfg_user: json.Object) -> (problem: string, from_user: bool) {
+	bind := cmd.key_default
+	if v, ok := plugin_keybind(g_config_defaults, cmd.name); ok {
+		bind = string(v.(json.String) or_else "")
+	}
+	if v, ok := plugin_keybind(cfg_user, cmd.name); ok {
+		s, is_str := v.(json.String)
+		_, _, parses := parse_keybind(string(s))
+		if !is_str || (s != "" && !parses) {
+			problem = fmt.tprintf("keybinds/%s", cmd.name)
+		} else {
+			bind = string(s)
+		}
+		from_user = true
 	}
 	delete(cmd.shortcut)
 	cmd.shortcut = ""
 	cmd.key = {}
 	cmd.alt_ch = 0
-	if bind == "" {
+	if problem != "" || bind == "" {
 		return
 	}
 	key, alt_ch, ok := parse_keybind(bind)
 	if !ok {
-		return
+		return fmt.tprintf("keybinds/%s", cmd.name), from_user
+	}
+	if taken := plugin_bind_taken(key, alt_ch, cmd.filetree); taken != "" {
+		return fmt.tprintf("keybinds/%s (%s is %q)", cmd.name, bind, taken), from_user
 	}
 	cmd.key = key
 	cmd.alt_ch = alt_ch
 	cmd.shortcut = strings.clone(bind)
+	return
 }
 
-plugins_rebind :: proc(editor: ^Editor, cfg_user: json.Object) {
-	editor.plugins.cfg_user = cfg_user
+plugins_rebind :: proc(editor: ^Editor) {
+	cfg_user := editor_config_user(editor)
+	if editor.plugins.mem != nil {
+		editor.plugins.mem.cap = PLUGIN_MEMORY_MB * 1024 * 1024
+	}
+	problems := config_keybinds_unknown(cfg_user, plugin_command_names(&editor.plugins))
 	for &cmd in editor.plugins.commands {
-		plugin_command_bind(&cmd, cfg_user)
+		problem, from_user := plugin_command_bind(&cmd, cfg_user)
+		if problem == "" {
+			continue
+		}
+		if from_user {
+			append(&problems, problem)
+		} else {
+			editor_log(editor, .Warn, cmd.owner, fmt.tprintf("ignoring key for %s", problem))
+		}
+	}
+	if len(problems) > 0 {
+		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
 	}
 }
 
@@ -795,7 +880,7 @@ plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, filetree: bool)
 }
 
 plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
-	lua.createtable(L, 0, 4)
+	lua.createtable(L, 0, 3)
 	lua.pushodinstring(L, editor.working_root)
 	lua.setfield(L, -2, "root")
 	if editor.welcome || len(editor.buffers) == 0 {
@@ -806,25 +891,60 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
 	lua.setfield(L, -2, "path")
 	lua.pushodinstring(L, LANGUAGES[b.language].name)
 	lua.setfield(L, -2, "language")
-	if from, to, ok := selection_range(b); ok {
-		lua.pushodinstring(L, buffer_text_range(b, from, to))
-		lua.setfield(L, -2, "selection_text")
+	lua.createtable(L, 0, 1)
+	lua.pushcfunction(L, plugin_ctx_index)
+	lua.setfield(L, -2, "__index")
+	lua.setmetatable(L, -2)
+}
+
+plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
 	}
+	context = entry.ctx
+	key, _ := lua.toodinstring(L, 2)
+	editor := entry.editor
+	if key != "selection_text" || editor.welcome || len(editor.buffers) == 0 {
+		return 0
+	}
+	b := editor_buffer(editor)
+	from, to, ok := selection_range(b)
+	if !ok {
+		return 0
+	}
+	lua.pushodinstring(L, buffer_text_range(b, from, to))
+	return 1
+}
+
+plugin_invoke_c :: proc "c" (L: ^lua.State) -> c.int {
+	entry := plugin_entry(L)
+	context = entry.ctx
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.tointeger(L, 1))
+	plugin_ctx_push(L, entry.editor)
+	lua.call(L, 1, 1)
+	return 1
+}
+
+plugin_invoke :: proc(editor: ^Editor, owner: string, ref: i32, nresults: c.int) -> bool {
+	p := &editor.plugins
+	lua.pushcfunction(p.L, plugin_invoke_c)
+	lua.pushinteger(p.L, lua.Integer(ref))
+	ok, msg, tb := plugin_call(editor, 1, nresults)
+	if !ok {
+		if pl := plugin_find(p, owner); pl != nil {
+			plugin_error(editor, pl, msg, tb, false)
+		}
+	}
+	return ok
 }
 
 plugin_command_when :: proc(editor: ^Editor, cmd: Command) -> bool {
 	if cmd.when_ref == 0 {
 		return true
 	}
-	p := &editor.plugins
-	L := p.L
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(cmd.when_ref))
-	plugin_ctx_push(L, editor)
-	ok, msg, tb := plugin_call(editor, 1, 1)
-	if !ok {
-		if pl := plugin_find(p, cmd.owner); pl != nil {
-			plugin_error(editor, pl, msg, tb, false)
-		}
+	L := editor.plugins.L
+	if !plugin_invoke(editor, cmd.owner, cmd.when_ref, 1) {
 		return false
 	}
 	res := bool(lua.toboolean(L, -1))
@@ -833,16 +953,7 @@ plugin_command_when :: proc(editor: ^Editor, cmd: Command) -> bool {
 }
 
 plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
-	p := &editor.plugins
-	L := p.L
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(cmd.ref))
-	plugin_ctx_push(L, editor)
-	owner := cmd.owner
-	if ok, msg, tb := plugin_call(editor, 1, 0); !ok {
-		if pl := plugin_find(p, owner); pl != nil {
-			plugin_error(editor, pl, msg, tb, false)
-		}
-	}
+	plugin_invoke(editor, cmd.owner, cmd.ref, 0)
 }
 
 plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {
@@ -852,6 +963,7 @@ plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {
 }
 
 plugin_json_push :: proc(L: ^lua.State, v: json.Value) {
+	lua.L_checkstack(L, 3, "config nested too deeply")
 	switch x in v {
 	case json.Null:
 		lua.pushnil(L)
@@ -879,10 +991,11 @@ plugin_json_push :: proc(L: ^lua.State, v: json.Value) {
 	}
 }
 
-plugin_table_copy :: proc(L: ^lua.State, idx: c.int, depth := 0) -> bool {
+plugin_table_copy :: proc(L: ^lua.State, idx: c.int, depth := 0) {
 	if depth > PLUGIN_TABLE_DEPTH_MAX {
-		return false
+		plugin_raise(L, "spec.defaults is nested too deeply")
 	}
+	lua.L_checkstack(L, 5, "spec.defaults is nested too deeply")
 	idx := lua.absindex(L, idx)
 	lua.newtable(L)
 	lua.pushnil(L)
@@ -890,27 +1003,24 @@ plugin_table_copy :: proc(L: ^lua.State, idx: c.int, depth := 0) -> bool {
 		lua.pushvalue(L, -2)
 		lua.insert(L, -2)
 		if lua.type(L, -1) == .TABLE {
-			if !plugin_table_copy(L, -1, depth + 1) {
-				lua.pop(L, 4)
-				return false
-			}
+			plugin_table_copy(L, -1, depth + 1)
 			lua.remove(L, -2)
 		}
 		lua.rawset(L, -4)
 	}
-	return true
 }
 
 plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object) {
+	lua.L_checkstack(L, 4, "config nested too deeply")
 	idx := lua.absindex(L, idx)
 	for k, v in src {
-		kc := strings.clone_to_cstring(k, context.temp_allocator)
-		if sub, is_obj := v.(json.Object); is_obj && lua.getfield(L, idx, kc) == .TABLE {
-			plugin_table_merge(L, -1, sub)
-			lua.pop(L, 1)
-			continue
-		}
-		if _, is_obj := v.(json.Object); is_obj {
+		if sub, is_obj := v.(json.Object); is_obj {
+			lua.pushodinstring(L, k)
+			if lua.rawget(L, idx) == .TABLE {
+				plugin_table_merge(L, -1, sub)
+				lua.pop(L, 1)
+				continue
+			}
 			lua.pop(L, 1)
 		}
 		lua.pushodinstring(L, k)
@@ -919,13 +1029,11 @@ plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object) {
 	}
 }
 
-plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) -> (bool, string) {
+plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	L := editor.plugins.L
 	has_defaults := lua.type(L, defaults_idx) == .TABLE
 	if has_defaults {
-		if !plugin_table_copy(L, defaults_idx) {
-			return false, "spec.defaults is nested too deeply"
-		}
+		plugin_table_copy(L, defaults_idx)
 	} else {
 		lua.newtable(L)
 	}
@@ -934,7 +1042,7 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) ->
 	plugin_table_merge(L, cfg, embedded)
 	user := make(json.Object, context.temp_allocator)
 	unknown := make([dynamic]string, context.temp_allocator)
-	for k, v in plugin_cfg_entry(editor.plugins.cfg_user, pl.name) {
+	for k, v in plugin_cfg_entry(editor_config_user(editor), pl.name) {
 		if k == "enabled" {
 			continue
 		}
@@ -960,7 +1068,6 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) ->
 		slice.sort(unknown[:])
 		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring unknown %s", strings.join(unknown[:], ", ", context.temp_allocator)))
 	}
-	return true, ""
 }
 
 PluginView :: struct {

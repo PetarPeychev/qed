@@ -522,7 +522,7 @@ bench_plugin_startup :: proc(t: ^testing.T) {
 	run :: proc(label: string, bundled: []PluginFile) {
 		ed := Editor{headless = true}
 		start := time.tick_now()
-		editor_plugins_start(&ed, bundled, "", nil, PLUGIN_MEMORY_MB * 1024 * 1024)
+		editor_plugins_start(&ed, bundled, "", PLUGIN_MEMORY_MB * 1024 * 1024)
 		total := ms_since(start)
 		fmt.eprintfln("%s: Lua init %.3f ms, %d plugin(s), total %.3f ms", label, ed.plugins.init_ms, len(ed.plugins.list), total)
 		for pl in ed.plugins.list {
@@ -591,8 +591,4 @@ bench_avg :: proc(iters: int, work: proc(b: ^Buffer), b: ^Buffer) -> f64 {
 	}
 	total := time.tick_since(start)
 	return time.duration_milliseconds(total) / f64(iters)
-}
-
-ms_since :: proc(t: time.Tick) -> f64 {
-	return time.duration_milliseconds(time.tick_since(t))
 }

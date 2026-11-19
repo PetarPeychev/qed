@@ -15,7 +15,10 @@ plugin_test_editor :: proc(bundled: []PluginFile, user_dir := "", cfg_user: json
 	ed := new(Editor)
 	ed.headless = true
 	append(&ed.buffers, test_buffer("hello world"))
-	editor_plugins_start(ed, bundled, user_dir, cfg_user, mem_cap)
+	if cfg_user != nil {
+		ed.plugins.config_override = cfg_user
+	}
+	editor_plugins_start(ed, bundled, user_dir, mem_cap)
 	return ed
 }
 
@@ -343,7 +346,8 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 	command_run(ed, unknown)
 	testing.expect(t, strings.contains(pl.last_error, "unknown command 'No Such Command'"), "qed.run rejects unknown names")
 
-	plugins_rebind(ed, nil)
+	ed.plugins.config_override = nil
+	plugins_rebind(ed)
 	a2, ok2 := plugin_command_for_event(ed, alt('j'), false)
 	testing.expect(t, ok2 && a2.name == "Cmd: A", "rebinding without the override restores the plugin key")
 }
@@ -351,12 +355,15 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 @(test)
 plugin_unload_cleans :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
-		{"keep.lua", `return {setup = function() qed.command{name = "Keep: Cmd", run = function() end} end}`},
+		{"keep.lua", `
+			sentinel = setmetatable({}, {__gc = function() qed.log("info", "keep finalized") end})
+			return {setup = function() qed.command{name = "Keep: Cmd", run = function() end} end}`},
 		{"drop.lua", `
 			big = string.rep("z", 1024 * 1024)
+			sentinel = setmetatable({}, {__gc = function() qed.log("info", "drop finalized") end})
 			return {setup = function()
-				qed.command{name = "Drop: One", run = function() end}
-				qed.command{name = "Drop: Two", when = function() return true end, run = function() end}
+				qed.command{name = "Drop: One", run = function() qed.message(big) end}
+				qed.command{name = "Drop: Two", when = function() return #big > 0 end, run = function() qed.message(big) end}
 			end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -371,5 +378,43 @@ plugin_unload_cleans :: proc(t: ^testing.T) {
 	testing.expect_value(t, drop.env, lua.NOREF)
 	testing.expect(t, lua.rawgeti(ed.plugins.L, lua.REGISTRYINDEX, lua.Integer(env)) != .TABLE, "env ref released")
 	lua.pop(ed.plugins.L, 1)
-	testing.expect(t, ed.plugins.mem.used < before - 1024 * 1024 / 2, "unloaded plugin memory is collected")
+	testing.expect(t, ed.plugins.mem.used < before - 1024 * 1024 / 2, "command closures no longer pin the env")
+	testing.expect(t, !plugin_test_logged(ed, .Info, "drop", "finalized"), "a finalizer outside a plugin call cannot reach the qed API")
+}
+
+@(test)
+plugin_run_refused_while_loading :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"early.lua", `return {setup = function() qed.run("Save") end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	early := plugin_find(&ed.plugins, "early")
+	testing.expect_value(t, early.state, PluginState.Errored)
+	testing.expect(t, strings.contains(early.last_error, "unavailable while plugins load"), "qed.run is refused during setup")
+}
+
+@(test)
+plugin_keybind_warnings :: proc(t: ^testing.T) {
+	cfg := plugin_test_cfg(`{"keybinds": {"Clash: User": "Ctrl+s", "Clash: Bad": "Hyper+q", "No Such Command": "Alt+x"}}`)
+	ed := plugin_test_editor({
+		{"clash.lua", `
+			return {setup = function()
+				qed.command{name = "Clash: Default", key = "Ctrl+q", run = function() end}
+				qed.command{name = "Clash: User", run = function() end}
+				qed.command{name = "Clash: Bad", key = "Alt+j", run = function() end}
+			end}`},
+	}, cfg_user = cfg)
+	defer plugin_test_destroy(ed)
+
+	plugins_rebind(ed)
+	for name in ([?]string{"Clash: Default", "Clash: User", "Clash: Bad"}) {
+		cmd, _ := plugin_test_command(ed, name)
+		testing.expectf(t, cmd.shortcut == "", "%s stays unbound", name)
+	}
+	testing.expect(t, plugin_test_logged(ed, .Warn, "clash", `keybinds/Clash: Default (Ctrl+q is "Quit")`), "a plugin key taken by a builtin warns under the plugin")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `keybinds/Clash: User (Ctrl+s is "Save")`), "a user bind taken by a builtin warns as config")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", "keybinds/Clash: Bad"), "an invalid user bind warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"No Such Command"`), "an unknown keybind name warns")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `unknown keybinds/"Clash: User"`), "plugin command names are known keybinds")
 }
