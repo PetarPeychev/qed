@@ -329,20 +329,22 @@ e2e_nav_palette_welcome_filter :: proc(t: ^testing.T) {
 	p := &e.ed.palette
 	testing.expect(t, p.active, "Ctrl+P opens the palette from welcome")
 
-	has := proc(p: ^Palette, name: string) -> bool {
-		for i in p.indices {
-			if commands[i].name == name {
+	has := proc(ed: ^Editor, name: string) -> bool {
+		for _, i in ed.palette.names {
+			if palette_command_at(ed, i).name == name {
 				return true
 			}
 		}
 		return false
 	}
-	testing.expect(t, !has(p, "Save"), "a buffer-only command is hidden on welcome")
-	testing.expect(t, !has(p, "Toggle Comment"), "editing commands are hidden on welcome")
-	testing.expect(t, !has(p, "LSP: Go to Definition"), "LSP commands are hidden on welcome")
-	testing.expect(t, has(p, "File Tree"), "File Tree stays available on welcome")
-	testing.expect(t, has(p, "Set Theme"), "Set Theme stays available on welcome")
-	testing.expect(t, has(p, "Quit"), "Quit stays available on welcome")
+	testing.expect(t, !has(&e.ed, "Save"), "a buffer-only command is hidden on welcome")
+	testing.expect(t, !has(&e.ed, "Toggle Comment"), "editing commands are hidden on welcome")
+	testing.expect(t, !has(&e.ed, "LSP: Go to Definition"), "LSP commands are hidden on welcome")
+	testing.expect(t, !has(&e.ed, "Set Language"), "buffer-only plugin commands are hidden on welcome")
+	testing.expect(t, !has(&e.ed, "Format Document"), "plugin commands without welcome are hidden")
+	testing.expect(t, has(&e.ed, "File Tree"), "File Tree stays available on welcome")
+	testing.expect(t, has(&e.ed, "Set Theme"), "Set Theme stays available on welcome")
+	testing.expect(t, has(&e.ed, "Quit"), "Quit stays available on welcome")
 }
 
 @(test)

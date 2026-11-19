@@ -79,8 +79,9 @@ overlay_double_click :: proc(editor: ^Editor, idx: int) -> bool {
 
 // Caret placement / drag-select for the "> " query field, given the same x/y/w
 // passed to overlay_prompt_render (the field itself sits past the 2-cell prefix).
-overlay_prompt_mouse :: proc(f: ^TextField, x, y, w: int, ev: tb2.Event) {
-	textfield_mouse(f, x + 2, y, w - 2, ev)
+overlay_prompt_mouse :: proc(f: ^TextField, x, y, w: int, ev: tb2.Event, prefix := "> ") {
+	pw := visual_width(transmute([]u8)prefix)
+	textfield_mouse(f, x + pw, y, w - pw, ev)
 }
 
 ev_motion :: proc(ev: tb2.Event) -> bool {
@@ -107,6 +108,7 @@ fuzzy_list_center_mouse :: proc(
 	l: ^FuzzyList,
 	ev: tb2.Event,
 	activate, close: proc(editor: ^Editor),
+	prefix := "> ",
 ) {
 	rows := min(len(l.matches), PALETTE_MAX_ROWS)
 	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
@@ -124,7 +126,7 @@ fuzzy_list_center_mouse :: proc(
 			return
 		}
 		if int(ev.y) == box.y + 1 {
-			overlay_prompt_mouse(&l.field, box.x + 2, box.y + 1, box.w - 4, ev)
+			overlay_prompt_mouse(&l.field, box.x + 2, box.y + 1, box.w - 4, ev, prefix)
 			return
 		}
 		off := overlay_row_off(ev, Rect{box.x + 1, box.y + 3, box.w - 2, rows})
@@ -154,6 +156,7 @@ overlay_list_mouse :: proc(
 	scroll: ^int,
 	field: ^TextField,
 	close: proc(editor: ^Editor),
+	prefix := "> ",
 ) -> (idx: int, activate: bool) {
 	#partial switch ev.key {
 	case .Mouse_Wheel_Up:
@@ -169,7 +172,7 @@ overlay_list_mouse :: proc(
 			return -1, false
 		}
 		if int(ev.y) == lay.inner.y {
-			overlay_prompt_mouse(field, lay.inner.x + 1, lay.inner.y, lay.inner.w - 2, ev)
+			overlay_prompt_mouse(field, lay.inner.x + 1, lay.inner.y, lay.inner.w - 2, ev, prefix)
 			return -1, false
 		}
 		off := overlay_row_off(ev, Rect{lay.inner.x, lay.body_top, lay.left_w, lay.body_h})
@@ -190,9 +193,67 @@ fuzzy_list_center_scrollbar :: proc(l: ^FuzzyList, box: Rect, rows: int) {
 }
 
 // A "> " prompt prefix followed by the field, as every fuzzy overlay draws it.
-overlay_prompt_render :: proc(x, y, w: int, f: ^TextField) {
-	pane_text(x, y, 2, "> ", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	textfield_render(x + 2, y, w - 2, f)
+overlay_prompt_render :: proc(x, y, w: int, f: ^TextField, prefix := "> ") {
+	pw := visual_width(transmute([]u8)prefix)
+	pane_text(x, y, pw, prefix, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	textfield_render(x + pw, y, w - pw, f)
+}
+
+fuzzy_list_key :: proc(editor: ^Editor, l: ^FuzzyList, ev: tb2.Event, activate, close: proc(editor: ^Editor), rows := -1) -> (refiltered: bool) {
+	view_rows := PALETTE_MAX_ROWS if rows < 0 else rows
+	#partial switch ev.key {
+	case .Esc:
+		close(editor)
+	case .Enter:
+		activate(editor)
+	case .Arrow_Down:
+		fuzzy_list_move(l, 1, view_rows)
+	case .Arrow_Up:
+		fuzzy_list_move(l, -1, view_rows)
+	case:
+		if textfield_key(&l.field, ev) {
+			fuzzy_list_refilter(l)
+			return true
+		}
+	}
+	return false
+}
+
+overlay_row_selected :: proc(i, selected: int, anchor: Maybe(int)) -> bool {
+	a, ok := anchor.?
+	if !ok {
+		return i == selected
+	}
+	return i >= min(a, selected) && i <= max(a, selected)
+}
+
+fuzzy_list_center_render :: proc(editor: ^Editor, l: ^FuzzyList, labels, details: []string, prefix := "> ", anchor: Maybe(int) = nil) {
+	rows := min(len(l.matches), PALETTE_MAX_ROWS)
+	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
+	inner := pane_draw_box(box)
+
+	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &l.field, prefix)
+	pane_hline(box, inner.y + 1)
+
+	for i in 0 ..< rows {
+		idx := l.scroll + i
+		item := l.matches[idx]
+		y := inner.y + 2 + i
+		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
+		detail_fg := COLOR_PANE_SHORTCUT_FG
+		if overlay_row_selected(idx, l.selected, anchor) {
+			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
+			detail_fg = COLOR_PANE_SEL_FG
+			pane_fill_row(inner.x, y, inner.w, fg, bg)
+		}
+		pane_text(inner.x + 1, y, inner.w - 2, labels[item], fg, bg)
+		if item < len(details) && details[item] != "" {
+			dw := visual_width(transmute([]u8)details[item])
+			pane_text(inner.x + inner.w - 1 - dw, y, dw, details[item], detail_fg, bg)
+		}
+	}
+
+	fuzzy_list_center_scrollbar(l, box, rows)
 }
 
 OverlayLayout :: struct {

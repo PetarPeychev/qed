@@ -155,7 +155,7 @@ resolution is baked to capture-id → color arrays at query-build/recolor time, 
 the paint path stays an array index. *Debug: Inspect Tokens* (a **passive**
 floating pane, `inspect.odin` — takes no focus, Esc or the command closes it)
 shows the node ancestry, capture stack, winning resolution chain and predicate
-near-misses under the cursor, live. A theme change — via the *Set Theme* picker or the disk
+near-misses under the cursor, live. A theme change — via `qed.theme.set` (the *Set Theme* picker) or the disk
 poll — funnels through `editor_retheme`: theme colors are baked into two caches
 (each language's `Syntax.colors` palette and every buffer's per-char `hl.colors`),
 so it rebuilds the palettes (`syntax_recolor`) and invalidates the buffers
@@ -275,7 +275,7 @@ cased (lowercase Ctrl letters) so hints read uniformly. Every pane closes/defocu
 keybind, so rebinds keep the toggle; the terminal's extra `Alt+T` tolerance stays
 hardcoded); the welcome-screen key whitelist resolves the same way.
 
-Every editable text box (palette/picker/switcher/lang/indent/line-find/project-search
+Every editable text box (palette/picker/line-find/project-search
 queries, find/replace, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
 `TextField` (`textfield.odin`): `{text, caret, anchor}` with buffer-parity binds —
 grapheme + word (`Ctrl+←/→`) motion, smart home/end (`Alt+←/→`), shift-select,
@@ -284,6 +284,8 @@ returns whether the text changed (fuzzy callers re-filter); `textfield_render` d
 scrolled to the caret with the selection inverted (`COLOR_PANE_BG`/`FG`). Word/home
 motion is the same `word_left_col`/`word_right_col`/`home_smart_col` the buffer cursor
 uses. `FuzzyList` (`overlay.odin`) embeds one; its `> ` prompt draws via `overlay_prompt_render`.
+Centered fuzzy pickers (palette, diff base, plugin `qed.pick`) share `fuzzy_list_key`,
+`fuzzy_list_center_render` (label + dim right-aligned detail) and `fuzzy_list_center_mouse`.
 Every pane is mouse-driven through an optional `Overlay.mouse` handler (`editor_dispatch`
 routes `.Mouse` to it): wheel scrolls, single-click selects a row, double-click activates,
 a click in the query/prompt field places the caret and a button-held drag selects, and a
@@ -400,6 +402,16 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Bundled dir plugin files are listed one by one in `bundled_plugin_dir_files`
   (`plugin.odin`) so `test.lua` stays out of the binary; a test fails when a
   `plugins/<dir>/*.lua` is missing from it. The `test.lua` runner reads from disk.
+- **UI waits** (`plugin_ui.odin`): `qed.pick`/`prompt`/`confirm` fill the single
+  `Plugins.ui` overlay and wait (`.Ui`); Enter/Esc/click resolve it from
+  `editor_dispatch`, storing the result, and the continuation pushes it (picked
+  items are the caller's own values, kept in a registry ref). Opening anything
+  while another overlay is active returns `nil, "busy"`. `on_change` runs as its
+  own task whenever the highlighted item changes (never at open). `qed.pane` is a
+  non-waiting read-only overlay (`Plugins.pane`). Unloading the owner closes both.
+- `qed.theme.set` without `persist` only changes what is shown (`Editor.theme_shown`,
+  cleared on config reload); `persist` writes the `theme` key and fires
+  `theme_changed`. Headless sessions persist to `Plugins.persist_path` (tests).
 - On config hot reload `plugins_config_refresh` re-merges each loaded plugin's
   config (its kept `defaults` + embedded + user) before `config_changed` fires.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
@@ -422,7 +434,7 @@ copy each load resets then overlays. Patterns are `*`-globs matched against the 
 before glob, longer before shorter); built-in defaults cover extensions plus common
 dotfiles (`.bashrc` → shell, …). `lsp_id` and the comment token stay compiled-in.
 Everything — highlight, LSP, status bar, comment token — reads `b.language`. The
-*Set Language* command (`langpick.odin`) overrides it for the session (re-parses,
+*Set Language* command (bundled `pickers` plugin) overrides it for the session (re-parses,
 re-opens LSP).
 
 ## Multiple servers / grammars
@@ -588,11 +600,11 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `perf_bench`.
+`git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -617,9 +629,9 @@ plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns 
 table of test functions; `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`); a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `hook_timeout`, `module`, `ui` (open plugin overlay state), `config_path` (where `persist` writes)), restoring the session theme afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
-`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow_test.odin`; scope + assertion surfaces:
+`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/plugin_ui_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
 
 ## Shipped
@@ -636,7 +648,7 @@ bracket re-aligns to its opener), selection +
 selection-aware editing, block indent/dedent, tab-stop backspace (deletes a full
 indent in leading whitespace), clipboard (external + fallback; empty-selection `Ctrl+C`/`Ctrl+X` copy/cut the whole line),
 full Unicode (grapheme + display width), tab-char display + per-buffer
-tabs/spaces + indent-width detect (`Change Indentation` command: Auto-detect /
+tabs/spaces + indent-width detect (`Change Indentation`, `pickers` plugin: Auto-detect /
 Tabs / Spaces:1–4; literal-tab display width stays the global `tab_width`),
 line-comment toggle, move-lines, paragraph/word/smart-home motion, buffer-edge
 arrow clamps (Down on the last line → line end, Up on the first → col 0;

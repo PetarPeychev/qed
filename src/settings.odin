@@ -990,10 +990,10 @@ theme_preview :: proc(cfg_path: string, name: string) -> bool {
 	return found
 }
 
-theme_persist :: proc(name: string) -> bool {
+theme_persist :: proc(path, name: string) -> bool {
 	delete(THEME, os.heap_allocator())
 	THEME = strings.clone(name, os.heap_allocator())
-	return config_persist_key("theme", json.String(name))
+	return path != "" && config_persist_key_to(path, "theme", json.String(name))
 }
 
 theme_reset_defaults :: proc() {

@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
@@ -39,6 +40,7 @@ Editor :: struct {
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
 	theme_stamp:     DiskStamp,
+	theme_shown:     string,
 	quit:            bool,
 	pasting:         bool,
 	paste_buf:       [dynamic]u8,
@@ -53,10 +55,7 @@ Editor :: struct {
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
 	palette:         Palette,
-	langpick:        LangPick,
 	basepick:        BasePick,
-	themepick:       ThemePick,
-	indentpick:      IndentPick,
 	cwdpick:         CwdPick,
 	linefind:        LineFind,
 	find:            Find,
@@ -176,17 +175,15 @@ editor_shutdown :: proc(editor: ^Editor) {
 	git_stat_destroy(&editor.gitstat)
 	editor_save_intent_clear(editor)
 	delete(editor.working_root)
+	delete(editor.theme_shown)
 	delete(editor.paste_buf)
 	delete(editor.message_store)
 	editor_log_destroy(editor)
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
-	langpick_destroy(&editor.langpick)
 	basepick_destroy(&editor.basepick)
 	git_base_set("", "", false)
-	themepick_destroy(&editor.themepick)
-	indentpick_destroy(&editor.indentpick)
 	cwdpick_destroy(&editor.cwdpick)
 	linefind_destroy(&editor.linefind)
 	find_destroy(&editor.find)
@@ -248,17 +245,16 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [19]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
 		{&editor.pluginview.active, pluginview_dispatch_key, pluginview_render, pluginview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
-		{&editor.langpick.active, langpick_dispatch_key, langpick_render, langpick_dispatch_mouse, langpick_paste},
+		{&editor.plugins.ui.active, plugui_dispatch_key, plugui_render, plugui_dispatch_mouse, plugui_paste},
+		{&editor.plugins.pane.active, plugpane_dispatch_key, plugpane_render, plugpane_dispatch_mouse, nil},
 		{&editor.basepick.active, basepick_dispatch_key, basepick_render, basepick_dispatch_mouse, basepick_paste},
-		{&editor.themepick.active, themepick_dispatch_key, themepick_render, themepick_dispatch_mouse, themepick_paste},
-		{&editor.indentpick.active, indentpick_dispatch_key, indentpick_render, indentpick_dispatch_mouse, indentpick_paste},
 		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
@@ -361,6 +357,10 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				palette_open(editor)
 				return
 			}
+			if pcmd, pok := plugin_command_for_event(editor, ev, false); pok && pcmd.welcome {
+				plugin_command_chord(editor, pcmd)
+				return
+			}
 		}
 		return
 	}
@@ -383,6 +383,9 @@ editor_previews_sync :: proc(editor: ^Editor) {
 	}
 	if editor.linefind.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.linefind.preview) {
 		linefind_load_preview(editor)
+	}
+	if editor.plugins.ui.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.plugins.ui.preview) {
+		plugui_preview(editor)
 	}
 }
 
@@ -1040,6 +1043,30 @@ editor_retheme :: proc(editor: ^Editor) {
 	term_reload_colors(editor)
 }
 
+editor_theme_current :: proc(editor: ^Editor) -> string {
+	return editor.theme_shown if editor.theme_shown != "" else THEME
+}
+
+editor_theme_set :: proc(editor: ^Editor, name: string, persist: bool) -> bool {
+	if !slice.contains(theme_names(config_path()), name) {
+		return false
+	}
+	theme_preview(config_path(), name)
+	editor_retheme(editor)
+	delete(editor.theme_shown)
+	editor.theme_shown = ""
+	if !persist {
+		editor.theme_shown = strings.clone(name)
+		return true
+	}
+	path := editor.plugins.persist_path if editor.headless else config_path()
+	theme_persist(path, name)
+	plugin_queue(editor, {event = .Theme_Changed})
+	editor.config_stamp = buffer_disk_stamp(config_path())
+	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
+	return true
+}
+
 editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	path := config_path()
 	if path == "" {
@@ -1054,6 +1081,8 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
 	message, is_error := config_load_from(path)
+	delete(editor.theme_shown)
+	editor.theme_shown = ""
 	plugins_rebind(editor)
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))

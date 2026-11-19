@@ -45,6 +45,8 @@ pt_api := [?]lua.L_Reg {
 	{"pump", pt_pump},
 	{"hook_timeout", pt_hook_timeout},
 	{"module", pt_module},
+	{"ui", pt_ui},
+	{"config_path", pt_config_path},
 	{nil, nil},
 }
 
@@ -66,6 +68,12 @@ pt_key :: proc "c" (L: ^lua.State) -> c.int {
 		ev.key = .Arrow_Up
 	case "Down":
 		ev.key = .Arrow_Down
+	case "Shift+Up":
+		ev.key = .Arrow_Up
+		ev.mod = .Shift
+	case "Shift+Down":
+		ev.key = .Arrow_Down
+		ev.mod = .Shift
 	case "Left":
 		ev.key = .Arrow_Left
 	case "Right":
@@ -353,6 +361,42 @@ pt_poll_disk :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 @(private = "file")
+pt_ui :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	ui := &p.ui
+	if !ui.active {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.createtable(L, 0, 4)
+	kinds := [PluginUiKind]string{.Pick = "pick", .Prompt = "prompt", .Confirm = "confirm"}
+	lua.pushodinstring(L, kinds[ui.kind])
+	lua.setfield(L, -2, "kind")
+	lua.pushodinstring(L, textfield_str(&ui.field))
+	lua.setfield(L, -2, "query")
+	lua.pushinteger(L, lua.Integer(len(ui.matches)))
+	lua.setfield(L, -2, "matches")
+	if ui.kind == .Confirm {
+		lua.pushodinstring(L, ui.labels[ui.selected])
+		lua.setfield(L, -2, "selected")
+	} else if len(ui.matches) > 0 {
+		lua.pushodinstring(L, ui.labels[ui.matches[ui.selected]])
+		lua.setfield(L, -2, "selected")
+	}
+	return 1
+}
+
+@(private = "file")
+pt_config_path :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	lua.pushodinstring(L, entry.editor.plugins.persist_path)
+	return 1
+}
+
+@(private = "file")
 pt_load_c :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
 	context = entry.ctx
@@ -393,6 +437,7 @@ pt_session :: proc(e: ^E2E, name: string, test: PluginFile) -> (tests: c.int, na
 	file := fmt.aprintf("%s/start.txt", dir)
 	_ = os.write_entire_file(file, nil)
 	e^ = E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
+	e.ed.plugins.persist_path = fmt.aprintf("%s/config.json", dir)
 	g_pt = e
 	g_pt_target = name
 	p := &e.ed.plugins
@@ -457,6 +502,7 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 				break
 			}
 			saved_timeout, saved_lsp, saved_ai, saved_git := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED
+			saved_theme := strings.clone(THEME, context.temp_allocator)
 			tc := PtCase{tests, names[i]}
 			lua.pushcfunction(e.ed.plugins.L, pt_case_c)
 			lua.pushlightuserdata(e.ed.plugins.L, &tc)
@@ -467,6 +513,11 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 				testing.expectf(t, false, "plugins/%s %s: plugin error: %s", f.path, names[i], pl.last_error)
 			}
 			PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED = saved_timeout, saved_lsp, saved_ai, saved_git
+			if THEME != saved_theme || e.ed.theme_shown != "" {
+				editor_theme_set(&e.ed, saved_theme, false)
+				delete(THEME, os.heap_allocator())
+				THEME = strings.clone(saved_theme, os.heap_allocator())
+			}
 			e2e_stop(&e)
 		}
 	}

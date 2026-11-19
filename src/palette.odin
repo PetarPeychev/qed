@@ -18,6 +18,7 @@ Command :: struct {
 	ref:         i32,
 	when_ref:    i32,
 	filetree:    bool,
+	welcome:     bool,
 	key_default: string,
 }
 
@@ -79,8 +80,6 @@ cmd_toggle_comment :: proc(editor: ^Editor) {
 	buffer_toggle_comment(editor_buffer(editor))
 	editor_scroll(editor)
 }
-cmd_set_language :: proc(editor: ^Editor) {langpick_open(editor)}
-cmd_set_theme :: proc(editor: ^Editor) {themepick_open(editor)}
 cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
 cmd_lsp_definition :: proc(editor: ^Editor) {lsp_definition(editor)}
 cmd_lsp_hover :: proc(editor: ^Editor) {lsp_hover(editor)}
@@ -115,7 +114,6 @@ cmd_toggle_inline_completion :: proc(editor: ^Editor) {
 	editor_log(editor, .Info, "", fmt.tprintf("Inline completion: %s", "on" if editor.fim.enabled else "off"))
 }
 
-cmd_change_indent :: proc(editor: ^Editor) {indentpick_open(editor)}
 cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
 cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
@@ -150,9 +148,6 @@ commands := [?]Command {
 	{name = "Paste", run = editor_paste},
 	{name = "Select All", run = cmd_select_all},
 	{name = "Toggle Comment", run = cmd_toggle_comment},
-	{name = "Change Indentation", run = cmd_change_indent},
-	{name = "Set Language", run = cmd_set_language},
-	{name = "Set Theme", run = cmd_set_theme},
 	{name = "LSP: Go to Definition", module = .Lsp, run = cmd_lsp_definition},
 	{name = "LSP: Hover", module = .Lsp, run = cmd_lsp_hover},
 	{name = "LSP: Rename Symbol", module = .Lsp, run = cmd_lsp_rename},
@@ -217,7 +212,7 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 		switch name {
 		case "File Tree", "File Tree: Open", "File Tree: Git", "File Tree: Unsaved",
 		     "Terminal: Toggle", "Find in Files",
-		     "Debug: Message Log", "Debug: Plugins", "Set Theme", "Change Working Directory", "Quit":
+		     "Debug: Plugins", "Debug: Message Log", "Change Working Directory", "Quit":
 			return true
 		}
 		return false
@@ -336,23 +331,25 @@ palette_open :: proc(editor: ^Editor) {
 			append(&p.indices, i)
 		}
 	}
-	if !editor.welcome || p.filetree {
-		base := len(filetree_commands) if p.filetree else len(commands)
-		for cmd, i in editor.plugins.commands {
-			if cmd.filetree != p.filetree || !plugin_command_when(editor, cmd) {
-				continue
-			}
-			append(&p.names, cmd.name)
-			append(&p.indices, base + i)
+	base := len(filetree_commands) if p.filetree else len(commands)
+	for cmd, i in editor.plugins.commands {
+		if cmd.filetree != p.filetree || (editor.welcome && !p.filetree && !cmd.welcome) || !plugin_command_when(editor, cmd) {
+			continue
 		}
+		append(&p.names, cmd.name)
+		append(&p.indices, base + i)
 	}
 	p.fuzzy = fuzzy_begin(p.names[:])
 	fuzzy_list_refilter(&p.list)
 }
 
 palette_command :: proc(editor: ^Editor, match: int) -> Command {
+	return palette_command_at(editor, editor.palette.matches[match])
+}
+
+palette_command_at :: proc(editor: ^Editor, item: int) -> Command {
 	p := &editor.palette
-	idx := p.indices[p.matches[match]]
+	idx := p.indices[item]
 	base := len(filetree_commands) if p.filetree else len(commands)
 	if idx >= base {
 		return editor.plugins.commands[idx - base]
@@ -379,25 +376,11 @@ palette_execute :: proc(editor: ^Editor) {
 }
 
 palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	p := &editor.palette
 	if command_matches(ev, "Command Palette") {
 		palette_close(editor)
 		return
 	}
-	#partial switch ev.key {
-	case .Esc:
-		palette_close(editor)
-	case .Enter:
-		palette_execute(editor)
-	case .Arrow_Down:
-		fuzzy_list_move(&p.list, 1, PALETTE_MAX_ROWS)
-	case .Arrow_Up:
-		fuzzy_list_move(&p.list, -1, PALETTE_MAX_ROWS)
-	case:
-		if textfield_key(&p.field, ev) {
-			fuzzy_list_refilter(&p.list)
-		}
-	}
+	fuzzy_list_key(editor, &editor.palette.list, ev, palette_execute, palette_close)
 }
 
 palette_paste :: proc(editor: ^Editor, text: string) {
@@ -412,29 +395,9 @@ palette_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 
 palette_render :: proc(editor: ^Editor) {
 	p := &editor.palette
-	rows := min(len(p.matches), PALETTE_MAX_ROWS)
-	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
-	inner := pane_draw_box(box)
-
-	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &p.field)
-	pane_hline(box, inner.y + 1)
-
-	for i in 0 ..< rows {
-		idx := p.scroll + i
-		cmd := palette_command(editor, idx)
-		y := inner.y + 2 + i
-		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		sc_fg := COLOR_PANE_SHORTCUT_FG
-		if idx == p.selected {
-			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			sc_fg = COLOR_PANE_SEL_FG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
-		}
-		_, _, shortcut := command_effective_bind(cmd)
-		pane_text(inner.x + 1, y, inner.w - 2, cmd.name, fg, bg)
-		sx := inner.x + inner.w - 1 - len(shortcut)
-		pane_text(sx, y, len(shortcut), shortcut, sc_fg, bg)
+	shortcuts := make([]string, len(p.names), context.temp_allocator)
+	for &sc, i in shortcuts {
+		_, _, sc = command_effective_bind(palette_command_at(editor, i))
 	}
-
-	fuzzy_list_center_scrollbar(&p.list, box, rows)
+	fuzzy_list_center_render(editor, &p.list, p.names[:], shortcuts)
 }

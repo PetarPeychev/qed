@@ -21,6 +21,7 @@
 ---@field when? fun(ctx: qed.Ctx): boolean
 ---@field key? string default chord, overridden by config `keybinds[name]`
 ---@field scope? "editor"|"filetree"
+---@field welcome? boolean also offered on the welcome screen (no buffer)
 
 ---@class qed.Stat
 ---@field size integer
@@ -38,9 +39,10 @@ qed.version = ""
 ---@param text any
 function qed.log(level, text) end
 
+---Shows `text` on the message line, attributed to this plugin unless `opts.source` says otherwise (`""` is bare).
 ---@param text any
----@param level? qed.Level
-function qed.message(text, level) end
+---@param opts? qed.Level|{level?: qed.Level, source?: string}
+function qed.message(text, opts) end
 
 ---@param spec qed.CommandSpec
 function qed.command(spec) end
@@ -167,6 +169,78 @@ function qed.defer(ms, fn) end
 ---@return qed.Timer
 function qed.every(ms, fn) end
 
+---@class qed.PickItem
+---@field label? string defaults to `path`
+---@field detail? string shown dim, right-aligned
+---@field value? any carried through untouched
+---@field path? string any item with a path switches to the list + file preview layout
+---@field pos? qed.Pos preview focus row
+
+---@class qed.PickSpec
+---@field items (string|qed.PickItem)[]
+---@field prompt? string replaces the `>` prefix
+---@field initial? integer|string item index or label to start on
+---@field on_change? fun(item: string|qed.PickItem) the highlighted item changed (live preview)
+---@field multi? boolean Shift+Up/Down selects a range; returns the items in list order
+
+---Waits for a fuzzy pick. Returns the chosen item (the value passed in), or `nil` on Esc.
+---Returns `nil, "busy"` when another overlay is open.
+---@param spec qed.PickSpec
+---@return string|qed.PickItem|(string|qed.PickItem)[]|nil
+---@return "busy"|nil err
+function qed.pick(spec) end
+
+---Waits for a line of text. `nil` on Esc, `nil, "busy"` when another overlay is open.
+---@param spec {prompt: string, text?: string}
+---@return string|nil
+---@return "busy"|nil err
+function qed.prompt(spec) end
+
+---Waits for a choice. Returns its 1-based index, `nil` on Esc, `nil, "busy"` when another overlay is open.
+---@param question string
+---@param choices? string[] defaults to `{"Yes", "No"}`
+---@return integer|nil
+---@return "busy"|nil err
+function qed.confirm(question, choices) end
+
+---@alias qed.PaneLine string|{text: string, color?: string} color is a theme color key, e.g. `"error_foreground"`
+
+---@class qed.Pane
+---@field id integer
+local Pane = {}
+---Returns false once the pane is closed.
+---@param lines qed.PaneLine[]
+---@return boolean
+function Pane:set(lines) end
+function Pane:close() end
+
+---Read-only floating pane (arrows/wheel scroll, Esc closes). `nil, "busy"` when another overlay is open.
+---@param spec {title: string, lines: qed.PaneLine[], footer?: string}
+---@return qed.Pane|nil
+---@return "busy"|nil err
+function qed.pane(spec) end
+
+---Language names as `qed.buf.language` returns them.
+---@return string[]
+function qed.languages() end
+
+qed.theme = {}
+
+---Applies a theme. With `persist`, also writes it as config `theme` (only that key).
+---@param name string
+---@param opts? {persist?: boolean}
+---@return boolean|nil ok
+---@return string|nil err
+function qed.theme.set(name, opts) end
+
+---Bundled and user theme names, sorted.
+---@return string[]
+function qed.theme.list() end
+
+---The theme on screen.
+---@return string
+function qed.theme.current() end
+
 qed.buf = {}
 
 ---@return integer|nil
@@ -263,12 +337,19 @@ function qed.buf.set_selection(b, anchor, cursor) end
 
 ---@param b qed.Buf
 ---@param name string language name as `qed.buf.language` returns it
+---@return boolean changed
 function qed.buf.set_language(b, name) end
 
+---`"auto"` detects from the content. `width` defaults to the current width.
 ---@param b qed.Buf
----@param style "tabs"|"spaces"
+---@param style "tabs"|"spaces"|"auto"
 ---@param width? integer
 function qed.buf.set_indent(b, style, width) end
+
+---@param b qed.Buf
+---@return "tabs"|"spaces" style
+---@return integer width
+function qed.buf.indent(b) end
 
 qed.fs = {}
 

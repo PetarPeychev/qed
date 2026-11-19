@@ -77,6 +77,7 @@ PluginWaitKind :: enum {
 	Proc,
 	Save,
 	Lsp,
+	Ui,
 }
 
 PluginWait :: struct {
@@ -172,13 +173,16 @@ PluginArgs :: enum {
 	Ctx,
 	Line,
 	Event,
+	Item,
 }
 
 PluginStart :: struct {
-	ref:  i32,
-	args: PluginArgs,
-	line: string,
-	ev:   PluginQueued,
+	ref:      i32,
+	args:     PluginArgs,
+	line:     string,
+	ev:       PluginQueued,
+	item_ref: i32,
+	item:     int,
 }
 
 plugin_tick_add :: proc(t: time.Tick, ms: int) -> time.Tick {
@@ -353,6 +357,11 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 		nargs = 1
 	case .Event:
 		nargs = plugin_event_push(L, start.ev)
+	case .Item:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
+		lua.rawgeti(L, -1, lua.Integer(start.item))
+		lua.remove(L, -2)
+		nargs = 1
 	}
 	lua.call(L, nargs, 0, 0, plugin_co_k)
 	return 0

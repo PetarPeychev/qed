@@ -68,6 +68,9 @@ Plugins :: struct {
 	resumes:  int,
 	startup_due: bool,
 	current:  ^lua.State,
+	ui:       PluginUi,
+	pane:     PluginPane,
+	persist_path: string,
 }
 
 PluginEntry :: struct {
@@ -80,6 +83,7 @@ bundled_plugin_files := #load_directory("../plugins")
 // Listed file by file so a dir plugin's test.lua stays out of the binary.
 bundled_plugin_dir_files := [?]PluginFile {
 	{"format/init.lua", #load("../plugins/format/init.lua", string)},
+	{"pickers/init.lua", #load("../plugins/pickers/init.lua", string)},
 }
 
 g_bundled_plugins: []PluginFile
@@ -187,6 +191,8 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 }
 
 plugins_shutdown :: proc(p: ^Plugins) {
+	plugin_ui_destroy(p)
+	delete(p.persist_path)
 	plugin_sched_shutdown(p)
 	for &cmd in p.commands {
 		plugin_command_free(&cmd)
@@ -523,6 +529,7 @@ plugins_config_refresh :: proc(editor: ^Editor) {
 
 plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	p := &editor.plugins
+	plugin_ui_unload(editor, pl.name)
 	plugin_sched_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
@@ -709,16 +716,29 @@ qed_message :: proc "c" (L: ^lua.State) -> c.int {
 	text, _ := lua.toodinstring_any(L, 1)
 	text = strings.clone(text, context.temp_allocator)
 	level := LogLevel.Info
-	if lua.type(L, 2) > .NIL {
-		lvl_s, _ := lua.toodinstring(L, 2)
+	source := pl.name if pl != nil else ""
+	lvl_idx: c.int = 2
+	if lua.type(L, 2) == .TABLE {
+		if lua.getfield(L, 2, "source") != .NIL {
+			if lua.type(L, -1) != .STRING {
+				return lua.L_argerror(L, 2, "source must be a string")
+			}
+			src, _ := lua.toodinstring(L, -1)
+			source = strings.clone(src, context.temp_allocator)
+		}
+		lua.getfield(L, 2, "level")
+		lvl_idx = lua.gettop(L)
+	}
+	if lua.type(L, lvl_idx) > .NIL {
+		lvl_s, _ := lua.toodinstring(L, lvl_idx)
 		lvl, ok := plugin_log_level(lvl_s)
-		if lua.type(L, 2) != .STRING || !ok {
+		if lua.type(L, lvl_idx) != .STRING || !ok {
 			return lua.L_argerror(L, 2, "level must be \"debug\", \"info\", \"warn\" or \"error\"")
 		}
 		level = lvl
 	}
 	if pl != nil {
-		editor_log(entry.editor, level, pl.name, text)
+		editor_log(entry.editor, level, source, text)
 	}
 	return 0
 }
@@ -765,6 +785,11 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if (scope_t != .STRING && scope_t != .NIL) || (scope_t == .STRING && scope_s != "editor" && scope_s != "filetree") {
 		return lua.L_argerror(L, 1, "scope must be \"editor\" or \"filetree\"")
 	}
+	welcome_t := lua.getfield(L, 1, "welcome")
+	if welcome_t != .BOOLEAN && welcome_t != .NIL {
+		return lua.L_argerror(L, 1, "welcome must be a boolean")
+	}
+	welcome := bool(lua.toboolean(L, 7))
 	filetree := scope_s == "filetree"
 	if plugin_command_taken(p, name, filetree) {
 		return plugin_raise(L, fmt.tprintf("command '%s' already exists", name))
@@ -783,6 +808,7 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		name        = strings.clone(name),
 		owner       = pl.name,
 		filetree    = filetree,
+		welcome     = welcome,
 		key_default = strings.clone(key_s) if key_t == .STRING else "",
 		ref         = ref,
 		when_ref    = when_ref,

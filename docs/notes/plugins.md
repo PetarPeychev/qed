@@ -97,7 +97,7 @@ The API is one global, `qed`.
 | `qed.edit(b, fn, {rev?}) -> bool` | Everything inside `fn` is one undo group. `fn` must not yield. |
 | `qed.buf.cursor(b) -> pos`, `.set_cursor(b, pos)` | |
 | `qed.buf.selection(b) -> from, to \| nil`, `.set_selection(b, anchor, cursor)` | |
-| `qed.buf.set_language(b, name)`, `.set_indent(b, "tabs"\|"spaces", width)` | Existing core setters. |
+| `qed.buf.set_language(b, name) -> changed`, `.set_indent(b, "tabs"\|"spaces"\|"auto", width?)`, `.indent(b) -> style, width`, `qed.languages()` | Existing core setters. |
 | `qed.buf.set_base(b, text \| nil, {label?})` | Diff base: gutter, ghost rows, change navigation, revert hunk. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
 | `qed.jump(b, pos)` | Switch, reveal, record in the jump list. (`goto` is a Lua keyword.) |
@@ -105,7 +105,7 @@ The API is one global, `qed`.
 ### Commands and keybinds
 | Function | Notes |
 |---|---|
-| `qed.command{name, run, when?, key?, welcome?, scope?}` | `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. |
+| `qed.command{name, run, when?, key?, welcome?, scope?}` | `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `welcome = true` also offers it on the welcome screen. |
 | `qed.run(name)` | Run any builtin or plugin command. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
 | `ctx` | `{buf, path, language, root, selection_text}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
@@ -134,8 +134,8 @@ There is deliberately no `key` event.
 ### UI
 | Function | Notes |
 |---|---|
-| `qed.message(text, level?)`, `qed.log(level, text)` | `source` is the plugin name. |
-| ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout. `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. Esc returns `nil`. |
+| `qed.message(text, level? \| {level?, source?})`, `qed.log(level, text)` | `source` defaults to the plugin name; `""` is bare. |
+| ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout. `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. Esc returns `nil`. |
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |

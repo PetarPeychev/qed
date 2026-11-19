@@ -64,6 +64,9 @@
         "toml": "taplo fmt --stdin-filepath {file} -",
         "json": "prettier --parser json --stdin-filepath {file}"
       }
+    },
+    "pickers": {
+      "enabled": true
     }
   },
   "theme": "default",

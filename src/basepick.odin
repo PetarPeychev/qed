@@ -152,21 +152,7 @@ basepick_execute :: proc(editor: ^Editor) {
 }
 
 basepick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	bp := &editor.basepick
-	#partial switch ev.key {
-	case .Esc:
-		basepick_close(editor)
-	case .Enter:
-		basepick_execute(editor)
-	case .Arrow_Down:
-		fuzzy_list_move(&bp.list, 1, PALETTE_MAX_ROWS)
-	case .Arrow_Up:
-		fuzzy_list_move(&bp.list, -1, PALETTE_MAX_ROWS)
-	case:
-		if textfield_key(&bp.field, ev) {
-			fuzzy_list_refilter(&bp.list)
-		}
-	}
+	fuzzy_list_key(editor, &editor.basepick.list, ev, basepick_execute, basepick_close)
 }
 
 basepick_paste :: proc(editor: ^Editor, text: string) {
@@ -181,24 +167,5 @@ basepick_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 
 basepick_render :: proc(editor: ^Editor) {
 	bp := &editor.basepick
-	rows := min(len(bp.matches), PALETTE_MAX_ROWS)
-	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
-	inner := pane_draw_box(box)
-
-	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &bp.field)
-	pane_hline(box, inner.y + 1)
-
-	for i in 0 ..< rows {
-		idx := bp.scroll + i
-		name := bp.names[bp.matches[idx]]
-		y := inner.y + 2 + i
-		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		if idx == bp.selected {
-			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
-		}
-		pane_text(inner.x + 1, y, inner.w - 2, name, fg, bg)
-	}
-
-	fuzzy_list_center_scrollbar(&bp.list, box, rows)
+	fuzzy_list_center_render(editor, &bp.list, bp.names[:], nil)
 }

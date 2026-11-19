@@ -41,6 +41,11 @@ qed_api := [?]lua.L_Reg {
 	{"sleep", qed_sleep},
 	{"defer", qed_defer},
 	{"every", qed_every},
+	{"pick", qed_pick},
+	{"prompt", qed_prompt},
+	{"confirm", qed_confirm},
+	{"pane", qed_pane},
+	{"languages", qed_languages},
 	{nil, nil},
 }
 
@@ -67,6 +72,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"set_selection", qed_buf_set_selection},
 	{"set_language", qed_buf_set_language},
 	{"set_indent", qed_buf_set_indent},
+	{"indent", qed_buf_indent},
 	{nil, nil},
 }
 
@@ -104,6 +110,14 @@ qed_lsp_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
+qed_theme_api := [?]lua.L_Reg {
+	{"set", qed_theme_set},
+	{"list", qed_theme_list},
+	{"current", qed_theme_current},
+	{nil, nil},
+}
+
+@(private = "file")
 qed_text_api := [?]lua.L_Reg {
 	{"width", qed_text_width},
 	{nil, nil},
@@ -118,7 +132,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -650,8 +664,8 @@ qed_buf_set_language :: proc "c" (L: ^lua.State) -> c.int {
 	name := api_string(L, 2)
 	for info, lang in LANGUAGES {
 		if lang != .MarkdownInline && info.name == name {
-			editor_set_language(entry.editor, b, lang)
-			return 0
+			lua.pushboolean(L, b32(editor_set_language(entry.editor, b, lang)))
+			return 1
 		}
 	}
 	return plugin_raise(L, fmt.tprintf("unknown language '%s'", name))
@@ -662,16 +676,29 @@ qed_buf_set_indent :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	b, _ := api_buf(L, entry.editor, 1)
 	style := api_string(L, 2)
-	if style != "tabs" && style != "spaces" {
-		lua.L_argerror(L, 2, "\"tabs\" or \"spaces\" expected")
+	if style != "tabs" && style != "spaces" && style != "auto" {
+		lua.L_argerror(L, 2, "\"tabs\", \"spaces\" or \"auto\" expected")
 	}
-	width := api_int(L, 3, "width expected") if lua.type(L, 3) > .NIL else TAB_WIDTH
+	if style == "auto" {
+		buffer_detect_indent(b)
+		return 0
+	}
+	width := api_int(L, 3, "width expected") if lua.type(L, 3) > .NIL else b.indent_width
 	if width < 1 || width > 16 {
 		lua.L_argerror(L, 3, "width must be 1..16")
 	}
 	b.indent = .Tabs if style == "tabs" else .Spaces
 	b.indent_width = width
 	return 0
+}
+
+qed_buf_indent :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	lua.pushodinstring(L, "tabs" if b.indent == .Tabs else "spaces")
+	lua.pushinteger(L, lua.Integer(b.indent_width))
+	return 2
 }
 
 qed_edit :: proc "c" (L: ^lua.State) -> c.int {

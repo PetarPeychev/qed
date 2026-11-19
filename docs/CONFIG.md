@@ -12,8 +12,8 @@ files, which are the canonical, always-current reference:
 
 You never copy either file. `~/.config/qed/config.json` is a sparse per-key
 diff: put in only the keys you want to change; everything else keeps its
-compiled-in default. qed never writes this file (except the theme picker, which
-persists the single `theme` key when you press Enter on it).
+compiled-in default. qed never writes this file (except *Set Theme*, which
+persists the single `theme` key when you press Enter on it, via `qed.theme.set`).
 
 - **Hot-reloaded.** Save the file and the change applies live: colors, keybinds,
   and knobs take effect without a restart.
@@ -202,6 +202,8 @@ like any builtin (`""` unbinds). A key already taken by a builtin is ignored wit
 warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under `plugins.<name>`
 reach the plugin through its `config_changed` handler (the `format` plugin applies
 them live); `enabled` and new or edited plugin files need a restart for now.
+*Set Theme*, *Set Language* and *Change Indentation* come from the bundled `pickers`
+plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
 
 ```json
 { "plugins": { "mytool": { "enabled": false } } }

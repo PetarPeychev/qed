@@ -223,12 +223,29 @@ plugin_api_cursor_selection :: proc(t: ^testing.T) {
 		assert(from.col == 4 and to.col == 3, "marks follow an insert before them")
 		qed.buf.set_cursor(b, {row = 2, col = 4})
 		assert(qed.buf.selection(b) == nil, "set_cursor clears the selection")
-		qed.buf.set_language(b, "lua")
+		assert(qed.buf.set_language(b, "lua") == true, "set_language reports a change")
 		assert(qed.buf.language(b) == "lua", "set_language")
+		assert(qed.buf.set_language(b, "lua") == false, "same language is no change")
 		assert(not pcall(qed.buf.set_language, b, "Klingon"), "unknown language")
+		local langs = qed.languages()
+		local has_lua = false
+		for _, l in ipairs(langs) do has_lua = has_lua or l == "lua"; assert(l ~= "markdown_inline", "injection-only languages hidden") end
+		assert(has_lua, "qed.languages lists lua")
+		qed.buf.set_indent(b, "spaces", 3)
 		qed.buf.set_indent(b, "tabs")
+		local style, width = qed.buf.indent(b)
+		assert(style == "tabs" and width == 3, "set_indent without width keeps the width")
+		qed.buf.set_indent(b, "auto")
+		assert((qed.buf.indent(b)) == "spaces", "auto detects spaces on unindented text")
 		qed.buf.set_indent(b, "spaces", 2)
 		assert(not pcall(qed.buf.set_indent, b, "both"), "bad indent style")
+		local names = qed.theme.list()
+		local has_default = false
+		for _, n in ipairs(names) do has_default = has_default or n == "default" end
+		assert(has_default, "theme.list includes the bundled default")
+		assert(type(qed.theme.current()) == "string", "theme.current")
+		local ok, err = qed.theme.set("no-such-theme")
+		assert(ok == nil and err:find("unknown theme"), "unknown theme fails softly")
 	`, "abcd", "efgh")
 	defer api_test_destroy(ed)
 	api_test_run(t, ed)
@@ -529,4 +546,24 @@ plugin_api_edit_error_traceback :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, logged, "the traceback is logged")
+}
+
+@(test)
+plugin_api_message_source :: proc(t: ^testing.T) {
+	ed := api_test_editor(`
+		qed.message("plain")
+		qed.message("warned", {level = "warn", source = ""})
+		assert(not pcall(qed.message, "x", {source = 3}), "source must be a string")
+		assert(not pcall(qed.message, "x", {level = "loud"}), "bad level")
+	`, "abc")
+	defer api_test_destroy(ed)
+	api_test_run(t, ed)
+	testing.expect_value(t, ed.message, "warned")
+	testing.expect_value(t, ed.message_source, "")
+	testing.expect_value(t, ed.message_level, LogLevel.Warn)
+	found := false
+	for e in ed.log {
+		found ||= e.text == "plain" && e.source == "t"
+	}
+	testing.expect(t, found, "the default source is the plugin name")
 }
