@@ -483,6 +483,14 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "query")
 	lua.pushinteger(L, lua.Integer(len(ui.matches)))
 	lua.setfield(L, -2, "matches")
+	lua.createtable(L, c.int(len(ui.matches)), 0)
+	for m, i in ui.matches {
+		lua.pushodinstring(L, ui.labels[m])
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	lua.setfield(L, -2, "labels")
+	lua.pushodinstring(L, ui.hint)
+	lua.setfield(L, -2, "hint")
 	if ui.kind == .Confirm {
 		lua.pushodinstring(L, ui.labels[ui.selected])
 		lua.setfield(L, -2, "selected")

@@ -7,7 +7,6 @@
   "cursor_accel_ramp_presses": 20,
   "cursor_accel_max_step": 6,
   "palette_max_rows": 8,
-  "projsearch_min_query": 2,
   "preview_diff_context": 3,
   "alt_esc_timeout_ms": 25,
   "jump_threshold": 10,
@@ -67,6 +66,10 @@
     },
     "pickers": {
       "enabled": true
+    },
+    "search": {
+      "enabled": true,
+      "min_query": 2
     },
     "tasks": {
       "enabled": true,

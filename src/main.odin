@@ -56,7 +56,7 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || projsearch_running(&editor) || filetree_filter_pending(&editor) || filetree_preview_pending(&editor) || filetree_prewarming(&editor) || plugin_busy(&editor) {
+			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || filetree_filter_pending(&editor) || filetree_preview_pending(&editor) || filetree_prewarming(&editor) || plugin_busy(&editor) {
 				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
@@ -74,12 +74,6 @@ main :: proc() {
 					redraw = true
 				}
 				filetree_prewarm_pump(&editor)
-				if projsearch_pump(&editor) {
-					redraw = true
-				}
-				if projsearch_due(&editor) {
-					projsearch_run_async(&editor)
-				}
 				if filetree_filter_due(&editor) {
 					filetree_filter_flush(&editor)
 					redraw = true

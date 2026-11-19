@@ -58,7 +58,6 @@ Editor :: struct {
 	cwdpick:         CwdPick,
 	linefind:        LineFind,
 	find:            Find,
-	projsearch:      ProjSearch,
 	rename:          Rename,
 	filetree:        FileTree,
 	jumps:           JumpList,
@@ -179,7 +178,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	cwdpick_destroy(&editor.cwdpick)
 	linefind_destroy(&editor.linefind)
 	find_destroy(&editor.find)
-	projsearch_destroy(&editor.projsearch)
 	rename_destroy(&editor.rename)
 	filetree_destroy(&editor.filetree)
 	jump_destroy(&editor.jumps)
@@ -238,7 +236,7 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
@@ -250,7 +248,6 @@ editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
 		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
-		{&editor.projsearch.active, projsearch_dispatch_key, projsearch_render, projsearch_dispatch_mouse, projsearch_paste},
 		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse, rename_paste},
 		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse, filetree_paste},
 		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render, quit_dialog_dispatch_mouse, nil},
@@ -305,10 +302,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	if editor.welcome {
 		if ev.type == .Key {
-			if command_matches(ev, "Find in Files") {
-				projsearch_open(editor)
-				return
-			}
 			if command_matches(ev, "File Tree") {
 				filetree_open_all(editor)
 				return
@@ -369,9 +362,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 editor_previews_sync :: proc(editor: ^Editor) {
 	if editor.filetree.active && filetree_layout(editor).preview && !preview_loaded(&editor.filetree.preview) {
 		filetree_preview_touch(editor)
-	}
-	if editor.projsearch.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.projsearch.preview) {
-		projsearch_load_preview(editor)
 	}
 	if editor.linefind.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.linefind.preview) {
 		linefind_load_preview(editor)

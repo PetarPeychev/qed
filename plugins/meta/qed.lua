@@ -15,7 +15,7 @@
 ---@field root string
 ---@field selection_text string|nil
 ---@field file string|nil file tree only: the entry under the cursor (absolute)
----@field files string[]|nil file tree only: every selected path, in tree order
+---@field files string[]|nil file tree only: every selected path, in tree order; on a scoped tab (Open, Changed, Unsaved) a selected dir stands for its in-scope files
 
 ---@class qed.CommandSpec
 ---@field name string
@@ -204,14 +204,25 @@ function qed.every(ms, fn) end
 ---@field pos? qed.Pos preview focus row
 
 ---@class qed.PickSpec
----@field items (string|qed.PickItem)[]
+---@field items? (string|qed.PickItem)[] required unless `on_query` is set
 ---@field prompt? string replaces the `>` prefix
 ---@field initial? integer|string item index or label to start on
----@field on_change? fun(item: string|qed.PickItem) the highlighted item changed (live preview)
+---@field on_change? fun(item: string|qed.PickItem) the highlighted item changed (live preview), also after `Picker:set`
 ---@field multi? boolean Shift+Up/Down selects a range; returns the items in list order
+---@field query? string initial query text, fully selected
+---@field on_query? fun(query: string, picker: qed.Picker) the plugin supplies the items (no fuzzy filter, list + preview layout); runs at open and 120 ms after the query stops changing; the previous run is killed with the process it waits on, and so is the last one when the picker closes
+
+---@class qed.Picker
+---@field id integer
+local Picker = {}
+---Replaces the items of an open `on_query` picker. `selected` is the item index to highlight (default 1), `more` shows the count as `N+`, `hint` is dim text shown while `items` is empty. Returns false once the picker is closed.
+---@param items (string|qed.PickItem)[]
+---@param opts? {selected?: integer, more?: boolean, hint?: string}
+---@return boolean
+function Picker:set(items, opts) end
 
 ---Waits for a fuzzy pick. Returns the chosen item (the value passed in), or `nil` on Esc.
----Returns `nil, "busy"` when another overlay is open.
+---The opening command's chord closes it like Esc. Returns `nil, "busy"` when another overlay is open.
 ---@param spec qed.PickSpec
 ---@return string|qed.PickItem|(string|qed.PickItem)[]|nil
 ---@return "busy"|nil err

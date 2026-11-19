@@ -132,7 +132,6 @@ commands := [?]Command {
 	{name = "Find", run = find_open},
 	{name = "Replace", run = find_open_replace},
 	{name = "Find Line", run = linefind_open},
-	{name = "Find in Files", run = projsearch_open},
 	{name = "Change Working Directory", run = cwdpick_open},
 	{name = "Go to Start of File", run = cmd_buffer_start},
 	{name = "Go to End of File", run = cmd_buffer_end},
@@ -177,7 +176,6 @@ filetree_commands := [?]Command {
 	{name = "Rename", config_name = "File Tree: Rename", run = filetree_cmd_rename},
 	{name = "New", config_name = "File Tree: New", run = filetree_cmd_new},
 	{name = "Select All", bind_from = "Select All", run = filetree_select_all},
-	{name = "Search", bind_from = "Find in Files", run = filetree_cmd_search},
 	{name = "Set as Working Directory", bind_from = "Change Working Directory", run = filetree_cmd_set_root},
 	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
@@ -215,7 +213,7 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 	if editor.welcome {
 		switch name {
 		case "File Tree", "File Tree: Open", "File Tree: Changed", "File Tree: Unsaved",
-		     "Terminal: Toggle", "Find in Files",
+		     "Terminal: Toggle",
 		     "Debug: Plugins", "Debug: Message Log", "Change Working Directory", "Quit":
 			return true
 		}

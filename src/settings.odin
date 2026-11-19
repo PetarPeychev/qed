@@ -38,7 +38,6 @@ CURSOR_ACCEL_INTERVAL_MS: int
 CURSOR_ACCEL_RAMP_PRESSES: int
 CURSOR_ACCEL_MAX_STEP: int
 PALETTE_MAX_ROWS: int
-PROJSEARCH_MIN_QUERY: int
 PREVIEW_DIFF_CONTEXT: int
 ALT_ESC_TIMEOUT_MS: int
 COMPLETION_MAX_ROWS: int
@@ -63,7 +62,6 @@ config_ints := [?]Config_Int {
 	{"cursor_accel_ramp_presses", &CURSOR_ACCEL_RAMP_PRESSES},
 	{"cursor_accel_max_step", &CURSOR_ACCEL_MAX_STEP},
 	{"palette_max_rows", &PALETTE_MAX_ROWS},
-	{"projsearch_min_query", &PROJSEARCH_MIN_QUERY},
 	{"preview_diff_context", &PREVIEW_DIFF_CONTEXT},
 	{"alt_esc_timeout_ms", &ALT_ESC_TIMEOUT_MS},
 	{"jump_threshold", &JUMP_THRESHOLD},

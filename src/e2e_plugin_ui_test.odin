@@ -9,7 +9,7 @@ import "core:time"
 
 @(private = "file")
 UI_PLUGIN :: `
-local pane
+local pane, last
 local function show(v)
 	if type(v) == "table" then
 		local parts = {}
@@ -69,6 +69,26 @@ return {setup = function()
 	cmd("UI: Persist", function()
 		local ok, err = qed.theme.set(qed.opt("theme"), {persist = true})
 		show(tostring(ok) .. " " .. tostring(err))
+	end)
+	qed.command{name = "UI: Query", key = "Alt+q", run = function()
+		local r, err = qed.pick{query = "ab", on_change = function(it) qed.log("info", "chg " .. it.label) end, on_query = function(q, picker)
+			qed.log("info", "query " .. q)
+			last = picker
+			if q == "slow" then
+				qed.spawn{cmd = "sleep 5"}
+				qed.log("info", "slow done")
+			end
+			if q == "" then
+				picker:set({}, {hint = "type something"})
+				return
+			end
+			picker:set({{label = q .. "1"}, {label = q .. "2"}, {label = q .. "3"}}, {selected = 2, more = q == "more"})
+		end}
+		show(r and r.label or err)
+	end}
+	cmd("UI: Stale", function() show(last:set({"x"})) end)
+	cmd("UI: Query Static", function()
+		show(qed.pick{items = {"alpha", "beta", "gamma"}, query = "gam"})
 	end)
 	qed.command{name = "UI: Tree Confirm", scope = "filetree", run = function()
 		show(qed.confirm("Tree?", {"One", "Two"}))
@@ -497,4 +517,150 @@ end}}`, dir))
 	ui_run(t, &e, "Term: Again")
 	plugin_pump(&e.ed)
 	testing.expect_value(t, e.ed.message, "busy")
+}
+
+@(private = "file")
+ui_count :: proc(e: ^E2E, text: string) -> int {
+	n := 0
+	for l in e.ed.log {
+		if l.source == "ui" && l.text == text {
+			n += 1
+		}
+	}
+	return n
+}
+
+@(test)
+e2e_plugin_ui_query_set :: proc(t: ^testing.T) {
+	e, pl := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Query")
+	ui := &e.ed.plugins.ui
+	testing.expect(t, ui.active && ui.paths, "an on_query pick opens in the list + preview layout")
+	testing.expect_value(t, textfield_str(&ui.field), "ab")
+	testing.expect_value(t, ui.field.anchor, 0)
+	testing.expect_value(t, ui.field.caret, 2)
+	testing.expect_value(t, len(ui.matches), 0)
+	ui_pump(&e, 5)
+	testing.expect_value(t, ui_count(&e, "query ab"), 1)
+	testing.expect_value(t, len(ui.matches), 3)
+	testing.expect_value(t, ui_selected(&e), "ab2")
+	testing.expect(t, ui_logged(&e, "chg ab2"), "set fires on_change for the new highlight")
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "ab3"), "pushed items render")
+	testing.expect(t, e2e_grid_has(&e, "3│"), "the count renders by the divider")
+
+	e2e_type(&e, "xyz")
+	testing.expect_value(t, ui_count(&e, "query x"), 0)
+	testing.expect_value(t, ui_selected(&e), "ab2")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	testing.expect_value(t, ui_count(&e, "query xyz"), 1)
+	testing.expect_value(t, ui_count(&e, "query x") + ui_count(&e, "query xy"), 0)
+	testing.expect_value(t, ui_selected(&e), "xyz2")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	testing.expect(t, !ui.active, "Enter closes")
+	testing.expect_value(t, e.ed.message, "xyz3")
+	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
+	testing.expect_value(t, ui.query_ref, 0)
+	testing.expect_value(t, ui.handle_ref, 0)
+	testing.expect_value(t, pl.last_error, "")
+
+	ui_run(t, &e, "UI: Stale")
+	testing.expect_value(t, e.ed.message, "false")
+}
+
+@(test)
+e2e_plugin_ui_query_hint_more :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Query")
+	ui_pump(&e, 5)
+	e2e_key(&e, .Backspace2)
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui := &e.ed.plugins.ui
+	testing.expect_value(t, len(ui.matches), 0)
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "type something"), "the hint renders while the list is empty")
+	e2e_type(&e, "more")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	e2e_render(&e)
+	testing.expect(t, !e2e_grid_has(&e, "type something"), "items hide the hint")
+	testing.expect(t, e2e_grid_has(&e, "3+│"), "more shows N+")
+	e2e_paste(&e, "x")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	testing.expect_value(t, ui_selected(&e), "morex2")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "nil")
+}
+
+@(test)
+e2e_plugin_ui_query_kills_search :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Query")
+	e2e_type(&e, "slow")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	p := &e.ed.plugins
+	testing.expect_value(t, len(p.procs), 1)
+	e2e_type(&e, "er")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	testing.expect_value(t, len(p.procs), 0)
+	testing.expect_value(t, ui_selected(&e), "slower2")
+
+	e2e_key(&e, .Backspace2)
+	e2e_key(&e, .Backspace2)
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	testing.expect_value(t, len(p.procs), 1)
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, len(p.procs), 0)
+	testing.expect_value(t, len(p.tasks), 0)
+	testing.expect(t, !ui_logged(&e, "slow done"), "the killed search never resumes")
+}
+
+@(test)
+e2e_plugin_ui_query_unload :: proc(t: ^testing.T) {
+	e, pl := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Query")
+	e2e_type(&e, "slow")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	p := &e.ed.plugins
+	testing.expect_value(t, len(p.procs), 1)
+	plugin_unload(&e.ed, pl)
+	testing.expect(t, !p.ui.active, "unloading the owner closes the picker")
+	testing.expect_value(t, p.ui.query_ref, 0)
+	testing.expect_value(t, p.ui.handle_ref, 0)
+	testing.expect_value(t, len(p.procs), 0)
+	testing.expect_value(t, len(p.tasks), 0)
+	testing.expect(t, !plugin_busy(&e.ed), "nothing left to pump")
+}
+
+@(test)
+e2e_plugin_ui_query_busy_chord :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Prompt")
+	ui_run(t, &e, "UI: Query")
+	testing.expect_value(t, e.ed.message, "busy")
+	testing.expect_value(t, e.ed.plugins.ui.kind, PluginUiKind.Prompt)
+	e2e_key(&e, .Esc)
+
+	nav_alt(&e, 'q')
+	testing.expect(t, e.ed.plugins.ui.active, "the chord opens the picker")
+	e2e_type(&e, "slow")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	nav_alt(&e, 'q')
+	testing.expect(t, !e.ed.plugins.ui.active, "the opening command's chord closes it")
+	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, len(e.ed.plugins.procs), 0)
+
+	ui_run(t, &e, "UI: Query Static")
+	ui := &e.ed.plugins.ui
+	testing.expect_value(t, textfield_str(&ui.field), "gam")
+	testing.expect_value(t, ui_selected(&e), "gamma")
+	testing.expect_value(t, len(ui.matches), 1)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "gamma")
 }

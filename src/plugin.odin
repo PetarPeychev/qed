@@ -101,6 +101,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
 	{"pickers/init.lua", #load("../plugins/pickers/init.lua", string)},
+	{"search/init.lua", #load("../plugins/search/init.lua", string)},
 	{"tasks/init.lua", #load("../plugins/tasks/init.lua", string)},
 }
 
@@ -1295,17 +1296,19 @@ plugin_command_names :: proc(p: ^Plugins, allocator := context.temp_allocator) -
 	return names
 }
 
+plugin_command_matches :: proc(cmd: Command, ev: tb2.Event) -> bool {
+	if cmd.shortcut == "" {
+		return false
+	}
+	if ev_alt(ev) && ev.ch != 0 {
+		return cmd.alt_ch != 0 && cmd.alt_ch == ev.ch
+	}
+	return cmd.alt_ch == 0 && cmd.key == ev.key
+}
+
 plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, filetree: bool) -> (Command, bool) {
-	alt := ev_alt(ev) && ev.ch != 0
 	for cmd in editor.plugins.commands {
-		if cmd.filetree != filetree || cmd.shortcut == "" {
-			continue
-		}
-		if alt {
-			if cmd.alt_ch != 0 && cmd.alt_ch == ev.ch {
-				return cmd, true
-			}
-		} else if cmd.alt_ch == 0 && cmd.key == ev.key {
+		if cmd.filetree == filetree && plugin_command_matches(cmd, ev) {
 			return cmd, true
 		}
 	}
@@ -1362,12 +1365,11 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 		if !t.active || len(t.entries) == 0 {
 			return 0
 		}
-		lo, hi := filetree_sel_range(t)
-		lo, hi = clamp(lo, 0, len(t.entries) - 1), clamp(hi, 0, len(t.entries) - 1)
-		lua.createtable(L, c.int(hi - lo + 1), 0)
-		for i in lo ..= hi {
-			lua.pushodinstring(L, t.entries[i].path)
-			lua.rawseti(L, -2, lua.Integer(i - lo + 1))
+		files := filetree_sel_files(editor)
+		lua.createtable(L, c.int(len(files)), 0)
+		for f, i in files {
+			lua.pushodinstring(L, f)
+			lua.rawseti(L, -2, lua.Integer(i + 1))
 		}
 	case:
 		return 0
@@ -1420,7 +1422,7 @@ plugin_command_when :: proc(editor: ^Editor, cmd: Command) -> bool {
 }
 
 plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
-	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx})
+	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.id})
 }
 
 plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {

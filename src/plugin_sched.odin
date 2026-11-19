@@ -109,6 +109,7 @@ PluginTask :: struct {
 	kind:    PluginKind,
 	event:   PluginEvent,
 	wait:    PluginWait,
+	command: u64,
 	running: bool,
 	doomed:  bool,
 }
@@ -182,6 +183,7 @@ PluginArgs :: enum {
 	Line,
 	Event,
 	Item,
+	Query,
 }
 
 PluginStart :: struct {
@@ -191,6 +193,7 @@ PluginStart :: struct {
 	ev:       PluginQueued,
 	item_ref: i32,
 	item:     int,
+	command:  u64,
 }
 
 plugin_tick_add :: proc(t: time.Tick, ms: int) -> time.Tick {
@@ -372,6 +375,10 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 		lua.rawgeti(L, -1, lua.Integer(start.item))
 		lua.remove(L, -2)
 		nargs = 1
+	case .Query:
+		lua.pushodinstring(L, start.line)
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
+		nargs = 2
 	}
 	lua.call(L, nargs, 0, 0, plugin_co_k)
 	return 0
@@ -418,7 +425,7 @@ plugin_task_start :: proc(editor: ^Editor, owner: string, kind: PluginKind, star
 		return 0, true
 	}
 	id = plugin_next_id(p)
-	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event})
+	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command})
 	start := start
 	lua.pushcfunction(th.co, plugin_co_main)
 	lua.pushlightuserdata(th.co, &start)
@@ -815,7 +822,7 @@ plugin_lsp_result :: proc(p: ^Plugins, id: u64) -> (PluginLspResult, bool) {
 
 plugin_busy :: proc(editor: ^Editor) -> bool {
 	p := &editor.plugins
-	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 {
+	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 || plugin_ui_due(p) {
 		return true
 	}
 	for pr in p.procs {
@@ -849,6 +856,9 @@ plugin_timeout_ms :: proc(editor: ^Editor, cap: int) -> int {
 	}
 	for s in p.saves {
 		consider(&best, now, s.deadline)
+	}
+	if p.ui.active && p.ui.query_due {
+		consider(&best, now, p.ui.query_at)
 	}
 	return best
 }
@@ -996,6 +1006,8 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		}
 	}
 	clear(&p.lsp_results)
+
+	plugin_ui_pump(editor)
 
 	clear(&due)
 	for s in p.saves {

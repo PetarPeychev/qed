@@ -370,7 +370,7 @@ filetree_status_pushed :: proc(editor: ^Editor) {
 	t.scanned = true
 	editor_log(editor, .Debug, "Files", fmt.tprintf("file tree status: %d path(s) from %s", len(t.status), t.provider.owner))
 	// an overlay over the tree would lose its selection to a rebuild; the next one picks the status up
-	if t.active && !editor.projsearch.active && !editor.palette.active {
+	if t.active && !editor.plugins.ui.active && !editor.palette.active {
 		filetree_rebuild(editor)
 	}
 	if t.active {
@@ -1896,12 +1896,13 @@ filetree_select_all :: proc(editor: ^Editor) {
 	filetree_preview_touch(editor)
 }
 
-filetree_cmd_search :: proc(editor: ^Editor) {
+filetree_sel_files :: proc(editor: ^Editor) -> []string {
 	t := &editor.filetree
-	lo, hi := filetree_sel_range(t)
-	if lo < 0 || lo >= len(t.entries) || filetree_sel_gone(editor) {
-		return
+	if len(t.entries) == 0 {
+		return nil
 	}
+	lo, hi := filetree_sel_range(t)
+	lo, hi = clamp(lo, 0, len(t.entries) - 1), clamp(hi, 0, len(t.entries) - 1)
 	root := editor.working_root
 
 	// scope_paths holds in-scope files plus their ancestor dirs; the files are the leaves.
@@ -1920,43 +1921,28 @@ filetree_cmd_search :: proc(editor: ^Editor) {
 		}
 	}
 
-	abs_paths := make([dynamic]string, context.temp_allocator)
+	seen := make(map[string]bool, context.temp_allocator)
+	out := make([dynamic]string, context.temp_allocator)
+	add :: proc(out: ^[dynamic]string, seen: ^map[string]bool, path: string) {
+		if path not_in seen {
+			seen[path] = true
+			append(out, path)
+		}
+	}
 	for i in lo ..= hi {
 		e := t.entries[i]
-		if !e.is_dir {
-			append(&abs_paths, e.path)
-			continue
-		}
-		if t.scope == .All {
-			append(&abs_paths, e.path)
+		if !e.is_dir || t.scope == .All {
+			add(&out, &seen, e.path)
 			continue
 		}
 		prefix := strings.concatenate({e.path, "/"}, context.temp_allocator)
 		for path in t.scope_paths {
 			if path not_in ancestors && strings.has_prefix(path, prefix) {
-				append(&abs_paths, path)
+				add(&out, &seen, path)
 			}
 		}
 	}
-
-	seen := make(map[string]bool, context.temp_allocator)
-	paths := make([dynamic]string, context.temp_allocator)
-	for abs in abs_paths {
-		rel := abs
-		if strings.has_prefix(rel, root) {
-			rel = strings.trim_left(rel[len(root):], "/")
-		}
-		if rel == "" || rel in seen {
-			continue
-		}
-		seen[rel] = true
-		append(&paths, strings.clone(rel, context.temp_allocator))
-	}
-	if len(paths) == 0 {
-		editor_log(editor, .Info, "Search", "Nothing to search in selection")
-		return
-	}
-	projsearch_open_scoped(editor, paths[:])
+	return out[:]
 }
 
 filetree_cmd_copy :: proc(editor: ^Editor) {

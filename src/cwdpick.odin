@@ -226,7 +226,6 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 	editor.hover_active = false
 	lsp_restart_all(editor)
 	filetree_root_reset(editor)
-	projsearch_root_reset(&editor.projsearch)
 	editor_log(editor, .Info, "", fmt.tprintf("Working directory: %s", root))
 }
 
