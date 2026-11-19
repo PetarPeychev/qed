@@ -77,6 +77,7 @@ Plugins :: struct {
 	startup_due: bool,
 	current:  ^lua.State,
 	views:    [dynamic]UiView,
+	lists:    [dynamic]PluginList,
 	view_events: [dynamic]UiViewEvent,
 	answer:   PluginAnswer,
 	persist_path: string,
@@ -108,6 +109,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
+	{"cwd/init.lua", #load("../plugins/cwd/init.lua", string)},
 }
 
 g_bundled_plugins: []PluginFile
@@ -1257,8 +1259,8 @@ qed_command_remove :: proc "c" (L: ^lua.State) -> c.int {
 
 plugin_command_remove :: proc(editor: ^Editor, i: int) {
 	p := &editor.plugins
-	if editor.palette.active {
-		palette_close(editor)
+	if pn := pane_find(editor, "palette"); pn != nil && !pn.ctx.lua {
+		pn.dead = true
 	}
 	lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].ref))
 	if p.commands[i].when_ref != 0 {

@@ -20,17 +20,16 @@ e2e_plugin_command_palette :: proc(t: ^testing.T) {
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 
 	e2e_key(&e, .Ctrl_P)
-	testing.expect(t, e.ed.palette.active, "Ctrl+P opens the palette")
+	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
 	e2e_type(&e, "greet: hello")
-	p := &e.ed.palette
-	testing.expect_value(t, palette_command(&e.ed, p.selected).name, "Greet: Hello")
+	testing.expect_value(t, palette_selected(&e), "Greet: Hello")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Greet: Hello"), "the plugin command is listed")
 	testing.expect(t, e2e_grid_has(&e, "Alt+j"), "with its shortcut")
 	testing.expect(t, !e2e_grid_has(&e, "Greet: Hidden"), "a when-gated command is hidden")
 
 	e2e_key(&e, .Enter)
-	testing.expect(t, !e.ed.palette.active, "Enter runs and closes")
+	testing.expect(t, !palette_open_now(&e), "Enter runs and closes")
 	testing.expect_value(t, e.ed.message, "hello from lua")
 	testing.expect_value(t, e.ed.message_source, "Greet")
 

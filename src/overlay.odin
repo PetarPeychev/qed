@@ -21,12 +21,6 @@ fuzzy_list_destroy :: proc(l: ^FuzzyList) {
 	delete(l.matches)
 }
 
-fuzzy_list_reset :: proc(l: ^FuzzyList) {
-	textfield_reset(&l.field)
-	l.selected = 0
-	l.scroll = 0
-}
-
 fuzzy_list_refilter :: proc(l: ^FuzzyList) {
 	clear(&l.matches)
 	l.selected = 0
@@ -95,47 +89,6 @@ ev_alt :: proc(ev: tb2.Event) -> bool {
 	return (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
 }
 
-fuzzy_list_center_mouse :: proc(
-	editor: ^Editor,
-	l: ^FuzzyList,
-	ev: tb2.Event,
-	activate, close: proc(editor: ^Editor),
-	prefix := "> ",
-) {
-	rows := min(len(l.matches), PALETTE_MAX_ROWS)
-	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
-	#partial switch ev.key {
-	case .Mouse_Wheel_Up:
-		overlay_scroll_by(&l.scroll, -WHEEL_SCROLL_LINES, len(l.matches), rows)
-	case .Mouse_Wheel_Down:
-		overlay_scroll_by(&l.scroll, WHEEL_SCROLL_LINES, len(l.matches), rows)
-	case .Mouse_Left:
-		motion := ev_motion(ev)
-		if !mouse_in_rect(ev, box) {
-			if !motion {
-				close(editor)
-			}
-			return
-		}
-		if int(ev.y) == box.y + 1 {
-			overlay_prompt_mouse(&l.field, box.x + 2, box.y + 1, box.w - 4, ev, prefix)
-			return
-		}
-		off := overlay_row_off(ev, Rect{box.x + 1, box.y + 3, box.w - 2, rows})
-		if off < 0 {
-			return
-		}
-		idx := l.scroll + off
-		if idx >= len(l.matches) {
-			return
-		}
-		l.selected = idx
-		if !motion && overlay_double_click(editor, idx) {
-			activate(editor)
-		}
-	}
-}
-
 overlay_list_mouse :: proc(
 	editor: ^Editor,
 	ev: tb2.Event,
@@ -180,33 +133,10 @@ overlay_list_mouse :: proc(
 	return -1, false
 }
 
-fuzzy_list_center_scrollbar :: proc(l: ^FuzzyList, box: Rect, rows: int) {
-	pane_draw_scrollbar(box.x + box.w - 1, box.y + 3, rows, l.scroll, len(l.matches))
-}
-
 overlay_prompt_render :: proc(x, y, w: int, f: ^TextField, prefix := "> ") {
 	pw := visual_width(transmute([]u8)prefix)
 	pane_text(x, y, pw, prefix, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	textfield_render(x + pw, y, w - pw, f)
-}
-
-fuzzy_list_key :: proc(editor: ^Editor, l: ^FuzzyList, ev: tb2.Event, activate, close: proc(editor: ^Editor), rows := PALETTE_MAX_ROWS) -> (refiltered: bool) {
-	#partial switch ev.key {
-	case .Esc:
-		close(editor)
-	case .Enter:
-		activate(editor)
-	case .Arrow_Down:
-		fuzzy_list_move(l, 1, rows)
-	case .Arrow_Up:
-		fuzzy_list_move(l, -1, rows)
-	case:
-		if textfield_key(&l.field, ev) {
-			fuzzy_list_refilter(l)
-			return true
-		}
-	}
-	return false
 }
 
 overlay_row_selected :: proc(i, selected: int, anchor: Maybe(int)) -> bool {
@@ -215,35 +145,6 @@ overlay_row_selected :: proc(i, selected: int, anchor: Maybe(int)) -> bool {
 		return i == selected
 	}
 	return i >= min(a, selected) && i <= max(a, selected)
-}
-
-fuzzy_list_center_render :: proc(editor: ^Editor, l: ^FuzzyList, labels, details: []string, prefix := "> ", anchor: Maybe(int) = nil) {
-	rows := min(len(l.matches), PALETTE_MAX_ROWS)
-	box := pane_center(editor, PALETTE_WIDTH, 2 + rows)
-	inner := pane_draw_box(box)
-
-	overlay_prompt_render(inner.x + 1, inner.y, inner.w - 2, &l.field, prefix)
-	pane_hline(box, inner.y + 1)
-
-	for i in 0 ..< rows {
-		idx := l.scroll + i
-		item := l.matches[idx]
-		y := inner.y + 2 + i
-		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		detail_fg := COLOR_PANE_SHORTCUT_FG
-		if overlay_row_selected(idx, l.selected, anchor) {
-			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			detail_fg = COLOR_PANE_SEL_FG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
-		}
-		pane_text(inner.x + 1, y, inner.w - 2, labels[item], fg, bg)
-		if item < len(details) && details[item] != "" {
-			dw := visual_width(transmute([]u8)details[item])
-			pane_text(inner.x + inner.w - 1 - dw, y, dw, details[item], detail_fg, bg)
-		}
-	}
-
-	fuzzy_list_center_scrollbar(l, box, rows)
 }
 
 OverlayLayout :: struct {

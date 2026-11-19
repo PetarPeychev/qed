@@ -578,8 +578,13 @@ plugin_palette_prefix_and_run :: proc(t: ^testing.T) {
 	defer plugin_test_destroy(ed)
 
 	palette_open(ed)
-	names := fmt.tprintf("|%s|", strings.join(ed.palette.names[:], "|", context.temp_allocator))
-	palette_close(ed)
+	labels := make([dynamic]string, context.temp_allocator)
+	for it in pane_find(ed, "palette").list.items {
+		append(&labels, it.label)
+	}
+	names := fmt.tprintf("|%s|", strings.join(labels[:], "|", context.temp_allocator))
+	pane_end(ed, pane_find(ed, "palette").handle, false)
+	delete(ed.panes)
 	testing.expect(t, strings.contains(names, "|Alpha: Hello|") && strings.contains(names, "|Beta: Hello|"), "the palette shows prefixed names")
 	testing.expect(t, !strings.contains(names, "|Hello|"), "no bare name in the palette")
 

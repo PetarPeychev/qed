@@ -28,7 +28,6 @@ FileTreeMode :: enum {
 	Rename,
 	ConfirmDelete,
 	ConfirmClose,
-	ConfirmRoot,
 }
 
 FileTreeScope :: enum {
@@ -92,7 +91,6 @@ FileTree :: struct {
 	filter:          TextField,
 	delete_selected: int,
 	close_selected:  int,
-	root_target:     string,
 	preview:         Preview,
 	status:          map[string]DiffMark,
 	ignored:         map[string]bool,
@@ -203,7 +201,6 @@ filetree_destroy :: proc(t: ^FileTree) {
 	filetree_filter_cache_clear(t)
 	delete(t.filter_cands)
 	delete(t.filter_last_idx)
-	delete(t.root_target)
 	filetree_base_reset(t)
 }
 
@@ -370,7 +367,7 @@ filetree_status_pushed :: proc(editor: ^Editor) {
 	t.scanned = true
 	editor_log(editor, .Debug, "Files", fmt.tprintf("file tree status: %d path(s) from %s", len(t.status), t.provider.owner))
 	// an overlay over the tree would lose its selection to a rebuild; the next one picks the status up
-	if t.active && !editor.palette.active && pane_focus(editor) == nil {
+	if t.active && pane_focus(editor) == nil {
 		filetree_rebuild(editor)
 	}
 	if t.active {
@@ -1523,7 +1520,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		filetree_repath_buffers(editor, old, full)
 		filetree_filter_invalidate(t)
 		filetree_reveal(editor, full)
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
+	case .Nav, .ConfirmDelete, .ConfirmClose:
 	}
 }
 
@@ -1818,43 +1815,8 @@ filetree_close_execute :: proc(editor: ^Editor) {
 	}
 }
 
-filetree_root_question :: proc(editor: ^Editor) -> string {
-	return close_question(editor_outside_buffers(editor, editor.filetree.root_target))
-}
-
-filetree_root_execute :: proc(editor: ^Editor) {
-	t := &editor.filetree
-	t.mode = .Nav
-	if t.close_selected == 1 {
-		editor_change_root(editor, t.root_target)
-	}
-}
-
-filetree_cmd_set_root :: proc(editor: ^Editor) {
-	t := &editor.filetree
-	if filetree_sel_gone(editor) {
-		return
-	}
-	target := filetree_target_dir(editor)
-	if target == editor.working_root {
-		return
-	}
-	if _, unsaved := editor_outside_buffers(editor, target); unsaved > 0 {
-		delete(t.root_target)
-		t.root_target = strings.clone(target)
-		t.mode = .ConfirmRoot
-		t.close_selected = 0
-		return
-	}
-	editor_change_root(editor, target)
-}
-
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
-	if t.mode == .ConfirmRoot {
-		dialog_key(editor, ev, filetree_root_question(editor), filetree_close_actions[:], &t.close_selected, filetree_root_execute, filetree_close_close)
-		return
-	}
 	if t.mode == .ConfirmClose {
 		dialog_key(editor, ev, filetree_close_question(editor), filetree_close_actions[:], &t.close_selected, filetree_close_execute, filetree_close_close)
 		return
@@ -2189,9 +2151,6 @@ filetree_render :: proc(editor: ^Editor) {
 	if t.mode == .ConfirmClose {
 		dialog_render(editor, filetree_close_question(editor), filetree_close_actions[:], t.close_selected)
 	}
-	if t.mode == .ConfirmRoot {
-		dialog_render(editor, filetree_root_question(editor), filetree_close_actions[:], t.close_selected)
-	}
 }
 
 filetree_size_paint :: proc(x, y, max_x: int, label: string, bg: tb2.Color) {
@@ -2250,7 +2209,7 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 		return "New: "
 	case .Rename:
 		return "Rename: "
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
+	case .Nav, .ConfirmDelete, .ConfirmClose:
 	}
 	return ""
 }
@@ -2259,7 +2218,7 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	t := &editor.filetree
 	inner := lay.inner
 	switch t.mode {
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
+	case .Nav, .ConfirmDelete, .ConfirmClose:
 		Chip :: struct {
 			label: string,
 			on:    bool,
@@ -2307,10 +2266,6 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
-	if t.mode == .ConfirmRoot {
-		dialog_mouse(editor, ev, filetree_root_question(editor), filetree_close_actions[:], &t.close_selected, filetree_root_execute, filetree_close_close)
-		return
-	}
 	if t.mode == .ConfirmClose {
 		dialog_mouse(editor, ev, filetree_close_question(editor), filetree_close_actions[:], &t.close_selected, filetree_close_execute, filetree_close_close)
 		return

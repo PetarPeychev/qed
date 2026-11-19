@@ -134,7 +134,6 @@ commands := [?]Command {
 	{name = "Find", run = find_open},
 	{name = "Replace", run = find_open_replace},
 	{name = "Find Line", run = linefind_open},
-	{name = "Change Working Directory", run = cwdpick_open},
 	{name = "Go to Start of File", run = cmd_buffer_start},
 	{name = "Go to End of File", run = cmd_buffer_end},
 	{name = "Jump Back", run = jump_back},
@@ -178,7 +177,6 @@ filetree_commands := [?]Command {
 	{name = "Rename", config_name = "File Tree: Rename", run = filetree_cmd_rename},
 	{name = "New", config_name = "File Tree: New", run = filetree_cmd_new},
 	{name = "Select All", bind_from = "Select All", run = filetree_select_all},
-	{name = "Set as Working Directory", bind_from = "Change Working Directory", run = filetree_cmd_set_root},
 	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
 	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", run = filetree_toggle_diff},
@@ -220,7 +218,7 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 		switch name {
 		case "File Tree", "File Tree: Open", "File Tree: Changed", "File Tree: Unsaved",
 		     "Terminal: Toggle",
-		     "Debug: Plugins", "Debug: Message Log", "Change Working Directory", "Quit":
+		     "Debug: Plugins", "Debug: Message Log", "Quit":
 			return true
 		}
 		return false
@@ -308,108 +306,26 @@ command_matches :: proc(ev: tb2.Event, name: string) -> bool {
 	return false
 }
 
-Palette :: struct {
-	using list: FuzzyList,
-	names:      [dynamic]string,
-	indices:    [dynamic]int,
-	filetree:   bool,
-}
-
-palette_destroy :: proc(p: ^Palette) {
-	fuzzy_list_destroy(&p.list)
-	delete(p.names)
-	delete(p.indices)
-}
-
 palette_open :: proc(editor: ^Editor) {
-	p := &editor.palette
-	p.active = true
-	p.filetree = editor.filetree.active
-	fuzzy_list_reset(&p.list)
 	editor_clear_message(editor)
-	clear(&p.names)
-	clear(&p.indices)
-	if p.filetree {
-		for cmd, i in filetree_commands {
-			append(&p.names, cmd.name)
-			append(&p.indices, i)
-		}
-	} else {
-		for cmd, i in commands {
-			if !command_available(editor, cmd.name) {
-				continue
-			}
-			append(&p.names, cmd.name)
-			append(&p.indices, i)
-		}
+	spec := Pane {
+		id = "palette",
+		place = .Center,
+		size = .Palette,
+		chord = "Command Palette",
+		fields = []PaneField{{mode = .Filter}},
+		has_list = true,
+		list = {source = {kind = .Commands, filetree = editor.filetree.active}},
+		on = {activate = palette_activate},
 	}
-	base := len(filetree_commands) if p.filetree else len(commands)
-	for cmd, i in editor.plugins.commands {
-		if cmd.filetree != p.filetree || (editor.welcome && !p.filetree && !cmd.welcome) || !plugin_command_when(editor, cmd) {
-			continue
-		}
-		append(&p.names, cmd.name)
-		append(&p.indices, base + i)
+	if editor.filetree.active {
+		spec.kind, spec.over = .Child, &editor.filetree.active
 	}
-	p.fuzzy = fuzzy_begin(p.names[:])
-	fuzzy_list_refilter(&p.list)
-}
-
-palette_command :: proc(editor: ^Editor, match: int) -> Command {
-	return palette_command_at(editor, editor.palette.matches[match])
-}
-
-palette_command_at :: proc(editor: ^Editor, item: int) -> Command {
-	p := &editor.palette
-	idx := p.indices[item]
-	base := len(filetree_commands) if p.filetree else len(commands)
-	if idx >= base {
-		return editor.plugins.commands[idx - base]
-	}
-	if p.filetree {
-		return filetree_commands[idx]
-	}
-	return commands[idx]
-}
-
-palette_close :: proc(editor: ^Editor) {
-	editor.palette.active = false
-	fuzzy_end(&editor.palette.fuzzy)
-}
-
-palette_execute :: proc(editor: ^Editor) {
-	p := &editor.palette
-	if len(p.matches) == 0 {
-		return
-	}
-	cmd := palette_command(editor, p.selected)
-	palette_close(editor)
-	command_run(editor, cmd)
-}
-
-palette_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	if command_matches(ev, "Command Palette") {
-		palette_close(editor)
-		return
-	}
-	fuzzy_list_key(editor, &editor.palette.list, ev, palette_execute, palette_close)
-}
-
-palette_paste :: proc(editor: ^Editor, text: string) {
-	if textfield_insert_flat(&editor.palette.field, text) {
-		fuzzy_list_refilter(&editor.palette.list)
+	if p := pane_open(editor, spec); p != nil {
+		pane_list_load(editor, p)
 	}
 }
 
-palette_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	fuzzy_list_center_mouse(editor, &editor.palette.list, ev, palette_execute, palette_close)
-}
-
-palette_render :: proc(editor: ^Editor) {
-	p := &editor.palette
-	shortcuts := make([]string, len(p.names), context.temp_allocator)
-	for &sc, i in shortcuts {
-		_, _, sc = command_effective_bind(palette_command_at(editor, i))
-	}
-	fuzzy_list_center_render(editor, &p.list, p.names[:], shortcuts)
+palette_activate :: proc(editor: ^Editor, p: ^Pane) {
+	command_run(editor, list_command(editor, &p.list.source, p.list.items[pane_item_index(p, p.list.sel)].src))
 }

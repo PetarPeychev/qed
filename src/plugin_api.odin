@@ -32,6 +32,7 @@ qed_api := [?]lua.L_Reg {
 	{"close", qed_close},
 	{"jump", qed_jump},
 	{"root", qed_root},
+	{"set_root", qed_set_root},
 	{"config", qed_config},
 	{"options", qed_options},
 	{"meta", qed_meta},
@@ -83,6 +84,7 @@ qed_fs_api := [?]lua.L_Reg {
 	{"exists", qed_fs_exists},
 	{"stat", qed_fs_stat},
 	{"list", qed_fs_list},
+	{"dirs", qed_fs_dirs},
 	{nil, nil},
 }
 
@@ -1056,6 +1058,21 @@ qed_root :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	lua.pushodinstring(L, entry.editor.working_root)
+	return 1
+}
+
+qed_set_root :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	path := api_path(editor, api_string(L, 1))
+	if !os.is_dir(path) {
+		return api_fail(L, fmt.tprintf("not a directory: %s", path))
+	}
+	if path != editor.working_root {
+		editor_change_root(editor, path)
+	}
+	lua.pushboolean(L, true)
 	return 1
 }
 

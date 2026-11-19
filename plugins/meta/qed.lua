@@ -105,6 +105,12 @@ function qed.jump(target, pos) end
 ---@return string
 function qed.root() end
 
+---Switches the working root to the directory `path` (relative to `qed.root()`): closes every buffer outside it, unsaved ones included (confirm first), restarts the language servers, resets the file tree and fires `root_changed`. A no-op on the current root.
+---@param path string
+---@return true|nil ok
+---@return string|nil err "not a directory: <path>"
+function qed.set_root(path) end
+
 ---Declares this plugin's config keys and defaults; returns the merged config (`plugins.<id>` over `defaults`; `enabled` and `keybinds` are reserved). Setup only, once per load.
 ---@generic T: table
 ---@param defaults T
@@ -221,12 +227,16 @@ function qed.every(ms, fn) end
 
 ---@class qed.UiField
 ---@field prompt? string prefix, default `"> "`
----@field text? string initial text, fully selected unless `mode` is input; without it a pane with an `id` restores the last text
----@field mode? "filter"|"query"|"input" filter (default) fuzzy-filters the list per key; query fires `on.query` at open and 120 ms after typing stops; input submits its text on Enter
+---@field text? string initial text, fully selected unless `mode` is input or path; without it a pane with an `id` restores the last text
+---@field mode? "filter"|"query"|"input"|"path" filter (default) fuzzy-filters the list per key; query fires `on.query` at open and 120 ms after typing stops; input submits its text on Enter; path drives a `qed.fs.dirs` list (Tab or `/` at the end drills into the highlighted dir, Backspace after `/` drops a segment) and submits on Enter, its text reported as an absolute path (`~` and relative to `qed.root()` resolved)
 ---@field count? boolean shows the match count (`N+` past `list.max` or after `set{more}`) at the end of the row
 
+---A core-owned item source (`qed.fs.dirs`). Items live in core; only activated or changed ones reach Lua, as `{label, path?, detail?}` tables. Freed when collected; an open view keeps its own copy.
+---@class qed.List
+---@field id integer
+
 ---@class qed.UiList
----@field items? (string|qed.UiItem)[]
+---@field items? (string|qed.UiItem)[]|qed.List
 ---@field multi? boolean Shift+Up/Down selects a range
 ---@field max? integer items past it are dropped and the count shows `N+`
 ---@field empty? string dim hint while the list is empty
@@ -725,6 +735,11 @@ function qed.fs.stat(path) end
 ---@return string[]|nil
 ---@return string|nil err
 function qed.fs.list(dir) end
+
+---A list handle over the subdirectories of `path` (default `qed.root()`; symlinks to dirs included, dotfiles only while the file tree shows them), items `{label = name, path}` sorted by name. Under a `path` field it follows the field instead: the dir its text names, prefix-matched (smart case) against the last segment.
+---@param path? string
+---@return qed.List
+function qed.fs.dirs(path) end
 
 qed.json = {}
 

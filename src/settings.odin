@@ -756,6 +756,7 @@ CONFIG_KEYBINDS_MOVED :: [?]struct {
 	{"Toggle Final Newline on Save", "format", "Toggle Final Newline on Save"},
 	{"Git: Set Diff Base", "git", "Set Diff Base"},
 	{"File Tree: Restore File", "git", "Restore File"},
+	{"Change Working Directory", "cwd", "Change Working Directory"},
 }
 
 config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {

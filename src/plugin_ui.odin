@@ -38,6 +38,7 @@ UiViewEvent :: struct {
 	handle:   u64,
 	kind:     ViewEvent,
 	sel:      []int,
+	items:    []PaneItem,
 	text:     string,
 	has_text: bool,
 }
@@ -47,8 +48,15 @@ PluginAnswer :: struct {
 	ok:        bool,
 	items_ref: i32,
 	sel:       []int,
+	items:     []PaneItem,
 	text:      string,
 	has_text:  bool,
+}
+
+PluginList :: struct {
+	id:    u64,
+	owner: string,
+	src:   ListSource,
 }
 
 @(private = "file")
@@ -103,7 +111,25 @@ plugin_view_release :: proc(p: ^Plugins, i: int) {
 
 plugin_view_event_free :: proc(ev: UiViewEvent) {
 	delete(ev.sel)
+	for it in ev.items {
+		pane_item_free(it)
+	}
+	delete(ev.items)
 	delete(ev.text)
+}
+
+plugin_list_free :: proc(p: ^Plugins, i: int) {
+	list_source_free(&p.lists[i].src)
+	ordered_remove(&p.lists, i)
+}
+
+plugin_list_index :: proc(p: ^Plugins, id: u64) -> int {
+	for l, i in p.lists {
+		if l.id == id {
+			return i
+		}
+	}
+	return -1
 }
 
 plugin_ui_destroy :: proc(p: ^Plugins) {
@@ -115,6 +141,10 @@ plugin_ui_destroy :: proc(p: ^Plugins) {
 		plugin_view_event_free(ev)
 	}
 	delete(p.view_events)
+	for len(p.lists) > 0 {
+		plugin_list_free(p, len(p.lists) - 1)
+	}
+	delete(p.lists)
 }
 
 plugin_ui_unload :: proc(editor: ^Editor, owner: string) {
@@ -128,6 +158,11 @@ plugin_ui_unload :: proc(editor: ^Editor, owner: string) {
 		if plugin_view_index(p, p.view_events[i].handle) < 0 {
 			plugin_view_event_free(p.view_events[i])
 			ordered_remove(&p.view_events, i)
+		}
+	}
+	for i := len(p.lists) - 1; i >= 0; i -= 1 {
+		if p.lists[i].owner == owner {
+			plugin_list_free(p, i)
 		}
 	}
 	pane_unload(editor, owner)
@@ -149,8 +184,14 @@ plugin_command_id_matches :: proc(editor: ^Editor, id: u64, ev: tb2.Event) -> bo
 plugin_view_queue :: proc(editor: ^Editor, pn: ^Pane, kind: ViewEvent, sel: []int) {
 	ev := UiViewEvent{handle = pn.handle, kind = kind, sel = sel}
 	if len(pn.fields) > 0 {
-		ev.text = strings.clone(textfield_str(&pn.fields[0].field))
+		ev.text = strings.clone(pane_field_value(editor, &pn.fields[0]))
 		ev.has_text = true
+	}
+	if pn.list.source.kind != .None && len(sel) > 0 {
+		ev.items = make([]PaneItem, len(sel))
+		for idx, i in sel {
+			ev.items[i] = pane_item_clone(pn.list.items[idx])
+		}
 	}
 	append(&editor.plugins.view_events, ev)
 }
@@ -171,16 +212,13 @@ plugin_view_activate :: proc(editor: ^Editor, pn: ^Pane) {
 }
 
 plugin_view_activate_now :: proc(editor: ^Editor, pn: ^Pane) {
-	if !pn.has_list {
-		for f in pn.fields {
-			if f.mode == .Input {
-				plugin_view_queue(editor, pn, .Activate, nil)
-				return
-			}
+	for f in pn.fields {
+		if f.mode == .Input || f.mode == .Path {
+			plugin_view_queue(editor, pn, .Activate, nil)
+			return
 		}
-		return
 	}
-	if pane_count(pn) == 0 {
+	if !pn.has_list || pane_count(pn) == 0 {
 		return
 	}
 	lo, hi := pn.list.sel, pn.list.sel
@@ -270,7 +308,13 @@ plugin_views_flush :: proc(editor: ^Editor) {
 			continue
 		}
 		plugin_task_kill(editor, v.change_task)
-		task, finished := plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Change], args = .View_Item, view_ref = v.view_ref, item_ref = v.items_ref, item = item + 1})
+		start := PluginStart{ref = v.on[.Change], args = .View_Item, view_ref = v.view_ref, item_ref = v.items_ref, item = item + 1}
+		one: [1]PaneItem
+		if pn.list.source.kind != .None {
+			one[0] = pn.list.items[item]
+			start.pitems = one[:]
+		}
+		task, finished := plugin_task_start(editor, v.owner, .Command, start)
 		if j := plugin_view_index(p, h); j >= 0 {
 			p.views[j].change_task = 0 if finished else task
 		}
@@ -301,19 +345,92 @@ plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
 		plugin_task_kill(editor, v.query_task)
 	}
 	prev := p.answer
-	p.answer = {handle = ev.handle, ok = ev.kind == .Activate, items_ref = v.items_ref, sel = ev.sel, text = ev.text, has_text = ev.has_text}
+	p.answer = {handle = ev.handle, ok = ev.kind == .Activate, items_ref = v.items_ref, sel = ev.sel, items = ev.items, text = ev.text, has_text = ev.has_text}
 	for w in plugin_waiters(p, .Pane, ev.handle) {
 		plugin_task_resume(editor, w, 0)
 	}
 	p.answer = prev
 	if ref := v.on[ev.kind]; ref != 0 {
 		args := PluginArgs.View_Items if ev.kind == .Activate else .View
-		plugin_task_start(editor, v.owner, .Command, {ref = ref, args = args, view_ref = v.view_ref, item_ref = v.items_ref, items = ev.sel})
+		plugin_task_start(editor, v.owner, .Command, {ref = ref, args = args, view_ref = v.view_ref, item_ref = v.items_ref, items = ev.sel, pitems = ev.items})
 	}
 	if ev.kind == .Close {
 		if vi = plugin_view_index(p, ev.handle); vi >= 0 {
 			plugin_view_release(p, vi)
 		}
+	}
+}
+
+qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	path := editor.working_root
+	if lua.type(L, 1) > .NIL {
+		path = api_path(editor, api_string(L, 1))
+	}
+	pl := api_loaded(L, editor)
+	lua.settop(L, 0)
+	id := plugin_next_id(p)
+	api_handle_push(L, id, {})
+	lua.createtable(L, 0, 2)
+	lua.pushodinstring(L, "qed.List")
+	lua.setfield(L, -2, "__name")
+	lua.pushvalue(L, lua.upvalueindex(1))
+	lua.pushinteger(L, lua.Integer(id))
+	lua.pushcclosure(L, qed_list_gc, 2)
+	lua.setfield(L, -2, "__gc")
+	lua.setmetatable(L, -2)
+	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = {kind = .Dirs, path = strings.clone(path)}})
+	return 1
+}
+
+qed_list_gc :: proc "c" (L: ^lua.State) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil {
+		return 0
+	}
+	context = entry.ctx
+	p := &entry.editor.plugins
+	if i := plugin_list_index(p, api_handle_id(L)); i >= 0 {
+		plugin_list_free(p, i)
+	}
+	return 0
+}
+
+api_list_handle :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> int {
+	idx := lua.absindex(L, idx)
+	if lua.getmetatable(L, idx) == 0 {
+		return -1
+	}
+	lua.getfield(L, -1, "__name")
+	name, _ := lua.toodinstring(L, -1)
+	is_list := name == "qed.List"
+	lua.pop(L, 2)
+	if !is_list {
+		return -1
+	}
+	id, _ := api_field_int(L, idx, "id")
+	i := plugin_list_index(&editor.plugins, u64(id))
+	if i < 0 {
+		plugin_raise(L, "list handle is gone")
+	}
+	return i
+}
+
+api_pane_item_push :: proc(L: ^lua.State, it: PaneItem) {
+	lua.L_checkstack(L, 3, "item")
+	lua.createtable(L, 0, 3)
+	lua.pushodinstring(L, it.label)
+	lua.setfield(L, -2, "label")
+	if it.path != "" {
+		lua.pushodinstring(L, it.path)
+		lua.setfield(L, -2, "path")
+	}
+	if it.detail != "" {
+		lua.pushodinstring(L, it.detail)
+		lua.setfield(L, -2, "detail")
 	}
 }
 
@@ -524,8 +641,10 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 				f.mode = .Query
 			case "input":
 				f.mode = .Input
+			case "path":
+				f.mode = .Path
 			case:
-				plugin_raise(L, `mode must be "filter", "query" or "input"`)
+				plugin_raise(L, `mode must be "filter", "query", "input" or "path"`)
 			}
 			f.count = api_opt_bool(L, ft, "count")
 			lua.pop(L, 1)
@@ -544,7 +663,11 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		spec.has_list = true
 		#partial switch lua.getfield(L, t, "items") {
 		case .TABLE:
-			items = api_view_items(L, editor, -1)
+			if li := api_list_handle(L, editor, -1); li >= 0 {
+				spec.list.source = p.lists[li].src
+			} else {
+				items = api_view_items(L, editor, -1)
+			}
 		case .NIL:
 		case:
 			plugin_raise(L, "items must be a table")
@@ -687,11 +810,11 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 			text = saved.texts[i]
 		}
 		textfield_set(&f.field, text)
-		if f.mode != .Input {
+		if f.mode != .Input && f.mode != .Path {
 			textfield_select_all(&f.field)
 		}
 	}
-	pane_refilter(pn)
+	pane_list_load(editor, pn)
 	rows := pane_geom(editor, pn).list.h
 	if selected > 0 {
 		pane_select(pn, selected - 1, rows)
@@ -716,7 +839,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		view_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX)),
 	}
 	lua.createtable(L, c.int(keep), 0)
-	if lua.getfield(L, 1, "list") == .TABLE && lua.getfield(L, -1, "items") == .TABLE {
+	if lua.getfield(L, 1, "list") == .TABLE && lua.getfield(L, -1, "items") == .TABLE && spec.list.source.kind == .None {
 		api_items_copy_order(L, lua.gettop(L), lua.gettop(L) - 2, perm)
 	}
 	lua.settop(L, 3)
@@ -794,6 +917,7 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	lua.L_unref(L, lua.REGISTRYINDEX, c.int(p.views[vi].items_ref))
 	p.views[vi].items_ref = ref
 	pn = &editor.panes[pane_index(editor, handle)]
+	list_source_free(&pn.list.source)
 	pane_items_clear(pn)
 	pane_items_add(pn, api_items_ordered(items, perm))
 	pn.list.more = more
@@ -987,7 +1111,14 @@ qed_view_wait_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) ->
 		lua.pushnil(L)
 		return 1
 	}
-	if a.ok {
+	if a.ok && len(a.items) > 0 {
+		lua.createtable(L, c.int(len(a.items)), 0)
+		for it, i in a.items {
+			api_pane_item_push(L, it)
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+		lua.pushinteger(L, lua.Integer(a.sel[0] + 1))
+	} else if a.ok {
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(a.items_ref))
 		lua.createtable(L, c.int(len(a.sel)), 0)
 		for idx, i in a.sel {

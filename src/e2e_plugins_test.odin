@@ -364,7 +364,7 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushboolean(L, b32(ed.filetree.active))
 	lua.setfield(L, -2, "tree")
-	lua.pushboolean(L, b32(ed.palette.active))
+	lua.pushboolean(L, b32(pane_find(ed, "palette") != nil))
 	lua.setfield(L, -2, "palette")
 	lua.createtable(L, c.int(len(ed.plugins.status)), 0)
 	for s, i in ed.plugins.status {

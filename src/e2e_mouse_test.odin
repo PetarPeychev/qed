@@ -120,13 +120,14 @@ e2e_mouse_palette_wheel :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	e2e_key(&e, .Ctrl_P)
-	testing.expect(t, e.ed.palette.active, "Ctrl+P opens the palette")
-	testing.expect(t, len(e.ed.palette.matches) > PALETTE_MAX_ROWS, "more commands than fit")
+	p := pane_find(&e.ed, "palette")
+	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
+	testing.expect(t, pane_count(p) > PALETTE_MAX_ROWS, "more commands than fit")
 
 	e2e_mouse(&e, 0, 0, .Mouse_Wheel_Down)
-	testing.expect(t, e.ed.palette.list.scroll > 0, "wheel-down scrolls the palette")
+	testing.expect(t, p.list.scroll > 0, "wheel-down scrolls the palette")
 	e2e_mouse(&e, 0, 0, .Mouse_Wheel_Up)
-	testing.expect_value(t, e.ed.palette.list.scroll, 0)
+	testing.expect_value(t, p.list.scroll, 0)
 }
 
 // Line jump (Ctrl+G): a single click selects the row under the pointer.

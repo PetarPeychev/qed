@@ -137,6 +137,7 @@ PaneFieldMode :: enum {
 	Input,
 	Filter,
 	Query,
+	Path,
 }
 
 PaneField :: struct {
@@ -148,7 +149,7 @@ PaneField :: struct {
 
 PaneItem :: struct {
 	label, detail, path, key: string,
-	row:                      int,
+	row, src:                 int,
 }
 
 PaneLine :: struct {
@@ -173,6 +174,7 @@ PaneList :: struct {
 	restore: string,
 	sort:    bool,
 	moved:   bool,
+	source:  ListSource,
 }
 
 PaneHandler :: proc(editor: ^Editor, p: ^Pane)
@@ -206,6 +208,7 @@ Pane :: struct {
 	preview:      Preview,
 	footer:       []PaneHint,
 	toggle:       u64,
+	chord:        string,
 	query_due:    bool,
 	query_at:     time.Tick,
 	accept:       bool,
@@ -265,6 +268,7 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	editor.pane_seq += 1
 	p.handle = editor.pane_seq
 	p.id = strings.clone(spec.id)
+	p.chord = strings.clone(spec.chord)
 	p.title = strings.clone(spec.title)
 	p.text = pane_lines_clone(spec.text)
 	p.has_list = spec.has_list || len(spec.list.items) > 0
@@ -272,6 +276,7 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	p.list.matches = {}
 	pane_items_add(&p, spec.list.items[:])
 	p.list.empty = strings.clone(spec.list.empty)
+	p.list.source = list_source_clone(spec.list.source)
 	p.list.hint = ""
 	p.list.restore = ""
 	p.footer = make([]PaneHint, len(spec.footer))
@@ -315,7 +320,7 @@ pane_item_free :: proc(it: PaneItem) {
 }
 
 pane_item_clone :: proc(it: PaneItem) -> PaneItem {
-	return {strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), strings.clone(it.key), it.row}
+	return {strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), strings.clone(it.key), it.row, it.src}
 }
 
 pane_items_add :: proc(p: ^Pane, items: []PaneItem) {
@@ -334,6 +339,7 @@ pane_items_clear :: proc(p: ^Pane) {
 
 pane_free :: proc(p: ^Pane) {
 	delete(p.id)
+	delete(p.chord)
 	delete(p.title)
 	pane_lines_free(p.text)
 	pane_items_clear(p)
@@ -342,6 +348,7 @@ pane_free :: proc(p: ^Pane) {
 	delete(p.list.empty)
 	delete(p.list.hint)
 	delete(p.list.restore)
+	list_source_free(&p.list.source)
 	for h in p.footer {
 		delete(h.label)
 		delete(h.cmd)
@@ -576,7 +583,7 @@ pane_stack_paste :: proc(editor: ^Editor, text: string) -> bool {
 	if p == nil {
 		return false
 	}
-	pane_paste(p, text)
+	pane_paste(editor, p, text)
 	pane_stack_fit(editor, false)
 	return true
 }
@@ -715,7 +722,7 @@ pane_restore :: proc(p: ^Pane, rows: int) {
 	}
 }
 
-pane_field_changed :: proc(p: ^Pane, f: ^PaneField) {
+pane_field_changed :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
 	p.accept = false
 	delete(p.list.restore)
 	p.list.restore = ""
@@ -725,6 +732,8 @@ pane_field_changed :: proc(p: ^Pane, f: ^PaneField) {
 	case .Query:
 		p.query_due = true
 		p.query_at = time.tick_add(time.tick_now(), PANE_QUERY_DEBOUNCE_MS * time.Millisecond)
+	case .Path:
+		pane_list_load(editor, p)
 	case .Input:
 	}
 }
@@ -957,9 +966,9 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 			pane_fill_row(g.list.x, y, g.list.w, fg, bg)
 		}
 		pane_text(g.list.x + 1, y, lw, it.label, fg, bg)
-		if it.detail != "" {
-			dw := visual_width(transmute([]u8)it.detail)
-			pane_text(g.list.x + g.list.w - 1 - dw, y, dw, it.detail, dfg, bg)
+		if detail := list_item_detail(editor, p, it); detail != "" {
+			dw := visual_width(transmute([]u8)detail)
+			pane_text(g.list.x + g.list.w - 1 - dw, y, dw, detail, dfg, bg)
 		}
 	}
 	if p.has_list {
@@ -980,13 +989,19 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 }
 
 pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
-	if p.toggle != 0 && plugin_command_id_matches(editor, p.toggle, ev) {
+	if (p.toggle != 0 && plugin_command_id_matches(editor, p.toggle, ev)) || (p.chord != "" && command_matches(ev, p.chord)) {
 		return .Close
+	}
+	if len(p.fields) > 0 && p.fields[p.focus].mode == .Path && pane_path_key(editor, p, &p.fields[p.focus], ev) {
+		return .None
 	}
 	#partial switch ev.key {
 	case .Esc:
 		return .Close
 	case .Enter:
+		if !p.ctx.lua && p.has_list && pane_count(p) == 0 {
+			return .None
+		}
 		return .Activate
 	case .Arrow_Up, .Arrow_Down, .Pgup, .Pgdn:
 		g := pane_geom(editor, p)
@@ -1029,7 +1044,7 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	if len(p.fields) > 0 {
 		f := &p.fields[p.focus]
 		if textfield_key(&f.field, ev) {
-			pane_field_changed(p, f)
+			pane_field_changed(editor, p, f)
 		}
 	}
 	return .None
@@ -1068,6 +1083,10 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 			delete(p.list.restore)
 			p.list.restore = ""
 			if !motion && overlay_double_click(editor, i) {
+				if f := pane_path(p); f != nil {
+					pane_path_complete(editor, p, f)
+					return .None
+				}
 				return .Activate
 			}
 		}
@@ -1086,12 +1105,12 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	return .None
 }
 
-pane_paste :: proc(p: ^Pane, text: string) {
+pane_paste :: proc(editor: ^Editor, p: ^Pane, text: string) {
 	if len(p.fields) == 0 {
 		return
 	}
 	f := &p.fields[p.focus]
 	if textfield_insert_flat(&f.field, text) {
-		pane_field_changed(p, f)
+		pane_field_changed(editor, p, f)
 	}
 }

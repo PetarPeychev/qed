@@ -53,8 +53,6 @@ Editor :: struct {
 	accel_tick:      time.Tick,
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
-	palette:         Palette,
-	cwdpick:         CwdPick,
 	linefind:        LineFind,
 	find:            Find,
 	rename:          Rename,
@@ -173,8 +171,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	editor_log_destroy(editor)
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
-	palette_destroy(&editor.palette)
-	cwdpick_destroy(&editor.cwdpick)
 	linefind_destroy(&editor.linefind)
 	find_destroy(&editor.find)
 	rename_destroy(&editor.rename)
@@ -218,6 +214,23 @@ editor_set_language :: proc(editor: ^Editor, b: ^Buffer, lang: Language) -> bool
 	return true
 }
 
+editor_change_root :: proc(editor: ^Editor, root: string) {
+	for i := len(editor.buffers) - 1; i >= 0; i -= 1 {
+		b := &editor.buffers[i]
+		if b.path != "" && !path_under(b.path, root) {
+			editor_close_index(editor, i)
+		}
+	}
+	root := strings.clone(root)
+	plugin_queue(editor, {event = .Root_Changed, a = editor.working_root, b = root})
+	delete(editor.working_root)
+	editor.working_root = root
+	editor.hover_active = false
+	lsp_restart_all(editor)
+	filetree_root_reset(editor)
+	editor_log(editor, .Info, "", fmt.tprintf("Working directory: %s", root))
+}
+
 editor_gutter_width :: proc(editor: ^Editor) -> int {
 	return digit_count(len(editor_buffer(editor).lines)) + 2
 }
@@ -236,14 +249,12 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [10]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [8]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
 		{&editor.pluginview.active, pluginview_dispatch_key, pluginview_render, pluginview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
-		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
-		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
 		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse, rename_paste},
@@ -338,10 +349,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			}
 			if command_matches(ev, "Debug: Plugins") {
 				pluginview_open(editor)
-				return
-			}
-			if command_matches(ev, "Change Working Directory") {
-				cwdpick_open(editor)
 				return
 			}
 			if command_matches(ev, "Quit") {
@@ -1227,10 +1234,6 @@ editor_render :: proc(editor: ^Editor) {
 
 	pane_stack_render(editor, true)
 	covered := false
-	// legacy 2-deep stack: remove once the palette is a Pane (M2)
-	if editor.palette.active && editor.filetree.active {
-		filetree_render(editor)
-	}
 	for ov in editor_overlays(editor) {
 		if ov.active^ {
 			ov.render(editor)

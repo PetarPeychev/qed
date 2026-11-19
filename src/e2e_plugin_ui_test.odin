@@ -334,9 +334,15 @@ e2e_plugin_ui_busy :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	e2e_key(&e, .Ctrl_P)
 	ui_run(t, &e, "UI: Strings")
-	testing.expect(t, test_view(&e.ed).over == &e.ed.palette.active, "a pick over an overlay sits on it")
+	testing.expect_value(t, test_view(&e.ed).parent, pane_find(&e.ed, "palette").handle)
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect(t, palette_open_now(&e), "Esc returns to the palette")
+	e2e_key(&e, .Esc)
+	e2e_key(&e, .Ctrl_F)
+	ui_run(t, &e, "UI: Strings")
+	testing.expect(t, test_view(&e.ed).over == &e.ed.find.active, "a pick over an overlay sits on it")
+	e2e_key(&e, .Esc)
 }
 
 @(test)

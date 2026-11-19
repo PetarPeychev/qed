@@ -197,6 +197,7 @@ PluginStart :: struct {
 	item_ref: i32,
 	item:     int,
 	items:    []int,
+	pitems:   []PaneItem,
 	view_ref: i32,
 	command:  u64,
 	user:     bool,
@@ -382,19 +383,31 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 		nargs = 1
 	case .View_Item:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
-		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
-		lua.rawgeti(L, -1, lua.Integer(start.item))
-		lua.remove(L, -2)
+		if len(start.pitems) > 0 {
+			api_pane_item_push(L, start.pitems[0])
+		} else {
+			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
+			lua.rawgeti(L, -1, lua.Integer(start.item))
+			lua.remove(L, -2)
+		}
 		nargs = 2
 	case .View_Items:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
-		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
-		lua.createtable(L, c.int(len(start.items)), 0)
-		for idx, i in start.items {
-			lua.rawgeti(L, -2, lua.Integer(idx + 1))
-			lua.rawseti(L, -2, lua.Integer(i + 1))
+		if len(start.pitems) > 0 {
+			lua.createtable(L, c.int(len(start.pitems)), 0)
+			for it, i in start.pitems {
+				api_pane_item_push(L, it)
+				lua.rawseti(L, -2, lua.Integer(i + 1))
+			}
+		} else {
+			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
+			lua.createtable(L, c.int(len(start.items)), 0)
+			for idx, i in start.items {
+				lua.rawgeti(L, -2, lua.Integer(idx + 1))
+				lua.rawseti(L, -2, lua.Integer(i + 1))
+			}
+			lua.remove(L, -2)
 		}
-		lua.remove(L, -2)
 		nargs = 2
 	case .View_Text:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))

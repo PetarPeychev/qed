@@ -109,6 +109,7 @@ foreign lib {
 	rawset :: proc(L: ^State, idx: c.int) ---
 	rawseti :: proc(L: ^State, idx: c.int, n: Integer) ---
 	setmetatable :: proc(L: ^State, objindex: c.int) -> c.int ---
+	getmetatable :: proc(L: ^State, objindex: c.int) -> c.int ---
 
 	@(link_name = "lua_callk")
 	call :: proc(L: ^State, nargs, nresults: c.int, ctx: KContext = 0, k: KFunction = nil) ---

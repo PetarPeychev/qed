@@ -58,6 +58,9 @@
     },
     "search": {
       "enabled": true
+    },
+    "cwd": {
+      "enabled": true
     }
   },
   "theme": "default",
@@ -71,7 +74,6 @@
     "Find": "Ctrl+f",
     "Replace": "Ctrl+h",
     "Find Line": "Ctrl+g",
-    "Change Working Directory": "Ctrl+o",
     "Go to Start of File": "Alt+{",
     "Go to End of File": "Alt+}",
     "Jump Back": "Alt+,",
