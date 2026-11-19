@@ -65,11 +65,9 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
-path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` + `±label` diff base (when not HEAD) + repo diff size
-`+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs diff base via `git diff <base> --numstat --find-renames`, untracked
-files' lines counted by `grep -Ic` as adds, binaries skipped; `git_diffsize_cmd`) — polled async every
-`GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`). Both sides are
-`StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap (plugin `qed.status` segments join them, left after the builtins, right before them): shorten the path from
+path + `●` modified flag + `line/total` + `±label` of the current buffer's diff base (its `set_base` label) + plugin
+segments (the `git` plugin's branch, `↑ahead↓behind` and diff size) + `[n/m]`; right side: language + LSP + indent style / `big`). Both sides are
+`StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap (plugin `qed.status` segments join them, left before `[n/m]`, right before the builtins): shorten the path from
 the left (`…/dir/name`, down to the bare name), then drop segments by `drop` rank (indent, LSP, `big`,
 language, AI count, then diff size, ahead/behind, diff base, branch, `[n/m]`), then clip the filename; then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
@@ -80,44 +78,47 @@ Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`
 stacked bottom→top: optional git-hunk row tint → conflict tint → plugin decoration
 tints → AI-edit tint → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
 (`*_TINT`) and tint colors are both theme-overridable. The
-row tint is part of **diff view** (*Git: Toggle Diff View*, `Alt+g`, config
-`modules.git.diff_view`, off by default), separate from the always-on gutter mark — see
-Git diff view below.
+row tint is part of **diff view** (*Diff: Toggle Diff View*, config
+`diff_view`, off by default), separate from the always-on gutter mark — see
+Diff view below.
 
 **Diff engine** (`diffbase.odin`, `Buffer.base`): the line-hash Myers engine behind the gutter marks,
-ghost rows, word spans, change navigation and revert. Its text comes from git (`git_base_fetch` runs
-`git show` and pushes the blob through `diffbase_set`) or from a plugin (`qed.buf.set_base`, which
-wins over git until cleared or unloaded; `git_invalidate` leaves it alone). Engine identifiers keep
-their `git_` names until phase 9.
+ghost rows, word spans, change navigation and revert. Its text only comes from plugins
+(`qed.buf.set_base`; the bundled `git` plugin pushes the base blob). Each plugin owns one slot per
+buffer (`DiffBase.slots`, first-set order); the newest owner's slot is active, an owner updating
+its slot keeps its place, and clearing or unloading reveals the slot beneath (so git takes over
+again when another plugin's base goes).
 
-**Git diff view** (global `g_diff_view`): with diff view on, a hunk's
+**Diff view** (global `g_diff_view`): with diff view on, a hunk's
 removed/base lines render inline as dim-red **ghost rows** (`editor_render_hunk_ghosts`)
 — above a modification, below a pure deletion — with the changed span word-highlighted
-on both the ghost and the live line (`git_word_span`, prefix/suffix trim). The gutter
-keeps the base blob + per-line text (`base_text`) so old text is available; `git_diff`
-emits `GitHunk`s + per-row `above`/`below` ghost counts. Ghost rows are virtual (one
+on both the ghost and the live line (`diff_word_span`, prefix/suffix trim). The gutter
+keeps the base blob + per-line text (`base_text`) so old text is available; `diff_lines`
+emits `DiffHunk`s + per-row `above`/`below` ghost counts. Ghost rows are virtual (one
 clipped row each, never wrapped) and shift everything below, so the counts fold into
 the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `ghost_above`/`below`, which
 add plugin decoration ghosts to the diff ones).
-`git_diff` also emits a flat `GitChange` list (`{new_lo,new_hi,old_lo,old_hi}`, current
+`diff_lines` also emits a flat `DiffChange` list (`{new_lo,new_hi,old_lo,old_hi}`, current
 rows ↔ base rows) as the **revert unit** — independent of `g_diff_view`, consumed by
-*Git: Revert Hunk*;
+*Diff: Revert Hunk*;
 cursor *motion* is unaffected (it walks real rows via `cursor_visual_*`). All ghost math
 no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 
-**Diff base** (`basepick.odin`, `g_diff_base`, session-only): the "old" side of every git
-surface. Branch and merge-base picks are live refs, re-resolved per command by `git_base_rev`
-(literal `HEAD` when unset; falls back to HEAD in a repo where the ref doesn't resolve); commit
-picks are a fixed sha. The scan's per-repo `@@BASE@@` name-status section replaces that repo's
-tracked `status` lines. A working-root change resets the base. The status-bar stat poll also
-resolves the base sha; when it changes (a moved branch, or HEAD under the default base) every open
-buffer's gutter is invalidated, so gutters follow without their own polling.
+**Git diff base** (`plugins/git`, session-only): the "old" side of every git surface, picked by
+*Git: Set Diff Base* (`qed.pick`: HEAD, merge base with the default branch, local + remote refs,
+last 50 commits). Branch and merge-base picks are live refs, re-resolved per fetch (falls back to
+HEAD in a repo where the ref doesn't resolve); commit picks are a fixed sha. The plugin pushes the
+spec to core with `qed.git.set_base` (`g_diff_base`), which the file tree Git tab (`git_base_rev`) and
+`ctx.base` read. The scan's per-repo `@@BASE@@` name-status section replaces that repo's tracked
+`status` lines. A working-root change resets the base. The plugin's 2 s stat poll also resolves the
+base sha; when it changes (a moved branch, or HEAD under the default base) it refetches every
+buffer's base and rescans the tree (`qed.filetree.refresh`).
 
 **Merge conflicts** (`conflict.odin`): content-driven, always on, no git dependency —
 `merge_scan` finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks by line prefix. Render
 tints ours green, theirs blue, diff3 base gray, marker lines stronger + fg-colored (all
 via the existing `editor_line_bg`/`diff_bg` render path). Ours↔theirs word emphasis reuses
-`git_myers` (line pairing) + `git_word_span` (per-char span), shown on both sides.
+`diff_myers` (line pairing) + `diff_word_span` (per-char span), shown on both sides.
 *Git: Resolve Conflict* (`Alt+m`): cursor in a block opens a 3-way `Keep Ours/Theirs/Both`
 dialog (`MergeDialog`, the shared `dialog_*` primitive); cursor outside jumps to the next
 block. Resolve deletes the marker/side rows bottom-up as one undo group (`merge_resolve`).
@@ -326,22 +327,24 @@ documented in `lib/tb2/PATCHES.md`:
 
 ## Modules
 
-`git`, `lsp`, `ai` are gated subsystems (`module.odin`, `Module` enum). Each has a
+`lsp`, `ai` are gated subsystems (`module.odin`, `Module` enum). Each has a
 `modules.<name>.enabled` config flag (default on) and owns its whole config
-subtree under `modules.<name>` — git's `diff_view`/`filetree_diff_only`, lsp's
-completion-popup knobs, ai's former `llm.*` block (the settings parser walks
-`config_module_defs`, one typed str/int/bool table set per module). `module_enabled(m)`
-is the single gate: `LSP_ENABLED`/`AI_ENABLED` are knob-only; `.Git` also ANDs
-`GIT_BINARY_PRESENT`, probed once at startup (collapsing the old per-call
-`shell_command_exists("git")` forks). Commands carry a `.module`; `command_available`
+subtree under `modules.<name>` — lsp's completion-popup knobs, ai's former `llm.*` block (the
+settings parser walks `config_module_defs`, one typed str/int/bool table set per module).
+Git is the bundled `git` plugin (`plugins.git`; old `modules.git.*` keys warn "moved to"); `.Git`
+is "the git plugin is loaded" (`g_git_loaded`, true outside a plugin system) ANDed with
+`GIT_BINARY_PRESENT`, probed once at startup, and gates the core pieces still git-only: the file
+tree Git tab and its status bars, `git_diff_file`, conflicts. Unloading the git plugin runs
+`git_module_sync` (base spec cleared, Git tab left). `module_enabled(m)` is the single gate.
+Commands carry a `.module`; `command_available`
 and keybind dispatch no-op a disabled module's commands, so palette + chords drop out
 automatically. Rendering/pump/subprocess seams each guard on `module_enabled` (git:
-gutter/branch/diff-view/conflict + filetree Git tab; lsp: server spawn/completion/status
+conflict + filetree Git tab; lsp: server spawn/completion/status
 segment; ai: FIM/edit/chat). After a config hot-reload, `editor_modules_sync` calls each
 module's idempotent `*_module_sync` to tear down live state a toggle-off orphaned (stop
-servers, clear gutters/diagnostics, cancel in-flight AI). Merge-conflict highlight/resolve
+servers, clear diagnostics, cancel in-flight AI). Merge-conflict highlight/resolve
 (`conflict.odin`) rides with `.Git` by decision, though its diff helpers
-(`git_myers`/`git_word_span`/`git_hash`) are dependency-free and stay compiled.
+(`diff_myers`/`diff_word_span`/`diff_hash`) are dependency-free and stay compiled.
 
 ## Plugins
 
@@ -536,7 +539,7 @@ re-opens LSP).
   stdin→stdout filter via `qed.spawn` (`sh -c`, stderr captured, never shown), cwd =
   the file's dir (path-less → root), `{file}` → the shell-quoted absolute path
   (path-less → `<root>/untitled`). The result lands through `qed.buf.set_text`
-  with the pre-spawn rev: a minimal line diff (`buffer_set_text`, `git_myers` over
+  with the pre-spawn rev: a minimal line diff (`buffer_set_text`, `diff_myers` over
   line hashes) as one undo step, cursor and selection mapped onto their lines. A
   missing tool (exit 127) / non-zero exit / empty output messages and leaves the
   buffer untouched; on save it saves unformatted. A format-on-save that waits parks
@@ -651,11 +654,11 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
-`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
+`confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`git` (git plumbing) · `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
+`git` (file tree git plumbing, `g_diff_base`) · `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `commands/`: user shell commands from `plugins.commands.list`, see CONFIG.md).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `commands/`: user shell commands from `plugins.commands.list`, see CONFIG.md; `git/`: diff base fetch, stat poll, *Git: Set Diff Base*, *Restore File*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -763,8 +766,7 @@ hidden dotdirs), `Alt+.`/`Alt+i` show dotfiles / gitignored (both hidden by defa
 `filetree_show_dotfiles`/`filetree_show_ignored`), also listed in the command palette;
 header scope tab bar (`All`/`Open`/`Git`/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g`/`Alt+u`
 open the pane on that tab from the editor and switch/toggle-close it while open — same chord
-again on its own tab closes — or `←`/`→`/click; also on the welcome screen; `Alt+g` freed from
-*Git: Toggle Diff View* which is now palette-only) restricting the
+again on its own tab closes — or `←`/`→`/click; also on the welcome screen) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
 `git status --porcelain --find-renames --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against, followed by the same `git_diffsize_cmd` numstat sections, giving each changed file a colored `+N -N` on the Git tab, right-aligned with `+`/`-` columns padded over the visible rows, label clipped with `…`, numbers dropped when even a short label cannot fit) scanned **async**
 via the shared subprocess runner, prewarmed at startup: every open (first included) renders instantly from the
@@ -773,8 +775,9 @@ background (`filetree_scan_pump`); a green/yellow `▌` per
 added/modified file propagated up its ancestor directories, ignored files dimmed; deleted files
 (`git_porcelain_line`/`git_name_status_line` → `.Deleted`, unless the path exists again) listed on
 the Git tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter` or
-*Restore File* confirms then `git restore --source=<base>` (worktree only, plus index when the
-deletion is staged), other file commands refuse them; renames listed once at the new path labeled
+*Restore File* (the `git` plugin's tree command; core's `Enter` runs it) confirms then
+`git restore --source=<base>` (worktree only, plus index when the deletion is staged), other file
+commands refuse them; renames listed once at the new path labeled
 `new  ← old` (`FileTree.renames`, numstat `old => new` keyed on the new path); unsaved
 open buffers marked with a trailing `●`, propagated to directories),
 floating terminal pane (`Alt+t`: persistent embedded shell via
@@ -790,9 +793,9 @@ to defaults without crashing; UI persistence like the theme picker's Enter write
 only its own key; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
-their command), gated modules (`modules.git`/`lsp`/`ai`, each `enabled` + its own config
-subtree; disabling drops the module's commands/UI/subprocesses, git auto-off when the
-binary is absent; live toggle-off tears down via `editor_modules_sync`), JSON themes (sparse overlay chain over the embedded `default.json`
+their command), gated modules (`modules.lsp`/`ai`, each `enabled` + its own config
+subtree; disabling drops the module's commands/UI/subprocesses; live toggle-off tears down via
+`editor_modules_sync`; git is `plugins.git`, auto-off when the binary is absent), JSON themes (sparse overlay chain over the embedded `default.json`
 base — see Rendering; *Set Theme* fuzzy picker with instant preview,
 Enter persists / Esc reverts), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
@@ -821,7 +824,7 @@ inline-diff-view style (dim-red ghost rows, added/modified tint, word-level high
 built by `git_diff_file` (base-vs-worktree for a non-open file, reusing the gutter's line-hash diff; a rename diffs
 against the old path's base blob, a deleted file previews entirely as ghost rows).
 *File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.git_diff_only` seeded from config
-`modules.git.filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
+`plugins.git.filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
 gap-collapsing never fires).
 Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`): navigation only marks the preview
@@ -853,12 +856,12 @@ incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (`format` plugin: external command e.g. `ruff format -`, else LSP) + format-on-save
 (config `plugins.format.format_on_save`, toggleable), `LSP: Restart`, state-colored status segment
 (dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
-`.Debug` message log; git diff gutter (live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
-+ optional inline diff view (`Git: Toggle Diff View`, `Alt+g`, config `modules.git.diff_view`): row
+`.Debug` message log; diff gutter against any diff base (the `git` plugin's: live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
++ optional inline diff view (`Diff: Toggle Diff View`, config `diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
-hunk navigation (`Git: Next/Previous Change`, `Alt+'`/`Alt+;`, `git_goto`): jumps the cursor,
+hunk navigation (`Diff: Next/Previous Change`, `Alt+'`/`Alt+;`, `diffbase_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
-hunk revert (`Git: Revert Hunk`, `Alt+z`, `git_revert`): restores the base lines for the
+hunk revert (`Diff: Revert Hunk`, `Alt+z`, `diffbase_revert`): restores the base lines for the
 hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-base) as one undo group;
 merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines
 emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
@@ -885,7 +888,7 @@ the *Tasks* picker lists every session with its state (running / exit code) and
 runs, shows, restarts, kills or closes it; exit messages; a `tasks N` status segment (running count, red after a failed exit).
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
-rows, spans, end-of-line text), status segments (`qed.status`), diff base (`qed.buf.set_base`); hot reload on file add/remove/edit
+rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`); hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only).
 

@@ -105,6 +105,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `filetree_show_dotfiles` | `false` | Show dotfiles in the file tree. *Alt+.* |
 | `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *Alt+i* |
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
+| `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle Diff View*. |
 
 ## Keybinds
 
@@ -134,25 +135,17 @@ detected language for the current session.
 
 ## Modules
 
-`git`, `lsp`, and `ai` are self-contained subsystems under the `modules` section.
+`lsp` and `ai` are self-contained subsystems under the `modules` section.
 Each has an `enabled` flag (default `true`); setting it `false` removes that
 module entirely — its commands leave the palette and their keybinds go dead, its
 UI (gutter marks, diagnostics, ghost text…) stops rendering, and it never spawns
-a subprocess. Git also auto-disables when the `git` binary isn't on `PATH`. All of
+a subprocess. Git is the bundled [`git` plugin](#git) now. All of
 a module's own config lives inside its namespace, so everything about it is in one
 place.
 
 ```json
 { "modules": { "ai": { "enabled": false } } }
 ```
-
-### `modules.git`
-
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `enabled` | `true` | Master switch. Off removes the diff gutter, the branch in the status bar, the file-tree **Git** tab, diff view, hunk nav/revert, and merge-conflict highlighting/resolve. |
-| `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines). *Git: Toggle Diff View* (`Alt+g`). |
-| `filetree_diff_only` | `true` | File-tree Git preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
 
 ### `modules.lsp`
 
@@ -210,6 +203,20 @@ plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
 ```json
 { "plugins": { "mytool": { "enabled": false } } }
 ```
+
+### Git
+
+The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
+*Diff: Next/Previous Change*, *Diff: Revert Hunk*), polls the branch, ahead/behind
+and repo diff size into the status bar every 2 s, and owns *Git: Set Diff Base* and
+the file tree's *Restore File*. A moved branch or HEAD is followed within a poll. It
+does nothing when the `git` binary isn't on `PATH`. The old `modules.git` keys warn
+and are ignored: `enabled` and `filetree_diff_only` moved here, `diff_view` to the top level.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Git** tab, *Git: Set Diff Base*, *Restore File*, and merge-conflict highlighting/resolve. |
+| `plugins.git.filetree_diff_only` | `true` | File-tree Git preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
 
 ## User commands
 

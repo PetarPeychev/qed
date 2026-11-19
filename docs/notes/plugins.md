@@ -48,10 +48,10 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | lsp/completion/rename/hover/mdrender | KS | core | `qed.lsp.format(b)` (awaitable) for the formatter fallback. |
 | `format.odin` external formatter + save fixups | | **plugin** (port 1) | `spawn`, `buf_pre_save`, `buf.set_text` with rev guard, plugin config. |
 | langpick / themepick / indentpick | | **plugin** (port 2) | `pick{on_change}`, `buf.set_language`, `theme.set`, `buf.set_indent`. Closes the "collapse centered pickers" TODO. |
-| basepick | | **plugin** (with git) | `pick`, `spawn`. |
-| git: base blob fetch, stat poll (branch, ahead/behind, diff size), base picker, restore file | (poll) | **plugin** (port 3) | `spawn`, `every`, `status.set`, `buf.set_base`, events. |
+| basepick | | **plugin** (with git, done) | `pick`, `spawn`. |
+| git: base blob fetch, stat poll (branch, ahead/behind, diff size), base picker, restore file | (poll) | **plugin** (port 3, done: `plugins/git`) | `spawn`, `every`, `status.set` (chunks, `sep`), `buf.set_base`, events, `theme.icon`, `git.set_base` + `filetree.refresh` (interim, for the core Git tab). |
 | git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
-| file tree Git tab + status bars | | later | Needs a `qed.filetree.set_status(map)` provider. Until then it stays core, gated on `plugins.git.enabled`. |
+| file tree Git tab + status bars | | later | Needs a `qed.filetree.set_status(map)` provider. Until then it stays core, gated on the git plugin being loaded; the plugin pushes the base spec (`qed.git.set_base`) and asks for rescans (`qed.filetree.refresh`). |
 | conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
 | projsearch | | later | Needs a streaming list+preview picker. |
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
@@ -98,7 +98,7 @@ The API is one global, `qed`.
 | `qed.buf.cursor(b) -> pos`, `.set_cursor(b, pos)` | |
 | `qed.buf.selection(b) -> from, to \| nil`, `.set_selection(b, anchor, cursor)` | |
 | `qed.buf.set_language(b, name) -> changed`, `.set_indent(b, "tabs"\|"spaces"\|"auto", width?)`, `.indent(b) -> style, width`, `qed.languages()` | Existing core setters. |
-| `qed.buf.set_base(b, text \| nil, {label?})` | Diff base: gutter, ghost rows, change navigation, revert hunk. Replaces the git base of that buffer until `nil` (git takes over again) or the plugin unloads. `""` is an empty base (every line added). `label` shows as the `±label` status segment (`±base` without one). Another plugin's base is left alone (returns false). Big files have no diff base. |
+| `qed.buf.set_base(b, text \| nil, {label?}) -> active` | Diff base: gutter, ghost rows, change navigation, revert hunk. Each plugin owns one base per buffer. The plugin that set its first most recently wins; setting again keeps its place, and `nil` (or unload) reveals the one beneath, so the `git` plugin's base comes back when another plugin's goes. Returns whether this plugin's base is the one shown. `""` is an empty base (every line added). `label` shows as the `±label` status segment: `±base` when omitted, nothing when `""`. Big files have no diff base. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
 | `qed.jump(b, pos)` | Switch, reveal, record in the jump list. (`goto` is a Lua keyword.) |
 
@@ -140,9 +140,11 @@ There is deliberately no `key` event.
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
-| `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
+| `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins, before the `[n/m]` buffer counter); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
-| `qed.theme.set(name, {persist?})`, `.list()`, `.current()` | |
+| `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
+| `qed.git.set_base(ref \| nil, {label?, merge?})` | Interim, until the file tree status provider: tells the core Git tab and `ctx.base` the diff base and rescans the tree. |
+| `qed.filetree.refresh(path?)` | Rescans the tree's git status; reveals `path` when given. |
 
 - Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.
 - Panes that handle keys (custom key handling, actions) come later. The first consumer would be a tasks or locations pane richer than `pick`.
@@ -287,7 +289,7 @@ load.
 | API bindings | Odin unit tests (`plugin_test.odin`) on a headless `lua_State`: index conversion, `qed.edit` grouping, rev guards, error isolation, budget aborts, stub completeness. |
 | Plugins in e2e | `e2e_start` loads the embedded bundled plugins like a real start. `e2e_plugin(name, src)` injects an ad-hoc plugin. Assertions use the existing surfaces (buffer, overlays, grid). Waits on plugin coroutines use the existing deadline-bounded pump loop. |
 | Deterministic spawn | `qed.spawn` routes through `subprocess_start`, so `e2e_stub_script` already covers fake formatters and git. Add `e2e_spawn_fake(pattern, {stdout, code, delay_ms})`, a table the spawn binding consults first under test (no fork), so ordering and timeouts are exact. |
-| Plugin-owned tests | `plugins/<name>/test.lua` (bundled only). One Odin e2e test, `e2e_plugins_test.odin`, iterates over the embedded plugins with a `test.lua` and runs each in a fresh session. The test file gets `t.key`, `t.type`, `t.step`, `t.expect_line`, `t.expect_cell`, `t.fake_spawn`, `t.wait(cond)`, and a failure maps to `testing.fail` with the Lua traceback. Petar's user plugins can use the same runner through `qed --test-plugin PATH` (later). |
+| Plugin-owned tests | `plugins/<name>/test.lua` (bundled only). One Odin e2e test, `e2e_plugins_test.odin`, iterates over the embedded plugins with a `test.lua` and runs each in a fresh session. The test file gets `t.key`, `t.type`, `t.step`, `t.expect_line`, `t.expect_cell`, `t.fake_spawn`, `t.wait(cond)`, `t.sh(cmd)` (in the session dir), `t.settle()` (plugin processes and tree scans done), `t.marks(b)` (diff marks per row), and a failure maps to `testing.fail` with the Lua traceback. Petar's user plugins can use the same runner through `qed --test-plugin PATH` (later). |
 
 Every port phase ships its plugin's `test.lua` and moves or adapts the existing
 e2e tests of the Odin feature it replaces.
@@ -317,7 +319,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). Poll cost: ~13 us per user plugin file (0.15 ms for 10, 2.6 ms for 200, `bench_plugin_poll`). | minor |
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin + `output = "task"`. | minor |
 | 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
-| 9 | Port 3 `git`, `modules.git` → `plugins.git`. | minor |
+| 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
 | later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions
