@@ -39,6 +39,7 @@ qed = {}
 ---@type string
 qed.version = ""
 
+---Writes `text` to the Message Log (Alt+L) under this plugin's name; never shown on the status line. Raises on an unknown level.
 ---@param level qed.Level
 ---@param text any
 function qed.log(level, text) end
@@ -96,6 +97,7 @@ function qed.close(b) end
 ---@param pos qed.Pos
 function qed.jump(b, pos) end
 
+---The working root: the directory qed was started in or last switched to. Relative paths in `qed.*` resolve against it.
 ---@return string
 function qed.root() end
 
@@ -108,6 +110,7 @@ function qed.config() end
 ---@return integer|boolean|string
 function qed.opt(key) end
 
+---POSIX single-quotes `s` so it is one literal shell word.
 ---@param s string
 ---@return string
 function qed.shell_quote(s) end
@@ -117,6 +120,7 @@ function qed.shell_quote(s) end
 ---@class qed.Handle
 ---@field id integer
 local Handle = {}
+---Unregisters the handler. A no-op if it is already gone.
 function Handle:off() end
 
 ---Handlers run as coroutines in plugin load order. `buf_changed(b, rev)` and
@@ -150,6 +154,7 @@ function qed.spawn(spec) end
 ---@field id integer
 ---@field pid? integer
 local Proc = {}
+---Kills the process; a no-op if it already exited.
 function Proc:kill() end
 ---Waits for the process to exit. The result is handed out once; later calls return nil, "process is gone".
 ---@return qed.SpawnResult|nil
@@ -168,6 +173,7 @@ function qed.sleep(ms) end
 ---@class qed.Timer
 ---@field id integer
 local Timer = {}
+---Cancels the timer. A no-op if it already fired or was stopped.
 function Timer:stop() end
 
 ---Runs `fn` once after `ms` milliseconds.
@@ -225,6 +231,7 @@ local Pane = {}
 ---@param lines qed.PaneLine[]
 ---@return boolean
 function Pane:set(lines) end
+---Closes the pane if it is still the one showing; otherwise a no-op.
 function Pane:close() end
 
 ---Read-only floating pane (arrows/wheel scroll, Esc closes). `nil, "busy"` when another overlay is open.
@@ -324,6 +331,7 @@ function qed.term.restart(name) end
 ---@return "no such session"|"not running"|nil err
 function qed.term.send(name, text) end
 
+---State of the named session, or nil if there is none.
 ---@param name string
 ---@return qed.TermState|nil
 function qed.term.state(name) end
@@ -408,45 +416,56 @@ qed.status = {}
 ---@param seg qed.StatusSegment
 function qed.status.set(id, seg) end
 
+---Removes this plugin's segment `id`. A no-op if it is not set.
 ---@param id string
 function qed.status.clear(id) end
 
 qed.clipboard = {}
 
+---System clipboard text via the external clipboard tool; falls back to qed's internal register when none is available.
 ---@return string
 function qed.clipboard.get() end
 
+---Replaces the system clipboard text (or qed's internal register when no clipboard tool is available).
 ---@param text string
 function qed.clipboard.set(text) end
 
 qed.buf = {}
 
+---Id of the current buffer, or nil on the welcome screen.
 ---@return integer|nil
 function qed.buf.current() end
 
+---Ids of all open buffers in tab order; empty on the welcome screen.
 ---@return integer[]
 function qed.buf.list() end
 
+---True if `b` is the id of an open buffer. Unlike other `qed.buf` calls it never raises, and nil or 0 is not "current" here.
 ---@param b integer|nil
 ---@return boolean
 function qed.buf.valid(b) end
 
+---The buffer's file path, or `""` for an unnamed buffer. Raises "buffer closed" for a stale id (as do all `qed.buf` calls taking `b`).
 ---@param b qed.Buf
 ---@return string
 function qed.buf.path(b) end
 
+---Language name, e.g. `"odin"`; see `qed.languages()`.
 ---@param b qed.Buf
 ---@return string
 function qed.buf.language(b) end
 
+---True if there are unsaved changes.
 ---@param b qed.Buf
 ---@return boolean
 function qed.buf.modified(b) end
 
+---Edit counter; changes on every edit, so equal values mean unchanged text. Pass it as `opts.rev` to guard stale writes.
 ---@param b qed.Buf
 ---@return integer
 function qed.buf.rev(b) end
 
+---Number of lines; an empty buffer has 1.
 ---@param b qed.Buf
 ---@return integer
 function qed.buf.line_count(b) end
@@ -458,15 +477,18 @@ function qed.buf.line_count(b) end
 ---@return string[]
 function qed.buf.lines(b, from, to) end
 
+---Text of `row` without its newline. Raises if `row` is out of range.
 ---@param b qed.Buf
 ---@param row integer
 ---@return string
 function qed.buf.line(b, row) end
 
+---The whole text, lines joined with LF regardless of the file's line endings.
 ---@param b qed.Buf
 ---@return string
 function qed.buf.text(b) end
 
+---Insert `text` at `pos`. Cursor and selection shift with the edit. One undo step unless inside `qed.edit`. Raises on an out-of-range `pos` or a `col` inside a UTF-8 sequence.
 ---@param b qed.Buf
 ---@param pos qed.Pos
 ---@param text string valid UTF-8; CRLF and CR become LF
@@ -480,6 +502,7 @@ function qed.buf.insert(b, pos, text) end
 ---@return string deleted
 function qed.buf.delete(b, from, to) end
 
+---Replace the half-open range `[from, to)` with `text`. Cursor and selection shift; one undo step unless inside `qed.edit`. Raises if `to` is before `from`.
 ---@param b qed.Buf
 ---@param from qed.Pos
 ---@param to qed.Pos
@@ -495,24 +518,29 @@ function qed.buf.replace(b, from, to, text) end
 ---@return boolean
 function qed.buf.set_text(b, text, opts) end
 
+---The caret position.
 ---@param b qed.Buf
 ---@return qed.Pos
 function qed.buf.cursor(b) end
 
+---Move the caret to `pos`, clear the selection and scroll it into view if `b` is current.
 ---@param b qed.Buf
 ---@param pos qed.Pos
 function qed.buf.set_cursor(b, pos) end
 
+---Selection as `from, to` in document order, or nil when nothing is selected.
 ---@param b qed.Buf
 ---@return qed.Pos|nil from
 ---@return qed.Pos|nil to
 function qed.buf.selection(b) end
 
+---Select from `anchor` to `cursor`; the caret ends at `cursor`, so a backward selection is allowed.
 ---@param b qed.Buf
 ---@param anchor qed.Pos
 ---@param cursor qed.Pos
 function qed.buf.set_selection(b, anchor, cursor) end
 
+---Set the buffer's language by name and re-highlight. Raises on an unknown name; false if it was already that language.
 ---@param b qed.Buf
 ---@param name string language name as `qed.buf.language` returns it
 ---@return boolean changed
@@ -524,6 +552,7 @@ function qed.buf.set_language(b, name) end
 ---@param width? integer
 function qed.buf.set_indent(b, style, width) end
 
+---The buffer's indent style and width.
 ---@param b qed.Buf
 ---@return "tabs"|"spaces" style
 ---@return integer width
@@ -540,6 +569,7 @@ function qed.buf.set_base(b, text, opts) end
 
 qed.fs = {}
 
+---File contents, or `nil, err` (missing, unreadable). Relative paths resolve against `qed.root()`.
 ---@param path string
 ---@return string|nil data
 ---@return string|nil err
@@ -552,10 +582,12 @@ function qed.fs.read(path) end
 ---@return string|nil err
 function qed.fs.write(path, data) end
 
+---True if the path exists (file, dir or other). Relative paths resolve against `qed.root()`.
 ---@param path string
 ---@return boolean
 function qed.fs.exists(path) end
 
+---Size, mtime and type of `path`, or `nil, err` if it does not exist. Relative paths resolve against `qed.root()`.
 ---@param path string
 ---@return qed.Stat|nil
 ---@return string|nil err
@@ -569,35 +601,42 @@ function qed.fs.list(dir) end
 
 qed.json = {}
 
+---Parses JSON into Lua values, or `nil, err` on invalid input. Whole numbers decode as integers.
 ---@param s string
 ---@return any
 ---@return string|nil err
 function qed.json.decode(s) end
 
+---Serializes a Lua value to compact JSON. Raises on functions, userdata, NaN or infinity, non-string/integer keys and over-deep nesting.
 ---@param v any
 ---@return string
 function qed.json.encode(v) end
 
 qed.path = {}
 
+---Joins and cleans the parts with `/`.
 ---@param ... string
 ---@return string
 function qed.path.join(...) end
 
+---Everything before the last path element, as in `dirname`.
 ---@param p string
 ---@return string
 function qed.path.dir(p) end
 
+---The last path element, as in `basename`.
 ---@param p string
 ---@return string
 function qed.path.base(p) end
 
+---`p` relative to `base`, or `nil, err` when no relative path exists. Both are made absolute against `qed.root()` first; the result may start with `..` when `p` is not under `base`.
 ---@param p string
 ---@param base? string defaults to `qed.root()`
 ---@return string|nil
 ---@return string|nil err
 function qed.path.rel(p, base) end
 
+---Absolute, cleaned form; relative paths resolve against `qed.root()`. Symlinks are not resolved and the path need not exist.
 ---@param p string
 ---@return string
 function qed.path.abs(p) end
@@ -614,6 +653,7 @@ function qed.lsp.format(b) end
 
 qed.text = {}
 
+---Display width in terminal columns, grapheme-aware: wide characters count 2, combining marks 0, tabs advance to the next tab stop.
 ---@param s string
 ---@return integer
 function qed.text.width(s) end
