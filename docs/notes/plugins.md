@@ -50,14 +50,14 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | `format.odin` external formatter + save fixups | | **plugin** (port 1) | `spawn`, `buf_pre_save`, `buf.set_text` with rev guard, plugin config. |
 | langpick / themepick / indentpick | | **plugin** (port 2) | `pick{on_change}`, `buf.set_language`, `theme.set`, `buf.set_indent`. Closes the "collapse centered pickers" TODO. |
 | basepick | | **plugin** (with git, done) | `pick`, `spawn`. |
-| git: base blob fetch, stat poll (branch, ahead/behind, diff size), base picker, restore file | (poll) | **plugin** (port 3, done: `plugins/git`) | `spawn`, `every`, `status.set` (chunks, `sep`), `buf.set_base`, events, `theme.icon`, `git.set_base` + `filetree.refresh` (interim, for the core Git tab). |
+| git: base blob fetch, stat poll (branch, ahead/behind, diff size), base picker, restore file | (poll) | **plugin** (port 3, done: `plugins/git`) | `spawn`, `every`, `status.set` (chunks, `sep`), `buf.set_base`, events, `theme.icon`. |
 | git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
-| file tree Git tab + status bars | | later | Needs a `qed.filetree.set_status(map)` provider. Until then it stays core, gated on the git plugin being loaded; the plugin pushes the base spec (`qed.git.set_base`) and asks for rescans (`qed.filetree.refresh`). |
+| file tree Git tab + status bars: status scan, numstat sizes, renames, deleted files, ignored set, preview base, restore | | **plugin** (phase 11, done: `plugins/git/tree.lua`) | `filetree.provide`, `filetree.set_status`, `filetree.set_base`, `filetree_refresh` / `filetree_preview` events. Core keeps the tab, bars, sizes, ghost rows, preview diff and the walk (render and keystroke paths). |
 | conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
 | projsearch | | later | Needs a streaming list+preview picker. |
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
-| module.odin | | replaced | `modules.git` becomes `plugins.git`. `modules.lsp` and `modules.ai` stay until ported. |
+| module.odin | | replaced | `modules.git` became `plugins.git`; `.Git` is gone (phase 11). `modules.lsp` and `modules.ai` stay until ported. |
 | **custom commands** | | user plugins | `command{when}`, `spawn`, `parse_locations` + `pick`, `term`, `pane`. The config-driven `commands` plugin was dropped in phase 10. |
 | **tasks** | | **new plugin** | `qed.term`, `pick`, `status.set`, `term_open`/`term_exit`/`term_close`. |
 | **Plugins pane** | | core | Must work when the plugin system itself is broken. |
@@ -109,7 +109,7 @@ The API is one global, `qed`.
 | `qed.command{name, run, when?, key?, welcome?, scope?, keybind?} -> handle` | `handle:remove()` unregisters. A name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and `keybinds[name]` binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `keybind` is the `keybinds` key when it differs from `name` (*Restore File* binds as `File Tree: Restore File`, like the builtin tree commands). `welcome = true` also offers it on the welcome screen. |
 | `qed.run(name)` | Run any builtin or plugin command. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
-| `ctx` | `{buf, path, language, root, selection_text, base}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
+| `ctx` | `{buf, path, language, root, selection_text}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
 
 ### Events
 `qed.on(event, fn) -> handle`, removed with `handle:off()`.
@@ -129,6 +129,8 @@ The API is one global, `qed`.
 | `config_changed`, `theme_changed` | | |
 | `term_open`, `term_close` | `name` | |
 | `term_exit` | `name`, `code` | |
+| `filetree_refresh` | | provider only: tree opened, root changed, a tree file operation, or `provide` while the tree is open |
+| `filetree_preview` | `path` | provider only: the status tab wants a base for `path` |
 | `quit` | | yes, bounded by `plugin_hook_timeout_ms` |
 
 There is deliberately no `key` event.
@@ -144,8 +146,9 @@ There is deliberately no `key` event.
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
-| `qed.git.set_base(ref \| nil, {label?, merge?})` | Interim, until the file tree status provider: tells the core Git tab and `ctx.base` the diff base and rescans the tree. |
-| `qed.filetree.refresh(path?)` | Rescans the tree's git status; reveals `path` when given. |
+| `qed.filetree.provide{label, open_deleted?} \| nil` | Claims the status tab (one provider, the last call wins; unload or `nil` drops it, and the tab with it) and queues a `filetree_refresh` when the tree is open (the `git` plugin also scans at startup, so the first open is instant). `open_deleted(ctx)` runs as a tree command on `Enter` over a listed deleted file missing on disk. |
+| `qed.filetree.set_status(files, ignored?)` | Replaces the tree status. `files[path] = {mark = "added"\|"modified"\|"deleted", from?, added?, removed?}`; `from` is a rename's old path, `added`/`removed` the `+N -N` sizes. Core propagates marks to ancestor dirs, lists deleted files virtually and hides `ignored` paths unless *Toggle Ignored*. Validated before anything changes. Raises unless the caller is the provider. |
+| `qed.filetree.set_base(path, text \| nil)` | Answers `filetree_preview(path)`: the status tab previews `path` diffed against `text` (`nil`: plain file). A stale path is ignored; every `set_status` drops the cached base. |
 
 - Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.
 - Panes that handle keys (custom key handling, actions) come later. The first consumer would be a tasks or locations pane richer than `pick`.
@@ -229,7 +232,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
 | Isolation | One `lua_State` with a per-plugin `_ENV`. |
 | Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Load, hook and timer errors disable the plugin; command errors only log. All errors are logged as `.Error` with the plugin as source and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
-| Modules | `modules.git` becomes `plugins.git`. `module_enabled(.Git)` becomes "the git plugin is loaded" for the core pieces still gated on it. `.Lsp` and `.Ai` stay as modules. |
+| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab follows the file tree status provider, conflicts are ungated. `.Lsp` and `.Ai` stay as modules. |
 
 Hot reload mechanics:
 - `plugins_poll` runs in the disk poll, before the config reload. It rescans bundled plugins plus `Plugins.user_dir` (headless sessions have none and never poll).
@@ -322,7 +325,8 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view`, `filetree_diff_only` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
 | 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` takes a path and clamps `pos`. | minor |
-| later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
+| 11 | File tree status provider (`qed.filetree.provide/set_status/set_base`, `filetree_refresh`/`filetree_preview`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changes*. | minor |
+| later | Interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions
 
@@ -330,7 +334,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 2. Vendor the Lua source in `lib/lua` and build it static, since `vendor:lua` uses the system library on macOS and Linux arm64.
 3. Load, hook and timer errors disable the plugin; command errors only log.
 4. Default keys are declared via `key=` in `qed.command`, overridable by `keybinds[name]`.
-5. Git: diff engine core, plumbing in Lua, file tree Git tab core for now.
+5. Git: diff engine and tree rendering core, plumbing (including the Git tab's data) in Lua.
 6. One `format` plugin orders save fixups before formatting. No hook priorities.
 7. Formatter config lives in `plugins.format.commands.<lang>`.
 8. The stub is auto-written to `$XDG_DATA_HOME/qed/lua/qed.lua` and fed to lua-ls via `Lua.workspace.library`.

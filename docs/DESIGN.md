@@ -109,12 +109,11 @@ no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 **Git diff base** (`plugins/git`, session-only): the "old" side of every git surface, picked by
 *Git: Set Diff Base* (`qed.pick`: HEAD, merge base with the default branch, local + remote refs,
 last 50 commits). Branch and merge-base picks are live refs, re-resolved per fetch (falls back to
-HEAD in a repo where the ref doesn't resolve); commit picks are a fixed sha. The plugin pushes the
-spec to core with `qed.git.set_base` (`g_diff_base`), which the file tree Git tab (`git_base_rev`) and
-`ctx.base` read. The scan's per-repo `@@BASE@@` name-status section replaces that repo's tracked
-`status` lines. A working-root change resets the base. The plugin's 2 s stat poll also resolves the
-base sha; when it changes (a moved branch, or HEAD under the default base) it refetches every
-buffer's base and rescans the tree (`qed.filetree.refresh`).
+HEAD in a repo where the ref doesn't resolve); commit picks are a fixed sha. The base lives only in
+the plugin, which also feeds the file tree status tab (see File tree status provider): with a base,
+each repo's `diff --name-status <base>` replaces its tracked `status` lines. A working-root change
+resets the base. The plugin's 2 s stat poll also resolves the base sha; when it changes (a moved
+branch, or HEAD under the default base) it refetches every buffer's base and rescans the tree.
 
 **Merge conflicts** (`conflict.odin`): content-driven, always on, no git dependency —
 `merge_scan` finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks by line prefix. Render
@@ -333,21 +332,15 @@ documented in `lib/tb2/PATCHES.md`:
 `modules.<name>.enabled` config flag (default on) and owns its whole config
 subtree under `modules.<name>` — lsp's completion-popup knobs, ai's former `llm.*` block (the
 settings parser walks `config_module_defs`, one typed str/int/bool table set per module).
-Git is the bundled `git` plugin (`plugins.git`; old `modules.git.*` keys warn "moved to"); `.Git`
-is "the git plugin is loaded" (`g_git_loaded`, true outside a plugin system) ANDed with
-`GIT_BINARY_PRESENT`, probed once at startup, and gates the core pieces still git-only: the file
-tree Git tab and its status bars, `git_diff_file`, conflict render (`merge_scan` itself is ungated). `g_git_loaded`
-is false from the start of the plugin's load until its setup succeeds. Unloading the git plugin runs
-`git_module_sync` (base spec cleared, Git tab left). `module_enabled(m)` is the single gate.
+Git is the bundled `git` plugin (`plugins.git`; old `modules.git.*` keys warn "moved to") and has
+no core gate. `module_enabled(m)` is the single gate.
 Commands carry a `.module`; `command_available`
 and keybind dispatch no-op a disabled module's commands, so palette + chords drop out
-automatically. Rendering/pump/subprocess seams each guard on `module_enabled` (git:
-conflict + filetree Git tab; lsp: server spawn/completion/status
-segment; ai: FIM/edit/chat). After a config hot-reload, `editor_modules_sync` calls each
-module's idempotent `*_module_sync` to tear down live state a toggle-off orphaned (stop
-servers, clear diagnostics, cancel in-flight AI). Merge-conflict highlight/resolve
-(`conflict.odin`) rides with `.Git` by decision, though its diff helpers
-(`diff_myers`/`diff_word_span`/`diff_hash`) are dependency-free and stay compiled.
+automatically. Rendering/pump/subprocess seams each guard on `module_enabled` (lsp: server
+spawn/completion/status segment; ai: FIM/edit/chat). After a config hot-reload,
+`editor_modules_sync` calls each module's idempotent `*_module_sync` to tear down live state a
+toggle-off orphaned (stop servers, clear diagnostics, cancel in-flight AI). Merge-conflict
+highlight/resolve (`conflict.odin`) is ungated.
 
 ## Plugins
 
@@ -444,7 +437,7 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Plugin command names are unique per scope (a tree and an editor command may share
   one). `qed.command` returns a handle whose `remove()` unregisters it; removing or
   unloading commands closes the palette, whose rows index `Plugins.commands`.
-- `ctx.selection_text`, `file`, `files` (file tree selection) and `base` (diff base)
+- `ctx.selection_text`, `file` and `files` (file tree selection)
   are computed on first read through `__index` and cached on the ctx, so `when` stays
   cheap.
 - `qed.term` wraps the core sessions (see Terminal pane); a session records its
@@ -660,13 +653,13 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
-defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable gate +
+defaults seeded before main, load + write-back) · `module` (lsp/ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`git` (file tree git plumbing, `g_diff_base`) · `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
+`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `tasks/`: *Tasks* picker and status segment; `git/`: diff base fetch, stat poll, *Git: Set Diff Base*, *Restore File*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `tasks/`: *Tasks* picker and status segment; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Restore File*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -769,24 +762,21 @@ keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch d
 cut+paste and rename both repath open buffers; the open buffer's row keeps an accent fg even
 selected; hint-row footer with tab-aware right-aligned toggle-state chips (log-pane style, lit
 when on, shortcuts config-driven via `command_shortcut` — `Alt+i ignored`/`Alt+. dotfiles` on
-`All`, `Alt+d diff` on `Git`); view toggles `Alt+e` expand/collapse-all (skips gitignored +
+`All`, `Alt+d diff` on the status tab); view toggles `Alt+e` expand/collapse-all (skips gitignored +
 hidden dotdirs), `Alt+.`/`Alt+i` show dotfiles / gitignored (both hidden by default, config
 `filetree_show_dotfiles`/`filetree_show_ignored`), also listed in the command palette;
-header scope tab bar (`All`/`Open`/`Git`/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g`/`Alt+u`
+header scope tab bar (`All`/`Open`/status tab/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g` (*File Tree: Changes*)/`Alt+u`
 open the pane on that tab from the editor and switch/toggle-close it while open — same chord
 again on its own tab closes — or `←`/`→`/click; also on the welcome screen) restricting the
-tree to a pruned, auto-expanded view of matching files + ancestors; git-status bars —
-`git status --porcelain --find-renames --ignored=matching --untracked-files=all` (single `sh -c`: `rev-parse` when the root is inside a repo, else `find` walks down and scans each child repo it hits, pruning at the repo boundary — each repo's status carries an `@@REPO@@ <toplevel>` marker its relative paths join against, followed by the same `git_diffsize_cmd` numstat sections, giving each changed file a colored `+N -N` on the Git tab, right-aligned with `+`/`-` columns padded over the visible rows, label clipped with `…`, numbers dropped when even a short label cannot fit) scanned **async**
-via the shared subprocess runner, prewarmed at startup: every open (first included) renders instantly from the
-cached status/ignored then refreshes in the
-background (`filetree_scan_pump`); a green/yellow `▌` per
-added/modified file propagated up its ancestor directories, ignored files dimmed; deleted files
-(`git_porcelain_line`/`git_name_status_line` → `.Deleted`, unless the path exists again) listed on
-the Git tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter` or
-*Restore File* (the `git` plugin's tree command; core's `Enter` runs it) confirms then
-`git restore --source=<base>` (worktree only, plus index when the deletion is staged), other file
-commands refuse them; renames listed once at the new path labeled
-`new  ← old` (`FileTree.renames`, numstat `old => new` keyed on the new path); unsaved
+tree to a pruned, auto-expanded view of matching files + ancestors; status bars from the
+**file tree status provider** (below): a green/yellow `▌` per added/modified file propagated up
+its ancestor directories, ignored files dimmed (hidden unless *Toggle Ignored*), a colored `+N -N`
+per file on the status tab (right-aligned, `+`/`-` columns padded over the visible rows, label
+clipped with `…`, numbers dropped when even a short label cannot fit); deleted files listed on the
+status tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter`
+runs the provider's `open_deleted` (the `git` plugin's *Restore File*: confirm, then
+`git restore --source=<base>`, worktree only plus index when the deletion is staged), other file
+commands refuse them; renames listed once at the new path labeled `new  ← old`; unsaved
 open buffers marked with a trailing `●`, propagated to directories),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
@@ -826,18 +816,30 @@ read in-process up to the line cap; buffer source (file-tree open buffers / line
 byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrapped
 rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
 both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a
-nil error with 0 bytes.) The file-tree **Git** tab
-previews a diff instead — changed hunks + `preview_diff_context` lines of context in the
+nil error with 0 bytes.) The file-tree status tab
+previews a diff instead: changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
-built by `git_diff_file` (base-vs-worktree for a non-open file, reusing the gutter's line-hash diff; a rename diffs
-against the old path's base blob, a deleted file previews entirely as ghost rows).
-*File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.git_diff_only` seeded from config
-`filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
+built by `preview_diff_file` (the provider's base text vs the file on disk, reusing the gutter's
+line-hash diff; a deleted file previews entirely as ghost rows; a `nil` base previews the file plainly).
+*File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.diff_only` seeded from config
+`filetree_diff_only`, default on) switches between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
 gap-collapsing never fires).
 Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`): navigation only marks the preview
 dirty (`filetree_preview_touch`) and the main loop flushes it once selection settles, so a held arrow
-never blocks on the per-file `git show` diff (the Git tab's cost) and can't back up the input queue.
+can't back up the input queue or flood the provider with base requests.
+
+**File tree status provider** (`FileTree.provider`, `qed.filetree.*`): one plugin owns the status
+tab (`qed.filetree.provide{label, open_deleted?}`, the last call wins, unload clears it); the tab is
+hidden and *File Tree: Changes* / *Toggle Diff* are unavailable without one. Core asks with
+`filetree_refresh` (tree open, root change, a tree file operation, `provide` over an open tree), queued once per
+iteration and delivered only to the provider; the provider pushes `qed.filetree.set_status(files, ignored)`
+(per-file `mark`, rename `from`, `added`/`removed`), which core validates before touching state,
+then propagates marks to ancestors, rebuilds and restarts the prewarm (`scanned` stays false from
+`provide` until the first push so the walk never runs without the ignored set). The status tab's
+preview sends `filetree_preview(path)` and shows nothing until `qed.filetree.set_base(path, text|nil)`
+answers; the single cached base (`base_path`/`base_state`) resets on every push, so a moved base
+re-asks. Lua never runs on render or per keystroke: both events are queued and run as coroutines.
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight with full
@@ -893,7 +895,7 @@ the *Tasks* picker lists every session with its state (running / exit code) and
 runs, shows, restarts, kills or closes it; exit messages; a `tasks N` status segment (running count, red after a failed exit).
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
-rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`); hot reload on file add/remove/edit
+rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), the file tree status tab (`qed.filetree`, fed by the `git` plugin); hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only).
 
