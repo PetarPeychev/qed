@@ -252,31 +252,20 @@ cmd_merge_resolve :: proc(editor: ^Editor) {
 
 merge_actions := [?]string{"Keep Ours", "Keep Theirs", "Keep Both"}
 
-MergeDialog :: struct {
-	active:   bool,
-	selected: int,
-}
-
 merge_dialog_open :: proc(editor: ^Editor) {
-	editor.merge_dialog.active = true
-	editor.merge_dialog.selected = 0
+	text := []string{"Resolve merge conflict:"}
+	pane_open(editor, {id = "merge", text = text, list = {items = merge_actions[:]}, on = {activate = merge_dialog_execute}})
 	editor_clear_message(editor)
 }
 
-merge_dialog_close :: proc(editor: ^Editor) {
-	editor.merge_dialog.active = false
-}
-
-merge_dialog_execute :: proc(editor: ^Editor) {
+merge_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 	b := editor_buffer(editor)
-	sel := editor.merge_dialog.selected
-	merge_dialog_close(editor)
 	c, ok := merge_at(merge_scan(b), b.cursor.row)
 	if !ok {
 		return
 	}
 	keep := MergeKeep.Ours
-	switch sel {
+	switch p.list.sel {
 	case 1:
 		keep = .Theirs
 	case 2:
@@ -284,20 +273,4 @@ merge_dialog_execute :: proc(editor: ^Editor) {
 	}
 	merge_resolve(b, c, keep)
 	editor_scroll(editor)
-}
-
-merge_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_key(editor, ev, &editor.merge_dialog.selected, len(merge_actions), merge_dialog_execute, merge_dialog_close)
-}
-
-merge_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_mouse(editor, ev, merge_dialog_question(), merge_actions[:], &editor.merge_dialog.selected, merge_dialog_execute, merge_dialog_close)
-}
-
-merge_dialog_question :: proc() -> string {
-	return "Resolve merge conflict:"
-}
-
-merge_dialog_render :: proc(editor: ^Editor) {
-	dialog_render(editor, merge_dialog_question(), merge_actions[:], editor.merge_dialog.selected)
 }

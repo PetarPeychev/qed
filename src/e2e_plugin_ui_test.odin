@@ -91,6 +91,14 @@ return {setup = function()
 	cmd("Query Static", function()
 		show(qed.pick{items = {"alpha", "beta", "gamma"}, query = "gam"})
 	end)
+	cmd("Pick Ask", function()
+		qed.defer(0, function() show("ask " .. tostring(qed.confirm("Over?"))) end)
+		show(qed.pick{items = {"a", "b"}})
+	end)
+	cmd("Prompt Ask", function()
+		qed.defer(0, function() show("inner " .. tostring(qed.prompt{prompt = "Inner:"})) end)
+		show("outer " .. tostring(qed.prompt{prompt = "Outer:"}))
+	end)
 	qed.command{name = "Tree Confirm", scope = "filetree", run = function()
 		show(qed.confirm("Tree?", {"One", "Two"}))
 	end}
@@ -107,6 +115,12 @@ ui_run :: proc(t: ^testing.T, e: ^E2E, name: string, loc := #caller_location) {
 ui_selected :: proc(e: ^E2E) -> string {
 	ui := &e.ed.plugins.ui
 	return ui.labels[ui.matches[ui.selected]]
+}
+
+@(private = "file")
+ui_prompt_open :: proc(e: ^E2E) -> bool {
+	p := pane_focus(&e.ed)
+	return p != nil && p.owner == "ui" && len(p.fields) == 1
 }
 
 @(private = "file")
@@ -296,7 +310,7 @@ e2e_plugin_ui_busy :: proc(t: ^testing.T) {
 	ui_run(t, &e, "UI: Prompt")
 	ui_run(t, &e, "UI: Strings")
 	testing.expect_value(t, e.ed.message, "busy")
-	testing.expect_value(t, e.ed.plugins.ui.kind, PluginUiKind.Prompt)
+	testing.expect(t, ui_prompt_open(&e), "the prompt stays")
 	ui_run(t, &e, "UI: Pane")
 	testing.expect(t, !e.ed.plugins.pane.active, "a pane is refused while a modal is open")
 	e2e_key(&e, .Esc)
@@ -437,13 +451,138 @@ e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
 		}
 	}
 	plugin_command_run(&e.ed, cmd)
-	testing.expect(t, e.ed.plugins.ui.active, "a tree command can open a modal over the tree")
+	testing.expect(t, pane_focus(&e.ed) != nil, "a tree command can open a modal over the tree")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Tree?"), "the dialog renders over the tree")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "2")
 	testing.expect(t, e.ed.filetree.active, "the tree stays open")
+}
+
+@(private = "file")
+ui_ask_wait :: proc(e: ^E2E) -> ^Pane {
+	e2e_pump_while(e, proc(e: ^E2E) -> bool {
+		p := pane_focus(&e.ed)
+		return p == nil || p.owner != "ui"
+	})
+	return pane_focus(&e.ed)
+}
+
+@(test)
+e2e_plugin_ui_confirm_over_exclusive :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	merge_dialog_open(&e.ed)
+	merge := pane_find(&e.ed, "merge").handle
+	ui_run(t, &e, "UI: Confirm")
+	p := pane_focus(&e.ed)
+	testing.expect(t, p != nil && p.kind == .Child && p.parent == merge, "a confirm over a pane is its child")
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Sure?"), "the child renders over its parent")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "nil")
+	p = pane_focus(&e.ed)
+	testing.expect(t, p != nil && p.id == "merge", "Esc returns to the parent")
+
+	ui_run(t, &e, "UI: Prompt")
+	pane_end(&e.ed, merge, false)
+	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, len(e.ed.panes), 0)
+}
+
+@(test)
+e2e_plugin_ui_confirm_parent_overlay_closes :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	filetree_open_all(&e.ed)
+	cmd: Command
+	for c in e.ed.plugins.commands {
+		if c.name == "UI: Tree Confirm" {
+			cmd = c
+		}
+	}
+	plugin_command_run(&e.ed, cmd)
+	p := pane_focus(&e.ed)
+	testing.expect(t, p != nil && p.over == &e.ed.filetree.active, "a confirm over the tree sits on it")
+	filetree_close(&e.ed)
+	e2e_render(&e)
+	testing.expect(t, !e2e_grid_has(&e, "Tree?"), "an orphan is not drawn")
+	pane_stack_sync(&e.ed)
+	testing.expect_value(t, len(e.ed.panes), 0)
+	testing.expect_value(t, e.ed.message, "nil")
+}
+
+@(test)
+e2e_plugin_ui_confirm_over_pick :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Pick Ask")
+	testing.expect(t, e.ed.plugins.ui.active, "the pick is open")
+	p := ui_ask_wait(&e)
+	testing.expect(t, p != nil && p.over == &e.ed.plugins.ui.active, "a deferred confirm stacks over the pick")
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Over?"), "the confirm renders over the pick")
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "ask 1")
+	testing.expect(t, e.ed.plugins.ui.active, "the pick stays open")
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "a")
+}
+
+@(test)
+e2e_plugin_ui_prompt_over_prompt :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Prompt Ask")
+	outer := pane_focus(&e.ed).handle
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.panes) < 2})
+	p := pane_focus(&e.ed)
+	testing.expect(t, p != nil && p.parent == outer, "a prompt opened over a prompt is its child")
+	e2e_paste(&e, "in")
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "inner in")
+	e2e_type(&e, "out")
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "outer out")
+}
+
+@(test)
+e2e_plugin_ui_busy_under_safety :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "asker", `return {setup = function()
+		qed.command{name = "Confirm", run = function() local r, err = qed.confirm("Q?"); qed.message(tostring(r) .. " " .. tostring(err)) end}
+		qed.command{name = "Prompt", run = function() local r, err = qed.prompt{prompt = "P:"}; qed.message(tostring(r) .. " " .. tostring(err)) end}
+	end}`)
+	e2e_type(&e, "x")
+	editor_request_quit(&e.ed)
+	ui_run(t, &e, "Asker: Confirm")
+	testing.expect_value(t, e.ed.message, "nil busy")
+	ui_run(t, &e, "Asker: Prompt")
+	testing.expect_value(t, e.ed.message, "nil busy")
+	testing.expect_value(t, pane_focus(&e.ed).id, "quit")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, len(e.ed.panes), 0)
+	ui_run(t, &e, "Asker: Confirm")
+	testing.expect_value(t, len(e.ed.panes), 1)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "1 nil")
+}
+
+@(test)
+e2e_plugin_ui_unload_closes_children :: proc(t: ^testing.T) {
+	e, pl := ui_start(t)
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "ui2", `return {setup = function()
+		qed.command{name = "Ask", run = function() qed.message("ui2 " .. tostring(qed.confirm("Two?"))) end}
+	end}`)
+	ui_run(t, &e, "UI: Confirm")
+	ui_run(t, &e, "Ask")
+	testing.expect_value(t, len(e.ed.panes), 2)
+	plugin_unload(&e.ed, pl)
+	testing.expect_value(t, len(e.ed.panes), 0)
+	testing.expect_value(t, e.ed.message, "ui2 nil")
 }
 
 @(test)
@@ -645,7 +784,7 @@ e2e_plugin_ui_query_busy_chord :: proc(t: ^testing.T) {
 	ui_run(t, &e, "UI: Prompt")
 	ui_run(t, &e, "UI: Query")
 	testing.expect_value(t, e.ed.message, "busy")
-	testing.expect_value(t, e.ed.plugins.ui.kind, PluginUiKind.Prompt)
+	testing.expect(t, ui_prompt_open(&e), "the prompt stays")
 	e2e_key(&e, .Esc)
 
 	nav_alt(&e, 'q')

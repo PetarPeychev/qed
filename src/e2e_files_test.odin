@@ -183,10 +183,10 @@ e2e_files_conflict_cancel :: proc(t: ^testing.T) {
 	testing.expect(t, b.disk_conflict, "poll should flag the conflict on a dirty buffer")
 
 	e2e_key(&e, .Ctrl_S)
-	testing.expect(t, e.ed.conflict_dialog.active, "Ctrl+S should open the conflict dialog")
+	testing.expect(t, pane_find(&e.ed, "conflict") != nil, "Ctrl+S should open the conflict dialog")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.conflict_dialog.active, "Esc cancels the dialog")
+	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "Esc cancels the dialog")
 	testing.expect(t, b.modified, "buffer keeps its unsaved edit")
 	testing.expect_value(t, string(b.lines[0].text[:]), "Xfirst line")
 	testing.expect_value(t, e2e_read_disk(e.path), "DISK\n") // nothing written
@@ -206,7 +206,7 @@ e2e_files_conflict_overwrite :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down) // Cancel -> Overwrite
 	e2e_key(&e, .Enter)
 
-	testing.expect(t, !e.ed.conflict_dialog.active, "dialog closes after choosing")
+	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "dialog closes after choosing")
 	testing.expect_value(t, b.modified, false)
 	testing.expect_value(t, e2e_read_disk(e.path), "Xfirst line\nsecond line\n") // buffer wins
 }
@@ -226,7 +226,7 @@ e2e_files_conflict_reload :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down) // Cancel -> Overwrite -> Reload
 	e2e_key(&e, .Enter)
 
-	testing.expect(t, !e.ed.conflict_dialog.active, "dialog closes after choosing")
+	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "dialog closes after choosing")
 	testing.expect_value(t, b.modified, false)
 	testing.expect_value(t, len(b.lines), 2)
 	testing.expect_value(t, string(b.lines[0].text[:]), "DISK") // disk wins in the buffer

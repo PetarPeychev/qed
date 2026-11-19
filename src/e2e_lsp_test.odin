@@ -366,7 +366,7 @@ e2e_lsp_format_on_save_quit :: proc(t: ^testing.T) {
 
 	e2e_type(&e, "Z")
 	e2e_key(&e, .Ctrl_Q)
-	testing.expect(t, e.ed.quit_dialog.active, "Ctrl+Q on a modified buffer opens the quit dialog")
+	testing.expect(t, pane_find(&e.ed, "quit") != nil, "Ctrl+Q on a modified buffer opens the quit dialog")
 	e2e_key(&e, .Enter)
 
 	// The format request is in flight: quit must wait for the chained save.

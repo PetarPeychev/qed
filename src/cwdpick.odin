@@ -232,7 +232,7 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 cwdpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	cp := &editor.cwdpick
 	if cp.confirm {
-		dialog_key(editor, ev, &cp.confirm_selected, len(filetree_close_actions), cwdpick_confirm_execute, cwdpick_confirm_cancel)
+		dialog_key(editor, ev, cwdpick_confirm_question(editor), filetree_close_actions[:], &cp.confirm_selected, cwdpick_confirm_execute, cwdpick_confirm_cancel)
 		return
 	}
 	if command_matches(ev, "Change Working Directory") {

@@ -345,14 +345,9 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "quit")
 	lua.pushboolean(L, b32(ed.welcome))
 	lua.setfield(L, -2, "welcome")
-	switch {
-	case ed.quit_dialog.active:
-		lua.pushodinstring(L, "quit")
-	case ed.close_dialog.active:
-		lua.pushodinstring(L, "close")
-	case ed.conflict_dialog.active:
-		lua.pushodinstring(L, "conflict")
-	case:
+	if p := pane_focus(ed); p != nil && p.safety {
+		lua.pushodinstring(L, p.id)
+	} else {
 		lua.pushnil(L)
 	}
 	lua.setfield(L, -2, "dialog")
@@ -475,13 +470,34 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	p := &entry.editor.plugins
 	ui := &p.ui
+	if pn := pane_focus(entry.editor); pn != nil && pn.owner != "" {
+		lua.createtable(L, 0, 4)
+		lua.pushodinstring(L, "prompt" if len(pn.fields) > 0 else "confirm")
+		lua.setfield(L, -2, "kind")
+		lua.pushodinstring(L, textfield_str(&pn.fields[0].field) if len(pn.fields) > 0 else "")
+		lua.setfield(L, -2, "query")
+		lua.pushinteger(L, lua.Integer(len(pn.list.items)))
+		lua.setfield(L, -2, "matches")
+		lua.createtable(L, c.int(len(pn.list.items)), 0)
+		for s, i in pn.list.items {
+			lua.pushodinstring(L, s)
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+		lua.setfield(L, -2, "labels")
+		lua.pushodinstring(L, "")
+		lua.setfield(L, -2, "hint")
+		if len(pn.list.items) > 0 {
+			lua.pushodinstring(L, pn.list.items[pn.list.sel])
+			lua.setfield(L, -2, "selected")
+		}
+		return 1
+	}
 	if !ui.active {
 		lua.pushnil(L)
 		return 1
 	}
 	lua.createtable(L, 0, 4)
-	kinds := [PluginUiKind]string{.Pick = "pick", .Prompt = "prompt", .Confirm = "confirm"}
-	lua.pushodinstring(L, kinds[ui.kind])
+	lua.pushodinstring(L, "pick")
 	lua.setfield(L, -2, "kind")
 	lua.pushodinstring(L, textfield_str(&ui.field))
 	lua.setfield(L, -2, "query")
@@ -495,10 +511,7 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "labels")
 	lua.pushodinstring(L, ui.hint)
 	lua.setfield(L, -2, "hint")
-	if ui.kind == .Confirm {
-		lua.pushodinstring(L, ui.labels[ui.selected])
-		lua.setfield(L, -2, "selected")
-	} else if len(ui.matches) > 0 {
+	if len(ui.matches) > 0 {
 		lua.pushodinstring(L, ui.labels[ui.matches[ui.selected]])
 		lua.setfield(L, -2, "selected")
 	}

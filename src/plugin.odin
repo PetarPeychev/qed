@@ -78,6 +78,7 @@ Plugins :: struct {
 	current:  ^lua.State,
 	ui:       PluginUi,
 	pane:     PluginPane,
+	answer:   PluginAnswer,
 	persist_path: string,
 	theme_owner: string,
 	names:    [dynamic]string,

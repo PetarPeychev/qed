@@ -9,25 +9,15 @@ quit_actions := [?]string{"Save All", "Discard All", "Cancel"}
 close_actions := [?]string{"Save", "Discard", "Cancel"}
 conflict_actions := [?]string{"Cancel", "Overwrite (keep my version)", "Reload (discard my changes)"}
 
-QuitDialog :: struct {
-	active:   bool,
-	selected: int,
-}
-
 quit_dialog_open :: proc(editor: ^Editor) {
-	editor.quit_dialog.active = true
-	editor.quit_dialog.selected = 0
+	text := []string{quit_dialog_question(editor)}
+	pane_open(editor, {id = "quit", safety = true, text = text, list = {items = quit_actions[:]}, on = {activate = quit_dialog_execute}})
 	editor_clear_message(editor)
 }
 
-quit_dialog_close :: proc(editor: ^Editor) {
-	editor.quit_dialog.active = false
-}
-
-quit_dialog_execute :: proc(editor: ^Editor) {
-	switch editor.quit_dialog.selected {
+quit_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
+	switch p.list.sel {
 	case 0:
-		quit_dialog_close(editor)
 		conflict := false
 		ids := make([dynamic]u64, context.temp_allocator)
 		for &b in editor.buffers {
@@ -56,17 +46,7 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 		}
 	case 1:
 		editor.quit = true
-	case 2:
-		quit_dialog_close(editor)
 	}
-}
-
-quit_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_key(editor, ev, &editor.quit_dialog.selected, len(quit_actions), quit_dialog_execute, quit_dialog_close)
-}
-
-quit_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_mouse(editor, ev, quit_dialog_question(editor), quit_actions[:], &editor.quit_dialog.selected, quit_dialog_execute, quit_dialog_close)
 }
 
 quit_dialog_question :: proc(editor: ^Editor) -> string {
@@ -90,30 +70,18 @@ quit_dialog_question :: proc(editor: ^Editor) -> string {
 	return strings.to_string(sb)
 }
 
-quit_dialog_render :: proc(editor: ^Editor) {
-	dialog_render(editor, quit_dialog_question(editor), quit_actions[:], editor.quit_dialog.selected)
-}
-
-CloseDialog :: struct {
-	active:   bool,
-	selected: int,
-}
-
 close_dialog_open :: proc(editor: ^Editor) {
-	editor.close_dialog.active = true
-	editor.close_dialog.selected = 0
+	b := editor_buffer(editor)
+	name := filepath.base(b.path) if b.path != "" else "[No Name]"
+	text := []string{fmt.tprintf("Save changes to %s?", name)}
+	pane_open(editor, {id = "close", safety = true, text = text, list = {items = close_actions[:]}, on = {activate = close_dialog_execute}})
 	editor_clear_message(editor)
 }
 
-close_dialog_close :: proc(editor: ^Editor) {
-	editor.close_dialog.active = false
-}
-
-close_dialog_execute :: proc(editor: ^Editor) {
-	switch editor.close_dialog.selected {
+close_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
+	switch p.list.sel {
 	case 0:
 		b := editor_buffer(editor)
-		close_dialog_close(editor)
 		if buffer_disk_changed(b) {
 			conflict_dialog_open(editor)
 			return
@@ -121,25 +89,8 @@ close_dialog_execute :: proc(editor: ^Editor) {
 		editor_save_intent_set(editor, .Close, b.path)
 		editor_save_full(editor, b)
 	case 1:
-		close_dialog_close(editor)
 		editor_close_current(editor)
-	case 2:
-		close_dialog_close(editor)
 	}
-}
-
-close_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_key(editor, ev, &editor.close_dialog.selected, len(close_actions), close_dialog_execute, close_dialog_close)
-}
-
-close_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_mouse(editor, ev, close_dialog_question(editor), close_actions[:], &editor.close_dialog.selected, close_dialog_execute, close_dialog_close)
-}
-
-close_dialog_question :: proc(editor: ^Editor) -> string {
-	b := editor_buffer(editor)
-	name := filepath.base(b.path) if b.path != "" else "[No Name]"
-	return fmt.tprintf("Save changes to %s?", name)
 }
 
 close_question :: proc(total, unsaved: int) -> string {
@@ -150,30 +101,17 @@ close_question :: proc(total, unsaved: int) -> string {
 	return fmt.tprintf("Close %d buffer%s?", total, plural)
 }
 
-close_dialog_render :: proc(editor: ^Editor) {
-	dialog_render(editor, close_dialog_question(editor), close_actions[:], editor.close_dialog.selected)
-}
-
-ConflictDialog :: struct {
-	active:   bool,
-	selected: int,
-}
-
 conflict_dialog_open :: proc(editor: ^Editor) {
-	editor.conflict_dialog.active = true
-	editor.conflict_dialog.selected = 0
+	b := editor_buffer(editor)
+	name := filepath.base(b.path) if b.path != "" else "[No Name]"
+	text := []string{fmt.tprintf("%s changed on disk since you loaded it.", name)}
+	pane_open(editor, {id = "conflict", safety = true, text = text, list = {items = conflict_actions[:]}, on = {activate = conflict_dialog_execute}})
 	editor_clear_message(editor)
 }
 
-conflict_dialog_close :: proc(editor: ^Editor) {
-	editor.conflict_dialog.active = false
-}
-
-conflict_dialog_execute :: proc(editor: ^Editor) {
+conflict_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 	b := editor_buffer(editor)
-	selected := editor.conflict_dialog.selected
-	conflict_dialog_close(editor)
-	switch selected {
+	switch p.list.sel {
 	case 1:
 		b.disk = buffer_disk_stamp(b.path) // accept the disk state so a format-chained save can't re-raise the conflict
 		editor_save_full(editor, b)
@@ -182,45 +120,26 @@ conflict_dialog_execute :: proc(editor: ^Editor) {
 	}
 }
 
-conflict_dialog_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_key(editor, ev, &editor.conflict_dialog.selected, len(conflict_actions), conflict_dialog_execute, conflict_dialog_close)
+dialog_pane :: proc(question: string, actions: []string, selected: int) -> Pane {
+	text := make([]string, 1, context.temp_allocator)
+	text[0] = question
+	return {text = text, list = {items = actions, sel = selected}}
 }
 
-conflict_dialog_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	dialog_mouse(editor, ev, conflict_dialog_question(editor), conflict_actions[:], &editor.conflict_dialog.selected, conflict_dialog_execute, conflict_dialog_close)
-}
-
-conflict_dialog_question :: proc(editor: ^Editor) -> string {
-	b := editor_buffer(editor)
-	name := filepath.base(b.path) if b.path != "" else "[No Name]"
-	return fmt.tprintf("%s changed on disk since you loaded it.", name)
-}
-
-conflict_dialog_render :: proc(editor: ^Editor) {
-	dialog_render(editor, conflict_dialog_question(editor), conflict_actions[:], editor.conflict_dialog.selected)
-}
-
-dialog_box :: proc(editor: ^Editor, question: string, actions: []string) -> Rect {
-	content_w := len(question)
-	for a in actions {
-		content_w = max(content_w, len(a))
-	}
-	content_w += 2
-	content_w = min(content_w, int(tb2.width()) - 4)
-	return pane_center(editor, content_w, 2 + len(actions))
-}
-
-dialog_key :: proc(editor: ^Editor, ev: tb2.Event, selected: ^int, n: int, execute, close: proc(editor: ^Editor)) {
-	#partial switch ev.key {
-	case .Esc:
-		close(editor)
-	case .Enter:
+dialog_act :: proc(editor: ^Editor, action: PaneAction, execute, close: proc(editor: ^Editor)) {
+	#partial switch action {
+	case .Activate:
 		execute(editor)
-	case .Arrow_Down:
-		selected^ = min(selected^ + 1, n - 1)
-	case .Arrow_Up:
-		selected^ = max(selected^ - 1, 0)
+	case .Close:
+		close(editor)
 	}
+}
+
+dialog_key :: proc(editor: ^Editor, ev: tb2.Event, question: string, actions: []string, selected: ^int, execute, close: proc(editor: ^Editor)) {
+	p := dialog_pane(question, actions, selected^)
+	action := pane_key(&p, ev)
+	selected^ = p.list.sel
+	dialog_act(editor, action, execute, close)
 }
 
 dialog_mouse :: proc(
@@ -231,41 +150,13 @@ dialog_mouse :: proc(
 	selected: ^int,
 	execute, close: proc(editor: ^Editor),
 ) {
-	if ev.key != .Mouse_Left {
-		return
-	}
-	box := dialog_box(editor, question, actions)
-	motion := ev_motion(ev)
-	if !mouse_in_rect(ev, box) {
-		if !motion {
-			close(editor)
-		}
-		return
-	}
-	off := overlay_row_off(ev, Rect{box.x + 1, box.y + 3, box.w - 2, len(actions)})
-	if off < 0 {
-		return
-	}
-	selected^ = off
-	if !motion && overlay_double_click(editor, off) {
-		execute(editor)
-	}
+	p := dialog_pane(question, actions, selected^)
+	action := pane_mouse(editor, &p, ev)
+	selected^ = p.list.sel
+	dialog_act(editor, action, execute, close)
 }
 
 dialog_render :: proc(editor: ^Editor, question: string, actions: []string, selected: int) {
-	box := dialog_box(editor, question, actions)
-	inner := pane_draw_box(box)
-
-	pane_text(inner.x + 1, inner.y, inner.w - 2, question, COLOR_PANE_FG, COLOR_PANE_BG)
-	pane_hline(box, inner.y + 1)
-	for a, i in actions {
-		y := inner.y + 2 + i
-		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		if i == selected {
-			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
-		}
-		pane_text(inner.x + 1, y, inner.w - 2, a, fg, bg)
-	}
-	tb2.hide_cursor()
+	p := dialog_pane(question, actions, selected)
+	pane_render(editor, &p)
 }

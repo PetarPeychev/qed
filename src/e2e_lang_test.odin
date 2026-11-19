@@ -74,16 +74,16 @@ e2e_conflict_resolve_keep_ours :: proc(t: ^testing.T) {
 	// Cursor outside the block: Alt+m jumps to the next block instead of resolving.
 	b.cursor = {0, 0}
 	e2e_key(&e, tb2.Key(0), .Alt, 'm')
-	testing.expect(t, !e.ed.merge_dialog.active, "Alt+m outside a block should not open the dialog")
+	testing.expect(t, pane_find(&e.ed, "merge") == nil, "Alt+m outside a block should not open the dialog")
 	testing.expect_value(t, b.cursor.row, 1)
 
 	// Now inside the block, Alt+m opens the resolve dialog.
 	e2e_key(&e, tb2.Key(0), .Alt, 'm')
-	testing.expect(t, e.ed.merge_dialog.active, "Alt+m inside a block opens the dialog")
+	testing.expect(t, pane_find(&e.ed, "merge") != nil, "Alt+m inside a block opens the dialog")
 
 	// Keep Ours is the default selection; Enter executes it.
 	e2e_key(&e, .Enter)
-	testing.expect(t, !e.ed.merge_dialog.active, "executing closes the dialog")
+	testing.expect(t, pane_find(&e.ed, "merge") == nil, "executing closes the dialog")
 	testing.expect_value(t, len(b.lines), 3)
 	testing.expect_value(t, string(b.lines[0].text[:]), "top")
 	testing.expect_value(t, string(b.lines[1].text[:]), "ours")

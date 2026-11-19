@@ -1318,14 +1318,14 @@ e2e_nav_quit_guard :: proc(t: ^testing.T) {
 	testing.expect(t, b.modified, "buffer is now modified")
 
 	e2e_key(&e, .Ctrl_Q)
-	testing.expect(t, e.ed.quit_dialog.active, "Ctrl+Q on a modified buffer opens the quit dialog")
+	testing.expect(t, pane_find(&e.ed, "quit") != nil, "Ctrl+Q on a modified buffer opens the quit dialog")
 	testing.expect(t, !e.ed.quit, "editor does not quit yet")
 
 	// Choose the non-destructive Cancel action.
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
-	testing.expect(t, !e.ed.quit_dialog.active, "Cancel closes the dialog")
+	testing.expect(t, pane_find(&e.ed, "quit") == nil, "Cancel closes the dialog")
 	testing.expect(t, !e.ed.quit, "editor stays open")
 	testing.expect(t, b.modified, "edit is preserved")
 }
@@ -1603,10 +1603,10 @@ e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, tr.mode, FileTreeMode.Nav)
 
 	e2e_key(&e, .Enter)
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return !e.ed.plugins.ui.active})
-	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.active && ui.kind == .Confirm, "the git plugin asks to confirm")
-	testing.expect_value(t, ui.title, "Restore gone.txt from HEAD?")
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return pane_focus(&e.ed) == nil})
+	pn := pane_focus(&e.ed)
+	testing.expect(t, pn != nil && pn.owner == "git" && len(pn.list.items) > 0, "the git plugin asks to confirm")
+	testing.expect_value(t, pn.text[0], "Restore gone.txt from HEAD?")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
@@ -1728,7 +1728,7 @@ e2e_nav_git_deleted_unicode :: proc(t: ^testing.T) {
 	testing.expect(t, !filetree_entry_deleted(tr, tr.entries[tr.selected]), "recreated since the scan is not deleted")
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
-	testing.expect(t, !e.ed.plugins.ui.active, "no restore prompt over a recreated file")
+	testing.expect(t, pane_focus(&e.ed) == nil, "no restore prompt over a recreated file")
 	data, _ := os.read_entire_file(gone, context.temp_allocator)
 	testing.expect_value(t, string(data), "new\n")
 }

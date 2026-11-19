@@ -33,10 +33,8 @@ Editor :: struct {
 	pluginview:      PluginView,
 	log_file:        ^os.File,
 	log_open:        bool,
-	quit_dialog:     QuitDialog,
-	close_dialog:    CloseDialog,
-	conflict_dialog: ConflictDialog,
-	merge_dialog:    MergeDialog,
+	panes:           [dynamic]Pane,
+	pane_seq:        u64,
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
 	theme_stamp:     DiskStamp,
@@ -187,6 +185,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	aiedit_destroy(&editor.aiedit)
 	term_destroy(editor)
 	plugins_shutdown(&editor.plugins)
+	pane_stack_destroy(editor)
 	preview_destroy(&editor.pluginview.source)
 	// Process-global singletons (seeded once at @(init) / lazily, shared across
 	// every editor); real main tears them down once at exit. A headless test reuses
@@ -236,7 +235,7 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [12]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
@@ -250,11 +249,24 @@ editor_overlays :: proc(editor: ^Editor) -> [16]Overlay {
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
 		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse, rename_paste},
 		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse, filetree_paste},
-		{&editor.quit_dialog.active, quit_dialog_dispatch_key, quit_dialog_render, quit_dialog_dispatch_mouse, nil},
-		{&editor.close_dialog.active, close_dialog_dispatch_key, close_dialog_render, close_dialog_dispatch_mouse, nil},
-		{&editor.conflict_dialog.active, conflict_dialog_dispatch_key, conflict_dialog_render, conflict_dialog_dispatch_mouse, nil},
-		{&editor.merge_dialog.active, merge_dialog_dispatch_key, merge_dialog_render, merge_dialog_dispatch_mouse, nil},
 	}
+}
+
+editor_overlay_active :: proc(editor: ^Editor) -> ^bool {
+	for ov in editor_overlays(editor) {
+		if ov.active^ {
+			return ov.active
+		}
+	}
+	return nil
+}
+
+editor_overlay_resize :: proc(editor: ^Editor) {
+	editor_scroll(editor)
+	if editor.terminal.active {
+		term_resize(editor)
+	}
+	editor_previews_sync(editor)
 }
 
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -281,6 +293,9 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			return
 		}
 	}
+	if pane_stack_dispatch(editor, ev) {
+		return
+	}
 	for ov in editor_overlays(editor) {
 		if ov.active^ {
 			#partial switch ev.type {
@@ -291,11 +306,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 					ov.mouse(editor, ev)
 				}
 			case .Resize:
-				editor_scroll(editor)
-				if editor.terminal.active {
-					term_resize(editor)
-				}
-				editor_previews_sync(editor)
+				editor_overlay_resize(editor)
 			}
 			return
 		}
@@ -375,7 +386,7 @@ editor_previews_sync :: proc(editor: ^Editor) {
 }
 
 editor_paste_route :: proc(editor: ^Editor, text: string) {
-	if len(text) == 0 {
+	if len(text) == 0 || pane_stack_paste(editor, text) {
 		return
 	}
 	for ov in editor_overlays(editor) {
@@ -1220,15 +1231,22 @@ editor_render :: proc(editor: ^Editor) {
 		inspect_render(editor)
 	}
 
+	pane_stack_render(editor, true)
+	covered := false
+	// legacy 2-deep stack: remove once the palette and qed.pick/pane are Panes (M1, M2)
 	if (editor.palette.active || editor.plugins.ui.active || editor.plugins.pane.active) && editor.filetree.active {
 		filetree_render(editor)
 	}
 	for ov in editor_overlays(editor) {
 		if ov.active^ {
 			ov.render(editor)
-			tb2.present()
-			return
+			covered = true
+			break
 		}
+	}
+	if pane_stack_render(editor, false) || covered {
+		tb2.present()
+		return
 	}
 	if editor.welcome {
 		tb2.hide_cursor()

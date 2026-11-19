@@ -84,6 +84,7 @@ PluginWaitKind :: enum {
 	Save,
 	Lsp,
 	Ui,
+	Pane,
 }
 
 PluginWait :: struct {
@@ -1040,6 +1041,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		}
 	}
 
+	pane_stack_sync(editor)
 	if !editor.pasting {
 		plugin_flush(editor)
 	}

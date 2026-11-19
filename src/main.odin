@@ -179,6 +179,7 @@ editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.
 	if llm_running(editor) {
 		llm_prune_edited(editor)
 	}
+	pane_stack_sync(editor)
 	if !editor.pasting {
 		plugin_flush(editor)
 	}

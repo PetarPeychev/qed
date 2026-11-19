@@ -370,7 +370,7 @@ filetree_status_pushed :: proc(editor: ^Editor) {
 	t.scanned = true
 	editor_log(editor, .Debug, "Files", fmt.tprintf("file tree status: %d path(s) from %s", len(t.status), t.provider.owner))
 	// an overlay over the tree would lose its selection to a rebuild; the next one picks the status up
-	if t.active && !editor.plugins.ui.active && !editor.palette.active {
+	if t.active && !editor.plugins.ui.active && !editor.palette.active && pane_focus(editor) == nil {
 		filetree_rebuild(editor)
 	}
 	if t.active {
@@ -1852,15 +1852,15 @@ filetree_cmd_set_root :: proc(editor: ^Editor) {
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
 	if t.mode == .ConfirmRoot {
-		dialog_key(editor, ev, &t.close_selected, len(filetree_close_actions), filetree_root_execute, filetree_close_close)
+		dialog_key(editor, ev, filetree_root_question(editor), filetree_close_actions[:], &t.close_selected, filetree_root_execute, filetree_close_close)
 		return
 	}
 	if t.mode == .ConfirmClose {
-		dialog_key(editor, ev, &t.close_selected, len(filetree_close_actions), filetree_close_execute, filetree_close_close)
+		dialog_key(editor, ev, filetree_close_question(editor), filetree_close_actions[:], &t.close_selected, filetree_close_execute, filetree_close_close)
 		return
 	}
 	if t.mode == .ConfirmDelete {
-		dialog_key(editor, ev, &t.delete_selected, len(filetree_delete_actions), filetree_delete_execute, filetree_delete_close)
+		dialog_key(editor, ev, filetree_delete_question(t), filetree_delete_actions[:], &t.delete_selected, filetree_delete_execute, filetree_delete_close)
 		return
 	}
 	#partial switch ev.key {
