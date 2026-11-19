@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "lib:tb2"
 
 LangPick :: struct {
@@ -44,7 +45,9 @@ langpick_execute :: proc(editor: ^Editor) {
 	}
 	lang := lp.langs[lp.matches[lp.selected]]
 	langpick_close(editor)
-	editor_set_language(editor, editor_buffer(editor), lang)
+	if editor_set_language(editor, editor_buffer(editor), lang) {
+		editor_log(editor, .Info, "", fmt.tprintf("Language: %s", LANGUAGES[lang].name))
+	}
 }
 
 langpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {

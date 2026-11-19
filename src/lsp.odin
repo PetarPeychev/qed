@@ -686,7 +686,11 @@ lsp_config_for_section :: proc(section: string) -> string {
 }
 
 lsp_config_lua :: proc() -> string {
-	return fmt.tprintf(`{{"runtime":{{"version":"Lua 5.4"}},"workspace":{{"library":[%s]}},"diagnostics":{{"globals":["qed"]}}}}`, lsp_json_string(plugin_stub_dir()))
+	dir := plugin_stub_dir()
+	if dir == "" {
+		return `{"diagnostics":{"globals":["qed"]}}`
+	}
+	return fmt.tprintf(`{{"workspace":{{"library":[%s]}},"diagnostics":{{"globals":["qed"]}}}}`, lsp_json_string(dir))
 }
 
 lsp_caps_summary :: proc(lsp: ^Lsp) -> string {

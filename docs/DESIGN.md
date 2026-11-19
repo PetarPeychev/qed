@@ -354,14 +354,16 @@ started at the end of `editor_init`. Invariants the code can't show:
   before heap allocations (`lua_error` longjmps past Odin frames).
 - Buffers are addressed by `Buffer.id`, looked up per call; none are visible on the
   welcome screen. Plugin edits shift the cursor and selection anchor like marks.
-- `qed.edit` groups by buffer id (`Plugins.edit`): edits to that buffer share one
-  `.Atomic` undo group, opened lazily on the first edit; an error rolls the group
-  back and re-raises. Outside `qed.edit` each call is its own undo step.
+- Each plugin edit is its own `.Atomic` undo group. `qed.edit` records `len(b.undo)`,
+  cursor and selection before `fn`; afterwards it merges every group added since
+  (saves, builtin commands, nested edits included) into one, or on error inverts
+  them all and restores cursor + selection, then re-raises. `plugin_msgh` leaves an
+  already-tracebacked message alone, so the re-raise logs one traceback.
 - Type stubs: `plugins/meta/qed.lua` (embedded, written to
   `$XDG_DATA_HOME/qed/lua/qed.lua` when changed). `lsp_config_lua` hands that dir
   to lua-language-server as `Lua.workspace.library` via `workspace/configuration`
-  and the post-`initialized` push. A unit test fails on any registered `qed.*`
-  name missing from the stub.
+  and the post-`initialized` push (plus `diagnostics.globals = ["qed"]`; applies to
+  every Lua project). Unit tests check stub and API against each other.
 
 ## Language detection
 

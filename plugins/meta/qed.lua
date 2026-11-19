@@ -50,7 +50,7 @@ function qed.command(spec) end
 ---@return boolean ran
 function qed.run(name) end
 
----Everything `fn` does to `b` is one undo step; an error inside `fn` rolls it back.
+---Every change to `b` while `fn` runs is one undo step; an error inside `fn` rolls it back.
 ---Returns false without calling `fn` if `opts.rev` is stale.
 ---@param b qed.Buf
 ---@param fn fun()
@@ -64,7 +64,11 @@ function qed.edit(b, fn, opts) end
 ---@return string|nil err
 function qed.open(path) end
 
+---Save through the full pipeline. Fails without saving if the file changed on disk
+---(the conflict dialog opens only for the current buffer).
 ---@param b qed.Buf
+---@return boolean|nil ok
+---@return string|nil err "no file name" or "changed on disk"
 function qed.save(b) end
 
 ---Close a buffer. Returns false and keeps it open if it has unsaved changes.
@@ -143,7 +147,7 @@ function qed.buf.text(b) end
 
 ---@param b qed.Buf
 ---@param pos qed.Pos
----@param text string
+---@param text string valid UTF-8; CRLF and CR become LF
 ---@return qed.Pos end_pos
 function qed.buf.insert(b, pos, text) end
 

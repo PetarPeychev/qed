@@ -322,6 +322,26 @@ path_ensure_parent_dir :: proc(path: string) {
 	}
 }
 
+file_write_atomic :: proc(path: string, data: []u8, mode: os.Permissions) -> BufferSaveError {
+	tmp := strings.concatenate({path, ".qed-tmp"}, context.temp_allocator)
+	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, mode)
+	if open_err != nil {
+		return .WriteError
+	}
+	os.fchmod(fd, mode) // umask can't strip the preserved bits when set explicitly
+	_, write_err := os.write(fd, data)
+	os.close(fd)
+	if write_err != nil {
+		os.remove(tmp)
+		return .WriteError
+	}
+	if os.rename(tmp, path) != nil {
+		os.remove(tmp)
+		return .RenameError
+	}
+	return .None
+}
+
 buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	if buffer.path == "" {
 		return .NoPath
@@ -343,22 +363,8 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	}
 
 	path_ensure_parent_dir(buffer.path)
-
-	tmp := strings.concatenate({buffer.path, ".qed-tmp"}, context.temp_allocator)
-	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, mode)
-	if open_err != nil {
-		return .WriteError
-	}
-	os.fchmod(fd, mode) // umask can't strip the preserved bits when set explicitly
-	_, write_err := os.write(fd, transmute([]u8)data)
-	os.close(fd)
-	if write_err != nil {
-		os.remove(tmp)
-		return .WriteError
-	}
-	if os.rename(tmp, buffer.path) != nil {
-		os.remove(tmp)
-		return .RenameError
+	if err := file_write_atomic(buffer.path, transmute([]u8)data, mode); err != .None {
+		return err
 	}
 
 	buffer_undo_commit(buffer)

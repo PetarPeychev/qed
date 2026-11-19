@@ -92,11 +92,12 @@ plugin_api_indexing :: proc(t: ^testing.T) {
 		assert(not pcall(qed.buf.insert, b, {row = 1, col = 9}, "x"), "col past the caret rejected")
 		assert(not pcall(qed.buf.insert, b, {row = 9, col = 1}, "x"), "row out of range rejected")
 		assert(not pcall(qed.buf.insert, b, {1, 1}, "x"), "positions are named")
+		assert(not pcall(qed.buf.insert, b, {row = 1, col = 1}, "\xff"), "invalid UTF-8 rejected")
 		local s, f = qed.buf.line(b, 1):find("llo")
 		assert(qed.buf.delete(b, {row = 1, col = s}, {row = 1, col = f + 1}) == "llo", "half-open delete")
 		assert(qed.buf.line(b, 1) == "hé!", "deleted")
-		local e2 = qed.buf.insert(b, {row = 1, col = 1}, "a\r\nb\nc")
-		assert(e2.row == 3 and e2.col == 2, "multi-line insert end, CRLF normalized")
+		local e2 = qed.buf.insert(b, {row = 1, col = 1}, "a\r\nb\rc")
+		assert(e2.row == 3 and e2.col == 2, "multi-line insert end, CRLF and lone CR normalized")
 		assert(qed.buf.text(b) == "a\nb\nché!\nsecond", "text " .. qed.buf.text(b))
 		assert(qed.buf.delete(b, {row = 1, col = 2}, {row = 3, col = 2}) == "\nb\nc", "multi-line delete")
 		assert(not pcall(qed.buf.delete, b, {row = 1, col = 2}, {row = 1, col = 1}), "reversed range rejected")
@@ -153,7 +154,7 @@ plugin_api_edit_group :: proc(t: ^testing.T) {
 	api_test_run(t, ed)
 	testing.expect_value(t, len(b.undo), 1)
 	testing.expect_value(t, len(b.redo), 0)
-	testing.expect_value(t, ed.plugins.edit, PluginEdit{})
+	testing.expect_value(t, ed.plugins.edit_depth, 0)
 	testing.expect_value(t, b.cursor, Cursor{0, 5})
 	editor_undo(ed)
 	testing.expect_value(t, api_test_text(b), "abc")
@@ -286,7 +287,14 @@ plugin_api_misc :: proc(t: ^testing.T) {
 		local bad, jerr = qed.json.decode("{")
 		assert(bad == nil and jerr, "decode error")
 		assert(qed.json.encode({}) == "{}", "empty table")
-		assert(not pcall(qed.json.encode, {1, x = 2}), "mixed table rejected")
+		assert(qed.json.encode({1, x = 2}) == '{"1":1,"x":2}', "mixed tables encode as objects")
+		assert(qed.json.encode({[1] = "a", [3] = "c"}) == '{"1":"a","3":"c"}', "sparse tables encode as objects")
+		assert(not pcall(qed.json.encode, {[1.5] = 1}), "float keys rejected")
+		local deep = {}
+		for _ = 1, 32 do deep = {deep} end
+		assert(qed.json.encode(deep):sub(1, 3) == "[[[", "deep nesting within the limit")
+		local ok, derr = pcall(qed.json.encode, {deep, deep, {deep}})
+		assert(not ok and derr:find("nested too deeply"), "nesting past the limit is an error")
 		assert(not pcall(qed.json.encode, {f = print}), "functions rejected")
 
 		assert(qed.path.join("a", "b", "c.lua") == "a/b/c.lua", "join")
@@ -350,6 +358,13 @@ plugin_api_stub_complete :: proc(t: ^testing.T) {
 	for w in want {
 		testing.expectf(t, strings.contains(QED_STUB, w), "plugins/meta/qed.lua is missing `%s`", w)
 	}
+	have := strings.join(want[:], "\n", context.temp_allocator)
+	for line in strings.split_lines(QED_STUB, context.temp_allocator) {
+		if strings.has_prefix(line, "function qed.") {
+			decl := line[:strings.index_byte(line, '(') + 1]
+			testing.expectf(t, strings.contains(have, decl), "the stub declares `%s` but qed has no such function", decl)
+		}
+	}
 }
 
 @(test)
@@ -373,6 +388,119 @@ plugin_api_lsp_lua_config :: proc(t: ^testing.T) {
 	obj := v.(json.Object)
 	lib := obj["workspace"].(json.Object)["library"].(json.Array)
 	testing.expect_value(t, string(lib[0].(json.String)), plugin_stub_dir())
-	testing.expect_value(t, string(obj["runtime"].(json.Object)["version"].(json.String)), "Lua 5.4")
+	_, has_runtime := obj["runtime"]
+	testing.expect(t, !has_runtime, "the runtime version is left to the project")
 	testing.expect_value(t, string(obj["diagnostics"].(json.Object)["globals"].(json.Array)[0].(json.String)), "qed")
+}
+
+@(test)
+plugin_api_edit_rollback_selection :: proc(t: ^testing.T) {
+	ed := api_test_editor(`
+		local b = qed.buf.current()
+		qed.buf.set_selection(b, {row = 1, col = 6}, {row = 1, col = 4})
+		local ok = pcall(qed.edit, b, function()
+			qed.buf.insert(b, {row = 1, col = 1}, "xxxx\nyyyy\n")
+			qed.buf.delete(b, {row = 3, col = 1}, {row = 3, col = 3})
+			error("boom")
+		end)
+		assert(not ok, "edit failed")
+		local from, to = qed.buf.selection(b)
+		assert(from.row == 1 and from.col == 4 and to.col == 6, "selection restored after rollback")
+	`, "abcdef")
+	defer api_test_destroy(ed)
+	api_test_run(t, ed)
+	b := &ed.buffers[0]
+	testing.expect_value(t, api_test_text(b), "abcdef")
+	testing.expect_value(t, b.selection, Maybe(Cursor)(Cursor{0, 5}))
+	testing.expect_value(t, b.cursor, Cursor{0, 3})
+	testing.expect_value(t, len(b.undo), 0)
+}
+
+@(test)
+plugin_api_edit_one_step :: proc(t: ^testing.T) {
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	path := fmt.tprintf("%s/qed_api_step_%d.lua", tmp, posix.getpid())
+	_ = os.write_entire_file(path, transmute([]u8)string("a\nb"))
+	defer os.remove(path)
+	ed := api_test_editor(`
+		local b = qed.buf.current()
+		local other = qed.buf.list()[2]
+		qed.edit(b, function()
+			qed.buf.insert(b, {row = 1, col = 1}, "1")
+			assert(qed.save(b) == true, "save inside an edit")
+			qed.buf.insert(b, {row = 1, col = 1}, "2")
+			qed.run("Toggle Comment")
+			local ok = pcall(qed.edit, b, function()
+				qed.buf.insert(b, {row = 2, col = 1}, "lost")
+				error("inner")
+			end)
+			assert(not ok, "inner failed")
+			qed.edit(other, function()
+				qed.buf.insert(other, {row = 1, col = 1}, "o")
+				qed.buf.insert(b, {row = 2, col = 1}, "3")
+			end)
+		end)
+		assert(qed.buf.lines(b)[2] == "3b", "the failed nested edit inverted only its own part: " .. qed.buf.lines(b)[2])
+		local ok = pcall(qed.edit, b, function()
+			qed.buf.insert(b, {row = 1, col = 1}, "x")
+			qed.save(b)
+			qed.run("Toggle Comment")
+			error("outer")
+		end)
+		assert(not ok and qed.buf.line(b, 1) == "-- 21a", "a failed edit rolls back across saves and builtin edits: " .. qed.buf.line(b, 1))
+	`, "x")
+	defer api_test_destroy(ed)
+	other := test_buffer("other")
+	append(&ed.buffers, other)
+	buffer_destroy(&ed.buffers[0])
+	ed.buffers[0] = buffer_new()
+	buffer_open(&ed.buffers[0], path)
+	api_test_run(t, ed)
+	b := &ed.buffers[0]
+	testing.expect_value(t, len(b.undo), 1)
+	testing.expect_value(t, len(ed.buffers[1].undo), 1)
+	editor_undo(ed)
+	testing.expect_value(t, api_test_text(b), "a\nb")
+	testing.expect(t, b.modified, "undo past the save point is modified")
+}
+
+@(test)
+plugin_api_save_conflict :: proc(t: ^testing.T) {
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	path := fmt.tprintf("%s/qed_api_conflict_%d.txt", tmp, posix.getpid())
+	_ = os.write_entire_file(path, transmute([]u8)string("disk"))
+	defer os.remove(path)
+	ed := api_test_editor(`
+		local other = qed.buf.list()[2]
+		local ok, err = qed.save(other)
+		assert(ok == nil and err == "changed on disk", "a conflicting background save fails: " .. tostring(err))
+		local ok2, err2 = qed.save()
+		assert(ok2 == nil and err2 == "no file name", "unnamed buffer")
+	`, "x")
+	defer api_test_destroy(ed)
+	b := buffer_new()
+	buffer_open(&b, path)
+	b.disk.mtime -= 1000
+	append(&ed.buffers, b)
+	api_test_run(t, ed)
+	testing.expect(t, !ed.conflict_dialog.active, "no dialog for a non-current buffer")
+}
+
+@(test)
+plugin_api_edit_error_traceback :: proc(t: ^testing.T) {
+	ed := api_test_editor(`qed.edit(nil, function() error("inside edit") end)`, "x")
+	defer api_test_destroy(ed)
+	cmd, _ := plugin_test_command(ed, "T: Run")
+	command_run(ed, cmd)
+	pl := plugin_find(&ed.plugins, "t")
+	testing.expect(t, strings.contains(pl.last_error, "inside edit"), "the error reaches the command")
+	testing.expect(t, !strings.contains(pl.last_error, "traceback"), "the message carries no traceback")
+	logged := false
+	for e in ed.log {
+		if e.level == .Debug && e.source == "t" {
+			logged = true
+			testing.expect_value(t, strings.count(e.text, "stack traceback:"), 1)
+		}
+	}
+	testing.expect(t, logged, "the traceback is logged")
 }

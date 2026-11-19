@@ -9,13 +9,15 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import "core:unicode/utf8"
 import lua "lib:lua"
 
 QED_STUB :: #load("../plugins/meta/qed.lua", string)
 
-PluginEdit :: struct {
-	id:      u64,
-	started: bool,
+ApiEditMark :: struct {
+	undo:      int,
+	cursor:    Cursor,
+	selection: Maybe(Cursor),
 }
 
 @(private = "file")
@@ -222,8 +224,12 @@ api_pos_push :: proc(L: ^lua.State, p: Cursor) {
 
 api_text_arg :: proc(L: ^lua.State, idx: c.int) -> string {
 	text := api_string(L, idx)
+	if !utf8.valid_string(text) {
+		lua.L_argerror(L, idx, "text is not valid UTF-8")
+	}
 	if strings.contains_rune(text, '\r') {
 		text, _ = strings.replace_all(text, "\r\n", "\n", context.temp_allocator)
+		text, _ = strings.replace_all(text, "\r", "\n", context.temp_allocator)
 	}
 	return text
 }
@@ -265,37 +271,55 @@ api_marks_delete :: proc(b: ^Buffer, from, to: Cursor) {
 	}
 }
 
-api_edit_begin :: proc(p: ^Plugins, b: ^Buffer) {
-	if p.edit.id == b.id {
-		if !p.edit.started || !b.has_open {
-			edit_open(b, .Atomic)
-			p.edit.started = true
-		}
-		return
-	}
+api_edit_begin :: proc(b: ^Buffer) {
 	edit_open(b, .Atomic)
 }
 
-api_edit_end :: proc(p: ^Plugins, b: ^Buffer) {
-	if p.edit.id != b.id {
-		buffer_undo_commit(b)
-	}
+api_edit_end :: proc(b: ^Buffer) {
+	buffer_undo_commit(b)
 	cursor_goal_sync(b)
 }
 
-api_edit_finish :: proc(b: ^Buffer, ok: bool) {
-	if !b.has_open {
+pos_clamp :: proc(b: ^Buffer, p: Cursor) -> Cursor {
+	r := clamp(p.row, 0, len(b.lines) - 1)
+	return {r, clamp(p.col, 0, len(b.lines[r].text))}
+}
+
+api_edit_mark :: proc(b: ^Buffer) -> ApiEditMark {
+	buffer_undo_commit(b)
+	return {len(b.undo), b.cursor, b.selection}
+}
+
+api_edit_close :: proc(b: ^Buffer, mark: ApiEditMark, ok: bool) {
+	buffer_undo_commit(b)
+	start := min(mark.undo, len(b.undo))
+	if ok {
+		if len(b.undo) == start {
+			return
+		}
+		merged := EditGroup {
+			cursor = mark.cursor,
+		}
+		for i in start ..< len(b.undo) {
+			append(&merged.edits, ..b.undo[i].edits[:])
+			delete(b.undo[i].edits)
+		}
+		resize(&b.undo, start)
+		if len(merged.edits) > 0 {
+			append(&b.undo, merged)
+		} else {
+			delete(merged.edits)
+		}
 		return
 	}
-	if ok && len(b.open.edits) > 0 {
-		buffer_undo_commit(b)
-	} else {
-		group := b.open
-		b.open = {}
-		b.has_open = false
-		b.open_kind = .None
-		inv := buffer_apply_inverse(b, group)
+	for len(b.undo) > start {
+		inv := buffer_apply_inverse(b, pop(&b.undo))
 		group_destroy(&inv)
+	}
+	b.cursor = pos_clamp(b, mark.cursor)
+	b.selection = nil
+	if anchor, has := mark.selection.?; has {
+		b.selection = pos_clamp(b, anchor)
 	}
 	cursor_goal_sync(b)
 }
@@ -427,7 +451,6 @@ qed_buf_text :: proc "c" (L: ^lua.State) -> c.int {
 qed_buf_insert :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	p := &entry.editor.plugins
 	b, _ := api_buf(L, entry.editor, 1)
 	at := api_pos(L, 2, b)
 	text := api_text_arg(L, 3)
@@ -435,10 +458,10 @@ qed_buf_insert :: proc "c" (L: ^lua.State) -> c.int {
 		api_pos_push(L, at)
 		return 1
 	}
-	api_edit_begin(p, b)
+	api_edit_begin(b)
 	end := edit_insert(b, at, text)
 	api_marks_insert(b, at, end)
-	api_edit_end(p, b)
+	api_edit_end(b)
 	api_pos_push(L, end)
 	return 1
 }
@@ -446,25 +469,24 @@ qed_buf_insert :: proc "c" (L: ^lua.State) -> c.int {
 qed_buf_delete :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	p := &entry.editor.plugins
 	b, _ := api_buf(L, entry.editor, 1)
 	from, to := api_range(L, 2, b)
 	if from == to {
 		lua.pushodinstring(L, "")
 		return 1
 	}
-	api_edit_begin(p, b)
+	api_edit_begin(b)
 	edit_delete(b, from, to)
-	lua.pushodinstring(L, b.open.edits[len(b.open.edits) - 1].text)
+	removed := strings.clone(b.open.edits[len(b.open.edits) - 1].text, context.temp_allocator)
 	api_marks_delete(b, from, to)
-	api_edit_end(p, b)
+	api_edit_end(b)
+	lua.pushodinstring(L, removed)
 	return 1
 }
 
 qed_buf_replace :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	p := &entry.editor.plugins
 	b, _ := api_buf(L, entry.editor, 1)
 	from, to := api_range(L, 2, b)
 	text := api_text_arg(L, 4)
@@ -472,7 +494,7 @@ qed_buf_replace :: proc "c" (L: ^lua.State) -> c.int {
 		api_pos_push(L, from)
 		return 1
 	}
-	api_edit_begin(p, b)
+	api_edit_begin(b)
 	if from != to {
 		edit_delete(b, from, to)
 		api_marks_delete(b, from, to)
@@ -482,7 +504,7 @@ qed_buf_replace :: proc "c" (L: ^lua.State) -> c.int {
 		end = edit_insert(b, from, text)
 		api_marks_insert(b, from, end)
 	}
-	api_edit_end(p, b)
+	api_edit_end(b)
 	api_pos_push(L, end)
 	return 1
 }
@@ -581,7 +603,11 @@ qed_edit :: proc "c" (L: ^lua.State) -> c.int {
 	if t := lua.type(L, 3); t == .TABLE {
 		lua.pushodinstring(L, "rev")
 		if lua.rawget(L, 3) > .NIL {
-			rev := api_int(L, -1, "rev must be an integer")
+			isnum: b32
+			rev := lua.tointeger(L, -1, &isnum)
+			if !isnum {
+				return plugin_raise(L, "opts.rev must be an integer")
+			}
 			if u64(rev) != b.rev {
 				lua.pushboolean(L, false)
 				return 1
@@ -594,18 +620,12 @@ qed_edit :: proc "c" (L: ^lua.State) -> c.int {
 	lua.settop(L, 2)
 	lua.pushcfunction(L, plugin_msgh)
 	lua.pushvalue(L, 2)
-	prev := p.edit
-	nested := prev.id == id
-	if !nested {
-		p.edit = {id = id}
-	}
+	mark := api_edit_mark(b)
+	p.edit_depth += 1
 	status := lua.pcall(L, 0, 0, 3)
-	if !nested {
-		started := p.edit.started
-		p.edit = prev
-		if bb, _ := api_buf_find(editor, id); bb != nil && started {
-			api_edit_finish(bb, status == .OK)
-		}
+	p.edit_depth -= 1
+	if bb, _ := api_buf_find(editor, id); bb != nil {
+		api_edit_close(bb, mark, status == .OK)
 	}
 	if status != .OK {
 		return lua.error(L)
@@ -640,9 +660,20 @@ qed_open :: proc "c" (L: ^lua.State) -> c.int {
 qed_save :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	b, _ := api_buf(L, entry.editor, 1)
-	editor_save_full(entry.editor, b)
-	return 0
+	editor := entry.editor
+	b, idx := api_buf(L, editor, 1)
+	if b.path == "" {
+		return api_fail(L, "no file name")
+	}
+	if buffer_disk_changed(b) {
+		if idx == editor.current {
+			editor_save_full(editor, b)
+		}
+		return api_fail(L, "changed on disk")
+	}
+	editor_save_full(editor, b)
+	lua.pushboolean(L, true)
+	return 1
 }
 
 qed_close :: proc "c" (L: ^lua.State) -> c.int {
@@ -653,7 +684,9 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushboolean(L, false)
 		return 1
 	}
+	lock := entry.editor.jump_lock
 	editor_close_index(entry.editor, idx)
+	entry.editor.jump_lock = lock
 	lua.pushboolean(L, true)
 	return 1
 }
@@ -675,6 +708,7 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 
 qed_root :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
+	context = entry.ctx
 	lua.pushodinstring(L, entry.editor.working_root)
 	return 1
 }
@@ -767,19 +801,8 @@ qed_fs_write :: proc "c" (L: ^lua.State) -> c.int {
 		mode = fi.mode
 	}
 	path_ensure_parent_dir(path)
-	tmp := strings.concatenate({path, ".qed-tmp"}, context.temp_allocator)
-	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, mode)
-	if open_err != nil {
-		return api_fail(L, fmt.tprintf("cannot write %s: %v", path, open_err))
-	}
-	_, write_err := os.write(fd, transmute([]u8)data)
-	os.close(fd)
-	if write_err == nil {
-		write_err = os.rename(tmp, path)
-	}
-	if write_err != nil {
-		os.remove(tmp)
-		return api_fail(L, fmt.tprintf("cannot write %s: %v", path, write_err))
+	if file_write_atomic(path, transmute([]u8)data, mode) != .None {
+		return api_fail(L, fmt.tprintf("cannot write %s", path))
 	}
 	lua.pushboolean(L, true)
 	return 1
@@ -852,10 +875,17 @@ qed_json_decode :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+ApiJsonKey :: struct {
+	name:   string,
+	is_int: bool,
+	n:      lua.Integer,
+}
+
 api_json_write :: proc(L: ^lua.State, idx: c.int, sb: ^strings.Builder, depth: int) -> string {
 	if depth > PLUGIN_TABLE_DEPTH_MAX {
 		return "nested too deeply"
 	}
+	lua.L_checkstack(L, 3, "JSON value nested too deeply")
 	#partial switch lua.type(L, idx) {
 	case .NIL:
 		strings.write_string(sb, "null")
@@ -863,7 +893,7 @@ api_json_write :: proc(L: ^lua.State, idx: c.int, sb: ^strings.Builder, depth: i
 		strings.write_string(sb, "true" if lua.toboolean(L, idx) else "false")
 	case .NUMBER:
 		if lua.isinteger(L, idx) {
-			fmt.sbprintf(sb, "%d", lua.tointeger(L, idx, nil))
+			fmt.sbprintf(sb, "%d", lua.tointeger(L, idx))
 			return ""
 		}
 		f := f64(lua.tonumberx(L, idx, nil))
@@ -876,25 +906,38 @@ api_json_write :: proc(L: ^lua.State, idx: c.int, sb: ^strings.Builder, depth: i
 		strings.write_string(sb, lsp_json_string(s))
 	case .TABLE:
 		t := lua.absindex(L, idx)
-		n := int(lua.rawlen(L, t))
-		keys := make([dynamic]string, context.temp_allocator)
-		count := 0
+		n := lua.Integer(lua.rawlen(L, t))
+		keys := make([dynamic]ApiJsonKey, context.temp_allocator)
+		seq := 0
 		lua.pushnil(L)
 		for lua.next(L, t) != 0 {
-			count += 1
-			if lua.type(L, -2) == .STRING {
+			#partial switch lua.type(L, -2) {
+			case .STRING:
 				k, _ := lua.toodinstring(L, -2)
-				append(&keys, strings.clone(k, context.temp_allocator))
+				append(&keys, ApiJsonKey{name = strings.clone(k, context.temp_allocator)})
+			case .NUMBER:
+				if !lua.isinteger(L, -2) {
+					lua.pop(L, 2)
+					return "table keys must be strings or integers"
+				}
+				k := lua.tointeger(L, -2)
+				if k >= 1 && k <= n {
+					seq += 1
+				}
+				append(&keys, ApiJsonKey{name = fmt.tprintf("%d", k), is_int = true, n = k})
+			case:
+				lua.pop(L, 2)
+				return "table keys must be strings or integers"
 			}
 			lua.pop(L, 1)
 		}
-		if n > 0 && count == n {
+		if n > 0 && seq == len(keys) {
 			strings.write_byte(sb, '[')
 			for i in 1 ..= n {
 				if i > 1 {
 					strings.write_byte(sb, ',')
 				}
-				lua.rawgeti(L, t, lua.Integer(i))
+				lua.rawgeti(L, t, i)
 				err := api_json_write(L, -1, sb, depth + 1)
 				lua.pop(L, 1)
 				if err != "" {
@@ -904,19 +947,20 @@ api_json_write :: proc(L: ^lua.State, idx: c.int, sb: ^strings.Builder, depth: i
 			strings.write_byte(sb, ']')
 			return ""
 		}
-		if len(keys) != count {
-			return "table keys must be all strings or a 1..n sequence"
-		}
-		slice.sort(keys[:])
+		slice.sort_by(keys[:], proc(a, b: ApiJsonKey) -> bool {return a.name < b.name})
 		strings.write_byte(sb, '{')
 		for k, i in keys {
 			if i > 0 {
 				strings.write_byte(sb, ',')
 			}
-			strings.write_string(sb, lsp_json_string(k))
+			strings.write_string(sb, lsp_json_string(k.name))
 			strings.write_byte(sb, ':')
-			lua.pushodinstring(L, k)
-			lua.rawget(L, t)
+			if k.is_int {
+				lua.rawgeti(L, t, k.n)
+			} else {
+				lua.pushodinstring(L, k.name)
+				lua.rawget(L, t)
+			}
 			err := api_json_write(L, -1, sb, depth + 1)
 			lua.pop(L, 1)
 			if err != "" {

@@ -50,7 +50,7 @@ Plugins :: struct {
 	init_ms:  f64,
 	loading:  bool,
 	config_override: Maybe(json.Object),
-	edit:     PluginEdit,
+	edit_depth: int,
 }
 
 PluginEntry :: struct {
@@ -111,6 +111,10 @@ plugin_alloc :: proc "c" (ud: rawptr, ptr: rawptr, osize, nsize: c.size_t) -> ra
 
 plugin_msgh :: proc "c" (L: ^lua.State) -> c.int {
 	msg := lua.tolstring(L, 1, nil)
+	context = runtime.default_context()
+	if msg != nil && strings.contains(string(msg), "\nstack traceback:") {
+		return 1
+	}
 	if msg == nil {
 		msg = lua.L_tostring(L, 1)
 	}

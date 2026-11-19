@@ -156,8 +156,6 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	plugins_rebind(&editor)
 	if !headless {
 		plugin_stub_write(plugin_stub_dir())
-	}
-	if !headless {
 		editor_log(
 			&editor,
 			.Debug,
@@ -224,9 +222,9 @@ editor_buffer :: proc(editor: ^Editor) -> ^Buffer {
 	return &editor.buffers[editor.current]
 }
 
-editor_set_language :: proc(editor: ^Editor, b: ^Buffer, lang: Language) {
+editor_set_language :: proc(editor: ^Editor, b: ^Buffer, lang: Language) -> bool {
 	if b.language == lang {
-		return
+		return false
 	}
 	if b.lsp_open {
 		lsp_did_close(editor, b)
@@ -234,7 +232,7 @@ editor_set_language :: proc(editor: ^Editor, b: ^Buffer, lang: Language) {
 	b.language = lang
 	highlight_destroy(&b.hl)
 	b.hl = {}
-	editor_log(editor, .Info, "", fmt.tprintf("Language: %s", LANGUAGES[lang].name))
+	return true
 }
 
 editor_gutter_width :: proc(editor: ^Editor) -> int {
