@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 import "core:testing"
 import "lib:tb2"
 
@@ -48,7 +49,7 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 		return {setup = function()
 			qed.command{name = "T: Pick", run = function() picked = qed.pick{items = {"a", "b"}} end}
 			qed.command{name = "T: Sleep", run = function() qed.sleep(60000) end}
-			qed.command{name = "T: Proc", run = function() proc = qed.spawn_bg{cmd = "sleep 30"} end}
+			qed.command{name = "T: Proc", run = function() proc = qed.spawn_bg{cmd = "sleep 30 & sleep 30; wait"} end}
 			qed.every(20, function() end)
 		end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the new user plugin loads")
@@ -62,6 +63,7 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	testing.expect(t, p.ui.active, "the pick modal is open")
 	testing.expect_value(t, len(p.procs), 1)
 	testing.expect(t, reload_owned(p, "t") >= 6, "commands, tasks, process and timer are owned")
+	pgid := posix.pid_t(p.procs[0].sp.process.pid)
 	before := p.mem.used
 
 	reload_write(dir, "t.lua", `return {setup = function()
@@ -70,6 +72,7 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
 	testing.expect(t, !p.ui.active, "the modal closes")
 	testing.expect_value(t, len(p.procs), 0)
+	testing.expect(t, posix.kill(-pgid, posix.Signal(0)) != .OK, "the process group is gone")
 	testing.expect_value(t, len(p.tasks), 0)
 	testing.expect_value(t, len(p.timers), 0)
 	testing.expect(t, p.mem.used < before - 1024 * 1024, "the old incarnation's heap is reclaimed")

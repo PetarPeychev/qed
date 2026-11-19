@@ -188,20 +188,22 @@ Configures both AI features (selection edit + inline FIM completion). See
 Lua plugins: bundled ones ship in the binary, your own go in
 `~/.config/qed/plugins/` as `name.lua` or `name/init.lua`. See
 [notes/plugins.md](notes/plugins.md). *Debug: Plugins* lists them with their state
-and last error.
+and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log,
+`Enter` opens its source (bundled ones read-only).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugin_memory_mb` | `64` | Memory cap for the Lua state; a plugin that exceeds it errors instead of growing. `0` means no cap. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
-| `plugins.<name>.enabled` | `true` | Off skips loading that plugin. |
+| `plugins.<name>.enabled` | `true` | Off unloads that plugin (live). `e` in *Debug: Plugins* writes this key. |
 | `plugins.<name>.<key>` | plugin's `defaults` | Per-key override of the plugin's own config; objects merge per key, arrays replace. |
 
 A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
 like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
 warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under `plugins.<name>`
 reach the plugin through its `config_changed` handler (`format` and `commands` apply
-them live); `enabled` and new or edited plugin files need a restart for now.
+them live, keeping runtime toggles); a plugin without one is reloaded. Adding,
+removing or editing a file under `plugins/` reloads just that plugin.
 *Set Theme*, *Set Language* and *Change Indentation* come from the bundled `pickers`
 plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
 

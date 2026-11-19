@@ -216,7 +216,8 @@ plugin die when it unloads, unless they were created with `{detach = true}`.
 | Enable | `plugins.<name>.enabled`, default true. Bundled defaults live in the embedded config.json. |
 | Config | `plugins.<name>` is a sparse diff over `defaults`. Unknown keys warn once. |
 | Ownership | Every registration (command, hook, timer, process, term session, decoration ns, status segment, modal) records its owner. Unloading tears all of it down. |
-| Hot reload | Triggers: the disk poll sees a user plugin file change, its `plugins.<name>` config changes, or `enabled` flips. Only that plugin unloads and reloads. |
+| Hot reload | Triggers: the disk poll sees a user plugin file added, removed or changed (any file inside a dir plugin), `enabled` flips, or `r` in the Plugins pane. Only that plugin unloads and reloads; a same-name user plugin appearing or disappearing swaps it with the bundled one. Load order stays bundled-then-user, alphabetical. A plugin loaded after startup gets its own `startup` event. |
+| Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
 | Isolation | One `lua_State` with a per-plugin `_ENV`. |
 | Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Load, hook and timer errors disable the plugin; command errors only log. All errors are logged as `.Error` with the plugin as source and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
 | Modules | `modules.git` becomes `plugins.git`. `module_enabled(.Git)` becomes "the git plugin is loaded" for the core pieces still gated on it. `.Lsp` and `.Ai` stay as modules. |
@@ -228,9 +229,9 @@ load.
 
 | Column / action | Behavior |
 |---|---|
-| Rows | name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. |
-| `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy, with a hint to fork it to the user dir. |
-| `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_key`, as the theme picker does), then hot reload applies it. |
+| Rows | name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. Click selects, double click is `Enter`. |
+| `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view inside the pane, with a hint to fork it to the user dir. |
+| `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, as the theme picker persists), re-reads config without a second hot reload, and loads or unloads the plugin. |
 | `r` | Reloads the plugin. |
 | `l` | Opens the Message Log filtered to this plugin's source. |
 
@@ -299,7 +300,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 3 | Port 1 `format` (+ `set_text` minimal diff, `qed.lsp.format`). Delete the Odin path and the `formatter` key. | minor |
 | 4 | `pick` (incl. `multi`), `prompt`, `confirm`, `pane`. Port 2 `pickers`. | minor |
 | 5 | `commands` plugin (all outputs except `task`). Filetree `ctx.file/files`. | minor |
-| 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). | minor |
+| 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). Poll cost: ~13 us per user plugin file (0.15 ms for 10, 2.6 ms for 200, `bench_plugin_poll`). | minor |
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin + `output = "task"`. | minor |
 | 8 | Decorations store, `status.set`, diff-base primitive. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git`. | minor |

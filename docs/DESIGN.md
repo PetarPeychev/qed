@@ -418,8 +418,25 @@ started at the end of `editor_init`. Invariants the code can't show:
   restores the configured theme. `persist` writes the `theme` key, fires
   `theme_changed`, and fails with `nil, err` when the write fails. Headless sessions
   persist to `Plugins.persist_path` (tests).
-- On config hot reload `plugins_config_refresh` re-merges each loaded plugin's
-  config (its kept `defaults` + embedded + user) before `config_changed` fires.
+- On config hot reload `plugins_config_apply` re-merges each loaded plugin's
+  config (its kept `defaults` + embedded + user), applies `enabled` flips and
+  reloads changed plugins that don't handle `config_changed` (`Plugin.cfg_sig`),
+  flushes `config_changed`, and only then runs `plugins_rebind` so keybinds for
+  commands those handlers register aren't "unknown". Commands registered after the
+  first full bind (`Plugins.bound`) report their own key problems, except inside
+  that window (`binds_deferred`).
+- **Hot reload:** `plugins_poll` (disk poll) rescans bundled + `Plugins.user_dir`;
+  `Plugin.stamp` hashes mtime+size of the file, or of every file under a dir plugin
+  (from the `read_directory` fstat, ~13 us/file). On any difference `plugins_sync`
+  unloads removed/changed/shadow-swapped plugins while they're still in the list,
+  rebuilds the list in load order, then loads. Headless sessions have no user dir
+  and never poll. Plugin names are interned in `Plugins.names` (freed at shutdown)
+  because owners in tasks, pooled threads and queued events point at them. A load
+  after startup queues `startup` for that plugin only (`PluginQueued.only`).
+- Unload also drops the plugin's pooled threads.
+- Plugins pane: `e` persists `plugins.<name>.enabled` then `config_load_from` +
+  config stamp (no reload loop); bundled `Enter` shows the embedded source in a
+  `Preview` inside the pane; `l` opens the log with `LogView.source` set.
 - Plugin command names are unique per scope (a tree and an editor command may share
   one). `qed.command` returns a handle whose `remove()` unregisters it; removing or
   unloading commands closes the palette, whose rows index `Plugins.commands`.
@@ -620,7 +637,7 @@ defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable g
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
+`git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `commands/`: user shell commands from `plugins.commands.list`, see CONFIG.md).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -846,6 +863,10 @@ placeholders + `QED_*` env, stdin from selection/buffer, save-before, `when` gat
 (pane, language, glob, selection, git, exists), file-tree commands over the selection,
 outputs to message / log pane / replace / insert / clipboard / terminal / locations
 picker, *Commands: Cancel*, hot re-registered on config save.
+
+Lua plugins (bundled + `~/.config/qed/plugins/`): hot reload on file add/remove/edit
+and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
+per-plugin log, and source view (bundled read-only).
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff, in-process fuzzy ranking,
