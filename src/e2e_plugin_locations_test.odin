@@ -47,7 +47,7 @@ local function grep(name, text, scope)
 	qed.command{name = name, scope = scope, run = function()
 		local items = qed.parse_locations(text)
 		local it = qed.pick{items = items, prompt = "Grep >"}
-		if it then qed.jump(qed.open(it.path), it.pos) end
+		if it then qed.jump(it.path, it.pos) end
 		qed.message(it and it.label or "nil")
 	end}
 end
@@ -59,6 +59,10 @@ return {setup = function()
 	end}
 	qed.command{name = "Loc: Empty", run = function()
 		qed.message(#qed.parse_locations("") .. " " .. #qed.parse_locations("nope.txt:1: gone\n12:30 meeting\n"))
+	end}
+	qed.command{name = "Loc: Bad", run = function()
+		local ok, err = qed.jump("sub", {row = 1, col = 1})
+		qed.message(tostring(ok) .. " " .. tostring(err))
 	end}
 	grep("Loc: Grep", "a.txt:2:needle here\nb.txt:3:needle\nmissing.txt:3: gone\n")
 	grep("Loc: Cols", "c.txt:2:3: in a char\nc.txt:9:99: past the end\n")
@@ -139,6 +143,10 @@ e2e_plugin_locations_pick_jump :: proc(t: ^testing.T) {
 	loc_run(t, &e, "Loc: Grep")
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "nil")
+
+	loc_run(t, &e, "Loc: Bad")
+	testing.expect_value(t, e.ed.message, fmt.tprintf("nil cannot open %s/sub", e.dir))
+	testing.expect_value(t, filepath.base(editor_buffer(&e.ed).path), "b.txt")
 }
 
 @(test)

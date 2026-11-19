@@ -92,10 +92,12 @@ function qed.save(b) end
 ---@return boolean
 function qed.close(b) end
 
----Switch to `b`, move the cursor to `pos` (clamped to the buffer, a col inside a UTF-8 sequence snaps back), and record the jump. Closes the file tree if it is open. Right after `qed.open`, the jump is recorded from where the open started.
----@param b qed.Buf
+---Switch to buffer `target` or open the path `target` (relative to `qed.root()`), move the cursor to `pos` (clamped, a col inside a UTF-8 sequence snaps back), and record the jump from where you were. Closes the file tree if it is open.
+---@param target qed.Buf|string
 ---@param pos qed.Pos
-function qed.jump(b, pos) end
+---@return nil
+---@return string|nil err "cannot open <path>" when a path fails to open
+function qed.jump(target, pos) end
 
 ---The working root: the directory qed was started in or last switched to. Relative paths in `qed.*` resolve against it.
 ---@return string

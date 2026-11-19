@@ -428,11 +428,10 @@ started at the end of `editor_init`. Invariants the code can't show:
   preview. `qed.pane` is a non-waiting read-only overlay (`Plugins.pane`).
   Unloading the owner closes both.
 - `qed.parse_locations` (pure, `plugin_api.odin`) turns `file:row[:col][: msg]`
-  lines into pick items with `path`/`pos`. `qed.jump` clamps `pos` and snaps a col
-  inside a UTF-8 sequence back. `qed.open` stashes its origin (`Plugins.open_origin`,
-  keyed by task and opened buffer) so `qed.jump(qed.open(p), pos)` records the jump
-  from before the open; otherwise a near-top target would overwrite the previous
-  jump-list entry in place.
+  lines into pick items with `path`/`pos`. `qed.jump` takes a buffer id or a path,
+  takes the jump origin before opening (an origin in the just-opened file would let
+  a near-top target overwrite the previous jump-list entry in place), clamps `pos`
+  and snaps a col inside a UTF-8 sequence back.
 - `qed.theme.set` without `persist` only changes what is shown (`Editor.theme_shown`;
   setting the configured theme clears it). A config reload keeps the shown theme
   while a plugin modal is open, else drops it. Unloading the plugin that set it

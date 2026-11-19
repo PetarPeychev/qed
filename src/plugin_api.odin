@@ -800,21 +800,13 @@ qed_open :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	p := &editor.plugins
 	path := api_path(editor, api_string(L, 1))
-	prev := editor_buffer(editor)
-	from, from_pos := prev.id, prev.cursor
 	if !editor_open_path(editor, path) {
 		lua.pushnil(L)
 		lua.pushodinstring(L, fmt.tprintf("cannot open %s", path))
 		return 2
 	}
-	b := editor_buffer(editor)
-	if b.id != from {
-		t := plugin_task_of(p, L)
-		p.open_origin = {task = t.id if t != nil else 0, buf = b.id, from = from, pos = from_pos}
-	}
-	lua.pushinteger(L, lua.Integer(b.id))
+	lua.pushinteger(L, lua.Integer(editor_buffer(editor).id))
 	return 1
 }
 
@@ -891,8 +883,6 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	p := &editor.plugins
-	b, idx := api_buf(L, editor, 1)
 	if lua.type(L, 2) != .TABLE {
 		lua.L_argerror(L, 2, "position {row, col} expected")
 	}
@@ -901,30 +891,28 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	if !rok || !cok {
 		lua.L_argerror(L, 2, "position {row, col} expected")
 	}
-	pos: Cursor
-	pos.row = clamp(row - 1, 0, len(b.lines) - 1)
-	text := b.lines[pos.row].text[:]
-	pos.col = clamp(col - 1, 0, len(text))
-	for pos.col > 0 && pos.col < len(text) && text[pos.col] & 0xC0 == 0x80 {
-		pos.col -= 1
-	}
 	origin := jump_here(editor)
-	oo := p.open_origin
-	p.open_origin = {}
-	t := plugin_task_of(p, L)
-	// qed.jump(qed.open(path), pos) records the jump from where the open started
-	if oo.buf == b.id && idx == editor.current && oo.task == (t.id if t != nil else 0) {
-		if from, _ := api_buf_find(editor, oo.from); from != nil {
-			origin = {path = strings.clone(from.path, context.temp_allocator), row = oo.pos.row, col = oo.pos.col}
+	if lua.type(L, 1) == .STRING {
+		path := api_path(editor, api_string(L, 1))
+		if !editor_open_path(editor, path) {
+			lua.pushnil(L)
+			lua.pushodinstring(L, fmt.tprintf("cannot open %s", path))
+			return 2
 		}
+	} else if _, idx := api_buf(L, editor, 1); idx != editor.current {
+		editor_switch_to(editor, idx)
 	}
 	if editor.filetree.active {
 		filetree_close(editor)
 	}
-	if idx != editor.current {
-		editor_switch_to(editor, idx)
+	b := editor_buffer(editor)
+	r := clamp(row - 1, 0, len(b.lines) - 1)
+	text := b.lines[r].text[:]
+	cl := clamp(col - 1, 0, len(text))
+	for cl > 0 && cl < len(text) && text[cl] & 0xC0 == 0x80 {
+		cl -= 1
 	}
-	editor_goto(editor, pos.row, pos.col)
+	editor_goto(editor, r, cl)
 	jump_record(editor, origin)
 	return 0
 }

@@ -101,7 +101,7 @@ The API is one global, `qed`.
 | `qed.buf.set_language(b, name) -> changed`, `.set_indent(b, "tabs"\|"spaces"\|"auto", width?)`, `.indent(b) -> style, width`, `qed.languages()` | Existing core setters. |
 | `qed.buf.set_base(b, text \| nil, {label?}) -> active` | Diff base: gutter, ghost rows, change navigation, revert hunk. Each plugin owns one base per buffer. The plugin that set its first most recently wins; setting again keeps its place, `nil` clears it in place (a later set does not move it up), and `nil` or unload reveals the one beneath, so the `git` plugin's base comes back when another plugin's goes. Returns whether this plugin's base is the one shown. `""` is an empty base (every line added). `label` shows as the `±label` status segment: `±base` when omitted, nothing when `""`. Big files have no diff base. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
-| `qed.jump(b, pos)` | Switch, reveal, record in the jump list. `pos` is clamped to the buffer and a col inside a UTF-8 sequence snaps back. Right after `qed.open` in the same task, the jump is recorded from where the open started. (`goto` is a Lua keyword.) |
+| `qed.jump(b \| path, pos)` | Switch (or open the path, like `qed.open`), reveal, record in the jump list from where you were. `pos` is clamped to the buffer and a col inside a UTF-8 sequence snaps back. `nil, err` when the path fails to open. (`goto` is a Lua keyword.) |
 
 ### Commands and keybinds
 | Function | Notes |
@@ -321,7 +321,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin. | minor |
 | 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view`, `filetree_diff_only` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
-| 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` clamps and records from before a preceding `qed.open`. | minor |
+| 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` takes a path and clamps `pos`. | minor |
 | later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions

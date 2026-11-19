@@ -222,7 +222,7 @@ and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to t
 
 A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool,
 `qed.parse_locations` turns `file:line:col: msg` output into `qed.pick` items (list
-with file preview), and `qed.jump` goes there. The API reference with types is
+with file preview), and `qed.jump` opens the file there. The API reference with types is
 `plugins/meta/qed.lua`.
 
 ```lua
@@ -235,7 +235,7 @@ return {setup = function()
     local items = qed.parse_locations(r.stdout)
     if #items == 0 then return qed.message("no matches") end
     local it = qed.pick{items = items, prompt = "Grep >"}
-    if it then qed.jump(qed.open(it.path), it.pos) end
+    if it then qed.jump(it.path, it.pos) end
   end}
 end}
 ```
