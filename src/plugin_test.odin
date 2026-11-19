@@ -319,6 +319,8 @@ plugin_options_misuse :: proc(t: ^testing.T) {
 			end}`},
 		{"twice.lua", `return {setup = function() qed.options{a = 1} qed.options{a = 2} end}`},
 		{"notable.lua", `return {setup = function() qed.options(1) end}`},
+		{"reserved.lua", `return {setup = function() qed.options{keybinds = {}} end}`},
+		{"reserved2.lua", `return {setup = function() qed.options{enabled = true} end}`},
 	})
 	defer plugin_test_destroy(ed)
 
@@ -330,6 +332,8 @@ plugin_options_misuse :: proc(t: ^testing.T) {
 	testing.expect_value(t, twice.state, PluginState.Errored)
 	testing.expect(t, strings.contains(twice.last_error, "once per load"), "a second call raises")
 	testing.expect_value(t, plugin_find(&ed.plugins, "notable").state, PluginState.Errored)
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "reserved").last_error, "'keybinds' is reserved"), "keybinds is reserved")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "reserved2").last_error, "'enabled' is reserved"), "enabled is reserved")
 }
 
 @(test)
@@ -350,17 +354,19 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 			}`},
 		{"dupe.lua", `return {setup = function() qed.command{name = "A", run = function() end} qed.command{name = "A", run = function() end} end}`},
 		{"file_tree.lua", `return {setup = function() qed.command{name = "Open", run = function() end} end}`},
+		{"core.lua", `return {setup = function() qed.command{name = "Save", run = function() end} end}`},
 		{"badkey.lua", `return {setup = function() qed.command{name = "Bad: Key", key = "Hyper+x", run = function() end} end}`},
 		{"badscope.lua", `return {setup = function() qed.command{name = "Bad: Scope", scope = "nowhere", run = function() end} end}`},
 		{"norun.lua", `return {setup = function() qed.command{name = "No: Run"} end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
-	for name in ([?]string{"dupe", "file_tree", "badkey", "badscope", "norun"}) {
+	for name in ([?]string{"dupe", "file_tree", "core", "badkey", "badscope", "norun"}) {
 		testing.expectf(t, plugin_find(&ed.plugins, name).state == .Errored, "%s: invalid registration errors the plugin", name)
 	}
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "dupe").last_error, "'Dupe: A' already exists"), "duplicate name rejected")
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "file_tree").last_error, "'File Tree: Open' already exists"), "a visible name equal to a builtin is rejected")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "core").last_error, "'Save' is a core command"), "a bare name equal to a core command is rejected")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
 	a, ok := plugin_command_for_event(ed, alt('k'), false)
@@ -478,8 +484,8 @@ plugin_meta_display :: proc(t: ^testing.T) {
 			qed.command{name = "Run", run = function() qed.message("ran") end}
 		end}`},
 		{"renamed.lua", `return {setup = function()
-			qed.command{name = "Base", run = function() qed.message("based") end}
 			qed.meta{display_name = "Gitty"}
+			qed.command{name = "Base", run = function() qed.message("based") end}
 			qed.command{name = "After", run = function() end}
 		end}`},
 		{"off_one.lua", `return {setup = function() qed.meta{display_name = "Never"} end}`},
@@ -498,7 +504,7 @@ plugin_meta_display :: proc(t: ^testing.T) {
 	testing.expect_value(t, plugin_find(&ed.plugins, "renamed").display, "Gitty")
 	_, base := plugin_test_command(ed, "Gitty: Base")
 	_, after := plugin_test_command(ed, "Gitty: After")
-	testing.expect(t, base && after, "qed.meta renames commands registered before it")
+	testing.expect(t, base && after, "commands take the display name")
 	_, stale := plugin_test_command(ed, "Renamed: Base")
 	testing.expect(t, !stale, "the default prefix is gone")
 
@@ -508,8 +514,9 @@ plugin_meta_display :: proc(t: ^testing.T) {
 	testing.expect(t, strings.has_prefix(pluginview_row(plugin_find(&ed.plugins, "renamed")^, 8), "Gitty "), "the pane shows the display name")
 
 	ren := plugin_find(&ed.plugins, "renamed")
-	plugin_unload(ed, ren)
-	testing.expect_value(t, ren.display, "Renamed")
+	plugin_enabled_set(ed, ren, false)
+	testing.expect_value(t, ren.display, "Gitty")
+	testing.expect(t, plugin_test_logged(ed, .Info, "Gitty", "disabled"), "disabling logs under the last display name")
 	plugin_load(ed, ren)
 	testing.expect_value(t, ren.display, "Gitty")
 	testing.expect(t, plugin_test_logged(ed, .Debug, "Plugins", "loaded renamed"), "code identity stays the id")
@@ -529,10 +536,12 @@ plugin_meta_misuse :: proc(t: ^testing.T) {
 		{"badtype.lua", `return {setup = function() qed.meta{display_name = 3} end}`},
 		{"empty.lua", `return {setup = function() qed.meta{display_name = ""} end}`},
 		{"x_first.lua", `return {setup = function() qed.command{name = "Go", run = function() end} end}`},
-		{"y_clash.lua", `return {setup = function()
+		{"y_clash.lua", `return {setup = function() qed.meta{display_name = "x first"} end}`},
+		{"z_late.lua", `return {setup = function()
 			qed.command{name = "Go", run = function() end}
-			qed.meta{display_name = "X First"}
+			qed.meta{display_name = "Late"}
 		end}`},
+		{"z_core.lua", `return {setup = function() qed.meta{display_name = "LSP"} end}`},
 	})
 	defer plugin_test_destroy(ed)
 
@@ -542,14 +551,14 @@ plugin_meta_misuse :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "top").last_error, "only callable during setup"), "a command cannot call qed.meta")
 	expect := [?]struct {
 		name, fragment: string,
-	}{{"twice", "once per load"}, {"unknown", "unknown field 'version'"}, {"badtype", "display_name must be"}, {"empty", "display_name must be"}, {"y_clash", "command 'X First: Go' already exists"}}
+	}{{"twice", "once per load"}, {"unknown", "unknown field 'version'"}, {"badtype", "display_name must be"}, {"empty", "display_name must be"}, {"y_clash", "display_name 'x first' is taken by plugin 'x_first'"}, {"z_late", "must come before qed.command()"}, {"z_core", "core log label"}}
 	for e in expect {
 		pl := plugin_find(&ed.plugins, e.name)
 		testing.expectf(t, pl.state == .Errored && strings.contains(pl.last_error, e.fragment), "%s: %s (got %q)", e.name, e.fragment, pl.last_error)
 	}
-	_, first := plugin_test_command(ed, "X First: Go")
-	testing.expect(t, first, "the clashing plugin did not take the name")
-	testing.expect_value(t, plugin_find(&ed.plugins, "twice").display, "Twice")
+	_, late := plugin_test_command(ed, "Z Late: Go")
+	testing.expect(t, !late, "a failed setup drops its commands")
+	testing.expect_value(t, plugin_find(&ed.plugins, "twice").display, "A")
 }
 
 @(test)
@@ -590,7 +599,7 @@ plugin_palette_prefix_and_run :: proc(t: ^testing.T) {
 @(test)
 plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	cfg := plugin_test_cfg(`{
-		"keybinds": {"Run": "Alt+u"},
+		"keybinds": {"Run": "Alt+u", "File Tree: Restore File": "Alt+o"},
 		"plugins": {
 			"a": {"keybinds": {"Run": "Alt+k", "Nope": "Alt+x", "Search": "Alt+n"}},
 			"b": {"keybinds": {}},
@@ -605,9 +614,27 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 		end}`},
 		{"b.lua", `return {setup = function() qed.command{name = "Run", key = "Alt+2", run = function() end} end}`},
 		{"c.lua", `return {setup = function() qed.command{name = "Whatever", run = function() end} end}`},
+		{"d.lua", `return {setup = function()
+			qed.command{name = "Clash", key = "Alt+2", run = function() end}
+			qed.on("startup", function() qed.command{name = "Later", run = function() end} end)
+		end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
+	ed.plugins.config_override = plugin_test_cfg(`{
+		"keybinds": {"Run": "Alt+u", "File Tree: Restore File": "Alt+o"},
+		"plugins": {
+			"a": {"keybinds": {"Run": "Alt+k", "Nope": "Alt+x", "Search": "Alt+n"}},
+			"b": {"keybinds": {}},
+			"c": {"enabled": false, "keybinds": {"Whatever": "Alt+w"}},
+			"d": {"keybinds": {"Later": "Alt+3"}}
+		}
+	}`)
 	plugins_rebind(ed)
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"Nope"`), "unknown plugin keybinds wait for the startup flush")
+	plugin_pump(ed)
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"Later"`), "a command registered by a startup handler is known")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "D", `plugins/d/keybinds/Clash (Alt+2 is "B: Run")`), "a key taken by another plugin's command warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"File Tree: Restore File" (moved to plugins/git/keybinds/"Restore File")`), "old bundled bind names say where they moved")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
 	a, aok := plugin_command_for_event(ed, alt('k'), false)

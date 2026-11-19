@@ -630,6 +630,7 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 		delete(batch)
 		ran = true
 	}
+	plugins_keybinds_check(editor)
 	editor.jump_lock = false
 	return
 }

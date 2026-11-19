@@ -1082,11 +1082,19 @@ qed_options :: proc "c" (L: ^lua.State) -> c.int {
 		return lua.L_argerror(L, 1, "defaults table expected")
 	}
 	lua.settop(L, 1)
+	for key in ([?]cstring{"enabled", "keybinds"}) {
+		if lua.getfield(L, 1, key) != .NIL {
+			return plugin_raise(L, fmt.tprintf("qed.options: '%s' is reserved", key))
+		}
+		lua.pop(L, 1)
+	}
 	plugin_table_copy(L, 1)
 	pl.defaults = lua.L_ref(L, lua.REGISTRYINDEX)
 	plugin_config_push(entry.editor, pl, 1)
 	return 1
 }
+
+PLUGIN_RESERVED_LABELS :: [?]string{"AI", "Clipboard", "Config", "Diff", "FIM", "Files", "Git", "Lang", "LSP", "Plugins", "Rename", "Save", "Startup", "Syntax", "Terminal"}
 
 qed_meta :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
@@ -1098,6 +1106,11 @@ qed_meta :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	if pl.meta_set {
 		return plugin_raise(L, "qed.meta() is callable once per load")
+	}
+	for cmd in p.commands {
+		if cmd.owner == pl.name {
+			return plugin_raise(L, "qed.meta() must come before qed.command()")
+		}
 	}
 	if lua.type(L, 1) != .TABLE {
 		return lua.L_argerror(L, 1, "table {display_name?} expected")
@@ -1125,30 +1138,21 @@ qed_meta :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		display = s
 	}
-	for cmd in p.commands {
-		if cmd.owner != pl.name {
-			continue
+	for src in PLUGIN_RESERVED_LABELS {
+		if strings.equal_fold(src, display) {
+			return plugin_raise(L, fmt.tprintf("display_name '%s' is a core log label", display))
 		}
-		visible := fmt.tprintf("%s: %s", display, cmd.bare)
-		if plugin_command_taken(p, visible, cmd.filetree, pl.name) {
-			return plugin_raise(L, fmt.tprintf("command '%s' already exists", visible))
+	}
+	for other in p.list {
+		if other.name != pl.name && other.state == .Enabled && strings.equal_fold(other.display, display) {
+			return plugin_raise(L, fmt.tprintf("display_name '%s' is taken by plugin '%s'", display, other.name))
 		}
 	}
 	pl.meta_set = true
-	if display == pl.display {
-		return 0
-	}
-	if entry.editor.palette.active {
-		palette_close(entry.editor)
-	}
-	display = strings.clone(display)
-	delete(pl.display)
-	pl.display = display
-	for &cmd in p.commands {
-		if cmd.owner == pl.name {
-			delete(cmd.name)
-			cmd.name = fmt.aprintf("%s: %s", display, cmd.bare)
-		}
+	if display != pl.display {
+		display = strings.clone(display)
+		delete(pl.display)
+		pl.display = display
 	}
 	return 0
 }
@@ -1708,23 +1712,6 @@ plugin_stub_write :: proc(dir: string) -> bool {
 	}
 	os.make_directory_all(dir)
 	return os.write_entire_file(path, transmute([]u8)string(QED_STUB)) == nil
-}
-
-plugin_luarc :: proc(stub_dir: string) -> string {
-	return fmt.tprintf("{{\n  \"runtime\": {{\"version\": \"Lua 5.4\"}},\n  \"workspace\": {{\"library\": [%s]}}\n}}\n", lsp_json_string(stub_dir))
-}
-
-plugin_luarc_write :: proc(user_dir, stub_dir: string) -> bool {
-	if user_dir == "" || stub_dir == "" {
-		return false
-	}
-	path := fmt.tprintf("%s/.luarc.json", user_dir)
-	want := plugin_luarc(stub_dir)
-	if data, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(data) == want {
-		return false
-	}
-	os.make_directory_all(user_dir)
-	return os.write_entire_file(path, transmute([]u8)want) == nil
 }
 
 api_loaded :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {

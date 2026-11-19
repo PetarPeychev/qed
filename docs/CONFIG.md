@@ -197,7 +197,7 @@ what the plugin sets with `qed.meta`) prefixes its commands in the palette
 (`Git: Set Diff Base`) and labels its messages. A key already taken by a builtin is
 ignored with a warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under
 `plugins.<id>` reach the plugin through its `config_changed` handler (`format`,
-`search` and `tasks` apply them live, keeping runtime state); a plugin without one
+`search` apply them live, keeping runtime state); a plugin without one
 is reloaded. Adding, removing or editing a file under `plugins/` reloads just that
 plugin. *Settings: Theme*, *Settings: Language* and *Settings: Indentation*
 come from the bundled `settings` plugin (no config of its own;
@@ -243,9 +243,9 @@ with file preview), and `qed.jump` opens the file there. A plugin's own config k
 come from `local cfg = qed.options{key = default}` in `setup`, overridden under
 `plugins.<id>`. The API reference with types is `plugins/meta/qed.lua`.
 
-qed writes `~/.config/qed/plugins/.luarc.json` (only when missing or different),
-pointing lua-language-server at the type stub with Lua 5.4. It applies when that
-dir is the working root (`qed ~/.config/qed/plugins`).
+Completion for `qed.*`: when the working root is `~/.config/qed` or below
+(`qed ~/.config/qed/plugins`), qed tells lua-language-server about the type stub
+and Lua 5.4. No file is written.
 
 ```lua
 -- ~/.config/qed/plugins/my.lua
@@ -260,31 +260,6 @@ return {setup = function()
     if it then qed.jump(it.path, it.pos) end
   end}
 end}
-```
-
-## Tasks
-
-Long-running or background commands, owned by the bundled `tasks` plugin. Each
-task runs in its own terminal session, hidden until shown. *Tasks: Open* (palette, also
-on the welcome screen) lists every task and other plugin session with its state:
-`not started`, `running`, `exited 0`, `failed (exit N)`
-or `killed (signal N)`. Picking a task that never ran starts and shows it; otherwise
-it offers *Show*, *Run* (or *Restart*), *Kill* while running and *Close* once
-exited. Running a running task restarts it. Shown tasks have their name in the terminal
-pane's title; `Alt+t` always shows the plain shell. Tasks die with qed.
-
-| Entry key | Default | Meaning |
-|-----------|---------|---------|
-| `name` | required | Picker name; unique, not `"shell"`. |
-| `cmd` | required | Shell string run with `sh -c`. |
-| `cwd` | working root | Directory to run in, relative to the root. |
-| `env` | `{}` | Extra environment, `{"NAME": "value"}`. |
-
-```json
-{ "plugins": { "tasks": { "list": [
-  { "name": "serve", "cmd": "python3 -m http.server 8000", "cwd": "site" },
-  { "name": "watch", "cmd": "npm run watch", "env": { "NODE_ENV": "development" } }
-] } } }
 ```
 
 ## Themes & colors

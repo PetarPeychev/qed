@@ -316,17 +316,17 @@ plugin_reload_keybind_order :: proc(t: ^testing.T) {
 	defer plugin_test_destroy(ed)
 
 	ed.plugins.config_override = plugin_test_cfg(`{
-		"plugins": {"cmds": {"keybinds": {"Late": "Alt+k"}, "list": [{"name": "Late"}, {"name": "Quit", "key": "Ctrl+q"}]}}
+		"plugins": {"cmds": {"keybinds": {"Late": "Alt+k"}, "list": [{"name": "Late"}, {"name": "Leave", "key": "Ctrl+q"}]}}
 	}`)
 	plugins_config_apply(ed, false)
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"Late"`), "a keybind for a command added by config_changed is known")
 	late, ok := plugin_test_command(ed, "Cmds: Late")
 	testing.expect(t, ok && late.shortcut == "Alt+k", "the new command takes its user bind")
-	testing.expect_value(t, reload_logged_count(ed, .Warn, "Cmds", `plugins/cmds/keybinds/Quit (Ctrl+q is "Quit")`), 1)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "Cmds", `plugins/cmds/keybinds/Leave (Ctrl+q is "Quit")`), 1)
 
-	reload_write(dir, "late.lua", `return {setup = function() qed.command{name = "Save", key = "Ctrl+s", run = function() end} end}`)
+	reload_write(dir, "late.lua", `return {setup = function() qed.command{name = "Store", key = "Ctrl+s", run = function() end} end}`)
 	plugins_poll(ed)
-	testing.expect_value(t, reload_logged_count(ed, .Warn, "Late", `plugins/late/keybinds/Save (Ctrl+s is "Save")`), 1)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "Late", `plugins/late/keybinds/Store (Ctrl+s is "Save")`), 1)
 }
 
 @(test)
@@ -394,4 +394,30 @@ plugin_reload_refs_released :: proc(t: ^testing.T) {
 		lua.pop(L, 1)
 	}
 	testing.expect_value(t, refs, 5)
+}
+
+@(test)
+plugin_reload_shared_bind_sibling :: proc(t: ^testing.T) {
+	dir := reload_dir()
+	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
+	src := `return {setup = function()
+		qed.command{name = "A", scope = "filetree", run = function() end}
+		qed.command{name = "A", key = "Alt+q", run = function() end}
+	end}`
+	reload_write(dir, "s.lua", src)
+	ed := reload_editor({}, dir)
+	defer plugin_test_destroy(ed)
+
+	tree := proc(ed: ^Editor) -> string {
+		for cmd in ed.plugins.commands {
+			if cmd.filetree {
+				return cmd.shortcut
+			}
+		}
+		return "?"
+	}
+	testing.expect_value(t, tree(ed), "Alt+q")
+	reload_write(dir, "s.lua", fmt.tprintf("%s\n", src))
+	testing.expect(t, plugins_poll(ed), "the edit reloads")
+	testing.expect_value(t, tree(ed), "Alt+q")
 }

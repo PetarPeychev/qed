@@ -617,7 +617,7 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 							if io, ok3 := item.(json.Object); ok3 {
 								section, _ = io["section"].(string)
 							}
-							strings.write_string(&sb, lsp_config_for_section(section))
+							strings.write_string(&sb, lsp_config_for_section(section, editor.working_root))
 						}
 					}
 				}
@@ -640,7 +640,7 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 				lsp.sync_kind = lsp_sync_kind(obj)
 				lsp_parse_caps(lsp, obj)
 				lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
-				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}}}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE))
+				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}}%s}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE, lsp_lua_entry(editor.working_root)))
 				editor_log(editor, .Debug, "LSP", fmt.tprintf("%s initialized (%s)", lsp_display_name(lsp.server), lsp_caps_summary(lsp)))
 				return true
 			}
@@ -654,14 +654,30 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 	return false
 }
 
-lsp_config_for_section :: proc(section: string) -> string {
+lsp_config_for_section :: proc(section, root: string) -> string {
 	switch section {
 	case "python", "basedpyright", "pyright":
 		return fmt.tprintf(`{{"analysis":{{"diagnosticMode":"%s"}}}}`, LSP_DIAGNOSTIC_MODE)
 	case "python.analysis", "basedpyright.analysis", "pyright.analysis":
 		return fmt.tprintf(`{{"diagnosticMode":"%s"}}`, LSP_DIAGNOSTIC_MODE)
+	case "Lua":
+		return lsp_config_lua(root)
 	}
 	return "null"
+}
+
+lsp_config_lua :: proc(root: string) -> string {
+	cfg := config_dir(config_path())
+	stub := plugin_stub_dir()
+	if cfg == "" || stub == "" || (root != cfg && !strings.has_prefix(root, fmt.tprintf("%s/", cfg))) {
+		return "null"
+	}
+	return fmt.tprintf(`{{"runtime":{{"version":"Lua 5.4"}},"workspace":{{"library":[%s]}}}}`, lsp_json_string(stub))
+}
+
+lsp_lua_entry :: proc(root: string) -> string {
+	lua := lsp_config_lua(root)
+	return "" if lua == "null" else fmt.tprintf(`,"Lua":%s`, lua)
 }
 
 lsp_caps_summary :: proc(lsp: ^Lsp) -> string {

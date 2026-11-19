@@ -72,7 +72,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Phase 10: drop the `commands` plugin, add `qed.parse_locations`.
 - [ ] Phase 11: file tree status provider (`qed.filetree`), Git tab moves to the `git` plugin, `.Git` module gone.
 - [ ] Phase 12: query-driven `qed.pick` (`query`, `on_query`, `picker:set`), project search moves to the `search` plugin.
-- [ ] Phase 13: `qed.meta` display names, automatic command prefix, `plugins.<id>.keybinds`, message attribution, `.luarc.json`, `modules.lsp` becomes `lsp`.
+- [ ] Phase 13: `qed.meta` display names, automatic command prefix, `plugins.<id>.keybinds`, message attribution, Lua settings scoped to the config dir, `modules.lsp` becomes `lsp`, `pickers` becomes `settings`, `tasks` dropped.
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred

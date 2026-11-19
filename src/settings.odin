@@ -743,6 +743,21 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	}
 }
 
+CONFIG_KEYBINDS_MOVED :: [?]struct {
+	old, plugin, bare: string,
+} {
+	{"Find in Files", "search", "Find in Files"},
+	{"Set Theme", "settings", "Theme"},
+	{"Set Language", "settings", "Language"},
+	{"Change Indentation", "settings", "Indentation"},
+	{"Format Document", "format", "Document"},
+	{"Toggle Format on Save", "format", "Toggle on Save"},
+	{"Toggle Trim Whitespace on Save", "format", "Toggle Trim Whitespace on Save"},
+	{"Toggle Final Newline on Save", "format", "Toggle Final Newline on Save"},
+	{"Git: Set Diff Base", "git", "Set Diff Base"},
+	{"File Tree: Restore File", "git", "Restore File"},
+}
+
 config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {
 	warnings := make([dynamic]string, context.temp_allocator)
 	if kb_obj, ok := root["keybinds"].(json.Object); ok {
@@ -766,6 +781,11 @@ config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -
 				continue
 			}
 			moved := ""
+			for m in CONFIG_KEYBINDS_MOVED {
+				if m.old == key {
+					moved = fmt.tprintf(" (moved to plugins/%s/keybinds/%q)", m.plugin, m.bare)
+				}
+			}
 			for cmd in plugin_commands {
 				if cmd.name == key || cmd.bare == key {
 					moved = fmt.tprintf(" (moved to plugins/%s/keybinds)", cmd.owner)

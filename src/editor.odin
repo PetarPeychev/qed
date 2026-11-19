@@ -143,7 +143,6 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	plugins_rebind(&editor)
 	if !headless {
 		plugin_stub_write(plugin_stub_dir())
-		plugin_luarc_write(plugin_user_dir(), plugin_stub_dir())
 		editor_log(
 			&editor,
 			.Debug,

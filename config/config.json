@@ -58,9 +58,6 @@
     },
     "search": {
       "enabled": true
-    },
-    "tasks": {
-      "enabled": true
     }
   },
   "theme": "default",

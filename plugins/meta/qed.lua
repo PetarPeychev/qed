@@ -58,12 +58,12 @@ local CommandHandle = {}
 ---@return boolean
 function CommandHandle:remove() end
 
----Registers `<display name>: <name>`. A visible name may be registered once per scope (one editor and one file tree command); taken names raise.
+---Registers `<display name>: <name>`. A visible name may be registered once per scope (one editor and one file tree command); taken names and bare names equal to a core command of that scope raise.
 ---@param spec qed.CommandSpec
 ---@return qed.CommandHandle
 function qed.command(spec) end
 
----Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command when no visible name matches.
+---Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command (bare names never equal a core command).
 ---@param name string
 ---@return boolean ran
 function qed.run(name) end
@@ -111,7 +111,7 @@ function qed.root() end
 ---@return T
 function qed.options(defaults) end
 
----Sets plugin metadata. Setup only, once per load; unknown fields raise.
+---Sets plugin metadata. Setup only, once per load, before any `qed.command`. Unknown fields, a display name another loaded plugin uses, and core log labels ("LSP", "Plugins", ...) raise.
 ---@param meta qed.Meta
 function qed.meta(meta) end
 

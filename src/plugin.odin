@@ -38,6 +38,7 @@ Plugin :: struct {
 	stamp:      u64,
 	cfg_sig:    string,
 	unknown:    string,
+	keys_due:   bool,
 }
 
 PluginFile :: struct {
@@ -106,7 +107,6 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
-	{"tasks/init.lua", #load("../plugins/tasks/init.lua", string)},
 }
 
 g_bundled_plugins: []PluginFile
@@ -510,13 +510,29 @@ plugins_config_warn :: proc(editor: ^Editor) {
 }
 
 plugin_keys_warn :: proc(editor: ^Editor, pl: ^Plugin) {
+	if pl.state == .Enabled && pl.unknown != "" {
+		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring unknown %s", pl.unknown))
+	}
+}
+
+plugins_keybinds_check :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	if p.startup_due {
+		return
+	}
+	for &pl in p.list {
+		if pl.keys_due {
+			pl.keys_due = false
+			plugin_keybinds_warn(editor, &pl)
+		}
+	}
+}
+
+plugin_keybinds_warn :: proc(editor: ^Editor, pl: ^Plugin) {
 	if pl.state != .Enabled {
 		return
 	}
 	problems := make([dynamic]string, context.temp_allocator)
-	if pl.unknown != "" {
-		append(&problems, fmt.tprintf("unknown %s", pl.unknown))
-	}
 	kb_v, has_kb := plugin_cfg_entry(editor_config_user(editor), pl.name)["keybinds"]
 	kb, kb_ok := kb_v.(json.Object)
 	if has_kb && !kb_ok {
@@ -617,6 +633,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 		return
 	}
 	pl.state = .Enabled
+	plugin_display_reset(pl)
 	delete(pl.last_error)
 	pl.last_error = ""
 	start := time.tick_now()
@@ -651,6 +668,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	if !p.applying {
 		plugin_keys_warn(editor, pl)
 	}
+	pl.keys_due = true
 	if p.bound && !p.startup_due {
 		plugin_queue(editor, {event = .Startup, only = pl.name})
 	}
@@ -815,6 +833,9 @@ plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool, parsed := tru
 	if theme_changed {
 		plugin_queue(editor, {event = .Theme_Changed})
 	}
+	for &pl in p.list {
+		pl.keys_due = pl.state == .Enabled
+	}
 	plugin_flush(editor)
 	p.applying = false
 	plugins_rebind(editor)
@@ -916,7 +937,6 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	// Twice: a __gc object survives one cycle and its closure keeps the env alive.
 	lua.gc(p.L, .COLLECT)
 	lua.gc(p.L, .COLLECT)
-	plugin_display_reset(pl)
 }
 
 plugin_env_create :: proc(L: ^lua.State, pl: ^Plugin) {
@@ -1166,6 +1186,9 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if pl == nil || pl.state != .Enabled {
 		return plugin_raise(L, "plugin is not loaded")
 	}
+	if plugin_command_core(name, filetree) {
+		return plugin_raise(L, fmt.tprintf("command name '%s' is a core command", name))
+	}
 	visible := fmt.tprintf("%s: %s", pl.display, name)
 	if plugin_command_taken(p, visible, filetree) {
 		return plugin_raise(L, fmt.tprintf("command '%s' already exists", visible))
@@ -1198,6 +1221,13 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		}
 	}
 	append(&p.commands, cmd)
+	if cmd.key_default != "" {
+		for &other in p.commands {
+			if other.id != id && other.owner == pl.name && other.config_name == cmd.config_name && other.key_default == "" {
+				plugin_command_bind(p, &other, editor_config_user(editor))
+			}
+		}
+	}
 	api_handle_push(L, id, {{"remove", qed_command_remove}})
 	return 1
 }
@@ -1278,7 +1308,16 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-plugin_command_taken :: proc(p: ^Plugins, name: string, filetree: bool, skip_owner := "") -> bool {
+plugin_command_core :: proc(name: string, filetree: bool) -> bool {
+	for cmd in (filetree_commands[:] if filetree else commands[:]) {
+		if cmd.name == name || command_config_name(cmd) == name {
+			return true
+		}
+	}
+	return false
+}
+
+plugin_command_taken :: proc(p: ^Plugins, name: string, filetree: bool) -> bool {
 	for cmd in commands {
 		if cmd.name == name {
 			return true
@@ -1290,7 +1329,7 @@ plugin_command_taken :: proc(p: ^Plugins, name: string, filetree: bool, skip_own
 		}
 	}
 	for cmd in p.commands {
-		if cmd.name == name && cmd.filetree == filetree && (skip_owner == "" || cmd.owner != skip_owner) {
+		if cmd.name == name && cmd.filetree == filetree {
 			return true
 		}
 	}
@@ -1363,6 +1402,11 @@ plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -
 	if taken := plugin_bind_taken(key, alt_ch, cmd.filetree); taken != "" {
 		return fmt.tprintf("%s (%s is %q)", label, bind, taken), from_user
 	}
+	for other in p.commands {
+		if other.id != cmd.id && other.filetree == cmd.filetree && other.shortcut != "" && other.alt_ch == alt_ch && (alt_ch != 0 || other.key == key) {
+			return fmt.tprintf("%s (%s is %q)", label, bind, other.name), from_user
+		}
+	}
 	cmd.key = key
 	cmd.alt_ch = alt_ch
 	cmd.shortcut = strings.clone(bind)
@@ -1376,6 +1420,10 @@ plugins_rebind :: proc(editor: ^Editor) {
 		p.mem.cap = PLUGIN_MEMORY_MB * 1024 * 1024
 	}
 	problems := config_keybinds_unknown(cfg_user, p.commands[:])
+	for &cmd in p.commands {
+		delete(cmd.shortcut)
+		cmd.shortcut = ""
+	}
 	for &cmd in p.commands {
 		problem, from_user := plugin_command_bind(p, &cmd, cfg_user)
 		if problem == "" {

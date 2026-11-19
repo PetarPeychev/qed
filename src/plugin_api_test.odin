@@ -430,22 +430,19 @@ plugin_api_stub_write :: proc(t: ^testing.T) {
 }
 
 @(test)
-plugin_api_luarc_write :: proc(t: ^testing.T) {
-	tmp, _ := os.temp_dir(context.temp_allocator)
-	root := fmt.tprintf("%s/qed_luarc_test_%d", tmp, posix.getpid())
-	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(root)))
-	dir := fmt.tprintf("%s/plugins", root)
-	testing.expect_value(t, lsp_config_for_section("Lua"), "null")
-	testing.expect(t, plugin_luarc_write(dir, "/stub/lua"), "first write creates the dir and the file")
-	testing.expect(t, !plugin_luarc_write(dir, "/stub/lua"), "unchanged content is not rewritten")
-	testing.expect(t, plugin_luarc_write(dir, "/other/lua"), "a moved stub dir rewrites it")
-	data, _ := os.read_entire_file(fmt.tprintf("%s/.luarc.json", dir), context.temp_allocator)
-	v, err := json.parse(data, allocator = context.temp_allocator)
-	testing.expect(t, err == nil, ".luarc.json is valid JSON")
-	obj := v.(json.Object)
-	testing.expect_value(t, string(obj["runtime"].(json.Object)["version"].(json.String)), "Lua 5.4")
-	testing.expect_value(t, string(obj["workspace"].(json.Object)["library"].(json.Array)[0].(json.String)), "/other/lua")
-	testing.expect(t, !plugin_luarc_write("", "/stub/lua") && !plugin_luarc_write(dir, ""), "no dir, no write")
+plugin_api_lsp_lua_scoped :: proc(t: ^testing.T) {
+	cfg := config_dir(config_path())
+	testing.expect_value(t, lsp_config_for_section("Lua", "/somewhere/else"), "null")
+	testing.expect_value(t, lsp_lua_entry("/somewhere/else"), "")
+	testing.expect_value(t, lsp_config_for_section("Lua", fmt.tprintf("%s-other", cfg)), "null")
+	for root in ([?]string{cfg, fmt.tprintf("%s/plugins", cfg)}) {
+		v, err := json.parse_string(lsp_config_for_section("Lua", root), allocator = context.temp_allocator)
+		testing.expectf(t, err == nil, "Lua settings for %s are valid JSON", root)
+		obj := v.(json.Object)
+		testing.expect_value(t, string(obj["runtime"].(json.Object)["version"].(json.String)), "Lua 5.4")
+		testing.expect_value(t, string(obj["workspace"].(json.Object)["library"].(json.Array)[0].(json.String)), plugin_stub_dir())
+		testing.expect(t, strings.has_prefix(lsp_lua_entry(root), `,"Lua":{`), "the push includes Lua under the config dir")
+	}
 	repo, rerr := os.read_entire_file("../.luarc.json", context.temp_allocator)
 	if rerr != nil {
 		repo, rerr = os.read_entire_file(".luarc.json", context.temp_allocator)

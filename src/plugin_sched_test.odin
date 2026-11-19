@@ -367,7 +367,7 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 					qed.edit(b, function() qed.buf.insert(b, {row = 1, col = 1}, "[fmt]") end, {rev = rev})
 				end)
 				qed.on("buf_save", function(b) saved = (saved or 0) + 1 end)
-				qed.command{name = "Save", run = function(ctx)
+				qed.command{name = "Do Save", run = function(ctx)
 					local ok = qed.save(ctx.buf)
 					after = tostring(ok) .. " " .. tostring(qed.buf.modified(ctx.buf))
 				end}
@@ -380,7 +380,7 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 	testing.expect_value(t, buffer_open(b, path), BufferOpenError.None)
 	buffer_insert_rune(b, '!')
 
-	sched_run(t, ed, "Pre: Save")
+	sched_run(t, ed, "Pre: Do Save")
 	data, _ := os.read_entire_file(path, context.temp_allocator)
 	testing.expect_value(t, string(data), "draft")
 	testing.expect(t, plugin_save_pending(&ed.plugins, b.id), "the save waits for the handler")

@@ -604,45 +604,54 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 		if err != nil {
 			continue
 		}
-		f := PluginFile{fmt.tprintf("%s/test.lua", name), string(data)}
-		count := 1
-		for i := 0; i < count; i += 1 {
-			e: E2E
-			tests, names, serr := pt_session(&e, name, f)
-			if serr != "" {
-				testing.expectf(t, false, "plugins/%s: %s", f.path, serr)
-				e2e_stop(&e)
-				break
-			}
-			count = len(names)
-			if count == 0 {
-				testing.expectf(t, false, "plugins/%s defines no tests", f.path)
-				e2e_stop(&e)
-				break
-			}
-			saved_timeout, saved_lsp, saved_ai := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED
-			saved_theme := strings.clone(THEME, context.temp_allocator)
-			saved_reg := clipboard_register
-			clipboard_register = ""
-			tc := PtCase{tests, names[i]}
-			lua.pushcfunction(e.ed.plugins.L, pt_case_c)
-			lua.pushlightuserdata(e.ed.plugins.L, &tc)
-			ok, msg, tb := plugin_call(&e.ed, 1, 0)
-			if !ok {
-				testing.expectf(t, false, "plugins/%s %s: %s\n%s", f.path, names[i], msg, tb)
-			} else if pl := plugin_find(&e.ed.plugins, name); pl != nil && pl.last_error != "" {
-				testing.expectf(t, false, "plugins/%s %s: plugin error: %s", f.path, names[i], pl.last_error)
-			}
-			PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED = saved_timeout, saved_lsp, saved_ai
-			delete(clipboard_register)
-			clipboard_register = saved_reg
-			if THEME != saved_theme || e.ed.theme_shown != "" {
-				delete(THEME, os.heap_allocator())
-				THEME = strings.clone(saved_theme, os.heap_allocator())
-				editor_theme_set(&e.ed, saved_theme, false)
-			}
+		pt_run(t, name, PluginFile{fmt.tprintf("%s/test.lua", name), string(data)})
+	}
+}
+
+@(test)
+e2e_term_api_lua :: proc(t: ^testing.T) {
+	pt_run(t, "term", PluginFile{"term_test.lua", #load("term_test.lua", string)})
+}
+
+@(private = "file")
+pt_run :: proc(t: ^testing.T, name: string, f: PluginFile) {
+	count := 1
+	for i := 0; i < count; i += 1 {
+		e: E2E
+		tests, names, serr := pt_session(&e, name, f)
+		if serr != "" {
+			testing.expectf(t, false, "plugins/%s: %s", f.path, serr)
 			e2e_stop(&e)
+			break
 		}
+		count = len(names)
+		if count == 0 {
+			testing.expectf(t, false, "plugins/%s defines no tests", f.path)
+			e2e_stop(&e)
+			break
+		}
+		saved_timeout, saved_lsp, saved_ai := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED
+		saved_theme := strings.clone(THEME, context.temp_allocator)
+		saved_reg := clipboard_register
+		clipboard_register = ""
+		tc := PtCase{tests, names[i]}
+		lua.pushcfunction(e.ed.plugins.L, pt_case_c)
+		lua.pushlightuserdata(e.ed.plugins.L, &tc)
+		ok, msg, tb := plugin_call(&e.ed, 1, 0)
+		if !ok {
+			testing.expectf(t, false, "plugins/%s %s: %s\n%s", f.path, names[i], msg, tb)
+		} else if pl := plugin_find(&e.ed.plugins, name); pl != nil && pl.last_error != "" {
+			testing.expectf(t, false, "plugins/%s %s: plugin error: %s", f.path, names[i], pl.last_error)
+		}
+		PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED = saved_timeout, saved_lsp, saved_ai
+		delete(clipboard_register)
+		clipboard_register = saved_reg
+		if THEME != saved_theme || e.ed.theme_shown != "" {
+			delete(THEME, os.heap_allocator())
+			THEME = strings.clone(saved_theme, os.heap_allocator())
+			editor_theme_set(&e.ed, saved_theme, false)
+		}
+		e2e_stop(&e)
 	}
 }
 
