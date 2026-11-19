@@ -7,16 +7,15 @@ import "core:testing"
 
 @(private = "file")
 PROVIDER :: `
-return {setup = function()
-	qed.on("filetree_refresh", function()
+local function refresh()
 		qed.log("info", "refresh")
 		qed.filetree.set_status({
 			["a.txt"] = {mark = "modified", added = 3, removed = 1},
 			["new.txt"] = {mark = "added", from = "orig.txt", added = 2},
 			["sub/gone.txt"] = {mark = "deleted"},
 		}, {"junk"})
-	end)
-	qed.on("filetree_preview", function(path)
+end
+local function preview(path)
 		qed.log("info", "preview " .. qed.path.rel(path))
 		if path:find("gone", 1, true) then
 			qed.filetree.set_base(path, "x\ny\n")
@@ -25,9 +24,14 @@ return {setup = function()
 		else
 			qed.filetree.set_base(path, nil)
 		end
-	end)
+end
+local function open(ctx) qed.message("open " .. qed.path.rel(ctx.file)) end
+return {setup = function()
 	qed.command{name = "Provide", run = function()
-		qed.filetree.provide{open_deleted = function(ctx) qed.message("open " .. qed.path.rel(ctx.file)) end}
+		qed.filetree.provide{refresh = refresh, preview = preview, open_deleted = open}
+	end}
+	qed.command{name = "Reprovide", run = function()
+		qed.filetree.provide{refresh = refresh, preview = preview, open_deleted = function() qed.message("reopened") end}
 	end}
 	qed.command{name = "Unprovide", run = function() qed.filetree.provide(nil) end}
 	qed.command{name = "Bad Mark", run = function()
@@ -151,14 +155,31 @@ e2e_filetree_status_owner :: proc(t: ^testing.T) {
 		assert(not pcall(qed.filetree.set_status, {}), "set_status needs provide")
 		assert(not pcall(qed.filetree.set_base, "a.txt", "x"), "set_base needs provide")
 		assert(not pcall(qed.filetree.provide, 1), "spec table required")
+		assert(not pcall(qed.filetree.provide, {refresh = 1}), "callbacks must be functions")
+		qed.command{name = "Steal", run = function()
+			local ok, err = qed.filetree.provide{}
+			qed.message(tostring(ok) .. " " .. tostring(err))
+		end}
 	end}`)
 	testing.expect_value(t, other.state, PluginState.Enabled)
 	fts_run(&e, "Provide")
+	fts_run(&e, "Steal")
+	testing.expect_value(t, e.ed.message, "nil taken by prov")
+	testing.expect_value(t, tr.provider.owner, "prov")
 	testing.expect(t, !tr.scanned, "a provider that has not pushed holds the prewarm back")
 	nav_alt(&e, 'f')
 	nav_scan(&e)
 	testing.expect(t, len(tr.status) > 0, "opening the tree asks for status")
 	testing.expect(t, tr.scanned)
+	nav_alt(&e, 'g')
+	n := len(tr.status)
+	fts_run(&e, "Reprovide")
+	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
+	testing.expect_value(t, len(tr.status), n)
+	testing.expect(t, nav_select(tr, "gone.txt"))
+	e2e_key(&e, .Enter)
+	e2e_git_settle(&e)
+	testing.expect_value(t, e.ed.message, "reopened")
 	plugin_unload(&e.ed, pl)
 	testing.expect(t, !filetree_tab_visible(tr, .Changed), "unload drops the provider")
 	testing.expect_value(t, len(tr.status), 0)

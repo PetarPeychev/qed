@@ -98,92 +98,159 @@ function M.numstat_line(line, untracked)
 	return M.numstat_path(rest), tonumber(a), tonumber(d)
 end
 
-local function add(files, top, rel, mark, from)
-	local path = qed.path.join(top, rel)
+M.MAX = 50000
+
+local function add(st, rel, mark, from)
+	local path = st.top .. "/" .. rel
 	if mark == "deleted" and qed.fs.exists(path) then
 		mark = "modified"
 	end
-	local e = files[path]
+	local e = st.files[path]
 	if not e then
+		if st.count >= M.MAX then
+			st.full = true
+			return
+		end
+		st.count = st.count + 1
 		e = {mark = mark}
-		files[path] = e
+		st.files[path] = e
 	elseif RANK[mark] > RANK[e.mark] then
 		e.mark = mark
 	end
 	if from and not e.from then
-		e.from = qed.path.join(top, from)
+		e.from = st.top .. "/" .. from
 	end
 end
 
-local function lines(s)
-	return s:gmatch("[^\n]+")
+local function parse_base(st, text)
+	st.based = true
+	for line in repo.each(text) do
+		local rel, mark, from = M.name_status_line(line)
+		if rel then
+			add(st, rel, mark, from)
+		end
+	end
 end
 
 -- against a base, tracked changes come from `diff --name-status`; status adds only untracked and ignored paths
-function M.parse(files, ignored, top, out)
-	local based = out.base ~= nil
-	for line in lines(out.base or "") do
-		local rel, mark, from = M.name_status_line(line)
-		if rel then
-			add(files, top, rel, mark, from)
-		end
-	end
-	for line in lines(out.status) do
+local function parse_status(st, text)
+	for line in repo.each(text) do
 		local rel, mark, from = M.porcelain_line(line)
 		if mark == "ignored" then
-			ignored[#ignored + 1] = qed.path.join(top, rel)
-		elseif rel and not (based and line:sub(1, 2) ~= "??") then
-			add(files, top, rel, mark, from)
+			if #st.ignored < M.MAX then
+				st.ignored[#st.ignored + 1] = st.top .. "/" .. rel
+			end
+		elseif rel and not (st.based and line:sub(1, 2) ~= "??") then
+			add(st, rel, mark, from)
 		end
 	end
-	local sized = {}
-	for _, section in ipairs({{out.numstat, false}, {out.untracked, true}}) do
-		for line in lines(section[1]) do
-			local rel, a, d = M.numstat_line(line, section[2])
-			local path = rel and qed.path.join(top, rel)
-			if path and (a > 0 or d > 0) and not sized[path] then
-				sized[path] = true
-				local e = files[path]
-				if e then
-					e.added, e.removed = a, d
-				end
+end
+
+local function parse_sizes(st, text, untracked)
+	for line in repo.each(text) do
+		local rel, a, d = M.numstat_line(line, untracked)
+		local path = rel and st.top .. "/" .. rel
+		if path and (a > 0 or d > 0) and not st.sized[path] then
+			st.sized[path] = true
+			local e = st.files[path]
+			if e then
+				e.added, e.removed = a, d
 			end
 		end
 	end
 end
 
+local function state(files, ignored, top)
+	return {files = files, ignored = ignored, top = top, count = 0, sized = {}, based = false, full = false}
+end
+
+function M.parse(files, ignored, top, out)
+	local st = state(files, ignored, top)
+	if out.base then
+		parse_base(st, out.base)
+	end
+	parse_status(st, out.status)
+	parse_sizes(st, out.numstat, false)
+	parse_sizes(st, out.untracked, true)
+	return st.full
+end
+
+-- runs in the background so a superseded scan can kill it; nil once cancelled
+local function run(job, spec)
+	if job.cancelled then
+		return nil
+	end
+	local ok, proc = pcall(qed.spawn_bg, spec)
+	if not ok then
+		return ""
+	end
+	job.proc = proc
+	local r = proc:wait()
+	job.proc = nil
+	if job.cancelled then
+		return nil
+	end
+	return r.code == 0 and r.stdout or ""
+end
+
+local function git(job, top, args)
+	local argv = {"git", "-C", top, "-c", "core.quotePath=false"}
+	for _, a in ipairs(args) do
+		argv[#argv + 1] = a
+	end
+	return run(job, {argv = argv, cwd = top})
+end
+
 -- pruned at each repo so an ignored node_modules is never walked
-local function repos(root)
+local function repos(root, job)
 	local top = repo.out(root, {"rev-parse", "--show-toplevel"})
 	if top ~= "" then
 		return {top}
 	end
-	local ok, r = pcall(qed.spawn, {argv = {"find", root, "-type", "d", "-exec", "sh", "-c", 'test -e "$0/.git"', "{}", ";", "-prune", "-print"}})
+	local found = run(job, {argv = {"find", root, "-type", "d", "-exec", "sh", "-c", 'test -e "$0/.git"', "{}", ";", "-prune", "-print"}})
 	local out = {}
-	for line in lines(ok and r.stdout or "") do
+	for line in repo.each(found or "") do
 		out[#out + 1] = line
 	end
 	return out
 end
 
-local function stdout(r)
-	return r.code == 0 and r.stdout or ""
-end
-
-function M.scan(root, base)
-	local files, ignored = {}, {}
-	for _, top in ipairs(repos(root)) do
+-- each output is parsed and dropped before the next spawn so only one is held at a time
+function M.scan(root, base, job)
+	local files, ignored, full, count = {}, {}, false, 0
+	for _, top in ipairs(repos(root, job)) do
+		local st = state(files, ignored, top)
+		st.count = count
 		local rev = repo.rev(top, base)
-		local out = {}
+		local text
 		if rev ~= "HEAD" then
-			out.base = stdout(repo.git(top, {"-c", "core.quotePath=false", "diff", "--name-status", "--find-renames", rev}))
+			text = git(job, top, {"diff", "--name-status", "--find-renames", rev})
+			if not text then
+				return nil
+			end
+			parse_base(st, text)
 		end
-		out.status = stdout(repo.git(top, {"-c", "core.quotePath=false", "status", "--porcelain", "--find-renames", "--ignored=matching", "--untracked-files=all"}))
-		out.numstat = stdout(repo.git(top, {"-c", "core.quotePath=false", "diff", rev, "--numstat", "--find-renames"}))
-		out.untracked = repo.untracked(top)
-		M.parse(files, ignored, top, out)
+		text = git(job, top, {"status", "--porcelain", "--find-renames", "--ignored=matching", "--untracked-files=all"})
+		if not text then
+			return nil
+		end
+		parse_status(st, text)
+		text = git(job, top, {"diff", rev, "--numstat", "--find-renames"})
+		if not text then
+			return nil
+		end
+		parse_sizes(st, text, false)
+		text = run(job, {cmd = repo.UNTRACKED, cwd = top})
+		if not text then
+			return nil
+		end
+		parse_sizes(st, text, true)
+		full, count = full or st.full, st.count
 	end
-	return files, ignored
+	if job.cancelled then
+		return nil
+	end
+	return files, ignored, full
 end
 
 return M

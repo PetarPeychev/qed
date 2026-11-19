@@ -123,7 +123,7 @@ function qed.shell_quote(s) end
 ---@return {label: string, path: string, pos: qed.Pos}[]
 function qed.parse_locations(text, opts) end
 
----@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"filetree_refresh"|"filetree_preview"|"quit"
+---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"
 
 ---@class qed.Handle
 ---@field id integer
@@ -135,7 +135,6 @@ function Handle:off() end
 ---`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
----`filetree_refresh()` and `filetree_preview(path)` go only to the file tree status provider (`qed.filetree.provide`).
 ---@param event qed.Event
 ---@param fn function
 ---@return qed.Handle
@@ -278,6 +277,8 @@ function qed.theme.icon(name) end
 qed.filetree = {}
 
 ---@class qed.ProviderSpec
+---@field refresh? fun() the tree wants fresh status (opened, root changed, a tree file operation); answer with `set_status`
+---@field preview? fun(path: string) the Changed tab wants a base for `path`; answer with `set_base`
 ---@field open_deleted? fun(ctx: qed.Ctx) runs as a file tree command on `Enter` over a listed deleted file that is missing on disk
 
 ---@class qed.FileStatus
@@ -286,8 +287,10 @@ qed.filetree = {}
 ---@field added? integer lines added (shown as `+N -N` on the Changed tab)
 ---@field removed? integer lines removed
 
----Claims the file tree's Changed tab (one provider; the last call wins) and asks for a `filetree_refresh` when the tree is open. `nil` drops it.
+---Claims the file tree's Changed tab. Callbacks run as queued coroutines. Calling again replaces the callbacks and keeps the status. `nil` drops it.
 ---@param spec qed.ProviderSpec|nil
+---@return true|nil ok `nil, "taken by <plugin>"` while another plugin holds the tab
+---@return string? err
 function qed.filetree.provide(spec) end
 
 ---Replaces the tree's status: bars, the Changed tab, sizes, rename labels and deleted ghost rows. `ignored` paths hide unless *Toggle Ignored*.
@@ -295,7 +298,7 @@ function qed.filetree.provide(spec) end
 ---@param ignored? string[]
 function qed.filetree.set_status(files, ignored) end
 
----Answers `filetree_preview(path)`: the Changed tab previews `path` diffed against `text`; `nil` shows it plainly.
+---Answers the `preview(path)` callback: the Changed tab previews `path` diffed against `text` (raw bytes; binary shows a hexdump); `nil` shows it plainly.
 ---@param path string
 ---@param text string|nil
 function qed.filetree.set_base(path, text) end
@@ -583,7 +586,7 @@ function qed.buf.indent(b) end
 ---Each plugin keeps its own base per buffer; the base of the plugin that first set one most recently wins,
 ---and clearing it with `nil` (or unloading) reveals the one beneath. Another plugin's base is never touched.
 ---@param b qed.Buf
----@param text string|nil
+---@param text string|nil raw bytes (need not be UTF-8)
 ---@param opts? {label?: string} label shown in the status bar: `±base` when omitted, nothing when `""`
 ---@return boolean active true when this plugin's base is the one shown
 function qed.buf.set_base(b, text, opts) end

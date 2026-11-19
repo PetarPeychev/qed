@@ -452,7 +452,7 @@ pt_settle :: proc "c" (L: ^lua.State) -> c.int {
 		if filetree_filter_pending(&e.ed) {
 			filetree_filter_flush(&e.ed)
 		}
-		return plugin_busy(&e.ed)
+		return plugin_busy(&e.ed) || e2e_plugin_yielding(e)
 	})
 	return 0
 }

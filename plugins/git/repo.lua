@@ -1,5 +1,7 @@
 local M = {}
 
+local YIELD_LINES = 2000
+
 local function trim(s)
 	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -65,9 +67,22 @@ function M.anchor(path)
 	return dir, path:sub(#dir + 2)
 end
 
+-- a long parse sleeps every YIELD_LINES lines so no slice outruns the event budget
+function M.each(s)
+	local next_line = s:gmatch("[^\n]+")
+	local n = 0
+	return function()
+		n = n + 1
+		if n % YIELD_LINES == 0 then
+			qed.sleep(0)
+		end
+		return next_line()
+	end
+end
+
 function M.numstat(out, untracked)
 	local added, deleted = 0, 0
-	for line in out:gmatch("[^\n]+") do
+	for line in M.each(out) do
 		if untracked then
 			local n = line:match(":(%d+)$")
 			added = added + (tonumber(n) or 0)
@@ -82,8 +97,10 @@ function M.numstat(out, untracked)
 end
 
 -- git diff skips untracked files, so grep counts their lines (-I: binaries count 0)
+M.UNTRACKED = "git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' -- 2>/dev/null"
+
 function M.untracked(top)
-	return qed.spawn{cmd = "git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' -- 2>/dev/null", cwd = top}.stdout
+	return qed.spawn{cmd = M.UNTRACKED, cwd = top}.stdout
 end
 
 function M.diffsize(top, rev)

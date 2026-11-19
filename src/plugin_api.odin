@@ -301,10 +301,14 @@ api_pos_push :: proc(L: ^lua.State, p: Cursor) {
 }
 
 api_text_arg :: proc(L: ^lua.State, idx: c.int) -> string {
-	text := api_string(L, idx)
-	if !utf8.valid_string(text) {
+	if !utf8.valid_string(api_string(L, idx)) {
 		lua.L_argerror(L, idx, "text is not valid UTF-8")
 	}
+	return api_bytes_arg(L, idx)
+}
+
+api_bytes_arg :: proc(L: ^lua.State, idx: c.int) -> string {
+	text := api_string(L, idx)
 	if strings.contains_rune(text, '\r') {
 		text, _ = strings.replace_all(text, "\r\n", "\n", context.temp_allocator)
 		text, _ = strings.replace_all(text, "\r", "\n", context.temp_allocator)
@@ -784,12 +788,22 @@ qed_edit :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 api_path :: proc(editor: ^Editor, path: string) -> string {
+	if api_path_clean(path) {
+		return path
+	}
 	if filepath.is_abs(path) {
 		clean, _ := filepath.clean(path, context.temp_allocator)
 		return clean
 	}
 	joined, _ := filepath.join({editor.working_root, path}, context.temp_allocator)
 	return joined
+}
+
+api_path_clean :: proc(path: string) -> bool {
+	if len(path) < 2 || path[0] != '/' || path[len(path) - 1] == '/' {
+		return false
+	}
+	return !strings.contains(path, "//") && !strings.contains(path, "/./") && !strings.contains(path, "/../") && !strings.has_suffix(path, "/.") && !strings.has_suffix(path, "/..")
 }
 
 qed_open :: proc "c" (L: ^lua.State) -> c.int {
@@ -2199,7 +2213,7 @@ qed_buf_set_base :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	b, _ := api_buf(L, editor, 1)
 	clear_base := lua.type(L, 2) <= .NIL
-	text := "" if clear_base else api_text_arg(L, 2)
+	text := "" if clear_base else api_bytes_arg(L, 2)
 	label := "base"
 	if lua.type(L, 3) == .TABLE {
 		if v, ok := api_field_string(L, 3, "label"); ok {
@@ -2226,28 +2240,49 @@ qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 	pl := api_loaded(L, editor)
 	if lua.type(L, 1) <= .NIL {
 		filetree_provider_unload(editor, pl.name)
-		return 0
+		lua.pushboolean(L, true)
+		return 1
 	}
 	if lua.type(L, 1) != .TABLE {
 		lua.L_argerror(L, 1, "table or nil expected")
 	}
-	open_t := lua.getfield(L, 1, "open_deleted")
-	if open_t != .FUNCTION && open_t != .NIL {
-		lua.L_argerror(L, 1, "open_deleted must be a function")
+	lua.settop(L, 1)
+	names := [3]cstring{"refresh", "preview", "open_deleted"}
+	for name in names {
+		if tp := lua.getfield(L, 1, name); tp != .FUNCTION && tp != .NIL {
+			plugin_raise(L, fmt.tprintf("%s must be a function", name))
+		}
 	}
-	ref: i32
-	if open_t == .FUNCTION {
-		ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	if t.provider.owner != "" && t.provider.owner != pl.name {
+		lua.pushnil(L)
+		lua.pushodinstring(L, fmt.tprintf("taken by %s", t.provider.owner))
+		return 2
+	}
+	refs: [3]i32
+	for i := 2; i >= 0; i -= 1 {
+		if lua.type(L, -1) == .FUNCTION {
+			refs[i] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+		} else {
+			lua.pop(L, 1)
+		}
+	}
+	if t.provider.owner == pl.name {
+		filetree_provider_unref(editor, &t.provider)
+		t.provider.base_state = .None
+		if t.active {
+			filetree_preview_touch(editor)
+		}
 	} else {
-		lua.pop(L, 1)
+		filetree_provider_clear(editor)
+		t.provider.owner = plugin_name_intern(&editor.plugins, pl.name)
+		t.scanned = false
 	}
-	filetree_provider_clear(editor)
-	t.provider = {owner = plugin_name_intern(&editor.plugins, pl.name), open_ref = ref}
-	t.scanned = false
-	if t.active {
+	t.provider.refresh_ref, t.provider.preview_ref, t.provider.open_ref = refs[0], refs[1], refs[2]
+	if t.active && !t.scanned {
 		filetree_status_request(editor)
 	}
-	return 0
+	lua.pushboolean(L, true)
+	return 1
 }
 
 api_provider :: proc(L: ^lua.State, editor: ^Editor) {
@@ -2325,6 +2360,7 @@ qed_filetree_set_status :: proc "c" (L: ^lua.State) -> c.int {
 		}
 	}
 	filetree_clear_status(t)
+	reserve(&t.status, len(files))
 	root := editor.working_root
 	for e in files {
 		filetree_status_add(t, root, e.path, e.mark)
@@ -2353,7 +2389,7 @@ qed_filetree_set_base :: proc "c" (L: ^lua.State) -> c.int {
 	if lua.type(L, 2) <= .NIL {
 		filetree_base_set(editor, path, nil)
 	} else {
-		filetree_base_set(editor, path, api_text_arg(L, 2))
+		filetree_base_set(editor, path, api_bytes_arg(L, 2))
 	}
 	return 0
 }

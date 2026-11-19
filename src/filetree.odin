@@ -57,8 +57,10 @@ FileTreeBaseState :: enum {
 }
 
 FileTreeProvider :: struct {
-	owner:      string,
-	open_ref:   i32,
+	owner:       string,
+	refresh_ref: i32,
+	preview_ref: i32,
+	open_ref:    i32,
 	base_path:  string,
 	base_text:  string,
 	base_state: FileTreeBaseState,
@@ -318,12 +320,31 @@ filetree_status_request :: proc(editor: ^Editor) {
 	if owner == "" {
 		return
 	}
+	ref := editor.filetree.provider.refresh_ref
+	if ref == 0 {
+		return
+	}
 	for q in p.queue {
-		if q.event == .Filetree_Refresh {
+		if q.ref == ref {
 			return
 		}
 	}
-	plugin_queue(editor, {event = .Filetree_Refresh, only = owner})
+	plugin_queue(editor, {ref = ref, only = owner})
+}
+
+filetree_provider_live :: proc(editor: ^Editor, owner: string, ref: i32) -> bool {
+	pv := &editor.filetree.provider
+	return pv.owner == owner && (ref == pv.refresh_ref || ref == pv.preview_ref || ref == pv.open_ref)
+}
+
+filetree_provider_unref :: proc(editor: ^Editor, pv: ^FileTreeProvider) {
+	L := editor.plugins.L
+	for ref in ([3]i32{pv.refresh_ref, pv.preview_ref, pv.open_ref}) {
+		if ref != 0 && L != nil {
+			lua.L_unref(L, lua.REGISTRYINDEX, c.int(ref))
+		}
+	}
+	pv.refresh_ref, pv.preview_ref, pv.open_ref = 0, 0, 0
 }
 
 filetree_base_reset :: proc(t: ^FileTree) {
@@ -337,7 +358,9 @@ filetree_base_reset :: proc(t: ^FileTree) {
 filetree_status_pushed :: proc(editor: ^Editor) {
 	t := &editor.filetree
 	filetree_filter_invalidate(t)
-	filetree_base_reset(t)
+	delete(t.provider.base_text)
+	t.provider.base_text = ""
+	t.provider.base_state = .None
 	for path, mark in t.status {
 		if mark == .Deleted {
 			append(&t.deleted, path)
@@ -357,9 +380,7 @@ filetree_status_pushed :: proc(editor: ^Editor) {
 
 filetree_provider_clear :: proc(editor: ^Editor) {
 	t := &editor.filetree
-	if t.provider.open_ref != 0 && editor.plugins.L != nil {
-		lua.L_unref(editor.plugins.L, lua.REGISTRYINDEX, c.int(t.provider.open_ref))
-	}
+	filetree_provider_unref(editor, &t.provider)
 	filetree_base_reset(t)
 	t.provider = {}
 	filetree_clear_status(t)
@@ -439,18 +460,23 @@ filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: DiffMark) {
 			break
 		}
 		p = np
-		filetree_status_set(t, p, up)
+		// an ancestor already at this mark had it propagated above it too
+		if filetree_status_set(t, p, up) {
+			break
+		}
 	}
 }
 
-filetree_status_set :: proc(t: ^FileTree, path: string, mark: DiffMark) {
+filetree_status_set :: proc(t: ^FileTree, path: string, mark: DiffMark) -> (had: bool) {
 	if existing, ok := t.status[path]; ok {
 		if int(mark) > int(existing) {
 			t.status[path] = mark
+			return false
 		}
-		return
+		return true
 	}
 	t.status[strings.clone(path)] = mark
+	return false
 }
 
 filetree_build_scope :: proc(editor: ^Editor) {
@@ -946,19 +972,23 @@ filetree_load_preview :: proc(editor: ^Editor) {
 	h := lay.preview_h
 	if t.scope == .Changed && t.provider.owner != "" {
 		pv := &t.provider
-		if pv.base_path != e.path {
+		// a status push re-asks for the same path; its old rows stay up until the answer
+		keep := pv.base_path == e.path && pv.base_state == .None
+		if pv.base_path != e.path || pv.base_state == .None {
 			filetree_base_reset(t)
 			pv.base_path = strings.clone(e.path)
-			if plugin_subscribed(&editor.plugins, pv.owner, .Filetree_Preview) {
+			if pv.preview_ref != 0 {
 				pv.base_state = .Wanted
-				plugin_queue(editor, {event = .Filetree_Preview, a = e.path, only = pv.owner})
+				plugin_queue(editor, {ref = pv.preview_ref, a = e.path, only = pv.owner})
 			} else {
 				pv.base_state = .Missing
 			}
 		}
 		switch pv.base_state {
 		case .Wanted:
-			preview_reset(&t.preview)
+			if !keep {
+				preview_reset(&t.preview)
+			}
 			return
 		case .Text:
 			preview_set_diff(&t.preview, e.path, h, t.diff_only, pv.base_text)
@@ -1232,6 +1262,11 @@ filetree_any_expanded :: proc(t: ^FileTree) -> bool {
 filetree_expand_all :: proc(editor: ^Editor) {
 	t := &editor.filetree
 	if t.scope == .All {
+		// the ignored set is not in yet; expanding now would walk into node_modules
+		if !t.scanned {
+			editor_log(editor, .Info, "Files", "File status is still loading")
+			return
+		}
 		filetree_mark_expanded(t, editor.working_root)
 		filetree_rebuild(editor)
 		return

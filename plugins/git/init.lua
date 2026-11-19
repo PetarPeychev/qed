@@ -9,8 +9,8 @@ local base = {}
 local fetched = {}
 local gen = {}
 local stat = {branch = "", ahead = 0, behind = 0, added = 0, deleted = 0, gen = 0, known = false, sha = ""}
-local scan_gen = 0
-local listed = {}
+local scanning, dirty, job = false, false, nil
+local renames = {}
 local provided = false
 
 local function say(text, level)
@@ -40,19 +40,41 @@ local function fetch_all()
 	end
 end
 
+-- a request while a scan runs kills its spawn and reruns once, so only the latest result is pushed
 local function scan()
-	scan_gen = scan_gen + 1
-	local mine = scan_gen
-	local files, ignored = tree.scan(qed.root(), base)
-	if mine == scan_gen and provided then
-		listed = files
-		qed.filetree.set_status(files, ignored)
+	if scanning then
+		dirty = true
+		if job then
+			job.cancelled = true
+			if job.proc then
+				job.proc:kill()
+			end
+		end
+		return
+	end
+	scanning = true
+	local files, ignored, full
+	repeat
+		dirty = false
+		job = {}
+		files, ignored, full = tree.scan(qed.root(), base, job)
+	until not dirty
+	scanning, job = false, nil
+	if not files or not provided then
+		return
+	end
+	renames = {}
+	for path, e in pairs(files) do
+		renames[path] = e.from
+	end
+	qed.filetree.set_status(files, ignored)
+	if full then
+		say(("Over %d changed files: the Changed tab lists the first %d"):format(tree.MAX, tree.MAX), "warn")
 	end
 end
 
 local function preview(path)
-	local e = listed[path]
-	local text = repo.blob(e and e.from or path, base)
+	local text = repo.blob(renames[path] or path, base)
 	if provided then
 		qed.filetree.set_base(path, text)
 	end
@@ -205,15 +227,12 @@ return {
 		qed.on("buf_close", function(b)
 			fetched[b], gen[b] = nil, nil
 		end)
-		qed.on("filetree_refresh", scan)
-		qed.on("filetree_preview", preview)
 		qed.on("root_changed", function()
 			if ready then
 				restart({})
 			end
 		end)
 		qed.on("theme_changed", show)
-		qed.filetree.provide{open_deleted = restore}
-		provided = true
+		provided = qed.filetree.provide{refresh = scan, preview = preview, open_deleted = restore} == true
 	end,
 }

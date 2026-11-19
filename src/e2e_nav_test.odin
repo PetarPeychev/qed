@@ -950,11 +950,11 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	testing.expect(t, tr.show_ignored, "toggle enables ignored")
 	testing.expect(t, entry_named(tr, "debug.log"), "ignored file now visible")
 
-	// Git scope prunes to changed files; the untracked add shows up.
+	// Changed scope prunes to changed files; the untracked add shows up.
 	e2e_key(&e, .Arrow_Right) // All -> Open
-	e2e_key(&e, .Arrow_Right) // Open -> Git
+	e2e_key(&e, .Arrow_Right) // Open -> Changed
 	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
-	testing.expect(t, entry_named(tr, "new.txt"), "Git scope lists the untracked add")
+	testing.expect(t, entry_named(tr, "new.txt"), "Changed scope lists the untracked add")
 	e2e_key(&e, .Esc)
 }
 
@@ -1004,7 +1004,7 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 			continue
 		}
 		off := strings.index(row, want)
-		testing.expectf(t, off >= 0, "Git tab row shows per-file diff size: %q", row)
+		testing.expectf(t, off >= 0, "Changed tab row shows per-file diff size: %q", row)
 		if off >= 0 {
 			x := visual_width(transmute([]u8)row[:off])
 			testing.expect_value(t, x + len(want), lay.div_x)
@@ -1036,7 +1036,7 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	tr := &e.ed.filetree
 
 	e2e_key(&e, .Arrow_Right) // All -> Open
-	e2e_key(&e, .Arrow_Right) // Open -> Git
+	e2e_key(&e, .Arrow_Right) // Open -> Changed
 	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 	for entry, i in tr.entries {
 		if entry.name == "file.txt" {
@@ -1451,7 +1451,7 @@ e2e_nav_filetree_toggle_reopens :: proc(t: ^testing.T) {
 	testing.expect(t, e.ed.filetree.active, "Alt+f opens the file tree on All")
 	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.All)
 	nav_alt(&e, 'g')
-	testing.expect(t, e.ed.filetree.active, "Alt+g while open switches to Git, stays open")
+	testing.expect(t, e.ed.filetree.active, "Alt+g while open switches to Changed, stays open")
 	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Changed)
 	nav_alt(&e, 'g')
 	testing.expect(t, !e.ed.filetree.active, "Alt+g again (same tab) closes it")
@@ -1690,7 +1690,7 @@ e2e_nav_filetree_search_git_scope :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f') // first open kicks off the async git-status scan
 	nav_scan(&e)
 	e2e_key(&e, .Arrow_Right) // All -> Open
-	e2e_key(&e, .Arrow_Right) // Open -> Git
+	e2e_key(&e, .Arrow_Right) // Open -> Changed
 	tr := &e.ed.filetree
 	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 
@@ -1713,7 +1713,7 @@ e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
 	if !shell_command_exists("rg") || !shell_command_exists("git") {
 		return
 	}
-	e := e2e_git_start("committed needle_xyz\n") // unmodified: not in Git scope
+	e := e2e_git_start("committed needle_xyz\n") // unmodified: not in Changed scope
 	defer e2e_stop(&e)
 	delete(e.ed.working_root)
 	e.ed.working_root = strings.clone(e.dir)
@@ -1731,7 +1731,7 @@ e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f') // first open kicks off the async git-status scan
 	nav_scan(&e)
 	e2e_key(&e, .Arrow_Right) // All -> Open
-	e2e_key(&e, .Arrow_Right) // Open -> Git
+	e2e_key(&e, .Arrow_Right) // Open -> Changed
 	tr := &e.ed.filetree
 	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 	testing.expect_value(t, tr.entries[0].name, "sub") // dir sorts first, selected by default
@@ -1904,6 +1904,43 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
 	check(t, &e)
+}
+
+@(test)
+e2e_nav_git_non_utf8 :: proc(t: ^testing.T) {
+	if !shell_command_exists("git") {
+		return
+	}
+	e := e2e_git_start("one\n")
+	defer e2e_stop(&e)
+	e2e_resize(&e, 200, E2E_H)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(e.dir)
+	latin := fmt.tprintf("%s/latin.txt", e.dir)
+	bin := fmt.tprintf("%s/bin.dat", e.dir)
+	nav_write(latin, "caf\xe9\n")
+	nav_write(bin, "a\x00b\n")
+	e2e_run(fmt.tprintf("cd %s && git add . && git commit -q -m bytes", shell_quote(e.dir)))
+	nav_write(latin, "caf\xe9 au lait\n")
+	nav_write(bin, "a\x00c\n")
+
+	testing.expect(t, editor_open_path(&e.ed, bin))
+	e2e_git_settle(&e)
+	git := plugin_find(&e.ed.plugins, "git")
+	testing.expect_value(t, git.state, PluginState.Enabled)
+	testing.expect_value(t, diffbase_owner(editor_buffer(&e.ed)), "git")
+
+	nav_alt(&e, 'g')
+	nav_scan(&e)
+	tr := &e.ed.filetree
+	testing.expect(t, nav_select(tr, "latin.txt"))
+	nav_preview(&e)
+	testing.expect(t, tr.preview.diff, "a Latin-1 file previews as a diff")
+	testing.expect(t, nav_select(tr, "bin.dat"))
+	nav_preview(&e)
+	testing.expect(t, tr.preview.hex, "a binary file previews as a hexdump")
+	testing.expect_value(t, git.state, PluginState.Enabled)
+	e2e_key(&e, .Esc)
 }
 
 @(test)

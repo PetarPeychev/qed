@@ -290,7 +290,7 @@ preview_ensure :: proc(p: ^Preview, view_h: int) {
 	preview_highlight_range(p, max(0, p.scroll - PREVIEW_PARSE_AHEAD), min(len(p.src), vis_hi + PREVIEW_PARSE_AHEAD))
 }
 
-preview_diff_file :: proc(path, base: string) -> (base_text: []string, cur: []string, marks: []DiffMark, hunks: []DiffHunk, ok: bool) {
+preview_diff_file :: proc(path, base: string) -> (base_text: []string, cur: []string, marks: []DiffMark, hunks: []DiffHunk, binary, ok: bool) {
 	if path == "" {
 		return
 	}
@@ -301,6 +301,10 @@ preview_diff_file :: proc(path, base: string) -> (base_text: []string, cur: []st
 			return
 		}
 		data = d
+	}
+	head := PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES
+	if preview_is_binary(data[:min(len(data), head)]) || preview_is_binary(transmute([]u8)base[:min(len(base), head)]) {
+		return nil, nil, nil, nil, true, true
 	}
 	bt := diff_split_lines(base)
 	cl := diff_split_lines(string(data))
@@ -315,14 +319,22 @@ preview_diff_file :: proc(path, base: string) -> (base_text: []string, cur: []st
 	m := make([]DiffMark, len(cl), context.temp_allocator)
 	hk := make([dynamic]DiffHunk, context.temp_allocator)
 	diff_lines(bh[:], ch[:], m, &hk)
-	return bt[:], cl[:], m, hk[:], true
+	return bt[:], cl[:], m, hk[:], false, true
 }
 
 preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool, base: string) {
 	preview_reset(p)
 	p.language = language_of(path)
-	base_text, cur, marks, hunks, ok := preview_diff_file(path, base)
+	base_text, cur, marks, hunks, binary, ok := preview_diff_file(path, base)
 	if !ok {
+		return
+	}
+	if binary {
+		if os.exists(path) {
+			preview_set_file(p, path, 0, view_h)
+		} else {
+			preview_hex_fill(p, transmute([]u8)base[:min(len(base), PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES)])
+		}
 		return
 	}
 	if len(cur) == 0 && len(base_text) > 0 {

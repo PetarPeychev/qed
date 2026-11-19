@@ -19,6 +19,7 @@ PluginKind :: enum {
 	Coalesced,
 	Timer,
 	Setup,
+	Provider,
 }
 
 PluginBudget :: struct {
@@ -33,6 +34,7 @@ plugin_budgets := [PluginKind]PluginBudget {
 	.Coalesced = {1, 20, true},
 	.Timer     = {5, 200, true},
 	.Setup     = {2, 1000, true},
+	.Provider  = {5, 200, true},
 }
 
 PluginEvent :: enum {
@@ -52,8 +54,6 @@ PluginEvent :: enum {
 	Term_Open,
 	Term_Exit,
 	Term_Close,
-	Filetree_Refresh,
-	Filetree_Preview,
 	Quit,
 }
 
@@ -74,8 +74,6 @@ plugin_event_names := [PluginEvent]string {
 	.Term_Open        = "term_open",
 	.Term_Exit        = "term_exit",
 	.Term_Close       = "term_close",
-	.Filetree_Refresh = "filetree_refresh",
-	.Filetree_Preview = "filetree_preview",
 	.Quit             = "quit",
 }
 
@@ -153,6 +151,7 @@ PluginSave :: struct {
 
 PluginQueued :: struct {
 	event: PluginEvent,
+	ref:   i32,
 	buf:   u64,
 	n:     i64,
 	a, b:  string,
@@ -283,6 +282,8 @@ plugin_kind_label :: proc(kind: PluginKind, ev: PluginEvent) -> string {
 		return "timer"
 	case .Setup:
 		return "setup"
+	case .Provider:
+		return "file tree provider"
 	}
 	return ""
 }
@@ -378,7 +379,7 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 
 plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 	#partial switch q.event {
-	case .Startup, .Config_Changed, .Theme_Changed, .Filetree_Refresh, .Quit:
+	case .Startup, .Config_Changed, .Theme_Changed, .Quit:
 		return 0
 	case .Buf_Changed:
 		lua.pushinteger(L, lua.Integer(q.buf))
@@ -396,7 +397,7 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 		lua.pushodinstring(L, q.a)
 		lua.pushinteger(L, lua.Integer(q.n))
 		return 2
-	case .Term_Open, .Term_Close, .Filetree_Preview:
+	case .Term_Open, .Term_Close:
 		lua.pushodinstring(L, q.a)
 		return 1
 	}
@@ -535,6 +536,12 @@ api_await :: proc(L: ^lua.State, p: ^Plugins, what: string) -> ^PluginTask {
 
 plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = nil) {
 	p := &editor.plugins
+	if p.L != nil && q.ref != 0 {
+		if filetree_provider_live(editor, q.only, q.ref) {
+			plugin_task_start(editor, q.only, .Provider, {ref = q.ref, args = .Line if q.a != "" else .None, line = q.a})
+		}
+		return
+	}
 	if p.L == nil || p.subs[q.event] == 0 {
 		return
 	}
@@ -570,7 +577,7 @@ plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = n
 
 plugin_queue :: proc(editor: ^Editor, q: PluginQueued) {
 	p := &editor.plugins
-	if p.L == nil || p.subs[q.event] == 0 {
+	if p.L == nil || (q.ref == 0 && p.subs[q.event] == 0) {
 		return
 	}
 	q := q

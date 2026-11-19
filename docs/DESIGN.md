@@ -829,17 +829,23 @@ Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`): navigation on
 dirty (`filetree_preview_touch`) and the main loop flushes it once selection settles, so a held arrow
 can't back up the input queue or flood the provider with base requests.
 
-**File tree status provider** (`FileTree.provider`, `qed.filetree.*`): one plugin owns the status
-tab (`qed.filetree.provide{open_deleted?}`, the last call wins, unload clears it); the tab is
-hidden and *File Tree: Changed* / *Toggle Diff* are unavailable without one. Core asks with
-`filetree_refresh` (tree open, root change, a tree file operation, `provide` over an open tree), queued once per
-iteration and delivered only to the provider; the provider pushes `qed.filetree.set_status(files, ignored)`
+**File tree status provider** (`FileTree.provider`, `qed.filetree.*`): one plugin owns the Changed
+tab (`qed.filetree.provide{refresh?, preview?, open_deleted?}`; another plugin gets `nil, "taken by"`,
+the owner re-providing swaps callbacks and keeps the status, unload clears it); the tab is
+hidden and *File Tree: Changed* / *Toggle Diff* are unavailable without one. Callbacks are registry
+refs queued as `PluginQueued.ref` and run as `.Provider` tasks (event budget; a ref the provider no
+longer holds is skipped). Core calls `refresh` (tree open, root change, a tree file operation, `provide`
+over an open tree), queued once per iteration; the provider pushes `qed.filetree.set_status(files, ignored)`
 (per-file `mark`, rename `from`, `added`/`removed`), which core validates before touching state,
 then propagates marks to ancestors, rebuilds and restarts the prewarm (`scanned` stays false from
-`provide` until the first push so the walk never runs without the ignored set). The Changed tab's
-preview sends `filetree_preview(path)` and shows nothing until `qed.filetree.set_base(path, text|nil)`
-answers; the single cached base (`base_path`/`base_state`) resets on every push, so a moved base
-re-asks. Lua never runs on render or per keystroke: both events are queued and run as coroutines.
+`provide` until the first push so the walk never runs without the ignored set, and *Expand All* on
+`All` waits for it too). The Changed tab's preview calls `preview(path)` and shows nothing until
+`qed.filetree.set_base(path, bytes|nil)` answers (a NUL on either side falls back to the hexdump);
+the single cached base (`base_path`/`base_state`) is dropped on every push, so a moved base re-asks,
+with the old rows kept up meanwhile. Lua never runs on render or per keystroke: every callback is queued.
+The `git` plugin's scan (`tree.lua`) sleeps every 2000 parsed lines (`repo.each`) so no slice nears
+the 200 ms budget, parses and drops each command's output before the next, caps the list at
+`tree.MAX` (50000) paths with a warning, and a new request kills the running scan's spawn and reruns once.
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight with full

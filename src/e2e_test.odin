@@ -211,7 +211,18 @@ e2e_git_start :: proc(seed: string, name := "file.txt") -> E2E {
 
 // the git plugin fetches diff bases asynchronously; wait until its spawns are done
 e2e_git_settle :: proc(e: ^E2E) {
-	e2e_pump_while(e, proc(e: ^E2E) -> bool {return plugin_busy(&e.ed)})
+	e2e_pump_while(e, proc(e: ^E2E) -> bool {return plugin_busy(&e.ed) || e2e_plugin_yielding(e)})
+}
+
+// a long parse yields with qed.sleep(0), which plugin_busy does not count
+e2e_plugin_yielding :: proc(e: ^E2E) -> bool {
+	soon := time.tick_add(time.tick_now(), 50 * time.Millisecond)
+	for task in e.ed.plugins.tasks {
+		if task.wait.kind == .Sleep && time.tick_diff(task.wait.until, soon) >= 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Writes an executable `#!/bin/sh` stub with `body` (canned output or a
