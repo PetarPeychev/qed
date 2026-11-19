@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:sys/posix"
 import "core:testing"
 import "core:time"
@@ -392,6 +393,8 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 
 @(test)
 plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	tmp, _ := os.temp_dir(context.temp_allocator)
 	path := fmt.tprintf("%s/qed_presave_timeout_%d.txt", tmp, posix.getpid())
 	_ = os.write_entire_file(path, transmute([]u8)string("v1"))
@@ -417,6 +420,7 @@ plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 	data, _ := os.read_entire_file(path, context.temp_allocator)
 	testing.expect_value(t, string(data), "2v1")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "slow", "buf_pre_save handler still running"), "the slow plugin is named")
+	testing.expect_value(t, len(ed.plugins.tasks), 0)
 }
 
 @(test)

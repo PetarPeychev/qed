@@ -199,8 +199,9 @@ and last error.
 
 A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
 like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
-warning. Keybinds and `plugin_memory_mb` hot-reload; changes under `plugins.<name>`
-(and new or edited plugin files) need a restart for now.
+warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under `plugins.<name>`
+reach the plugin through its `config_changed` handler (the `format` plugin applies
+them live); `enabled` and new or edited plugin files need a restart for now.
 
 ```json
 { "plugins": { "mytool": { "enabled": false } } }

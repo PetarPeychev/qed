@@ -347,7 +347,7 @@ started at the end of `editor_init`. Invariants the code can't show:
   refs so the plugin's env is collectable.
 - `#load_directory` doesn't recurse: a bundled dir plugin needs its own embed.
 - User config is read through `editor_config_user` only (never cached); plugin
-  `plugins.<name>` changes apply at startup, keybinds on hot reload.
+  `plugins.<name>` changes refresh `qed.config()` and fire `config_changed` on hot reload.
 - Bindings live in `plugin_api.odin`. Lua sees 1-based rows and byte cols,
   half-open ranges; only `api_pos`/`api_pos_push` convert. Positions are validated
   (range, UTF-8 boundary) before any primitive runs, and a binding raises only
@@ -392,9 +392,16 @@ started at the end of `editor_init`. Invariants the code can't show:
   Debug line measured after the resume. A nested entry's time is credited back to
   the outer slice. `__close` handlers run by `closethread` get the event budget.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
-  (`.Lsp`); `plugin_lsp_done` queues the outcome, `plugin_pump` resumes the task.
-- Bundled dir plugins are listed in `bundled_plugin_dirs` (`plugin.odin`), embedded
-  as `<name>/<file>`.
+  (`.Lsp`, bounded by `plugin_hook_timeout_ms` → `"timeout"`); `plugin_lsp_done`
+  queues the outcome, `plugin_pump` resumes the task. A response nobody waits for
+  any more is not applied.
+- When a `buf_pre_save` deadline passes, the late handler tasks are killed with
+  their spawned processes (`plugin_task_kill`), so nothing edits after the save.
+- Bundled dir plugin files are listed one by one in `bundled_plugin_dir_files`
+  (`plugin.odin`) so `test.lua` stays out of the binary; a test fails when a
+  `plugins/<dir>/*.lua` is missing from it. The `test.lua` runner reads from disk.
+- On config hot reload `plugins_config_refresh` re-merges each loaded plugin's
+  config (its kept `defaults` + embedded + user) before `config_changed` fires.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
   non-blocking `process_wait`). With `on_line`, delivered lines are cut from `out`
   and reads are capped per pump, so a streaming process stays bounded. A
@@ -488,7 +495,8 @@ re-opens LSP).
   buffer untouched; on save it saves unformatted. A format-on-save that waits parks
   the save, bounded by `plugin_hook_timeout_ms`. The `format_on_save` /
   `trim_trailing_whitespace_on_save` / `ensure_final_newline_on_save` knobs seed
-  the plugin's toggles at load.
+  the plugin's toggles; on `config_changed` only knobs whose config value changed
+  are re-applied, so runtime toggles survive unrelated edits.
 
 ## AI edit
 

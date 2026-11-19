@@ -1059,6 +1059,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
 	editor_modules_sync(editor)
+	plugins_config_refresh(editor)
 	plugin_queue(editor, {event = .Config_Changed})
 	if theme_changed {
 		plugin_queue(editor, {event = .Theme_Changed})

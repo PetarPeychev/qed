@@ -412,6 +412,11 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !is_err, "bool value load is not an error")
 	testing.expect(t, FILETREE_SHOW_DOTFILES, "bool value applied")
 
+	moved_path := fmt.tprintf("%s/moved.json", dir)
+	_ = os.write_entire_file(moved_path, transmute([]byte)string(`{"format_on_save": true}`))
+	msg, _ = config_load_from(moved_path)
+	testing.expect(t, strings.contains(msg, "moved to plugins/format/format_on_save"), "a moved knob names its new home")
+
 	// A rebind drives both dispatch and hints. The configured shortcut string renders
 	// verbatim. A shared file-tree command (Copy) borrows the global bind, so rebinding
 	// global "Copy" moves the tree Copy chord too; a unique one (New) keeps its own key.
@@ -446,7 +451,7 @@ test_config_files :: proc(t: ^testing.T) {
 	msg, is_err = config_load_from(lang_path)
 	testing.expect(t, is_err, "invalid lsp type reports an error")
 	testing.expect(t, strings.contains(msg, "languages/lua/lsp"), "names the invalid subkey")
-	testing.expect(t, strings.contains(msg, "languages/python/formatter"), "the moved formatter key is reported")
+	testing.expect(t, strings.contains(msg, "languages/python/formatter (moved to plugins/format/commands/python)"), "the moved formatter key is reported")
 	testing.expect(t, LANGUAGES[.Python].lsp_server == saved_py_lsp, "omitted lsp keeps default")
 	testing.expect(t, language_of("x.myext") == .Python, "custom pattern drives detection")
 	testing.expect(t, language_of("x.py") == .Python, "listed pattern still detected")

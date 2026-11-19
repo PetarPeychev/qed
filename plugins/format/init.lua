@@ -1,10 +1,18 @@
 local on = {}
+local seen = {}
 local commands = {}
+
+local KNOBS = {
+	format_on_save = "format",
+	trim_trailing_whitespace_on_save = "trim",
+	ensure_final_newline_on_save = "newline",
+}
 
 local LSP_ERRORS = {
 	disabled = "No formatter for this buffer",
 	["no server"] = "No language server for this buffer",
 	unavailable = "Formatting not available",
+	timeout = "LSP format timed out",
 }
 
 local function trim_len(line, markdown)
@@ -23,6 +31,8 @@ local function fixups(b)
 	local markdown = qed.buf.language(b) == "markdown"
 	local lines = qed.buf.lines(b)
 	local last = #lines
+	local last_trim = on.trim and trim_len(lines[last], markdown) or 0
+	local newline = on.newline and #lines[last] > last_trim
 	local cuts = {}
 	if on.trim then
 		for row, line in ipairs(lines) do
@@ -32,8 +42,6 @@ local function fixups(b)
 			end
 		end
 	end
-	local last_cut = (cuts[#cuts] and cuts[#cuts].row == last) and (cuts[#cuts].to - cuts[#cuts].col) or 0
-	local newline = on.newline and #lines[last] > last_cut
 	if #cuts == 0 and not newline then
 		return
 	end
@@ -62,6 +70,9 @@ local function external(b, cmd, on_save)
 	local rev = qed.buf.rev(b)
 	local input = qed.buf.text(b)
 	local ok, r = pcall(qed.spawn, {cmd = run, stdin = input, cwd = qed.path.dir(file)})
+	if not qed.buf.valid(b) then
+		return
+	end
 	if not ok or r.code ~= 0 or r.stdout == "" then
 		if ok and r.code == 127 then
 			qed.message("Formatter not found: " .. tool, "error")
@@ -79,13 +90,14 @@ local function external(b, cmd, on_save)
 		end
 		return
 	end
-	if not qed.buf.set_text(b, out, {rev = rev}) then
+	local set, applied = pcall(qed.buf.set_text, b, out, {rev = rev})
+	if not set then
+		qed.message(("%s failed: %s"):format(tool, applied), "error")
+	elseif not applied then
 		if not on_save then
 			qed.message("skipped: buffer changed", "warn")
 		end
-		return
-	end
-	if not on_save then
+	elseif not on_save then
 		qed.message("Formatted")
 	end
 end
@@ -93,7 +105,7 @@ end
 local function lsp(b, on_save)
 	local rev = qed.buf.rev(b)
 	local ok, err = qed.lsp.format(b)
-	if on_save then
+	if on_save or not qed.buf.valid(b) then
 		return
 	end
 	if ok then
@@ -114,19 +126,26 @@ local function format(b, on_save)
 	end
 end
 
-local function toggle(name, key, label)
+local function apply(cfg)
+	for key, knob in pairs(KNOBS) do
+		if cfg[key] ~= seen[key] then
+			seen[key] = cfg[key]
+			on[knob] = cfg[key]
+		end
+	end
+	commands = cfg.commands or {}
+end
+
+local function toggle(name, knob, label)
 	qed.command{name = name, run = function()
-		on[key] = not on[key]
-		qed.message(("%s on save: %s"):format(label, on[key] and "on" or "off"))
+		on[knob] = not on[knob]
+		qed.message(("%s on save: %s"):format(label, on[knob] and "on" or "off"))
 	end}
 end
 
 return {
 	setup = function(cfg)
-		on.format = cfg.format_on_save
-		on.trim = cfg.trim_trailing_whitespace_on_save
-		on.newline = cfg.ensure_final_newline_on_save
-		commands = cfg.commands or {}
+		apply(cfg)
 		qed.command{
 			name = "Format Document",
 			when = function(ctx) return ctx.buf ~= nil end,
@@ -135,6 +154,7 @@ return {
 		toggle("Toggle Format on Save", "format", "Format")
 		toggle("Toggle Trim Whitespace on Save", "trim", "Trim whitespace")
 		toggle("Toggle Final Newline on Save", "newline", "Final newline")
+		qed.on("config_changed", function() apply(qed.config()) end)
 		qed.on("buf_pre_save", function(b)
 			fixups(b)
 			if on.format then

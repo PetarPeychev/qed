@@ -656,7 +656,11 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 				}
 			}
 		}
-		if !known {
+		switch {
+		case known:
+		case key == "format_on_save" || key == "trim_trailing_whitespace_on_save" || key == "ensure_final_newline_on_save":
+			append(warnings, fmt.tprintf("%q (moved to plugins/format/%s)", key, key))
+		case:
 			append(warnings, fmt.tprintf("unknown key %q", key))
 		}
 	}
@@ -1271,7 +1275,9 @@ languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) {
 			}
 		}
 		for key in sub {
-			if key != "patterns" && key != "lsp" {
+			if key == "formatter" {
+				append(invalid, fmt.tprintf("languages/%s/formatter (moved to plugins/format/commands/%s)", name, name))
+			} else if key != "patterns" && key != "lsp" {
 				append(invalid, fmt.tprintf("languages/%s/%s", name, key))
 			}
 		}

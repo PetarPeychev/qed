@@ -139,8 +139,9 @@ stays off when its tool is missing.
 
 Syntax highlighting is built in for every language below. Language servers and
 formatters are separate installs; install the ones for languages you use. Any
-can be swapped in config (see the
-[configuration reference](docs/CONFIG.md#languages)).
+can be swapped in config (see the configuration reference for
+[language servers](docs/CONFIG.md#languages) and
+[formatters](docs/CONFIG.md#save-behavior-and-formatting)).
 
 | Language | Highlight | Language server | Formatter |
 |----------|:---------:|-----------------|-----------|

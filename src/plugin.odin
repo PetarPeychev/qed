@@ -28,6 +28,7 @@ Plugin :: struct {
 	state:      PluginState,
 	env:        c.int,
 	cfg:        c.int,
+	defaults:   c.int,
 	load_ms:    f64,
 	last_error: string,
 }
@@ -76,10 +77,10 @@ PluginEntry :: struct {
 
 bundled_plugin_files := #load_directory("../plugins")
 
-bundled_plugin_dirs := [?]struct {
-	name:  string,
-	files: []runtime.Load_Directory_File,
-}{{"format", #load_directory("../plugins/format")}}
+// Listed file by file so a dir plugin's test.lua stays out of the binary.
+bundled_plugin_dir_files := [?]PluginFile {
+	{"format/init.lua", #load("../plugins/format/init.lua", string)},
+}
 
 g_bundled_plugins: []PluginFile
 
@@ -90,10 +91,8 @@ plugin_bundled_init :: proc "contextless" () {
 	for f in bundled_plugin_files {
 		append(&files, PluginFile{strings.clone(f.name, os.heap_allocator()), string(f.data)})
 	}
-	for d in bundled_plugin_dirs {
-		for f in d.files {
-			append(&files, PluginFile{strings.concatenate({d.name, "/", f.name}, os.heap_allocator()), string(f.data)})
-		}
+	for f in bundled_plugin_dir_files {
+		append(&files, PluginFile{strings.clone(f.path, os.heap_allocator()), f.data})
 	}
 	g_bundled_plugins = files[:]
 }
@@ -284,8 +283,9 @@ plugins_add :: proc(p: ^Plugins, pl: Plugin, bundled: bool) -> ^Plugin {
 		bundled = bundled,
 		dir     = strings.clone(pl.dir),
 		main    = strings.clone(pl.main),
-		env     = lua.NOREF,
-		cfg     = lua.NOREF,
+		env      = lua.NOREF,
+		cfg      = lua.NOREF,
+		defaults = lua.NOREF,
 	})
 	return &p.list[len(p.list) - 1]
 }
@@ -482,9 +482,43 @@ plugin_load_c :: proc "c" (L: ^lua.State) -> c.int {
 	if setup_type == .NIL {
 		return 0
 	}
+	if defaults_type == .TABLE {
+		plugin_table_copy(L, spec + 1)
+		pl.defaults = lua.L_ref(L, lua.REGISTRYINDEX)
+	}
 	plugin_config_push(entry.editor, pl, spec + 1)
 	lua.call(L, 1, 0)
 	return 0
+}
+
+plugin_config_refresh_c :: proc "c" (L: ^lua.State) -> c.int {
+	entry := plugin_entry(L)
+	context = entry.ctx
+	pl := (^Plugin)(lua.touserdata(L, 1))
+	if pl.defaults != lua.NOREF {
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.defaults))
+	} else {
+		lua.pushnil(L)
+	}
+	plugin_config_push(entry.editor, pl, lua.gettop(L))
+	return 0
+}
+
+plugins_config_refresh :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	if p.L == nil {
+		return
+	}
+	for &pl in p.list {
+		if pl.state != .Enabled || pl.cfg == lua.NOREF {
+			continue
+		}
+		lua.pushcfunction(p.L, plugin_config_refresh_c)
+		lua.pushlightuserdata(p.L, &pl)
+		if ok, msg, tb := plugin_call(editor, 1, 0); !ok {
+			plugin_error(editor, &pl, msg, tb, false)
+		}
+	}
 }
 
 plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
@@ -507,6 +541,10 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	if pl.cfg != lua.NOREF {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.cfg)
 		pl.cfg = lua.NOREF
+	}
+	if pl.defaults != lua.NOREF {
+		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.defaults)
+		pl.defaults = lua.NOREF
 	}
 	// Twice: a __gc object survives one cycle and its closure keeps the env alive.
 	lua.gc(p.L, .COLLECT)

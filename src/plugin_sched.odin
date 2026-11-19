@@ -751,6 +751,31 @@ plugin_lsp_done :: proc(editor: ^Editor, id: u64, ok: bool, reason: string) {
 	append(&p.lsp_results, PluginLspResult{id, ok, reason})
 }
 
+plugin_lsp_wanted :: proc(editor: ^Editor, id: u64) -> bool {
+	return id == 0 || len(plugin_waiters(&editor.plugins, .Lsp, id)) > 0
+}
+
+plugin_task_kill :: proc(editor: ^Editor, id: u64) {
+	p := &editor.plugins
+	i := plugin_task_index(p, id)
+	if i < 0 {
+		return
+	}
+	if w := p.tasks[i].wait; w.kind == .Proc {
+		if j := plugin_proc_index(p, w.id); j >= 0 {
+			plugin_proc_free(p, j)
+		}
+	}
+	if i = plugin_task_index(p, id); i < 0 {
+		return
+	}
+	if p.tasks[i].running {
+		p.tasks[i].doomed = true
+	} else {
+		plugin_task_free(editor, i)
+	}
+}
+
 plugin_lsp_result :: proc(p: ^Plugins, id: u64) -> (PluginLspResult, bool) {
 	for r in p.lsp_results {
 		if r.id == id {
@@ -785,7 +810,7 @@ plugin_timeout_ms :: proc(editor: ^Editor, cap: int) -> int {
 		consider(&best, now, t.due)
 	}
 	for t in p.tasks {
-		if t.wait.kind == .Sleep {
+		if t.wait.kind == .Sleep || t.wait.kind == .Lsp {
 			consider(&best, now, t.wait.until)
 		}
 	}
@@ -932,23 +957,17 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		}
 	}
 
-	if len(p.lsp_results) > 0 {
-		results := p.lsp_results
-		p.lsp_results = {}
-		for r in results {
-			append(&p.lsp_results, r)
-			for w in plugin_waiters(p, .Lsp, r.id) {
-				plugin_task_resume(editor, w, 0)
-			}
-			for x, i in p.lsp_results {
-				if x.id == r.id {
-					ordered_remove(&p.lsp_results, i)
-					break
-				}
-			}
+	for t in p.tasks {
+		if t.wait.kind == .Lsp && plugin_tick_due(t.wait.until, now) {
+			plugin_lsp_done(editor, t.wait.id, false, "timeout")
 		}
-		delete(results)
 	}
+	for i := 0; i < len(p.lsp_results); i += 1 {
+		for w in plugin_waiters(p, .Lsp, p.lsp_results[i].id) {
+			plugin_task_resume(editor, w, 0)
+		}
+	}
+	clear(&p.lsp_results)
 
 	clear(&due)
 	for s in p.saves {
@@ -966,7 +985,10 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 			continue
 		}
 		for owner in plugin_pending_owners(p, s.tasks[:]) {
-			editor_log(editor, .Warn, owner, fmt.tprintf("buf_pre_save handler still running after %d ms, saving anyway", PLUGIN_HOOK_TIMEOUT_MS))
+			editor_log(editor, .Warn, owner, fmt.tprintf("buf_pre_save handler still running after %d ms, stopped it and saving", PLUGIN_HOOK_TIMEOUT_MS))
+		}
+		for task in s.tasks {
+			plugin_task_kill(editor, task)
 		}
 		buf := s.buf
 		delete(s.tasks)

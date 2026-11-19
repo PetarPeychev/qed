@@ -4,6 +4,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:sys/posix"
 import "core:testing"
 import lua "lib:lua"
@@ -52,6 +53,8 @@ api_test_text :: proc(b: ^Buffer) -> string {
 
 @(test)
 plugin_api_set_text_and_lsp_format :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	ed := api_test_editor(`
 		local b = qed.buf.current()
 		qed.buf.set_cursor(b, {row = 3, col = 2})

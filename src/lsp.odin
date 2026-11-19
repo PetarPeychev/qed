@@ -1141,6 +1141,9 @@ lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object) -> bo
 		return false
 	}
 	b := &editor.buffers[idx]
+	if !plugin_lsp_wanted(editor, p.token) {
+		return true
+	}
 	if b.rev != p.rev {
 		plugin_lsp_done(editor, p.token, false, "stale")
 		return true

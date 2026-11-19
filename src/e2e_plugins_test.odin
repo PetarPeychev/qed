@@ -42,6 +42,9 @@ pt_api := [?]lua.L_Reg {
 	{"log_has", pt_log_has},
 	{"editor", pt_editor},
 	{"poll_disk", pt_poll_disk},
+	{"pump", pt_pump},
+	{"hook_timeout", pt_hook_timeout},
+	{"module", pt_module},
 	{nil, nil},
 }
 
@@ -211,7 +214,48 @@ pt_config :: proc "c" (L: ^lua.State) -> c.int {
 	if err := api_json_write(L, 1, &sb, 0); err != "" {
 		return plugin_raise(L, err)
 	}
-	e2e_plugin_config(g_pt, g_pt_target, strings.to_string(sb))
+	hot := false
+	if lua.type(L, 2) == .TABLE {
+		lua.getfield(L, 2, "hot")
+		hot = bool(lua.toboolean(L, -1))
+	}
+	e2e_plugin_config(g_pt, g_pt_target, strings.to_string(sb), hot)
+	return 0
+}
+
+@(private = "file")
+pt_pump :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	ms := api_int(L, 1, "milliseconds expected")
+	start := time.tick_now()
+	for ms_since(start) < f64(ms) {
+		plugin_pump(&g_pt.ed)
+		time.sleep(time.Millisecond)
+	}
+	return 0
+}
+
+@(private = "file")
+pt_hook_timeout :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	PLUGIN_HOOK_TIMEOUT_MS = api_int(L, 1, "milliseconds expected")
+	return 0
+}
+
+@(private = "file")
+pt_module :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	on := bool(lua.toboolean(L, 2))
+	switch api_string(L, 1) {
+	case "lsp":
+		LSP_ENABLED = on
+	case "ai":
+		AI_ENABLED = on
+	case "git":
+		GIT_ENABLED = on
+	case:
+		return plugin_raise(L, "t.module: lsp, ai or git expected")
+	}
 	return 0
 }
 
@@ -295,6 +339,8 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushnil(L)
 	}
 	lua.setfield(L, -2, "dialog")
+	lua.pushboolean(L, b32(!ed.welcome && editor_buffer(ed).disk_conflict))
+	lua.setfield(L, -2, "disk_conflict")
 	return 1
 }
 
@@ -338,7 +384,7 @@ pt_case_c :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 @(private = "file")
-pt_session :: proc(e: ^E2E, name, main: string) -> (tests: c.int, names: []string, err: string) {
+pt_session :: proc(e: ^E2E, name: string, test: PluginFile) -> (tests: c.int, names: []string, err: string) {
 	e2e_enter()
 	e2e_seq += 1
 	tmp, _ := os.temp_dir(context.temp_allocator)
@@ -350,9 +396,8 @@ pt_session :: proc(e: ^E2E, name, main: string) -> (tests: c.int, names: []strin
 	g_pt = e
 	g_pt_target = name
 	p := &e.ed.plugins
-	pl := plugins_add(p, Plugin{name = fmt.tprintf("%s_test", name), dir = name, main = main}, true)
-	src, _ := plugin_source(p, pl, main)
-	args := PluginLoad{pl, src}
+	pl := plugins_add(p, Plugin{name = fmt.tprintf("%s_test", name), dir = name, main = test.path}, true)
+	args := PluginLoad{pl, test.data}
 	lua.pushcfunction(p.L, pt_load_c)
 	lua.pushlightuserdata(p.L, &args)
 	ok, msg, tb := plugin_call(&e.ed, 1, 1)
@@ -372,19 +417,36 @@ pt_session :: proc(e: ^E2E, name, main: string) -> (tests: c.int, names: []strin
 	return lua.L_ref(p.L, lua.REGISTRYINDEX), list[:], ""
 }
 
+PT_PLUGINS :: #directory + "/../plugins"
+
+@(private = "file")
+pt_plugin_dirs :: proc() -> []string {
+	infos, _ := os.read_directory_by_path(PT_PLUGINS, -1, context.temp_allocator)
+	dirs := make([dynamic]string, context.temp_allocator)
+	for info in infos {
+		if info.type == .Directory && os.exists(fmt.tprintf("%s/%s/init.lua", PT_PLUGINS, info.name)) {
+			append(&dirs, strings.clone(info.name, context.temp_allocator))
+		}
+	}
+	slice.sort(dirs[:])
+	return dirs[:]
+}
+
 @(test)
 e2e_plugins_test_lua :: proc(t: ^testing.T) {
-	for f in g_bundled_plugins {
-		if !strings.has_suffix(f.path, "/test.lua") {
+	testing.expect(t, len(pt_plugin_dirs()) > 0, "found the bundled plugin dirs")
+	for name in pt_plugin_dirs() {
+		data, err := os.read_entire_file(fmt.tprintf("%s/%s/test.lua", PT_PLUGINS, name), context.temp_allocator)
+		if err != nil {
 			continue
 		}
-		name := f.path[:strings.index_byte(f.path, '/')]
+		f := PluginFile{fmt.tprintf("%s/test.lua", name), string(data)}
 		count := 1
 		for i := 0; i < count; i += 1 {
 			e: E2E
-			tests, names, err := pt_session(&e, name, f.path)
-			if err != "" {
-				testing.expectf(t, false, "plugins/%s: %s", f.path, err)
+			tests, names, serr := pt_session(&e, name, f)
+			if serr != "" {
+				testing.expectf(t, false, "plugins/%s: %s", f.path, serr)
 				e2e_stop(&e)
 				break
 			}
@@ -394,6 +456,7 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 				e2e_stop(&e)
 				break
 			}
+			saved_timeout, saved_lsp, saved_ai, saved_git := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED
 			tc := PtCase{tests, names[i]}
 			lua.pushcfunction(e.ed.plugins.L, pt_case_c)
 			lua.pushlightuserdata(e.ed.plugins.L, &tc)
@@ -403,7 +466,29 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 			} else if pl := plugin_find(&e.ed.plugins, name); pl != nil && pl.last_error != "" {
 				testing.expectf(t, false, "plugins/%s %s: plugin error: %s", f.path, names[i], pl.last_error)
 			}
+			PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED = saved_timeout, saved_lsp, saved_ai, saved_git
 			e2e_stop(&e)
 		}
+	}
+}
+
+@(test)
+plugins_bundled_dirs_complete :: proc(t: ^testing.T) {
+	for dir in pt_plugin_dirs() {
+		files, _ := os.read_directory_by_path(fmt.tprintf("%s/%s", PT_PLUGINS, dir), -1, context.temp_allocator)
+		for f in files {
+			if !strings.has_suffix(f.name, ".lua") || f.name == "test.lua" {
+				continue
+			}
+			path := fmt.tprintf("%s/%s", dir, f.name)
+			listed := false
+			for b in bundled_plugin_dir_files {
+				listed ||= b.path == path
+			}
+			testing.expectf(t, listed, "plugins/%s is not embedded: add it to bundled_plugin_dir_files in plugin.odin", path)
+		}
+	}
+	for b in g_bundled_plugins {
+		testing.expectf(t, !strings.has_suffix(b.path, "/test.lua"), "%s must not be embedded", b.path)
 	}
 }

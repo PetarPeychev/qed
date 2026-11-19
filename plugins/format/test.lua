@@ -147,7 +147,7 @@ function T.rev_guard_on_save(t)
 	t.config{format_on_save = true, commands = {text = "fakefmt"}}
 	t.key("Ctrl+s")
 	t.type("!")
-	t.wait(function() return #qed.buf.list() > 0 and disk(b) == "!messy" end)
+	t.wait(function() return disk(b) == "!messy" end)
 	t.eq(qed.buf.text(b), "!messy", "typing during the format wins")
 	t.ok(not qed.buf.modified(b), "the typed text is saved")
 end
@@ -304,6 +304,7 @@ function T.quit_save_all(t)
 end
 
 function T.close_save(t)
+	qed.close(qed.buf.current())
 	local b = t.open("a.txt", "baz  ")
 	local path = qed.buf.path(b)
 	t.config{trim_trailing_whitespace_on_save = true}
@@ -313,6 +314,7 @@ function T.close_save(t)
 	t.key("Enter")
 	t.eq(qed.fs.read(path), "!baz")
 	t.ok(not qed.buf.valid(b), "the saved buffer closes")
+	t.ok(t.editor().welcome, "saving the last buffer closes it back to the welcome screen")
 end
 
 function T.conflict_overwrite(t)
@@ -331,6 +333,83 @@ function T.conflict_overwrite(t)
 	t.key("Enter")
 	t.wait(saved(b))
 	t.eq(disk(b), "XFIRST\nSECOND")
+	t.eq(t.editor().disk_conflict, false, "the conflict is resolved")
+end
+
+function T.late_result_after_timeout(t)
+	local b = t.open("a.txt", "messy")
+	t.hook_timeout(50)
+	t.fake_spawn("fakefmt", {stdout = "TIDY\n", delay_ms = 300})
+	t.config{format_on_save = true, commands = {text = "fakefmt"}}
+	t.type("!")
+	t.key("Ctrl+s")
+	t.wait(saved(b))
+	t.eq(disk(b), "!messy", "the timed-out save goes ahead unformatted")
+	t.ok(t.log_has("warn", "format", "stopped it and saving"), "the slow handler is named")
+	t.pump(400)
+	t.eq(qed.buf.text(b), "!messy", "nothing lands after the save")
+	t.ok(not qed.buf.modified(b), "the buffer stays saved")
+end
+
+function T.late_result_after_close(t)
+	local b = t.open("a.txt", "messy")
+	local path = qed.buf.path(b)
+	t.hook_timeout(50)
+	t.fake_spawn("fakefmt", {stdout = "TIDY\n", delay_ms = 300})
+	t.config{format_on_save = true, commands = {text = "fakefmt"}}
+	t.type("!")
+	t.key("Ctrl+w")
+	t.key("Enter")
+	t.wait(function() return not qed.buf.valid(b) end)
+	t.eq(qed.fs.read(path), "!messy")
+	t.pump(400)
+end
+
+function T.non_utf8_output(t)
+	local b = t.open("a.txt", "caf\xe9")
+	t.config{commands = {text = t.stub("tr 'a-z' 'A-Z'")}}
+	qed.run("Format Document")
+	t.wait(function() return t.message() ~= "" end)
+	local text, level = t.message()
+	t.ok(text:match("failed: .*UTF%-8"), "reports the invalid output: " .. text)
+	t.eq(level, "error")
+	t.eq(qed.buf.text(b), "caf\xe9")
+end
+
+function T.lsp_disabled(t)
+	t.open("a.txt", "plain")
+	t.module("lsp", false)
+	qed.run("Format Document")
+	t.wait(function() return t.message() ~= "" end)
+	t.eq((t.message()), "No formatter for this buffer")
+end
+
+function T.save_all_formats_every_buffer(t)
+	local stub = t.stub("tr 'a-z' 'A-Z'")
+	local a = t.open("a.txt", "first")
+	t.type("x")
+	local b = t.open("b.txt", "second")
+	t.type("y")
+	t.config{format_on_save = true, commands = {text = stub}}
+	t.key("Ctrl+q")
+	t.key("Enter")
+	t.wait(function() return t.editor().quit end)
+	t.eq(disk(a), "XFIRST", "the non-current buffer is formatted")
+	t.eq(disk(b), "YSECOND")
+end
+
+function T.toggle_survives_reload(t)
+	local b = t.open("a.txt", "pad  ")
+	qed.run("Toggle Trim Whitespace on Save")
+	t.config({ensure_final_newline_on_save = true}, {hot = true})
+	t.key("Ctrl+s")
+	t.eq(disk(b), "pad\n", "the runtime toggle survives an unrelated reload, the changed knob applies")
+	t.config({ensure_final_newline_on_save = true, trim_trailing_whitespace_on_save = true}, {hot = true})
+	t.config({ensure_final_newline_on_save = true, trim_trailing_whitespace_on_save = false}, {hot = true})
+	qed.buf.set_cursor(b, {row = 1, col = 4})
+	t.type("  ")
+	t.key("Ctrl+s")
+	t.eq(disk(b), "pad  \n", "a changed knob overrides the toggle")
 end
 
 function T.toggle_trim(t)

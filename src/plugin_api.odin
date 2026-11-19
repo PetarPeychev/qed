@@ -293,11 +293,6 @@ api_edit_end :: proc(b: ^Buffer) {
 	cursor_goal_sync(b)
 }
 
-pos_clamp :: proc(b: ^Buffer, p: Cursor) -> Cursor {
-	r := clamp(p.row, 0, len(b.lines) - 1)
-	return {r, clamp(p.col, 0, len(b.lines[r].text))}
-}
-
 api_edit_mark :: proc(b: ^Buffer) -> ApiEditMark {
 	buffer_undo_commit(b)
 	return {len(b.undo), b.cursor, b.selection}
@@ -329,10 +324,10 @@ api_edit_close :: proc(b: ^Buffer, mark: ApiEditMark, ok: bool) {
 		inv := buffer_apply_inverse(b, pop(&b.undo))
 		group_destroy(&inv)
 	}
-	b.cursor = pos_clamp(b, mark.cursor)
+	b.cursor = buffer_pos_clamp(b, mark.cursor)
 	b.selection = nil
 	if anchor, has := mark.selection.?; has {
-		b.selection = pos_clamp(b, anchor)
+		b.selection = buffer_pos_clamp(b, anchor)
 	}
 	cursor_goal_sync(b)
 }
@@ -577,7 +572,7 @@ qed_lsp_format :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushodinstring(L, reason)
 		return 2
 	}
-	p.tasks[plugin_task_index(p, task)].wait = {kind = .Lsp, id = token}
+	p.tasks[plugin_task_index(p, task)].wait = {kind = .Lsp, id = token, until = plugin_tick_add(time.tick_now(), PLUGIN_HOOK_TIMEOUT_MS)}
 	return lua.yieldk(L, 0, lua.KContext(token), qed_lsp_format_k)
 }
 

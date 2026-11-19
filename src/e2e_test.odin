@@ -228,13 +228,19 @@ e2e_plugin :: proc(e: ^E2E, name, src: string) -> ^Plugin {
 	return pl
 }
 
-e2e_plugin_config :: proc(e: ^E2E, name, cfg: string) {
+e2e_plugin_config :: proc(e: ^E2E, name, cfg: string, hot := false) {
 	src := fmt.tprintf(`{{"plugins": {{%q: %s}}}}`, name, cfg)
 	v, err := json.parse_string(src, parse_integers = true)
 	assert(err == nil, "plugin test config parses")
 	json.destroy_value(e.cfg)
 	e.cfg = v
 	e.ed.plugins.config_override = v.(json.Object)
+	if hot {
+		plugins_config_refresh(&e.ed)
+		plugin_queue(&e.ed, {event = .Config_Changed})
+		plugin_flush(&e.ed)
+		return
+	}
 	if pl := plugin_find(&e.ed.plugins, name); pl != nil {
 		plugin_unload(&e.ed, pl)
 		plugin_load(&e.ed, pl)
