@@ -102,21 +102,23 @@ subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: strin
 
 // Drain whatever is readable now into `p.out`; returns true once stdout hits EOF
 // (the child closed it / exited) so the caller can collect the full output.
-subprocess_drain :: proc(p: ^Subprocess) -> (done: bool) {
-	done = subprocess_drain_file(p.stdout, &p.out)
+subprocess_drain :: proc(p: ^Subprocess, max_out := 0) -> (done: bool) {
+	done = subprocess_drain_file(p.stdout, &p.out, max_out)
 	if p.stderr != nil && !subprocess_drain_file(p.stderr, &p.err) {
 		done = false
 	}
 	return
 }
 
-subprocess_drain_file :: proc(file: ^os.File, sb: ^strings.Builder) -> (eof: bool) {
+subprocess_drain_file :: proc(file: ^os.File, sb: ^strings.Builder, max := 0) -> (eof: bool) {
 	fd := posix.FD(os.fd(file))
 	buf: [16384]u8
-	for {
+	total := 0
+	for max == 0 || total < max {
 		n := posix.read(fd, &buf[0], len(buf))
 		if n > 0 {
 			strings.write_bytes(sb, buf[:n])
+			total += n
 			continue
 		}
 		if n == 0 || posix.errno() != .EAGAIN {

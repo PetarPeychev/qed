@@ -418,3 +418,166 @@ plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 	testing.expect_value(t, string(data), "2v1")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "slow", "buf_pre_save handler still running"), "the slow plugin is named")
 }
+
+@(test)
+plugin_sched_bg_streaming :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"st.lua", `
+			return {setup = function()
+				qed.command{name = "St: Stream", run = function()
+					lines = 0
+					local p = qed.spawn_bg{cmd = "yes line | head -n 200000", on_line = function() lines = lines + 1 end}
+					local r = p:wait()
+					streamed = lines .. " " .. r.code .. " " .. #r.stdout
+				end}
+				qed.command{name = "St: Orphan", run = function()
+					qed.spawn_bg{cmd = "true"}
+					collectgarbage()
+					collectgarbage()
+				end}
+				qed.command{name = "St: Kill", run = function()
+					got = 0
+					local p
+					p = qed.spawn_bg{cmd = "printf 'a\nb\nc\nd\n'", on_line = function()
+						got = got + 1
+						p:kill()
+					end}
+				end}
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	sched_run(t, ed, "St: Stream")
+	peak := 0
+	start := time.tick_now()
+	for sched_var(ed, "streamed") == "" && ms_since(start) < 10000 {
+		plugin_pump(ed)
+		for pr in ed.plugins.procs {
+			peak = max(peak, len(pr.sp.out.buf))
+		}
+	}
+	testing.expect_value(t, sched_var(ed, "streamed"), "200000 0 0")
+	testing.expect(t, peak <= PLUGIN_LINE_READ_MAX + 16384, "streamed stdout stays bounded")
+	testing.expect_value(t, len(ed.plugins.procs), 0)
+
+	sched_run(t, ed, "St: Orphan")
+	start = time.tick_now()
+	for len(ed.plugins.procs) > 0 && ms_since(start) < 3000 {
+		plugin_pump(ed)
+		time.sleep(time.Millisecond)
+	}
+	testing.expect_value(t, len(ed.plugins.procs), 0)
+
+	sched_run(t, ed, "St: Kill")
+	start = time.tick_now()
+	for len(ed.plugins.procs) > 0 && ms_since(start) < 3000 {
+		plugin_pump(ed)
+		time.sleep(time.Millisecond)
+	}
+	testing.expect_value(t, sched_var(ed, "got"), "1")
+	testing.expect_value(t, plugin_find(&ed.plugins, "st").last_error, "")
+}
+
+@(test)
+plugin_sched_resume_guard :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"a.lua", `
+			return {setup = function()
+				qed.command{name = "A: Leak", run = function() _G.leaked_co = coroutine.running() end}
+				qed.command{name = "A: Wait", run = function()
+					waiter = coroutine.running()
+					qed.sleep(30)
+					woke = "yes"
+				end}
+				qed.command{name = "A: Poke", run = function()
+					local ok = coroutine.resume(waiter)
+					poked = tostring(ok) .. " " .. tostring(woke) .. " " .. coroutine.status(waiter)
+				end}
+			end}`},
+		{"b.lua", `
+			return {setup = function()
+				qed.command{name = "B: Check", run = function()
+					same = tostring(coroutine.running() == _G.leaked_co)
+					qed.sleep(1)
+				end}
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	sched_run(t, ed, "A: Leak")
+	sched_run(t, ed, "B: Check")
+	testing.expect_value(t, sched_var(ed, "same"), "false")
+
+	sched_run(t, ed, "A: Wait")
+	sched_run(t, ed, "A: Poke")
+	testing.expect_value(t, sched_var(ed, "poked"), "true nil suspended")
+	testing.expect_value(t, sched_var(ed, "woke"), "")
+	testing.expect(t, sched_wait(ed, "woke", "yes"), "the scheduler still resumes it")
+	testing.expect_value(t, plugin_find(&ed.plugins, "a").last_error, "")
+}
+
+@(test)
+plugin_sched_paste_and_nesting :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"p.lua", `
+			return {setup = function()
+				changed = 0
+				qed.on("buf_changed", function()
+					changed = changed + 1
+					qed.run("P: Slow")
+				end)
+				qed.command{name = "P: Slow", run = function()
+					local t = os.clock()
+					while os.clock() - t < 0.05 do end
+				end}
+				qed.command{name = "P: Bg", run = function() qed.spawn_bg{cmd = "exec sleep 5"} end}
+			end}`},
+		{"edit.lua", `
+			return {setup = function()
+				qed.on("cursor_moved", function(b)
+					qed.edit(b, function()
+						while true do pcall(function() while true do end end) end
+					end)
+				end)
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+	plugin_flush(ed)
+	sched_run(t, ed, "P: Bg")
+	testing.expect(t, plugin_busy(ed), "fast poll is active")
+	b := editor_buffer(ed)
+	ed.pasting = true
+	buffer_insert_rune(b, 'x')
+	plugin_pump(ed)
+	testing.expect_value(t, sched_var(ed, "changed"), "0")
+	ed.pasting = false
+	start := time.tick_now()
+	plugin_pump(ed)
+	testing.expect(t, ms_since(start) < 1000, "a runaway handler inside qed.edit is cut off")
+	testing.expect_value(t, sched_var(ed, "changed"), "1")
+	p := plugin_find(&ed.plugins, "p")
+	testing.expect_value(t, p.state, PluginState.Enabled)
+	testing.expect_value(t, p.last_error, "")
+	e := plugin_find(&ed.plugins, "edit")
+	testing.expect_value(t, e.state, PluginState.Errored)
+	testing.expect(t, strings.contains(e.last_error, "budget"), e.last_error)
+}
+
+@(test)
+plugin_sched_save_intent :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"w.lua", `return {setup = function() qed.on("buf_pre_save", function() qed.sleep(60000) end) end}`},
+	})
+	defer plugin_test_destroy(ed)
+	b := editor_buffer(ed)
+	editor_save_full(ed, b)
+	testing.expect(t, plugin_save_pending(&ed.plugins, b.id), "parked")
+	editor_save_intent_set(ed, .Quit, "")
+	editor_save_full(ed, b)
+	testing.expect_value(t, ed.save_intent, SaveIntent.None)
+	editor_save_intent_set(ed, .Close, "x")
+	editor_save_id(ed, 999999)
+	testing.expect_value(t, ed.save_intent, SaveIntent.None)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", "closed before its save finished"), "logged")
+	testing.expect(t, !plugin_due(ed), "nothing due")
+}

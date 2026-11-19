@@ -66,7 +66,7 @@ e2e_plugin_events :: proc(t: ^testing.T) {
 
 	editor_close_current(&e.ed)
 	plugin_flush(&e.ed)
-	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_close %d;buf_enter %d;", second, first))
+	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_close %d %s;buf_enter %d;", second, other, first))
 
 	_ = os.write_entire_file(e.path, transmute([]u8)string("from disk"))
 	editor_reload_buffer(&e.ed, editor_buffer(&e.ed))

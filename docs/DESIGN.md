@@ -368,8 +368,10 @@ started at the end of `editor_init`. Invariants the code can't show:
   `on_line` call runs on a pooled coroutine (`PluginTask`); `setup` and `when` run
   on the main thread and cannot wait. A waiting binding stores a `PluginWait` on its
   task and ends with `lua_yieldk`; the continuation builds the result inside the
-  coroutine, so Odin never pushes onto a suspended thread. Waits refuse inside
-  `qed.edit` and in non-task threads. Tasks are found by id after every resume (a
+  coroutine, so Odin never pushes onto a suspended thread. A continuation re-yields
+  unless `Plugins.current` is its thread, so a Lua `coroutine.resume` of a waiting
+  task is a no-op; pooled threads are reused only by the same plugin. Waits refuse
+  inside `qed.edit` and in non-task threads. Tasks are found by id after every resume (a
   nested entry can reallocate `tasks`); unload frees suspended tasks and marks
   running ones `doomed`, freed when their resume returns.
 - `plugin_pump` (main loop, fast-poll branch and idle timeout) runs due timers and
@@ -386,10 +388,15 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Budgets: one count hook (100k instructions) on the main state, inherited by every
   thread, checks the slice in `Plugins.slice` against `plugin_budgets`. Past the
   hard limit it yields from the hook when it can (pcall cannot catch that), else
-  raises; the soft limit is a Debug line measured after the resume.
+  raises and drops the hook count to 1 until the slice ends; the soft limit is a
+  Debug line measured after the resume. A nested entry's time is credited back to
+  the outer slice. `__close` handlers run by `closethread` get the event budget.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
-  non-blocking `process_wait`). `Plugins.fakes` (`e2e_spawn_fake`) answers a
-  matching command without forking.
+  non-blocking `process_wait`). With `on_line`, delivered lines are cut from `out`
+  and reads are capped per pump, so a streaming process stays bounded. A
+  `spawn_bg` record is freed when its result is handed out by `wait()`, or once
+  done after its handle's `__gc` (which only marks it; the pump frees).
+  `Plugins.fakes` (`e2e_spawn_fake`) answers a matching command without forking.
 
 ## Language detection
 

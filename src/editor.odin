@@ -787,7 +787,7 @@ editor_close_current :: proc(editor: ^Editor) {
 
 editor_close_index :: proc(editor: ^Editor, idx: int) {
 	editor.jump_lock = true
-	plugin_queue(editor, {event = .Buf_Close, buf = editor.buffers[idx].id})
+	plugin_queue(editor, {event = .Buf_Close, buf = editor.buffers[idx].id, a = editor.buffers[idx].path})
 	lsp_did_close(editor, &editor.buffers[idx])
 	buffer_destroy(&editor.buffers[idx])
 	ordered_remove(&editor.buffers, idx)
@@ -901,6 +901,7 @@ editor_save :: proc(editor: ^Editor) {
 editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
 	id := b.id
 	if plugin_save_pending(&editor.plugins, id) {
+		editor_save_intent_clear(editor)
 		editor_log(editor, .Info, "", "Save is waiting for plugins")
 		return
 	}
@@ -913,9 +914,14 @@ editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
 editor_save_id :: proc(editor: ^Editor, id: u64) {
 	b, idx := api_buf_find(editor, id)
 	if b == nil {
+		if editor.save_intent != .None {
+			editor_save_intent_clear(editor)
+			editor_log(editor, .Warn, "", "Buffer closed before its save finished")
+		}
 		return
 	}
 	if idx != editor.current && buffer_disk_changed(b) {
+		editor_save_intent_clear(editor)
 		editor_log(editor, .Warn, "", fmt.tprintf("%s changed on disk, not saved", editor_display_path(editor, b.path)))
 		return
 	}

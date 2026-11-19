@@ -130,6 +130,9 @@ main :: proc() {
 		}
 		if got_event {
 			editor_step(&editor, ev, main_peek)
+			if plugin_due(&editor) {
+				plugin_pump(&editor)
+			}
 		}
 		free_all(context.temp_allocator)
 	}

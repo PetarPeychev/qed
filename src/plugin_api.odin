@@ -701,7 +701,10 @@ qed_save :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 qed_save_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
-	entry := api_enter(L)
+	entry := plugin_entry(L)
+	if entry == nil || entry.editor.plugins.current != L {
+		return lua.yieldk(L, 0, ctx, qed_save_k)
+	}
 	context = entry.ctx
 	return qed_save_result(L, entry.editor, u64(ctx))
 }
@@ -1216,7 +1219,15 @@ qed_sleep :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	t := api_await(L, p, "qed.sleep")
 	t.wait = {kind = .Sleep, until = plugin_tick_add(time.tick_now(), ms)}
-	return lua.yieldk(L, 0)
+	return lua.yieldk(L, 0, 0, qed_sleep_k)
+}
+
+qed_sleep_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil || entry.editor.plugins.current != L {
+		return lua.yieldk(L, 0, ctx, qed_sleep_k)
+	}
+	return 0
 }
 
 ApiSpawn :: struct {
@@ -1356,7 +1367,10 @@ qed_spawn :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 qed_spawn_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
-	entry := api_enter(L)
+	entry := plugin_entry(L)
+	if entry == nil || entry.editor.plugins.current != L {
+		return lua.yieldk(L, 0, ctx, qed_spawn_k)
+	}
 	context = entry.ctx
 	return api_proc_result(L, &entry.editor.plugins, u64(ctx))
 }
@@ -1374,7 +1388,7 @@ api_proc_result :: proc(L: ^lua.State, p: ^Plugins, id: u64) -> c.int {
 	lua.setfield(L, -2, "stdout")
 	lua.pushodinstring(L, strings.to_string(pr.sp.err))
 	lua.setfield(L, -2, "stderr")
-	if !pr.bg {
+	if len(plugin_waiters(p, .Proc, id)) == 0 {
 		plugin_proc_free(p, i)
 	}
 	return 1
@@ -1389,6 +1403,12 @@ qed_spawn_bg :: proc "c" (L: ^lua.State) -> c.int {
 	pl := api_loaded(L, editor)
 	id := plugin_next_id(p)
 	api_handle_push(L, id, {{"kill", qed_proc_kill}, {"wait", qed_proc_wait}})
+	lua.createtable(L, 0, 1)
+	lua.pushvalue(L, lua.upvalueindex(1))
+	lua.pushinteger(L, lua.Integer(id))
+	lua.pushcclosure(L, qed_proc_gc, 2)
+	lua.setfield(L, -2, "__gc")
+	lua.setmetatable(L, -2)
 	api_spawn_start(L, editor, pl, o, id, true)
 	if !p.procs[len(p.procs) - 1].fake {
 		lua.pushinteger(L, lua.Integer(p.procs[len(p.procs) - 1].sp.process.pid))
@@ -1403,8 +1423,22 @@ qed_proc_kill :: proc "c" (L: ^lua.State) -> c.int {
 	p := &entry.editor.plugins
 	id := api_handle_id(L)
 	if i := plugin_proc_index(p, id); i >= 0 && !p.procs[i].done {
+		p.procs[i].killed = true
 		plugin_proc_stop(&p.procs[i])
 		plugin_proc_finish(entry.editor, id)
+	}
+	return 0
+}
+
+qed_proc_gc :: proc "c" (L: ^lua.State) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil {
+		return 0
+	}
+	context = entry.ctx
+	p := &entry.editor.plugins
+	if i := plugin_proc_index(p, api_handle_id(L)); i >= 0 {
+		p.procs[i].orphan = true
 	}
 	return 0
 }

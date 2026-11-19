@@ -52,7 +52,7 @@ Plugins :: struct {
 	config_override: Maybe(json.Object),
 	edit_depth: int,
 	tasks:    [dynamic]PluginTask,
-	pool:     [dynamic]PluginThread,
+	pool:     [dynamic]PluginPooled,
 	hooks:    [dynamic]PluginHook,
 	subs:     [PluginEvent]int,
 	timers:   [dynamic]PluginTimer,
@@ -65,6 +65,7 @@ Plugins :: struct {
 	presave:  u64,
 	resumes:  int,
 	startup_due: bool,
+	current:  ^lua.State,
 }
 
 PluginEntry :: struct {
@@ -367,7 +368,10 @@ plugin_call :: proc(editor: ^Editor, nargs, nresults: c.int) -> (ok: bool, messa
 	lua.insert(L, base)
 	entry: PluginEntry
 	prev := plugin_enter(editor, &entry)
+	prev_current := editor.plugins.current
+	editor.plugins.current = L
 	status := lua.pcall(L, nargs, nresults, base)
+	editor.plugins.current = prev_current
 	plugin_leave(editor, prev)
 	if status == .OK {
 		lua.remove(L, base)

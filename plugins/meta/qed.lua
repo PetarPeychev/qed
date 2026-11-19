@@ -107,7 +107,7 @@ function Handle:off() end
 ---Handlers run as coroutines in plugin load order. `buf_changed(b, rev)` and
 ---`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
----`root_changed(old, new)`, `term_exit(name, code)`; buffer events get `b`.
+---`root_changed(old, new)`, `term_exit(name, code)`, `buf_close(b, path)`; other buffer events get `b`.
 ---@param event qed.Event
 ---@param fn function
 ---@return qed.Handle
@@ -119,7 +119,7 @@ function qed.on(event, fn) end
 ---@field stdin? string
 ---@field cwd? string defaults to `qed.root()`
 ---@field env? table<string, string> merged over the editor's environment
----@field on_line? fun(line: string) each stdout line as it arrives
+---@field on_line? fun(line: string) each stdout line as it arrives; delivered lines are left out of `stdout`
 
 ---@class qed.SpawnResult
 ---@field code integer
@@ -136,8 +136,9 @@ function qed.spawn(spec) end
 ---@field pid? integer
 local Proc = {}
 function Proc:kill() end
----Waits for the process to exit.
----@return qed.SpawnResult
+---Waits for the process to exit. The result is handed out once; later calls return nil, "process is gone".
+---@return qed.SpawnResult|nil
+---@return string|nil err
 function Proc:wait() end
 
 ---Runs in the background; killed when the plugin unloads and on quit.
