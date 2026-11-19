@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "lib:tb2"
 
@@ -37,6 +38,8 @@ md_all_text :: proc(lines: []MdLine) -> string {
 
 @(test)
 test_md_marker_stripping :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("a **bold** and `code` and *slanted* end", 200, .Plain)
 	joined := md_all_text(lines)
 	testing.expect(t, !strings.contains(joined, "*"), "asterisks stripped")
@@ -54,12 +57,16 @@ test_md_marker_stripping :: proc(t: ^testing.T) {
 
 @(test)
 test_md_snake_case_survives :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("call some_long_name here", 200, .Plain)
 	testing.expect(t, strings.contains(md_all_text(lines), "some_long_name"), "underscores in identifier kept")
 }
 
 @(test)
 test_md_header :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("## Big Title ##", 200, .Plain)
 	testing.expect_value(t, len(lines), 1)
 	fg, ok := md_span_fg(lines, "Big Title")
@@ -70,6 +77,8 @@ test_md_header :: proc(t: ^testing.T) {
 
 @(test)
 test_md_rule :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("above\n\n---\n\nbelow", 200, .Plain)
 	found := false
 	for line in lines {
@@ -83,6 +92,8 @@ test_md_rule :: proc(t: ^testing.T) {
 
 @(test)
 test_md_fence_language :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	testing.expect_value(t, md_fence_language("python", .Plain), Language.Python)
 	testing.expect_value(t, md_fence_language("ts foo", .Plain), Language.TypeScript)
 	testing.expect_value(t, md_fence_language("", .Go), Language.Go)
@@ -91,6 +102,8 @@ test_md_fence_language :: proc(t: ^testing.T) {
 
 @(test)
 test_md_fence_stripped :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("```python\nx = 1\ny = 2\n```", 200, .Plain)
 	joined := md_all_text(lines)
 	testing.expect(t, !strings.contains(joined, "`"), "fence backticks dropped")
@@ -101,6 +114,8 @@ test_md_fence_stripped :: proc(t: ^testing.T) {
 
 @(test)
 test_md_wrap :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("the quick brown fox jumps over the lazy dog", 12, .Plain)
 	testing.expect(t, len(lines) > 1, "long line wraps")
 	for line in lines {
@@ -113,6 +128,8 @@ test_md_wrap :: proc(t: ^testing.T) {
 
 @(test)
 test_md_leading_spaces :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("  two-space indent", 200, .Plain)
 	testing.expect_value(t, len(lines), 1)
 	testing.expect_value(t, md_line_text(lines[0]), "  two-space indent")
@@ -125,6 +142,8 @@ test_md_leading_spaces :: proc(t: ^testing.T) {
 
 @(test)
 test_md_indented_code_block :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	src := "Example:\n\n\timport \"core:fmt\"\n\n\tmain :: proc() {\n\t\tx := 1\n\t}\n\nAfter"
 	lines := md_render(src, 200, .Plain)
 	joined := md_all_text(lines)
@@ -139,6 +158,8 @@ test_md_indented_code_block :: proc(t: ^testing.T) {
 
 @(test)
 test_md_tab_expansion :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("```\n\tx = 1\na\tb\n```", 200, .Plain)
 	testing.expect_value(t, len(lines), 2)
 	for line in lines {
@@ -160,6 +181,8 @@ test_md_tab_expansion :: proc(t: ^testing.T) {
 
 @(test)
 test_md_blank_collapse :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	lines := md_render("a\n\n\n\nb", 200, .Plain)
 	blanks := 0
 	for line in lines {

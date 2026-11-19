@@ -390,6 +390,8 @@ highlight_painted :: proc(b: ^Buffer, mid: int) -> bool {
 
 @(test)
 bench_large_file :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	env := os.get_env("QED_BENCH", context.temp_allocator)
 	if env == "" {
 		return

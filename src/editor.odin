@@ -252,8 +252,8 @@ editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
 		{&editor.pluginview.active, pluginview_dispatch_key, pluginview_render, pluginview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
-		{&editor.plugins.ui.active, plugui_dispatch_key, plugui_render, plugui_dispatch_mouse, plugui_paste},
-		{&editor.plugins.pane.active, plugpane_dispatch_key, plugpane_render, plugpane_dispatch_mouse, nil},
+		{&editor.plugins.ui.active, plugin_ui_dispatch_key, plugin_ui_render, plugin_ui_dispatch_mouse, plugin_ui_paste},
+		{&editor.plugins.pane.active, plugin_pane_dispatch_key, plugin_pane_render, plugin_pane_dispatch_mouse, nil},
 		{&editor.basepick.active, basepick_dispatch_key, basepick_render, basepick_dispatch_mouse, basepick_paste},
 		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
@@ -384,8 +384,11 @@ editor_previews_sync :: proc(editor: ^Editor) {
 	if editor.linefind.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.linefind.preview) {
 		linefind_load_preview(editor)
 	}
-	if editor.plugins.ui.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.plugins.ui.preview) {
-		plugui_preview(editor)
+	if editor.plugins.ui.active {
+		fuzzy_list_scroll(&editor.plugins.ui.list, plugin_ui_rows(editor))
+		if overlay_layout(editor, .Code).preview && !preview_loaded(&editor.plugins.ui.preview) {
+			plugin_ui_preview(editor)
+		}
 	}
 }
 
@@ -1047,24 +1050,39 @@ editor_theme_current :: proc(editor: ^Editor) -> string {
 	return editor.theme_shown if editor.theme_shown != "" else THEME
 }
 
-editor_theme_set :: proc(editor: ^Editor, name: string, persist: bool) -> bool {
+editor_theme_set :: proc(editor: ^Editor, name: string, persist: bool) -> (ok: bool, err: string) {
 	if !slice.contains(theme_names(config_path()), name) {
-		return false
+		return false, fmt.tprintf("unknown theme '%s'", name)
 	}
 	theme_preview(config_path(), name)
 	editor_retheme(editor)
 	delete(editor.theme_shown)
 	editor.theme_shown = ""
 	if !persist {
-		editor.theme_shown = strings.clone(name)
-		return true
+		if name != THEME {
+			editor.theme_shown = strings.clone(name)
+		}
+		return true, ""
 	}
 	path := editor.plugins.persist_path if editor.headless else config_path()
-	theme_persist(path, name)
+	written := theme_persist(path, name)
 	plugin_queue(editor, {event = .Theme_Changed})
 	editor.config_stamp = buffer_disk_stamp(config_path())
 	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
-	return true
+	if !written {
+		return false, "cannot write the theme to config.json"
+	}
+	return true, ""
+}
+
+editor_theme_restore :: proc(editor: ^Editor) {
+	if editor.theme_shown == "" {
+		return
+	}
+	delete(editor.theme_shown)
+	editor.theme_shown = ""
+	theme_preview(config_path(), THEME)
+	editor_retheme(editor)
 }
 
 editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
@@ -1081,8 +1099,11 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
 	message, is_error := config_load_from(path)
-	delete(editor.theme_shown)
-	editor.theme_shown = ""
+	if !editor.plugins.ui.active || editor.theme_shown == "" || !theme_preview(path, editor.theme_shown) {
+		delete(editor.theme_shown)
+		editor.theme_shown = ""
+		theme_preview(path, THEME)
+	}
 	plugins_rebind(editor)
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
@@ -1219,7 +1240,7 @@ editor_render :: proc(editor: ^Editor) {
 		inspect_render(editor)
 	}
 
-	if editor.palette.active && editor.filetree.active {
+	if (editor.palette.active || editor.plugins.ui.active || editor.plugins.pane.active) && editor.filetree.active {
 		filetree_render(editor)
 	}
 	for ov in editor_overlays(editor) {

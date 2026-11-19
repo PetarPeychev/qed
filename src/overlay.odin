@@ -54,7 +54,6 @@ fuzzy_list_move :: proc(l: ^FuzzyList, delta, rows: int) {
 	fuzzy_list_scroll(l, rows)
 }
 
-// 0-based row index under a click within a list area (the row rows occupy), or -1.
 overlay_row_off :: proc(ev: tb2.Event, area: Rect) -> int {
 	if !mouse_in_rect(ev, area) {
 		return -1
@@ -66,8 +65,6 @@ overlay_scroll_by :: proc(scroll: ^int, delta, count, rows: int) {
 	scroll^ = clamp(scroll^ + delta, 0, max(0, count - rows))
 }
 
-// A left click on `idx` is an activation when it's the second click on the same
-// row within the double-click window; otherwise it merely selects.
 overlay_double_click :: proc(editor: ^Editor, idx: int) -> bool {
 	recent :=
 		editor.overlay_click_idx == idx &&
@@ -77,8 +74,6 @@ overlay_double_click :: proc(editor: ^Editor, idx: int) -> bool {
 	return recent
 }
 
-// Caret placement / drag-select for the "> " query field, given the same x/y/w
-// passed to overlay_prompt_render (the field itself sits past the 2-cell prefix).
 overlay_prompt_mouse :: proc(f: ^TextField, x, y, w: int, ev: tb2.Event, prefix := "> ") {
 	pw := visual_width(transmute([]u8)prefix)
 	textfield_mouse(f, x + pw, y, w - pw, ev)
@@ -100,9 +95,6 @@ ev_alt :: proc(ev: tb2.Event) -> bool {
 	return (u8(ev.mod) & u8(tb2.Mod.Alt)) != 0
 }
 
-// Mouse handling shared by every centered fuzzy picker (palette-style): wheel
-// scrolls, a click on the query field places/drags the caret, a click selects a
-// row (drag re-highlights), a double click runs `activate`, a click outside `close`s.
 fuzzy_list_center_mouse :: proc(
 	editor: ^Editor,
 	l: ^FuzzyList,
@@ -144,10 +136,6 @@ fuzzy_list_center_mouse :: proc(
 	}
 }
 
-// Shared mouse for an overlay_layout picker's left list. Wheel scrolls, a click
-// outside the box `close`s. Returns the clicked item index (-1 if no row was
-// hit) and whether the click was an activation; the caller applies selection
-// side effects (preview load, execute) since those differ per picker.
 overlay_list_mouse :: proc(
 	editor: ^Editor,
 	ev: tb2.Event,
@@ -192,24 +180,22 @@ fuzzy_list_center_scrollbar :: proc(l: ^FuzzyList, box: Rect, rows: int) {
 	pane_draw_scrollbar(box.x + box.w - 1, box.y + 3, rows, l.scroll, len(l.matches))
 }
 
-// A "> " prompt prefix followed by the field, as every fuzzy overlay draws it.
 overlay_prompt_render :: proc(x, y, w: int, f: ^TextField, prefix := "> ") {
 	pw := visual_width(transmute([]u8)prefix)
 	pane_text(x, y, pw, prefix, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	textfield_render(x + pw, y, w - pw, f)
 }
 
-fuzzy_list_key :: proc(editor: ^Editor, l: ^FuzzyList, ev: tb2.Event, activate, close: proc(editor: ^Editor), rows := -1) -> (refiltered: bool) {
-	view_rows := PALETTE_MAX_ROWS if rows < 0 else rows
+fuzzy_list_key :: proc(editor: ^Editor, l: ^FuzzyList, ev: tb2.Event, activate, close: proc(editor: ^Editor), rows := PALETTE_MAX_ROWS) -> (refiltered: bool) {
 	#partial switch ev.key {
 	case .Esc:
 		close(editor)
 	case .Enter:
 		activate(editor)
 	case .Arrow_Down:
-		fuzzy_list_move(l, 1, view_rows)
+		fuzzy_list_move(l, 1, rows)
 	case .Arrow_Up:
-		fuzzy_list_move(l, -1, view_rows)
+		fuzzy_list_move(l, -1, rows)
 	case:
 		if textfield_key(&l.field, ev) {
 			fuzzy_list_refilter(l)

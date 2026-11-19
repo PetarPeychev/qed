@@ -185,6 +185,7 @@ syntax_shutdown :: proc() {
 		delete(s.colors)
 		delete(s.paint)
 		delete(s.inj_names)
+		s = {}
 	}
 }
 

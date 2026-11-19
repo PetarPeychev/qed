@@ -514,9 +514,9 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 			}
 			PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED = saved_timeout, saved_lsp, saved_ai, saved_git
 			if THEME != saved_theme || e.ed.theme_shown != "" {
-				editor_theme_set(&e.ed, saved_theme, false)
 				delete(THEME, os.heap_allocator())
 				THEME = strings.clone(saved_theme, os.heap_allocator())
+				editor_theme_set(&e.ed, saved_theme, false)
 			}
 			e2e_stop(&e)
 		}

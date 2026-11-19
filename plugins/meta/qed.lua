@@ -226,7 +226,7 @@ function qed.languages() end
 
 qed.theme = {}
 
----Applies a theme. With `persist`, also writes it as config `theme` (only that key).
+---Applies a theme. With `persist`, also writes it as config `theme` (only that key); fails on an unknown name or a failed write.
 ---@param name string
 ---@param opts? {persist?: boolean}
 ---@return boolean|nil ok

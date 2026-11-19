@@ -10,16 +10,23 @@ end
 
 local function set_theme()
 	local original = qed.theme.current()
-	local name = qed.pick{
+	local name, busy = qed.pick{
 		items = qed.theme.list(),
 		initial = original,
 		on_change = function(n) qed.theme.set(n) end,
 	}
-	if not name then
-		qed.theme.set(original)
+	if busy then
 		return
 	end
-	qed.theme.set(name, {persist = true})
+	if not name then
+		qed.theme.set(qed.opt("theme"))
+		return
+	end
+	local ok, err = qed.theme.set(name, {persist = true})
+	if not ok then
+		qed.message(err, "error")
+		return
+	end
 	say("Theme: " .. name)
 end
 

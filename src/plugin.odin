@@ -71,6 +71,7 @@ Plugins :: struct {
 	ui:       PluginUi,
 	pane:     PluginPane,
 	persist_path: string,
+	theme_owner: string,
 }
 
 PluginEntry :: struct {

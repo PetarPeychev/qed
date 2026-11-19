@@ -406,12 +406,18 @@ started at the end of `editor_init`. Invariants the code can't show:
   `Plugins.ui` overlay and wait (`.Ui`); Enter/Esc/click resolve it from
   `editor_dispatch`, storing the result, and the continuation pushes it (picked
   items are the caller's own values, kept in a registry ref). Opening anything
-  while another overlay is active returns `nil, "busy"`. `on_change` runs as its
-  own task whenever the highlighted item changes (never at open). `qed.pane` is a
-  non-waiting read-only overlay (`Plugins.pane`). Unloading the owner closes both.
-- `qed.theme.set` without `persist` only changes what is shown (`Editor.theme_shown`,
-  cleared on config reload); `persist` writes the `theme` key and fires
-  `theme_changed`. Headless sessions persist to `Plugins.persist_path` (tests).
+  while another overlay is active returns `nil, "busy"`, except over the file tree
+  (the plugin overlay sits above it and takes the keys). `on_change` runs as its own
+  task whenever the highlighted item changes (never at open); the previous one is
+  killed on each change and on resolve, so a waiting handler can't apply a stale
+  preview. `qed.pane` is a non-waiting read-only overlay (`Plugins.pane`).
+  Unloading the owner closes both.
+- `qed.theme.set` without `persist` only changes what is shown (`Editor.theme_shown`;
+  setting the configured theme clears it). A config reload keeps the shown theme
+  while a plugin modal is open, else drops it. Unloading the plugin that set it
+  restores the configured theme. `persist` writes the `theme` key, fires
+  `theme_changed`, and fails with `nil, err` when the write fails. Headless sessions
+  persist to `Plugins.persist_path` (tests).
 - On config hot reload `plugins_config_refresh` re-merges each loaded plugin's
   config (its kept `defaults` + embedded + user) before `config_changed` fires.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a

@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
+import "core:sync"
 import "core:testing"
 import "core:time"
 
@@ -44,6 +45,8 @@ preview_test_file :: proc(name: string, content: []u8) -> string {
 
 @(test)
 test_preview_set_file_empty :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	path := preview_test_file("empty.txt", nil)
 	defer {os.remove(path);delete(path)}
 	p: Preview
@@ -56,6 +59,8 @@ test_preview_set_file_empty :: proc(t: ^testing.T) {
 
 @(test)
 test_preview_set_file_small_binary :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	path := preview_test_file("bin.dat", []u8{0x7f, 'E', 'L', 'F', 0x00, 0x01, 0x02})
 	defer {os.remove(path);delete(path)}
 	p: Preview
@@ -69,6 +74,8 @@ test_preview_set_file_small_binary :: proc(t: ^testing.T) {
 
 @(test)
 test_preview_set_file_caps_bytes :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	content := make([]u8, PREVIEW_MAX_BYTES + 200 * 1024, context.temp_allocator)
 	for &b in content {
 		b = 'a'
@@ -88,6 +95,8 @@ test_preview_set_file_caps_bytes :: proc(t: ^testing.T) {
 
 @(test)
 test_preview_set_file_text_stays_text :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	path := preview_test_file("text.txt", transmute([]u8)string("plain text\nline two\n"))
 	defer {os.remove(path);delete(path)}
 	p: Preview
@@ -100,6 +109,8 @@ test_preview_set_file_text_stays_text :: proc(t: ^testing.T) {
 
 @(test)
 test_preview_set_file_crlf_whole :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	sb := strings.builder_make(context.temp_allocator)
 	for i in 0 ..< PREVIEW_MAX_LINES + 50 {
 		fmt.sbprintf(&sb, "line %d\r\n", i)

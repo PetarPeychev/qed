@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:testing"
 import "core:path/filepath"
+import "core:time"
 
 @(private = "file")
 UI_PLUGIN :: `
@@ -35,7 +36,7 @@ return {setup = function()
 	end)
 	cmd("UI: Paths", function()
 		local dir = qed.path.dir(qed.buf.path())
-		local r = qed.pick{items = {{path = qed.path.join(dir, "p1.txt"), pos = {row = 2, col = 1}}, {label = "second", path = qed.path.join(dir, "p2.txt")}}}
+		local r = qed.pick{items = {{path = qed.path.join(dir, "p1.txt"), pos = {row = 2, col = 1}}, {label = "second", detail = "DET2", path = qed.path.join(dir, "p2.txt")}}}
 		show(r and r.label)
 	end)
 	cmd("UI: Prompt", function()
@@ -52,6 +53,25 @@ return {setup = function()
 	end)
 	cmd("UI: Pane Set", function() show(pane:set({"line three"})) end)
 	cmd("UI: Pane Close", function() pane:close() end)
+	cmd("UI: Slow", function()
+		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item)
+			qed.sleep(40)
+			qed.log("info", "applied " .. item)
+		end}
+		show("picked " .. tostring(r))
+	end)
+	cmd("UI: Chain", function()
+		local a = qed.pick{items = {"x", "y"}}
+		local b = qed.pick{items = {"p", "q"}}
+		show(tostring(a) .. tostring(b))
+	end)
+	cmd("UI: Persist", function()
+		local ok, err = qed.theme.set(qed.opt("theme"), {persist = true})
+		show(tostring(ok) .. " " .. tostring(err))
+	end)
+	qed.command{name = "UI: Tree Confirm", scope = "filetree", run = function()
+		show(qed.confirm("Tree?", {"One", "Two"}))
+	end}
 end}`
 
 @(private = "file")
@@ -185,6 +205,7 @@ e2e_plugin_ui_pick_paths :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "second body"), "moving reloads the preview")
 	testing.expect(t, e2e_grid_has(&e, "second"), "labels render")
+	testing.expect(t, e2e_grid_has(&e, "DET2"), "details render in the list")
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "second")
 }
@@ -307,4 +328,116 @@ e2e_plugin_ui_wait_refused_in_setup :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "eager", `return {setup = function() qed.pick{items = {"a"}} end}`)
 	testing.expect_value(t, pl.state, PluginState.Errored)
 	testing.expect(t, !e.ed.plugins.ui.active, "no overlay opens")
+}
+
+@(private = "file")
+ui_logged :: proc(e: ^E2E, text: string) -> bool {
+	for l in e.ed.log {
+		if l.source == "ui" && l.text == text {
+			return true
+		}
+	}
+	return false
+}
+
+@(private = "file")
+ui_pump :: proc(e: ^E2E, ms: int) {
+	start := time.tick_now()
+	for ms_since(start) < f64(ms) {
+		plugin_pump(&e.ed)
+		time.sleep(time.Millisecond)
+	}
+}
+
+@(test)
+e2e_plugin_ui_on_change_race :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Slow")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Arrow_Down)
+	testing.expect_value(t, len(e.ed.plugins.tasks), 2)
+	ui_pump(&e, 80)
+	testing.expect(t, ui_logged(&e, "applied c"), "the latest on_change lands")
+	testing.expect(t, !ui_logged(&e, "applied b"), "a superseded on_change is killed")
+
+	e2e_key(&e, .Arrow_Up)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "picked b")
+	ui_pump(&e, 80)
+	testing.expect(t, !ui_logged(&e, "applied b"), "Enter kills a waiting on_change")
+	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
+
+	ui_run(t, &e, "UI: Slow")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "picked nil")
+	ui_pump(&e, 80)
+	testing.expect(t, !ui_logged(&e, "applied b"), "Esc kills a waiting on_change")
+	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
+}
+
+@(test)
+e2e_plugin_ui_chained_pick :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Chain")
+	e2e_key(&e, .Enter)
+	ui := &e.ed.plugins.ui
+	testing.expect(t, ui.active, "the continuation opens a second pick")
+	testing.expect_value(t, ui_selected(&e), "p")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "xq")
+	testing.expect(t, !ui.active, "both picks resolved")
+	testing.expect_value(t, ui.items_ref, 0)
+	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
+}
+
+@(test)
+e2e_plugin_ui_persist_failure :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Persist")
+	testing.expect_value(t, e.ed.message, "nil cannot write the theme to config.json")
+}
+
+@(test)
+e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	filetree_open_all(&e.ed)
+	testing.expect(t, e.ed.filetree.active, "the tree is open")
+	cmd: Command
+	for c in e.ed.plugins.commands {
+		if c.name == "UI: Tree Confirm" {
+			cmd = c
+		}
+	}
+	plugin_command_run(&e.ed, cmd)
+	testing.expect(t, e.ed.plugins.ui.active, "a tree command can open a modal over the tree")
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Tree?"), "the dialog renders over the tree")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, e.ed.message, "2")
+	testing.expect(t, e.ed.filetree.active, "the tree stays open")
+}
+
+@(test)
+e2e_plugin_ui_unload_restores_theme :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	pl := plugin_find(&e.ed.plugins, "pickers")
+	bg := COLOR_BG
+	cmd, _ := plugin_test_command(&e.ed, "Set Theme")
+	command_run(&e.ed, cmd)
+	e2e_type(&e, "solarized-light")
+	testing.expect_value(t, editor_theme_current(&e.ed), "solarized-light")
+	testing.expect(t, COLOR_BG != bg, "the preview applied")
+	plugin_unload(&e.ed, pl)
+	testing.expect(t, !e.ed.plugins.ui.active, "the picker closed")
+	testing.expect_value(t, e.ed.theme_shown, "")
+	testing.expect_value(t, COLOR_BG, bg)
+	testing.expect_value(t, editor_theme_current(&e.ed), THEME)
 }
