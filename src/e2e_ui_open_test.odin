@@ -63,6 +63,14 @@ return {setup = function()
 		note(("child %s %s"):format(tostring(c ~= nil), tostring(ctx.view and ctx.view.id)))
 	end)
 	cmd("Passive", function() v = qed.ui.open{focus = false, text = {"passive text"}} end)
+	cmd("Md", function()
+		local lines = {"# Doc", ""}
+		for i = 1, 60 do lines[#lines + 1] = "line " .. i .. "\n" end
+		v = qed.ui.open{place = "full", max_width = 50, markdown = table.concat(lines, "\n")}
+	end)
+	cmd("Md Set", function() note("md " .. tostring(v:markdown("# New"))) end)
+	cmd("Narrow", function() v = qed.ui.open{list = {items = {"a"}}, max_width = 20} end)
+	cmd("Bad Md", function() qed.ui.open{markdown = "x"} end)
 	cmd("Busy", function()
 		local r, err = qed.ui.open{list = {items = {"b"}}}
 		note(("busy %s %s"):format(tostring(r), tostring(err)))
@@ -420,4 +428,37 @@ e2e_ui_open_unload_saves :: proc(t: ^testing.T) {
 	s := pane_saved_find(&e.ed, "keep")
 	testing.expect(t, s != nil && len(s.texts) == 1 && s.texts[0] == "th", "an unload keeps the persisted text")
 	testing.expect(t, s != nil && s.key == "three", "and the selection")
+}
+
+@(test)
+e2e_ui_open_markdown :: proc(t: ^testing.T) {
+	e, _ := view_start(t)
+	defer e2e_stop(&e)
+	view_run(t, &e, "V: Md")
+	v := test_view(&e.ed)
+	g := pane_geom(&e.ed, v)
+	testing.expect_value(t, g.box.w, 50)
+	testing.expect_value(t, g.box.x, (80 - 50) / 2)
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Doc") && !e2e_grid_has(&e, "# Doc"), "rendered without the marker")
+	rows := pane_body_rows(v, g)
+	testing.expect(t, rows > g.text.h, "taller than the pane")
+	e2e_mouse(&e, g.box.x + 5, g.box.y + 5, .Mouse_Wheel_Down)
+	testing.expect_value(t, test_view(&e.ed).scroll, WHEEL_SCROLL_LINES)
+	e2e_key(&e, .End)
+	testing.expect_value(t, test_view(&e.ed).scroll, rows - g.text.h)
+	e2e_key(&e, .Home)
+	testing.expect_value(t, test_view(&e.ed).scroll, 0)
+	view_run(t, &e, "V: Md Set")
+	plugin_flush(&e.ed)
+	testing.expect(t, view_logged(&e, "md true"), "markdown replaces the body")
+	testing.expect_value(t, pane_body_rows(test_view(&e.ed), g), 2)
+	e2e_key(&e, .Esc)
+
+	view_run(t, &e, "V: Narrow")
+	testing.expect_value(t, pane_geom(&e.ed, test_view(&e.ed)).box.w, 20)
+	e2e_key(&e, .Esc)
+	view_run(t, &e, "V: Bad Md")
+	plugin_flush(&e.ed)
+	testing.expect(t, test_view(&e.ed) == nil, "markdown outside a full pane is refused")
 }

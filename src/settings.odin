@@ -304,6 +304,7 @@ CONFLICT_TINT: f32
 CONFLICT_MARKER_TINT: f32
 CONFLICT_WORD_TINT: f32
 DECO_TINT: f32
+MARKDOWN_CODE_TINT: f32
 
 config_tints := [?]Config_Float {
 	{"current_line", &CURRENT_LINE_TINT},
@@ -315,6 +316,7 @@ config_tints := [?]Config_Float {
 	{"conflict_marker", &CONFLICT_MARKER_TINT},
 	{"conflict_word", &CONFLICT_WORD_TINT},
 	{"decoration", &DECO_TINT},
+	{"markdown_code", &MARKDOWN_CODE_TINT},
 }
 
 config_path :: proc(allocator := context.temp_allocator) -> string {

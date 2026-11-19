@@ -65,6 +65,7 @@ qed_view_methods := [?]lua.L_Reg {
 	{"append", qed_view_append},
 	{"update", qed_view_update},
 	{"text", qed_view_text},
+	{"markdown", qed_view_markdown},
 	{"close", qed_view_close},
 	{"wait", qed_view_wait},
 }
@@ -738,6 +739,20 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pop(L, 1)
 
+	if md, ok := api_field_string(L, 1, "markdown"); ok {
+		if spec.place != .Full || spec.has_list || len(spec.text) > 0 {
+			plugin_raise(L, `markdown needs place = "full" and no list or text`)
+		}
+		spec.md, spec.has_md = md, true
+	}
+	if lua.getfield(L, 1, "max_width") != .NIL {
+		spec.max_width = api_int(L, -1, "max_width must be an integer")
+		if spec.max_width < 1 || spec.place == .Split {
+			plugin_raise(L, `max_width must be positive, for place "center" or "full"`)
+		}
+	}
+	lua.pop(L, 1)
+
 	#partial switch lua.getfield(L, 1, "footer") {
 	case .TABLE:
 		if lua.getfield(L, -1, "hints") == .TABLE {
@@ -835,6 +850,9 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		if f.mode != .Input && f.mode != .Path {
 			textfield_select_all(&f.field)
 		}
+	}
+	if saved != nil {
+		pn.scroll = saved.scroll
 	}
 	pane_list_load(editor, pn)
 	rows := pane_geom(editor, pn).list.h
@@ -1097,6 +1115,23 @@ qed_view_text :: proc "c" (L: ^lua.State) -> c.int {
 	if pn != nil {
 		pane_lines_free(pn.text)
 		pn.text = pane_lines_clone(lines)
+	}
+	lua.pushboolean(L, b32(pn != nil))
+	return 1
+}
+
+qed_view_markdown :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	src := api_string(L, 2)
+	pn, _ := api_view_live(L, entry.editor)
+	if pn != nil && !pn.has_md {
+		plugin_raise(L, "view has no markdown body")
+	}
+	if pn != nil {
+		delete(pn.md)
+		pn.md = strings.clone(src)
+		pn.md_w = -1
 	}
 	lua.pushboolean(L, b32(pn != nil))
 	return 1

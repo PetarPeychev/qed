@@ -108,6 +108,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
+	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
 	{"workspace/init.lua", #load("../plugins/workspace/init.lua", string)},
 }

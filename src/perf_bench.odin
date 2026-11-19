@@ -268,7 +268,7 @@ highlight_injection :: proc(t: ^testing.T) {
 	testing.expect(t, row_has(&b, 0, COLOR_SYN_KEYWORD), "the # heading marker should be the keyword color")
 	testing.expect(t, row_has(&b, 2, COLOR_SYN_KEYWORD), "unchecked [ ] should be the keyword color")
 	testing.expect(t, row_has(&b, 3, COLOR_SYN_STRING), "checked [x] should be the string/green color")
-	testing.expect(t, row_has(&b, 5, color_attr(COLOR_SYN_ATTRIBUTE, .Bold)), "**bold** should be injected (strong)")
+	testing.expect(t, row_has(&b, 5, color_attr(COLOR_FG, .Bold)), "**bold** should be injected (strong, plain fg so it differs from headings)")
 	testing.expect(t, row_has(&b, 5, COLOR_SYN_CODE), "`code` span should be the subtle code gray")
 	testing.expect(t, row_has(&b, 5, COLOR_SYN_TYPE), "[link](url) should be injected blue")
 	testing.expect(t, row_has(&b, 7, COLOR_SYN_CODE), "```ts fence + info string should be the code gray")

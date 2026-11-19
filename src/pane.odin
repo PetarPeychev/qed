@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import vmem "core:mem/virtual"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
@@ -202,7 +203,13 @@ Pane :: struct {
 	fields:       []PaneField,
 	focus:        int,
 	text:         []PaneLine,
+	md:           string,
+	has_md:       bool,
+	md_w:         int,
+	md_lines:     []MdLine,
+	md_arena:     vmem.Arena,
 	scroll:       int,
+	max_width:    int,
 	list:         PaneList,
 	has_list:     bool,
 	auto_preview: bool,
@@ -221,9 +228,10 @@ Pane :: struct {
 }
 
 PaneSaved :: struct {
-	id:    string,
-	texts: []string,
-	key:   string,
+	id:     string,
+	texts:  []string,
+	key:    string,
+	scroll: int,
 }
 
 pane_labels :: proc(labels: []string) -> [dynamic]PaneItem {
@@ -272,6 +280,8 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	p.chord = strings.clone(spec.chord)
 	p.title = strings.clone(spec.title)
 	p.text = pane_lines_clone(spec.text)
+	p.md = strings.clone(spec.md)
+	p.md_w, p.md_lines, p.md_arena = -1, nil, {}
 	p.has_list = spec.has_list || len(spec.list.items) > 0
 	p.list.items = {}
 	p.list.matches = {}
@@ -343,6 +353,8 @@ pane_free :: proc(p: ^Pane) {
 	delete(p.chord)
 	delete(p.title)
 	pane_lines_free(p.text)
+	delete(p.md)
+	vmem.arena_destroy(&p.md_arena)
 	pane_items_clear(p)
 	delete(p.list.items)
 	delete(p.list.matches)
@@ -554,6 +566,7 @@ pane_save :: proc(editor: ^Editor, p: ^Pane) {
 		s.texts[i] = strings.clone(textfield_str(&f.field))
 	}
 	s.key = strings.clone(pane_selected_key(p))
+	s.scroll = p.scroll
 }
 
 pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
@@ -800,6 +813,9 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 			}
 			w = min(w + 2, int(tb2.width()) - 4)
 		}
+		if p.max_width > 0 {
+			w = min(w, p.max_width - 2)
+		}
 		g.box = pane_center(editor, w, head + rows + (1 if sep else 0) + (2 if len(p.footer) > 0 else 0))
 		g.inner = {g.box.x + 1, g.box.y + 1, g.box.w - 2, g.box.h - 2}
 		y := g.inner.y
@@ -825,6 +841,12 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 	}
 	split := p.place == .Split && p.auto_preview
 	lay := overlay_layout(editor, .Code if split else .None)
+	if p.place == .Full && p.max_width > 0 && lay.box.w > p.max_width {
+		lay.box.x += (lay.box.w - p.max_width) / 2
+		lay.box.w = p.max_width
+		lay.inner = {lay.box.x + 1, lay.box.y + 1, lay.box.w - 2, lay.box.h - 2}
+		lay.left_w = lay.inner.w
+	}
 	g.box, g.inner = lay.box, lay.inner
 	y := g.inner.y
 	bottom := g.inner.y + g.inner.h
@@ -933,10 +955,12 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		tb2.set_cell(i32(g.div_x), i32(g.left_sep), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	}
 
-	p.scroll = clamp(p.scroll, 0, max(0, len(p.text) - g.text.h))
-	for i in 0 ..< g.text.h {
-		if p.scroll + i >= len(p.text) {
-			break
+	rows := pane_body_rows(p, g)
+	p.scroll = clamp(p.scroll, 0, max(0, rows - g.text.h))
+	for i in 0 ..< min(g.text.h, rows - p.scroll) {
+		if p.has_md {
+			md_draw_line(g.text.x, g.text.y + i, g.text.w, p.md_lines[p.scroll + i], COLOR_PANE_BG)
+			continue
 		}
 		l := p.text[p.scroll + i]
 		fg := COLOR_PANE_FG
@@ -946,7 +970,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		pane_text(g.text.x, g.text.y + i, g.text.w, l.text, fg, COLOR_PANE_BG)
 	}
 	if p.place != .Center {
-		pane_draw_scrollbar(g.box.x + g.box.w - 1, g.text.y, g.text.h, p.scroll, len(p.text))
+		pane_draw_scrollbar(g.box.x + g.box.w - 1, g.text.y, g.text.h, p.scroll, rows)
 	}
 
 	n := pane_count(p)
@@ -1033,7 +1057,13 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 			return .None
 		}
 		if len(p.fields) == 0 {
-			overlay_scroll_by(&p.scroll, d, len(p.text), g.text.h)
+			overlay_scroll_by(&p.scroll, d, pane_body_rows(p, g), g.text.h)
+			return .None
+		}
+	case .Home, .End:
+		if !p.has_list && len(p.fields) == 0 {
+			g := pane_geom(editor, p)
+			p.scroll = 0 if ev.key == .Home else max(0, pane_body_rows(p, g) - g.text.h)
 			return .None
 		}
 	case .Tab:
@@ -1062,7 +1092,7 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		} else if p.has_list {
 			overlay_scroll_by(&p.list.scroll, d, n, g.list.h)
 		} else {
-			overlay_scroll_by(&p.scroll, d, len(p.text), g.text.h)
+			overlay_scroll_by(&p.scroll, d, pane_body_rows(p, g), g.text.h)
 		}
 		return .None
 	case .Mouse_Left:
@@ -1104,6 +1134,20 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		return .Close
 	}
 	return .None
+}
+
+pane_body_rows :: proc(p: ^Pane, g: PaneGeom) -> int {
+	return len(pane_md_lines(p, g.text.w)) if p.has_md else len(p.text)
+}
+
+pane_md_lines :: proc(p: ^Pane, w: int) -> []MdLine {
+	if p.md_w != w {
+		vmem.arena_free_all(&p.md_arena)
+		context.temp_allocator = vmem.arena_allocator(&p.md_arena)
+		p.md_lines = md_render(p.md, w, .Plain)
+		p.md_w = w
+	}
+	return p.md_lines
 }
 
 pane_paste :: proc(editor: ^Editor, p: ^Pane, text: string) {

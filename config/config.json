@@ -53,6 +53,9 @@
     "git": {
       "enabled": true
     },
+    "markdown": {
+      "enabled": true
+    },
     "settings": {
       "enabled": true
     },

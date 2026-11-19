@@ -257,7 +257,7 @@ function qed.every(ms, fn) end
 ---@field close? fun(v: qed.View) any close: Esc, click outside, the opening command's chord, `View:close`, a parent closing, an exclusive pane replacing it
 
 ---@class qed.UiSpec
----@field id? string the fields' text and the selected item's key persist under it across opens (and plugin reloads)
+---@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads)
 ---@field modal? boolean exclusive opens are refused as busy while it is open (`qed.pick/prompt/confirm` set it); a non-modal pane is replaced and its waiters get `nil`
 ---@field place? "center"|"full"|"split" center (default) is a centered box, full fills the screen, split puts a full-height preview column beside the fields and list
 ---@field size? "palette"|"dialog"|"split:code" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default)
@@ -269,6 +269,8 @@ function qed.every(ms, fn) end
 ---@field list? qed.UiList
 ---@field preview? "auto"|false split: previews the selected item's `path` at `pos.row`
 ---@field text? qed.PaneLine[] lines above the list (center) or the scrollable body (full or split without a list)
+---@field markdown? string full only, without list or text: the body is this markdown, rendered by core at the pane width (the LSP hover renderer); arrows, PgUp/PgDn, Home/End and the wheel scroll it
+---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
 ---@field footer? {hints: {label: string, cmd?: string}[]} bottom row; a hint with `cmd` is prefixed with that command's live shortcut
 ---@field on? qed.UiHandlers handlers run as tasks after input dispatch, before the next frame
 
@@ -293,6 +295,10 @@ function View:update(key, fields) end
 ---@param lines qed.PaneLine[]
 ---@return boolean
 function View:text(lines) end
+---Replaces the markdown body, keeping the scroll position. Raises for a view opened without `markdown`; returns false once closed.
+---@param text string
+---@return boolean
+function View:markdown(text) end
 ---Closes the pane and its children; a no-op once closed.
 function View:close() end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.

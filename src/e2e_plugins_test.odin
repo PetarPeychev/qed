@@ -84,6 +84,14 @@ pt_key :: proc "c" (L: ^lua.State) -> c.int {
 		ev.key = .Arrow_Left
 	case "Right":
 		ev.key = .Arrow_Right
+	case "PgUp":
+		ev.key = .Pgup
+	case "PgDn":
+		ev.key = .Pgdn
+	case "Home":
+		ev.key = .Home
+	case "End":
+		ev.key = .End
 	case:
 		key, alt, ok := parse_keybind(s)
 		if !ok {
@@ -495,6 +503,13 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "labels")
 	lua.pushodinstring(L, pane_hint(pn) if n == 0 else "")
 	lua.setfield(L, -2, "hint")
+	g := pane_geom(entry.editor, pn)
+	lua.pushinteger(L, lua.Integer(g.box.w))
+	lua.setfield(L, -2, "width")
+	lua.pushinteger(L, lua.Integer(pane_body_rows(pn, g)))
+	lua.setfield(L, -2, "rows")
+	lua.pushinteger(L, lua.Integer(pn.scroll))
+	lua.setfield(L, -2, "scroll")
 	if n > 0 {
 		lua.pushodinstring(L, test_view_selected(entry.editor))
 		lua.setfield(L, -2, "selected")

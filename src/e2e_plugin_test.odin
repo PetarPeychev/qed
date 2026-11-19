@@ -95,11 +95,13 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_grid_has(&e, "Git        bundled  enabled"), "the bundled git plugin row")
 	testing.expect(t, e2e_grid_has(&e, "Workspace  bundled  enabled"), "the bundled workspace plugin row")
 
-	for _ in 0 ..< 6 {
+	shown := false
+	for _ in 0 ..< 12 {
 		e2e_key(&e, .Arrow_Down)
+		e2e_render(&e)
+		shown = shown || e2e_grid_has(&e, "setup exploded")
 	}
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "setup exploded"), "the selected row's last error shows in the footer")
+	testing.expect(t, shown, "the selected row's last error shows in the footer")
 
 	e2e_key(&e, .Esc)
 	testing.expect(t, !e.ed.pluginview.active, "Esc closes the pane")
