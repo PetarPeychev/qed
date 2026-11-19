@@ -7,6 +7,7 @@ import "core:time"
 import ts "lib:tree_sitter"
 
 Buffer :: struct {
+	id:            u64,
 	path:          string,
 	lines:         [dynamic]Line,
 	cursor:        Cursor,
@@ -75,10 +76,18 @@ buffer_detect_indent :: proc(b: ^Buffer) {
 	b.indent_width = TAB_WIDTH if b.indent == .Tabs else indent_width_detect(b.lines[:])
 }
 
+g_buffer_id_seq: u64
+
+buffer_id_next :: proc() -> u64 {
+	g_buffer_id_seq += 1
+	return g_buffer_id_seq
+}
+
 buffer_new :: proc() -> Buffer {
 	lines := make([dynamic]Line, 0, 64)
 	append(&lines, Line{})
 	buffer := Buffer {
+		id           = buffer_id_next(),
 		lines        = lines,
 		cursor       = {0, 0},
 		line_ending  = .LF,

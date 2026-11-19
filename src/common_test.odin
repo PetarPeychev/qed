@@ -2,6 +2,7 @@ package main
 
 test_buffer :: proc(lines: ..string) -> Buffer {
 	b: Buffer
+	b.id = buffer_id_next()
 	b.indent_width = TAB_WIDTH
 	b.lines = make([dynamic]Line, 0, len(lines))
 	for l in lines {

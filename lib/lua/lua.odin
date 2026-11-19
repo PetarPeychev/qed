@@ -76,12 +76,16 @@ foreign lib {
 	checkstack :: proc(L: ^State, n: c.int) -> c.int ---
 
 	type :: proc(L: ^State, idx: c.int) -> Type ---
+	typename :: proc(L: ^State, tp: Type) -> cstring ---
 	toboolean :: proc(L: ^State, idx: c.int) -> b32 ---
 	tolstring :: proc(L: ^State, idx: c.int, len: ^c.size_t) -> cstring ---
 	touserdata :: proc(L: ^State, idx: c.int) -> rawptr ---
 	tothread :: proc(L: ^State, idx: c.int) -> ^State ---
 	@(link_name = "lua_tointegerx")
 	tointeger :: proc(L: ^State, idx: c.int, isnum: ^b32 = nil) -> Integer ---
+	tonumberx :: proc(L: ^State, idx: c.int, isnum: ^b32) -> Number ---
+	isinteger :: proc(L: ^State, idx: c.int) -> b32 ---
+	rawlen :: proc(L: ^State, idx: c.int) -> u64 ---
 
 	pushnil :: proc(L: ^State) ---
 	pushnumber :: proc(L: ^State, n: Number) ---

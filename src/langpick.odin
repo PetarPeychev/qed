@@ -44,7 +44,7 @@ langpick_execute :: proc(editor: ^Editor) {
 	}
 	lang := lp.langs[lp.matches[lp.selected]]
 	langpick_close(editor)
-	editor_set_language(editor, lang)
+	editor_set_language(editor, editor_buffer(editor), lang)
 }
 
 langpick_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {

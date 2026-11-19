@@ -155,6 +155,9 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	editor_plugins_start(&editor, g_bundled_plugins, "" if headless else plugin_user_dir(), PLUGIN_MEMORY_MB * 1024 * 1024)
 	plugins_rebind(&editor)
 	if !headless {
+		plugin_stub_write(plugin_stub_dir())
+	}
+	if !headless {
 		editor_log(
 			&editor,
 			.Debug,
@@ -221,8 +224,7 @@ editor_buffer :: proc(editor: ^Editor) -> ^Buffer {
 	return &editor.buffers[editor.current]
 }
 
-editor_set_language :: proc(editor: ^Editor, lang: Language) {
-	b := editor_buffer(editor)
+editor_set_language :: proc(editor: ^Editor, b: ^Buffer, lang: Language) {
 	if b.language == lang {
 		return
 	}

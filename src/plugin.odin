@@ -27,6 +27,7 @@ Plugin :: struct {
 	main:       string,
 	state:      PluginState,
 	env:        c.int,
+	cfg:        c.int,
 	load_ms:    f64,
 	last_error: string,
 }
@@ -49,6 +50,7 @@ Plugins :: struct {
 	init_ms:  f64,
 	loading:  bool,
 	config_override: Maybe(json.Object),
+	edit:     PluginEdit,
 }
 
 PluginEntry :: struct {
@@ -249,6 +251,7 @@ plugins_add :: proc(p: ^Plugins, pl: Plugin, bundled: bool) -> ^Plugin {
 		dir     = strings.clone(pl.dir),
 		main    = strings.clone(pl.main),
 		env     = lua.NOREF,
+		cfg     = lua.NOREF,
 	})
 	return &p.list[len(p.list) - 1]
 }
@@ -458,18 +461,13 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.env)
 		pl.env = lua.NOREF
 	}
+	if pl.cfg != lua.NOREF {
+		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.cfg)
+		pl.cfg = lua.NOREF
+	}
 	// Twice: a __gc object survives one cycle and its closure keeps the env alive.
 	lua.gc(p.L, .COLLECT)
 	lua.gc(p.L, .COLLECT)
-}
-
-@(private = "file")
-qed_api := [?]lua.L_Reg {
-	{"log", qed_log},
-	{"message", qed_message},
-	{"command", qed_command},
-	{"run", qed_run},
-	{nil, nil},
 }
 
 plugin_env_create :: proc(L: ^lua.State, pl: ^Plugin) {
@@ -480,9 +478,7 @@ plugin_env_create :: proc(L: ^lua.State, pl: ^Plugin) {
 	lua.setfield(L, -2, "__index")
 	lua.setmetatable(L, env)
 
-	lua.newtable(L)
-	lua.pushodinstring(L, pl.name)
-	lua.L_setfuncs(L, raw_data(qed_api[:]), 1)
+	plugin_qed_push(L, pl.name)
 	lua.setfield(L, env, "qed")
 
 	lua.pushodinstring(L, pl.name)
@@ -880,13 +876,15 @@ plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, filetree: bool)
 }
 
 plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
-	lua.createtable(L, 0, 3)
+	lua.createtable(L, 0, 4)
 	lua.pushodinstring(L, editor.working_root)
 	lua.setfield(L, -2, "root")
 	if editor.welcome || len(editor.buffers) == 0 {
 		return
 	}
 	b := editor_buffer(editor)
+	lua.pushinteger(L, lua.Integer(b.id))
+	lua.setfield(L, -2, "buf")
 	lua.pushodinstring(L, b.path)
 	lua.setfield(L, -2, "path")
 	lua.pushodinstring(L, LANGUAGES[b.language].name)
@@ -1064,6 +1062,11 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	lua.pushodinstring(L, "enabled")
 	lua.pushnil(L)
 	lua.rawset(L, cfg)
+	if pl.cfg != lua.NOREF {
+		lua.L_unref(L, lua.REGISTRYINDEX, pl.cfg)
+	}
+	plugin_table_copy(L, cfg)
+	pl.cfg = lua.L_ref(L, lua.REGISTRYINDEX)
 	if len(unknown) > 0 {
 		slice.sort(unknown[:])
 		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring unknown %s", strings.join(unknown[:], ", ", context.temp_allocator)))

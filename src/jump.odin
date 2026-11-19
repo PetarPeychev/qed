@@ -39,6 +39,9 @@ jump_record :: proc(editor: ^Editor, origin: Jump) {
 		append(&jl.entries, Jump{strings.clone(origin.path), origin.row, origin.col})
 		jl.index = 0
 	}
+	if cur := jl.entries[jl.index]; cur.path == dest.path && cur.row == dest.row && cur.col == dest.col {
+		return
+	}
 
 	row_delta := dest.row - origin.row
 	if row_delta < 0 {

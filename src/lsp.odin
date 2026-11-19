@@ -659,7 +659,7 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 				lsp.sync_kind = lsp_sync_kind(obj)
 				lsp_parse_caps(lsp, obj)
 				lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
-				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}}}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE))
+				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}},"Lua":%s}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE, lsp_config_lua()))
 				editor_log(editor, .Debug, "LSP", fmt.tprintf("%s initialized (%s)", lsp_display_name(lsp.server), lsp_caps_summary(lsp)))
 				return true
 			}
@@ -679,8 +679,14 @@ lsp_config_for_section :: proc(section: string) -> string {
 		return fmt.tprintf(`{{"analysis":{{"diagnosticMode":"%s"}}}}`, LSP_DIAGNOSTIC_MODE)
 	case "python.analysis", "basedpyright.analysis", "pyright.analysis":
 		return fmt.tprintf(`{{"diagnosticMode":"%s"}}`, LSP_DIAGNOSTIC_MODE)
+	case "Lua":
+		return lsp_config_lua()
 	}
 	return "null"
+}
+
+lsp_config_lua :: proc() -> string {
+	return fmt.tprintf(`{{"runtime":{{"version":"Lua 5.4"}},"workspace":{{"library":[%s]}},"diagnostics":{{"globals":["qed"]}}}}`, lsp_json_string(plugin_stub_dir()))
 }
 
 lsp_caps_summary :: proc(lsp: ^Lsp) -> string {
