@@ -145,6 +145,7 @@ overlay_list_mouse :: proc(
 	field: ^TextField,
 	close: proc(editor: ^Editor),
 	prefix := "> ",
+	prompt_w := 0,
 ) -> (idx: int, activate: bool) {
 	#partial switch ev.key {
 	case .Mouse_Wheel_Up:
@@ -160,7 +161,10 @@ overlay_list_mouse :: proc(
 			return -1, false
 		}
 		if int(ev.y) == lay.inner.y {
-			overlay_prompt_mouse(field, lay.inner.x + 1, lay.inner.y, lay.inner.w - 2, ev, prefix)
+			w := prompt_w if prompt_w > 0 else lay.inner.w - 2
+			if int(ev.x) < lay.inner.x + 1 + w {
+				overlay_prompt_mouse(field, lay.inner.x + 1, lay.inner.y, w, ev, prefix)
+			}
 			return -1, false
 		}
 		off := overlay_row_off(ev, Rect{lay.inner.x, lay.body_top, lay.left_w, lay.body_h})

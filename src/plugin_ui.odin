@@ -40,6 +40,7 @@ PluginUi :: struct {
 	command:    u64,
 	hint:       string,
 	more:       bool,
+	accept:     bool,
 	multi:      bool,
 	paths:      bool,
 	anchor:     Maybe(int),
@@ -93,7 +94,7 @@ plugin_ui_release :: proc(p: ^Plugins) {
 	ui.title, ui.text, ui.owner, ui.hint = "", "", "", ""
 	ui.items_ref, ui.change_ref, ui.change_task = 0, 0, 0
 	ui.query_ref, ui.handle_ref, ui.query_task, ui.command = 0, 0, 0, 0
-	ui.active, ui.done, ui.ok, ui.multi, ui.paths, ui.query_due, ui.more = false, false, false, false, false, false, false
+	ui.active, ui.done, ui.ok, ui.multi, ui.paths, ui.query_due, ui.more, ui.accept = false, false, false, false, false, false, false, false
 	ui.anchor = nil
 	ui.id = 0
 }
@@ -126,10 +127,11 @@ plugin_ui_due :: proc(p: ^Plugins) -> bool {
 	if !ui.active || ui.kind != .Pick || ui.query_ref == 0 {
 		return false
 	}
-	return ui.query_due || (len(ui.matches) > 0 && ui.matches[ui.selected] != ui.notified)
+	return ui.query_due || ui.accept || (len(ui.matches) > 0 && ui.matches[ui.selected] != ui.notified)
 }
 
 plugin_ui_query_touch :: proc(ui: ^PluginUi) {
+	ui.accept = false
 	ui.query_due = true
 	ui.query_at = time.tick_add(time.tick_now(), PLUGIN_QUERY_DEBOUNCE_MS * time.Millisecond)
 }
@@ -150,6 +152,10 @@ plugin_ui_pump :: proc(editor: ^Editor) {
 		}
 	}
 	plugin_ui_changed(editor)
+	if ui = &editor.plugins.ui; ui.accept && !ui.query_due && !plugin_task_alive(&editor.plugins, ui.query_task) {
+		ui.accept = false
+		plugin_ui_accept(editor)
+	}
 }
 
 plugin_pane_close :: proc(p: ^Plugins) {
@@ -255,6 +261,9 @@ plugin_ui_resolve :: proc(editor: ^Editor, ok: bool) {
 	ui.active = false
 	ui.done = true
 	ui.ok = ok
+	if ui.kind == .Pick && ui.query_ref != 0 {
+		ui.text = strings.clone(textfield_str(&ui.field))
+	}
 	if ok {
 		switch ui.kind {
 		case .Pick:
@@ -287,6 +296,11 @@ plugin_ui_resolve :: proc(editor: ^Editor, ok: bool) {
 
 plugin_ui_accept :: proc(editor: ^Editor) {
 	ui := &editor.plugins.ui
+	if ui.kind == .Pick && ui.query_ref != 0 && (ui.query_due || plugin_task_alive(&editor.plugins, ui.query_task)) {
+		ui.accept = true
+		ui.query_at = time.tick_now()
+		return
+	}
 	if ui.kind == .Pick && len(ui.matches) == 0 {
 		return
 	}
@@ -295,6 +309,17 @@ plugin_ui_accept :: proc(editor: ^Editor) {
 
 plugin_ui_cancel :: proc(editor: ^Editor) {
 	plugin_ui_resolve(editor, false)
+}
+
+plugin_ui_count :: proc(ui: ^PluginUi, lay: OverlayLayout) -> (count: string, prompt_w: int) {
+	if n := len(ui.matches); n > 0 {
+		count = fmt.tprintf("%d+" if ui.more else "%d", n)
+	}
+	prompt_w = lay.left_w - 1
+	if count != "" {
+		prompt_w = max(1, prompt_w - len(count) - 1)
+	}
+	return
 }
 
 plugin_ui_chord :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
@@ -386,7 +411,8 @@ plugin_ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 			if lay.preview && preview_wheel(&ui.preview, ev, {lay.right_x, lay.inner.y, lay.right_w, lay.inner.h}, lay.inner.h) {
 				return
 			}
-			idx, activate := overlay_list_mouse(editor, ev, lay, len(ui.matches), &ui.scroll, &ui.field, plugin_ui_cancel, plugin_ui_prefix(ui))
+			_, prompt_w := plugin_ui_count(ui, lay)
+			idx, activate := overlay_list_mouse(editor, ev, lay, len(ui.matches), &ui.scroll, &ui.field, plugin_ui_cancel, plugin_ui_prefix(ui), prompt_w)
 			if idx < 0 {
 				return
 			}
@@ -429,13 +455,8 @@ plugin_ui_render :: proc(editor: ^Editor) {
 		}
 		lay := overlay_layout(editor, .Code)
 		inner := pane_draw_box(lay.box)
-		count := ""
-		if n := len(ui.matches); n > 0 {
-			count = fmt.tprintf("%d+" if ui.more else "%d", n)
-		}
-		prompt_w := lay.left_w - 1
+		count, prompt_w := plugin_ui_count(ui, lay)
 		if count != "" {
-			prompt_w = max(1, prompt_w - len(count) - 1)
 			pane_text(lay.div_x - len(count), inner.y, len(count), count, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 		}
 		overlay_prompt_render(inner.x + 1, inner.y, prompt_w, &ui.field, plugin_ui_prefix(ui))
@@ -572,11 +593,21 @@ qed_ui_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int 
 	context = entry.ctx
 	p := &entry.editor.plugins
 	ui := &p.ui
-	if ui.id != u64(ctx) || !ui.done || !ui.ok {
+	if ui.id != u64(ctx) || !ui.done {
 		lua.pushnil(L)
 		return 1
 	}
 	lua.L_checkstack(L, 4, "ui result")
+	query := ui.kind == .Pick && ui.query_ref != 0
+	if !ui.ok {
+		lua.pushnil(L)
+		if !query {
+			return 1
+		}
+		lua.pushnil(L)
+		lua.pushodinstring(L, ui.text)
+		return 3
+	}
 	switch ui.kind {
 	case .Pick:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(ui.items_ref))
@@ -595,8 +626,12 @@ qed_ui_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int 
 	case .Confirm:
 		lua.pushinteger(L, lua.Integer(ui.result[0] + 1))
 	}
+	if query {
+		lua.pushnil(L)
+		lua.pushodinstring(L, ui.text)
+	}
 	plugin_ui_clear(entry.editor)
-	return 1
+	return 3 if query else 1
 }
 
 api_pick_items :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> []PluginPickItem {
@@ -708,7 +743,7 @@ qed_pick :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	textfield_set(&ui.field, text)
 	textfield_select_all(&ui.field)
-	ui.fuzzy = fuzzy_begin(ui.labels[:])
+	ui.fuzzy = fuzzy_begin(ui.labels[:] if query_t != .FUNCTION else nil)
 	fuzzy_list_refilter(&ui.list)
 	if query_t == .FUNCTION {
 		lua.getfield(L, 1, "on_query")

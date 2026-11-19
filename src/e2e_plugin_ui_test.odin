@@ -71,7 +71,7 @@ return {setup = function()
 		show(tostring(ok) .. " " .. tostring(err))
 	end)
 	qed.command{name = "UI: Query", key = "Alt+q", run = function()
-		local r, err = qed.pick{query = "ab", on_change = function(it) qed.log("info", "chg " .. it.label) end, on_query = function(q, picker)
+		local r, err, q = qed.pick{query = "ab", on_change = function(it) qed.log("info", "chg " .. it.label) end, on_query = function(q, picker)
 			qed.log("info", "query " .. q)
 			last = picker
 			if q == "slow" then
@@ -84,7 +84,7 @@ return {setup = function()
 			end
 			picker:set({{label = q .. "1"}, {label = q .. "2"}, {label = q .. "3"}}, {selected = 2, more = q == "more"})
 		end}
-		show(r and r.label or err)
+		show(r and r.label or err or ("q " .. tostring(q)))
 	end}
 	cmd("UI: Stale", function() show(last:set({"x"})) end)
 	cmd("UI: Query Static", function()
@@ -591,7 +591,7 @@ e2e_plugin_ui_query_hint_more :: proc(t: ^testing.T) {
 	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
 	testing.expect_value(t, ui_selected(&e), "morex2")
 	e2e_key(&e, .Esc)
-	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, e.ed.message, "q morex")
 }
 
 @(test)
@@ -613,7 +613,7 @@ e2e_plugin_ui_query_kills_search :: proc(t: ^testing.T) {
 	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
 	testing.expect_value(t, len(p.procs), 1)
 	e2e_key(&e, .Esc)
-	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, e.ed.message, "q slow")
 	testing.expect_value(t, len(p.procs), 0)
 	testing.expect_value(t, len(p.tasks), 0)
 	testing.expect(t, !ui_logged(&e, "slow done"), "the killed search never resumes")
@@ -653,7 +653,7 @@ e2e_plugin_ui_query_busy_chord :: proc(t: ^testing.T) {
 	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
 	nav_alt(&e, 'q')
 	testing.expect(t, !e.ed.plugins.ui.active, "the opening command's chord closes it")
-	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, e.ed.message, "q slow")
 	testing.expect_value(t, len(e.ed.plugins.procs), 0)
 
 	ui_run(t, &e, "UI: Query Static")
@@ -663,4 +663,54 @@ e2e_plugin_ui_query_busy_chord :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(ui.matches), 1)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "gamma")
+}
+
+@(test)
+e2e_plugin_ui_query_fast_close :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	ui_run(t, &e, "UI: Query")
+	e2e_type(&e, "late")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "q late")
+	testing.expect_value(t, ui_count(&e, "query late"), 0)
+
+	ui_run(t, &e, "UI: Query")
+	ui_pump(&e, 5)
+	e2e_type(&e, "xyz")
+	e2e_key(&e, .Enter)
+	ui := &e.ed.plugins.ui
+	testing.expect(t, ui.active, "Enter waits for the due query")
+	ui_pump(&e, 20)
+	testing.expect(t, !ui.active, "the accept lands once the query set its items")
+	testing.expect_value(t, ui_count(&e, "query xyz"), 1)
+	testing.expect_value(t, e.ed.message, "xyz2")
+
+	ui_run(t, &e, "UI: Query")
+	ui_pump(&e, 5)
+	e2e_type(&e, "slow")
+	e2e_key(&e, .Enter)
+	e2e_type(&e, "er")
+	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	testing.expect(t, ui.active, "typing after Enter drops the pending accept")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, len(e.ed.plugins.procs), 0)
+}
+
+@(test)
+e2e_plugin_ui_query_prompt_click :: proc(t: ^testing.T) {
+	e, _ := ui_start(t)
+	defer e2e_stop(&e)
+	e2e_resize(&e, 160, 40)
+	ui_run(t, &e, "UI: Query")
+	ui_pump(&e, 5)
+	ui := &e.ed.plugins.ui
+	lay := overlay_layout(&e.ed, .Code)
+	testing.expect(t, lay.preview, "wide enough for the preview")
+	textfield_set(&ui.field, "abcdef")
+	e2e_mouse(&e, lay.right_x + 4, lay.inner.y)
+	testing.expect_value(t, ui.field.caret, 6)
+	e2e_mouse(&e, lay.inner.x + 1 + 2 + 3, lay.inner.y)
+	testing.expect_value(t, ui.field.caret, 3)
+	e2e_key(&e, .Esc)
 }

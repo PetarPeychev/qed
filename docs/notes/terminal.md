@@ -64,7 +64,7 @@ request redraw. Extend the loop's fast-poll gate
 Register in `editor_overlays()` as `{&editor.terminal.active, term_dispatch, term_render}`.
 `term_render` draws the box via `pane_draw_box(overlay_layout(...).box)`, then walks
 the libvterm screen cells and emits `tb2.set_cell` per cell with its fg/bg/attrs —
-same shape as the syntax-highlighted preview in `projsearch_render`, but colors come
+same shape as the syntax-highlighted preview in `plugin_ui_render`, but colors come
 from `vterm_screen_get_cell` instead of tree-sitter. Hardware cursor placed at the
 emulator cursor when the pane is focused. Full redraw per event as everywhere else.
 

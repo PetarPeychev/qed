@@ -127,6 +127,33 @@ function T.query_and_selection_persist(t)
 	t.key("Esc")
 end
 
+function T.fast_close_keeps_query(t)
+	if not rg(t) then
+		return
+	end
+	open(t)
+	t.type("typed_fast")
+	t.key("Esc")
+	open(t)
+	t.eq(t.ui().query, "typed_fast", "keystrokes inside the debounce survive the close")
+	t.key("Esc")
+end
+
+function T.dash_scope(t)
+	if not rg(t) then
+		return
+	end
+	write("-dash/f.txt", "needle_xyz in dash")
+	t.key("Alt+f")
+	t.settle()
+	open(t)
+	t.type("needle_xyz")
+	local ui = results(t)
+	t.eq(ui.labels[1], "-dash/f.txt:1  needle_xyz in dash", "a scope path starting with - is a path")
+	t.key("Esc")
+	t.key("Esc")
+end
+
 function T.chord_closes(t)
 	if not rg(t) then
 		return

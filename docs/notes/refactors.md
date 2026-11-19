@@ -97,7 +97,7 @@ the next dialog).
 render / paste shapes differing only in item source and execute. Extract
 `centerpick_key(l, ev, execute, close)` + `centerpick_render(l, labels)` (the
 mouse half, `fuzzy_list_center_mouse`, is already shared). Then the same for
-the two-pane pickers (`picker`, `bufswitch`, `linefind`, `projsearch`):
+the two-pane pickers (`picker`, `bufswitch`, `linefind`, the plugin path picker):
 their dispatch_key bodies are the same Esc/Enter/arrows/refilter/preview
 ritual around per-picker callbacks. Payoff is future panes — TODO already
 lists find-references and symbol-search pickers; after this each costs ~30

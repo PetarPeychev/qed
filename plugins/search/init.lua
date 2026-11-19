@@ -1,11 +1,15 @@
 local MAX = 500
+local MAX_COLUMNS = 300
 
 local min_query = 2
 local query, selected = "", 1
 local has_rg = false
 
 local function rg_ready()
-	has_rg = has_rg or qed.spawn{cmd = "command -v rg"}.code == 0
+	if not has_rg then
+		local r = qed.spawn{cmd = "command -v rg"}
+		has_rg = r ~= nil and r.code == 0
+	end
 	return has_rg
 end
 
@@ -26,16 +30,20 @@ local function parse(out)
 		end
 		return a.col < b.col
 	end)
-	local items = {}
-	for i, h in ipairs(hits) do
-		items[i] = {
-			label = ("%s:%d  %s"):format(h.file, h.row, h.text:match("^[ \t]*(.*)")),
-			path = qed.path.join(qed.root(), h.file),
-			pos = {row = h.row, col = h.col},
-			n = i,
-		}
+	local items, prev = {}, nil
+	for _, h in ipairs(hits) do
+		local key = h.file .. ":" .. h.row
+		if key ~= prev then
+			prev = key
+			items[#items + 1] = {
+				label = ("%s:%d  %s"):format(h.file, h.row, h.text:match("^[ \t]*(.*)")),
+				path = qed.path.join(qed.root(), h.file),
+				pos = {row = h.row, col = h.col},
+				n = #items + 1,
+			}
+		end
 	end
-	return items
+	return items, #hits
 end
 
 local function search(ctx, scope)
@@ -52,8 +60,11 @@ local function search(ctx, scope)
 	for _, path in ipairs(scope or {}) do
 		args = args .. " " .. qed.shell_quote(path)
 	end
+	if args ~= "" then
+		args = " --" .. args
+	end
 	local first = true
-	local item = qed.pick{
+	local item, _, last = qed.pick{
 		query = start,
 		on_change = function(it)
 			selected = it.n
@@ -68,11 +79,23 @@ local function search(ctx, scope)
 				return
 			end
 			-- stdin is the spawn's empty body; without </dev/null rg searches it instead of the tree
-			local cmd = ("rg --vimgrep -F -S -e %s%s </dev/null 2>/dev/null | head -n %d"):format(qed.shell_quote(text), args, MAX)
-			local items = parse(qed.spawn{cmd = cmd}.stdout)
-			picker:set(items, {selected = pick, more = #items >= MAX})
+			local cmd = ("rg --vimgrep -F -S -M %d --max-columns-preview -e %s%s </dev/null 2>/dev/null | head -n %d"):format(MAX_COLUMNS, qed.shell_quote(text), args, MAX)
+			local r, err = qed.spawn{cmd = cmd}
+			if not r then
+				selected = 1
+				picker:set({}, {hint = "Search failed: " .. err})
+				return
+			end
+			local items, lines = parse(r.stdout)
+			if #items == 0 then
+				selected = 1
+			end
+			picker:set(items, {selected = pick, more = lines >= MAX})
 		end,
 	}
+	if last then
+		query = last
+	end
 	if item then
 		qed.jump(item.path, item.pos)
 	end

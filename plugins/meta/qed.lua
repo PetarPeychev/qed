@@ -223,9 +223,11 @@ function Picker:set(items, opts) end
 
 ---Waits for a fuzzy pick. Returns the chosen item (the value passed in), or `nil` on Esc.
 ---The opening command's chord closes it like Esc. Returns `nil, "busy"` when another overlay is open.
+---With `on_query`, a third value is the final query text (also on Esc), and Enter while a query is due or running waits for its `set`.
 ---@param spec qed.PickSpec
 ---@return string|qed.PickItem|(string|qed.PickItem)[]|nil
 ---@return "busy"|nil err
+---@return string|nil query
 function qed.pick(spec) end
 
 ---Waits for a line of text. `nil` on Esc, `nil, "busy"` when another overlay is open.

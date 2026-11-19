@@ -424,7 +424,8 @@ started at the end of `editor_init`. Invariants the code can't show:
 - **Query-driven picks** (`on_query`): typing only marks `query_due`; `plugin_ui_pump`
   (in `plugin_pump`, joined to `plugin_busy` and the poll timeout) starts the handler as a
   task once `PLUGIN_QUERY_DEBOUNCE_MS` passed (at open, immediately), killing the previous
-  one and the `qed.spawn` it waits on. `picker:set` swaps `items_ref` and the item list,
+  one and the `qed.spawn` it waits on. Enter while a query is due or running sets `accept`
+  (flushing the debounce); the pump accepts once the task ends. `picker:set` swaps `items_ref` and the item list,
   clears `notified`, and the pump fires `on_change` for the new highlight. Path pickers
   render the left-half prompt with the count by the divider and a full-height preview.
 - `qed.parse_locations` (pure, `plugin_api.odin`) turns `file:row[:col][: msg]`
