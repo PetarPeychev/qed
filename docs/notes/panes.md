@@ -342,7 +342,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 
 | Step | Scope | Closes / validates |
 |---|---|---|
-| M0 | Odin `Pane`, stack, kinds, generic render/key/mouse/paste. Port the 4 core dialogs and `qed.confirm/prompt` onto it as children. | "Collapse the four dialogs" TODO; layout, stack, children |
+| M0 (done) | Odin `Pane`, stack, kinds, generic render/key/mouse/paste. Port the 4 core dialogs and `qed.confirm/prompt` onto it as children. | "Collapse the four dialogs" TODO; layout, stack, children |
 | M1 | `qed.ui.open`, queued events, prelude `qed.pick/prompt/confirm/pane`, exclusive persistence by `id`, one split layout (D3). Port phase 12 search to a `query` field + `append` (D9). | pane swap TODO; events through flush, split + preview |
 | M2 | Palette core-built on `qed.command_list`. Cwd picker becomes a Lua plugin on `qed.fs.dirs` + a `path` field (needs `qed.set_root` and an unsaved-outside-root query). | "Collapse the centered pickers" TODO; handles, `path` field, child confirm |
 | M3 | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
@@ -353,6 +353,20 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M8 | Remove the module system (`modules.*`, `module_enabled`). | |
 | M9 | Review every bundled plugin's config keys (existing TODO). | |
 | later | Inspect, hover/diag/completion on `cursor`/`corner`; terminal chrome on a `Term` body (core). | shared renderer only |
+
+### M0 as built
+
+How the stack and the old `Overlay` path coexist is in DESIGN.md (Panes). Deviations from §3/§8:
+
+| Area | Built | Why |
+|---|---|---|
+| Struct | `Pane` has only the fields M0 uses (`id`, `owner`, `kind`, `parent`, `size`, `fields`, `text`, `list`, `on`) plus `handle`, `safety`, `over`. `place`, `title`, `tabs`, `footer`, `scope`, `toggle` come with the step that needs them. | No speculative fields. |
+| Ids | `id` is the string name (core: `quit`, `close`, `conflict`, `merge`); `handle` is a per-open `u64` that waits and `parent` use. | `id` keeps its §5 meaning (persisted state); one string can be open twice. |
+| Safety | A `safety` flag on an Exclusive pane, not a fourth kind. Opening one closes nothing; every other pane is inserted below it. | D5 says "always on top"; replacing an open pane would drop a plugin's wait. |
+| Legacy parent | A child over an unported overlay stores the overlay's `active` flag in `over`; `pane_stack_sync` closes it when the overlay closes. An Exclusive pane does not close an open overlay. | Temporary, removed with the last overlay. |
+| Events | `qed.confirm/prompt` still resume their waiter from dispatch (`Plugins.answer`), not through a queue. | The D8 queue lands with `qed.ui.open` in M1. |
+| Nested confirms | The file tree's and cwd picker's confirms stay inside those overlays, through `dialog_*` adapters over the pane procs. | They move with M2 (cwd picker) and M4 (tree). |
+| Dialog text | Built once at open (the quit dialog lists modified buffers at open, not per frame). | Nothing can change it while the dialog has input. |
 
 ## 8. Decisions
 

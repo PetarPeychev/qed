@@ -16,7 +16,7 @@ Non-goals
 - Project-local plugins, sandboxing, trust prompts. Plugins are global and written by Petar.
 - Lua on any render path or on the raw per-keystroke path.
 - A package manager, a versioned API, backwards compatibility.
-- Moving LSP, tree-sitter, the file tree, PTY/vterm into Lua.
+- Moving LSP, tree-sitter, PTY/vterm into Lua. (The file tree moves to Lua in [panes.md](panes.md) M5, on core walk handles.)
 - Threads in Lua, or more than one Lua state.
 
 ## 2. Core vs plugin boundary
@@ -139,19 +139,19 @@ There is deliberately no `key` event.
 | `qed.message(text, level? \| {level?})`, `qed.log(level, text)` | Always attributed to the plugin's display name. Unknown options raise. |
 | ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?, query?, on_query?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout (match count by the divider). `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. `query` is the initial text, fully selected. Esc returns `nil`. |
 | `on_query(query, picker)` | Makes the pick query-driven: no fuzzy filter, list + preview layout, items only from `picker:set(items, {selected?, more?, hint?}) -> live`. Runs as a task at open and `PLUGIN_QUERY_DEBOUNCE_MS` (120) after the query stops changing; core debounces, so no Lua runs per keystroke. Each run kills the previous one with the `qed.spawn` it waits on, and closing or unloading kills the last. `set` replaces the items (`selected` index, `more` shows `N+`, `hint` shows while empty), fires `on_change` for the new highlight and returns false once the picker is closed. `pick` returns the final query as a third value (also on Esc), and Enter while a query is due or running flushes it and accepts once it ends. |
-| ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
-| ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
+| ⏳ `qed.prompt{prompt, text?} -> string \| nil` | A core pane with one input field. |
+| ⏳ `qed.confirm(question, choices?) -> index \| nil` | A core pane (question + action list). |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
-| `qed.filetree.provide{refresh?, preview?, open_deleted?} \| nil -> true \| nil, err` | Claims the Changed tab: one provider, `nil, "taken by <plugin>"` while another holds it; unload or `nil` drops it, and the tab with it. Calling again replaces the callbacks and keeps the status and tab. Callbacks run as queued coroutines (event budget): `refresh()` when the tree wants status (opened, root changed, a tree file operation, or `provide` over an open tree; the `git` plugin also scans at startup, so the first open is instant), `preview(path)` when the Changed tab wants a base, `open_deleted(ctx)` as a tree command on `Enter` over a listed deleted file missing on disk. |
+| `qed.filetree.provide{refresh?, preview?, open_deleted?} \| nil -> true \| nil, err` | Removed in [panes.md](panes.md) M6 (the `git` plugin adds its tab through `filetree` exports). Claims the Changed tab: one provider, `nil, "taken by <plugin>"` while another holds it; unload or `nil` drops it, and the tab with it. Calling again replaces the callbacks and keeps the status and tab. Callbacks run as queued coroutines (event budget): `refresh()` when the tree wants status (opened, root changed, a tree file operation, or `provide` over an open tree; the `git` plugin also scans at startup, so the first open is instant), `preview(path)` when the Changed tab wants a base, `open_deleted(ctx)` as a tree command on `Enter` over a listed deleted file missing on disk. |
 | `qed.filetree.set_status(files, ignored?)` | Replaces the tree status. `files[path] = {mark = "added"\|"modified"\|"deleted", from?, added?, removed?}`; `from` is a rename's old path, `added`/`removed` the `+N -N` sizes. Core propagates marks to ancestor dirs, lists deleted files virtually and hides `ignored` paths unless *Toggle Ignored*. Validated before anything changes. Raises unless the caller is the provider. |
 | `qed.filetree.set_base(path, text \| nil)` | Answers `preview(path)`: the Changed tab previews `path` diffed against `text`, raw bytes (a NUL on either side shows a hexdump; `nil`: plain file). A stale path is ignored; every `set_status` drops the cached base, keeping the old rows up until the re-ask is answered. |
 
-- Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.
+- `qed.confirm`/`qed.prompt` stack as a child over an open pane or overlay; they return `nil, "busy"` only while a core safety dialog (quit, close, conflict) shows. `qed.pick` and `qed.pane` are still one slot each and return `"busy"` while a pane or another overlay is open (the file tree excepted) until [panes.md](panes.md) M1 rebuilds them on `qed.ui.open`.
 - The chord of the command that opened a modal closes it like Esc (the core pane convention).
-- Panes that handle keys (custom key handling, actions) come later. The first consumer would be a locations pane richer than `pick`.
+- Panes that handle keys, events and lists come with `qed.ui.open` ([panes.md](panes.md)).
 
 ### Terminals (`qed.term`)
 Core owns PTY and vterm. Each session has a name.
@@ -326,7 +326,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 11 | File tree status provider (`qed.filetree.provide{refresh, preview, open_deleted}`, `set_status`, `set_base`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changed*. | minor |
 | 12 | Query-driven `qed.pick` (`query`, `on_query`, `picker:set`), the opening command's chord closes a modal, `ctx.files` expands scoped-tab dirs. Project search moves to `plugins/search` (*Find in Files* and the tree's *Search*); `projsearch.odin` and `projsearch_min_query` (now `plugins.search.min_query`) are gone. | minor |
 | 13 | `qed.meta{display_name}`, display names everywhere a plugin is named, automatic `<display name>: ` command prefix, `qed.message` without `source`, keybinds under `plugins.<id>.keybinds` (plugin binds leave the top-level `keybinds`), the `Lua` LSP settings go out only under the config dir, `modules.lsp` becomes `lsp` and `.Lsp` leaves the `Module` enum, `pickers` becomes `settings` (`plugins.settings`), the `tasks` plugin is dropped (`plugins.tasks`, its picker and `tasks N` segment; `qed.term` stays). | minor |
-| later | Interactive panes, conflicts, aiedit, fim, `qed --test-plugin`. | |
+| later | Interactive panes, conflicts, aiedit, fim: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions
 

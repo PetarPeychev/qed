@@ -73,6 +73,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Phase 11: file tree status provider (`qed.filetree`), Git tab moves to the `git` plugin, `.Git` module gone.
 - [ ] Phase 12: query-driven `qed.pick` (`query`, `on_query`, `picker:set`), project search moves to the `search` plugin.
 - [ ] Phase 13: `qed.meta` display names, automatic command prefix, `plugins.<id>.keybinds`, message attribution, Lua settings scoped to the config dir, `modules.lsp` becomes `lsp`, `pickers` becomes `settings`, `tasks` dropped.
+- [ ] Pane model M0: Odin `Pane` + stack + kinds; quit/close/conflict/merge dialogs and `qed.confirm`/`qed.prompt` on it ([notes/panes.md](notes/panes.md) §7).
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred
@@ -137,7 +138,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Refactors
 
-- [ ] Collapse the four dialogs (quit/close/conflict/merge) into one `Dialog` primitive.
 - [ ] Collapse the centered pickers (palette/langpick/indentpick) + shared two-pane picker key dispatch.
 - [ ] Unify the file-tree and Message Log (`Alt+l`) panes under one generic selectable-list model — fuzzy filter/search, scoped `Ctrl+P` command palette, shared multi-select + filter toggles (the file-tree hub model applied to the log pane).
 - [ ] `buffer_intel_reset` choke point for the language-change / repath / reload teardown dance.

@@ -235,7 +235,7 @@ local Picker = {}
 function Picker:set(items, opts) end
 
 ---Waits for a fuzzy pick. Returns the chosen item (the value passed in), or `nil` on Esc.
----The opening command's chord closes it like Esc. Returns `nil, "busy"` when another overlay is open.
+---The opening command's chord closes it like Esc. Returns `nil, "busy"` while another pane or overlay is open (the file tree excepted).
 ---With `on_query`, a third value is the final query text (also on Esc), and Enter while a query is due or running waits for its `set`.
 ---@param spec qed.PickSpec
 ---@return string|qed.PickItem|(string|qed.PickItem)[]|nil
@@ -243,13 +243,15 @@ function Picker:set(items, opts) end
 ---@return string|nil query
 function qed.pick(spec) end
 
----Waits for a line of text. `nil` on Esc, `nil, "busy"` when another overlay is open.
+---Waits for a line of text. `nil` on Esc. Opens over an open pane (Esc returns to it; closing that pane closes this one with `nil`).
+---Returns `nil, "busy"` only while a quit, close or conflict dialog shows.
 ---@param spec {prompt: string, text?: string}
 ---@return string|nil
 ---@return "busy"|nil err
 function qed.prompt(spec) end
 
----Waits for a choice. Returns its 1-based index, `nil` on Esc, `nil, "busy"` when another overlay is open.
+---Waits for a choice. Returns its 1-based index, `nil` on Esc. Opens over an open pane (Esc returns to it; closing that pane closes this one with `nil`).
+---Returns `nil, "busy"` only while a quit, close or conflict dialog shows.
 ---@param question string
 ---@param choices? string[] defaults to `{"Yes", "No"}`
 ---@return integer|nil
@@ -268,7 +270,7 @@ function Pane:set(lines) end
 ---Closes the pane if it is still the one showing; otherwise a no-op.
 function Pane:close() end
 
----Read-only floating pane (arrows/wheel scroll, Esc closes). `nil, "busy"` when another overlay is open.
+---Read-only floating pane (arrows/wheel scroll, Esc closes). `nil, "busy"` while another pane or overlay is open.
 ---@param spec {title: string, lines: qed.PaneLine[], footer?: string}
 ---@return qed.Pane|nil
 ---@return "busy"|nil err
