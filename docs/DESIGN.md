@@ -425,8 +425,10 @@ started at the end of `editor_init`. Invariants the code can't show:
   (the plugin overlay sits above it and takes the keys). `on_change` runs as its own
   task whenever the highlighted item changes (never at open); the previous one is
   killed on each change and on resolve, so a waiting handler can't apply a stale
-  preview. `qed.pane` is a non-waiting read-only overlay (`Plugins.pane`).
-  Unloading the owner closes both.
+  preview. `qed.locations` parses `file:row[:col][: msg]` lines in Odin into a
+  path pick (`PluginUi.locations`) whose continuation opens and jumps (row/col
+  clamped, a col inside a UTF-8 sequence snaps back). `qed.pane` is a non-waiting
+  read-only overlay (`Plugins.pane`). Unloading the owner closes both.
 - `qed.theme.set` without `persist` only changes what is shown (`Editor.theme_shown`;
   setting the configured theme clears it). A config reload keeps the shown theme
   while a plugin modal is open, else drops it. Unloading the plugin that set it
@@ -659,9 +661,9 @@ defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable g
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`git` (file tree git plumbing, `g_diff_base`) · `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
+`git` (file tree git plumbing, `g_diff_base`) · `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`locations`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `commands/`: user shell commands from `plugins.commands.list`, see CONFIG.md; `git/`: diff base fetch, stat poll, *Git: Set Diff Base*, *Restore File*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `tasks/`: *Tasks* picker and status segment; `git/`: diff base fetch, stat poll, *Git: Set Diff Base*, *Restore File*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -880,11 +882,8 @@ push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismis
 coexists with the LSP popup (`Tab` ghost / `Enter` menu, popup floats above a multi-line ghost);
 `modules.ai.completion_enabled` + *AI: Toggle Inline Completion*.
 
-User commands (`commands` plugin, `plugins.commands.list`): shell strings with quoted
-placeholders + `QED_*` env, stdin from selection/buffer, save-before, `when` gates
-(pane, language, glob, selection, git, exists), file-tree commands over the selection,
-outputs to message / log pane / replace / insert / clipboard / terminal / task
-session / locations picker, *Commands: Cancel*, hot re-registered on config save.
+User commands are `qed.command` calls in a user plugin; `qed.locations` turns
+compiler/grep output into a picker that jumps to the chosen location.
 
 Tasks (`tasks` plugin, `plugins.tasks.list`): background terminal sessions;
 the *Tasks* picker lists every session with its state (running / exit code) and

@@ -63,11 +63,12 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Phase 2: coroutine scheduler, `spawn`/`spawn_bg`, timers, `plugin_pump`, budgets, events with hook timeouts, `test.lua` runner.
 - [ ] Phase 3: port `format` to a bundled plugin, delete the Odin formatter path.
 - [ ] Phase 4: `pick`/`prompt`/`confirm`/`pane`, port the pickers.
-- [ ] Phase 5: `commands` plugin, file-tree `ctx.file/files`.
+- [ ] Phase 5: `commands` plugin (dropped in phase 10), file-tree `ctx.file/files`.
 - [ ] Phase 6: hot reload, live enable/disable, full Plugins pane.
 - [ ] Phase 7: N terminal sessions, `qed.term`, `tasks` plugin.
 - [ ] Phase 8: decoration store, `status.set`, diff-base primitive.
 - [ ] Phase 9: port `git`, `modules.git` becomes `plugins.git`.
+- [ ] Phase 10: drop the `commands` plugin, add `qed.locations`.
 - [ ] Git Tab to Lua: drop the interim seams (`g_git_loaded` + `"git"` name checks in plugin.odin, `qed.git.set_base`, `qed.filetree.refresh`, filetree `Enter` running "Restore File" by name).
 
 ## Post-1.0 — deferred

@@ -4,7 +4,7 @@ Every qed tunable, in one place. Defaults are compiled into the binary from two
 files, which are the canonical, always-current reference:
 
 - [`config/config.json`](../config/config.json): knobs, keybinds,
-  per-language LSP wiring, and bundled plugin config (formatters, user commands).
+  per-language LSP wiring, and bundled plugin config (formatters, tasks).
 - [`config/themes/default.json`](../config/themes/default.json): the complete
   color, icon, and tint palette every theme overlays.
 
@@ -195,7 +195,7 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log,
 A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
 like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
 warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under `plugins.<name>`
-reach the plugin through its `config_changed` handler (`format` and `commands` apply
+reach the plugin through its `config_changed` handler (`format` and `tasks` apply
 them live, keeping runtime toggles); a plugin without one is reloaded. Adding,
 removing or editing a file under `plugins/` reloads just that plugin.
 *Set Theme*, *Set Language* and *Change Indentation* come from the bundled `pickers`
@@ -218,80 +218,31 @@ and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to t
 |-----|---------|---------|
 | `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Git** tab, *Git: Set Diff Base*, *Restore File*, and merge-conflict highlighting/resolve. |
 
-## User commands
+## Writing your own commands
 
-Shell commands you define become palette commands, owned by the bundled
-`commands` plugin. `plugins.commands.list` is a list (a user list replaces the
-default empty one) and hot-reloads: commands are re-registered on save.
+A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool and
+`qed.locations` turns `file:line:col: msg` output into a picker that jumps to the
+chosen line. The API reference with types is `plugins/meta/qed.lua`.
 
-| Entry key | Default | Meaning |
-|-----------|---------|---------|
-| `name` | required | Palette name. A builtin's name is refused with a warning (builtins win), as is a duplicate. |
-| `run` | required | Shell string run with `sh -c`. Placeholders below are substituted, each shell-quoted: don't put them inside quotes (`'{file}'` is refused). |
-| `output` | `"message"` | Where the result goes, see below. |
-| `stdin` | `"none"` | `"none"`, `"selection"`, `"buffer"`, or `"selection-or-buffer"`. |
-| `save` | `"current"` (`"none"` for replace/insert/clipboard) | Save before running: `"none"`, `"current"` (the current buffer if modified; editor commands only), or `"all"`. A failed save aborts the run. |
-| `cwd` | working root | Directory to run in; placeholders allowed (unquoted), relative to the root. |
-| `env` | `{}` | Extra environment, `{"NAME": "value"}`; placeholders allowed (unquoted). |
-| `key` | none | Default keybind; `keybinds["<name>"]` overrides it. |
-| `when` | `{}` | Conditions, all of which must hold; otherwise the command is hidden and its key does nothing. |
-
-Placeholders: `{file}` (absolute path; in the file tree the entry under the
-cursor), `{files}` (file tree: every selected path; editor: `{file}`), `{dir}`
-(the file's directory, or the entry itself when it is a directory), `{root}`,
-`{name}`, `{stem}`, `{ext}` (no dot), `{line}`, `{col}` (1-based; `col` is a
-byte column), `{selection}`, `{word}` (word under the cursor), `{base}` (the
-diff base ref, `HEAD` by default; a merge base resolves to its commit). The same
-values are exported as `QED_FILE`, `QED_FILES` (newline-separated), `QED_DIR`,
-`QED_ROOT`, `QED_NAME`, `QED_STEM`, `QED_EXT`, `QED_LINE`, `QED_COL`,
-`QED_SELECTION`, `QED_WORD`, `QED_BASE`; a value over 64 KiB is left out (pass
-large text on `stdin`), and a substituted command over 128 KiB fails with an error.
-Unknown `{words}` are left as is. In the file tree there is no selection, cursor
-or word; outside it, a command using `{line}`, `{col}`, `{selection}` or `{word}`
-needs a buffer (hidden on the welcome screen).
-
-| `output` | Result |
-|----------|--------|
-| `message` | First stdout line on the message line (`done` if none). On failure: exit code and the first stderr line. |
-| `log` | All output in a read-only pane (stderr in the error color), exit code in the footer. |
-| `replace` | Replaces the selection, or the whole buffer without one, as one undo step. Skipped if the buffer changed while it ran; untouched on failure. A trailing newline the input lacked is dropped. |
-| `insert` | Inserts stdout at the cursor (one trailing newline dropped). |
-| `clipboard` | Copies stdout (one trailing newline dropped). |
-| `terminal` | Types the command into the terminal pane's shell (clearing any partial input) and shows it. Refused while a program runs in the terminal. `stdin`/`env` do not apply; with `cwd` it runs as `(cd dir && cmd)`. |
-| `task` | Runs the command in the background as a terminal session named `cmd:<name>` (see [Tasks](#tasks)); running it again while it runs restarts it. The exit is reported on the message line. `stdin` does not apply. |
-| `locations` | Parses `file:line:col`, `file:line` and either followed by `: msg` (stdout and stderr) into a picker with a file preview; Enter jumps. Lines naming missing files are skipped. No locations is a success even on a non-zero exit (grep), unless stderr has output. |
-
-| `when` key | Holds when |
-|------------|------------|
-| `pane` | `"editor"` (default), `"filetree"`, or a list of both. `replace`, `insert` and `stdin` need the editor. |
-| `language` | The current buffer's language is one of the list (editor only). |
-| `glob` | The file (in the file tree: every selected path) matches one of the globs. A glob without `/` matches the base name; with `/` it matches the root-relative path. `*` and `?` stay inside a path segment, `**` spans segments. |
-| `selection` | `true`: there is a selection. `false`: there is none (always so in the file tree). |
-| `git` | `true`: the root is inside a git work tree (a `.git` up the tree). `false`: it is not. |
-| `exists` | Every listed path exists, relative to the root. |
-
-Commands run in the background; *Commands: Cancel* kills the running ones, and a
-running command refuses a second start. Strings and lists are interchangeable
-for `pane`, `language`, `glob` and `exists`.
-
-```json
-{ "plugins": { "commands": { "list": [
-  { "name": "Sort Lines", "run": "sort", "stdin": "selection-or-buffer", "output": "replace", "save": "none" },
-  { "name": "Grep Word", "run": "grep -rn -- {word} .", "output": "locations", "key": "Alt+8" },
-  { "name": "Test Package", "run": "go test .", "cwd": "{dir}", "output": "log", "when": { "language": "go" } },
-  { "name": "npm test", "run": "npm test", "output": "terminal", "when": { "exists": "package.json" } },
-  { "name": "Build", "run": "make", "output": "task" },
-  { "name": "Git Add", "run": "git add -- {files}", "when": { "pane": "filetree", "git": true } },
-  { "name": "Copy Path:Line", "run": "printf '%s:%s' {file} {line}", "output": "clipboard" }
-] } } }
+```lua
+-- ~/.config/qed/plugins/my.lua
+return {setup = function()
+  qed.command{name = "Grep Word", key = "Alt+8", run = function(ctx)
+    local word = ctx.selection_text or qed.prompt{prompt = "Grep:"}
+    if not word or word == "" then return end
+    local r = qed.spawn{argv = {"grep", "-rn", "--", word, "."}}
+    local _, err = qed.locations(r.stdout .. r.stderr, {prompt = "Grep >"})
+    if err then qed.message(err, "warn") end
+  end}
+end}
 ```
 
 ## Tasks
 
 Long-running or background commands, owned by the bundled `tasks` plugin. Each
 task runs in its own terminal session, hidden until shown. *Tasks* (palette, also
-on the welcome screen) lists every task and session (including `task` user
-commands) with its state: `not started`, `running`, `exited 0`, `failed (exit N)`
+on the welcome screen) lists every task and other plugin session with its state:
+`not started`, `running`, `exited 0`, `failed (exit N)`
 or `killed (signal N)`. Picking a task that never ran starts and shows it; otherwise
 it offers *Show*, *Run* (or *Restart*), *Kill* while running and *Close* once
 exited. Running a running task restarts it. Shown tasks have their name in the terminal
@@ -299,7 +250,7 @@ pane's title; `Alt+t` always shows the plain shell. Tasks die with qed.
 
 | Entry key | Default | Meaning |
 |-----------|---------|---------|
-| `name` | required | Picker name; unique, not `"shell"`, not starting with `cmd:`. |
+| `name` | required | Picker name; unique, not `"shell"`. |
 | `cmd` | required | Shell string run with `sh -c`. |
 | `cwd` | working root | Directory to run in, relative to the root. |
 | `env` | `{}` | Extra environment, `{"NAME": "value"}`. |

@@ -6,7 +6,8 @@ Design for a plugin system. Status: decided. Build phases are tracked in TODO.md
 
 Goals
 - Make core pieces solid by moving glue builtins (spawn a tool, pick from a list, call a core setter) into bundled Lua.
-- Ship custom user commands and long-running tasks as plugins, not core features.
+- Ship long-running tasks as a plugin, not a core feature. User commands are plain `qed.command` calls in a user plugin.
+- The API grows by porting built-in features to bundled plugins, which is how it gets tested. No new plugin or API function without a concrete built-in or a real user need behind it.
 - Async without threads: Lua coroutines on the main loop, so `qed.pick`, `qed.spawn` and `qed.sleep` read as straight-line code.
 - A failing plugin never crashes or freezes qed, and it is visible in the Plugins pane.
 - Completion when editing plugins in qed, for bundled and user plugins alike.
@@ -57,7 +58,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
 | module.odin | | replaced | `modules.git` becomes `plugins.git`. `modules.lsp` and `modules.ai` stay until ported. |
-| **custom commands** | | **new plugin** | `command{when}`, `spawn`, `term`, location `pick`, `pane`. |
+| **custom commands** | | user plugins | `command{when}`, `spawn`, `locations`, `term`, `pane`. The config-driven `commands` plugin was dropped in phase 10. |
 | **tasks** | | **new plugin** | `qed.term`, `pick`, `status.set`, `term_open`/`term_exit`/`term_close`. |
 | **Plugins pane** | | core | Must work when the plugin system itself is broken. |
 
@@ -139,6 +140,7 @@ There is deliberately no `key` event.
 | ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout. `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. Esc returns `nil`. |
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
+| ⏳ `qed.locations(text, {cwd?, prompt?}) -> {label, path, pos} \| nil` | Parses `file:row:col: msg`, `file:row:col`, `file:row: msg` and `file:row` lines (CRLF ok; the shortest file wins, so `a:b.txt:4: m` is `a:b.txt`) into a path pick, then opens the chosen file and jumps there (`pos` clamped, a col inside a UTF-8 sequence snaps back, file tree closed). Relative files resolve against `cwd` (default the root); lines naming a missing file are skipped. Labels are root-relative. One result still shows the picker. Esc returns `nil`; nothing parsed returns `nil, "no locations"` without opening anything. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
@@ -301,8 +303,7 @@ e2e tests of the Odin feature it replaces.
 | 1 | `format` (external formatter, format-on-save toggle, save fixups, LSP fallback) | `spawn` + await, awaitable and bounded `buf_pre_save`, `set_text` + rev guard, edit groups, plugin config, default keys. |
 | 2 | `pickers` (Set Theme, Set Language, Change Indentation) | `pick` await, `on_change` preview, Esc revert, core setters, `theme.set{persist}`. |
 | 3 | `git` (base fetch, stat poll, Set Diff Base, Restore File) | Timers, status push, diff-base primitive, events, dir plugin with `require`, module→plugin. If the Lua reads worse than the Odin did, the API is wrong. |
-| new | `commands`: `plugins.commands.list = [{name, run, output, stdin, save, cwd, env, when, key}]`, with `output = message \| log \| replace \| insert \| clipboard \| terminal \| task \| locations` (schema in CONFIG.md) | User commands end to end. `task` delegates to `tasks`, and `locations` parses `file:line:col` into a path `pick`. |
-| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment `tasks N` shows the running count of every non-shell session (`cmd:` ones included; refreshed on `term_open`/`term_exit`/`term_close`) and turns red while an exited session's code is a failure (killed by a signal is not). Running an already-running task restarts it. `task` commands delegate through core: they are sessions named `cmd:<command>` (a prefix tasks may not use, so names never collide), and the picker lists every session. |
+| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment `tasks N` shows the running count of every non-shell session (refreshed on `term_open`/`term_exit`/`term_close`) and turns red while an exited session's code is a failure (killed by a signal is not). Running an already-running task restarts it. The picker lists every non-shell session. |
 
 ## 8. Build phases
 
@@ -315,11 +316,12 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 2 | Coroutine scheduler, `spawn`/`spawn_bg`, timers, `plugin_pump`, budgets, events with save/quit timeouts. `e2e_spawn_fake`, the `test.lua` runner. | minor |
 | 3 | Port 1 `format` (+ `set_text` minimal diff, `qed.lsp.format`). Delete the Odin path and the `formatter` key. | minor |
 | 4 | `pick` (incl. `multi`), `prompt`, `confirm`, `pane`. Port 2 `pickers`. | minor |
-| 5 | `commands` plugin (all outputs except `task`). Filetree `ctx.file/files`. | minor |
+| 5 | `commands` plugin (all outputs except `task`, dropped in phase 10). Filetree `ctx.file/files`. | minor |
 | 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). Poll cost: ~13 us per user plugin file (0.15 ms for 10, 2.6 ms for 200, `bench_plugin_poll`). | minor |
-| 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin + `output = "task"`. | minor |
+| 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin. | minor |
 | 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view`, `filetree_diff_only` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
+| 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.locations`. | minor |
 | later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions
