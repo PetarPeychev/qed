@@ -397,6 +397,11 @@ exclusive). A child from a task not started by the user (`PluginTask.user`: comm
 open-deleted callback) may only stack on the caller's own pane, else `"busy"`, so a timer cannot steal
 focus. `ctx.view` is only handed to the view's own plugin. `pane_unload` saves state before marking dead.
 
+A `markdown` body (`qed.ui.open{markdown}`, full only) is rendered by core at the text width into
+`Pane.md_lines`, a per-pane `virtual.Arena` swapped in as `context.temp_allocator` for `md_render`;
+the cache is keyed on width and dropped by `v:markdown` and `editor_retheme`. `max_width` caps a
+center/full box. A text body's scroll is saved by `id` with the field texts.
+
 Ported: the quit/close/conflict/merge dialogs, the command palette, the working-root picker (`workspace` plugin) and
 every plugin pane.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
@@ -638,6 +643,28 @@ re-opens LSP).
   the plugin's toggles; on `config_changed` only knobs whose config value changed
   are re-applied, so runtime toggles survive unrelated edits.
 
+## Markdown rendering
+
+`md_render(src, width, lang) -> []MdLine` (`mdrender.odin`) backs LSP hover and the `markdown`
+pane body. Hand-rolled, not tree-sitter: the grammar splits block and inline trees, and inline
+content inside quotes and lists is discontiguous (included-range reparses per paragraph), while a
+line-based container parser handles nesting directly. `md_parse` builds blocks (paragraph with
+soft/hard breaks, ATX/setext heading, fenced/indented code, rule, quote, list with loose/task
+items, GFM table, HTML block, link reference definitions), recursing into quote and item bodies
+with their prefix stripped. `md_blocks` emits through a prefix stack (quote bar, bullet or number
+then hanging indent), so text wraps at the remaining width. Every marker is hidden. Colors come
+from the markdown `captures` (`text.title`, `text.literal`, `text.reference`,
+`punctuation.special`), so the preview matches the editor; strong/emphasis/strike are attributes
+on the run color (`text.strong` is `foreground bold`, so bold never reads as a heading). H1 gets a
+`━` rule in the heading color, H2 a `─` rule. Code (blocks and inline) sits on a band: tint
+`markdown_code` of the pane selection color over the pane background, filled to the right edge
+via `MdLine.fill`; blocks are highlighted by `highlight_lines` and char-wrapped. Links show their
+text underlined plus `[n]`, each URL listed once as a footnote at the end (anchors and autolinks
+get none). Images and `<img>` show `[image: alt]`; other HTML tags drop (`br` and block closers
+break lines). Tables fit columns to content, keep whole words when every column's longest word
+fits, share the rest evenly and wrap cells; below 3 columns per cell, rows become `header: value`
+lines.
+
 ## AI edit
 
 *Selection + prompt* (`Ctrl+K`, `aiedit.odin` → `llm.odin`): a caret prompt takes an
@@ -747,7 +774,7 @@ hot-reload teardown) · `clipboard` · `shell` ·
 `listsrc` (pane list sources, `path` field) · `linefind` · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -948,12 +975,10 @@ yaml-language-server, docker-langserver,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
-rendered-markdown hover (`mdrender.odin`: markdown → wrapped styled-span lines —
-bold/italic/headers stripped of markers, `---` rules, fenced *and* 4-space/tab-indented
-code blocks tree-sitter-highlighted with fence-tag → `language_of_name` fallback to the
-buffer's language, tab-stop expansion; popup wheel-scrolls while hovered, `contentFormat`
-advertises markdown first; engine is render-only, built for reuse by a future
-markdown-preview pane),
+rendered-markdown hover (`mdrender.odin`, see Markdown rendering; popup wheel-scrolls while
+hovered, `contentFormat` advertises markdown first), markdown preview (`markdown` plugin,
+*Markdown: Preview* `Alt+p` in markdown buffers: a `full` pane capped at
+`plugins.markdown.max_width`, live on `buf_changed`, scroll kept and restored per buffer),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),

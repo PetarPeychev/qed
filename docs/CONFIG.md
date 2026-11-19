@@ -233,6 +233,19 @@ on `PATH`. Rebind both with `plugins.search.keybinds["Find in Files"]`.
 | `plugins.search.enabled` | `true` | Off removes both *Find in Files* commands. |
 | `plugins.search.min_query` | `2` | Min query length before a search runs (was `projsearch_min_query`). |
 
+### Markdown
+
+*Markdown: Preview* (`Alt+p`, only in a markdown buffer) opens the buffer rendered in a
+centered pane: markers hidden, headings colored with a rule under H1/H2, code blocks on a
+tinted band with syntax colors, lists, task boxes, quotes, box-drawn tables, link URLs as
+numbered footnotes. It follows edits to the buffer and keeps its scroll; the same chord
+closes it, and reopening restores the scroll for that buffer. LSP hover uses the same renderer.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.markdown.enabled` | `true` | Off removes *Markdown: Preview*. |
+| `plugins.markdown.max_width` | `100` | Widest the preview pane gets, borders included. |
+
 ### Git
 
 The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
@@ -291,6 +304,7 @@ Bundled themes: `default`, `atom-one-dark`, `catppuccin-mocha`,
 To customize colors, create `~/.config/qed/themes/<name>.json`, a sparse per-key
 diff over the bundled theme of the same name (or over `default` for a new name).
 The four sections are `colors`, `captures` (tree-sitter capture to color),
-`icons`, and `tints` (line-background strengths). The complete key list is
+`icons`, and `tints` (line-background strengths; `markdown_code` is the code band in
+rendered markdown, the pane selection color over the pane background). The complete key list is
 [`config/themes/default.json`](../config/themes/default.json); qed never writes
 theme files.

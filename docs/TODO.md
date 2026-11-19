@@ -92,7 +92,6 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 - [ ] Command palette: order entries by recency of use, persisted cross-session (needs a small state file).
 - [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, persisted undo history, palette MRU, etc. Figure out scope + format before building.
 - [ ] Hex view/edit for binary files.
-- [ ] Markdown viewer (rendered preview).
 - [ ] File browser: show more detail per entry (size, line count, other `ls -l`-style bits).
 
 ### AI / LLM assist
@@ -106,7 +105,6 @@ See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schem
 
 ### Syntax highlighting (tree-sitter)
 
-- [ ] Markdown: better visual distinction between headers and bold text.
 
 ### Language architecture endgame
 
