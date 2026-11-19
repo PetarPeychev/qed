@@ -18,7 +18,8 @@ Buffer :: struct {
     line_ending: LineEnding             // .LF | .CRLF, detected on open
     modified, big: bool
     undo, redo:  [dynamic]EditGroup     // inverse-op log; `open` group coalesces
-    hl: Highlight, git: GitGutter       // per-buffer highlight tree + git marks
+    hl: Highlight, base: DiffBase       // highlight tree + diff base (git or plugin) marks
+    deco: DecoStore                     // plugin decorations, row-anchored
     language: Language                  // detected at open; Set Language overrides
     // ... lsp/diag/rev bookkeeping
 }
@@ -68,7 +69,7 @@ path + `●` modified flag + `line/total` + git branch with `↑ahead↓behind` 
 `+N -N` (`git_added`/`git_deleted`, hidden at 0; worktree vs diff base via `git diff <base> --numstat --find-renames`, untracked
 files' lines counted by `grep -Ic` as adds, binaries skipped; `git_diffsize_cmd`) — polled async every
 `GIT_STAT_POLL_MS` via `GitStat`; right side: language + LSP + indent style / `big`). Both sides are
-`StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap: shorten the path from
+`StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap (plugin `qed.status` segments join them, left after the builtins, right before them): shorten the path from
 the left (`…/dir/name`, down to the bare name), then drop segments by `drop` rank (indent, LSP, `big`,
 language, AI count, then diff size, ahead/behind, diff base, branch, `[n/m]`), then clip the filename; then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
@@ -76,21 +77,28 @@ language, AI count, then diff size, ahead/behind, diff base, branch, `[n/m]`), t
 screen↔buffer column mapping (cursor placement, mouse).
 
 Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`),
-stacked bottom→top: optional git-hunk row tint → AI-edit tint → current-line tint
-(a semi-transparent white lift over whatever's beneath). Tint strengths
+stacked bottom→top: optional git-hunk row tint → conflict tint → plugin decoration
+tints → AI-edit tint → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
 (`*_TINT`) and tint colors are both theme-overridable. The
 row tint is part of **diff view** (*Git: Toggle Diff View*, `Alt+g`, config
 `modules.git.diff_view`, off by default), separate from the always-on gutter mark — see
 Git diff view below.
 
-**Git diff view** (`git.odin`, global `g_diff_view`): with diff view on, a hunk's
+**Diff engine** (`diffbase.odin`, `Buffer.base`): the line-hash Myers engine behind the gutter marks,
+ghost rows, word spans, change navigation and revert. Its text comes from git (`git_base_fetch` runs
+`git show` and pushes the blob through `diffbase_set`) or from a plugin (`qed.buf.set_base`, which
+wins over git until cleared or unloaded; `git_invalidate` leaves it alone). Engine identifiers keep
+their `git_` names until phase 9.
+
+**Git diff view** (global `g_diff_view`): with diff view on, a hunk's
 removed/base lines render inline as dim-red **ghost rows** (`editor_render_hunk_ghosts`)
 — above a modification, below a pure deletion — with the changed span word-highlighted
 on both the ghost and the live line (`git_word_span`, prefix/suffix trim). The gutter
 keeps the base blob + per-line text (`base_text`) so old text is available; `git_diff`
 emits `GitHunk`s + per-row `above`/`below` ghost counts. Ghost rows are virtual (one
 clipped row each, never wrapped) and shift everything below, so the counts fold into
-the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `git_above`/`below`).
+the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `ghost_above`/`below`, which
+add plugin decoration ghosts to the diff ones).
 `git_diff` also emits a flat `GitChange` list (`{new_lo,new_hi,old_lo,old_hi}`, current
 rows ↔ base rows) as the **revert unit** — independent of `g_diff_view`, consumed by
 *Git: Revert Hunk*;
@@ -432,6 +440,12 @@ started at the end of `editor_init`. Invariants the code can't show:
   creating plugin as owner and unload closes it (after the plugin's tasks are freed)
   unless `detach`. `state.busy` is `tcgetpgrp` of the PTY differing from the session's pid.
   `qed.jump` closes the file tree.
+- **Decorations** (`deco.odin`): `Buffer.deco` holds plain `Deco` records (ghosts in their own list so
+  the walkers scan only those). `buffer_insert`/`buffer_delete` shift row anchors and drop spans on
+  edited rows (rules in plugins.md §3), so a keystroke runs no Lua. Colors are interned theme keys
+  (`Plugins.colors`), resolved into a per-frame palette; `deco_rows` buckets the visible rows once per
+  frame. Namespaces (`Plugins.deco_ns`), status segments (`Plugins.status`) and plugin diff bases
+  record their plugin; unload clears them.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
   non-blocking `process_wait`). The child leads its own process group
   (`subprocess_start_group`, a fork/exec like `os.process_start`) and every kill signals
@@ -639,7 +653,7 @@ defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable g
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
+`git` (git plumbing) · `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `commands/`: user shell commands from `plugins.commands.list`, see CONFIG.md).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -868,9 +882,10 @@ session / locations picker, *Commands: Cancel*, hot re-registered on config save
 
 Tasks (`tasks` plugin, `plugins.tasks.list`): background terminal sessions;
 the *Tasks* picker lists every session with its state (running / exit code) and
-runs, shows, restarts, kills or closes it; exit messages.
+runs, shows, restarts, kills or closes it; exit messages; a `tasks N` status segment (running count, red after a failed exit).
 
-Lua plugins (bundled + `~/.config/qed/plugins/`): hot reload on file add/remove/edit
+Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
+rows, spans, end-of-line text), status segments (`qed.status`), diff base (`qed.buf.set_base`); hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only).
 

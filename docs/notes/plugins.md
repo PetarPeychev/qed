@@ -50,7 +50,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | langpick / themepick / indentpick | | **plugin** (port 2) | `pick{on_change}`, `buf.set_language`, `theme.set`, `buf.set_indent`. Closes the "collapse centered pickers" TODO. |
 | basepick | | **plugin** (with git) | `pick`, `spawn`. |
 | git: base blob fetch, stat poll (branch, ahead/behind, diff size), base picker, restore file | (poll) | **plugin** (port 3) | `spawn`, `every`, `status.set`, `buf.set_base`, events. |
-| git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core, renamed **diff base** | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
+| git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
 | file tree Git tab + status bars | | later | Needs a `qed.filetree.set_status(map)` provider. Until then it stays core, gated on `plugins.git.enabled`. |
 | conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
 | projsearch | | later | Needs a streaming list+preview picker. |
@@ -98,7 +98,7 @@ The API is one global, `qed`.
 | `qed.buf.cursor(b) -> pos`, `.set_cursor(b, pos)` | |
 | `qed.buf.selection(b) -> from, to \| nil`, `.set_selection(b, anchor, cursor)` | |
 | `qed.buf.set_language(b, name) -> changed`, `.set_indent(b, "tabs"\|"spaces"\|"auto", width?)`, `.indent(b) -> style, width`, `qed.languages()` | Existing core setters. |
-| `qed.buf.set_base(b, text \| nil, {label?})` | Diff base: gutter, ghost rows, change navigation, revert hunk. |
+| `qed.buf.set_base(b, text \| nil, {label?})` | Diff base: gutter, ghost rows, change navigation, revert hunk. Replaces the git base of that buffer until `nil` (git takes over again) or the plugin unloads. `""` is an empty base (every line added). `label` shows as the `±label` status segment. Big files have no diff base. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
 | `qed.jump(b, pos)` | Switch, reveal, record in the jump list. (`goto` is a Lua keyword.) |
 
@@ -139,7 +139,7 @@ There is deliberately no `key` event.
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
-| `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. |
+| `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `side` defaults to `left` (after the builtins); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()` | |
 
@@ -162,18 +162,20 @@ on `restart`, `close` or teardown. Sessions created by a plugin die when it unlo
 unless they were created with `{detach = true}`.
 
 ### Decorations
-- Push only, namespaced per plugin: `ns = qed.deco.ns(name)`.
-- Colors are theme keys, never hex.
-- Row anchors shift with edits, and spans on edited rows drop.
+- Push only, namespaced per plugin: `ns = qed.deco.ns(name)` (same name, same id). A namespace is usable only by its plugin; unload clears all of them.
+- Colors are theme keys, never hex; an unknown key raises. They resolve per frame, so a theme change recolors.
+- Row anchors shift inside `buffer_insert`/`buffer_delete` (no Lua). An insert at col 0 pushes that row's decorations down with its text. A whole-line delete (col 0 to col 0) drops the deleted rows; a joining delete drops the rows joined into the first. Tints shrink instead of dropping. Spans on any edited row drop. Undo shifts anchors back but never restores dropped decorations. A reload drops spans and clamps the rest.
 
 | Function | Notes |
 |---|---|
-| `qed.deco.gutter(b, ns, row, glyph, color)` | Mark column. |
-| `qed.deco.tint(b, ns, from_row, to_row, color, alpha?)` | Goes through the `editor_line_bg` stack. |
-| `qed.deco.ghost(b, ns, row, lines, {above?, color?})` | Virtual rows. |
-| `qed.deco.span(b, ns, from, to, style)` | `{fg?, bg?, bold?, underline?}` |
-| `qed.deco.eol(b, ns, row, text, color)` | Inline virtual text. |
-| `qed.deco.clear(b, ns, from_row?, to_row?)` | |
+| `qed.deco.gutter(b, ns, row, glyph, color)` | Mark column, one single-width glyph. A diff-base mark on the row wins; among decorations the last pushed wins. |
+| `qed.deco.tint(b, ns, from_row, to_row, color, alpha?)` | Goes through the `editor_line_bg` stack: diff hunk, conflict, decoration tints (push order), AI edit, current line. `alpha` defaults to the theme tint `decoration`. |
+| `qed.deco.ghost(b, ns, row, lines, {above?, color?})` | Virtual rows, one clipped row each, folded into the screen-mapping walkers like the diff ghosts. Order: decoration ghosts above, diff ghosts above, the row, decoration ghosts below, diff ghosts below. Like the diff ghosts, ghosts above the top screen row are hidden. `color` defaults to `ghost_foreground`. |
+| `qed.deco.span(b, ns, from, to, style)` | `{fg?, bg?, bold?, underline?}`, over syntax and diff word colors, under find matches and the selection. |
+| `qed.deco.eol(b, ns, row, text, color)` | Virtual text one cell after the line end (last wrapped row), clipped at the window edge (a wide char never splits). Several on a row join with a space. |
+| `qed.deco.clear(b, ns, from_row?, to_row?)` | Decorations touching the rows; all when omitted. |
+
+Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~40 us per keystroke (anchor shift) and ~0.17 ms per frame; 50k add ~160 us and ~1.2 ms.
 
 ### Processes, timers
 | Function | Notes |
@@ -215,7 +217,7 @@ unless they were created with `{detach = true}`.
 | Order | Bundled first, then user, alphabetical within each. A user plugin with a bundled name replaces the bundled one. `startup` fires after all plugins are loaded. |
 | Enable | `plugins.<name>.enabled`, default true. Bundled defaults live in the embedded config.json. |
 | Config | `plugins.<name>` is a sparse diff over `defaults`. Unknown keys warn once. |
-| Ownership | Every registration (command, hook, timer, process, term session, decoration ns, status segment, modal) records its owner. Unloading tears all of it down. |
+| Ownership | Every registration (command, hook, timer, process, term session, decoration ns, status segment, diff base, modal) records its owner. Unloading tears all of it down. |
 | Hot reload | Triggers: the disk poll sees a user plugin file added, removed or changed (any file inside a dir plugin), `enabled` flips, or `r` in the Plugins pane. Only that plugin unloads and reloads; a same-name user plugin appearing or disappearing swaps it with the bundled one. Load order stays bundled-then-user, alphabetical. A plugin loaded after startup gets its own `startup` event. |
 | Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
 | Isolation | One `lua_State` with a per-plugin `_ENV`. |
@@ -295,7 +297,7 @@ e2e tests of the Odin feature it replaces.
 | 2 | `pickers` (Set Theme, Set Language, Change Indentation) | `pick` await, `on_change` preview, Esc revert, core setters, `theme.set{persist}`. |
 | 3 | `git` (base fetch, stat poll, Set Diff Base, Restore File) | Timers, status push, diff-base primitive, events, dir plugin with `require`, module→plugin. If the Lua reads worse than the Odin did, the API is wrong. |
 | new | `commands`: `plugins.commands.list = [{name, run, output, stdin, save, cwd, env, when, key}]`, with `output = message \| log \| replace \| insert \| clipboard \| terminal \| task \| locations` (schema in CONFIG.md) | User commands end to end. `task` delegates to `tasks`, and `locations` parses `file:line:col` into a path `pick`. |
-| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment shows the running count and turns red on a non-zero exit. Running an already-running task restarts it. `task` commands delegate through core: they are sessions named `cmd:<command>` (a prefix tasks may not use, so names never collide), and the picker lists every session. |
+| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment `tasks N` shows the running count of every non-shell session (`cmd:` ones included, polled each second since those start outside the plugin) and turns red while an exited session's code is a failure (killed by a signal is not). Running an already-running task restarts it. `task` commands delegate through core: they are sessions named `cmd:<command>` (a prefix tasks may not use, so names never collide), and the picker lists every session. |
 
 ## 8. Build phases
 
@@ -311,7 +313,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 5 | `commands` plugin (all outputs except `task`). Filetree `ctx.file/files`. | minor |
 | 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). Poll cost: ~13 us per user plugin file (0.15 ms for 10, 2.6 ms for 200, `bench_plugin_poll`). | minor |
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin + `output = "task"`. | minor |
-| 8 | Decorations store, `status.set`, diff-base primitive. Add the `tasks` status segment (running count, red on a non-zero exit), skipped in phase 7. | patch |
+| 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git`. | minor |
 | later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
