@@ -141,7 +141,6 @@ There is deliberately no `key` event.
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
 | `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. |
 | `qed.clipboard.get()`, `.set(text)` | |
-| `qed.terminal.run(cmd, {cwd?})` | Clears the prompt line, types `cmd` into the terminal pane's shell and shows it; `nil, "terminal busy"` while a program runs there. Superseded by `qed.term` in phase 7. |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()` | |
 
 - Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.
@@ -152,14 +151,15 @@ Core owns PTY and vterm. Each session has a name.
 
 | Function | Notes |
 |---|---|
-| `qed.term.create{name, cmd?, cwd?, env?, restart?} -> name` | Starts in the background without showing. `cmd` nil means an interactive shell. Fails if the name is live. |
-| `qed.term.show(name)`, `.hide()` | Shows the session in the terminal pane overlay. Alt+t shows `"shell"`, the default session. |
-| `qed.term.kill(name)`, `.restart(name)`, `.send(name, text)` | `restart` kills and respawns with the same spec. |
-| `qed.term.state(name) -> {running, code?, pid?}`, `qed.term.list()` | |
+| `qed.term.create{name, cmd?, cwd?, env?, restart?, detach?} -> name` | Starts in the background without showing. `cmd` (run by `/bin/sh -c`) nil means an interactive shell. `cwd` defaults to the root. Fails with `nil, "already running"` if the name is live, unless `restart = true`, which restarts it with the new spec. An exited session of that name is replaced. `"shell"` cannot be created. |
+| `qed.term.show(name)`, `.hide()` | Shows the session in the terminal pane overlay, its name in the pane title. Alt+t shows `"shell"`, the default session; `show("shell")` starts it like Alt+t. |
+| `qed.term.kill(name)`, `.restart(name)`, `.send(name, text)` | `kill` SIGKILLs the session's process group and keeps its output. `restart` kills and respawns with the same spec on a fresh screen. `send` writes raw bytes (`"\r"` is Enter). |
+| `qed.term.state(name) -> {name, running, code?, pid?, busy?} \| nil`, `qed.term.list()` | `code` is the last exit code (128 + signal when killed). `busy`: a program other than the session's own process holds the foreground (the shell is running a command). `list` is in creation order. |
 | `qed.term.close(name)` | Kills the session and frees its scrollback. |
 
-A `term_exit` event fires when a session's process exits. Sessions created by a
-plugin die when it unloads, unless they were created with `{detach = true}`.
+A `term_exit` event fires when a session's process exits, including `kill`, but not
+on `restart`, `close` or teardown. Sessions created by a plugin die when it unloads,
+unless they were created with `{detach = true}`.
 
 ### Decorations
 - Push only, namespaced per plugin: `ns = qed.deco.ns(name)`.
@@ -295,7 +295,7 @@ e2e tests of the Odin feature it replaces.
 | 2 | `pickers` (Set Theme, Set Language, Change Indentation) | `pick` await, `on_change` preview, Esc revert, core setters, `theme.set{persist}`. |
 | 3 | `git` (base fetch, stat poll, Set Diff Base, Restore File) | Timers, status push, diff-base primitive, events, dir plugin with `require`, module→plugin. If the Lua reads worse than the Odin did, the API is wrong. |
 | new | `commands`: `plugins.commands.list = [{name, run, output, stdin, save, cwd, env, when, key}]`, with `output = message \| log \| replace \| insert \| clipboard \| terminal \| task \| locations` (schema in CONFIG.md) | User commands end to end. `task` delegates to `tasks`, and `locations` parses `file:line:col` into a path `pick`. |
-| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment shows the running count and turns red on a non-zero exit. Running an already-running task restarts it. |
+| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment shows the running count and turns red on a non-zero exit. Running an already-running task restarts it. `task` commands delegate through core: they are sessions named after the command, and the picker lists every session. |
 
 ## 8. Build phases
 
@@ -311,7 +311,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 5 | `commands` plugin (all outputs except `task`). Filetree `ctx.file/files`. | minor |
 | 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). Poll cost: ~13 us per user plugin file (0.15 ms for 10, 2.6 ms for 200, `bench_plugin_poll`). | minor |
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin + `output = "task"`. | minor |
-| 8 | Decorations store, `status.set`, diff-base primitive. | patch |
+| 8 | Decorations store, `status.set`, diff-base primitive. Add the `tasks` status segment (running count, red on a non-zero exit), skipped in phase 7. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git`. | minor |
 | later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 

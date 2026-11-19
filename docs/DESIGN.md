@@ -428,8 +428,9 @@ started at the end of `editor_init`. Invariants the code can't show:
 - `ctx.selection_text`, `file`, `files` (file tree selection) and `base` (diff base)
   are computed on first read through `__index` and cached on the ctx, so `when` stays
   cheap.
-- `qed.terminal.run` types into the single terminal session (`term_run`, refused when
-  `tcgetpgrp` of the PTY is not the shell); phase 7's `qed.term` sessions replace it.
+- `qed.term` wraps the core sessions (see Terminal pane); a session records its
+  creating plugin as owner and unload closes it (after the plugin's tasks are freed)
+  unless `detach`. `state.busy` is `tcgetpgrp` of the PTY differing from the session's pid.
   `qed.jump` closes the file tree.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
   non-blocking `process_wait`). The child leads its own process group
@@ -579,14 +580,25 @@ lazily, so a `@file` races to an empty body. Request/response are traced at `.De
 
 ## Terminal pane
 
-*Floating embedded terminal* (`terminal.odin`, `Alt+t`): a persistent interactive
-shell in an overlay sized by `overlay_layout` (like project-search). The shell +
-PTY + emulator outlive pane open/close — toggling only shows/hides; the session
-survives. The emulator is **vendored libvterm** (`lib:vterm`), fed PTY bytes; the
-PTY itself is a `forkpty` shim (`lib:pty`, `-lutil`) — the one OS-specific piece.
-`term_pump` (main loop, next to `lsp_pump`) does a non-blocking `read(pty_fd)` →
-`vterm_input_write`; the loop's fast-poll gate carries `term_alive` so a hidden-but-
-running shell still drains (child never blocks on a full pipe). `term_render` walks
+*Floating embedded terminal* (`terminal.odin`, `Alt+t`): named sessions
+(`Terminals.list` of heap `^Terminal`, stable for the vterm callbacks' `user`
+pointer), one of them `shown` in an overlay sized by `overlay_layout` (like
+project-search). `Alt+t` toggles the default `"shell"` session (an interactive
+`$SHELL -i`), starting or restarting it when needed; plugins add background
+sessions (`/bin/sh -c cmd`, own cwd/env) through `qed.term` and the bundled `tasks`
+plugin. A session's shell + PTY + emulator outlive pane open/close; a non-default
+session shows its name (and exit code) in the top border. The emulator is
+**vendored libvterm** (`lib:vterm`), fed PTY bytes; the PTY itself is a `forkpty`
+shim (`lib:pty`, `-lutil`, argv + optional envp), the one OS-specific piece. The
+child is a session leader, so its pid is its process group: `term_stop` (the single
+kill path for kill/restart/close/unload/shutdown) SIGKILLs the group and reaps.
+`term_pump` (main loop, next to `lsp_pump`) drains every live session's PTY
+(non-blocking `read` → `vterm_input_write`) whether shown or not, then reaps with
+`waitpid(WNOHANG)`; a reaped child marks the session exited (code, 128 + signal when
+killed) and queues `term_exit`. The loop's fast-poll gate carries `term_alive` (any
+live session) so a hidden session never blocks on a full PTY. Only the shown
+session renders and takes keys, mouse and paste. Hidden sessions keep their size
+until shown (created at the overlay size, 80x24 headless). `term_render` walks
 the libvterm grid cell-by-cell to `tb2.set_cell` (full redraw, like everywhere);
 the hardware cursor sits at the emulator cursor when focused. `term_dispatch`
 forwards keys via `vterm_keyboard_*` and intercepts exactly one escape-hatch —
@@ -846,8 +858,12 @@ coexists with the LSP popup (`Tab` ghost / `Enter` menu, popup floats above a mu
 User commands (`commands` plugin, `plugins.commands.list`): shell strings with quoted
 placeholders + `QED_*` env, stdin from selection/buffer, save-before, `when` gates
 (pane, language, glob, selection, git, exists), file-tree commands over the selection,
-outputs to message / log pane / replace / insert / clipboard / terminal / locations
-picker, *Commands: Cancel*, hot re-registered on config save.
+outputs to message / log pane / replace / insert / clipboard / terminal / task
+session / locations picker, *Commands: Cancel*, hot re-registered on config save.
+
+Tasks (`tasks` plugin, `plugins.tasks.list`): background terminal sessions;
+the *Tasks* picker lists every session with its state (running / exit code) and
+runs, shows, restarts or kills it; exit messages.
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,

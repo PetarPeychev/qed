@@ -251,6 +251,7 @@ needs a buffer (hidden on the welcome screen).
 | `insert` | Inserts stdout at the cursor (one trailing newline dropped). |
 | `clipboard` | Copies stdout (one trailing newline dropped). |
 | `terminal` | Types the command into the terminal pane's shell (clearing any partial input) and shows it. Refused while a program runs in the terminal. `stdin`/`env` do not apply; with `cwd` it runs as `(cd dir && cmd)`. |
+| `task` | Runs the command in the background as a terminal session named after the command (see [Tasks](#tasks)); running it again while it runs restarts it. The exit is reported on the message line. `stdin` does not apply. |
 | `locations` | Parses `file:line:col`, `file:line` and either followed by `: msg` (stdout and stderr) into a picker with a file preview; Enter jumps. Lines naming missing files are skipped. No locations is a success even on a non-zero exit (grep), unless stderr has output. |
 
 | `when` key | Holds when |
@@ -272,8 +273,33 @@ for `pane`, `language`, `glob` and `exists`.
   { "name": "Grep Word", "run": "grep -rn -- {word} .", "output": "locations", "key": "Alt+8" },
   { "name": "Test Package", "run": "go test .", "cwd": "{dir}", "output": "log", "when": { "language": "go" } },
   { "name": "npm test", "run": "npm test", "output": "terminal", "when": { "exists": "package.json" } },
+  { "name": "Build", "run": "make", "output": "task" },
   { "name": "Git Add", "run": "git add -- {files}", "when": { "pane": "filetree", "git": true } },
   { "name": "Copy Path:Line", "run": "printf '%s:%s' {file} {line}", "output": "clipboard" }
+] } } }
+```
+
+## Tasks
+
+Long-running or background commands, owned by the bundled `tasks` plugin. Each
+task runs in its own terminal session, hidden until shown. *Tasks* (palette, also
+on the welcome screen) lists every task and session (including `task` user
+commands) with its state: `not started`, `running`, `exited 0`, `failed (exit N)`
+or `killed (signal N)`. Picking one offers *Run* / *Show* / *Restart* / *Kill*;
+running a running task restarts it. Shown tasks have their name in the terminal
+pane's title; `Alt+t` always shows the plain shell. Tasks die with qed.
+
+| Entry key | Default | Meaning |
+|-----------|---------|---------|
+| `name` | required | Picker name; unique, not `"shell"`. |
+| `cmd` | required | Shell string run with `sh -c`. |
+| `cwd` | working root | Directory to run in, relative to the root. |
+| `env` | `{}` | Extra environment, `{"NAME": "value"}`. |
+
+```json
+{ "plugins": { "tasks": { "list": [
+  { "name": "serve", "cmd": "python3 -m http.server 8000", "cwd": "site" },
+  { "name": "watch", "cmd": "npm run watch", "env": { "NODE_ENV": "development" } }
 ] } } }
 ```
 
