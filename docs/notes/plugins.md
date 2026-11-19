@@ -100,7 +100,7 @@ The API is one global, `qed`.
 | `qed.buf.set_language(b, name)`, `.set_indent(b, "tabs"\|"spaces", width)` | Existing core setters. |
 | `qed.buf.set_base(b, text \| nil, {label?})` | Diff base: gutter, ghost rows, change navigation, revert hunk. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
-| `qed.goto(b, pos)` | Switch, reveal, record in the jump list. |
+| `qed.jump(b, pos)` | Switch, reveal, record in the jump list. (`goto` is a Lua keyword.) |
 
 ### Commands and keybinds
 | Function | Notes |
@@ -293,7 +293,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | Phase | Scope | Tag |
 |---|---|---|
 | 0 | Vendor Lua 5.4 source in `lib/lua` (static via `build.sh`, bindings adapted from `vendor:lua/5.4`). `plugin.odin`: state, load bundled+user, `_ENV`, pcall/traceback, last-error capture, `qed.log/message/command`, dynamic command list, keybinds by name. **Minimal Plugins pane** (rows + state + last error, read-only). `plugin_test.odin` + `e2e_plugin`. Startup timing in `perf_bench`. CLAUDE.md lock update. | minor |
-| 1 | `Buffer.id`, `qed.buf.*`, `qed.edit`, `qed.goto`, fs/json/path/config/opt. Stub + completeness test, stub write + lua-ls `Lua` settings. | minor |
+| 1 | `Buffer.id`, `qed.buf.*`, `qed.edit`, `qed.jump`, fs/json/path/config/opt. Stub + completeness test, stub write + lua-ls `Lua` settings. | minor |
 | 2 | Coroutine scheduler, `spawn`/`spawn_bg`, timers, `plugin_pump`, budgets, events with save/quit timeouts. `e2e_spawn_fake`, the `test.lua` runner. | minor |
 | 3 | Port 1 `format` (+ `set_text` minimal diff, `qed.lsp.format`). Delete the Odin path and the `formatter` key. | minor |
 | 4 | `pick` (incl. `multi`), `prompt`, `confirm`, `pane`. Port 2 `pickers`. | minor |

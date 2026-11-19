@@ -9,6 +9,7 @@ Read CLAUDE.md first for philosophy and conventions. Tasks are in
 
 ```odin
 Buffer :: struct {
+    id:          u64                    // stable handle (plugins); never reused
     path:        string
     lines:       [dynamic]Line          // never empty
     cursor:      Cursor
@@ -347,6 +348,20 @@ started at the end of `editor_init`. Invariants the code can't show:
 - `#load_directory` doesn't recurse: a bundled dir plugin needs its own embed.
 - User config is read through `editor_config_user` only (never cached); plugin
   `plugins.<name>` changes apply at startup, keybinds on hot reload.
+- Bindings live in `plugin_api.odin`. Lua sees 1-based rows and byte cols,
+  half-open ranges; only `api_pos`/`api_pos_push` convert. Positions are validated
+  (range, UTF-8 boundary) before any primitive runs, and a binding raises only
+  before heap allocations (`lua_error` longjmps past Odin frames).
+- Buffers are addressed by `Buffer.id`, looked up per call; none are visible on the
+  welcome screen. Plugin edits shift the cursor and selection anchor like marks.
+- `qed.edit` groups by buffer id (`Plugins.edit`): edits to that buffer share one
+  `.Atomic` undo group, opened lazily on the first edit; an error rolls the group
+  back and re-raises. Outside `qed.edit` each call is its own undo step.
+- Type stubs: `plugins/meta/qed.lua` (embedded, written to
+  `$XDG_DATA_HOME/qed/lua/qed.lua` when changed). `lsp_config_lua` hands that dir
+  to lua-language-server as `Lua.workspace.library` via `workspace/configuration`
+  and the post-`initialized` push. A unit test fails on any registered `qed.*`
+  name missing from the stub.
 
 ## Language detection
 
@@ -524,7 +539,7 @@ defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable g
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, `qed` API, *Debug: Plugins* pane) · `perf_bench`.
+`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root.
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -547,7 +562,7 @@ fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
 formatter / chat command / FIM endpoint), a fake stdio LSP server (canned
 JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` (injects a user plugin
 through the real loader). Plugin bindings are unit-tested on a headless state in
-`plugin_test.odin`. Coverage is one file per area:
+`plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
 

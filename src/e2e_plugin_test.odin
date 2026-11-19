@@ -62,3 +62,43 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	testing.expect(t, !e.ed.pluginview.active, "Esc closes the pane")
 }
+
+@(test)
+e2e_plugin_edit_undo :: proc(t: ^testing.T) {
+	e := e2e_start("alpha\nbeta")
+	defer e2e_stop(&e)
+
+	pl := e2e_plugin(&e, "wrap", `
+		return {
+			setup = function()
+				qed.command{name = "Wrap: Lines", key = "Alt+j", run = function(ctx)
+					local b = ctx.buf
+					qed.edit(b, function()
+						for row = 1, qed.buf.line_count(b) do
+							local line = qed.buf.line(b, row)
+							qed.buf.insert(b, {row = row, col = #line + 1}, "]")
+							qed.buf.insert(b, {row = row, col = 1}, "[")
+						end
+					end)
+				end}
+			end,
+		}`)
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+	b := editor_buffer(&e.ed)
+	b.cursor = {1, 2}
+
+	e2e_key(&e, tb2.Key(0), .Alt, 'j')
+	testing.expect_value(t, pl.last_error, "")
+	testing.expect_value(t, string(b.lines[0].text[:]), "[alpha]")
+	testing.expect_value(t, string(b.lines[1].text[:]), "[beta]")
+	testing.expect_value(t, b.cursor, Cursor{1, 3})
+
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, string(b.lines[0].text[:]), "alpha")
+	testing.expect_value(t, string(b.lines[1].text[:]), "beta")
+	testing.expect_value(t, b.cursor, Cursor{1, 2})
+	testing.expect(t, !b.modified, "one undo step reverts the whole command")
+
+	e2e_key(&e, .Ctrl_Y)
+	testing.expect_value(t, string(b.lines[1].text[:]), "[beta]")
+}
