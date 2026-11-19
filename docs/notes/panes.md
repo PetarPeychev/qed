@@ -345,7 +345,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | Step | Scope | Closes / validates |
 |---|---|---|
 | M0 (done) | Odin `Pane`, stack, kinds, generic render/key/mouse/paste. Port the 4 core dialogs and `qed.confirm/prompt` onto it as children. | "Collapse the four dialogs" TODO; layout, stack, children |
-| M1 | `qed.ui.open`, queued events, prelude `qed.pick/prompt/confirm/pane`, exclusive persistence by `id`, one split layout (D3). Port phase 12 search to a `query` field + `append` (D9). | pane swap TODO; events through flush, split + preview |
+| M1 (done) | `qed.ui.open`, queued events, prelude `qed.pick/prompt/confirm/pane`, exclusive persistence by `id`, one split layout (D3). Port phase 12 search to a `query` field + `append` (D9). | pane swap TODO; events through flush, split + preview |
 | M2 | Palette core-built on `qed.command_list`. Cwd picker becomes a Lua plugin on `qed.fs.dirs` + a `path` field (needs `qed.set_root` and an unsaved-outside-root query). | "Collapse the centered pickers" TODO; handles, `path` field, child confirm |
 | M3 | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
 | M4 | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
@@ -370,6 +370,27 @@ How the stack and the old `Overlay` path coexist is in DESIGN.md (Panes). Deviat
 | Nested confirms | The file tree's and cwd picker's confirms stay inside those overlays, through `dialog_*` adapters over the pane procs. | They move with M2 (cwd picker) and M4 (tree). |
 | Dialog text | Built once at open. Close, conflict and merge act on the buffer in `ctx.buf` (a plugin may switch buffers meanwhile) and bail if it is gone; quit re-checks every buffer at execute, so only its text can lag. | Plugin tasks keep running while a dialog has input. |
 | Unload | Marks the owner's panes `dead`; `pane_stack_sync` closes them and resolves other plugins' children with `nil` later. | No Lua runs inside an unload or the reload loop. |
+
+### M1 as built
+
+Views, events and the prelude are in DESIGN.md (Panes). Deviations from §3/§5:
+
+| Area | Built | Why |
+|---|---|---|
+| Struct | `Pane` adds `place`, `title`, field `mode`/`count`, a styled `text` body with scroll, `PaneList` (items, matches, sel, scroll, anchor, multi, max, more, empty, hint, restore), `auto_preview` + `Preview`, `footer` hints, `toggle`, query debounce state. No tabs, marks, chips, columns, tree, scope, field `hint`/`esc_clears`, `path` mode. | Only what M1's ports use. |
+| Lua refs | In `Plugins.views` (`UiView`, keyed by handle), not `Pane.ctx`. | The close event is flushed after the Pane is gone; its refs must outlive it. |
+| Activate | Never closes the pane. `v:wait()` resolves on the next activate or the close; the prelude closes after it. | One shape for pickers and for panes whose activate does something else (tree expand). |
+| `wait` | Returns `items, index, text` (`nil, nil, text` on close). | Prompt needs the text; `qed.pick{on_query}` returns the query even on Esc. |
+| Item key | `key`, default `label`. | Search hits share a path; the tree will pass `key = path`. |
+| Toggle | Implicit: the opening command's chord. No `toggle` spec field. | Every port opens from its own command. |
+| Kinds | `kind = "exclusive"\|"child"`, passive is `focus = false`. `kind = "child"` without `parent` stacks on the focus (a pane or a core overlay), else opens exclusive. | The sugar needs D5's "pick/prompt/confirm opened while a pane is open is a child". |
+| Busy | Exclusive opens are refused while any live pane has a waiter (M0: any plugin pane). `qed.pick` over an open pane is now a child, not `"busy"`. `nil, "closed"` when `parent` is gone. | Replacing a waited pane drops a plugin's wait; un-waited panes (search) are replaced per D5. |
+| Methods | `set`, `append`, `update`, `text`, `close`, `wait`. `text` replaces the text body (`qed.pane`'s `set`). `set` has `selected`, `more`, `hint`; no `keep`. | No `marks`/`preview`/`footer`/`title`/`tab` user yet. |
+| Sizes | `palette`, `dialog`, `split:code`. | No tree yet. |
+| Prelude | `src/prelude.lua` returns an installer that `plugin_qed_push` runs on each plugin's `qed` table. | Each plugin's `qed.ui.open` carries its owner as an upvalue. `on_query`/`picker:set` stay as sugar (6 lines); no bundled plugin uses them. |
+| Search | `rg --sort path` streamed through `spawn_bg{on_line}` into `append`; the previous results stay up until the first new hit; `max = 500`, the 501st hit kills rg and shows `500+`. Query and selection persist through core `id`. | Sorted output keeps the stable by-path order while streaming; rg runs single-threaded with `--sort`. |
+| Kill | Killing a task also kills every process it spawned (`PluginProc.task`), not only the one it waits on; this covers late `buf_pre_save` handlers too. | "previous task and its spawns" for `query`. |
+| Layout | Line find is untouched (M3), so D3 changes nothing visible in M1: plugin split panes already had the field over the list column. Palette and cwd picker stay overlays, so "Collapse the centered pickers" stays for M2. | |
 
 ## 8. Decisions
 

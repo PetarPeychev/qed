@@ -295,7 +295,7 @@ returns whether the text changed (fuzzy callers re-filter); `textfield_render` d
 scrolled to the caret with the selection inverted (`COLOR_PANE_BG`/`FG`). Word/home
 motion is the same `word_left_col`/`word_right_col`/`home_smart_col` the buffer cursor
 uses. `FuzzyList` (`overlay.odin`) embeds one; its `> ` prompt draws via `overlay_prompt_render`.
-Centered fuzzy pickers (palette, diff base, plugin `qed.pick`) share `fuzzy_list_key`,
+Centered fuzzy overlays (palette, cwd picker) share `fuzzy_list_key`,
 `fuzzy_list_center_render` (label + dim right-aligned detail) and `fuzzy_list_center_mouse`.
 Every pane is mouse-driven through `pane_mouse` or an optional `Overlay.mouse` handler (`editor_dispatch`
 routes `.Mouse` to it): wheel scrolls, single-click selects a row, double-click activates,
@@ -303,8 +303,8 @@ a click in the query/prompt field places the caret and a button-held drag select
 click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). Shared row/
 field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
 `overlay_prompt_mouse`; `textfield_mouse` maps a click to a caret).
-List | preview panes (file tree, line jump, plugin pickers with paths) split via `overlay_split` with per-list
-min/max (`filetree_list_*_width`; `code_list_*_width` for path pickers + line jump) and a global
+List | preview panes (file tree, line jump, `split` plugin panes) split via `overlay_split` with per-list
+min/max (`filetree_list_*_width`; `code_list_*_width` for `split` panes + line jump) and a global
 `preview_min_width`/`preview_max_width`. Inner width W (minus the divider) >= both maxes: both at max
 and the box is centered (extra width becomes margin). Below that, the deficit is taken equally from
 each side down to its min, the other side absorbing the rest. W under both mins hides the preview
@@ -312,8 +312,8 @@ each side down to its min, the other side absorbing the rest. W under both mins 
 `editor_previews_sync`). The `PICKER_MARGIN_X` side margin is fixed at every width.
 Most panes reset their query on open; **line-find persists it**:
 reopened with the text fully selected (`textfield_select_all`) so a keystroke replaces it,
-else edit/arrow to refine. The `search` plugin does the same through `qed.pick{query}` and also
-restores its selected match; the file tree persists its expanded set + selection.
+else edit/arrow to refine. Plugin panes opened with an `id` (the `search` plugin) restore their field
+text and selected item the same way; the file tree persists its expanded set + selection.
 
 Two terminal workarounds, both
 documented in `lib/tb2/PATCHES.md`:
@@ -329,31 +329,51 @@ documented in `lib/tb2/PATCHES.md`:
 ## Panes
 
 `Pane` (`pane.odin`) is the one UI model of [notes/panes.md](notes/panes.md), built so far to
-M0: centered, `Dialog`/`Palette` size class, input fields (one in use), a text body and an action
-list, with Odin `on.activate`/`on.close` handlers. `Editor.panes` is the stack:
+M1: placement `center`/`full`/`split` (`pane_geom` computes every rect), size class, title, fields
+(`input`/`filter`/`query` modes), a styled text body, a list (items with label/detail/path/row/key,
+matches under a filter field, multi range, `max` with `N+`, empty hint), an auto file preview,
+footer hints, and Odin `on.activate`/`on.close` handlers. `Editor.panes` is the stack:
 - The topmost non-passive pane takes keys, mouse and paste (`pane_stack_dispatch`). Passive panes
   never do and draw under everything focused.
 - Kinds: Exclusive (default; opening one closes the open non-safety exclusive pane, or returns
-  nil while a plugin's confirm/prompt is open), Child (`parent` handle), Passive. Safety dialogs
+  nil while any live pane has a `.Pane` waiter), Child (`parent` handle), Passive. Safety dialogs
   (`safety`: quit, close, conflict; one each) stay on top: other root panes are inserted below them.
 - Invariant: a pane's descendants follow it contiguously (a child goes right after its parent's
   subtree). `pane_end(handle, activate)` takes that run off the stack, then runs the children's
   `on.close` and the pane's `on.activate` or `on.close`, so a handler that opens another pane
   never sees the old one. A pane is live only if its parent chain is.
-- `Pane.id` names core panes (`quit`, `close`, `conflict`, `merge`); `handle` is unique per open;
-  `ctx.buf` is the buffer a core dialog acts on, resolved in its handler.
+- `Pane.id` names core panes (`quit`, `close`, `conflict`, `merge`) and plugin panes (`qed.ui.open{id}`);
+  `handle` is unique per open; `ctx.buf` is the buffer a core dialog acts on, resolved in its handler.
 - Plugin unload only marks its panes `dead`; `pane_stack_sync` closes them later, so no Lua runs
-  inside an unload.
+  inside an unload. `pane_stack_sync` (end of `editor_step` and `plugin_pump`) also syncs auto previews.
+- A `query` field arms `query_due`/`query_at` (`PANE_QUERY_DEBOUNCE_MS`); Enter while a query is due
+  or running sets `accept` instead. Plugin panes (`ctx.lua`) stay open on activate.
 
-Ported: the quit/close/conflict/merge dialogs and plugin `qed.confirm`/`qed.prompt`.
+**Plugin views** (`plugin_ui.odin`): `qed.ui.open` builds a Pane plus a `UiView` in `Plugins.views`
+(registry refs: the view table, the item values, the `on` handlers; change/query task ids), keyed by
+handle. Views and Lua never hold a `^Pane` (the stack reallocates). The UiView outlives its Pane until
+the close event is flushed. Events (D8), no Lua during dispatch:
+- `activate`/`close`: the pane's Odin handler queues a `UiViewEvent` (item indices, first field
+  text); `plugin_views_flush` (start of `plugin_flush`) resumes `view:wait` waiters through
+  `Plugins.answer`, then starts the handler task; close also kills the change/query tasks and
+  releases the view. Closing saves field texts and the selected key under `id` (`Editor.pane_saved`).
+- `change`: the same flush compares the selected item with `notified`, so moves between flushes
+  coalesce; the previous change task is killed.
+- `query`: `plugin_views_pump` (in `plugin_pump`, joined to `plugin_busy` and the poll timeout)
+  starts it once due, killing the previous task, the process it waits on and every process it
+  spawned (`PluginProc.task`); it also lands a pending `accept` once the query task ends.
+`qed.pick/prompt/confirm/pane` are Lua sugar in `src/prelude.lua`, installed into every plugin's
+`qed` table by `plugin_qed_push`: `ui.open` + `view:wait()` + `view:close()`; pick/prompt/confirm
+open with `kind = "child"` (a child of the focused pane or the active overlay, else exclusive).
+
+Ported: the quit/close/conflict/merge dialogs and every plugin pane.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
 `Overlay` vtable entries (`editor_overlays`). The stack sits above them: an overlay gets input only
 when no pane has focus, and render draws the active overlay, then the stack. A child opened over
-a bare overlay records its `active` flag in `Pane.over`; `pane_stack_sync` (end of `editor_step`
-and `plugin_pump`) closes a child whose overlay closed, and focus and render skip it until then.
-The tree-under-palette/pick/pane render case and `plugin_overlay_open` (the `qed.pick`/`qed.pane`
-busy check with its tree exemption) remain for overlays only. The file tree's and cwd picker's
-nested confirms stay inside those overlays, drawn and driven by `dialog_*` adapters over
+a bare overlay records its `active` flag in `Pane.over`; `pane_stack_sync` closes a child whose
+overlay closed, and focus and render skip it until then. An exclusive pane does not close an open
+overlay. The tree-under-palette render case remains for the palette. The file tree's and cwd
+picker's nested confirms stay inside those overlays, drawn and driven by `dialog_*` adapters over
 `pane_render`/`pane_key`/`pane_mouse`.
 
 ## Modules
@@ -442,28 +462,11 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Bundled dir plugin files are listed one by one in `bundled_plugin_dir_files`
   (`plugin.odin`) so `test.lua` stays out of the binary; a test fails when a
   `plugins/<dir>/*.lua` is missing from it. The `test.lua` runner reads from disk.
-- **UI waits** (`plugin_ui.odin`): `qed.pick` fills the single `Plugins.ui` overlay and
-  waits (`.Ui`); Enter/Esc/click resolve it from `editor_dispatch`, storing the result,
-  and the continuation pushes it (picked items are the caller's own values, kept in a
-  registry ref). It and `qed.pane` return `nil, "busy"` while a pane or another overlay
-  is open, except over the file tree. `qed.confirm`/`qed.prompt` open a pane
-  (`plugin_ask_open`): a child of the focused pane or of the active overlay, else
-  exclusive. They wait on `.Pane`; the pane's handler sets `Plugins.answer` and resumes
-  the waiters in the same dispatch. They return `"busy"` only under a safety dialog.
-  `on_change` runs as its own
-  task whenever the highlighted item changes (never at open); the previous one is
-  killed on each change and on resolve, so a waiting handler can't apply a stale
-  preview. `qed.pane` is a non-waiting read-only overlay (`Plugins.pane`).
-  Unloading the owner closes both and its panes with their children (another plugin's
-  child resolves `nil` at the next `pane_stack_sync`; the owner's own waiters are not resumed). A modal records the command whose task opened it
-  (`PluginTask.command`); that command's chord closes it like Esc.
-- **Query-driven picks** (`on_query`): typing only marks `query_due`; `plugin_ui_pump`
-  (in `plugin_pump`, joined to `plugin_busy` and the poll timeout) starts the handler as a
-  task once `PLUGIN_QUERY_DEBOUNCE_MS` passed (at open, immediately), killing the previous
-  one and the `qed.spawn` it waits on. Enter while a query is due or running sets `accept`
-  (flushing the debounce); the pump accepts once the task ends. `picker:set` swaps `items_ref` and the item list,
-  clears `notified`, and the pump fires `on_change` for the new highlight. Path pickers
-  render the left-half prompt with the count by the divider and a full-height preview.
+- **UI**: `qed.ui.open` views, events and the prelude sugar are in Panes. A pane records the
+  command whose task opened it (`Pane.toggle` from `PluginTask.command`); that command's chord
+  closes it like Esc. `ctx.view` is the focused plugin view's table. `qed.ui.open` raises in `setup`.
+  Unloading the owner releases its views and their queued events, then marks its panes dead; another
+  plugin's child of them resolves `nil` at the next sync and flush (the owner's own waiters are freed).
 - `qed.parse_locations` (pure, `plugin_api.odin`) turns `file:row[:col][: msg]`
   lines into pick items with `path`/`pos`. `qed.jump` takes a buffer id or a path,
   takes the jump origin before opening (an origin in the just-opened file would let
@@ -471,7 +474,7 @@ started at the end of `editor_init`. Invariants the code can't show:
   and snaps a col inside a UTF-8 sequence back.
 - `qed.theme.set` without `persist` only changes what is shown (`Editor.theme_shown`;
   setting the configured theme clears it). A config reload keeps the shown theme
-  while a plugin modal is open, else drops it. Unloading the plugin that set it
+  while a plugin pane is open, else drops it. Unloading the plugin that set it
   restores the configured theme. `persist` writes the `theme` key, fires
   `theme_changed`, and fails with `nil, err` when the write fails. Headless sessions
   persist to `Plugins.persist_path` (tests).
@@ -711,7 +714,7 @@ defaults seeded before main, load + write-back) · `module` (ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict dialogs, `dialog_*` adapters) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
+`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -738,9 +741,9 @@ plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns 
 table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `hook_timeout`, `module`, `lsp`, `ui` (focused plugin pane or open pick: kind, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `hook_timeout`, `module`, `lsp`, `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
-`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui_test.odin`; scope + assertion surfaces:
+`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
 
 ## Shipped
@@ -779,7 +782,7 @@ rebind-aware pane self-close chords (`command_matches`), Debug-level internals
 instrumentation (startup context, subprocess/AI/FIM/save/config/clipboard/terminal trails,
 LSP request/response/diagnostics, completion counts, git branch + scan, disk reload/conflict —
 full AI prompt/response bodies logged at Debug, no env-var dumps), welcome screen, quit guard across
-modified buffers, floating pane primitive + pane stack (plugin confirm/prompt stack over open panes, safety dialogs on top), command palette (context-filtered via
+modified buffers, pane model + stack (`qed.ui.open` plugin panes: center/full/split, filter/query/input fields, streaming lists, queued events, exclusive panes persisted by `id`; pick/prompt/confirm stack over open panes, safety dialogs on top), command palette (context-filtered via
 `command_available`: welcome lists only the working whitelist, big-file buffers
 hide the LSP/inspect commands),
 multiple buffers, close buffer (buffer switching folded into the file-tree **Open** tab —
@@ -789,7 +792,7 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
-matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: **async + debounced** `rg` via `qed.pick{on_query}`, parallel scan with results sorted in Lua for deterministic order, `plugins.search.min_query`;
+matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** `rg --sort path` streamed into the list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
 file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone

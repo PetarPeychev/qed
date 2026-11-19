@@ -39,7 +39,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | buffer/edit/undo/cursor/wrap/pairs | KS | core | Exposed as `qed.buf` and `qed.edit`. |
 | rendering, status layout, gutter | KS | core | Plugins push segments and decorations. |
 | highlight/predicate/inspect | KS | core | Threads, FFI, per-edit reparse. |
-| textfield/overlay/fuzzy/pane/preview/confirm widgets | KS | core | Exposed as `qed.pick`, `prompt`, `confirm`, `pane`. |
+| textfield/overlay/fuzzy/pane/preview/confirm widgets | KS | core | Exposed as `qed.ui.open`; `qed.pick`, `prompt`, `confirm`, `pane` are Lua sugar over it. |
 | palette + keybind dispatch | KS | core | Gains a dynamic plugin-command list. |
 | find/replace, linefind, jump, cwdpick | | core | Interactive per keystroke. Porting gains nothing. |
 | quit/close/disk-conflict dialogs | | core | Safety of unsaved work. |
@@ -54,7 +54,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
 | file tree Git tab + status bars: status scan, numstat sizes, renames, deleted files, ignored set, preview base, restore | | **plugin** (phase 11, done: `plugins/git/tree.lua`) | `filetree.provide{refresh, preview, open_deleted}`, `filetree.set_status`, `filetree.set_base`. Core keeps the tab, bars, sizes, ghost rows, preview diff and the walk (render and keystroke paths). |
 | conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
-| projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`) | `pick{query, on_query}`, `picker:set`, `spawn`, `jump`, `ctx.files`. Core keeps the list + preview layout, the preview, the count and hint, and the query debounce (keystroke path). |
+| projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`; on `qed.ui.open` since M1) | `ui.open{id, query field}`, `view:set/append`, `spawn_bg{on_line}`, `jump`, `ctx.files`. Core keeps the split layout, the preview, the count and hint, the query debounce (keystroke path) and the query/selection memory (`id`). |
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
 | module.odin | | replaced | `modules.git` became `plugins.git`; `.Git` is gone (phase 11). `modules.lsp` became the top-level `lsp` section (phase 13). `modules.ai` stays until ported. |
@@ -137,11 +137,15 @@ There is deliberately no `key` event.
 | Function | Notes |
 |---|---|
 | `qed.message(text, level? \| {level?})`, `qed.log(level, text)` | Always attributed to the plugin's display name. Unknown options raise. |
-| ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?, query?, on_query?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout (match count by the divider). `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. `query` is the initial text, fully selected. Esc returns `nil`. |
-| `on_query(query, picker)` | Makes the pick query-driven: no fuzzy filter, list + preview layout, items only from `picker:set(items, {selected?, more?, hint?}) -> live`. Runs as a task at open and `PLUGIN_QUERY_DEBOUNCE_MS` (120) after the query stops changing; core debounces, so no Lua runs per keystroke. Each run kills the previous one with the `qed.spawn` it waits on, and closing or unloading kills the last. `set` replaces the items (`selected` index, `more` shows `N+`, `hint` shows while empty), fires `on_change` for the new highlight and returns false once the picker is closed. `pick` returns the final query as a third value (also on Esc), and Enter while a query is due or running flushes it and accepts once it ends. |
-| ⏳ `qed.prompt{prompt, text?} -> string \| nil` | A core pane with one input field. |
-| ⏳ `qed.confirm(question, choices?) -> index \| nil` | A core pane (question + action list). |
-| `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
+| `qed.ui.open(spec) -> view \| nil, "busy"\|"closed"` | A pane on the core model ([panes.md](panes.md) §5, M1 as built): `id`, `place` (`center`/`full`/`split`), `size`, `kind` (`exclusive`/`child`), `parent`, `focus = false` (passive), `title`, `fields` (`{prompt?, text?, mode = filter\|query\|input, count?}`), `list` (`{items, multi?, max?, empty?, selected?}`), `preview = "auto"`, `text` lines, `footer = {hints}`, `on = {activate, change, query, close}`. Items are strings or `{label, detail?, value?, path?, pos?, key?}`. Raises in `setup`. |
+| `on.activate(v, items)`, `on.change(v, item)`, `on.query(v, text)`, `on.close(v)` | Queued during input dispatch, run as tasks in the flush before the next frame. `change` coalesces per flush and kills the previous run; `query` runs at open and `PANE_QUERY_DEBOUNCE_MS` (120) after typing stops, killing the previous run and the processes it spawned; close kills both. Activate leaves the pane open. |
+| `v:set(items, {selected?, more?, hint?})`, `v:append(items)`, `v:update(key, fields)`, `v:text(lines)`, `v:close()` | `set`/`append`/`update`/`text` return false once closed. `max` caps the list and shows `N+`. |
+| ⏳ `v:wait() -> items \| nil, index \| nil, text \| nil` | The next activate (items, the first one's index, the first field's text) or the close (`nil, nil, text`). |
+| ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?, query?, on_query?} -> item \| items[] \| nil` | Sugar: a child `ui.open` + `wait` + `close`. Items with `path` get the split layout (count by the divider). `multi = true` returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. `query` is the initial text, fully selected. Esc returns `nil`. |
+| `on_query(query, picker)` | Sugar for a `query` field: items only from `picker:set(items, {selected?, more?, hint?}) -> live` (`view:set`). `pick` returns the final query as a third value (also on Esc), and Enter while a query is due or running accepts once it ends. |
+| ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Sugar: a child pane with one `input` field. |
+| ⏳ `qed.confirm(question, choices?) -> index \| nil` | Sugar: a child `dialog` pane (question + action list). |
+| `qed.pane{title, lines, footer?} -> pane` | Sugar: an exclusive `full` pane. `pane:set(lines)` (`view:text`) and `pane:close()`. Lines are strings or `{text, color}`. |
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
@@ -149,9 +153,8 @@ There is deliberately no `key` event.
 | `qed.filetree.set_status(files, ignored?)` | Replaces the tree status. `files[path] = {mark = "added"\|"modified"\|"deleted", from?, added?, removed?}`; `from` is a rename's old path, `added`/`removed` the `+N -N` sizes. Core propagates marks to ancestor dirs, lists deleted files virtually and hides `ignored` paths unless *Toggle Ignored*. Validated before anything changes. Raises unless the caller is the provider. |
 | `qed.filetree.set_base(path, text \| nil)` | Answers `preview(path)`: the Changed tab previews `path` diffed against `text`, raw bytes (a NUL on either side shows a hexdump; `nil`: plain file). A stale path is ignored; every `set_status` drops the cached base, keeping the old rows up until the re-ask is answered. |
 
-- `qed.confirm`/`qed.prompt` stack as a child over an open pane or overlay; they return `nil, "busy"` only while a core safety dialog (quit, close, conflict) shows. `qed.pick` and `qed.pane` are still one slot each and return `"busy"` while a pane or another overlay is open (the file tree excepted) until [panes.md](panes.md) M1 rebuilds them on `qed.ui.open`.
-- The chord of the command that opened a modal closes it like Esc (the core pane convention).
-- Panes that handle keys, events and lists come with `qed.ui.open` ([panes.md](panes.md)).
+- `qed.pick`/`prompt`/`confirm` stack as a child over an open pane or overlay; they return `nil, "busy"` only while a core safety dialog (quit, close, conflict) shows. An exclusive open (`qed.ui.open` default, `qed.pane`) is also `"busy"` while any pane someone waits on is open, and otherwise closes the open exclusive pane.
+- The chord of the command that opened a pane closes it like Esc (the core pane convention). A command run while a view has focus gets it as `ctx.view`.
 
 ### Terminals (`qed.term`)
 Core owns PTY and vterm. Each session has a name.
@@ -326,7 +329,8 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 11 | File tree status provider (`qed.filetree.provide{refresh, preview, open_deleted}`, `set_status`, `set_base`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changed*. | minor |
 | 12 | Query-driven `qed.pick` (`query`, `on_query`, `picker:set`), the opening command's chord closes a modal, `ctx.files` expands scoped-tab dirs. Project search moves to `plugins/search` (*Find in Files* and the tree's *Search*); `projsearch.odin` and `projsearch_min_query` (now `plugins.search.min_query`) are gone. | minor |
 | 13 | `qed.meta{display_name}`, display names everywhere a plugin is named, automatic `<display name>: ` command prefix, `qed.message` without `source`, keybinds under `plugins.<id>.keybinds` (plugin binds leave the top-level `keybinds`), the `Lua` LSP settings go out only under the config dir, `modules.lsp` becomes `lsp` and `.Lsp` leaves the `Module` enum, `pickers` becomes `settings` (`plugins.settings`), the `tasks` plugin is dropped (`plugins.tasks`, its picker and `tasks N` segment; `qed.term` stays). | minor |
-| later | Interactive panes, conflicts, aiedit, fim: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
+| M1 | `qed.ui.open` and views (set/append/update/text/close/wait), queued `activate`/`change`/`query`/`close`, exclusive panes persisted by `id`, `ctx.view`; `qed.pick/prompt/confirm/pane` become prelude sugar (`pick` over an open pane is a child, not `"busy"`); `search` streams `rg --sort path` into a query pane. | minor |
+| later | Conflicts, aiedit, fim and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions
 
