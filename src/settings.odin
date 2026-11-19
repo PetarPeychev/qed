@@ -378,6 +378,7 @@ embedded_config_data := #load("../config/config.json")
 g_config_defaults: json.Object
 g_theme_defaults: json.Object
 g_config_user: json.Object
+g_config_user_broken: bool
 
 // Runs before main (and before tests): the valueless globals in config.odin get
 // their defaults from the embedded config/ JSON; soundness is enforced by tests.
@@ -452,6 +453,7 @@ config_load :: proc() -> (message: string, is_error: bool) {
 config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 	config_defaults_apply()
 	config_user_set(nil)
+	g_config_user_broken = false
 
 	problems := make([dynamic]string, context.temp_allocator)
 	is_error = false
@@ -462,9 +464,11 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 		if perr != nil {
 			message = fmt.tprintf("config.json: parse error in %s, using defaults", path)
 			is_error = true
+			g_config_user_broken = true
 		} else if root, is_obj := root_val.(json.Object); !is_obj {
 			message = fmt.tprintf("config.json: %s is not a JSON object, using defaults", path)
 			is_error = true
+			g_config_user_broken = true
 		} else {
 			config_apply(root, &problems)
 			config_collect_unknown(root, &problems)
@@ -1324,13 +1328,13 @@ config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> b
 
 config_persist_path_to :: proc(path: string, keys: []string, value: json.Value) -> bool {
 	root: json.Object
-	if data, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil {
-		if v, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator);
-		   perr == nil {
-			if o, ok := v.(json.Object); ok {
-				root = o
-			}
+	if data, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil && strings.trim_space(string(data)) != "" {
+		v, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
+		o, ok := v.(json.Object)
+		if perr != nil || !ok {
+			return false
 		}
+		root = o
 	}
 	root = json_object_set(root, keys, value)
 
@@ -1340,7 +1344,9 @@ config_persist_path_to :: proc(path: string, keys: []string, value: json.Value) 
 	sb := strings.builder_make(context.temp_allocator)
 	json_write_value(&sb, root, 0)
 	strings.write_byte(&sb, '\n')
-	return os.write_entire_file(path, transmute([]byte)strings.to_string(sb)) == nil
+	stamp := buffer_disk_stamp(path)
+	mode := stamp.mode if stamp.ok else os.perm(0o644)
+	return file_write_atomic(path, transmute([]byte)strings.to_string(sb), mode) == .None
 }
 
 json_object_set :: proc(obj: json.Object, keys: []string, value: json.Value) -> json.Object {

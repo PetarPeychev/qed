@@ -109,13 +109,18 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "alpha     user     enabled"), "the user plugin row")
 
+	_ = os.write_entire_file(e.ed.plugins.persist_path, transmute([]u8)string(`{"tab_width": 2}`))
+	stamp := DiskStamp{mtime = 42, ok = true}
+	e.ed.config_stamp = stamp
 	e2e_key(&e, tb2.Key(0), {}, 'e')
+	testing.expect(t, e.ed.config_stamp == stamp, "e leaves the config stamp so the next poll still reloads an external edit")
 	alpha := plugin_find(&e.ed.plugins, "alpha")
 	testing.expect_value(t, alpha.state, PluginState.Disabled)
 	_, has := plugin_test_command(&e.ed, "Alpha: Cmd")
 	testing.expect(t, !has, "disabling unloads")
 	data, _ := os.read_entire_file(e.ed.plugins.persist_path, context.temp_allocator)
 	testing.expect(t, strings.contains(string(data), `"alpha": {`) && strings.contains(string(data), `"enabled": false`), "e persists only plugins.alpha.enabled")
+	testing.expect(t, strings.contains(string(data), `"tab_width": 2`), "an unpolled external edit survives the persist")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "alpha     user     disabled"), "the row shows disabled")
 
@@ -132,6 +137,9 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "alpha", "reloaded"), 1)
 	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "alpha", "alpha says hi"), 3)
 
+	reload_write(dir, "aaa.lua", `return {}`)
+	plugins_poll(&e.ed)
+	testing.expect_value(t, e.ed.plugins.list[v.selected].name, "alpha")
 	e2e_key(&e, tb2.Key(0), {}, 'l')
 	testing.expect(t, e.ed.logview.active, "l opens the message log")
 	e2e_render(&e)
@@ -147,7 +155,11 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "plugins/format/init.lua  ·  bundled, read-only"), "the read-only title")
 	testing.expect(t, e2e_grid_has(&e, "local on = {}"), "the embedded source shows")
-	testing.expect(t, e2e_grid_has(&e, "fork: copy to ") && e2e_grid_has(&e, "plugins/format"), "the fork hint")
+	user_dir := e.ed.plugins.user_dir
+	e.ed.plugins.user_dir = "/qed-u"
+	e2e_render(&e)
+	e.ed.plugins.user_dir = user_dir
+	testing.expect(t, e2e_grid_has(&e, "fork: copy to /qed-u/format"), "the fork hint points into the user plugin dir")
 	e2e_key(&e, .Pgdn)
 	testing.expect(t, v.source.scroll > 0, "the source scrolls")
 	lay := logview_layout(&e.ed)

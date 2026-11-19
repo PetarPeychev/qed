@@ -509,6 +509,10 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, SCROLL_MARGIN == 3, "malformed config falls back to defaults")
 	mdata, _ := os.read_entire_file(malformed_path, context.temp_allocator)
 	testing.expect(t, strings.contains(string(mdata), "not valid"), "malformed file left untouched")
+	testing.expect(t, g_config_user_broken, "a parse failure is flagged so plugin state is kept")
+	testing.expect(t, !config_persist_key_to(malformed_path, "theme", json.String("x")), "persist refuses an unparsable file")
+	mdata, _ = os.read_entire_file(malformed_path, context.temp_allocator)
+	testing.expect(t, string(mdata) == `{ not valid json`, "a refused persist leaves the file as it was")
 
 	// Hot-reload revert: a present override, then deleting the file, reverts to defaults.
 	reload_path := fmt.tprintf("%s/reload.json", dir)
@@ -620,4 +624,13 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, len(obj) == 1, "fresh file holds only the persisted key")
 	st, st_ok := obj["theme"].(json.String)
 	testing.expect(t, st_ok && string(st) == "solo", "fresh file holds the persisted value")
+
+	ok = config_persist_path_to(fresh_path, {"plugins", "p", "enabled"}, json.Boolean(false))
+	testing.expect(t, ok, "nested persist succeeds")
+	obj = reparse(t, fresh_path)
+	plugins_obj, _ := obj["plugins"].(json.Object)
+	p_obj, _ := plugins_obj["p"].(json.Object)
+	pe, pe_ok := p_obj["enabled"].(json.Boolean)
+	testing.expect(t, len(obj) == 2 && pe_ok && !bool(pe), "nested persist sets only plugins.p.enabled")
+	testing.expect(t, !os.exists(fmt.tprintf("%s.qed-tmp", fresh_path)), "the atomic temp file is gone")
 }

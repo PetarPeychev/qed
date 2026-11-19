@@ -118,8 +118,20 @@ plugin_reload_dir_plugin :: proc(t: ^testing.T) {
 	testing.expect(t, plugins_poll(ed), "a file nested inside a dir plugin reloads it")
 	sched_run(t, ed, "Dp: Ver")
 	testing.expect_value(t, ed.message, "three")
-	reload_write(dir, "dp/sub/new.txt", "x")
-	testing.expect(t, plugins_poll(ed), "a file added inside a dir plugin reloads it")
+	reload_write(dir, "dp/sub/new.lua", "return {}")
+	testing.expect(t, plugins_poll(ed), "a Lua file added inside a dir plugin reloads it")
+	reload_write(dir, "dp/notes.txt", "x")
+	reload_write(dir, "dp/.init.lua.swp", "x")
+	reload_write(dir, "dp/.git/HEAD", "x")
+	reload_write(dir, "dp/.git/hooks/x.lua", "x")
+	reload_write(dir, ".hidden.lua", "return {}")
+	reload_write(dir, ".hiddendir/init.lua", "return {}")
+	reload_write(dir, "target/lib.lua", "return {}")
+	e2e_run(fmt.tprintf("ln -s %s %s", shell_quote(fmt.tprintf("%s/target", dir)), shell_quote(fmt.tprintf("%s/dp/linked", dir))))
+	testing.expect(t, !plugins_poll(ed), "non-Lua files, dot entries, dot plugins and symlinks inside a dir plugin are ignored")
+	reload_write(dir, "target/lib.lua", "return {v = 1}")
+	testing.expect(t, !plugins_poll(ed), "a symlink below the top level is not followed")
+	testing.expect_value(t, reload_names(ed), "dp:u:Enabled")
 }
 
 @(test)
@@ -208,6 +220,15 @@ plugin_reload_enabled_flip :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Info, "u", "disabled"), "disabling is reported")
 	plugins_config_apply(ed, false)
 	testing.expect_value(t, reload_logged_count(ed, .Error, "bad", "boom"), 2)
+
+	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"u": {"enabled": false}}}`)
+	plugins_config_apply(ed, false, parsed = false)
+	testing.expect_value(t, reload_names(ed), "bun:b:Enabled bad:u:Errored u:u:Enabled")
+	plugins_config_apply(ed, false)
+	testing.expect_value(t, plugin_find(&ed.plugins, "u").state, PluginState.Disabled)
+	os.remove(fmt.tprintf("%s/u.lua", dir))
+	plugins_poll(ed)
+	testing.expect(t, !plugin_test_logged(ed, .Info, "u", "unloaded"), "removing a disabled plugin is not reported as an unload")
 }
 
 @(test)
@@ -234,6 +255,7 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 	testing.expect(t, !plugin_test_logged(ed, .Info, "aware", "reloaded"), "a plugin with config_changed keeps its state")
 	testing.expect_value(t, sched_var(ed, "seen"), "hey")
 	testing.expect_value(t, sched_var(ed, "aware_loads"), "1")
+	testing.expect_value(t, plugin_find(&ed.plugins, "aware").cfg_sig, plugin_cfg_sig("aware", ed.plugins.config_override.?))
 
 	editor_clear_message(ed)
 	plugins_config_apply(ed, false)

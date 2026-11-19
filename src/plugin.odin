@@ -264,6 +264,9 @@ plugins_scan :: proc(editor: ^Editor, user_dir: string, warn: bool) -> []Plugin 
 	if user_dir != "" {
 		if infos, err := os.read_directory_by_path(user_dir, -1, context.temp_allocator); err == nil {
 			for info in infos {
+				if strings.has_prefix(info.name, ".") {
+					continue
+				}
 				fi := plugin_stat_follow(info)
 				if fi.type == .Directory {
 					main := fmt.tprintf("%s/%s/init.lua", user_dir, info.name)
@@ -342,11 +345,13 @@ plugin_dir_stamp :: proc(dir: string, depth := 0) -> u64 {
 	}
 	h: u64
 	for info in infos {
-		fi := plugin_stat_follow(info)
-		if fi.type == .Directory {
-			h += plugin_dir_stamp(info.fullpath, depth + 1) + hash.fnv64a(transmute([]u8)info.fullpath)
-		} else {
-			h = plugin_stamp_mix(h, info.fullpath, fi)
+		if strings.has_prefix(info.name, ".") {
+			continue
+		}
+		if info.type == .Directory {
+			h += plugin_dir_stamp(info.fullpath, depth + 1)
+		} else if info.type == .Regular && strings.has_suffix(info.name, ".lua") {
+			h = plugin_stamp_mix(h, info.fullpath, info)
 		}
 	}
 	return h
@@ -626,7 +631,7 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 		if changed && pl.state == .Enabled {
 			plugin_unload(editor, &pl)
 		}
-		if kept[i] < 0 {
+		if kept[i] < 0 && pl.state != .Disabled {
 			editor_log(editor, .Info, pl.name, "unloaded")
 		}
 	}
@@ -659,8 +664,17 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 			plugin_strings_free(&pl)
 		}
 	}
+	selected := ""
+	if pl := pluginview_selected(editor); pl != nil {
+		selected = pl.name
+	}
 	delete(p.list)
 	p.list = next
+	for pl, i in p.list {
+		if pl.name == selected {
+			editor.pluginview.selected = i
+		}
+	}
 	for name, i in loads {
 		pl := plugin_find(p, name)
 		plugin_load(editor, pl)
@@ -680,18 +694,24 @@ plugins_config_sync :: proc(editor: ^Editor) {
 		switch {
 		case want == (pl.state == .Disabled):
 			plugin_enabled_set(editor, pl, want)
-		case pl.cfg_sig != plugin_cfg_sig(pl.name, cfg) && (pl.state == .Errored || !plugin_subscribed(p, pl.name, .Config_Changed)):
+		case pl.cfg_sig == plugin_cfg_sig(pl.name, cfg):
+		case pl.state != .Disabled && (pl.state == .Errored || !plugin_subscribed(p, pl.name, .Config_Changed)):
 			plugin_reload(editor, pl)
 			plugin_reload_report(editor, pl, "reloaded (config changed)")
+		case:
+			delete(pl.cfg_sig)
+			pl.cfg_sig = strings.clone(plugin_cfg_sig(pl.name, cfg))
 		}
 	}
 }
 
-plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool) {
+plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool, parsed := true) {
 	p := &editor.plugins
 	p.binds_deferred = true
 	plugins_config_refresh(editor)
-	plugins_config_sync(editor)
+	if parsed {
+		plugins_config_sync(editor)
+	}
 	plugin_queue(editor, {event = .Config_Changed})
 	if theme_changed {
 		plugin_queue(editor, {event = .Theme_Changed})
@@ -1571,12 +1591,8 @@ pluginview_toggle :: proc(editor: ^Editor) {
 	enable := pl.state == .Disabled
 	path := editor.plugins.persist_path if editor.headless else config_path()
 	if path == "" || !config_persist_path_to(path, {"plugins", pl.name, "enabled"}, json.Boolean(enable)) {
-		editor_log(editor, .Error, "", "Cannot write config.json")
+		editor_log(editor, .Error, "", "Cannot update config.json (unwritable or not valid JSON)")
 		return
-	}
-	if !editor.headless {
-		config_load_from(path)
-		editor.config_stamp = buffer_disk_stamp(path)
 	}
 	plugin_enabled_set(editor, pl, enable)
 }
@@ -1740,7 +1756,7 @@ pluginview_render :: proc(editor: ^Editor) {
 		preview_render(&v.source, inner.x, lay.body_top, inner.w - 1, h)
 		pane_draw_scrollbar(lay.box.x + lay.box.w - 1, lay.body_top, h, v.source.scroll, preview_total(&v.source))
 		pane_hline(lay.box, lay.footer_sep_y)
-		fork := fmt.tprintf("%s/%s", plugin_user_dir(), pl.dir if pl != nil && pl.dir != "" else v.source.path)
+		fork := fmt.tprintf("%s/%s", p.user_dir, pl.dir if pl != nil && pl.dir != "" else v.source.path)
 		if home := os.get_env("HOME", context.temp_allocator); home != "" && strings.has_prefix(fork, home) {
 			fork = fmt.tprintf("~%s", fork[len(home):])
 		}

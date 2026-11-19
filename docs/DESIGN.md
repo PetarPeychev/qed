@@ -418,25 +418,9 @@ started at the end of `editor_init`. Invariants the code can't show:
   restores the configured theme. `persist` writes the `theme` key, fires
   `theme_changed`, and fails with `nil, err` when the write fails. Headless sessions
   persist to `Plugins.persist_path` (tests).
-- On config hot reload `plugins_config_apply` re-merges each loaded plugin's
-  config (its kept `defaults` + embedded + user), applies `enabled` flips and
-  reloads changed plugins that don't handle `config_changed` (`Plugin.cfg_sig`),
-  flushes `config_changed`, and only then runs `plugins_rebind` so keybinds for
-  commands those handlers register aren't "unknown". Commands registered after the
-  first full bind (`Plugins.bound`) report their own key problems, except inside
-  that window (`binds_deferred`).
-- **Hot reload:** `plugins_poll` (disk poll) rescans bundled + `Plugins.user_dir`;
-  `Plugin.stamp` hashes mtime+size of the file, or of every file under a dir plugin
-  (from the `read_directory` fstat, ~13 us/file). On any difference `plugins_sync`
-  unloads removed/changed/shadow-swapped plugins while they're still in the list,
-  rebuilds the list in load order, then loads. Headless sessions have no user dir
-  and never poll. Plugin names are interned in `Plugins.names` (freed at shutdown)
-  because owners in tasks, pooled threads and queued events point at them. A load
-  after startup queues `startup` for that plugin only (`PluginQueued.only`).
-- Unload also drops the plugin's pooled threads.
-- Plugins pane: `e` persists `plugins.<name>.enabled` then `config_load_from` +
-  config stamp (no reload loop); bundled `Enter` shows the embedded source in a
-  `Preview` inside the pane; `l` opens the log with `LogView.source` set.
+- Config hot reload (`plugins_config_apply`) runs `plugins_rebind` only after `config_changed` handlers ran (see plugins.md §4 for the full order).
+- Hot reload (`plugins_poll` → `plugins_sync`, before the config reload) is keyed on `Plugin.stamp`; details in plugins.md §4.
+- Plugin names are interned in `Plugins.names` (freed at shutdown): owners in tasks, pooled threads and queued events point at them.
 - Plugin command names are unique per scope (a tree and an editor command may share
   one). `qed.command` returns a handle whose `remove()` unregisters it; removing or
   unloading commands closes the palette, whose rows index `Plugins.commands`.

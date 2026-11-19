@@ -222,6 +222,15 @@ plugin die when it unloads, unless they were created with `{detach = true}`.
 | Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Load, hook and timer errors disable the plugin; command errors only log. All errors are logged as `.Error` with the plugin as source and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
 | Modules | `modules.git` becomes `plugins.git`. `module_enabled(.Git)` becomes "the git plugin is loaded" for the core pieces still gated on it. `.Lsp` and `.Ai` stay as modules. |
 
+Hot reload mechanics:
+- `plugins_poll` runs in the disk poll, before the config reload. It rescans bundled plugins plus `Plugins.user_dir` (headless sessions have none and never poll).
+- `Plugin.stamp` hashes mtime and size of a single-file plugin, or of every `*.lua` file under a dir plugin. Dot entries are skipped, and symlinks below the top-level entry are not followed. Cost is ~13 us per file (`bench_plugin_poll`).
+- On any difference `plugins_sync` unloads removed, changed or shadow-swapped plugins while they are still in the list, rebuilds the list in load order, then loads. The Plugins pane keeps its selection by name.
+- Unload frees the plugin's tasks first (their `__close` runs), then hooks, timers, processes (whole process group) and pooled threads.
+- A load after startup queues `startup` for that plugin only (`PluginQueued.only`).
+- Config hot reload (`plugins_config_apply`): re-merge each loaded plugin's config, apply `enabled` flips and config-driven reloads (`Plugin.cfg_sig`; subscribers adopt the new signature), flush `config_changed`, then `plugins_rebind` and the unknown-plugin warning. A config that fails to parse leaves plugin state alone.
+- Commands registered after the first full bind (`Plugins.bound`) report their own key problems, except inside that window (`binds_deferred`).
+
 ### Plugins pane (core)
 A floating list modeled on *Debug: Message Log*. It is opened by *Debug: Plugins*
 (palette, no default bind). It is core so that it still works when Lua fails to
@@ -231,7 +240,7 @@ load.
 |---|---|
 | Rows | name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. Click selects, double click is `Enter`. |
 | `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view inside the pane, with a hint to fork it to the user dir. |
-| `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, as the theme picker persists), re-reads config without a second hot reload, and loads or unloads the plugin. |
+| `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, atomic; refused when config.json doesn't parse) and loads or unloads the plugin. The config stamp is left alone, so the next poll runs the normal reload and finds the flip already applied. |
 | `r` | Reloads the plugin. |
 | `l` | Opens the Message Log filtered to this plugin's source. |
 

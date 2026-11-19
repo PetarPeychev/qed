@@ -1049,6 +1049,15 @@ editor_plugins_quit :: proc(editor: ^Editor) {
 
 plugin_sched_unload :: proc(editor: ^Editor, owner: string) {
 	p := &editor.plugins
+	for i := len(p.tasks) - 1; i >= 0; i -= 1 {
+		if i < len(p.tasks) && p.tasks[i].owner == owner {
+			if p.tasks[i].running {
+				p.tasks[i].doomed = true
+			} else {
+				plugin_task_free(editor, i)
+			}
+		}
+	}
 	for i := len(p.hooks) - 1; i >= 0; i -= 1 {
 		if p.hooks[i].owner == owner {
 			plugin_hook_remove(p, i)
@@ -1062,15 +1071,6 @@ plugin_sched_unload :: proc(editor: ^Editor, owner: string) {
 	for i := len(p.procs) - 1; i >= 0; i -= 1 {
 		if p.procs[i].owner == owner {
 			plugin_proc_free(p, i)
-		}
-	}
-	for i := len(p.tasks) - 1; i >= 0; i -= 1 {
-		if i < len(p.tasks) && p.tasks[i].owner == owner {
-			if p.tasks[i].running {
-				p.tasks[i].doomed = true
-			} else {
-				plugin_task_free(editor, i)
-			}
 		}
 	}
 	for i := len(p.pool) - 1; i >= 0; i -= 1 {

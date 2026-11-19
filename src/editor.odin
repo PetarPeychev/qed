@@ -1031,8 +1031,8 @@ editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
 	}
 	editor.disk_poll = time.tick_now()
 	git_stat_maybe_start(editor)
-	changed := editor_maybe_reload_config(editor)
-	if plugins_poll(editor) {
+	changed := plugins_poll(editor)
+	if editor_maybe_reload_config(editor) {
 		changed = true
 	}
 	if editor_poll_disk(editor) {
@@ -1112,7 +1112,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
 	editor_modules_sync(editor)
-	plugins_config_apply(editor, theme_changed)
+	plugins_config_apply(editor, theme_changed, !g_config_user_broken)
 	if message == "" {
 		message = "config.json reloaded"
 	}
