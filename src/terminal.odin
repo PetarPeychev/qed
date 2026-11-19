@@ -25,8 +25,9 @@ TermPos :: struct {
 
 Terminals :: struct {
 	active: bool,
-	list:   [dynamic]^Terminal,
-	shown:  ^Terminal,
+	list:    [dynamic]^Terminal,
+	shown:   ^Terminal,
+	zombies: [dynamic]int,
 }
 
 Terminal :: struct {
@@ -40,6 +41,8 @@ Terminal :: struct {
 	code:        int,
 	pty_fd:      int,
 	pid:         int,
+	pending:     [dynamic]u8,
+	dropped:     int,
 	vt:          ^vterm.VTerm,
 	screen:      ^vterm.Screen,
 	cols:        int,
@@ -153,7 +156,8 @@ term_sb_free :: proc(t: ^Terminal) {
 TERM_SHELL :: "shell"
 TERM_FALLBACK_COLS :: 80
 TERM_FALLBACK_ROWS :: 24
-TERM_REAP_MS :: 1000
+TERM_REAP_MS :: 200
+TERM_PENDING_MAX :: 1024 * 1024
 
 TermSpec :: struct {
 	name:  string,
@@ -173,6 +177,9 @@ term_find :: proc(editor: ^Editor, name: string) -> ^Terminal {
 }
 
 term_alive :: proc(editor: ^Editor) -> bool {
+	if len(editor.terminal.zombies) > 0 {
+		return true
+	}
 	for t in editor.terminal.list {
 		if t.alive {
 			return true
@@ -234,19 +241,23 @@ term_create :: proc(editor: ^Editor, spec: TermSpec) -> (^Terminal, bool) {
 	return t, term_spawn(editor, t)
 }
 
-term_spec_set :: proc(t: ^Terminal, spec: TermSpec) {
-	if t.name != spec.name {
-		delete(t.name)
-		t.name = strings.clone(spec.name)
-	}
+term_spec_free :: proc(t: ^Terminal) {
+	delete(t.name)
 	delete(t.cmd)
 	delete(t.cwd)
+	delete(t.owner)
 	for kv in t.env {
 		delete(kv)
 	}
 	delete(t.env)
+}
+
+term_spec_set :: proc(t: ^Terminal, spec: TermSpec) {
+	term_spec_free(t)
+	t.name = strings.clone(spec.name)
 	t.cmd = strings.clone(spec.cmd)
 	t.cwd = strings.clone(spec.cwd)
+	t.owner = strings.clone(spec.owner)
 	t.env = nil
 	if spec.env != nil {
 		t.env = make([]string, len(spec.env))
@@ -254,11 +265,10 @@ term_spec_set :: proc(t: ^Terminal, spec: TermSpec) {
 			t.env[i] = strings.clone(kv)
 		}
 	}
-	t.owner = spec.owner
 }
 
 term_spawn :: proc(editor: ^Editor, t: ^Terminal) -> bool {
-	term_stop(t)
+	term_stop(editor, t)
 	term_free_vt(t)
 	cols, rows := term_grid_size(editor)
 	if cols < 1 || rows < 1 {
@@ -274,8 +284,12 @@ term_spawn :: proc(editor: ^Editor, t: ^Terminal) -> bool {
 	} else {
 		argv = {"/bin/sh", "-c", t.cmd}
 	}
+	env := t.env
+	if env == nil {
+		env, _ = os.environ(context.temp_allocator)
+	}
 	cwd := t.cwd if t.cwd != "" else editor.working_root
-	fd, pid := pty.spawn(rows, cols, argv, t.env, cwd)
+	fd, pid := pty.spawn(rows, cols, argv, env, cwd)
 	if fd < 0 {
 		editor_log(editor, .Error, "Terminal", fmt.tprintf("failed to start %s", t.name))
 		return false
@@ -283,6 +297,7 @@ term_spawn :: proc(editor: ^Editor, t: ^Terminal) -> bool {
 	nfd := posix.FD(fd)
 	flags := posix.fcntl(nfd, .GETFL)
 	posix.fcntl(nfd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
+	posix.fcntl(nfd, .SETFD, posix.FD_CLOEXEC)
 
 	vt := vterm.new(c.int(rows), c.int(cols))
 	vterm.set_utf8(vt, 1)
@@ -326,13 +341,16 @@ term_exit_code :: proc(status: c.int) -> int {
 	return -1
 }
 
-term_stop :: proc(t: ^Terminal) -> bool {
+term_stop :: proc(editor: ^Editor, t: ^Terminal) -> bool {
 	if !t.alive {
 		return false
 	}
+	if fg := posix.tcgetpgrp(posix.FD(t.pty_fd)); fg > 0 && int(fg) != t.pid {
+		posix.kill(-fg, .SIGKILL)
+	}
 	posix.kill(-posix.pid_t(t.pid), .SIGKILL)
+	t.code = 128 + int(posix.Signal.SIGKILL)
 	status: c.int
-	t.code = -1
 	start := time.tick_now()
 	for {
 		r := posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG})
@@ -340,30 +358,35 @@ term_stop :: proc(t: ^Terminal) -> bool {
 			t.code = term_exit_code(status)
 			break
 		}
-		if r < 0 || time.duration_milliseconds(time.tick_since(start)) > TERM_REAP_MS {
+		if r < 0 {
+			break
+		}
+		if time.duration_milliseconds(time.tick_since(start)) > TERM_REAP_MS {
+			append(&editor.terminal.zombies, t.pid)
 			break
 		}
 		time.sleep(time.Millisecond)
 	}
 	posix.close(posix.FD(t.pty_fd))
+	clear(&t.pending)
 	t.alive = false
 	t.exited = true
 	return true
 }
 
 term_kill :: proc(editor: ^Editor, t: ^Terminal) {
-	if term_stop(t) {
+	if term_stop(editor, t) {
 		editor_log(editor, .Info, "Terminal", fmt.tprintf("%s killed", t.name))
 		plugin_queue(editor, {event = .Term_Exit, a = t.name, n = i64(t.code)})
 	}
 }
 
 term_close :: proc(editor: ^Editor, t: ^Terminal) {
-	term_stop(t)
+	term_stop(editor, t)
 	term_free_vt(t)
+	term_spec_free(t)
 	delete(t.sb_ring)
-	term_spec_set(t, {})
-	delete(t.name)
+	delete(t.pending)
 	ts := &editor.terminal
 	if ts.shown == t {
 		ts.shown = nil
@@ -381,7 +404,7 @@ term_close :: proc(editor: ^Editor, t: ^Terminal) {
 term_unload :: proc(editor: ^Editor, owner: string) {
 	ts := &editor.terminal
 	for i := len(ts.list) - 1; i >= 0; i -= 1 {
-		if i < len(ts.list) && ts.list[i].owner == owner {
+		if ts.list[i].owner == owner {
 			term_close(editor, ts.list[i])
 		}
 	}
@@ -429,10 +452,24 @@ term_resize :: proc(editor: ^Editor) {
 }
 
 term_pump :: proc(editor: ^Editor) -> bool {
+	zombies := &editor.terminal.zombies
+	for i := len(zombies) - 1; i >= 0; i -= 1 {
+		status: c.int
+		if posix.waitpid(posix.pid_t(zombies[i]), &status, {.NOHANG}) != 0 {
+			unordered_remove(zombies, i)
+		}
+	}
 	redraw := false
 	for t in editor.terminal.list {
 		if !t.alive {
 			continue
+		}
+		if len(t.pending) > 0 {
+			term_flush_pending(t)
+		}
+		if t.dropped > 0 {
+			editor_log(editor, .Warn, "Terminal", fmt.tprintf("%s is not reading its input: dropped %d bytes", t.name, t.dropped))
+			t.dropped = 0
 		}
 		if term_drain(t) && editor.terminal.active && editor.terminal.shown == t {
 			redraw = true
@@ -441,6 +478,7 @@ term_pump :: proc(editor: ^Editor) -> bool {
 		if posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG}) > 0 {
 			term_drain(t)
 			posix.close(posix.FD(t.pty_fd))
+			clear(&t.pending)
 			t.alive = false
 			t.exited = true
 			t.code = term_exit_code(status)
@@ -719,19 +757,35 @@ term_paste :: proc(t: ^Terminal, text: string) {
 }
 
 term_write_all :: proc(t: ^Terminal, data: []u8) {
-	fd := posix.FD(t.pty_fd)
+	off := 0
+	if len(t.pending) == 0 {
+		off = term_write_some(t, data)
+	}
+	rest := data[off:]
+	take := min(len(rest), max(0, TERM_PENDING_MAX - len(t.pending)))
+	append(&t.pending, ..rest[:take])
+	t.dropped += len(rest) - take
+}
+
+term_write_some :: proc(t: ^Terminal, data: []u8) -> int {
 	off := 0
 	for off < len(data) {
 		rem := len(data) - off
-		n := posix.write(fd, &data[off], c.size_t(rem))
-		if n > 0 {
-			off += int(n)
-			continue
-		}
-		if posix.errno() != .EAGAIN {
+		n := posix.write(posix.FD(t.pty_fd), &data[off], c.size_t(rem))
+		if n <= 0 {
+			if n < 0 && posix.errno() != .EAGAIN {
+				return len(data)
+			}
 			break
 		}
+		off += int(n)
 	}
+	return off
+}
+
+term_flush_pending :: proc(t: ^Terminal) {
+	n := term_write_some(t, t.pending[:])
+	remove_range(&t.pending, 0, n)
 }
 
 term_send_key :: proc(t: ^Terminal, ev: tb2.Event) {
@@ -812,7 +866,7 @@ term_flush_output :: proc(t: ^Terminal) {
 		if n == 0 {
 			break
 		}
-		posix.write(posix.FD(t.pty_fd), &obuf[0], n)
+		term_write_all(t, obuf[:n])
 	}
 }
 
@@ -918,6 +972,7 @@ term_destroy :: proc(editor: ^Editor) {
 		term_close(editor, editor.terminal.list[len(editor.terminal.list) - 1])
 	}
 	delete(editor.terminal.list)
+	delete(editor.terminal.zombies)
 	editor.terminal = {}
 }
 

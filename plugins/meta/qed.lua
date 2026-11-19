@@ -277,7 +277,7 @@ qed.term = {}
 ---@return "already running"|"cannot start"|nil err
 function qed.term.create(spec) end
 
----Shows the session in the terminal pane overlay (`"shell"` starts the default shell if needed, like Alt+t).
+---Shows the session in the terminal pane overlay (`"shell"` starts the default shell if needed, like Alt+t). Raises during `setup`.
 ---@param name string
 ---@return boolean|nil ok
 ---@return "no such session"|"terminal unavailable"|nil err
@@ -286,19 +286,19 @@ function qed.term.show(name) end
 ---Hides the terminal pane; sessions keep running.
 function qed.term.hide() end
 
----Kills the session's process group. Its output stays; `term_exit` fires.
+---Kills the session's process group. Its output stays; `term_exit` fires. Raises for `"shell"`.
 ---@param name string
 ---@return boolean|nil ok
 ---@return "no such session"|nil err
 function qed.term.kill(name) end
 
----Kills (without `term_exit`) and respawns with the same spec on a fresh screen.
+---Kills (without `term_exit`) and respawns with the same spec on a fresh screen. Raises for `"shell"`.
 ---@param name string
 ---@return boolean|nil ok
 ---@return "no such session"|"cannot start"|nil err
 function qed.term.restart(name) end
 
----Writes raw bytes to the session's input (`"\r"` is Enter).
+---Writes raw bytes to the session's input (`"\r"` is Enter). Unread input is buffered up to 1 MiB, the rest dropped.
 ---@param name string
 ---@param text string
 ---@return boolean|nil ok
@@ -313,7 +313,7 @@ function qed.term.state(name) end
 ---@return qed.TermState[]
 function qed.term.list() end
 
----Kills the session and frees its scrollback.
+---Kills the session and frees its scrollback. Raises for `"shell"`.
 ---@param name string
 ---@return boolean|nil ok
 ---@return "no such session"|nil err

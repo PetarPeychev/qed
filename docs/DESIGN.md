@@ -589,9 +589,14 @@ sessions (`/bin/sh -c cmd`, own cwd/env) through `qed.term` and the bundled `tas
 plugin. A session's shell + PTY + emulator outlive pane open/close; a non-default
 session shows its name (and exit code) in the top border. The emulator is
 **vendored libvterm** (`lib:vterm`), fed PTY bytes; the PTY itself is a `forkpty`
-shim (`lib:pty`, `-lutil`, argv + optional envp), the one OS-specific piece. The
-child is a session leader, so its pid is its process group: `term_stop` (the single
-kill path for kill/restart/close/unload/shutdown) SIGKILLs the group and reaps.
+shim (`lib:pty`, `-lutil`, argv + an envp built in the parent with
+`TERM=xterm-256color`), the one OS-specific piece; the master fd is non-blocking and
+close-on-exec. The child is a session leader, so its pid is its process group:
+`term_stop` (the single kill path for kill/restart/close/unload/shutdown) SIGKILLs the
+PTY's foreground job group, then the session group, and reaps for up to 200 ms; a
+child still unreaped is parked in `Terminals.zombies` for `term_pump`. Writes to the
+PTY never spin: what the program does not read waits in `Terminal.pending` (flushed
+by `term_pump`, capped at 1 MiB, overflow dropped with a warning).
 `term_pump` (main loop, next to `lsp_pump`) drains every live session's PTY
 (non-blocking `read` → `vterm_input_write`) whether shown or not, then reaps with
 `waitpid(WNOHANG)`; a reaped child marks the session exited (code, 128 + signal when
@@ -863,7 +868,7 @@ session / locations picker, *Commands: Cancel*, hot re-registered on config save
 
 Tasks (`tasks` plugin, `plugins.tasks.list`): background terminal sessions;
 the *Tasks* picker lists every session with its state (running / exit code) and
-runs, shows, restarts or kills it; exit messages.
+runs, shows, restarts, kills or closes it; exit messages.
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,

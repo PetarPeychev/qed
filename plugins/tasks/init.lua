@@ -42,6 +42,9 @@ local function validate(e, i, names)
 	if e.name == "shell" then
 		return nil, where .. ": \"shell\" is the terminal pane's own session"
 	end
+	if e.name:sub(1, 4) == "cmd:" then
+		return nil, where .. ": names starting with \"cmd:\" are the commands plugin's task sessions"
+	end
 	if names[e.name] then
 		return nil, where .. ": duplicate name"
 	end
@@ -107,6 +110,7 @@ local function start(t)
 	end
 	mine[t.name] = true
 	say(t.name, "started")
+	return true
 end
 
 local function rerun(name)
@@ -142,7 +146,7 @@ local function actions(name)
 	elseif st.running then
 		return {"Show", "Restart", "Kill"}
 	end
-	return {"Show", find(name) and "Run" or "Restart"}
+	return {"Show", find(name) and "Run" or "Restart", "Close"}
 end
 
 local function pick()
@@ -162,8 +166,8 @@ local function pick()
 	local choices = actions(name)
 	if #choices == 0 then
 		local t = find(name)
-		if t then
-			start(t)
+		if t and start(t) then
+			qed.term.show(name)
 		end
 		return
 	end
@@ -174,6 +178,8 @@ local function pick()
 		qed.term.kill(name)
 	elseif action == "Restart" or action == "Run" then
 		rerun(name)
+	elseif action == "Close" then
+		qed.term.close(name)
 	end
 end
 

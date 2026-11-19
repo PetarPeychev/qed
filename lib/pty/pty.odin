@@ -24,17 +24,16 @@ spawn :: proc(rows, cols: int, argv: []string, env: []string, cwd: string) -> (f
 	for a, i in argv {
 		cargv[i] = strings.clone_to_cstring(a, context.temp_allocator)
 	}
-	cenv: [^]cstring
-	if env != nil {
-		e := make([]cstring, len(env) + 1, context.temp_allocator)
-		for kv, i in env {
-			e[i] = strings.clone_to_cstring(kv, context.temp_allocator)
+	cenv := make([dynamic]cstring, 0, len(env) + 2, context.temp_allocator)
+	for kv in env {
+		if !strings.has_prefix(kv, "TERM=") {
+			append(&cenv, strings.clone_to_cstring(kv, context.temp_allocator))
 		}
-		cenv = raw_data(e)
 	}
+	append(&cenv, "TERM=xterm-256color", nil)
 	cw := strings.clone_to_cstring(cwd, context.temp_allocator)
 	p: c.int
-	f := qed_pty_spawn(c.int(rows), c.int(cols), raw_data(cargv), cenv, cw, &p)
+	f := qed_pty_spawn(c.int(rows), c.int(cols), raw_data(cargv), raw_data(cenv), cw, &p)
 	return int(f), int(p)
 }
 

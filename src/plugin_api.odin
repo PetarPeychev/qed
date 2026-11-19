@@ -1004,7 +1004,7 @@ qed_term_create :: proc "c" (L: ^lua.State) -> c.int {
 			return api_fail(L, "cannot start")
 		}
 	} else {
-		term_stop(t)
+		term_stop(editor, t)
 		term_spec_set(t, spec)
 		if !term_spawn(editor, t) {
 			return api_fail(L, "cannot start")
@@ -1014,12 +1014,24 @@ qed_term_create :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+api_term_named :: proc(L: ^lua.State, editor: ^Editor, guard := false) -> ^Terminal {
+	name := api_string(L, 1)
+	api_loaded(L, editor)
+	if guard && name == TERM_SHELL {
+		plugin_raise(L, `the "shell" session cannot be killed, restarted or closed by a plugin`)
+	}
+	return term_find(editor, name)
+}
+
 qed_term_show :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
 	name := api_string(L, 1)
 	api_loaded(L, editor)
+	if editor.plugins.loading {
+		return plugin_raise(L, "qed.term.show is unavailable while plugins load")
+	}
 	t: ^Terminal
 	if name == TERM_SHELL {
 		if t = term_shell(editor); t == nil {
@@ -1036,6 +1048,7 @@ qed_term_show :: proc "c" (L: ^lua.State) -> c.int {
 qed_term_hide :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	api_loaded(L, entry.editor)
 	entry.editor.terminal.active = false
 	return 0
 }
@@ -1043,7 +1056,7 @@ qed_term_hide :: proc "c" (L: ^lua.State) -> c.int {
 qed_term_kill :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	t := term_find(entry.editor, api_string(L, 1))
+	t := api_term_named(L, entry.editor, guard = true)
 	if t == nil {
 		return api_fail(L, "no such session")
 	}
@@ -1055,7 +1068,7 @@ qed_term_kill :: proc "c" (L: ^lua.State) -> c.int {
 qed_term_restart :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	t := term_find(entry.editor, api_string(L, 1))
+	t := api_term_named(L, entry.editor, guard = true)
 	if t == nil {
 		return api_fail(L, "no such session")
 	}
@@ -1069,8 +1082,8 @@ qed_term_restart :: proc "c" (L: ^lua.State) -> c.int {
 qed_term_send :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	t := term_find(entry.editor, api_string(L, 1))
 	text := api_string(L, 2)
+	t := api_term_named(L, entry.editor)
 	if t == nil {
 		return api_fail(L, "no such session")
 	}
@@ -1085,7 +1098,7 @@ qed_term_send :: proc "c" (L: ^lua.State) -> c.int {
 qed_term_state :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	t := term_find(entry.editor, api_string(L, 1))
+	t := api_term_named(L, entry.editor)
 	if t == nil {
 		lua.pushnil(L)
 		return 1
@@ -1097,6 +1110,7 @@ qed_term_state :: proc "c" (L: ^lua.State) -> c.int {
 qed_term_list :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	api_loaded(L, entry.editor)
 	list := entry.editor.terminal.list
 	lua.createtable(L, c.int(len(list)), 0)
 	for t, i in list {
@@ -1109,7 +1123,7 @@ qed_term_list :: proc "c" (L: ^lua.State) -> c.int {
 qed_term_close :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	t := term_find(entry.editor, api_string(L, 1))
+	t := api_term_named(L, entry.editor, guard = true)
 	if t == nil {
 		return api_fail(L, "no such session")
 	}

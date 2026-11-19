@@ -12,9 +12,6 @@ extern char **environ;
 #include <pty.h>
 #endif
 
-// forkpty + exec argv on the child side (envp replaces the environment when
-// non-NULL). Returns the master fd (-1 on failure) and writes the child pid to
-// *out_pid. The child is a session leader, so its pid is also its process group.
 int qed_pty_spawn(int rows, int cols, char *const argv[], char **envp, const char *cwd, int *out_pid) {
     struct winsize ws;
     ws.ws_row = (unsigned short)rows;
@@ -29,12 +26,9 @@ int qed_pty_spawn(int rows, int cols, char *const argv[], char **envp, const cha
     }
     if (pid == 0) {
         if (cwd && cwd[0]) {
-            if (chdir(cwd) != 0) { /* fall through with inherited cwd */ }
+            if (chdir(cwd) != 0) {}
         }
-        if (envp) {
-            environ = envp;
-        }
-        setenv("TERM", "xterm-256color", 1);
+        environ = envp;
         signal(SIGPIPE, SIG_DFL);
         execvp(argv[0], argv);
         _exit(127);
@@ -43,8 +37,6 @@ int qed_pty_spawn(int rows, int cols, char *const argv[], char **envp, const cha
     return master;
 }
 
-// openpty a master/slave pair at a fixed size, no fork. Returns 0 on success,
-// writing the fds to *out_master / *out_slave. For headless render tests.
 int qed_pty_open(int rows, int cols, int *out_master, int *out_slave) {
     struct winsize ws;
     ws.ws_row = (unsigned short)rows;

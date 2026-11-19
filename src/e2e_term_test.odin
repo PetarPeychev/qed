@@ -1,6 +1,8 @@
 package main
 
 import "core:c"
+import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "core:testing"
@@ -182,4 +184,81 @@ e2e_term_plugin_unload :: proc(t: ^testing.T) {
 	testing.expect(t, term_find(&e.ed, "kept") == kept && kept.alive, "a detached session survives")
 	testing.expect_value(t, reload_owned(&e.ed.plugins, "tt"), 0)
 	e2e_render(&e)
+}
+
+@(test)
+e2e_term_master_cloexec :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+
+	a, ok_a := term_create(&e.ed, {name = "a", cmd = "sleep 30"})
+	b, ok_b := term_create(&e.ed, {name = "b", cmd = "sleep 30"})
+	if !testing.expect(t, ok_a && ok_b, "both sessions start") {
+		return
+	}
+	time.sleep(50 * time.Millisecond)
+	index_of := proc(fdinfo: string) -> string {
+		data, _ := os.read_entire_file(fdinfo, context.temp_allocator)
+		for line in strings.split_lines(string(data), context.temp_allocator) {
+			if strings.has_prefix(line, "tty-index:") {
+				return strings.trim_space(line[len("tty-index:"):])
+			}
+		}
+		return ""
+	}
+	a_index := index_of(fmt.tprintf("/proc/self/fdinfo/%d", a.pty_fd))
+	if a_index == "" {
+		return
+	}
+	fds, _ := os.read_directory_by_path(fmt.tprintf("/proc/%d/fdinfo", b.pid), -1, context.temp_allocator)
+	testing.expect(t, len(fds) > 0, "the later child's fds are readable")
+	for f in fds {
+		testing.expectf(t, index_of(f.fullpath) != a_index, "the later child holds fd %s on the earlier session's master", f.name)
+	}
+}
+
+@(test)
+e2e_term_send_never_blocks :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+
+	s, ok := term_create(&e.ed, {name = "deaf", cmd = "sleep 30"})
+	if !testing.expect(t, ok, "the session starts") {
+		return
+	}
+	big := make([]u8, 3 * TERM_PENDING_MAX, context.temp_allocator)
+	for &ch in big {
+		ch = 'x'
+	}
+	start := time.tick_now()
+	term_send(s, big)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 1000, "a send to a program that never reads returns at once")
+	testing.expect_value(t, len(s.pending), TERM_PENDING_MAX)
+	term_pump(&e.ed)
+	found := false
+	for l in e.ed.log {
+		found ||= l.level == .Warn && strings.contains(l.text, "deaf is not reading its input")
+	}
+	testing.expect(t, found, "the dropped input is logged")
+	term_kill(&e.ed, s)
+	testing.expect_value(t, len(s.pending), 0)
+}
+
+@(test)
+e2e_term_kill_shell_job :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+
+	sh := term_shell(&e.ed)
+	if sh == nil {
+		return
+	}
+	e2e_term_settle(&e, 300)
+	term_send(sh, transmute([]u8)string("sh -c \"trap '' HUP; sleep 300\"\r"))
+	if !testing.expect(t, e2e_term_until(&e, 4000, term_busy, sh), "the job takes the foreground") {
+		return
+	}
+	job := posix.tcgetpgrp(posix.FD(sh.pty_fd))
+	term_kill(&e.ed, sh)
+	testing.expect(t, posix.kill(-job, posix.Signal(0)) != .OK, "the foreground job's group dies with the shell")
 }

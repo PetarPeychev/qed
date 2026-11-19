@@ -71,6 +71,9 @@ function T.term_api_create_rules(t)
 	t.eq(qed.term.create{name = "live", cmd = "sleep 31", restart = true}, "live")
 	t.ok(qed.term.state("live").running and qed.term.state("live").pid ~= pid, "restart = true replaces a live session")
 	t.eq(qed.term.state("nope"), nil)
+	for _, f in ipairs({qed.term.kill, qed.term.restart, qed.term.close}) do
+		t.ok(not pcall(f, "shell"), "plugins cannot kill, restart or close the shell")
+	end
 	local _, serr = qed.term.show("nope")
 	t.eq(serr, "no such session")
 end
@@ -126,6 +129,8 @@ function T.run_show_restart_kill(t)
 	choose(t, "srv")
 	t.wait(running("srv"))
 	t.wait(message_is(t, "started"))
+	t.eq(t.editor().session, "srv", "running a task that never ran shows it")
+	qed.term.hide()
 	local pid = qed.term.state("srv").pid
 	choose(t, "srv", "Show")
 	t.eq(t.editor().session, "srv", "show switches the pane to the task")
@@ -137,11 +142,17 @@ function T.run_show_restart_kill(t)
 	t.wait(message_is(t, "killed (signal 9)"))
 	choose(t, "srv", "Run")
 	t.wait(running("srv"))
+	t.ok(not t.editor().terminal, "Run on an exited task stays in the background")
+	choose(t, "srv", "Kill")
+	t.wait(exited("srv"))
+	choose(t, "srv", "Close")
+	t.eq(qed.term.state("srv"), nil, "Close frees an exited session")
 end
 
 function T.exit_messages(t)
 	t.config{list = {{name = "bad", cmd = "exit 4"}, {name = "good", cmd = "true"}}}
 	choose(t, "bad")
+	qed.term.hide()
 	t.wait(message_is(t, "failed (exit 4)"))
 	local _, level, source = t.message()
 	t.eq(level, "error")
@@ -151,11 +162,12 @@ function T.exit_messages(t)
 end
 
 function T.invalid_entries_warn(t)
-	t.config{list = {{name = "shell", cmd = "x"}, {name = "nocmd"}, {name = "a", cmd = "x"}, {name = "a", cmd = "y"}, {name = "b", cmd = "x", bogus = 1}}}
+	t.config{list = {{name = "shell", cmd = "x"}, {name = "nocmd"}, {name = "a", cmd = "x"}, {name = "a", cmd = "y"}, {name = "b", cmd = "x", bogus = 1}, {name = "cmd:z", cmd = "x"}}}
 	t.ok(t.log_has("warn", "", "\"shell\" is the terminal pane's own session"), "reserved name")
 	t.ok(t.log_has("warn", "", "\"nocmd\": cmd must be a non-empty string"), "missing cmd")
 	t.ok(t.log_has("warn", "", "\"a\": duplicate name"), "duplicate")
 	t.ok(t.log_has("warn", "", "ignoring unknown key \"bogus\""), "unknown key")
+	t.ok(t.log_has("warn", "", "names starting with \"cmd:\""), "the commands prefix is reserved")
 	t.eq(details(t).matches, 2)
 end
 

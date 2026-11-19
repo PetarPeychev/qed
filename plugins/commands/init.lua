@@ -8,6 +8,7 @@ local PANES = {editor = true, filetree = true}
 local PLACEHOLDERS = {file = true, files = true, dir = true, root = true, name = true, stem = true, ext = true, line = true, col = true, selection = true, word = true, base = true}
 local CURSOR_PLACEHOLDERS = {line = true, col = true, selection = true, word = true}
 local RUNNING_HINT_MS = 400
+local TASK_PREFIX = "cmd:"
 local ENV_VALUE_MAX = 64 * 1024
 
 local handles = {}
@@ -582,12 +583,13 @@ local function execute(s, pane, ctx, state)
 		return
 	end
 	if s.output == "task" then
-		local started, name, terr = pcall(qed.term.create, {name = s.name, cmd = cmd, cwd = job.cwd, env = environment(s, v), restart = true})
+		local session = TASK_PREFIX .. s.name
+		local started, name, terr = pcall(qed.term.create, {name = session, cmd = cmd, cwd = job.cwd, env = environment(s, v), restart = true})
 		if not started or not name then
 			say(s.name, started and terr or plain_error(name), "error")
 			return
 		end
-		tasks[s.name] = true
+		tasks[session] = s.name
 		say(s.name, "started")
 		return
 	end
@@ -697,7 +699,7 @@ return {
 		qed.on("config_changed", function() apply(qed.config()) end)
 		qed.on("term_exit", function(name, code)
 			if tasks[name] then
-				say(name, exit_text(code))
+				say(tasks[name], exit_text(code))
 			end
 		end)
 	end,
