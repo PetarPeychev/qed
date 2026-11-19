@@ -126,12 +126,12 @@ merge_word_map :: proc(b: ^Buffer, conflicts: []MergeConflict, allocator := cont
 		oh := make([]u64, no, context.temp_allocator)
 		th := make([]u64, nt, context.temp_allocator)
 		for k in 0 ..< no {
-			oh[k] = git_hash(b.lines[ours_lo + k].text[:])
+			oh[k] = diff_hash(b.lines[ours_lo + k].text[:])
 		}
 		for k in 0 ..< nt {
-			th[k] = git_hash(b.lines[theirs_lo + k].text[:])
+			th[k] = diff_hash(b.lines[theirs_lo + k].text[:])
 		}
-		ops, ok := git_myers(oh, th)
+		ops, ok := diff_myers(oh, th)
 		if !ok {
 			continue
 		}
@@ -158,7 +158,7 @@ merge_word_map :: proc(b: ^Buffer, conflicts: []MergeConflict, allocator := cont
 			for k in 0 ..< min(dels, adds) {
 				os := string(b.lines[run_o + k].text[:])
 				ts := string(b.lines[run_t + k].text[:])
-				osp, tsp := git_word_span(os, ts)
+				osp, tsp := diff_word_span(os, ts)
 				if osp[0] != osp[1] {
 					m[run_o + k] = osp
 				}

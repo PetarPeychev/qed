@@ -80,13 +80,12 @@ config_ints := [?]Config_Int {
 
 CURSOR_ACCEL: bool
 AUTO_CLOSE_PAIRS: bool
-GIT_DIFF_VIEW: bool
+DIFF_VIEW: bool
 LINE_WRAP: bool
 FILETREE_SHOW_DOTFILES: bool
 FILETREE_SHOW_IGNORED: bool
 FILETREE_GIT_DIFF_ONLY: bool
 TERMINAL_ESCAPE_CLOSES: bool
-GIT_ENABLED: bool
 LSP_ENABLED: bool
 AI_ENABLED: bool
 GIT_BINARY_PRESENT: bool
@@ -98,6 +97,7 @@ config_bools := [?]Config_Bool {
 	{"filetree_show_dotfiles", &FILETREE_SHOW_DOTFILES},
 	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
 	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
+	{"diff_view", &DIFF_VIEW},
 }
 
 Config_Str :: struct {
@@ -122,9 +122,7 @@ Config_Module :: struct {
 	bools: []Config_Bool,
 }
 
-config_git_bools := [?]Config_Bool {
-	{"enabled", &GIT_ENABLED},
-	{"diff_view", &GIT_DIFF_VIEW},
+config_git_plugin_bools := [?]Config_Bool {
 	{"filetree_diff_only", &FILETREE_GIT_DIFF_ONLY},
 }
 
@@ -157,7 +155,6 @@ config_ai_bools := [?]Config_Bool {
 }
 
 config_module_defs := [?]Config_Module {
-	{"git", nil, nil, config_git_bools[:]},
 	{"lsp", nil, config_lsp_ints[:], config_lsp_bools[:]},
 	{"ai", config_ai_strs[:], config_ai_ints[:], config_ai_bools[:]},
 }
@@ -631,8 +628,11 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	if plugins_val, present := root["plugins"]; present {
 		if plugins_obj, is_obj := plugins_val.(json.Object); is_obj {
 			for name, v in plugins_obj {
-				if _, ok := v.(json.Object); !ok {
+				obj, ok := v.(json.Object)
+				if !ok {
 					append(invalid, fmt.tprintf("plugins/%s", name))
+				} else if name == "git" {
+					config_apply_bools(obj, config_git_plugin_bools[:], "plugins/git", invalid)
 				}
 			}
 		} else {
@@ -673,6 +673,14 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 
 	if mods_obj, ok := root["modules"].(json.Object); ok {
 		for mod_key, mod_val in mods_obj {
+			if mod_key == "git" {
+				sub, _ := mod_val.(json.Object)
+				for key in sub {
+					dest := "diff_view" if key == "diff_view" else fmt.tprintf("plugins/git/%s", key)
+					append(warnings, fmt.tprintf("modules/git/%q (moved to %s)", key, dest))
+				}
+				continue
+			}
 			def, def_ok := config_module_def(mod_key)
 			if !def_ok {
 				append(warnings, fmt.tprintf("unknown modules/%q", mod_key))

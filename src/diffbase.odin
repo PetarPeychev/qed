@@ -5,17 +5,11 @@ import "core:hash"
 import "core:strings"
 import "lib:tb2"
 
-GIT_DIFF_MAX_D :: 2000
+DIFF_MAX_D :: 2000
 
 g_diff_view: bool
 
-DiffSource :: enum u8 {
-	None,
-	Git,
-	Plugin,
-}
-
-GitMark :: enum u8 {
+DiffMark :: enum u8 {
 	None,
 	Added,
 	Modified,
@@ -25,7 +19,7 @@ GitMark :: enum u8 {
 // One changed region: `old` lines (base_text[lo:hi]) shown as ghost text.
 // `above` renders them above `row` (modification), else below it (pure deletion).
 // `new_n` is the count of current rows starting at `row` paired for word diff.
-GitHunk :: struct {
+DiffHunk :: struct {
 	row:    int,
 	above:  bool,
 	lo, hi: int,
@@ -35,30 +29,34 @@ GitHunk :: struct {
 // One contiguous change as a revert unit: current rows [new_lo,new_hi) restore to
 // base_text[old_lo:old_hi). A pure addition has old_lo==old_hi; a pure deletion has
 // new_lo==new_hi (its base lines re-insert at row new_lo).
-GitChange :: struct {
+DiffChange :: struct {
 	new_lo, new_hi: int,
 	old_lo, old_hi: int,
 }
 
+DiffBaseSlot :: struct {
+	owner, label, text: string,
+}
+
 DiffBase :: struct {
-	source:    DiffSource,
-	owner:     string,
-	label:     string,
-	tried:     bool,
-	enabled:   bool,
-	blob:      string,
+	slots:     [dynamic]DiffBaseSlot,
 	base:      [dynamic]u64,
 	base_text: [dynamic]string,
 	computed:  bool,
 	rev:       u64,
-	marks:     [dynamic]GitMark,
+	marks:     [dynamic]DiffMark,
 	above:     [dynamic]int,
 	below:     [dynamic]int,
-	hunks:     [dynamic]GitHunk,
-	changes:   [dynamic]GitChange,
+	hunks:     [dynamic]DiffHunk,
+	changes:   [dynamic]DiffChange,
 }
 
 diffbase_destroy :: proc(g: ^DiffBase) {
+	for s in g.slots {
+		delete(s.label)
+		delete(s.text)
+	}
+	delete(g.slots)
 	delete(g.base)
 	delete(g.base_text)
 	delete(g.marks)
@@ -66,75 +64,99 @@ diffbase_destroy :: proc(g: ^DiffBase) {
 	delete(g.below)
 	delete(g.hunks)
 	delete(g.changes)
-	delete(g.blob)
-	delete(g.label)
 }
 
-git_hash :: proc(bytes: []u8) -> u64 {
+diff_hash :: proc(bytes: []u8) -> u64 {
 	return hash.fnv64a(bytes)
 }
 
-diffbase_clear :: proc(b: ^Buffer) {
+diffbase_active :: proc(b: ^Buffer) -> ^DiffBaseSlot {
+	n := len(b.base.slots)
+	return &b.base.slots[n - 1] if n > 0 else nil
+}
+
+diffbase_owner :: proc(b: ^Buffer) -> string {
+	s := diffbase_active(b)
+	return s.owner if s != nil else ""
+}
+
+diffbase_rebuild :: proc(b: ^Buffer) {
 	g := &b.base
-	g.source = .None
-	g.owner = ""
-	g.enabled = false
 	g.computed = false
 	clear(&g.base)
 	clear(&g.base_text)
-	delete(g.blob)
-	g.blob = ""
-	delete(g.label)
-	g.label = ""
-}
-
-// An empty text is an empty base (every line added), as for a git file with an empty blob.
-diffbase_set :: proc(b: ^Buffer, text: string, source: DiffSource, owner := "", label := "") {
-	diffbase_clear(b)
-	g := &b.base
-	g.source = source
-	g.owner = owner
-	g.enabled = true
-	if label != "" {
-		g.label = strings.clone(label)
-	}
-	if text == "" {
+	s := diffbase_active(b)
+	if s == nil || s.text == "" {
 		return
 	}
-	g.blob = strings.clone(text)
-	for segment in strings.split(g.blob, "\n", context.temp_allocator) {
-		s := segment
-		if len(s) > 0 && s[len(s) - 1] == '\r' {
-			s = s[:len(s) - 1]
+	for segment in strings.split(s.text, "\n", context.temp_allocator) {
+		line := segment
+		if len(line) > 0 && line[len(line) - 1] == '\r' {
+			line = line[:len(line) - 1]
 		}
-		append(&g.base, git_hash(transmute([]u8)s))
-		append(&g.base_text, s)
+		append(&g.base, diff_hash(transmute([]u8)line))
+		append(&g.base_text, line)
 	}
+}
+
+// Each owner keeps its slot in first-set order, so a later plugin's base stays on top while an earlier one updates beneath it.
+diffbase_set :: proc(b: ^Buffer, owner, text: string, label := "") {
+	g := &b.base
+	for &s, i in g.slots {
+		if s.owner != owner {
+			continue
+		}
+		delete(s.label)
+		delete(s.text)
+		s.label = strings.clone(label)
+		s.text = strings.clone(text)
+		if i == len(g.slots) - 1 {
+			diffbase_rebuild(b)
+		}
+		return
+	}
+	append(&g.slots, DiffBaseSlot{owner, strings.clone(label), strings.clone(text)})
+	diffbase_rebuild(b)
+}
+
+diffbase_clear :: proc(b: ^Buffer, owner: string) {
+	g := &b.base
+	for s, i in g.slots {
+		if s.owner != owner {
+			continue
+		}
+		top := i == len(g.slots) - 1
+		delete(s.label)
+		delete(s.text)
+		ordered_remove(&g.slots, i)
+		if top {
+			diffbase_rebuild(b)
+		}
+		return
+	}
+}
+
+diffbase_invalidate :: proc(b: ^Buffer) {
+	b.base.computed = false
 }
 
 diffbase_update :: proc(b: ^Buffer) {
 	g := &b.base
-	if g.source != .Plugin && !g.tried {
-		git_base_fetch(b)
-	}
 	if g.computed && g.rev == b.rev {
 		return
 	}
-	git_recompute(b)
+	diffbase_recompute(b)
 	g.computed = true
 	g.rev = b.rev
 }
 
 diffbase_unload :: proc(editor: ^Editor, owner: string) {
 	for &b in editor.buffers {
-		if b.base.source == .Plugin && b.base.owner == owner {
-			diffbase_clear(&b)
-			b.base.tried = false
-		}
+		diffbase_clear(&b, owner)
 	}
 }
 
-git_recompute :: proc(b: ^Buffer) {
+diffbase_recompute :: proc(b: ^Buffer) {
 	g := &b.base
 	resize(&g.marks, len(b.lines))
 	resize(&g.above, len(b.lines))
@@ -146,15 +168,15 @@ git_recompute :: proc(b: ^Buffer) {
 	}
 	clear(&g.hunks)
 	clear(&g.changes)
-	if !g.enabled {
+	if len(g.slots) == 0 {
 		return
 	}
 
 	cur := make([dynamic]u64, 0, len(b.lines), context.temp_allocator)
 	for line in b.lines {
-		append(&cur, git_hash(line.text[:]))
+		append(&cur, diff_hash(line.text[:]))
 	}
-	git_diff(g.base[:], cur[:], g.marks[:], &g.hunks, &g.changes)
+	diff_lines(g.base[:], cur[:], g.marks[:], &g.hunks, &g.changes)
 
 	for h in g.hunks {
 		n := h.hi - h.lo
@@ -169,13 +191,13 @@ git_recompute :: proc(b: ^Buffer) {
 	}
 }
 
-git_change_add :: proc(changes: ^[dynamic]GitChange, new_lo, new_hi, old_lo, old_hi: int) {
+diff_change_add :: proc(changes: ^[dynamic]DiffChange, new_lo, new_hi, old_lo, old_hi: int) {
 	if changes != nil {
-		append(changes, GitChange{new_lo, new_hi, old_lo, old_hi})
+		append(changes, DiffChange{new_lo, new_hi, old_lo, old_hi})
 	}
 }
 
-git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk, changes: ^[dynamic]GitChange = nil) {
+diff_lines :: proc(base, cur: []u64, marks: []DiffMark, hunks: ^[dynamic]DiffHunk, changes: ^[dynamic]DiffChange = nil) {
 	lo := 0
 	for lo < len(base) && lo < len(cur) && base[lo] == cur[lo] {
 		lo += 1
@@ -196,24 +218,24 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk, c
 		for i in lo ..< hi_cur {
 			marks[i] = .Added
 		}
-		git_change_add(changes, lo, hi_cur, hi_base, hi_base)
+		diff_change_add(changes, lo, hi_cur, hi_base, hi_base)
 		return
 	}
 	if len(new_lines) == 0 {
-		git_mark_deletion(marks, lo)
-		git_hunk_deletion(hunks, lo, len(marks), lo, hi_base)
-		git_change_add(changes, lo, lo, lo, hi_base)
+		diff_mark_deletion(marks, lo)
+		diff_hunk_deletion(hunks, lo, len(marks), lo, hi_base)
+		diff_change_add(changes, lo, lo, lo, hi_base)
 		return
 	}
 
-	ops, ok := git_myers(old_lines, new_lines)
+	ops, ok := diff_myers(old_lines, new_lines)
 	if !ok {
 		nmod := min(len(old_lines), len(new_lines))
 		for k in 0 ..< len(new_lines) {
 			marks[lo + k] = .Modified if k < nmod else .Added
 		}
-		append(hunks, GitHunk{row = lo, above = true, lo = lo, hi = hi_base, new_n = len(new_lines)})
-		git_change_add(changes, lo, hi_cur, lo, hi_base)
+		append(hunks, DiffHunk{row = lo, above = true, lo = lo, hi = hi_base, new_n = len(new_lines)})
+		diff_change_add(changes, lo, hi_cur, lo, hi_base)
 		return
 	}
 
@@ -240,23 +262,23 @@ git_diff :: proc(base, cur: []u64, marks: []GitMark, hunks: ^[dynamic]GitHunk, c
 			}
 			i += 1
 		}
-		git_change_add(changes, hunk_ci, hunk_ci + adds, hunk_bi, hunk_bi + dels)
+		diff_change_add(changes, hunk_ci, hunk_ci + adds, hunk_bi, hunk_bi + dels)
 		if adds == 0 {
-			git_mark_deletion(marks, hunk_ci)
-			git_hunk_deletion(hunks, hunk_ci, len(marks), hunk_bi, hunk_bi + dels)
+			diff_mark_deletion(marks, hunk_ci)
+			diff_hunk_deletion(hunks, hunk_ci, len(marks), hunk_bi, hunk_bi + dels)
 		} else {
 			nmod := min(dels, adds)
 			for k in 0 ..< adds {
 				marks[hunk_ci + k] = .Modified if k < nmod else .Added
 			}
 			if dels > 0 {
-				append(hunks, GitHunk{row = hunk_ci, above = true, lo = hunk_bi, hi = hunk_bi + dels, new_n = adds})
+				append(hunks, DiffHunk{row = hunk_ci, above = true, lo = hunk_bi, hi = hunk_bi + dels, new_n = adds})
 			}
 		}
 	}
 }
 
-git_mark_deletion :: proc(marks: []GitMark, ci: int) {
+diff_mark_deletion :: proc(marks: []DiffMark, ci: int) {
 	idx := clamp(ci - 1, 0, len(marks) - 1)
 	if idx >= 0 && marks[idx] == .None {
 		marks[idx] = .Deleted
@@ -265,36 +287,36 @@ git_mark_deletion :: proc(marks: []GitMark, ci: int) {
 
 // Deleted old lines render below the line before the gap; if the gap is at the
 // file top (ci == 0), there is no such line, so render them above row 0 instead.
-git_hunk_deletion :: proc(hunks: ^[dynamic]GitHunk, ci, nrows, lo, hi: int) {
+diff_hunk_deletion :: proc(hunks: ^[dynamic]DiffHunk, ci, nrows, lo, hi: int) {
 	if lo >= hi || nrows == 0 {
 		return
 	}
 	if ci <= 0 {
-		append(hunks, GitHunk{row = 0, above = true, lo = lo, hi = hi, new_n = 0})
+		append(hunks, DiffHunk{row = 0, above = true, lo = lo, hi = hi, new_n = 0})
 	} else {
-		append(hunks, GitHunk{row = clamp(ci - 1, 0, nrows - 1), above = false, lo = lo, hi = hi, new_n = 0})
+		append(hunks, DiffHunk{row = clamp(ci - 1, 0, nrows - 1), above = false, lo = lo, hi = hi, new_n = 0})
 	}
 }
 
-GitOp :: enum u8 {
+DiffOp :: enum u8 {
 	Equal,
 	Delete,
 	Insert,
 }
 
-git_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]GitOp, bool) {
+diff_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]DiffOp, bool) {
 	n, m := len(a), len(b)
 	maxd := n + m
 	// k stays within ±d ≤ ±cap_d, so the arrays only need the capped span — sizing
 	// by maxd would make each of the up-to-cap_d trace snapshots O(n+m).
-	cap_d := min(maxd, GIT_DIFF_MAX_D)
+	cap_d := min(maxd, DIFF_MAX_D)
 	offset := cap_d
 	v := make([]int, 2 * cap_d + 1, context.temp_allocator)
 	trace := make([dynamic][]int, context.temp_allocator)
 
 	found_d := -1
 	search: for d in 0 ..= maxd {
-		if d > GIT_DIFF_MAX_D {
+		if d > DIFF_MAX_D {
 			return nil, false
 		}
 		snapshot := make([]int, 2 * cap_d + 1, context.temp_allocator)
@@ -324,7 +346,7 @@ git_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]GitOp,
 		return nil, false
 	}
 
-	ops := make([dynamic]GitOp, allocator)
+	ops := make([dynamic]DiffOp, allocator)
 	x, y := n, m
 	for d := found_d; d >= 0; d -= 1 {
 		vs := trace[d]
@@ -338,15 +360,15 @@ git_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]GitOp,
 		prev_x := vs[offset + prev_k]
 		prev_y := prev_x - prev_k
 		for x > prev_x && y > prev_y {
-			append(&ops, GitOp.Equal)
+			append(&ops, DiffOp.Equal)
 			x -= 1
 			y -= 1
 		}
 		if d > 0 {
 			if x == prev_x {
-				append(&ops, GitOp.Insert)
+				append(&ops, DiffOp.Insert)
 			} else {
-				append(&ops, GitOp.Delete)
+				append(&ops, DiffOp.Delete)
 			}
 			x, y = prev_x, prev_y
 		}
@@ -358,7 +380,7 @@ git_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]GitOp,
 	return ops[:], true
 }
 
-git_goto :: proc(editor: ^Editor, dir: int) {
+diffbase_goto :: proc(editor: ^Editor, dir: int) {
 	b := editor_buffer(editor)
 	diffbase_update(b)
 	marks := b.base.marks[:]
@@ -376,12 +398,12 @@ git_goto :: proc(editor: ^Editor, dir: int) {
 		}
 	}
 	if !any {
-		editor_log(editor, .Info, "Git", "No changes")
+		editor_log(editor, .Info, "Diff", "No changes")
 		return
 	}
 	target := next if dir > 0 else prev
 	if target < 0 {
-		editor_log(editor, .Info, "Git", "No next change" if dir > 0 else "No previous change")
+		editor_log(editor, .Info, "Diff", "No next change" if dir > 0 else "No previous change")
 		return
 	}
 	editor_goto(editor, target, 0)
@@ -389,7 +411,7 @@ git_goto :: proc(editor: ^Editor, dir: int) {
 
 // A pure deletion has no current row; its glyph sits on the line before the gap
 // (or row 0 at the file top), so a cursor there targets it.
-git_change_touched :: proc(c: GitChange, r0, r1: int) -> bool {
+diff_change_touched :: proc(c: DiffChange, r0, r1: int) -> bool {
 	if c.new_lo < c.new_hi {
 		return c.new_lo <= r1 && c.new_hi > r0
 	}
@@ -397,7 +419,7 @@ git_change_touched :: proc(c: GitChange, r0, r1: int) -> bool {
 	return anchor >= r0 && anchor <= r1
 }
 
-git_revert_change :: proc(b: ^Buffer, g: ^DiffBase, c: GitChange) {
+diffbase_revert_change :: proc(b: ^Buffer, g: ^DiffBase, c: DiffChange) {
 	lo := clamp(c.old_lo, 0, len(g.base_text))
 	hi := clamp(c.old_hi, 0, len(g.base_text))
 	base := g.base_text[lo:hi]
@@ -440,16 +462,16 @@ git_revert_change :: proc(b: ^Buffer, g: ^DiffBase, c: GitChange) {
 	}
 }
 
-git_revert :: proc(editor: ^Editor) {
+diffbase_revert :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if b.big {
-		editor_log(editor, .Info, "Git", "Disabled for big files")
+		editor_log(editor, .Info, "Diff", "Disabled for big files")
 		return
 	}
 	diffbase_update(b)
 	g := &b.base
-	if !g.enabled {
-		editor_log(editor, .Info, "Git", "Not tracked by git")
+	if len(g.slots) == 0 {
+		editor_log(editor, .Info, "Diff", "No diff base")
 		return
 	}
 
@@ -461,7 +483,7 @@ git_revert :: proc(editor: ^Editor) {
 
 	count, top := 0, 0
 	for c in g.changes {
-		if git_change_touched(c, r0, r1) {
+		if diff_change_touched(c, r0, r1) {
 			if count == 0 {
 				top = c.new_lo
 			}
@@ -469,15 +491,15 @@ git_revert :: proc(editor: ^Editor) {
 		}
 	}
 	if count == 0 {
-		editor_log(editor, .Info, "Git", "No change under cursor")
+		editor_log(editor, .Info, "Diff", "No change under cursor")
 		return
 	}
 
 	// Apply bottom-up so an earlier revert can't shift a later change's rows.
 	edit_open(b, .Atomic)
 	#reverse for c in g.changes {
-		if git_change_touched(c, r0, r1) {
-			git_revert_change(b, g, c)
+		if diff_change_touched(c, r0, r1) {
+			diffbase_revert_change(b, g, c)
 		}
 	}
 	buffer_undo_commit(b)
@@ -486,10 +508,10 @@ git_revert :: proc(editor: ^Editor) {
 	b.cursor = {clamp(top, 0, len(b.lines) - 1), 0}
 	cursor_goal_sync(b)
 	editor_scroll(editor)
-	editor_log(editor, .Info, "Git", fmt.tprintf("Reverted %d hunk%s", count, "" if count == 1 else "s"))
+	editor_log(editor, .Info, "Diff", fmt.tprintf("Reverted %d hunk%s", count, "" if count == 1 else "s"))
 }
 
-git_mark_glyph :: proc(m: GitMark) -> (rune, tb2.Color) {
+diff_mark_glyph :: proc(m: DiffMark) -> (rune, tb2.Color) {
 	switch m {
 	case .Added:
 		return '▌', COLOR_GIT_ADD
@@ -503,34 +525,34 @@ git_mark_glyph :: proc(m: GitMark) -> (rune, tb2.Color) {
 	return ' ', COLOR_GUTTER_FG
 }
 
-git_mark_at :: proc(b: ^Buffer, row: int) -> GitMark {
+diff_mark_at :: proc(b: ^Buffer, row: int) -> DiffMark {
 	if row < 0 || row >= len(b.base.marks) {
 		return .None
 	}
 	return b.base.marks[row]
 }
 
-git_diff_view :: proc() -> bool {
+diff_view_on :: proc() -> bool {
 	return g_diff_view
 }
 
-git_above :: proc(b: ^Buffer, row: int) -> int {
-	if !git_diff_view() || row < 0 || row >= len(b.base.above) {
+diff_above :: proc(b: ^Buffer, row: int) -> int {
+	if !diff_view_on() || row < 0 || row >= len(b.base.above) {
 		return 0
 	}
 	return b.base.above[row]
 }
 
-git_below :: proc(b: ^Buffer, row: int) -> int {
-	if !git_diff_view() || row < 0 || row >= len(b.base.below) {
+diff_below :: proc(b: ^Buffer, row: int) -> int {
+	if !diff_view_on() || row < 0 || row >= len(b.base.below) {
 		return 0
 	}
 	return b.base.below[row]
 }
 
 // The hunk whose old lines render above/below `row` (nil if none).
-git_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (GitHunk, bool) {
-	if !git_diff_view() {
+diff_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (DiffHunk, bool) {
+	if !diff_view_on() {
 		return {}, false
 	}
 	for h in b.base.hunks {
@@ -543,8 +565,8 @@ git_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (GitHunk, bool) {
 
 // For a live (current-buffer) row inside a modification, the base line it is
 // paired with for word-level diffing.
-git_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
-	if !git_diff_view() {
+diff_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
+	if !diff_view_on() {
 		return "", false
 	}
 	for h in b.base.hunks {
@@ -561,7 +583,7 @@ git_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
 
 // Changed byte span [from,to) in each of `old` and `new` after trimming the
 // common prefix and suffix (rune-boundary safe). from==to means no change.
-git_word_span :: proc(old, new: string) -> (old_span, new_span: [2]int) {
+diff_word_span :: proc(old, new: string) -> (old_span, new_span: [2]int) {
 	p := 0
 	for p < len(old) && p < len(new) && old[p] == new[p] {
 		p += 1
@@ -587,7 +609,7 @@ is_utf8_cont :: proc(c: u8) -> bool {
 	return c & 0xc0 == 0x80
 }
 
-git_split_lines :: proc(s: string, allocator := context.temp_allocator) -> [dynamic]string {
+diff_split_lines :: proc(s: string, allocator := context.temp_allocator) -> [dynamic]string {
 	out := make([dynamic]string, allocator)
 	if len(s) == 0 {
 		return out

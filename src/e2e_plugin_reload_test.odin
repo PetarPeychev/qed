@@ -61,9 +61,20 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, p.ui.active, "the pick modal is open")
-	testing.expect_value(t, len(p.procs), 1)
+	owned_procs := proc(p: ^Plugins) -> (n: int) {
+		for pr in p.procs {
+			n += int(pr.owner == "t")
+		}
+		return
+	}
+	testing.expect_value(t, owned_procs(p), 1)
 	testing.expect(t, reload_owned(p, "t") >= 6, "commands, tasks, process and timer are owned")
-	pgid := posix.pid_t(p.procs[0].sp.process.pid)
+	pgid: posix.pid_t
+	for pr in p.procs {
+		if pr.owner == "t" {
+			pgid = posix.pid_t(pr.sp.process.pid)
+		}
+	}
 	before := p.mem.used
 
 	reload_write(dir, "t.lua", `return {setup = function()
@@ -71,10 +82,9 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
 	testing.expect(t, !p.ui.active, "the modal closes")
-	testing.expect_value(t, len(p.procs), 0)
+	testing.expect_value(t, owned_procs(p), 0)
 	testing.expect(t, posix.kill(-pgid, posix.Signal(0)) != .OK, "the process group is gone")
-	testing.expect_value(t, len(p.tasks), 0)
-	testing.expect_value(t, len(p.timers), 0)
+	testing.expect_value(t, reload_owned(p, "t"), 1)
 	testing.expect(t, p.mem.used < before - 1024 * 1024, "the old incarnation's heap is reclaimed")
 	plugin_pump(&e.ed)
 	testing.expect(t, p.pane.active, "a plugin loaded at runtime gets its startup event")

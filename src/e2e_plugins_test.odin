@@ -48,6 +48,9 @@ pt_api := [?]lua.L_Reg {
 	{"ui", pt_ui},
 	{"config_path", pt_config_path},
 	{"screen", pt_screen},
+	{"sh", pt_sh},
+	{"marks", pt_marks},
+	{"settle", pt_settle},
 	{nil, nil},
 }
 
@@ -263,10 +266,8 @@ pt_module :: proc "c" (L: ^lua.State) -> c.int {
 		LSP_ENABLED = on
 	case "ai":
 		AI_ENABLED = on
-	case "git":
-		GIT_ENABLED = on
 	case:
-		return plugin_raise(L, "t.module: lsp, ai or git expected")
+		return plugin_raise(L, "t.module: lsp or ai expected")
 	}
 	return 0
 }
@@ -376,6 +377,18 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 		lua.setfield(L, -2, "side")
 		lua.pushodinstring(L, s.owner)
 		lua.setfield(L, -2, "owner")
+		lua.pushodinstring(L, s.sep)
+		lua.setfield(L, -2, "sep")
+		lua.createtable(L, c.int(len(s.chunks)), 0)
+		for ch, j in s.chunks {
+			lua.createtable(L, 0, 2)
+			lua.pushodinstring(L, ch.text)
+			lua.setfield(L, -2, "text")
+			lua.pushodinstring(L, ch.color)
+			lua.setfield(L, -2, "color")
+			lua.rawseti(L, -2, lua.Integer(j + 1))
+		}
+		lua.setfield(L, -2, "chunks")
 		lua.rawseti(L, -2, lua.Integer(i + 1))
 	}
 	lua.setfield(L, -2, "status")
@@ -407,6 +420,42 @@ pt_screen :: proc "c" (L: ^lua.State) -> c.int {
 	e2e_render(g_pt)
 	lua.pushodinstring(L, e2e_row_text(g_pt, y))
 	return 1
+}
+
+@(private = "file")
+pt_sh :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	lua.pushboolean(L, b32(e2e_run(fmt.tprintf("cd %s && {{ %s; }} >/dev/null 2>&1", shell_quote(g_pt.dir), api_string(L, 1)))))
+	return 1
+}
+
+@(private = "file")
+pt_marks :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	diffbase_update(b)
+	names := [DiffMark]string{.None = "", .Added = "added", .Modified = "modified", .Deleted = "deleted"}
+	lua.createtable(L, c.int(len(b.lines)), 0)
+	for r in 0 ..< len(b.lines) {
+		lua.pushodinstring(L, names[diff_mark_at(b, r)])
+		lua.rawseti(L, -2, lua.Integer(r + 1))
+	}
+	return 1
+}
+
+@(private = "file")
+pt_settle :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	e2e_git_settle(g_pt)
+	e2e_pump_while(g_pt, proc(e: ^E2E) -> bool {
+		filetree_scan_pump(&e.ed)
+		if filetree_filter_pending(&e.ed) {
+			filetree_filter_flush(&e.ed)
+		}
+		return filetree_scanning(&e.ed) || plugin_busy(&e.ed)
+	})
+	return 0
 }
 
 @(private = "file")
@@ -560,7 +609,7 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 				e2e_stop(&e)
 				break
 			}
-			saved_timeout, saved_lsp, saved_ai, saved_git := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED
+			saved_timeout, saved_lsp, saved_ai := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED
 			saved_theme := strings.clone(THEME, context.temp_allocator)
 			saved_reg := clipboard_register
 			clipboard_register = ""
@@ -573,7 +622,7 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 			} else if pl := plugin_find(&e.ed.plugins, name); pl != nil && pl.last_error != "" {
 				testing.expectf(t, false, "plugins/%s %s: plugin error: %s", f.path, names[i], pl.last_error)
 			}
-			PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED = saved_timeout, saved_lsp, saved_ai, saved_git
+			PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED = saved_timeout, saved_lsp, saved_ai
 			delete(clipboard_register)
 			clipboard_register = saved_reg
 			if THEME != saved_theme || e.ed.theme_shown != "" {

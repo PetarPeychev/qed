@@ -55,14 +55,12 @@ Editor :: struct {
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
 	palette:         Palette,
-	basepick:        BasePick,
 	cwdpick:         CwdPick,
 	linefind:        LineFind,
 	find:            Find,
 	projsearch:      ProjSearch,
 	rename:          Rename,
 	filetree:        FileTree,
-	gitstat:         GitStat,
 	jumps:           JumpList,
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
@@ -98,7 +96,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
 		headless       = headless,
 	}
-	g_diff_view = GIT_DIFF_VIEW
+	g_diff_view = DIFF_VIEW
 	if !headless {
 		editor_log_seed(&editor)
 	}
@@ -172,7 +170,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 		buffer_destroy(&b)
 	}
 	delete(editor.buffers)
-	git_stat_destroy(&editor.gitstat)
 	editor_save_intent_clear(editor)
 	delete(editor.working_root)
 	delete(editor.theme_shown)
@@ -182,7 +179,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
-	basepick_destroy(&editor.basepick)
 	git_base_set("", "", false)
 	cwdpick_destroy(&editor.cwdpick)
 	linefind_destroy(&editor.linefind)
@@ -246,7 +242,7 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [17]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
@@ -255,7 +251,6 @@ editor_overlays :: proc(editor: ^Editor) -> [18]Overlay {
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
 		{&editor.plugins.ui.active, plugin_ui_dispatch_key, plugin_ui_render, plugin_ui_dispatch_mouse, plugin_ui_paste},
 		{&editor.plugins.pane.active, plugin_pane_dispatch_key, plugin_pane_render, plugin_pane_dispatch_mouse, nil},
-		{&editor.basepick.active, basepick_dispatch_key, basepick_render, basepick_dispatch_mouse, basepick_paste},
 		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
@@ -1030,7 +1025,6 @@ editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
 		return false
 	}
 	editor.disk_poll = time.tick_now()
-	git_stat_maybe_start(editor)
 	changed := plugins_poll(editor)
 	if editor_maybe_reload_config(editor) {
 		changed = true
@@ -1416,7 +1410,7 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h,
 	text := b.lines[row].text[:]
 	cut := b.cursor.col
 	glines := strings.split(editor.fim.ghost, "\n", context.temp_allocator)
-	mark := git_mark_at(b, row)
+	mark := diff_mark_at(b, row)
 
 	sy := screen_y
 	first_row := true
@@ -1472,7 +1466,7 @@ editor_render_ghost_gutter :: proc(y, width: int, mark: rune = '▌') {
 // screen row each, clipped). Above-hunk lines paired with their live counterpart
 // get the changed span emphasized. Returns the next screen row.
 editor_render_hunk_ghosts :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h: int, above: bool, screen_y: int) -> int {
-	hunk, ok := git_hunk_at(b, row, above)
+	hunk, ok := diff_hunk_at(b, row, above)
 	if !ok {
 		return screen_y
 	}
@@ -1486,7 +1480,7 @@ editor_render_hunk_ghosts :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h
 		old := transmute([]u8)b.base.base_text[hunk.lo + gi]
 		df, dt := -1, -1
 		if above && gi < hunk.new_n && hunk.row + gi < len(b.lines) {
-			ospan, _ := git_word_span(string(old), string(b.lines[hunk.row + gi].text[:]))
+			ospan, _ := diff_word_span(string(old), string(b.lines[hunk.row + gi].text[:]))
 			df, dt = ospan[0], ospan[1]
 		}
 		ccol := make([]tb2.Color, len(old), context.temp_allocator)
@@ -1539,7 +1533,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				severity = d.severity
 			}
 		}
-		mark := git_mark_at(b, row)
+		mark := diff_mark_at(b, row)
 
 		text := b.lines[row].text
 		row_sel_from, row_sel_to := -1, -1
@@ -1586,14 +1580,14 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			colors = mc
 		}
 		drow := drows[row - editor.scroll_row] if row - editor.scroll_row < len(drows) else DecoRow{}
-		line_bg := editor_line_bg(current, ai_edit, mark, git_diff_view(), side, cmark, drow.tints[:])
+		line_bg := editor_line_bg(current, ai_edit, mark, diff_view_on(), side, cmark, drow.tints[:])
 
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
 		diff_bg := tb2.Color(0)
-		if git_diff_view() && mark == .Modified {
-			if old, ok := git_pair_old(b, row); ok {
-				_, nspan := git_word_span(old, string(text[:]))
+		if diff_view_on() && mark == .Modified {
+			if old, ok := diff_pair_old(b, row); ok {
+				_, nspan := diff_word_span(old, string(text[:]))
 				diff_from, diff_to = nspan[0], nspan[1]
 				diff_bg = color_over(line_bg, COLOR_GIT_MOD, GIT_DIFF_WORD_TINT)
 			}
@@ -1670,13 +1664,18 @@ editor_render_buffer :: proc(editor: ^Editor) {
 StatusSegKind :: enum {
 	Plain,
 	Path,
-	Diff,
 	Plugin,
+}
+
+StatusChunk :: struct {
+	text: string,
+	fg:   tb2.Color,
 }
 
 StatusSeg :: struct {
 	sep, text: string,
 	fg:        tb2.Color,
+	chunks:    []StatusChunk,
 	kind:      StatusSegKind,
 	drop:      int,
 	hidden:    bool,
@@ -1798,8 +1797,14 @@ status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
 			x += visual_width(transmute([]u8)s.sep)
 		}
 		first = false
-		if s.kind == .Diff {
-			git_diffsize_paint(x, y, max_x, s.text, COLOR_PANE_BG)
+		if len(s.chunks) > 0 {
+			cx := x
+			for ch in s.chunks {
+				if cx < max_x {
+					tb2.print(i32(cx), i32(y), ch.fg, COLOR_PANE_BG, strings.clone_to_cstring(ch.text, context.temp_allocator))
+				}
+				cx += visual_width(transmute([]u8)ch.text)
+			}
 		} else if x < max_x {
 			tb2.print(i32(x), i32(y), s.fg, COLOR_PANE_BG, strings.clone_to_cstring(s.text, context.temp_allocator))
 		}
@@ -1841,34 +1846,15 @@ editor_render_status :: proc(editor: ^Editor) {
 		indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
 		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_INDENT, indent), fg = fg, drop = 1})
 	}
-	if module_enabled(.Git) && editor.gitstat.branch != "" {
-		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_BRANCH, editor.gitstat.branch), fg = fg, drop = 9})
-		ahead_behind := ""
-		if editor.gitstat.ahead > 0 {
-			ahead_behind = fmt.tprintf("%s%d", ICON_STATUS_AHEAD, editor.gitstat.ahead)
-		}
-		if editor.gitstat.behind > 0 {
-			ahead_behind = fmt.tprintf("%s%s%d", ahead_behind, ICON_STATUS_BEHIND, editor.gitstat.behind)
-		}
-		if ahead_behind != "" {
-			append(&left, StatusSeg{sep = " ", text = ahead_behind, fg = fg, drop = 7})
-		}
-		if g_diff_base.ref != "" && (editor.welcome || editor_buffer(editor).base.source != .Plugin) {
-			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, g_diff_base.label), fg = fg, drop = 8})
-		}
-		if label := git_diffsize_label(editor.gitstat.diff); label != "" {
-			append(&left, StatusSeg{sep = "  ", text = label, kind = .Diff, drop = 6})
-		}
-	}
 	if !editor.welcome {
-		if base := &editor_buffer(editor).base; base.source == .Plugin {
-			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, base.label if base.label != "" else "base"), fg = fg, drop = 8})
+		if base := diffbase_active(editor_buffer(editor)); base != nil && base.label != "" {
+			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, base.label), fg = fg, drop = 8})
 		}
 	}
+	plugin_status_segs(&editor.plugins, &left, &right)
 	if len(editor.buffers) > 1 {
 		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("[%d/%d]", editor.current + 1, len(editor.buffers)), fg = fg, drop = 10})
 	}
-	plugin_status_segs(&editor.plugins, &left, &right)
 	status_fit(left[:], right[:], full_w)
 	editor_render_row(0, h, full_w, "", fg, COLOR_PANE_BG)
 	status_draw(left[:], 0, h, full_w)
@@ -1938,14 +1924,14 @@ editor_render_welcome_line :: proc(x, y: int, text: string) {
 	tb2.print(i32(x), i32(y), COLOR_FG, COLOR_BG, cstr)
 }
 
-editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int, mark: GitMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
+editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
 	if continuation {
 		for x in 0 ..< width {
 			tb2.set_cell(i32(x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
 		}
 		return
 	}
-	mark_ch, mark_fg := git_mark_glyph(mark)
+	mark_ch, mark_fg := diff_mark_glyph(mark)
 	if mark == .None && glyph != 0 {
 		mark_ch, mark_fg = glyph, glyph_fg
 	}
@@ -1981,7 +1967,7 @@ color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {
 	return tb2.Color(chan(b, t, 16, alpha) | chan(b, t, 8, alpha) | chan(b, t, 0, alpha))
 }
 
-editor_line_bg :: proc(current, ai_edit: bool, mark: GitMark, hunk: bool, side: MergeSide, marker: bool, tints: []RowTint = nil) -> tb2.Color {
+editor_line_bg :: proc(current, ai_edit: bool, mark: DiffMark, hunk: bool, side: MergeSide, marker: bool, tints: []RowTint = nil) -> tb2.Color {
 	bg := COLOR_BG
 	if hunk {
 		#partial switch mark {

@@ -979,23 +979,6 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 	defer delete(binf)
 	nav_write(binf, "\x00\x01\n\x02\n")
 
-	git_stat_reset(&e.ed)
-	for git_stat_running(&e.ed) {
-		git_stat_pump(&e.ed)
-	}
-	testing.expect_value(t, e.ed.gitstat.diff, GitDiffSize{5, 1})
-
-	e2e_render(&e)
-	_, h := editor_viewport(&e.ed)
-	row := e2e_row(&e, h)
-	off := strings.index(row, "+5 -1")
-	testing.expectf(t, off >= 0, "status bar shows diff size: %q", row)
-	if off >= 0 {
-		x := visual_width(transmute([]u8)row[:off])
-		testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x, h)), e2e_rgb(COLOR_GIT_ADD))
-		testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x + 3, h)), e2e_rgb(COLOR_GIT_DEL))
-	}
-
 	nav_alt(&e, 'g')
 	nav_scan(&e)
 	tr := &e.ed.filetree
@@ -1792,83 +1775,6 @@ e2e_nav_filetree_delete_dialog_directory :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(inner), "nested file is gone too")
 }
 
-@(test)
-e2e_nav_git_diff_base :: proc(t: ^testing.T) {
-	if !shell_command_exists("git") {
-		return
-	}
-	e := e2e_git_start("one\ntwo\nthree\n")
-	defer e2e_stop(&e)
-	delete(e.ed.working_root)
-	e.ed.working_root = strings.clone(e.dir)
-
-	b := editor_buffer(&e.ed)
-	b.cursor = {1, len(b.lines[1].text)}
-	e2e_type(&e, "X")
-	editor_save(&e.ed)
-	branch := "zb'ase"
-	e2e_run(fmt.tprintf("cd %s && git commit -q -am second && git branch %s HEAD~1", shell_quote(e.dir), shell_quote(branch)))
-
-	nav_alt(&e, 'g')
-	nav_scan(&e)
-	tr := &e.ed.filetree
-	testing.expect_value(t, tr.scope, FileTreeScope.Git)
-	testing.expect(t, !entry_named(tr, "file.txt"), "committed file is clean against HEAD")
-	e2e_key(&e, .Esc)
-
-	basepick_open(&e.ed)
-	testing.expect(t, e.ed.basepick.active, "picker opens")
-	e2e_type(&e, "seed")
-	e2e_key(&e, .Enter)
-	testing.expect(t, !e.ed.basepick.active, "picker closes on pick")
-	testing.expect_value(t, len(g_diff_base.ref), 40)
-	testing.expect(t, !g_diff_base.merge, "commit pick is a fixed sha")
-	for git_stat_running(&e.ed) {
-		git_stat_pump(&e.ed)
-	}
-
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-	testing.expect_value(t, git_mark_at(b, 0), GitMark.None)
-	_, h := editor_viewport(&e.ed)
-	row := e2e_row(&e, h)
-	testing.expectf(t, strings.contains(row, fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, g_diff_base.label)), "status bar shows base: %q", row)
-	testing.expectf(t, strings.contains(row, "+1 -1"), "diff size is against the base: %q", row)
-
-	nav_alt(&e, 'g')
-	nav_scan(&e)
-	testing.expect(t, entry_named(tr, "file.txt"), "Git tab lists the file changed since the base")
-	e2e_key(&e, .Esc)
-
-	basepick_open(&e.ed)
-	e2e_type(&e, "zb'")
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, g_diff_base.ref, branch)
-	git_invalidate(b)
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-
-	e2e_run(fmt.tprintf("cd %s && git branch -f %s HEAD", shell_quote(e.dir), shell_quote(branch)))
-	git_invalidate(b)
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
-	nav_alt(&e, 'g')
-	nav_scan(&e)
-	testing.expect(t, !entry_named(tr, "file.txt"), "moved branch is followed by the Git tab")
-	e2e_key(&e, .Esc)
-	git_stat_reset(&e.ed)
-	for git_stat_running(&e.ed) {
-		git_stat_pump(&e.ed)
-	}
-	testing.expect_value(t, e.ed.gitstat.diff, GitDiffSize{})
-
-	basepick_open(&e.ed)
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, g_diff_base.ref, "")
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
-}
-
 nav_select :: proc(tr: ^FileTree, name: string) -> bool {
 	for entry, i in tr.entries {
 		if entry.name == name {
@@ -1888,14 +1794,6 @@ nav_screen_find :: proc(e: ^E2E, text: string) -> (x, y: int, ok: bool) {
 		}
 	}
 	return
-}
-
-nav_stat_refresh :: proc(e: ^E2E) {
-	e.ed.gitstat.poll = {}
-	git_stat_maybe_start(&e.ed)
-	for git_stat_running(&e.ed) {
-		git_stat_pump(&e.ed)
-	}
 }
 
 @(test)
@@ -1940,10 +1838,13 @@ e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, tr.mode, FileTreeMode.Nav)
 
 	e2e_key(&e, .Enter)
-	testing.expect_value(t, tr.mode, FileTreeMode.ConfirmRestore)
-	testing.expect_value(t, filetree_restore_question(tr), "Restore gone.txt from HEAD?")
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return !e.ed.plugins.ui.active})
+	ui := &e.ed.plugins.ui
+	testing.expect(t, ui.active && ui.kind == .Confirm, "the git plugin asks to confirm")
+	testing.expect_value(t, ui.title, "Restore gone.txt from HEAD?")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
+	e2e_git_settle(&e)
 	data, err := os.read_entire_file(gone, context.temp_allocator)
 	testing.expect(t, err == nil, "restored on disk")
 	testing.expect_value(t, string(data), "alpha\nbeta\n")
@@ -1996,47 +1897,6 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_nav_git_base_moved_gutter :: proc(t: ^testing.T) {
-	if !shell_command_exists("git") {
-		return
-	}
-	e := e2e_git_start("one\ntwo\nthree\n")
-	defer e2e_stop(&e)
-	defer git_base_set("", "", false)
-	delete(e.ed.working_root)
-	e.ed.working_root = strings.clone(e.dir)
-	q := shell_quote(e.dir)
-
-	b := editor_buffer(&e.ed)
-	b.cursor = {1, len(b.lines[1].text)}
-	e2e_type(&e, "X")
-	editor_save(&e.ed)
-	nav_stat_refresh(&e)
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-
-	e2e_run(fmt.tprintf("cd %s && git commit -qam second", q))
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-	nav_stat_refresh(&e)
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
-
-	e2e_run(fmt.tprintf("cd %s && git branch base HEAD~1", q))
-	git_base_change(&e.ed, "base", "base", false)
-	nav_stat_refresh(&e)
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-
-	e2e_run(fmt.tprintf("cd %s && git branch -f base HEAD", q))
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-	nav_stat_refresh(&e)
-	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
-}
-
-@(test)
 e2e_nav_git_deleted_unicode :: proc(t: ^testing.T) {
 	if !shell_command_exists("git") {
 		return
@@ -2058,7 +1918,8 @@ e2e_nav_git_deleted_unicode :: proc(t: ^testing.T) {
 	nav_write(gone, "new\n")
 	testing.expect(t, !filetree_entry_deleted(tr, tr.entries[tr.selected]), "recreated since the scan is not deleted")
 	e2e_key(&e, .Enter)
-	testing.expect(t, tr.mode != .ConfirmRestore, "no restore prompt over a recreated file")
+	e2e_git_settle(&e)
+	testing.expect(t, !e.ed.plugins.ui.active, "no restore prompt over a recreated file")
 	data, _ := os.read_entire_file(gone, context.temp_allocator)
 	testing.expect_value(t, string(data), "new\n")
 }

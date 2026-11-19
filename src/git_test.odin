@@ -34,114 +34,112 @@ git_numstat_line_parse :: proc(t: ^testing.T) {
 }
 
 @(test)
-git_diffsize_total_sections :: proc(t: ^testing.T) {
-	lines := []string{"main", "0\t2", "@@NUMSTAT@@", "4\t2\ta.txt", "-\t-\tb.bin", "@@UNTRACKED@@", "new.txt:5", "blob.dat:0", ""}
-	testing.expect_value(t, git_diffsize_total(lines), GitDiffSize{9, 2})
+git_diffsize_label_format :: proc(t: ^testing.T) {
 	testing.expect_value(t, git_diffsize_label({}), "")
 	testing.expect_value(t, git_diffsize_label({9, 2}), "+9 -2")
 }
 
 @(private = "file")
-diff_marks :: proc(base, cur: []u64) -> []GitMark {
-	marks := make([]GitMark, len(cur))
-	hunks := make([dynamic]GitHunk)
+diff_marks :: proc(base, cur: []u64) -> []DiffMark {
+	marks := make([]DiffMark, len(cur))
+	hunks := make([dynamic]DiffHunk)
 	defer delete(hunks)
-	git_diff(base, cur, marks, &hunks)
+	diff_lines(base, cur, marks, &hunks)
 	return marks
 }
 
 @(private = "file")
-diff_hunks :: proc(base, cur: []u64) -> [dynamic]GitHunk {
-	marks := make([]GitMark, len(cur))
+diff_hunks :: proc(base, cur: []u64) -> [dynamic]DiffHunk {
+	marks := make([]DiffMark, len(cur))
 	defer delete(marks)
-	hunks := make([dynamic]GitHunk)
-	git_diff(base, cur, marks, &hunks)
+	hunks := make([dynamic]DiffHunk)
+	diff_lines(base, cur, marks, &hunks)
 	return hunks
 }
 
 @(test)
-test_git_diff_identical :: proc(t: ^testing.T) {
+test_diff_identical :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2, 3}, {1, 2, 3})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.None)
-	testing.expect_value(t, marks[1], GitMark.None)
-	testing.expect_value(t, marks[2], GitMark.None)
+	testing.expect_value(t, marks[0], DiffMark.None)
+	testing.expect_value(t, marks[1], DiffMark.None)
+	testing.expect_value(t, marks[2], DiffMark.None)
 }
 
 @(test)
-test_git_diff_insert_middle :: proc(t: ^testing.T) {
+test_diff_insert_middle :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2, 3}, {1, 9, 2, 3})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.None)
-	testing.expect_value(t, marks[1], GitMark.Added)
-	testing.expect_value(t, marks[2], GitMark.None)
-	testing.expect_value(t, marks[3], GitMark.None)
+	testing.expect_value(t, marks[0], DiffMark.None)
+	testing.expect_value(t, marks[1], DiffMark.Added)
+	testing.expect_value(t, marks[2], DiffMark.None)
+	testing.expect_value(t, marks[3], DiffMark.None)
 }
 
 @(test)
-test_git_diff_modify :: proc(t: ^testing.T) {
+test_diff_modify :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2, 3}, {1, 9, 3})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.None)
-	testing.expect_value(t, marks[1], GitMark.Modified)
-	testing.expect_value(t, marks[2], GitMark.None)
+	testing.expect_value(t, marks[0], DiffMark.None)
+	testing.expect_value(t, marks[1], DiffMark.Modified)
+	testing.expect_value(t, marks[2], DiffMark.None)
 }
 
 @(test)
-test_git_diff_delete_middle :: proc(t: ^testing.T) {
+test_diff_delete_middle :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2, 3, 4}, {1, 4})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.Deleted)
-	testing.expect_value(t, marks[1], GitMark.None)
+	testing.expect_value(t, marks[0], DiffMark.Deleted)
+	testing.expect_value(t, marks[1], DiffMark.None)
 }
 
 @(test)
-test_git_diff_delete_at_end :: proc(t: ^testing.T) {
+test_diff_delete_at_end :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2, 3}, {1})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.Deleted)
+	testing.expect_value(t, marks[0], DiffMark.Deleted)
 }
 
 @(test)
-test_git_diff_append :: proc(t: ^testing.T) {
+test_diff_append :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2}, {1, 2, 3})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.None)
-	testing.expect_value(t, marks[1], GitMark.None)
-	testing.expect_value(t, marks[2], GitMark.Added)
+	testing.expect_value(t, marks[0], DiffMark.None)
+	testing.expect_value(t, marks[1], DiffMark.None)
+	testing.expect_value(t, marks[2], DiffMark.Added)
 }
 
 @(test)
-test_git_diff_all_added_from_empty :: proc(t: ^testing.T) {
+test_diff_all_added_from_empty :: proc(t: ^testing.T) {
 	marks := diff_marks({}, {1, 2})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.Added)
-	testing.expect_value(t, marks[1], GitMark.Added)
+	testing.expect_value(t, marks[0], DiffMark.Added)
+	testing.expect_value(t, marks[1], DiffMark.Added)
 }
 
 @(test)
-test_git_diff_two_hunks :: proc(t: ^testing.T) {
+test_diff_two_hunks :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2, 3, 4, 5}, {9, 2, 3, 4, 8})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.Modified)
-	testing.expect_value(t, marks[1], GitMark.None)
-	testing.expect_value(t, marks[2], GitMark.None)
-	testing.expect_value(t, marks[3], GitMark.None)
-	testing.expect_value(t, marks[4], GitMark.Modified)
+	testing.expect_value(t, marks[0], DiffMark.Modified)
+	testing.expect_value(t, marks[1], DiffMark.None)
+	testing.expect_value(t, marks[2], DiffMark.None)
+	testing.expect_value(t, marks[3], DiffMark.None)
+	testing.expect_value(t, marks[4], DiffMark.Modified)
 }
 
 @(test)
-test_git_diff_modify_then_extra_add :: proc(t: ^testing.T) {
+test_diff_modify_then_extra_add :: proc(t: ^testing.T) {
 	marks := diff_marks({1, 2, 5}, {1, 3, 4, 5})
 	defer delete(marks)
-	testing.expect_value(t, marks[0], GitMark.None)
-	testing.expect_value(t, marks[1], GitMark.Modified)
-	testing.expect_value(t, marks[2], GitMark.Added)
-	testing.expect_value(t, marks[3], GitMark.None)
+	testing.expect_value(t, marks[0], DiffMark.None)
+	testing.expect_value(t, marks[1], DiffMark.Modified)
+	testing.expect_value(t, marks[2], DiffMark.Added)
+	testing.expect_value(t, marks[3], DiffMark.None)
 }
 
 @(test)
-test_git_hunk_modify :: proc(t: ^testing.T) {
+test_hunk_modify :: proc(t: ^testing.T) {
 	hunks := diff_hunks({1, 2, 3}, {1, 9, 3})
 	defer delete(hunks)
 	testing.expect_value(t, len(hunks), 1)
@@ -153,7 +151,7 @@ test_git_hunk_modify :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_git_hunk_delete_middle :: proc(t: ^testing.T) {
+test_hunk_delete_middle :: proc(t: ^testing.T) {
 	hunks := diff_hunks({1, 2, 3, 4}, {1, 4})
 	defer delete(hunks)
 	testing.expect_value(t, len(hunks), 1)
@@ -165,7 +163,7 @@ test_git_hunk_delete_middle :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_git_hunk_delete_at_top :: proc(t: ^testing.T) {
+test_hunk_delete_at_top :: proc(t: ^testing.T) {
 	hunks := diff_hunks({1, 2, 3}, {3})
 	defer delete(hunks)
 	testing.expect_value(t, len(hunks), 1)
@@ -176,15 +174,15 @@ test_git_hunk_delete_at_top :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_git_hunk_pure_add_none :: proc(t: ^testing.T) {
+test_hunk_pure_add_none :: proc(t: ^testing.T) {
 	hunks := diff_hunks({1, 2}, {1, 2, 3})
 	defer delete(hunks)
 	testing.expect_value(t, len(hunks), 0)
 }
 
 @(test)
-test_git_word_span_middle :: proc(t: ^testing.T) {
-	o, n := git_word_span("foo(a, b)", "foo(a, c)")
+test_word_span_middle :: proc(t: ^testing.T) {
+	o, n := diff_word_span("foo(a, b)", "foo(a, c)")
 	testing.expect_value(t, o[0], 7)
 	testing.expect_value(t, o[1], 8)
 	testing.expect_value(t, n[0], 7)
@@ -192,13 +190,13 @@ test_git_word_span_middle :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_git_word_span_prefix :: proc(t: ^testing.T) {
-	o, n := git_word_span("line 28", "line 28 content here")
+test_word_span_prefix :: proc(t: ^testing.T) {
+	o, n := diff_word_span("line 28", "line 28 content here")
 	testing.expect_value(t, o[0], 7)
 	testing.expect_value(t, o[1], 7)
 	testing.expect_value(t, n[0], 7)
 	testing.expect_value(t, n[1], 20)
-	o2, n2 := git_word_span("line 28 content here", "line 28")
+	o2, n2 := diff_word_span("line 28 content here", "line 28")
 	testing.expect_value(t, o2[0], 7)
 	testing.expect_value(t, o2[1], 20)
 	testing.expect_value(t, n2[0], 7)
@@ -206,8 +204,8 @@ test_git_word_span_prefix :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_git_word_span_grow :: proc(t: ^testing.T) {
-	o, n := git_word_span("abc", "abXYc")
+test_word_span_grow :: proc(t: ^testing.T) {
+	o, n := diff_word_span("abc", "abXYc")
 	testing.expect_value(t, o[0], 2)
 	testing.expect_value(t, o[1], 2)
 	testing.expect_value(t, n[0], 2)

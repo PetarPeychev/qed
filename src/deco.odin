@@ -229,11 +229,11 @@ deco_ghost_count :: proc(b: ^Buffer, row: int, above: bool) -> int {
 }
 
 ghost_above :: proc(b: ^Buffer, row: int) -> int {
-	return git_above(b, row) + deco_ghost_count(b, row, true)
+	return diff_above(b, row) + deco_ghost_count(b, row, true)
 }
 
 ghost_below :: proc(b: ^Buffer, row: int) -> int {
-	return git_below(b, row) + deco_ghost_count(b, row, false)
+	return diff_below(b, row) + deco_ghost_count(b, row, false)
 }
 
 deco_palette :: proc(keys: []string) -> []tb2.Color {

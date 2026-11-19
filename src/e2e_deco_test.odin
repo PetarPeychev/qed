@@ -251,13 +251,31 @@ e2e_deco_status_segments :: proc(t: ^testing.T) {
 			assert(not pcall(qed.status.set, "x", {}), "text required")
 			qed.status.set("gone", {text = "GONE"})
 			qed.status.clear("gone")
+			qed.status.set("c", {text = {{text = "+1", color = "git_added"}, {text = " -2", color = "git_deleted"}}, sep = " "})
+			assert(not pcall(qed.status.set, "x", {text = {{text = "x", color = "nope"}}}), "unknown chunk color")
+			qed.status.set("e", {text = ""})
 		end}`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
-	testing.expect_value(t, len(e.ed.plugins.status), 3)
+	owned := proc(e: ^E2E) -> int {
+		n := 0
+		for s in e.ed.plugins.status {
+			n += 1 if s.owner == "st" else 0
+		}
+		return n
+	}
+	testing.expect_value(t, owned(&e), 5)
+	e2e_resize(&e, 100, 24)
 	_, h := editor_viewport(&e.ed)
 	e2e_render(&e)
 	row := e2e_row_text(&e, h)
-	testing.expect(t, strings.contains(row, "LEFT2"), "a set replaces the same id")
+	ci := strings.index(row, "DROPME +1 -2 ")
+	testing.expectf(t, ci >= 0, "chunks join after a custom sep; an empty segment takes no room: %q", row)
+	if ci >= 0 {
+		cx := visual_width(transmute([]u8)row[:ci]) + len("DROPME ")
+		testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, cx, h)), e2e_rgb(COLOR_GIT_ADD))
+		testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, cx + 3, h)), e2e_rgb(COLOR_GIT_DEL))
+	}
+	testing.expectf(t, strings.contains(row, "LEFT2"), "a set replaces the same id: %q", row)
 	testing.expect(t, !strings.contains(row, "LEFTSEG"), "old text gone")
 	testing.expect(t, strings.contains(row, "DROPME"), "fits at full width")
 	ri := strings.index(row, "RIGHTSEG")
@@ -278,7 +296,7 @@ e2e_deco_status_segments :: proc(t: ^testing.T) {
 	e2e_resize(&e, 80, 24)
 
 	plugin_unload(&e.ed, pl)
-	testing.expect_value(t, len(e.ed.plugins.status), 0)
+	testing.expect_value(t, owned(&e), 0)
 	e2e_render(&e)
 	_, h = editor_viewport(&e.ed)
 	testing.expect(t, !strings.contains(e2e_row_text(&e, h), "LEFT2"), "unload removes the segments")
@@ -298,43 +316,43 @@ e2e_deco_set_base_no_git :: proc(t: ^testing.T) {
 		end}`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 0), GitMark.Deleted)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-	testing.expect_value(t, git_mark_at(b, 2), GitMark.None)
-	testing.expect_value(t, git_mark_at(b, 3), GitMark.Added)
+	testing.expect_value(t, diff_mark_at(b, 0), DiffMark.Deleted)
+	testing.expect_value(t, diff_mark_at(b, 1), DiffMark.Modified)
+	testing.expect_value(t, diff_mark_at(b, 2), DiffMark.None)
+	testing.expect_value(t, diff_mark_at(b, 3), DiffMark.Added)
 	testing.expect_value(t, ghost_above(b, 1), 1)
 	_, h := editor_viewport(&e.ed)
 	testing.expect(t, strings.contains(e2e_row_text(&e, h), "saved"), "the label shows in the status bar")
 	testing.expect(t, strings.has_suffix(deco_row(&e, 1), "two"), "the base line renders as a ghost row")
 
 	b.cursor = {4, 0}
-	git_goto(&e.ed, -1)
+	diffbase_goto(&e.ed, -1)
 	testing.expect_value(t, b.cursor.row, 3)
-	git_goto(&e.ed, -1)
+	diffbase_goto(&e.ed, -1)
 	testing.expect_value(t, b.cursor.row, 0)
-	git_goto(&e.ed, +1)
+	diffbase_goto(&e.ed, +1)
 	testing.expect_value(t, b.cursor.row, 3)
 
 	b.cursor = {1, 0}
-	git_revert(&e.ed)
+	diffbase_revert(&e.ed)
 	testing.expect_value(t, string(b.lines[1].text[:]), "two")
 	b.cursor = {3, 0}
-	git_revert(&e.ed)
+	diffbase_revert(&e.ed)
 	testing.expect_value(t, len(b.lines), 5)
 	b.cursor = {0, 0}
-	git_revert(&e.ed)
+	diffbase_revert(&e.ed)
 	testing.expect_value(t, buffer_snapshot_tmp(b), "zero\none\ntwo\nthree\nfive\n")
 	e2e_render(&e)
 	for r in 0 ..< len(b.lines) {
-		testing.expect_value(t, git_mark_at(b, r), GitMark.None)
+		testing.expect_value(t, diff_mark_at(b, r), DiffMark.None)
 	}
 
 	plugin_unload(&e.ed, pl)
-	testing.expect_value(t, b.base.source, DiffSource.None)
+	testing.expect_value(t, diffbase_owner(b), "")
 	b.cursor = {0, 0}
 	e2e_type(&e, "x")
 	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 0), GitMark.None)
+	testing.expect_value(t, diff_mark_at(b, 0), DiffMark.None)
 }
 
 @(private = "file")
@@ -362,12 +380,12 @@ e2e_deco_set_base_matches_git :: proc(t: ^testing.T) {
 	delete(buffer_delete(b, {3, 0}, {4, 0}))
 	buffer_insert(b, {5, 0}, "new\n")
 	e2e_render(&e)
-	testing.expect_value(t, b.base.source, DiffSource.Git)
-	marks := make([]GitMark, len(b.base.marks), context.temp_allocator)
+	testing.expect_value(t, diffbase_owner(b), "git")
+	marks := make([]DiffMark, len(b.base.marks), context.temp_allocator)
 	copy(marks, b.base.marks[:])
-	hunks := make([]GitHunk, len(b.base.hunks), context.temp_allocator)
+	hunks := make([]DiffHunk, len(b.base.hunks), context.temp_allocator)
 	copy(hunks, b.base.hunks[:])
-	changes := make([]GitChange, len(b.base.changes), context.temp_allocator)
+	changes := make([]DiffChange, len(b.base.changes), context.temp_allocator)
 	copy(changes, b.base.changes[:])
 	git_screen := make([]string, 8, context.temp_allocator)
 	for y in 0 ..< 8 {
@@ -377,7 +395,7 @@ e2e_deco_set_base_matches_git :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "gb", fmt.tprintf(`return {{setup = function() qed.buf.set_base(nil, %q) end}}`, seed))
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	e2e_render(&e)
-	testing.expect_value(t, b.base.source, DiffSource.Plugin)
+	testing.expect_value(t, diffbase_owner(b), "gb")
 	testing.expect(t, slice_equal(marks, b.base.marks[:]), "same marks")
 	testing.expect(t, slice_equal(hunks, b.base.hunks[:]), "same hunks")
 	testing.expect(t, slice_equal(changes, b.base.changes[:]), "same changes")
@@ -385,13 +403,14 @@ e2e_deco_set_base_matches_git :: proc(t: ^testing.T) {
 		testing.expect_value(t, deco_row(&e, y), git_screen[y])
 	}
 
-	git_invalidate(b)
+	editor_save(&e.ed)
+	e2e_git_settle(&e)
 	e2e_render(&e)
-	testing.expect_value(t, b.base.source, DiffSource.Plugin)
+	testing.expect_value(t, diffbase_owner(b), "gb")
 
 	plugin_unload(&e.ed, pl)
 	e2e_render(&e)
-	testing.expect_value(t, b.base.source, DiffSource.Git)
+	testing.expect_value(t, diffbase_owner(b), "git")
 	testing.expect(t, slice_equal(marks, b.base.marks[:]), "git takes over again on unload")
 }
 
@@ -416,12 +435,19 @@ e2e_deco_set_base_ownership :: proc(t: ^testing.T) {
 	a := e2e_plugin(&e, "owna", `return {setup = function() assert(qed.buf.set_base(nil, "one\n") == true) end}`)
 	testing.expect_value(t, a.state, PluginState.Enabled)
 	other := e2e_plugin(&e, "ownb", `return {setup = function()
-		assert(qed.buf.set_base(nil, "zzz\n") == false, "another plugin's base is not replaced")
-		assert(qed.buf.set_base(nil, nil) == false, "nor cleared")
+		assert(qed.buf.set_base(nil, "zzz\n") == true, "a later plugin's base goes on top")
+		assert(qed.buf.set_base(nil, nil) == false, "clearing it")
+		assert(qed.buf.set_base(nil, "zzz\n", {label = ""}) == true, "and setting it again")
 	end}`)
 	testing.expect_value(t, other.state, PluginState.Enabled)
-	testing.expect_value(t, b.base.owner, "owna")
-	testing.expect_value(t, b.base.blob, "one\n")
+	testing.expect_value(t, diffbase_owner(b), "ownb")
+	testing.expect_value(t, diffbase_active(b).text, "zzz\n")
+	e2e_render(&e)
+	_, h0 := editor_viewport(&e.ed)
+	testing.expect(t, !strings.contains(e2e_row_text(&e, h0), ICON_STATUS_DIFF_BASE), "an empty label shows no indicator")
+	plugin_unload(&e.ed, other)
+	testing.expect_value(t, diffbase_owner(b), "owna")
+	testing.expect_value(t, diffbase_active(b).text, "one\n")
 	e2e_render(&e)
 	_, h := editor_viewport(&e.ed)
 	testing.expect(t, strings.contains(e2e_row_text(&e, h), fmt.tprintf("%sbase", ICON_STATUS_DIFF_BASE)), "a label-less plugin base shows a generic indicator")

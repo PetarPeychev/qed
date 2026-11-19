@@ -27,7 +27,6 @@ FileTreeMode :: enum {
 	ConfirmDelete,
 	ConfirmClose,
 	ConfirmRoot,
-	ConfirmRestore,
 }
 
 FileTreeScope :: enum {
@@ -69,10 +68,9 @@ FileTree :: struct {
 	filter:          TextField,
 	delete_selected: int,
 	close_selected:  int,
-	restore_selected: int,
 	root_target:     string,
 	preview:         Preview,
-	status:          map[string]GitMark,
+	status:          map[string]DiffMark,
 	ignored:         map[string]bool,
 	diffsize:        map[string]GitDiffSize,
 	renames:         map[string]string,
@@ -440,7 +438,7 @@ filetree_scan_apply :: proc(editor: ^Editor, output: string) {
 	}
 }
 
-filetree_change_add :: proc(t: ^FileTree, root, top, rel, old: string, mark: GitMark) {
+filetree_change_add :: proc(t: ^FileTree, root, top, rel, old: string, mark: DiffMark) {
 	abs, _ := filepath.join({top, rel}, context.temp_allocator)
 	m := mark
 	if m == .Deleted && os.exists(abs) {
@@ -484,9 +482,9 @@ filetree_is_ignored :: proc(t: ^FileTree, path: string) -> bool {
 	return false
 }
 
-filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: GitMark) {
+filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: DiffMark) {
 	filetree_status_set(t, path, mark)
-	up := GitMark.Modified if mark == .Deleted else mark
+	up := DiffMark.Modified if mark == .Deleted else mark
 	under := strings.concatenate({root, "/"}, context.temp_allocator)
 	p := path
 	for strings.has_prefix(p, under) {
@@ -499,7 +497,7 @@ filetree_status_add :: proc(t: ^FileTree, root, path: string, mark: GitMark) {
 	}
 }
 
-filetree_status_set :: proc(t: ^FileTree, path: string, mark: GitMark) {
+filetree_status_set :: proc(t: ^FileTree, path: string, mark: DiffMark) {
 	if existing, ok := t.status[path]; ok {
 		if int(mark) > int(existing) {
 			t.status[path] = mark
@@ -1384,7 +1382,12 @@ filetree_activate :: proc(editor: ^Editor) {
 		return
 	}
 	if filetree_entry_deleted(t, e) {
-		filetree_cmd_restore(editor)
+		for cmd in editor.plugins.commands {
+			if cmd.filetree && cmd.name == "Restore File" {
+				command_run(editor, cmd)
+				break
+			}
+		}
 		return
 	}
 	path := strings.clone(e.path, context.temp_allocator)
@@ -1520,7 +1523,7 @@ filetree_prompt_commit :: proc(editor: ^Editor) {
 		filetree_repath_buffers(editor, old, full)
 		filetree_filter_invalidate(t)
 		filetree_reveal(editor, full)
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot, .ConfirmRestore:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
 	}
 }
 
@@ -1549,7 +1552,7 @@ filetree_repath_buffers :: proc(editor: ^Editor, old, new: string) {
 			highlight_destroy(&b.hl)
 			b.hl = {}
 		}
-		git_invalidate(&b)
+		diffbase_invalidate(&b)
 	}
 }
 
@@ -1848,10 +1851,6 @@ filetree_cmd_set_root :: proc(editor: ^Editor) {
 
 filetree_prompt_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
-	if t.mode == .ConfirmRestore {
-		dialog_key(editor, ev, &t.restore_selected, len(filetree_restore_actions), filetree_restore_execute, filetree_close_close)
-		return
-	}
 	if t.mode == .ConfirmRoot {
 		dialog_key(editor, ev, &t.close_selected, len(filetree_close_actions), filetree_root_execute, filetree_close_close)
 		return
@@ -1980,40 +1979,17 @@ filetree_cmd_rename :: proc(editor: ^Editor) {
 
 filetree_cmd_new :: proc(editor: ^Editor) {filetree_prompt_begin(editor, .New)}
 
-filetree_cmd_restore :: proc(editor: ^Editor) {
+filetree_git_refresh :: proc(editor: ^Editor, path: string) {
 	t := &editor.filetree
-	e, ok := filetree_selected(t)
-	if !ok || !filetree_entry_deleted(t, e) {
-		editor_log(editor, .Info, "Git", "Not a deleted file")
-		return
-	}
-	t.mode = .ConfirmRestore
-	t.restore_selected = 0
-}
-
-filetree_restore_actions := [?]string{"Cancel", "Restore"}
-
-filetree_restore_question :: proc(t: ^FileTree) -> string {
-	e, _ := filetree_selected(t)
-	base := g_diff_base.label if g_diff_base.ref != "" else "HEAD"
-	return fmt.tprintf("Restore %s from %s?", filepath.base(e.path), base)
-}
-
-filetree_restore_execute :: proc(editor: ^Editor) {
-	t := &editor.filetree
-	t.mode = .Nav
-	e, ok := filetree_selected(t)
-	if t.restore_selected != 1 || !ok {
-		return
-	}
-	path := strings.clone(e.path, context.temp_allocator)
-	if !git_restore(path) {
-		editor_log(editor, .Error, "Git", fmt.tprintf("Restore failed: %s", filepath.base(path)))
-		return
-	}
 	filetree_filter_invalidate(t)
-	filetree_reveal(editor, path)
-	editor_log(editor, .Info, "Git", fmt.tprintf("Restored %s", filepath.base(path)))
+	filetree_scan_start(editor)
+	if !t.active {
+		return
+	}
+	if path != "" {
+		filetree_reveal(editor, path)
+	}
+	filetree_preview_touch(editor)
 }
 
 filetree_cmd_delete :: proc(editor: ^Editor) {
@@ -2243,9 +2219,6 @@ filetree_render :: proc(editor: ^Editor) {
 	if t.mode == .ConfirmRoot {
 		dialog_render(editor, filetree_root_question(editor), filetree_close_actions[:], t.close_selected)
 	}
-	if t.mode == .ConfirmRestore {
-		dialog_render(editor, filetree_restore_question(t), filetree_restore_actions[:], t.restore_selected)
-	}
 }
 
 filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
@@ -2291,7 +2264,7 @@ filetree_footer_label :: proc(mode: FileTreeMode) -> string {
 		return "New: "
 	case .Rename:
 		return "Rename: "
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot, .ConfirmRestore:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
 	}
 	return ""
 }
@@ -2300,7 +2273,7 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 	t := &editor.filetree
 	inner := lay.inner
 	switch t.mode {
-	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot, .ConfirmRestore:
+	case .Nav, .ConfirmDelete, .ConfirmClose, .ConfirmRoot:
 		Chip :: struct {
 			label: string,
 			on:    bool,
@@ -2348,10 +2321,6 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 
 filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	t := &editor.filetree
-	if t.mode == .ConfirmRestore {
-		dialog_mouse(editor, ev, filetree_restore_question(t), filetree_restore_actions[:], &t.restore_selected, filetree_restore_execute, filetree_close_close)
-		return
-	}
 	if t.mode == .ConfirmRoot {
 		dialog_mouse(editor, ev, filetree_root_question(editor), filetree_close_actions[:], &t.close_selected, filetree_root_execute, filetree_close_close)
 		return

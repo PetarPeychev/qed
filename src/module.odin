@@ -9,6 +9,9 @@ Module :: enum {
 	Ai,
 }
 
+// true until the plugin system says otherwise, so editors without plugins (unit tests) keep git-gated code on
+g_git_loaded := true
+
 @(init)
 module_probe :: proc "contextless" () {
 	context = runtime.default_context()
@@ -18,7 +21,7 @@ module_probe :: proc "contextless" () {
 module_enabled :: proc(m: Module) -> bool {
 	switch m {
 	case .Git:
-		return GIT_ENABLED && GIT_BINARY_PRESENT
+		return g_git_loaded && GIT_BINARY_PRESENT
 	case .Lsp:
 		return LSP_ENABLED
 	case .Ai:

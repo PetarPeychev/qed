@@ -103,13 +103,13 @@ text_hunks :: proc(b: ^Buffer, lines: []string) -> []TextHunk {
 	}
 	a := make([]u64, n - pre - suf, context.temp_allocator)
 	for &h, i in a {
-		h = git_hash(b.lines[pre + i].text[:])
+		h = diff_hash(b.lines[pre + i].text[:])
 	}
 	c := make([]u64, m - pre - suf, context.temp_allocator)
 	for &h, i in c {
-		h = git_hash(transmute([]u8)lines[pre + i])
+		h = diff_hash(transmute([]u8)lines[pre + i])
 	}
-	ops, ok := git_myers(a, c)
+	ops, ok := diff_myers(a, c)
 	if !ok {
 		append(&hunks, TextHunk{pre, len(a), pre, len(c)})
 		return hunks[:]

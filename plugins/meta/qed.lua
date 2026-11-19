@@ -253,6 +253,24 @@ function qed.theme.list() end
 ---@return string
 function qed.theme.current() end
 
+---A theme icon, e.g. `"status_branch"`.
+---@param name string
+---@return string
+function qed.theme.icon(name) end
+
+qed.git = {}
+
+---Tells the core file tree Git tab and `ctx.base` the diff base (`nil` is HEAD) and rescans the tree.
+---@param ref string|nil branch, commit or merge-base ref
+---@param opts? {label?: string, merge?: boolean} `merge`: the base is `git merge-base ref HEAD`
+function qed.git.set_base(ref, opts) end
+
+qed.filetree = {}
+
+---Rescans the file tree's git status; with `path`, also reveals and selects it.
+---@param path? string
+function qed.filetree.refresh(path) end
+
 qed.term = {}
 
 ---@class qed.TermSpec
@@ -377,8 +395,9 @@ function qed.deco.clear(b, ns, from_row, to_row) end
 qed.status = {}
 
 ---@class qed.StatusSegment
----@field text string
+---@field text string|{text: string, color?: string}[] chunks paint in their own colors; `""` hides the segment but keeps its place
 ---@field color? string theme color key
+---@field sep? string text before the segment, default two spaces
 ---@field side? "left"|"right" default "left"
 ---@field drop? integer drop rank when the bar is too narrow (lowest first, 0 never), default 1
 
@@ -509,11 +528,12 @@ function qed.buf.set_indent(b, style, width) end
 function qed.buf.indent(b) end
 
 ---Diff base: drives the gutter marks, diff-view ghost rows, change navigation and revert hunk.
----Replaces the git base for this buffer until cleared with `nil`; cleared when the plugin unloads. Another plugin's base is left alone.
+---Each plugin keeps its own base per buffer; the base of the plugin that first set one most recently wins,
+---and clearing it with `nil` (or unloading) reveals the one beneath. Another plugin's base is never touched.
 ---@param b qed.Buf
 ---@param text string|nil
----@param opts? {label?: string} label shown in the status bar (`±base` without one)
----@return boolean ok false when another plugin owns this buffer's base
+---@param opts? {label?: string} label shown in the status bar: `±base` when omitted, nothing when `""`
+---@return boolean active true when this plugin's base is the one shown
 function qed.buf.set_base(b, text, opts) end
 
 qed.fs = {}

@@ -97,6 +97,9 @@ bundled_plugin_files := #load_directory("../plugins")
 bundled_plugin_dir_files := [?]PluginFile {
 	{"commands/init.lua", #load("../plugins/commands/init.lua", string)},
 	{"format/init.lua", #load("../plugins/format/init.lua", string)},
+	{"git/init.lua", #load("../plugins/git/init.lua", string)},
+	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},
+	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"pickers/init.lua", #load("../plugins/pickers/init.lua", string)},
 	{"tasks/init.lua", #load("../plugins/tasks/init.lua", string)},
 }
@@ -206,6 +209,7 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 }
 
 plugins_shutdown :: proc(p: ^Plugins) {
+	g_git_loaded = true
 	plugin_ui_destroy(p)
 	delete(p.persist_path)
 	plugin_sched_shutdown(p)
@@ -537,6 +541,9 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	pl.cfg_sig = strings.clone(plugin_cfg_sig(pl.name, editor_config_user(editor)))
 	if check_enabled && !plugin_cfg_enabled(pl.name, editor_config_user(editor)) {
 		pl.state = .Disabled
+		if pl.name == "git" {
+			g_git_loaded = false
+		}
 		return
 	}
 	pl.state = .Enabled
@@ -568,6 +575,9 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	if !ok {
 		plugin_error(editor, pl, msg, tb, true)
 		return
+	}
+	if pl.name == "git" {
+		g_git_loaded = true
 	}
 	editor_log(editor, .Debug, "Plugins", fmt.tprintf("loaded %s (%s) in %.2f ms", pl.name, "bundled" if pl.bundled else "user", ms_since(start)))
 	if p.bound && !p.startup_due {
@@ -815,6 +825,10 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	plugin_deco_unload(editor, pl.name)
 	plugin_status_unload(p, pl.name)
 	diffbase_unload(editor, pl.name)
+	if pl.name == "git" && g_git_loaded {
+		g_git_loaded = false
+		git_module_sync(editor)
+	}
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
 			plugin_command_remove(editor, i)

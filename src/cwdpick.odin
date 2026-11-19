@@ -224,16 +224,10 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 	delete(editor.working_root)
 	editor.working_root = root
 	editor.hover_active = false
-	if g_diff_base.ref != "" {
-		git_base_set("", "", false)
-		for &b in editor.buffers {
-			git_invalidate(&b)
-		}
-	}
+	git_base_set("", "", false)
 	lsp_restart_all(editor)
 	filetree_root_reset(editor)
 	projsearch_root_reset(&editor.projsearch)
-	git_stat_reset(editor)
 	editor_log(editor, .Info, "", fmt.tprintf("Working directory: %s", root))
 }
 

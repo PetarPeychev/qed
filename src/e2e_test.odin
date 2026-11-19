@@ -88,6 +88,8 @@ e2e_start :: proc(content := "") -> E2E {
 	_ = os.write_entire_file(path, transmute([]u8)content)
 
 	ed := editor_init(path, headless = true)
+	// the root is the test process's cwd (the qed repo); keep the git plugin's status out of these sessions
+	append(&ed.plugins.fakes, PluginFake{pattern = fmt.tprintf("git -C %s ", ed.working_root), code = 128})
 	return E2E{ed = ed, path = path}
 }
 
@@ -201,8 +203,14 @@ e2e_git_start :: proc(seed: string, name := "file.txt") -> E2E {
 			shell_quote(name),
 		),
 	)
-	ed := editor_init(file, headless = true)
-	return E2E{ed = ed, path = file, dir = dir}
+	e := E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
+	e2e_git_settle(&e)
+	return e
+}
+
+// the git plugin fetches diff bases asynchronously; wait until its spawns are done
+e2e_git_settle :: proc(e: ^E2E) {
+	e2e_pump_while(e, proc(e: ^E2E) -> bool {return plugin_busy(&e.ed)})
 }
 
 // Writes an executable `#!/bin/sh` stub with `body` (canned output or a
@@ -437,8 +445,8 @@ e2e_git_gutter_mark :: proc(t: ^testing.T) {
 	b.cursor = {1, len(b.lines[1].text)}
 	e2e_type(&e, "X")
 	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.Modified)
-	testing.expect_value(t, git_mark_at(b, 0), GitMark.None)
+	testing.expect_value(t, diff_mark_at(b, 1), DiffMark.Modified)
+	testing.expect_value(t, diff_mark_at(b, 0), DiffMark.None)
 }
 
 @(test)

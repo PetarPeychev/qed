@@ -113,9 +113,9 @@ e2e_git_marks_add_modify :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	e2e_type(&e, "delta")
 	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 0), GitMark.Modified)
-	testing.expect_value(t, git_mark_at(b, 3), GitMark.Added)
-	testing.expect_value(t, git_mark_at(b, 1), GitMark.None)
+	testing.expect_value(t, diff_mark_at(b, 0), DiffMark.Modified)
+	testing.expect_value(t, diff_mark_at(b, 3), DiffMark.Added)
+	testing.expect_value(t, diff_mark_at(b, 1), DiffMark.None)
 }
 
 @(test)
@@ -134,7 +134,7 @@ e2e_git_mark_delete :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, string(b.lines[1].text[:]), "charlie")
 	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 0), GitMark.Deleted)
+	testing.expect_value(t, diff_mark_at(b, 0), DiffMark.Deleted)
 }
 
 @(test)
@@ -154,7 +154,7 @@ e2e_git_diff_view_ghost :: proc(t: ^testing.T) {
 	b.cursor = {2, len(b.lines[2].text)}
 	e2e_type(&e, "X")
 	e2e_render(&e)
-	testing.expect_value(t, git_mark_at(b, 2), GitMark.Modified)
+	testing.expect_value(t, diff_mark_at(b, 2), DiffMark.Modified)
 
 	// Toggle diff view on; the removed base line renders as a ghost row above the
 	// live modified line, marked by the deletion gutter glyph.

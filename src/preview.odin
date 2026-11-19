@@ -300,7 +300,7 @@ preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool
 	if len(cur) == 0 && len(base_text) > 0 {
 		p.diff = true
 		p.numw = 1
-		preview_emit_ghosts(p, GitHunk{hi = min(len(base_text), PREVIEW_MAX_LINES)}, base_text, cur, false)
+		preview_emit_ghosts(p, DiffHunk{hi = min(len(base_text), PREVIEW_MAX_LINES)}, base_text, cur, false)
 		return
 	}
 
@@ -369,7 +369,7 @@ preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool
 		span := [2]int{}
 		if marks[i] == .Modified {
 			if old, okp := preview_pair_old(hunks, base_text, i); okp {
-				_, ns := git_word_span(old, cur[i])
+				_, ns := diff_word_span(old, cur[i])
 				span = ns
 			}
 		}
@@ -421,7 +421,7 @@ preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool
 	}
 }
 
-preview_emit_ghosts :: proc(p: ^Preview, h: GitHunk, base_text, cur: []string, above: bool) {
+preview_emit_ghosts :: proc(p: ^Preview, h: DiffHunk, base_text, cur: []string, above: bool) {
 	for gi in 0 ..< h.hi - h.lo {
 		bi := h.lo + gi
 		if bi >= len(base_text) {
@@ -429,14 +429,14 @@ preview_emit_ghosts :: proc(p: ^Preview, h: GitHunk, base_text, cur: []string, a
 		}
 		span := [2]int{}
 		if above && gi < h.new_n && h.row + gi < len(cur) {
-			os, _ := git_word_span(base_text[bi], cur[h.row + gi])
+			os, _ := diff_word_span(base_text[bi], cur[h.row + gi])
 			span = os
 		}
 		append(&p.rows, PreviewRow{text = strings.clone(base_text[bi]), kind = .Ghost, span = span})
 	}
 }
 
-preview_pair_old :: proc(hunks: []GitHunk, base_text: []string, row: int) -> (string, bool) {
+preview_pair_old :: proc(hunks: []DiffHunk, base_text: []string, row: int) -> (string, bool) {
 	for h in hunks {
 		if !h.above || h.new_n == 0 {
 			continue

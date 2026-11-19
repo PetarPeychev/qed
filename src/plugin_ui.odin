@@ -808,15 +808,22 @@ qed_languages :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 PluginStatus :: struct {
-	owner, id, text, color: string,
-	right:                  bool,
-	drop:                   int,
+	owner, id, text, color, sep: string,
+	chunks:                      [dynamic]PluginPaneLine,
+	right:                       bool,
+	drop:                        int,
 }
 
 plugin_status_free :: proc(s: PluginStatus) {
 	delete(s.id)
 	delete(s.text)
 	delete(s.color)
+	delete(s.sep)
+	for c in s.chunks {
+		delete(c.text)
+		delete(c.color)
+	}
+	delete(s.chunks)
 }
 
 plugin_status_find :: proc(p: ^Plugins, owner, id: string) -> int {
@@ -840,11 +847,21 @@ plugin_status_unload :: proc(p: ^Plugins, owner: string) {
 plugin_status_segs :: proc(p: ^Plugins, left, right: ^[dynamic]StatusSeg) {
 	at := 0
 	for s in p.status {
+		if s.text == "" {
+			continue
+		}
 		fg := COLOR_PANE_FG
 		if s.color != "" {
 			fg = g_theme_colors[s.color] or_else COLOR_PANE_FG
 		}
-		seg := StatusSeg{sep = "  ", text = s.text, fg = fg, kind = .Plugin, drop = s.drop}
+		seg := StatusSeg{sep = s.sep, text = s.text, fg = fg, kind = .Plugin, drop = s.drop}
+		if len(s.chunks) > 0 {
+			chunks := make([]StatusChunk, len(s.chunks), context.temp_allocator)
+			for c, i in s.chunks {
+				chunks[i] = {c.text, g_theme_colors[c.color] or_else fg}
+			}
+			seg.chunks = chunks
+		}
 		if s.right {
 			inject_at(right, at, seg)
 			at += 1
@@ -882,11 +899,32 @@ qed_status_set :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.settop(L, 2)
 	lua.L_checkstack(L, 4, "status options")
-	text, has_text := api_field_string(L, 2, "text")
-	if !has_text {
-		return plugin_raise(L, "text must be a string")
+	text := ""
+	chunks: []PluginPaneLine
+	lua.getfield(L, 2, "text")
+	#partial switch lua.type(L, -1) {
+	case .STRING:
+		text, _ = lua.toodinstring(L, -1)
+		text = api_one_line(strings.clone(text, context.temp_allocator))
+	case .TABLE:
+		chunks = api_pane_lines(L, lua.gettop(L))
+		parts := make([]string, len(chunks), context.temp_allocator)
+		for &c, i in chunks {
+			c.text = api_one_line(c.text)
+			if c.color != "" {
+				api_theme_color(L, c.color)
+			}
+			parts[i] = c.text
+		}
+		text = strings.concatenate(parts, context.temp_allocator)
+	case:
+		return plugin_raise(L, "text must be a string or a list of {text, color}")
 	}
-	text = api_one_line(text)
+	lua.pop(L, 1)
+	sep := "  "
+	if v, ok := api_field_string(L, 2, "sep"); ok {
+		sep = api_one_line(v)
+	}
 	color, _ := api_field_string(L, 2, "color")
 	if color != "" {
 		api_theme_color(L, color)
@@ -905,11 +943,14 @@ qed_status_set :: proc "c" (L: ^lua.State) -> c.int {
 	lua.pop(L, 1)
 	pl := api_loaded(L, editor)
 	owner := plugin_name_intern(p, pl.name)
-	s := PluginStatus{owner = owner, text = strings.clone(text), color = strings.clone(color), right = side == "right", drop = drop}
+	s := PluginStatus{owner = owner, text = strings.clone(text), color = strings.clone(color), sep = strings.clone(sep), right = side == "right", drop = drop}
+	for c in chunks {
+		append(&s.chunks, PluginPaneLine{strings.clone(c.text), strings.clone(c.color)})
+	}
 	if i := plugin_status_find(p, owner, id); i >= 0 {
 		s.id = p.status[i].id
-		delete(p.status[i].text)
-		delete(p.status[i].color)
+		p.status[i].id = ""
+		plugin_status_free(p.status[i])
 		p.status[i] = s
 	} else {
 		s.id = strings.clone(id)

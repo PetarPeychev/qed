@@ -256,7 +256,7 @@ buffer_open :: proc(buffer: ^Buffer, path: string) -> BufferOpenError {
 	buffer.goal_col = 0
 	buffer.disk = buffer_disk_stamp(path)
 	buffer.disk_conflict = false
-	git_invalidate(buffer)
+	diffbase_invalidate(buffer)
 
 	return .None
 }
@@ -310,7 +310,7 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	buffer.rev += 1
 	buffer.disk = buffer_disk_stamp(buffer.path)
 	buffer.disk_conflict = false
-	git_invalidate(buffer)
+	diffbase_invalidate(buffer)
 
 	return .None
 }
@@ -401,7 +401,7 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	buffer.modified = false
 	buffer.disk = buffer_disk_stamp(buffer.path)
 	buffer.disk_conflict = false
-	git_invalidate(buffer)
+	diffbase_invalidate(buffer)
 
 	return .None
 }

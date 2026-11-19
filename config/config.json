@@ -26,12 +26,8 @@
   "filetree_show_dotfiles": false,
   "filetree_show_ignored": false,
   "terminal_escape_closes": true,
+  "diff_view": false,
   "modules": {
-    "git": {
-      "enabled": true,
-      "diff_view": false,
-      "filetree_diff_only": true
-    },
     "lsp": {
       "enabled": true,
       "completion_max_rows": 8,
@@ -68,6 +64,10 @@
         "toml": "taplo fmt --stdin-filepath {file} -",
         "json": "prettier --parser json --stdin-filepath {file}"
       }
+    },
+    "git": {
+      "enabled": true,
+      "filetree_diff_only": true
     },
     "pickers": {
       "enabled": true
@@ -117,10 +117,10 @@
     "Toggle Format on Save": "",
     "Toggle Trim Whitespace on Save": "",
     "Toggle Final Newline on Save": "",
-    "Git: Toggle Diff View": "",
-    "Git: Next Change": "Alt+'",
-    "Git: Previous Change": "Alt+;",
-    "Git: Revert Hunk": "Alt+z",
+    "Diff: Toggle Diff View": "",
+    "Diff: Next Change": "Alt+'",
+    "Diff: Previous Change": "Alt+;",
+    "Diff: Revert Hunk": "Alt+z",
     "Git: Set Diff Base": "",
     "Git: Resolve Conflict": "Alt+m",
     "Toggle Line Wrap": "",
@@ -136,7 +136,7 @@
     "File Tree: Toggle Dotfiles": "Alt+.",
     "File Tree: Toggle Ignored": "Alt+i",
     "File Tree: Toggle Diff": "Alt+d",
-    "File Tree: Restore File": "",
+    "Restore File": "",
     "File Tree: Expand/Collapse All": "Alt+e"
   },
   "languages": {

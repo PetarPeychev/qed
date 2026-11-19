@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -419,8 +420,10 @@ bench_large_file :: proc(t: ^testing.T) {
 	buffer_open(&ob, path)
 	fmt.eprintfln("buffer_open (read+split+clone+saved snapshot): %.2f ms", ms_since(open_t))
 	gc := time.tick_now()
+	blob, _ := shell_capture(fmt.ctprintf("git -C %s show HEAD:./%s 2>/dev/null", shell_quote(filepath.dir(path)), shell_quote(filepath.base(path))))
+	diffbase_set(&ob, "git", blob)
 	diffbase_update(&ob)
-	fmt.eprintfln("diffbase_update COLD (git show HEAD subprocess + hash + diff): %.2f ms", ms_since(gc))
+	fmt.eprintfln("diff base COLD (git show HEAD subprocess + hash + diff, async in the git plugin): %.2f ms", ms_since(gc))
 	buffer_destroy(&ob)
 
 	mid := len(b.lines) / 2
@@ -454,6 +457,7 @@ bench_large_file :: proc(t: ^testing.T) {
 	}, &b)
 	fmt.eprintfln("highlight_update per edit (incremental + viewport): %.2f ms", hl_ns)
 
+	diffbase_set(&b, "git", blob)
 	diffbase_update(&b)
 	git_ns := bench_avg(20, proc(b: ^Buffer) {
 		bench_touch(b)

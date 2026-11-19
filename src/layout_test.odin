@@ -10,7 +10,7 @@ status_test_segs :: proc() -> (left, right: [dynamic]StatusSeg) {
 	append(&left, StatusSeg{sep = "  ", text = "12/300"})
 	append(&left, StatusSeg{sep = "  ", text = "B master", drop = 8})
 	append(&left, StatusSeg{sep = " ", text = "^1", drop = 7})
-	append(&left, StatusSeg{sep = "  ", text = "+5 -2", kind = .Diff, drop = 6})
+	append(&left, StatusSeg{sep = "  ", text = "+5 -2", drop = 6})
 	append(&left, StatusSeg{sep = "  ", text = "[1/2]", drop = 9})
 	append(&right, StatusSeg{sep = "  ", text = "AI:1", drop = 5})
 	append(&right, StatusSeg{sep = "  ", text = "L Odin", drop = 4})

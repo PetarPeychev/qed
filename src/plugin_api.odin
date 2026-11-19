@@ -115,6 +115,7 @@ qed_theme_api := [?]lua.L_Reg {
 	{"set", qed_theme_set},
 	{"list", qed_theme_list},
 	{"current", qed_theme_current},
+	{"icon", qed_theme_icon},
 	{nil, nil},
 }
 
@@ -152,6 +153,18 @@ qed_status_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
+qed_git_api := [?]lua.L_Reg {
+	{"set_base", qed_git_set_base},
+	{nil, nil},
+}
+
+@(private = "file")
+qed_filetree_api := [?]lua.L_Reg {
+	{"refresh", qed_filetree_refresh},
+	{nil, nil},
+}
+
+@(private = "file")
 qed_clipboard_api := [?]lua.L_Reg {
 	{"get", qed_clipboard_get},
 	{"set", qed_clipboard_set},
@@ -173,7 +186,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"git", qed_git_api[:]}, {"filetree", qed_filetree_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -2050,26 +2063,69 @@ qed_buf_set_base :: proc "c" (L: ^lua.State) -> c.int {
 	b, _ := api_buf(L, editor, 1)
 	clear_base := lua.type(L, 2) <= .NIL
 	text := "" if clear_base else api_text_arg(L, 2)
-	label := ""
+	label := "base"
 	if lua.type(L, 3) == .TABLE {
-		label, _ = api_field_string(L, 3, "label")
-		label = api_one_line(label)
+		if v, ok := api_field_string(L, 3, "label"); ok {
+			label = api_one_line(v)
+		}
 	} else if lua.type(L, 3) > .NIL {
 		lua.L_argerror(L, 3, "options table expected")
 	}
 	pl := api_loaded(L, editor)
-	if b.base.source == .Plugin && b.base.owner != pl.name {
-		lua.pushboolean(L, false)
-		return 1
-	}
 	if clear_base {
-		if b.base.source == .Plugin {
-			diffbase_clear(b)
-			b.base.tried = false
-		}
+		diffbase_clear(b, pl.name)
 	} else {
-		diffbase_set(b, text, .Plugin, plugin_name_intern(&editor.plugins, pl.name), label)
+		diffbase_set(b, plugin_name_intern(&editor.plugins, pl.name), text, label)
 	}
-	lua.pushboolean(L, true)
+	lua.pushboolean(L, b32(diffbase_owner(b) == pl.name))
 	return 1
+}
+
+qed_git_set_base :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	ref := ""
+	if lua.type(L, 1) > .NIL {
+		ref = api_string(L, 1)
+	}
+	label, merge := ref, false
+	if lua.type(L, 2) == .TABLE {
+		if v, ok := api_field_string(L, 2, "label"); ok {
+			label = api_one_line(v)
+		}
+		lua.getfield(L, 2, "merge")
+		merge = bool(lua.toboolean(L, -1))
+		lua.pop(L, 1)
+	} else if lua.type(L, 2) > .NIL {
+		lua.L_argerror(L, 2, "options table expected")
+	}
+	api_loaded(L, editor)
+	git_base_set(ref, label, merge)
+	filetree_git_refresh(editor, "")
+	return 0
+}
+
+qed_filetree_refresh :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	path := ""
+	if lua.type(L, 1) > .NIL {
+		path = api_string(L, 1)
+	}
+	filetree_git_refresh(entry.editor, path)
+	return 0
+}
+
+qed_theme_icon :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	name := api_string(L, 1)
+	for it in config_icons {
+		if it.key == name {
+			lua.pushodinstring(L, it.ptr^)
+			return 1
+		}
+	}
+	return plugin_raise(L, fmt.tprintf("unknown icon '%s'", name))
 }

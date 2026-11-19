@@ -87,10 +87,9 @@ cmd_lsp_hover :: proc(editor: ^Editor) {lsp_hover(editor)}
 cmd_lsp_rename :: proc(editor: ^Editor) {rename_open(editor)}
 cmd_diag_next :: proc(editor: ^Editor) {diag_goto(editor, +1)}
 cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
-cmd_git_next :: proc(editor: ^Editor) {git_goto(editor, +1)}
-cmd_git_prev :: proc(editor: ^Editor) {git_goto(editor, -1)}
-cmd_git_revert :: proc(editor: ^Editor) {git_revert(editor)}
-cmd_git_set_base :: proc(editor: ^Editor) {basepick_open(editor)}
+cmd_diff_next :: proc(editor: ^Editor) {diffbase_goto(editor, +1)}
+cmd_diff_prev :: proc(editor: ^Editor) {diffbase_goto(editor, -1)}
+cmd_diff_revert :: proc(editor: ^Editor) {diffbase_revert(editor)}
 
 cmd_toggle_diff_view :: proc(editor: ^Editor) {
 	g_diff_view = !g_diff_view
@@ -155,11 +154,10 @@ commands := [?]Command {
 	{name = "AI: Edit Selection", module = .Ai, run = cmd_ai_edit},
 	{name = "AI: Cancel Edits", module = .Ai, run = cmd_ai_cancel},
 	{name = "AI: Toggle Inline Completion", module = .Ai, run = cmd_toggle_inline_completion},
-	{name = "Git: Toggle Diff View", module = .Git, run = cmd_toggle_diff_view},
-	{name = "Git: Next Change", module = .Git, run = cmd_git_next},
-	{name = "Git: Previous Change", module = .Git, run = cmd_git_prev},
-	{name = "Git: Revert Hunk", module = .Git, run = cmd_git_revert},
-	{name = "Git: Set Diff Base", module = .Git, run = cmd_git_set_base},
+	{name = "Diff: Toggle Diff View", run = cmd_toggle_diff_view},
+	{name = "Diff: Next Change", run = cmd_diff_next},
+	{name = "Diff: Previous Change", run = cmd_diff_prev},
+	{name = "Diff: Revert Hunk", run = cmd_diff_revert},
 	{name = "Git: Resolve Conflict", module = .Git, run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", module = .Lsp, run = cmd_diag_next},
@@ -184,7 +182,6 @@ filetree_commands := [?]Command {
 	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
 	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", module = .Git, run = filetree_toggle_git_diff},
-	{name = "Restore File", config_name = "File Tree: Restore File", module = .Git, run = filetree_cmd_restore},
 	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
 }
 
@@ -225,6 +222,10 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 		     "Debug: Inspect Tokens":
 			return false
 		}
+	}
+	switch name {
+	case "Diff: Next Change", "Diff: Previous Change", "Diff: Revert Hunk":
+		return len(editor_buffer(editor).base.slots) > 0
 	}
 	return true
 }
