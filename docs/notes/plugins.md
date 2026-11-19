@@ -105,10 +105,10 @@ The API is one global, `qed`.
 ### Commands and keybinds
 | Function | Notes |
 |---|---|
-| `qed.command{name, run, when?, key?, welcome?, scope?}` | `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `welcome = true` also offers it on the welcome screen. |
+| `qed.command{name, run, when?, key?, welcome?, scope?} -> handle` | `handle:remove()` unregisters. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `welcome = true` also offers it on the welcome screen. |
 | `qed.run(name)` | Run any builtin or plugin command. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
-| `ctx` | `{buf, path, language, root, selection_text}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
+| `ctx` | `{buf, path, language, root, selection_text, base}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
 
 ### Events
 `qed.on(event, fn) -> handle`, removed with `handle:off()`.
@@ -141,6 +141,7 @@ There is deliberately no `key` event.
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
 | `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. |
 | `qed.clipboard.get()`, `.set(text)` | |
+| `qed.terminal.run(cmd, {cwd?})` | Types `cmd` into the terminal pane's shell and shows it. Superseded by `qed.term` in phase 7. |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()` | |
 
 - Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.
@@ -283,7 +284,7 @@ e2e tests of the Odin feature it replaces.
 | 1 | `format` (external formatter, format-on-save toggle, save fixups, LSP fallback) | `spawn` + await, awaitable and bounded `buf_pre_save`, `set_text` + rev guard, edit groups, plugin config, default keys. |
 | 2 | `pickers` (Set Theme, Set Language, Change Indentation) | `pick` await, `on_change` preview, Esc revert, core setters, `theme.set{persist}`. |
 | 3 | `git` (base fetch, stat poll, Set Diff Base, Restore File) | Timers, status push, diff-base primitive, events, dir plugin with `require`, module→plugin. If the Lua reads worse than the Odin did, the API is wrong. |
-| new | `commands`: `plugins.commands.list = [{name, cmd, output, when, key}]`, with `output = message \| replace \| insert \| terminal \| task \| background \| locations` | User commands end to end. `task` delegates to `tasks`, and `locations` parses `file:line:col` into a path `pick`. |
+| new | `commands`: `plugins.commands.list = [{name, run, output, stdin, save, cwd, env, when, key}]`, with `output = message \| log \| replace \| insert \| clipboard \| terminal \| task \| locations` (schema in CONFIG.md) | User commands end to end. `task` delegates to `tasks`, and `locations` parses `file:line:col` into a path `pick`. |
 | new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment shows the running count and turns red on a non-zero exit. Running an already-running task restarts it. |
 
 ## 8. Build phases

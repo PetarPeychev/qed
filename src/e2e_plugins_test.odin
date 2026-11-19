@@ -331,7 +331,7 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	ed := entry.editor
-	lua.createtable(L, 0, 3)
+	lua.createtable(L, 0, 8)
 	lua.pushboolean(L, b32(ed.quit))
 	lua.setfield(L, -2, "quit")
 	lua.pushboolean(L, b32(ed.welcome))
@@ -349,6 +349,28 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "dialog")
 	lua.pushboolean(L, b32(!ed.welcome && editor_buffer(ed).disk_conflict))
 	lua.setfield(L, -2, "disk_conflict")
+	lua.pushboolean(L, b32(ed.terminal.active))
+	lua.setfield(L, -2, "terminal")
+	lua.pushboolean(L, b32(ed.filetree.active))
+	lua.setfield(L, -2, "tree")
+	if pn := &ed.plugins.pane; pn.active {
+		lua.createtable(L, 0, 3)
+		lua.pushodinstring(L, pn.title)
+		lua.setfield(L, -2, "title")
+		lua.pushodinstring(L, pn.footer)
+		lua.setfield(L, -2, "footer")
+		lua.createtable(L, c.int(len(pn.lines)), 0)
+		for l, i in pn.lines {
+			lua.createtable(L, 0, 2)
+			lua.pushodinstring(L, l.text)
+			lua.setfield(L, -2, "text")
+			lua.pushodinstring(L, l.color)
+			lua.setfield(L, -2, "color")
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+		lua.setfield(L, -2, "lines")
+		lua.setfield(L, -2, "pane")
+	}
 	return 1
 }
 
@@ -438,6 +460,8 @@ pt_session :: proc(e: ^E2E, name: string, test: PluginFile) -> (tests: c.int, na
 	_ = os.write_entire_file(file, nil)
 	e^ = E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
 	e.ed.plugins.persist_path = fmt.aprintf("%s/config.json", dir)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(dir)
 	g_pt = e
 	g_pt_target = name
 	p := &e.ed.plugins
@@ -503,6 +527,8 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 			}
 			saved_timeout, saved_lsp, saved_ai, saved_git := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED
 			saved_theme := strings.clone(THEME, context.temp_allocator)
+			saved_reg := clipboard_register
+			clipboard_register = ""
 			tc := PtCase{tests, names[i]}
 			lua.pushcfunction(e.ed.plugins.L, pt_case_c)
 			lua.pushlightuserdata(e.ed.plugins.L, &tc)
@@ -513,6 +539,8 @@ e2e_plugins_test_lua :: proc(t: ^testing.T) {
 				testing.expectf(t, false, "plugins/%s %s: plugin error: %s", f.path, names[i], pl.last_error)
 			}
 			PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED, GIT_ENABLED = saved_timeout, saved_lsp, saved_ai, saved_git
+			delete(clipboard_register)
+			clipboard_register = saved_reg
 			if THEME != saved_theme || e.ed.theme_shown != "" {
 				delete(THEME, os.heap_allocator())
 				THEME = strings.clone(saved_theme, os.heap_allocator())

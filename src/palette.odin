@@ -15,6 +15,7 @@ Command :: struct {
 	module:      Module,
 	run:         proc(editor: ^Editor),
 	owner:       string,
+	id:          u64,
 	ref:         i32,
 	when_ref:    i32,
 	filetree:    bool,

@@ -162,6 +162,23 @@ term_toggle :: proc(editor: ^Editor) {
 	term_resize(editor)
 }
 
+term_run :: proc(editor: ^Editor, cmd: string) -> bool {
+	t := &editor.terminal
+	if !t.active {
+		term_toggle(editor)
+	}
+	if !t.active || !t.alive {
+		return false
+	}
+	line := make([dynamic]u8, 0, len(cmd) + 1, context.temp_allocator)
+	append(&line, cmd)
+	append(&line, '\r')
+	term_write_all(t, line[:])
+	t.sb_view = 0
+	t.sel_active = false
+	return true
+}
+
 term_start :: proc(editor: ^Editor) -> bool {
 	t := &editor.terminal
 	cols, rows := term_grid_size(editor)

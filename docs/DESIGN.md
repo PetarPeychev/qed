@@ -420,6 +420,14 @@ started at the end of `editor_init`. Invariants the code can't show:
   persist to `Plugins.persist_path` (tests).
 - On config hot reload `plugins_config_refresh` re-merges each loaded plugin's
   config (its kept `defaults` + embedded + user) before `config_changed` fires.
+- Plugin command names are unique per scope (a tree and an editor command may share
+  one). `qed.command` returns a handle whose `remove()` unregisters it; removing or
+  unloading commands closes the palette, whose rows index `Plugins.commands`.
+- `ctx.selection_text`, `file`, `files` (file tree selection) and `base` (diff base)
+  are computed on first read through `__index` and cached on the ctx, so `when` stays
+  cheap.
+- `qed.terminal.run` types into the single terminal session (`term_run`); phase 7's
+  `qed.term` sessions replace it. `qed.jump` closes the file tree.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
   non-blocking `process_wait`). With `on_line`, delivered lines are cut from `out`
   and reads are capped per pump, so a streaming process stays bounded. A
@@ -610,7 +618,7 @@ hot-reload teardown) · `clipboard` · `shell` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `commands/`: user shell commands from `plugins.commands.list`, see CONFIG.md).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -635,7 +643,7 @@ plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns 
 table of test functions; `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `hook_timeout`, `module`, `ui` (open plugin overlay state), `config_path` (where `persist` writes)), restoring the session theme afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `hook_timeout`, `module`, `ui` (open plugin overlay state), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/plugin_ui_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
@@ -828,6 +836,12 @@ Codestral `/v1/fim/completions` via `curl`), dimmed virtual text with multi-line
 push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismiss,
 coexists with the LSP popup (`Tab` ghost / `Enter` menu, popup floats above a multi-line ghost);
 `modules.ai.completion_enabled` + *AI: Toggle Inline Completion*.
+
+User commands (`commands` plugin, `plugins.commands.list`): shell strings with quoted
+placeholders + `QED_*` env, stdin from selection/buffer, save-before, `when` gates
+(pane, language, glob, selection, git, exists), file-tree commands over the selection,
+outputs to message / log pane / replace / insert / clipboard / terminal / locations
+picker, *Commands: Cancel*, hot re-registered on config save.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff, in-process fuzzy ranking,

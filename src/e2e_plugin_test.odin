@@ -52,14 +52,15 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect(t, e.ed.pluginview.active, "Debug: Plugins opens the pane")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "fine     user     enabled"), "a healthy plugin row")
-	testing.expect(t, e2e_grid_has(&e, "broken   user     errored"), "an errored plugin row")
-	testing.expect(t, e2e_grid_has(&e, "format   bundled  enabled"), "the bundled format plugin row")
-	testing.expect(t, e2e_grid_has(&e, "pickers  bundled  enabled"), "the bundled pickers plugin row")
+	testing.expect(t, e2e_grid_has(&e, "fine      user     enabled"), "a healthy plugin row")
+	testing.expect(t, e2e_grid_has(&e, "broken    user     errored"), "an errored plugin row")
+	testing.expect(t, e2e_grid_has(&e, "format    bundled  enabled"), "the bundled format plugin row")
+	testing.expect(t, e2e_grid_has(&e, "pickers   bundled  enabled"), "the bundled pickers plugin row")
+	testing.expect(t, e2e_grid_has(&e, "commands  bundled  enabled"), "the bundled commands plugin row")
 
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Arrow_Down)
+	for _ in 0 ..< 4 {
+		e2e_key(&e, .Arrow_Down)
+	}
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "setup exploded"), "the selected row's last error shows in the footer")
 

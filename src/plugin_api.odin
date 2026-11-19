@@ -118,6 +118,19 @@ qed_theme_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
+qed_terminal_api := [?]lua.L_Reg {
+	{"run", qed_terminal_run},
+	{nil, nil},
+}
+
+@(private = "file")
+qed_clipboard_api := [?]lua.L_Reg {
+	{"get", qed_clipboard_get},
+	{"set", qed_clipboard_set},
+	{nil, nil},
+}
+
+@(private = "file")
 qed_text_api := [?]lua.L_Reg {
 	{"width", qed_text_width},
 	{nil, nil},
@@ -132,7 +145,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"terminal", qed_terminal_api[:]}, {"clipboard", qed_clipboard_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -831,6 +844,9 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	b, idx := api_buf(L, editor, 1)
 	pos := api_pos(L, 2, b)
 	origin := jump_here(editor)
+	if editor.filetree.active {
+		filetree_close(editor)
+	}
 	if idx != editor.current {
 		editor_switch_to(editor, idx)
 	}
@@ -904,6 +920,47 @@ qed_shell_quote :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	lua.pushodinstring(L, shell_quote(api_string(L, 1)))
 	return 1
+}
+
+qed_terminal_run :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	cmd := strings.clone(api_string(L, 1), context.temp_allocator)
+	cwd := ""
+	#partial switch lua.type(L, 2) {
+	case .NIL, .NONE:
+	case .TABLE:
+		cwd, _ = api_field_string(L, 2, "cwd")
+	case:
+		lua.L_argerror(L, 2, "table {cwd?} expected")
+	}
+	api_loaded(L, editor)
+	if editor.plugins.loading {
+		return plugin_raise(L, "qed.terminal.run is unavailable while plugins load")
+	}
+	if cwd != "" {
+		cmd = fmt.tprintf("(cd %s && %s)", shell_quote(api_path(editor, cwd)), cmd)
+	}
+	if !term_run(editor, cmd) {
+		return api_fail(L, "terminal unavailable")
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_clipboard_get :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	lua.pushodinstring(L, clipboard_get(context.temp_allocator))
+	return 1
+}
+
+qed_clipboard_set :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	clipboard_set(strings.clone(api_string(L, 1), context.temp_allocator))
+	return 0
 }
 
 api_fail :: proc(L: ^lua.State, msg: string) -> c.int {

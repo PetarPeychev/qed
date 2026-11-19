@@ -50,13 +50,14 @@ editor_clear_message :: proc(editor: ^Editor) {
 	editor.message_level = .Info
 }
 
-// Copy the text into owned storage: callers pass temp-allocator strings, and the
-// main loop's free_all would leave editor.message dangling into reused temp memory.
+// Copy text and source into owned storage: callers pass temp-allocator strings, and the
+// main loop's free_all would leave them dangling into reused temp memory.
 editor_message_show :: proc(editor: ^Editor, level: LogLevel, source, text: string) {
 	clear(&editor.message_store)
+	append(&editor.message_store, ..transmute([]u8)source)
 	append(&editor.message_store, ..transmute([]u8)text)
-	editor.message = string(editor.message_store[:])
-	editor.message_source = source
+	editor.message_source = string(editor.message_store[:len(source)])
+	editor.message = string(editor.message_store[len(source):])
 	editor.message_level = level
 }
 
@@ -74,12 +75,13 @@ editor_log :: proc(editor: ^Editor, level: LogLevel, source, msg: string, show :
 	entry := LogEntry {
 		time   = time.now(),
 		level  = level,
-		source = source,
+		source = strings.clone(source),
 		text   = strings.clone(msg),
 	}
 	append(&editor.log, entry)
 	for len(editor.log) > LOG_MAX {
 		delete(editor.log[0].text)
+		delete(editor.log[0].source)
 		ordered_remove(&editor.log, 0)
 	}
 	editor_log_disk(editor, entry)
@@ -88,6 +90,7 @@ editor_log :: proc(editor: ^Editor, level: LogLevel, source, msg: string, show :
 editor_log_destroy :: proc(editor: ^Editor) {
 	for e in editor.log {
 		delete(e.text)
+		delete(e.source)
 	}
 	delete(editor.log)
 	if editor.log_open && editor.log_file != nil {

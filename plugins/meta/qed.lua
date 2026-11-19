@@ -14,6 +14,9 @@
 ---@field language string|nil
 ---@field root string
 ---@field selection_text string|nil
+---@field file string|nil file tree only: the entry under the cursor (absolute)
+---@field files string[]|nil file tree only: every selected path, in tree order
+---@field base {ref: string, label: string, merge: boolean} diff base (`ref` "HEAD" when unset; `merge` means the merge base of `ref` and HEAD)
 
 ---@class qed.CommandSpec
 ---@field name string
@@ -44,7 +47,16 @@ function qed.log(level, text) end
 ---@param opts? qed.Level|{level?: qed.Level, source?: string}
 function qed.message(text, opts) end
 
+---@class qed.CommandHandle
+---@field id integer
+local CommandHandle = {}
+---Unregisters the command. Returns false if it is already gone.
+---@return boolean
+function CommandHandle:remove() end
+
+---A name may be registered once per scope; builtin names are refused.
 ---@param spec qed.CommandSpec
+---@return qed.CommandHandle
 function qed.command(spec) end
 
 ---Run a builtin or plugin command by name.
@@ -78,7 +90,7 @@ function qed.save(b) end
 ---@return boolean
 function qed.close(b) end
 
----Switch to `b`, move the cursor to `pos`, and record the jump.
+---Switch to `b`, move the cursor to `pos`, and record the jump. Closes the file tree if it is open.
 ---@param b qed.Buf
 ---@param pos qed.Pos
 function qed.jump(b, pos) end
@@ -240,6 +252,24 @@ function qed.theme.list() end
 ---The theme on screen.
 ---@return string
 function qed.theme.current() end
+
+qed.terminal = {}
+
+---Types `cmd` and Enter into the terminal pane's shell (starting it if needed) and shows the pane.
+---With `cwd`, runs it as `(cd cwd && cmd)`.
+---@param cmd string
+---@param opts? {cwd?: string}
+---@return boolean|nil ok
+---@return string|nil err "terminal unavailable"
+function qed.terminal.run(cmd, opts) end
+
+qed.clipboard = {}
+
+---@return string
+function qed.clipboard.get() end
+
+---@param text string
+function qed.clipboard.set(text) end
 
 qed.buf = {}
 

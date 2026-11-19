@@ -83,6 +83,7 @@ bundled_plugin_files := #load_directory("../plugins")
 
 // Listed file by file so a dir plugin's test.lua stays out of the binary.
 bundled_plugin_dir_files := [?]PluginFile {
+	{"commands/init.lua", #load("../plugins/commands/init.lua", string)},
 	{"format/init.lua", #load("../plugins/format/init.lua", string)},
 	{"pickers/init.lua", #load("../plugins/pickers/init.lua", string)},
 }
@@ -534,12 +535,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	plugin_sched_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
-			lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].ref))
-			if p.commands[i].when_ref != 0 {
-				lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].when_ref))
-			}
-			plugin_command_free(&p.commands[i])
-			ordered_remove(&p.commands, i)
+			plugin_command_remove(editor, i)
 		}
 	}
 	if pl.env != lua.NOREF {
@@ -805,9 +801,11 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushvalue(L, 4)
 		when_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
 	}
+	id := plugin_next_id(p)
 	cmd := Command {
 		name        = strings.clone(name),
 		owner       = pl.name,
+		id          = id,
 		filetree    = filetree,
 		welcome     = welcome,
 		key_default = strings.clone(key_s) if key_t == .STRING else "",
@@ -816,7 +814,38 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	plugin_command_bind(&cmd, editor_config_user(editor))
 	append(&p.commands, cmd)
-	return 0
+	api_handle_push(L, id, {{"remove", qed_command_remove}})
+	return 1
+}
+
+qed_command_remove :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	id := api_handle_id(L)
+	for cmd, i in p.commands {
+		if cmd.id == id {
+			plugin_command_remove(editor, i)
+			lua.pushboolean(L, true)
+			return 1
+		}
+	}
+	lua.pushboolean(L, false)
+	return 1
+}
+
+plugin_command_remove :: proc(editor: ^Editor, i: int) {
+	p := &editor.plugins
+	if editor.palette.active {
+		palette_close(editor)
+	}
+	lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].ref))
+	if p.commands[i].when_ref != 0 {
+		lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].when_ref))
+	}
+	plugin_command_free(&p.commands[i])
+	ordered_remove(&p.commands, i)
 }
 
 qed_run :: proc "c" (L: ^lua.State) -> c.int {
@@ -865,7 +894,7 @@ plugin_command_taken :: proc(p: ^Plugins, name: string, filetree: bool) -> bool 
 		}
 	}
 	for cmd in p.commands {
-		if cmd.name == name {
+		if cmd.name == name && cmd.filetree == filetree {
 			return true
 		}
 	}
@@ -987,6 +1016,10 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
 	lua.createtable(L, 0, 4)
 	lua.pushodinstring(L, editor.working_root)
 	lua.setfield(L, -2, "root")
+	lua.createtable(L, 0, 1)
+	lua.pushcfunction(L, plugin_ctx_index)
+	lua.setfield(L, -2, "__index")
+	lua.setmetatable(L, -2)
 	if editor.welcome || len(editor.buffers) == 0 {
 		return
 	}
@@ -997,10 +1030,6 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
 	lua.setfield(L, -2, "path")
 	lua.pushodinstring(L, LANGUAGES[b.language].name)
 	lua.setfield(L, -2, "language")
-	lua.createtable(L, 0, 1)
-	lua.pushcfunction(L, plugin_ctx_index)
-	lua.setfield(L, -2, "__index")
-	lua.setmetatable(L, -2)
 }
 
 plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
@@ -1011,15 +1040,49 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	key, _ := lua.toodinstring(L, 2)
 	editor := entry.editor
-	if key != "selection_text" || editor.welcome || len(editor.buffers) == 0 {
+	t := &editor.filetree
+	switch key {
+	case "selection_text":
+		if editor.welcome || len(editor.buffers) == 0 {
+			return 0
+		}
+		b := editor_buffer(editor)
+		from, to, ok := selection_range(b)
+		if !ok {
+			return 0
+		}
+		lua.pushodinstring(L, buffer_text_range(b, from, to))
+	case "file":
+		e, ok := filetree_selected(t)
+		if !t.active || !ok {
+			return 0
+		}
+		lua.pushodinstring(L, e.path)
+	case "files":
+		if !t.active || len(t.entries) == 0 {
+			return 0
+		}
+		lo, hi := filetree_sel_range(t)
+		lo, hi = clamp(lo, 0, len(t.entries) - 1), clamp(hi, 0, len(t.entries) - 1)
+		lua.createtable(L, c.int(hi - lo + 1), 0)
+		for i in lo ..= hi {
+			lua.pushodinstring(L, t.entries[i].path)
+			lua.rawseti(L, -2, lua.Integer(i - lo + 1))
+		}
+	case "base":
+		lua.createtable(L, 0, 3)
+		lua.pushodinstring(L, g_diff_base.ref if g_diff_base.ref != "" else "HEAD")
+		lua.setfield(L, -2, "ref")
+		lua.pushodinstring(L, g_diff_base.label if g_diff_base.ref != "" else "HEAD")
+		lua.setfield(L, -2, "label")
+		lua.pushboolean(L, b32(g_diff_base.merge))
+		lua.setfield(L, -2, "merge")
+	case:
 		return 0
 	}
-	b := editor_buffer(editor)
-	from, to, ok := selection_range(b)
-	if !ok {
-		return 0
-	}
-	lua.pushodinstring(L, buffer_text_range(b, from, to))
+	lua.pushvalue(L, 2)
+	lua.pushvalue(L, -2)
+	lua.rawset(L, 1)
 	return 1
 }
 

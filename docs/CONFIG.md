@@ -4,7 +4,7 @@ Every qed tunable, in one place. Defaults are compiled into the binary from two
 files, which are the canonical, always-current reference:
 
 - [`config/config.json`](../config/config.json): knobs, keybinds,
-  per-language LSP wiring, and bundled plugin config (formatters).
+  per-language LSP wiring, and bundled plugin config (formatters, user commands).
 - [`config/themes/default.json`](../config/themes/default.json): the complete
   color, icon, and tint palette every theme overlays.
 
@@ -200,13 +200,75 @@ and last error.
 A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
 like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
 warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under `plugins.<name>`
-reach the plugin through its `config_changed` handler (the `format` plugin applies
+reach the plugin through its `config_changed` handler (`format` and `commands` apply
 them live); `enabled` and new or edited plugin files need a restart for now.
 *Set Theme*, *Set Language* and *Change Indentation* come from the bundled `pickers`
 plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
 
 ```json
 { "plugins": { "mytool": { "enabled": false } } }
+```
+
+## User commands
+
+Shell commands you define become palette commands, owned by the bundled
+`commands` plugin. `plugins.commands.list` is a list (a user list replaces the
+default empty one) and hot-reloads: commands are re-registered on save.
+
+| Entry key | Default | Meaning |
+|-----------|---------|---------|
+| `name` | required | Palette name. A builtin's name is refused with a warning (builtins win), as is a duplicate. |
+| `run` | required | Shell string run with `sh -c`. Placeholders below are substituted, each shell-quoted. |
+| `output` | `"message"` | Where the result goes, see below. |
+| `stdin` | `"none"` | `"none"`, `"selection"`, `"buffer"`, or `"selection-or-buffer"`. |
+| `save` | `"current"` | Save before running: `"none"`, `"current"` (the current buffer, if modified), or `"all"`. A failed save aborts the run. |
+| `cwd` | working root | Directory to run in; placeholders allowed (unquoted), relative to the root. |
+| `env` | `{}` | Extra environment, `{"NAME": "value"}`; placeholders allowed (unquoted). |
+| `key` | none | Default keybind; `keybinds["<name>"]` overrides it. |
+| `when` | `{}` | Conditions, all of which must hold; otherwise the command is hidden and its key does nothing. |
+
+Placeholders: `{file}` (absolute path; in the file tree the entry under the
+cursor), `{files}` (file tree: every selected path; editor: `{file}`), `{dir}`
+(the file's directory, or the entry itself when it is a directory), `{root}`,
+`{name}`, `{stem}`, `{ext}` (no dot), `{line}`, `{col}` (1-based; `col` is a
+byte column), `{selection}`, `{word}` (word under the cursor), `{base}` (the
+diff base ref, `HEAD` by default; a merge base resolves to its commit). The same
+values are exported as `QED_FILE`, `QED_FILES` (newline-separated), `QED_DIR`,
+`QED_ROOT`, `QED_NAME`, `QED_STEM`, `QED_EXT`, `QED_LINE`, `QED_COL`,
+`QED_SELECTION`, `QED_WORD`, `QED_BASE`. Unknown `{words}` are left as is.
+
+| `output` | Result |
+|----------|--------|
+| `message` | First stdout line on the message line (`done` if none). On failure: exit code and the first stderr line. |
+| `log` | All output in a read-only pane (stderr in the error color), exit code in the footer. |
+| `replace` | Replaces the selection, or the whole buffer without one, as one undo step. Skipped if the buffer changed while it ran; untouched on failure. A trailing newline the input lacked is dropped. |
+| `insert` | Inserts stdout at the cursor (one trailing newline dropped). |
+| `clipboard` | Copies stdout (one trailing newline dropped). |
+| `terminal` | Types the command into the terminal pane and shows it (`stdin`/`env` do not apply; with `cwd` it runs as `(cd dir && cmd)`). |
+| `locations` | Parses `file:line:col: msg` and `file:line: msg` lines (stdout and stderr) into a picker with a file preview; Enter jumps. Lines naming missing files are skipped. No locations is a success even on a non-zero exit (grep), unless stderr has output. |
+
+| `when` key | Holds when |
+|------------|------------|
+| `pane` | `"editor"` (default), `"filetree"`, or a list of both. `replace`, `insert` and `stdin` need the editor. |
+| `language` | The current buffer's language is one of the list (editor only). |
+| `glob` | The file (in the file tree: every selected path) matches one of the globs. A glob without `/` matches the base name; with `/` it matches the root-relative path. `*` and `?` stay inside a path segment, `**` spans segments. |
+| `selection` | `true`: there is a selection. `false`: there is none. |
+| `git` | `true`: the root is inside a git work tree (a `.git` up the tree). `false`: it is not. |
+| `exists` | Every listed path exists, relative to the root. |
+
+Commands run in the background; *Commands: Cancel* kills the running ones, and a
+running command refuses a second start. Strings and lists are interchangeable
+for `pane`, `language`, `glob` and `exists`.
+
+```json
+{ "plugins": { "commands": { "list": [
+  { "name": "Sort Lines", "run": "sort", "stdin": "selection-or-buffer", "output": "replace", "save": "none" },
+  { "name": "Grep Word", "run": "grep -rn -- {word} .", "output": "locations", "key": "Alt+8" },
+  { "name": "Test Package", "run": "go test .", "cwd": "{dir}", "output": "log", "when": { "language": "go" } },
+  { "name": "npm test", "run": "npm test", "output": "terminal", "when": { "exists": "package.json" } },
+  { "name": "Git Add", "run": "git add -- {files}", "when": { "pane": "filetree", "git": true } },
+  { "name": "Copy Path:Line", "run": "printf '%s:%s' {file} {line}", "output": "clipboard" }
+] } } }
 ```
 
 ## Themes & colors
