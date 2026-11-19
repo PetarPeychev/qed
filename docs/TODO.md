@@ -53,6 +53,7 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified` → save watermark, git gutter → debounce) — see [notes/refactors.md](notes/refactors.md) + [notes/perf.md](notes/perf.md).
 - [ ] Cheaper cold `git_gutter_update` + `buffer_open` per-line-allocation floor before first paint — see [notes/perf.md](notes/perf.md).
 - [ ] `subprocess_output` can block the main loop up to 1s in `process_wait` after stdout EOF — reap non-blocking.
+- [ ] config.json writer that preserves comments and key order (UI persistence strips them today).
 
 ## Plugin system
 
@@ -71,6 +72,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Phase 10: drop the `commands` plugin, add `qed.parse_locations`.
 - [ ] Phase 11: file tree status provider (`qed.filetree`), Git tab moves to the `git` plugin, `.Git` module gone.
 - [ ] Phase 12: query-driven `qed.pick` (`query`, `on_query`, `picker:set`), project search moves to the `search` plugin.
+- [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred
 
@@ -81,6 +83,7 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 - [ ] Discontinuous file-tree selection (pick non-adjacent files for a command) — deferred: mouse Ctrl/Shift-click is blocked (vendored termbox2 drops mouse modifier bits — patchable — and Windows Terminal itself eats Ctrl/Shift-click), so it needs a keyboard mark key (e.g. Insert toggles the current row) and/or the termbox mouse-mod patch; sound data model is a path-keyed selection set + prune-to-visible on rebuild.
 - [ ] Multi-line find (regex `\n` spanning rows) — current find is single-line, matching the per-line data model; needs whole-buffer scan + cross-row match/highlight.
 - [ ] Save all modified buffers in one command.
+- [ ] Settings-menu plugin: every option with its current value, editable in place (needs per-option description/type in `qed.options`).
 - [ ] Sticky scroll: pin the enclosing scope header (function/block) at the top while scrolled — tree-sitter tree.
 - [ ] Command palette: order entries by recency of use, persisted cross-session (needs a small state file).
 - [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, persisted undo history, palette MRU, etc. Figure out scope + format before building.
