@@ -331,7 +331,7 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	ed := entry.editor
-	lua.createtable(L, 0, 8)
+	lua.createtable(L, 0, 9)
 	lua.pushboolean(L, b32(ed.quit))
 	lua.setfield(L, -2, "quit")
 	lua.pushboolean(L, b32(ed.welcome))
@@ -353,6 +353,8 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "terminal")
 	lua.pushboolean(L, b32(ed.filetree.active))
 	lua.setfield(L, -2, "tree")
+	lua.pushboolean(L, b32(ed.palette.active))
+	lua.setfield(L, -2, "palette")
 	if pn := &ed.plugins.pane; pn.active {
 		lua.createtable(L, 0, 3)
 		lua.pushodinstring(L, pn.title)

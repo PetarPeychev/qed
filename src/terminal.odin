@@ -162,21 +162,31 @@ term_toggle :: proc(editor: ^Editor) {
 	term_resize(editor)
 }
 
-term_run :: proc(editor: ^Editor, cmd: string) -> bool {
+TermRun :: enum {
+	Ok,
+	Unavailable,
+	Busy,
+}
+
+term_run :: proc(editor: ^Editor, cmd: string) -> TermRun {
 	t := &editor.terminal
+	if t.vt != nil && t.alive && int(posix.tcgetpgrp(posix.FD(t.pty_fd))) != t.pid {
+		return .Busy
+	}
 	if !t.active {
 		term_toggle(editor)
 	}
 	if !t.active || !t.alive {
-		return false
+		return .Unavailable
 	}
-	line := make([dynamic]u8, 0, len(cmd) + 1, context.temp_allocator)
+	line := make([dynamic]u8, 0, len(cmd) + 2, context.temp_allocator)
+	append(&line, 0x15)
 	append(&line, cmd)
 	append(&line, '\r')
 	term_write_all(t, line[:])
 	t.sb_view = 0
 	t.sel_active = false
-	return true
+	return .Ok
 }
 
 term_start :: proc(editor: ^Editor) -> bool {

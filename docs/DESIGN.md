@@ -426,10 +426,14 @@ started at the end of `editor_init`. Invariants the code can't show:
 - `ctx.selection_text`, `file`, `files` (file tree selection) and `base` (diff base)
   are computed on first read through `__index` and cached on the ctx, so `when` stays
   cheap.
-- `qed.terminal.run` types into the single terminal session (`term_run`); phase 7's
-  `qed.term` sessions replace it. `qed.jump` closes the file tree.
+- `qed.terminal.run` types into the single terminal session (`term_run`, refused when
+  `tcgetpgrp` of the PTY is not the shell); phase 7's `qed.term` sessions replace it.
+  `qed.jump` closes the file tree.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
-  non-blocking `process_wait`). With `on_line`, delivered lines are cut from `out`
+  non-blocking `process_wait`). The child leads its own process group
+  (`subprocess_start_group`, a fork/exec like `os.process_start`) and every kill signals
+  the group, so a cancelled shell takes its descendants. Argv and env strings over
+  128 KiB raise before forking (Linux `MAX_ARG_STRLEN`). With `on_line`, delivered lines are cut from `out`
   and reads are capped per pump, so a streaming process stays bounded. A
   `spawn_bg` record is freed when its result is handed out by `wait()`, or once
   done after its handle's `__gc` (which only marks it; the pump frees).

@@ -218,10 +218,10 @@ default empty one) and hot-reloads: commands are re-registered on save.
 | Entry key | Default | Meaning |
 |-----------|---------|---------|
 | `name` | required | Palette name. A builtin's name is refused with a warning (builtins win), as is a duplicate. |
-| `run` | required | Shell string run with `sh -c`. Placeholders below are substituted, each shell-quoted. |
+| `run` | required | Shell string run with `sh -c`. Placeholders below are substituted, each shell-quoted: don't put them inside quotes (`'{file}'` is refused). |
 | `output` | `"message"` | Where the result goes, see below. |
 | `stdin` | `"none"` | `"none"`, `"selection"`, `"buffer"`, or `"selection-or-buffer"`. |
-| `save` | `"current"` | Save before running: `"none"`, `"current"` (the current buffer if modified; editor commands only), or `"all"`. A failed save aborts the run. |
+| `save` | `"current"` (`"none"` for replace/insert/clipboard) | Save before running: `"none"`, `"current"` (the current buffer if modified; editor commands only), or `"all"`. A failed save aborts the run. |
 | `cwd` | working root | Directory to run in; placeholders allowed (unquoted), relative to the root. |
 | `env` | `{}` | Extra environment, `{"NAME": "value"}`; placeholders allowed (unquoted). |
 | `key` | none | Default keybind; `keybinds["<name>"]` overrides it. |
@@ -235,7 +235,11 @@ byte column), `{selection}`, `{word}` (word under the cursor), `{base}` (the
 diff base ref, `HEAD` by default; a merge base resolves to its commit). The same
 values are exported as `QED_FILE`, `QED_FILES` (newline-separated), `QED_DIR`,
 `QED_ROOT`, `QED_NAME`, `QED_STEM`, `QED_EXT`, `QED_LINE`, `QED_COL`,
-`QED_SELECTION`, `QED_WORD`, `QED_BASE`. Unknown `{words}` are left as is.
+`QED_SELECTION`, `QED_WORD`, `QED_BASE`; a value over 64 KiB is left out (pass
+large text on `stdin`), and a substituted command over 128 KiB fails with an error.
+Unknown `{words}` are left as is. In the file tree there is no selection, cursor
+or word; outside it, a command using `{line}`, `{col}`, `{selection}` or `{word}`
+needs a buffer (hidden on the welcome screen).
 
 | `output` | Result |
 |----------|--------|
@@ -244,15 +248,15 @@ values are exported as `QED_FILE`, `QED_FILES` (newline-separated), `QED_DIR`,
 | `replace` | Replaces the selection, or the whole buffer without one, as one undo step. Skipped if the buffer changed while it ran; untouched on failure. A trailing newline the input lacked is dropped. |
 | `insert` | Inserts stdout at the cursor (one trailing newline dropped). |
 | `clipboard` | Copies stdout (one trailing newline dropped). |
-| `terminal` | Types the command into the terminal pane and shows it (`stdin`/`env` do not apply; with `cwd` it runs as `(cd dir && cmd)`). |
-| `locations` | Parses `file:line:col: msg` and `file:line: msg` lines (stdout and stderr) into a picker with a file preview; Enter jumps. Lines naming missing files are skipped. No locations is a success even on a non-zero exit (grep), unless stderr has output. |
+| `terminal` | Types the command into the terminal pane's shell (clearing any partial input) and shows it. Refused while a program runs in the terminal. `stdin`/`env` do not apply; with `cwd` it runs as `(cd dir && cmd)`. |
+| `locations` | Parses `file:line:col`, `file:line` and either followed by `: msg` (stdout and stderr) into a picker with a file preview; Enter jumps. Lines naming missing files are skipped. No locations is a success even on a non-zero exit (grep), unless stderr has output. |
 
 | `when` key | Holds when |
 |------------|------------|
 | `pane` | `"editor"` (default), `"filetree"`, or a list of both. `replace`, `insert` and `stdin` need the editor. |
 | `language` | The current buffer's language is one of the list (editor only). |
 | `glob` | The file (in the file tree: every selected path) matches one of the globs. A glob without `/` matches the base name; with `/` it matches the root-relative path. `*` and `?` stay inside a path segment, `**` spans segments. |
-| `selection` | `true`: there is a selection. `false`: there is none. |
+| `selection` | `true`: there is a selection. `false`: there is none (always so in the file tree). |
 | `git` | `true`: the root is inside a git work tree (a `.git` up the tree). `false`: it is not. |
 | `exists` | Every listed path exists, relative to the root. |
 

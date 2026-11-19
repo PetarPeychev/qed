@@ -942,8 +942,12 @@ qed_terminal_run :: proc "c" (L: ^lua.State) -> c.int {
 	if cwd != "" {
 		cmd = fmt.tprintf("(cd %s && %s)", shell_quote(api_path(editor, cwd)), cmd)
 	}
-	if !term_run(editor, cmd) {
+	switch term_run(editor, cmd) {
+	case .Ok:
+	case .Unavailable:
 		return api_fail(L, "terminal unavailable")
+	case .Busy:
+		return api_fail(L, "terminal busy")
 	}
 	lua.pushboolean(L, true)
 	return 1
@@ -1379,6 +1383,9 @@ qed_sleep_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.i
 	return 0
 }
 
+// Linux MAX_ARG_STRLEN: execve fails with E2BIG on any single longer string.
+API_ARG_MAX :: 128 * 1024
+
 ApiSpawn :: struct {
 	argv:    []string,
 	label:   string,
@@ -1466,6 +1473,16 @@ api_spawn_opts :: proc(L: ^lua.State, editor: ^Editor) -> (o: ApiSpawn) {
 		plugin_raise(L, "env must be a table")
 	}
 	lua.pop(L, 1)
+	for a in o.argv {
+		if len(a) >= API_ARG_MAX {
+			plugin_raise(L, fmt.tprintf("command argument too long (%d bytes, limit %d KiB); pass large text on stdin", len(a), API_ARG_MAX / 1024))
+		}
+	}
+	for kv in o.env {
+		if len(kv) >= API_ARG_MAX {
+			plugin_raise(L, fmt.tprintf("environment value %s too long (%d bytes, limit %d KiB)", kv[:strings.index_byte(kv, '=')], len(kv), API_ARG_MAX / 1024))
+		}
+	}
 	line_t := lua.getfield(L, 1, "on_line")
 	if line_t != .FUNCTION && line_t != .NIL {
 		plugin_raise(L, "on_line must be a function")

@@ -255,12 +255,12 @@ function qed.theme.current() end
 
 qed.terminal = {}
 
----Types `cmd` and Enter into the terminal pane's shell (starting it if needed) and shows the pane.
+---Clears the prompt line, types `cmd` and Enter into the terminal pane's shell (starting it if needed) and shows the pane.
 ---With `cwd`, runs it as `(cd cwd && cmd)`.
 ---@param cmd string
 ---@param opts? {cwd?: string}
 ---@return boolean|nil ok
----@return string|nil err "terminal unavailable"
+---@return "terminal unavailable"|"terminal busy"|nil err busy: a program runs in the terminal
 function qed.terminal.run(cmd, opts) end
 
 qed.clipboard = {}

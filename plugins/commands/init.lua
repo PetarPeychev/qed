@@ -1,10 +1,14 @@
 local OUTPUTS = {message = true, log = true, replace = true, insert = true, clipboard = true, terminal = true, locations = true}
 local STDIN = {none = true, selection = true, buffer = true, ["selection-or-buffer"] = true}
 local SAVE = {none = true, current = true, all = true}
+local SAVE_NONE = {replace = true, insert = true, clipboard = true}
 local ENTRY_KEYS = {name = true, run = true, output = true, stdin = true, cwd = true, save = true, when = true, key = true, env = true}
 local WHEN_KEYS = {pane = true, language = true, glob = true, selection = true, git = true, exists = true}
 local PANES = {editor = true, filetree = true}
+local PLACEHOLDERS = {file = true, files = true, dir = true, root = true, name = true, stem = true, ext = true, line = true, col = true, selection = true, word = true, base = true}
+local CURSOR_PLACEHOLDERS = {line = true, col = true, selection = true, word = true}
 local RUNNING_HINT_MS = 400
+local ENV_VALUE_MAX = 64 * 1024
 
 local handles = {}
 local running = {}
@@ -38,15 +42,19 @@ local function lines_of(s)
 	return out
 end
 
-local function as_list(v)
-	if type(v) == "string" then
-		return {v}
+local function contains(list, v)
+	for _, x in ipairs(list) do
+		if x == v then
+			return true
+		end
 	end
-	return v
+	return false
 end
 
 local function string_list(v)
-	v = as_list(v)
+	if type(v) == "string" then
+		return {v}
+	end
 	if type(v) ~= "table" then
 		return nil
 	end
@@ -88,6 +96,41 @@ local function in_repo(dir)
 	return false
 end
 
+local function quoted_placeholder(run)
+	local quote, i = nil, 1
+	while i <= #run do
+		local ch = run:sub(i, i)
+		if ch == "\\" and quote ~= "'" then
+			i = i + 1
+		elseif quote == nil and (ch == "'" or ch == '"') then
+			quote = ch
+		elseif ch == quote then
+			quote = nil
+		elseif ch == "{" and quote then
+			local name = run:match("^{(%a+)}", i)
+			if name and PLACEHOLDERS[name] then
+				return name
+			end
+		end
+		i = i + 1
+	end
+end
+
+local function uses(s, names)
+	local texts = {s.run, s.cwd or ""}
+	for _, v in pairs(s.env) do
+		texts[#texts + 1] = v
+	end
+	for _, text in ipairs(texts) do
+		for name in text:gmatch("{(%a+)}") do
+			if names[name] then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 local function validate(e, i)
 	local where = ("plugins.commands.list[%d]"):format(i)
 	if type(e) ~= "table" then
@@ -102,24 +145,18 @@ local function validate(e, i)
 			warn(("%s: ignoring unknown key %q"):format(where, tostring(k)))
 		end
 	end
-	local s = {name = e.name, run = e.run, output = e.output or "message", stdin = e.stdin or "none", save = e.save or "current", cwd = e.cwd, key = e.key, env = e.env or {}}
+	local output = e.output or "message"
+	local s = {name = e.name, run = e.run, output = output, stdin = e.stdin or "none", save = e.save or (SAVE_NONE[output] and "none" or "current"), cwd = e.cwd, key = e.key, env = e.env or {}}
 	if type(s.run) ~= "string" or s.run == "" then
 		return nil, where .. ": run must be a non-empty string"
 	end
-	if not OUTPUTS[s.output] then
-		return nil, ("%s: unknown output %q"):format(where, tostring(s.output))
+	for key, set in pairs({output = OUTPUTS, stdin = STDIN, save = SAVE}) do
+		if not set[s[key]] then
+			return nil, ("%s: unknown %s %q"):format(where, key, tostring(s[key]))
+		end
 	end
-	if not STDIN[s.stdin] then
-		return nil, ("%s: unknown stdin %q"):format(where, tostring(s.stdin))
-	end
-	if not SAVE[s.save] then
-		return nil, ("%s: unknown save %q"):format(where, tostring(s.save))
-	end
-	if s.cwd ~= nil and type(s.cwd) ~= "string" then
-		return nil, where .. ": cwd must be a string"
-	end
-	if s.key ~= nil and type(s.key) ~= "string" then
-		return nil, where .. ": key must be a string"
+	if (s.cwd ~= nil and type(s.cwd) ~= "string") or (s.key ~= nil and type(s.key) ~= "string") then
+		return nil, where .. ": cwd and key must be strings"
 	end
 	if type(s.env) ~= "table" then
 		return nil, where .. ": env must be an object"
@@ -128,6 +165,10 @@ local function validate(e, i)
 		if type(k) ~= "string" or type(v) ~= "string" then
 			return nil, where .. ": env must map names to strings"
 		end
+	end
+	local quoted = quoted_placeholder(s.run)
+	if quoted then
+		return nil, ("%s: {%s} is inside quotes in run; placeholders are quoted for you, remove the quotes"):format(where, quoted)
 	end
 	if s.output == "terminal" and s.stdin ~= "none" then
 		return nil, where .. ": stdin does not apply to output \"terminal\""
@@ -150,16 +191,15 @@ local function validate(e, i)
 			return nil, ("%s: unknown when.pane %q"):format(where, pane)
 		end
 	end
-	s.needs_buf = s.output == "replace" or s.output == "insert" or s.stdin ~= "none"
-	if s.needs_buf and (s.panes[1] == "filetree" or s.panes[2] == "filetree") then
+	s.edits = s.output == "replace" or s.output == "insert" or s.stdin ~= "none"
+	if s.edits and contains(s.panes, "filetree") then
 		return nil, where .. ": output replace/insert and stdin need when.pane \"editor\""
 	end
+	s.needs_buf = s.edits or uses(s, CURSOR_PLACEHOLDERS)
 	for _, k in ipairs({"language", "glob", "exists"}) do
-		if w[k] ~= nil then
-			s[k] = string_list(w[k])
-			if not s[k] then
-				return nil, ("%s: when.%s must be a string or a list of strings"):format(where, k)
-			end
+		s[k] = w[k] ~= nil and string_list(w[k]) or nil
+		if w[k] ~= nil and not s[k] then
+			return nil, ("%s: when.%s must be a string or a list of strings"):format(where, k)
 		end
 	end
 	for _, k in ipairs({"selection", "git"}) do
@@ -171,17 +211,12 @@ local function validate(e, i)
 	return s
 end
 
-local function contains(list, v)
-	for _, x in ipairs(list) do
-		if x == v then
-			return true
-		end
-	end
-	return false
+local function selection_of(ctx, pane)
+	return pane == "editor" and ctx.selection_text or nil
 end
 
 local function matches(s, ctx, pane)
-	if s.needs_buf and not ctx.buf then
+	if s.needs_buf and pane == "editor" and not ctx.buf then
 		return false
 	end
 	if s.language and (pane ~= "editor" or not contains(s.language, ctx.language)) then
@@ -198,7 +233,7 @@ local function matches(s, ctx, pane)
 			end
 		end
 	end
-	if s.selection ~= nil and (ctx.selection_text ~= nil) ~= s.selection then
+	if s.selection ~= nil and (selection_of(ctx, pane) ~= nil) ~= s.selection then
 		return false
 	end
 	if s.git ~= nil and in_repo(ctx.root) ~= s.git then
@@ -226,7 +261,7 @@ local function word_at(line, col)
 end
 
 local function values(ctx, pane)
-	local v = {root = ctx.root, selection = ctx.selection_text or "", line = "", col = "", word = ""}
+	local v = {root = ctx.root, selection = selection_of(ctx, pane) or "", line = "", col = "", word = ""}
 	if pane == "filetree" then
 		v.file = ctx.file or ""
 		v.files = ctx.files or {}
@@ -250,9 +285,8 @@ local function values(ctx, pane)
 		v.line, v.col = tostring(c.row), tostring(c.col)
 		v.word = word_at(qed.buf.line(ctx.buf, c.row), c.col)
 	end
-	local base = ctx.base
-	v.base = base.ref
-	v.base_merge = base.merge
+	v.base = ctx.base.ref
+	v.base_merge = ctx.base.merge
 	return v
 end
 
@@ -288,6 +322,11 @@ local function environment(s, v)
 		QED_WORD = v.word,
 		QED_BASE = v.base,
 	}
+	for k, x in pairs(env) do
+		if #x > ENV_VALUE_MAX then
+			env[k] = nil
+		end
+	end
 	for k, x in pairs(s.env) do
 		env[k] = expand(x, v, false)
 	end
@@ -318,6 +357,10 @@ local function trim_newline(out, input)
 		out = out:sub(1, -2)
 	end
 	return out
+end
+
+local function plain_error(err)
+	return (tostring(err):gsub("^[^\n]-:%d+: ", ""))
 end
 
 local function failure(s, r)
@@ -374,14 +417,30 @@ local function edit_buffer(s, r, job)
 	end
 end
 
+local LOCATION_PATTERNS = {
+	"^(.-):(%d+):(%d+):%s*(.*)$",
+	"^(.-):(%d+):(%d+)()$",
+	"^(.-):(%d+):%s*(.*)$",
+	"^(.-):(%d+)()$",
+}
+
+local function parse_location(line)
+	for i, pat in ipairs(LOCATION_PATTERNS) do
+		local file, row, a, b = line:match(pat)
+		if file and file ~= "" then
+			if i <= 2 then
+				return file, row, a, type(b) == "string" and b or ""
+			end
+			return file, row, nil, type(a) == "string" and a or ""
+		end
+	end
+end
+
 local function parse_locations(text, cwd)
 	local items = {}
 	for _, line in ipairs(lines_of(text)) do
-		local file, row, col, msg = line:match("^(.-):(%d+):(%d+):%s*(.*)$")
-		if not file then
-			file, row, msg = line:match("^(.-):(%d+):%s*(.*)$")
-		end
-		if file and file ~= "" then
+		local file, row, col, msg = parse_location(line)
+		if file then
 			local path = file:sub(1, 1) == "/" and file or qed.path.join(cwd, file)
 			local st = qed.fs.stat(path)
 			if st and st.type == "file" then
@@ -454,40 +513,41 @@ end
 
 local function merge_base(ref, cwd)
 	local ok, r = pcall(qed.spawn, {argv = {"git", "merge-base", ref, "HEAD"}, cwd = cwd})
-	local rev = ok and r.code == 0 and first_line(r.stdout)
+	local rev = ok and r and r.code == 0 and first_line(r.stdout)
 	return rev or ref
 end
 
-local function run(s, pane, ctx)
-	if running[s.name] then
-		say(s.name, "already running", "warn")
-		return
-	end
+local function selection_text(b, from, to)
+	local sel = qed.buf.lines(b, from.row, to.row)
+	sel[#sel] = sel[#sel]:sub(1, to.col - 1)
+	sel[1] = sel[1]:sub(from.col)
+	return table.concat(sel, "\n")
+end
+
+local function execute(s, pane, ctx, state)
 	local v = values(ctx, pane)
 	local b = pane == "editor" and ctx.buf or nil
-	running[s.name] = {}
 	local ok, err = save_first(s, b)
 	if not ok then
-		running[s.name] = nil
 		say(s.name, err, "error")
 		return
 	end
-	if b and not qed.buf.valid(b) then
-		running[s.name] = nil
+	if state.cancelled or (b and not qed.buf.valid(b)) then
 		return
 	end
 	local job = {buf = b, cwd = s.cwd and qed.path.abs(expand(s.cwd, v, false)) or ctx.root}
-	if b then
+	local stdin
+	if s.edits then
 		job.rev = qed.buf.rev(b)
 		job.cursor = qed.buf.cursor(b)
 		job.from, job.to = qed.buf.selection(b)
-		if job.from then
-			local sel = qed.buf.lines(b, job.from.row, job.to.row)
-			sel[#sel] = sel[#sel]:sub(1, job.to.col - 1)
-			sel[1] = sel[1]:sub(job.from.col)
-			job.region = table.concat(sel, "\n")
-		else
-			job.region = qed.buf.text(b)
+		job.region = job.from and selection_text(b, job.from, job.to) or qed.buf.text(b)
+		if s.stdin == "buffer" then
+			stdin = job.from and qed.buf.text(b) or job.region
+		elseif s.stdin == "selection-or-buffer" then
+			stdin = job.region
+		elseif s.stdin == "selection" then
+			stdin = job.from and job.region or ""
 		end
 	end
 	if v.base_merge then
@@ -495,35 +555,28 @@ local function run(s, pane, ctx)
 	end
 	local cmd = expand(s.run, v, true)
 	if s.output == "terminal" then
-		running[s.name] = nil
 		local done, terr = qed.terminal.run(cmd, {cwd = s.cwd and job.cwd or nil})
 		if not done then
 			say(s.name, terr, "error")
 		end
 		return
 	end
-	local stdin
-	if s.stdin == "buffer" or (s.stdin == "selection-or-buffer" and not job.from) then
-		stdin = qed.buf.text(b)
-	elseif s.stdin ~= "none" then
-		stdin = job.from and job.region or ""
-	end
-	local state = {}
-	running[s.name] = state
 	local started, proc = pcall(qed.spawn_bg, {cmd = cmd, stdin = stdin, cwd = job.cwd, env = environment(s, v)})
 	if not started then
-		running[s.name] = nil
-		say(s.name, tostring(proc), "error")
+		say(s.name, plain_error(proc), "error")
 		return
 	end
 	state.proc = proc
 	qed.defer(RUNNING_HINT_MS, function()
-		if running[s.name] == state then
+		if running[s.name] == state and not state.cancelled then
+			state.hinted = true
 			say(s.name, "running…")
 		end
 	end)
 	local r, werr = proc:wait()
-	running[s.name] = nil
+	if state.hinted then
+		qed.message("", {source = ""})
+	end
 	if state.cancelled then
 		say(s.name, "cancelled", "warn")
 		return
@@ -533,6 +586,22 @@ local function run(s, pane, ctx)
 		return
 	end
 	deliver(s, r, job)
+end
+
+local function run(s, pane, ctx)
+	if running[s.name] then
+		say(s.name, "already running", "warn")
+		return
+	end
+	local state = {proc = nil, cancelled = false, hinted = false}
+	running[s.name] = state
+	local ok, err = pcall(execute, s, pane, ctx, state)
+	if running[s.name] == state then
+		running[s.name] = nil
+	end
+	if not ok then
+		error(err, 0)
+	end
 end
 
 local function register(list)
@@ -561,7 +630,7 @@ local function register(list)
 				if ok then
 					handles[#handles + 1] = h
 				else
-					warn(("plugins.commands %q: %s"):format(s.name, h))
+					warn(("plugins.commands %q: %s"):format(s.name, plain_error(h)))
 				end
 			end
 		end
@@ -578,8 +647,8 @@ end
 
 local function cancel()
 	for _, state in pairs(running) do
+		state.cancelled = true
 		if state.proc then
-			state.cancelled = true
 			state.proc:kill()
 		end
 	end

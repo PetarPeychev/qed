@@ -105,7 +105,7 @@ The API is one global, `qed`.
 ### Commands and keybinds
 | Function | Notes |
 |---|---|
-| `qed.command{name, run, when?, key?, welcome?, scope?} -> handle` | `handle:remove()` unregisters. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `welcome = true` also offers it on the welcome screen. |
+| `qed.command{name, run, when?, key?, welcome?, scope?} -> handle` | `handle:remove()` unregisters. A name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and `keybinds[name]` binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `welcome = true` also offers it on the welcome screen. |
 | `qed.run(name)` | Run any builtin or plugin command. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
 | `ctx` | `{buf, path, language, root, selection_text, base}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
@@ -141,7 +141,7 @@ There is deliberately no `key` event.
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
 | `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. |
 | `qed.clipboard.get()`, `.set(text)` | |
-| `qed.terminal.run(cmd, {cwd?})` | Types `cmd` into the terminal pane's shell and shows it. Superseded by `qed.term` in phase 7. |
+| `qed.terminal.run(cmd, {cwd?})` | Clears the prompt line, types `cmd` into the terminal pane's shell and shows it; `nil, "terminal busy"` while a program runs there. Superseded by `qed.term` in phase 7. |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()` | |
 
 - Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.

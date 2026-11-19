@@ -198,10 +198,23 @@ end
 function T.save_current_default(t)
 	local b = t.open("s.txt", "old")
 	t.type("new ")
+	one(t, {name = "Show", run = "cat {file}"})
+	qed.run("Show")
+	expect_message(t, "new old")
+	t.ok(not qed.buf.modified(b), "saved before running")
+end
+
+function T.save_defaults_to_none_for_edit_outputs(t)
+	local b = t.open("s.txt", "old")
+	t.type("new ")
 	one(t, {name = "Show", output = "clipboard", run = "cat {file}"})
 	qed.run("Show")
-	t.wait(clipboard_is("new old"))
-	t.ok(not qed.buf.modified(b), "saved before running")
+	t.wait(clipboard_is("old"))
+	one(t, {name = "Up", output = "replace", stdin = "buffer", run = "tr a-z A-Z"})
+	qed.run("Up")
+	expect_message(t, "done")
+	t.eq(qed.buf.text(b), "NEW OLD")
+	t.eq(qed.fs.read(qed.buf.path(b)), "old", "replace does not save first")
 end
 
 function T.save_none(t)
@@ -224,9 +237,9 @@ function T.save_all(t)
 	t.ok(not qed.buf.modified(a) and not qed.buf.modified(b), "every buffer saved")
 	local c = t.open("c.txt", "c")
 	t.type("3")
-	one(t, {name = "Show", output = "clipboard", run = "cat a.txt c.txt"})
+	one(t, {name = "Show", run = "cat a.txt c.txt"})
 	qed.run("Show")
-	t.wait(clipboard_is("1a3c"))
+	expect_message(t, "1a3c")
 end
 
 function T.when_language(t)
@@ -371,6 +384,18 @@ function T.locations_from_filetree(t)
 	t.eq(qed.buf.cursor().row, 2)
 end
 
+function T.locations_without_message(t)
+	t.open("c.txt", "abc\ndef\n")
+	one(t, {name = "Loc", output = "locations", run = "printf 'c.txt:2:3\\nc.txt:1\\n12:30 meeting\\n'"})
+	qed.run("Loc")
+	t.wait(function() return t.ui() ~= nil end)
+	t.eq(t.ui().matches, 2)
+	t.eq(t.ui().selected, "c.txt:2:3")
+	t.key("Down")
+	t.eq(t.ui().selected, "c.txt:1")
+	t.key("Esc")
+end
+
 function T.locations_empty_is_success(t)
 	t.open("a.txt", "nothing")
 	one(t, {name = "Grep", output = "locations", run = "grep -n needle a.txt"})
@@ -471,6 +496,93 @@ function T.invalid_entries_warn(t)
 	expect_message(t, "first")
 	qed.run("Good")
 	expect_message(t, "good")
+end
+
+function T.quoted_placeholders_refused(t)
+	t.config{list = {
+		{name = "Single", run = "cat '{file}'"},
+		{name = "Double", run = "echo \"x {selection}\""},
+		{name = "Escaped", run = "echo \\\"{name}"},
+		{name = "Awk", run = "printf 'a b\\n' | awk '{print $2}'"},
+	}}
+	t.ok(t.log_has("warn", "", "\"Single\": {file} is inside quotes"), "single quotes refused")
+	t.ok(t.log_has("warn", "", "\"Double\": {selection} is inside quotes"), "double quotes refused")
+	t.ok(not pcall(qed.run, "Single"), "not registered")
+	t.open("x y.txt", "")
+	qed.run("Escaped")
+	expect_message(t, "\"x y.txt")
+	qed.run("Awk")
+	expect_message(t, "b", "info", "Awk")
+end
+
+function T.large_selection(t)
+	local rows = {}
+	for i = 1, 20000 do
+		rows[i] = ("line %05d of a big buffer"):format(20001 - i)
+	end
+	local b = t.open("big.txt", table.concat(rows, "\n"))
+	t.key("Ctrl+a")
+	one(t, {name = "Sort", output = "replace", stdin = "selection", run = "sort"})
+	qed.run("Sort")
+	expect_message(t, "done")
+	t.eq(qed.buf.line(b, 1), "line 00001 of a big buffer", "a selection over 128 KiB goes through stdin")
+	t.eq(qed.buf.line_count(b), 20000)
+	t.key("Ctrl+a")
+	one(t, {name = "Echo", run = "echo {selection}"})
+	qed.run("Echo")
+	t.wait(function() return (t.message()):match("command argument too long") ~= nil end)
+	local text, level = t.message()
+	t.eq(level, "error")
+	t.ok(not text:match("%.lua:%d+:"), "no Lua position in the message: " .. text)
+end
+
+function T.cancel_kills_descendants(t)
+	t.open("a.txt", "x")
+	one(t, {name = "Tree", run = "sleep 3071 & sleep 3071; wait"})
+	qed.run("Tree")
+	local function count()
+		local f = io.popen("ps -eo args | grep -c '^sleep 3071$'")
+		local n = f:read("a")
+		f:close()
+		return n
+	end
+	t.wait(function() return count() == "2\n" end)
+	qed.run("Commands: Cancel")
+	expect_message(t, "cancelled", "warn")
+	t.wait(function() return count() == "0\n" end)
+end
+
+function T.running_hint_cleared(t)
+	t.open("a.txt", "x")
+	t.fake_spawn("slowlog", {stdout = "out", delay_ms = 600})
+	one(t, {name = "Slow", output = "log", run = "slowlog"})
+	qed.run("Slow")
+	t.wait(message_is(t, "running…"))
+	t.wait(function() return t.editor().pane ~= nil end)
+	t.eq((t.message()), "", "the hint is cleared")
+	t.key("Esc")
+end
+
+function T.filetree_ignores_buffer_selection(t)
+	local b = t.open("a.txt", "hello")
+	qed.buf.set_selection(b, {row = 1, col = 1}, {row = 1, col = 3})
+	one(t, {name = "Sel", key = "Alt+j", output = "clipboard", run = "printf '[%s]' {selection}", when = {pane = "filetree", selection = false}})
+	t.key("Alt+f")
+	idle(t)
+	t.key("Alt+j")
+	t.wait(clipboard_is("[]"))
+end
+
+function T.unchanged_list_keeps_commands(t)
+	t.open("a.txt", "x")
+	local list = {{name = "One", run = "echo one", when = {pane = "editor", glob = {"*.txt"}}, env = {B = "2", A = "1"}}}
+	one(t, list[1])
+	t.key("Ctrl+p")
+	t.ok(t.editor().palette, "palette open")
+	t.config({list = list, other = 1}, {hot = true})
+	t.ok(t.editor().palette, "an identical list does not re-register (the palette stays open)")
+	t.config({list = {{name = "Two", run = "echo two"}}}, {hot = true})
+	t.ok(not t.editor().palette, "a changed list re-registers")
 end
 
 function T.hot_reregister(t)

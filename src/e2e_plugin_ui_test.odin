@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:testing"
 import "core:path/filepath"
+import "core:sys/posix"
 import "core:time"
 
 @(private = "file")
@@ -453,6 +454,8 @@ e2e_plugin_terminal_run :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "termrun", fmt.tprintf(`return {{setup = function()
 	qed.command{{name = "Term: Run", run = function() qed.message(tostring(qed.terminal.run("echo qed_run_$((40+2))"))) end}}
 	qed.command{{name = "Term: Cwd", run = function() qed.terminal.run("pwd", {{cwd = %q}}) end}}
+	qed.command{{name = "Term: Sleep", run = function() qed.terminal.run("sleep 3") end}}
+	qed.command{{name = "Term: Again", run = function() local ok, err = qed.terminal.run("echo again"); qed.message(tostring(ok) .. " " .. tostring(err)) end}}
 end}}`, dir))
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	ui_run(t, &e, "Term: Run")
@@ -472,4 +475,14 @@ end}}`, dir))
 	testing.expect(t, e.ed.terminal.active, "a hidden pane is shown again")
 	_, _, ok = e2e_term_wait_row(&e, dir, 4000)
 	testing.expect(t, ok, "cwd runs the command in that dir")
+
+	ui_run(t, &e, "Term: Sleep")
+	start := time.tick_now()
+	for int(posix.tcgetpgrp(posix.FD(e.ed.terminal.pty_fd))) == e.ed.terminal.pid && ms_since(start) < 3000 {
+		term_pump(&e.ed)
+		time.sleep(5 * time.Millisecond)
+	}
+	ui_run(t, &e, "Term: Again")
+	plugin_pump(&e.ed)
+	testing.expect_value(t, e.ed.message, "nil terminal busy")
 }
