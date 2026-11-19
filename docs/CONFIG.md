@@ -14,7 +14,7 @@ files, which are the canonical, always-current reference:
 
 You never copy either file. `~/.config/qed/config.json` is a sparse per-key
 diff: put in only the keys you want to change; everything else keeps its
-compiled-in default. qed never writes this file (except *Editor: Set Theme*, which
+compiled-in default. qed never writes this file (except *Settings: Theme*, which
 persists the single `theme` key when you press Enter on it, via `qed.theme.set`).
 
 - **Hot-reloaded.** Save the file and the change applies live: colors, keybinds,
@@ -133,7 +133,7 @@ user-overridable fields:
 Formatter commands live in [`plugins.format.commands`](#save-behavior-and-formatting).
 Overriding one field merges over the compiled-in default, so you can point `lsp`
 at a different binary. Syntax highlighting is wired into
-the binary (tree-sitter) and is not configured here. *Editor: Set Language* overrides the
+the binary (tree-sitter) and is not configured here. *Settings: Language* overrides the
 detected language for the current session.
 
 ## LSP
@@ -199,9 +199,9 @@ ignored with a warning. Keybinds and `plugin_memory_mb` hot-reload. Changes unde
 `plugins.<id>` reach the plugin through its `config_changed` handler (`format`,
 `search` and `tasks` apply them live, keeping runtime state); a plugin without one
 is reloaded. Adding, removing or editing a file under `plugins/` reloads just that
-plugin. *Editor: Set Theme*, *Editor: Set Language* and *Editor: Change Indentation*
-come from the bundled `pickers` plugin (no config of its own;
-`plugins.pickers.enabled = false` removes them).
+plugin. *Settings: Theme*, *Settings: Language* and *Settings: Indentation*
+come from the bundled `settings` plugin (no config of its own;
+`plugins.settings.enabled = false` removes them).
 
 ```json
 { "plugins": {
@@ -290,7 +290,7 @@ pane's title; `Alt+t` always shows the plain shell. Tasks die with qed.
 ## Themes & colors
 
 Colors are not in `config.json`; they live in themes. Set the active theme with
-the `theme` key (or the *Editor: Set Theme* picker, which persists it):
+the `theme` key (or the *Settings: Theme* picker, which persists it):
 
 ```json
 { "theme": "nord" }

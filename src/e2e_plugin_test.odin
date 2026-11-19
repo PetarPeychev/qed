@@ -52,12 +52,12 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect(t, e.ed.pluginview.active, "Debug: Plugins opens the pane")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Fine    user     enabled"), "a healthy plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Broken  user     errored"), "an errored plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Format  bundled  enabled"), "the bundled format plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Editor  bundled  enabled"), "the bundled pickers plugin row shows its display name")
-	testing.expect(t, e2e_grid_has(&e, "Tasks   bundled  enabled"), "the bundled tasks plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Git     bundled  enabled"), "the bundled git plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Fine      user     enabled"), "a healthy plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Broken    user     errored"), "an errored plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Format    bundled  enabled"), "the bundled format plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Settings  bundled  enabled"), "the bundled settings plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Tasks     bundled  enabled"), "the bundled tasks plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Git       bundled  enabled"), "the bundled git plugin row")
 
 	for _ in 0 ..< 6 {
 		e2e_key(&e, .Arrow_Down)

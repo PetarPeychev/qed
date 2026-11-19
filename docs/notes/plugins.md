@@ -303,7 +303,7 @@ e2e tests of the Odin feature it replaces.
 | # | Port | Proves |
 |---|---|---|
 | 1 | `format` (external formatter, format-on-save toggle, save fixups, LSP fallback) | `spawn` + await, awaitable and bounded `buf_pre_save`, `set_text` + rev guard, edit groups, plugin config, default keys. |
-| 2 | `pickers` (Set Theme, Set Language, Change Indentation) | `pick` await, `on_change` preview, Esc revert, core setters, `theme.set{persist}`. |
+| 2 | `pickers`, now `settings` (Theme, Language, Indentation) | `pick` await, `on_change` preview, Esc revert, core setters, `theme.set{persist}`. |
 | 3 | `git` (base fetch, stat poll, Set Diff Base, Restore File) | Timers, status push, diff-base primitive, events, dir plugin with `require`, module→plugin. If the Lua reads worse than the Odin did, the API is wrong. |
 | new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment `tasks N` shows the running count of every non-shell session (refreshed on `term_open`/`term_exit`/`term_close`) and turns red while an exited session's code is a failure (killed by a signal is not). Running an already-running task restarts it. The picker lists every non-shell session. |
 
@@ -317,7 +317,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 1 | `Buffer.id`, `qed.buf.*`, `qed.edit`, `qed.jump`, fs/json/path/config/opt. Stub + completeness test, stub write + lua-ls `Lua` settings. | minor |
 | 2 | Coroutine scheduler, `spawn`/`spawn_bg`, timers, `plugin_pump`, budgets, events with save/quit timeouts. `e2e_spawn_fake`, the `test.lua` runner. | minor |
 | 3 | Port 1 `format` (+ `set_text` minimal diff, `qed.lsp.format`). Delete the Odin path and the `formatter` key. | minor |
-| 4 | `pick` (incl. `multi`), `prompt`, `confirm`, `pane`. Port 2 `pickers`. | minor |
+| 4 | `pick` (incl. `multi`), `prompt`, `confirm`, `pane`. Port 2 `pickers` (now `settings`). | minor |
 | 5 | `commands` plugin (all outputs except `task`, dropped in phase 10). Filetree `ctx.file/files`. | minor |
 | 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). Poll cost: ~13 us per user plugin file (0.15 ms for 10, 2.6 ms for 200, `bench_plugin_poll`). | minor |
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin. | minor |
@@ -326,7 +326,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` takes a path and clamps `pos`. | minor |
 | 11 | File tree status provider (`qed.filetree.provide{refresh, preview, open_deleted}`, `set_status`, `set_base`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changed*. | minor |
 | 12 | Query-driven `qed.pick` (`query`, `on_query`, `picker:set`), the opening command's chord closes a modal, `ctx.files` expands scoped-tab dirs. Project search moves to `plugins/search` (*Find in Files* and the tree's *Search*); `projsearch.odin` and `projsearch_min_query` (now `plugins.search.min_query`) are gone. | minor |
-| 13 | `qed.meta{display_name}`, display names everywhere a plugin is named, automatic `<display name>: ` command prefix, `qed.message` without `source`, keybinds under `plugins.<id>.keybinds` (plugin binds leave the top-level `keybinds`), `~/.config/qed/plugins/.luarc.json` replaces the global `Lua` LSP settings, `modules.lsp` becomes `lsp` and `.Lsp` leaves the `Module` enum. | minor |
+| 13 | `qed.meta{display_name}`, display names everywhere a plugin is named, automatic `<display name>: ` command prefix, `qed.message` without `source`, keybinds under `plugins.<id>.keybinds` (plugin binds leave the top-level `keybinds`), `~/.config/qed/plugins/.luarc.json` replaces the global `Lua` LSP settings, `modules.lsp` becomes `lsp` and `.Lsp` leaves the `Module` enum, `pickers` becomes `settings` (`plugins.settings`). | minor |
 | later | Interactive panes, conflicts, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions

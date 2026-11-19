@@ -52,9 +52,8 @@ end
 
 return {
 	setup = function()
-		qed.meta{display_name = "Editor"}
-		qed.command{name = "Set Theme", welcome = true, run = set_theme}
-		qed.command{name = "Set Language", when = has_buf, run = set_language}
-		qed.command{name = "Change Indentation", when = has_buf, run = change_indent}
+		qed.command{name = "Theme", welcome = true, run = set_theme}
+		qed.command{name = "Language", when = has_buf, run = set_language}
+		qed.command{name = "Indentation", when = has_buf, run = change_indent}
 	end,
 }

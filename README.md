@@ -56,7 +56,7 @@ Runs on Linux and macOS in any truecolor terminal.
 <td width="50%"><img src="docs/screenshots/terminal.png" alt="Embedded terminal"><br><em>Embedded terminal: persistent full-TUI shell in a floating pane.</em></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/screenshots/themes.png" alt="Theme picker"><br><em>Editor: Set Theme: instant-preview picker over the bundled themes.</em></td>
+<td width="50%"><img src="docs/screenshots/themes.png" alt="Theme picker"><br><em>Settings: Theme: instant-preview picker over the bundled themes.</em></td>
 <td width="50%"><img src="docs/screenshots/light.png" alt="Light theme"><br><em>Light theme (catppuccin-latte) with the theme picker open.</em></td>
 </tr>
 <tr>
@@ -167,7 +167,7 @@ can be swapped in config (see the configuration reference for
 
 Defaults are compiled into the binary. `~/.config/qed/config.json` overrides them
 as a sparse per-key diff (only the keys you set), hot-reloaded on save. qed never
-writes it. Colors live in themes; set `"theme"` or use the *Editor: Set Theme* picker.
+writes it. Colors live in themes; set `"theme"` or use the *Settings: Theme* picker.
 
 Full reference of knobs, keybinds, languages, and theme keys:
 [configuration reference](docs/CONFIG.md). It links to the canonical defaults,

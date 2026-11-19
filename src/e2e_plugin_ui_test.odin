@@ -450,9 +450,9 @@ e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
 e2e_plugin_ui_unload_restores_theme :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
-	pl := plugin_find(&e.ed.plugins, "pickers")
+	pl := plugin_find(&e.ed.plugins, "settings")
 	bg := COLOR_BG
-	cmd, _ := plugin_test_command(&e.ed, "Editor: Set Theme")
+	cmd, _ := plugin_test_command(&e.ed, "Settings: Theme")
 	command_run(&e.ed, cmd)
 	e2e_type(&e, "solarized-light")
 	testing.expect_value(t, editor_theme_current(&e.ed), "solarized-light")

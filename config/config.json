@@ -53,7 +53,7 @@
     "git": {
       "enabled": true
     },
-    "pickers": {
+    "settings": {
       "enabled": true
     },
     "search": {

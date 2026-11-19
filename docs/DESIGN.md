@@ -20,7 +20,7 @@ Buffer :: struct {
     undo, redo:  [dynamic]EditGroup     // inverse-op log; `open` group coalesces
     hl: Highlight, base: DiffBase       // highlight tree + diff base (git or plugin) marks
     deco: DecoStore                     // plugin decorations, row-anchored
-    language: Language                  // detected at open; Editor: Set Language overrides
+    language: Language                  // detected at open; Settings: Language overrides
     // ... lsp/diag/rev bookkeeping
 }
 Line   :: struct { text: [dynamic]u8 }   // bytes, no line terminator stored
@@ -165,7 +165,7 @@ resolution is baked to capture-id → color arrays at query-build/recolor time, 
 the paint path stays an array index. *Debug: Inspect Tokens* (a **passive**
 floating pane, `inspect.odin` — takes no focus, Esc or the command closes it)
 shows the node ancestry, capture stack, winning resolution chain and predicate
-near-misses under the cursor, live. A theme change — via `qed.theme.set` (the *Editor: Set Theme* picker) or the disk
+near-misses under the cursor, live. A theme change — via `qed.theme.set` (the *Settings: Theme* picker) or the disk
 poll — funnels through `editor_retheme`: theme colors are baked into two caches
 (each language's `Syntax.colors` palette and every buffer's per-char `hl.colors`),
 so it rebuilds the palettes (`syntax_recolor`) and invalidates the buffers
@@ -491,7 +491,7 @@ copy each load resets then overlays. Patterns are `*`-globs matched against the 
 before glob, longer before shorter); built-in defaults cover extensions plus common
 dotfiles (`.bashrc` → shell, …). `lsp_id` and the comment token stay compiled-in.
 Everything — highlight, LSP, status bar, comment token — reads `b.language`. The
-*Editor: Set Language* command (bundled `pickers` plugin) overrides it for the session (re-parses,
+*Settings: Language* command (bundled `settings` plugin) overrides it for the session (re-parses,
 re-opens LSP).
 
 ## Multiple servers / grammars
@@ -677,7 +677,7 @@ hot-reload teardown) · `clipboard` · `shell` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/` (display name "Editor"): *Set Theme*, *Set Language*, *Change Indentation*; `search/`: *Find in Files* in the editor and the tree; `tasks/`: *Tasks: Open* picker and status segment; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `tasks/`: *Tasks: Open* picker and status segment; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -721,7 +721,7 @@ bracket re-aligns to its opener), selection +
 selection-aware editing, block indent/dedent, tab-stop backspace (deletes a full
 indent in leading whitespace), clipboard (external + fallback; empty-selection `Ctrl+C`/`Ctrl+X` copy/cut the whole line),
 full Unicode (grapheme + display width), tab-char display + per-buffer
-tabs/spaces + indent-width detect (`Editor: Change Indentation`, `pickers` plugin: Auto-detect /
+tabs/spaces + indent-width detect (`Settings: Indentation`, `settings` plugin: Auto-detect /
 Tabs / Spaces:1–4; literal-tab display width stays the global `tab_width`),
 line-comment toggle, move-lines, paragraph/word/smart-home motion, buffer-edge
 arrow clamps (Down on the last line → line end, Up on the first → col 0;
@@ -812,7 +812,7 @@ survive, terminal palette re-pushed; existing buffers keep their language, runni
 their command), `lsp.enabled` and the gated `modules.ai` (each with its own config
 subtree; disabling drops the commands/UI/subprocesses; live toggle-off tears down; git is
 `plugins.git`, auto-off when the binary is absent), JSON themes (sparse overlay chain over the embedded `default.json`
-base — see Rendering; *Editor: Set Theme* fuzzy picker with instant preview,
+base — see Rendering; *Settings: Theme* fuzzy picker with instant preview,
 Enter persists / Esc reverts), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
 typing replaces; multi-line/whitespace selections keep each pane's persisted

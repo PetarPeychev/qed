@@ -104,7 +104,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
-	{"pickers/init.lua", #load("../plugins/pickers/init.lua", string)},
+	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
 	{"tasks/init.lua", #load("../plugins/tasks/init.lua", string)},
 }
