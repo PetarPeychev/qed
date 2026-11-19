@@ -1461,8 +1461,8 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h,
 	return sy
 }
 
-editor_render_ghost_gutter :: proc(y, width: int) {
-	tb2.set_cell(0, i32(y), '▌', COLOR_GIT_DEL, COLOR_GUTTER_BG)
+editor_render_ghost_gutter :: proc(y, width: int, mark: rune = '▌') {
+	tb2.set_cell(0, i32(y), mark, COLOR_GIT_DEL, COLOR_GUTTER_BG)
 	for x in 1 ..< width {
 		tb2.set_cell(i32(x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
 	}
@@ -1671,6 +1671,7 @@ StatusSegKind :: enum {
 	Plain,
 	Path,
 	Diff,
+	Plugin,
 }
 
 StatusSeg :: struct {
@@ -1768,6 +1769,22 @@ status_fit :: proc(left, right: []StatusSeg, width: int) {
 		pw := visual_width(transmute([]u8)left[path].text)
 		left[path].text = status_clip(left[path].text, pw - over)
 	}
+	for side in ([2][]StatusSeg{left, right}) {
+		for &s in side {
+			over := status_overflow(left, right, width)
+			if over <= 0 {
+				return
+			}
+			if s.kind != .Plugin || s.hidden {
+				continue
+			}
+			if sw := visual_width(transmute([]u8)s.text); sw - over >= 1 {
+				s.text = status_clip(s.text, sw - over)
+			} else {
+				s.hidden = true
+			}
+		}
+	}
 }
 
 status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
@@ -1844,8 +1861,8 @@ editor_render_status :: proc(editor: ^Editor) {
 		}
 	}
 	if !editor.welcome {
-		if base := &editor_buffer(editor).base; base.source == .Plugin && base.label != "" {
-			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, base.label), fg = fg, drop = 8})
+		if base := &editor_buffer(editor).base; base.source == .Plugin {
+			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, base.label if base.label != "" else "base"), fg = fg, drop = 8})
 		}
 	}
 	if len(editor.buffers) > 1 {

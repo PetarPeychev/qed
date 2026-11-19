@@ -844,7 +844,7 @@ plugin_status_segs :: proc(p: ^Plugins, left, right: ^[dynamic]StatusSeg) {
 		if s.color != "" {
 			fg = g_theme_colors[s.color] or_else COLOR_PANE_FG
 		}
-		seg := StatusSeg{sep = "  ", text = s.text, fg = fg, drop = s.drop}
+		seg := StatusSeg{sep = "  ", text = s.text, fg = fg, kind = .Plugin, drop = s.drop}
 		if s.right {
 			inject_at(right, at, seg)
 			at += 1

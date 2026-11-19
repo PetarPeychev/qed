@@ -26,8 +26,11 @@ Deco :: struct {
 }
 
 DecoStore :: struct {
-	items:  [dynamic]Deco,
-	ghosts: [dynamic]Deco,
+	items:       [dynamic]Deco,
+	ghosts:      [dynamic]Deco,
+	above:       [dynamic]int,
+	below:       [dynamic]int,
+	ghost_dirty: bool,
 }
 
 RowTint :: struct {
@@ -64,15 +67,19 @@ deco_store_destroy :: proc(s: ^DecoStore) {
 	}
 	delete(s.items)
 	delete(s.ghosts)
+	delete(s.above)
+	delete(s.below)
 }
 
 deco_add :: proc(b: ^Buffer, d: Deco) {
 	d := d
 	d.text = strings.clone(d.text)
 	append(&b.deco.ghosts if d.kind == .Ghost else &b.deco.items, d)
+	b.deco.ghost_dirty = true
 }
 
 deco_clear :: proc(b: ^Buffer, ns: u32, lo := 0, hi := max(int)) {
+	b.deco.ghost_dirty = true
 	for list in ([2]^[dynamic]Deco{&b.deco.items, &b.deco.ghosts}) {
 		w := 0
 		for &d, i in list {
@@ -89,8 +96,8 @@ deco_clear :: proc(b: ^Buffer, ns: u32, lo := 0, hi := max(int)) {
 	}
 }
 
-deco_insert_row :: proc(r: int, at: Cursor, k: int) -> int {
-	if r > at.row || (r == at.row && at.col == 0) {
+deco_insert_row :: proc(r, at, k: int, moves: bool) -> int {
+	if r > at || (r == at && moves) {
 		return r + k
 	}
 	return r
@@ -98,11 +105,15 @@ deco_insert_row :: proc(r: int, at: Cursor, k: int) -> int {
 
 deco_after_insert :: proc(b: ^Buffer, at, end: Cursor) {
 	k := end.row - at.row
+	b.deco.ghost_dirty = true
+	// a col-0 insert into a row that was empty (a replaced hunk) keeps its decorations on that row
+	moves := at.col == 0 && end.col < len(b.lines[end.row].text)
 	for list in ([2]^[dynamic]Deco{&b.deco.items, &b.deco.ghosts}) {
 		w := 0
 		for &d, i in list {
 			if d.kind == .Span {
 				if d.from.row <= at.row && d.to.row >= at.row {
+					delete(d.text)
 					continue
 				}
 				if d.from.row > at.row {
@@ -110,8 +121,8 @@ deco_after_insert :: proc(b: ^Buffer, at, end: Cursor) {
 					d.to.row += k
 				}
 			} else if k > 0 {
-				d.from.row = deco_insert_row(d.from.row, at, k)
-				d.to.row = deco_insert_row(d.to.row, at, k)
+				d.from.row = deco_insert_row(d.from.row, at.row, k, moves)
+				d.to.row = deco_insert_row(d.to.row, at.row, k, moves)
 			}
 			if w != i {
 				list[w] = d
@@ -122,8 +133,6 @@ deco_after_insert :: proc(b: ^Buffer, at, end: Cursor) {
 	}
 }
 
-// A whole-line delete (col 0 to col 0) removes rows [from.row, to.row); otherwise
-// rows (from.row, to.row] join into from.row.
 deco_delete_row :: proc(r: int, from, to: Cursor, whole: bool) -> (int, bool) {
 	k := to.row - from.row
 	switch {
@@ -140,6 +149,7 @@ deco_delete_row :: proc(r: int, from, to: Cursor, whole: bool) -> (int, bool) {
 }
 
 deco_after_delete :: proc(b: ^Buffer, from, to: Cursor) {
+	b.deco.ghost_dirty = true
 	whole := to.row > from.row && from.col == 0 && to.col == 0
 	for list in ([2]^[dynamic]Deco{&b.deco.items, &b.deco.ghosts}) {
 		w := 0
@@ -174,6 +184,7 @@ deco_after_delete :: proc(b: ^Buffer, from, to: Cursor) {
 }
 
 deco_after_reload :: proc(b: ^Buffer) {
+	b.deco.ghost_dirty = true
 	last := len(b.lines) - 1
 	for list in ([2]^[dynamic]Deco{&b.deco.items, &b.deco.ghosts}) {
 		w := 0
@@ -193,13 +204,28 @@ deco_after_reload :: proc(b: ^Buffer) {
 }
 
 deco_ghost_count :: proc(b: ^Buffer, row: int, above: bool) -> int {
-	n := 0
-	for d in b.deco.ghosts {
-		if d.from.row == row && d.above == above {
-			n += d.lines
-		}
+	s := &b.deco
+	if len(s.ghosts) == 0 {
+		return 0
 	}
-	return n
+	if s.ghost_dirty || len(s.above) != len(b.lines) {
+		resize(&s.above, len(b.lines))
+		resize(&s.below, len(b.lines))
+		for i in 0 ..< len(b.lines) {
+			s.above[i] = 0
+			s.below[i] = 0
+		}
+		for d in s.ghosts {
+			if d.from.row >= 0 && d.from.row < len(b.lines) {
+				(&s.above if d.above else &s.below)[d.from.row] += d.lines
+			}
+		}
+		s.ghost_dirty = false
+	}
+	if row < 0 || row >= len(b.lines) {
+		return 0
+	}
+	return s.above[row] if above else s.below[row]
 }
 
 ghost_above :: proc(b: ^Buffer, row: int) -> int {
@@ -285,9 +311,7 @@ editor_render_deco_ghosts :: proc(b: ^Buffer, row, gutter, w, h: int, above: boo
 			for &c in ccol {
 				c = fg
 			}
-			for x in 0 ..< gutter {
-				tb2.set_cell(i32(x), i32(sy), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
-			}
+			editor_render_ghost_gutter(sy, gutter, ' ')
 			editor_render_text_row(gutter, sy, w, text, ccol, 0, COLOR_BG, -1, -1, nil, 0, len(text))
 			sy += 1
 		}

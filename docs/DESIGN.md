@@ -440,8 +440,8 @@ started at the end of `editor_init`. Invariants the code can't show:
   creating plugin as owner and unload closes it (after the plugin's tasks are freed)
   unless `detach`. `state.busy` is `tcgetpgrp` of the PTY differing from the session's pid.
   `qed.jump` closes the file tree.
-- **Decorations** (`deco.odin`): `Buffer.deco` holds plain `Deco` records (ghosts in their own list so
-  the walkers scan only those). `buffer_insert`/`buffer_delete` shift row anchors and drop spans on
+- **Decorations** (`deco.odin`): `Buffer.deco` holds plain `Deco` records (ghosts in their own list, with
+  per-row above/below counts rebuilt lazily after a ghost or line change, so the walkers stay O(1) per row). `buffer_insert`/`buffer_delete` shift row anchors and drop spans on
   edited rows (rules in plugins.md §3), so a keystroke runs no Lua. Colors are interned theme keys
   (`Plugins.colors`), resolved into a per-frame palette; `deco_rows` buckets the visible rows once per
   frame. Namespaces (`Plugins.deco_ns`), status segments (`Plugins.status`) and plugin diff bases
@@ -614,7 +614,7 @@ by `term_pump`, capped at 1 MiB, overflow dropped with a warning).
 `term_pump` (main loop, next to `lsp_pump`) drains every live session's PTY
 (non-blocking `read` → `vterm_input_write`) whether shown or not, then reaps with
 `waitpid(WNOHANG)`; a reaped child marks the session exited (code, 128 + signal when
-killed) and queues `term_exit`. The loop's fast-poll gate carries `term_alive` (any
+killed) and queues `term_exit` (`term_open`/`term_close` on spawn and close). The loop's fast-poll gate carries `term_alive` (any
 live session) so a hidden session never blocks on a full PTY. Only the shown
 session renders and takes keys, mouse and paste. Hidden sessions keep their size
 until shown (created at the overlay size, 80x24 headless). `term_render` walks

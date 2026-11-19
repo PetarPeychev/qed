@@ -136,3 +136,20 @@ test_overlay_split_code :: proc(t: ^testing.T) {
 	split_expect(t, 1 + 120, lmin, lmax, 50, 70, true)
 	split_expect(t, 1 + 119, lmin, lmax, 120, 0, false)
 }
+
+@(test)
+test_status_fit_clips_undroppable_plugin_segment :: proc(t: ^testing.T) {
+	left := make([dynamic]StatusSeg, context.temp_allocator)
+	right := make([dynamic]StatusSeg, context.temp_allocator)
+	append(&left, StatusSeg{text = " F"})
+	append(&left, StatusSeg{sep = " ", text = "a.odin", kind = .Path})
+	append(&left, StatusSeg{sep = "  ", text = "a very long plugin segment", kind = .Plugin})
+	append(&right, StatusSeg{sep = "  ", text = "keep", kind = .Plugin})
+	status_fit(left[:], right[:], 30)
+	testing.expect(t, status_overflow(left[:], right[:], 30) <= 0, "fits after clipping")
+	testing.expect(t, !left[2].hidden, "a long plugin segment is clipped, not hidden")
+	testing.expect_value(t, left[2].text[len(left[2].text) - len("…"):], "…")
+	testing.expect_value(t, right[0].text, "keep")
+	status_fit(left[:], right[:], 12)
+	testing.expect(t, status_overflow(left[:], right[:], 12) <= 0, "segments too narrow to clip hide")
+}

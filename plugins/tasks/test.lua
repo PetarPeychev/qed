@@ -60,6 +60,17 @@ function T.term_api_exit_code_and_event(t)
 	t.eq(qed.term.state("ex").pid, nil, "no pid once exited")
 end
 
+function T.term_open_close_events(t)
+	local seen = {}
+	qed.on("term_open", function(name) seen[#seen + 1] = "open:" .. name end)
+	qed.on("term_close", function(name) seen[#seen + 1] = "close:" .. name end)
+	qed.term.create{name = "ev", cmd = "sleep 30"}
+	qed.term.restart("ev")
+	qed.term.close("ev")
+	t.wait(function() return #seen == 3 end)
+	t.eq(table.concat(seen, ","), "open:ev,open:ev,close:ev")
+end
+
 function T.term_api_create_rules(t)
 	t.ok(not pcall(qed.term.create, {name = "shell", cmd = "true"}), "the default shell name is refused")
 	t.ok(not pcall(qed.term.create, {cmd = "true"}), "a name is required")
@@ -202,9 +213,9 @@ function T.status_segment(t)
 	t.wait(function() return segment(t).text == "tasks 0" end)
 	t.eq(segment(t).color, "error_foreground", "red until the failed task reruns")
 	qed.term.close("bad")
-	t.wait(function() return segment(t) == nil end, 3000)
+	t.wait(function() return segment(t) == nil end, 200)
 	qed.term.create{name = "outside", cmd = "sleep 30"}
-	t.wait(function() return segment(t) ~= nil and segment(t).text == "tasks 1" end, 3000)
+	t.wait(function() return segment(t) ~= nil and segment(t).text == "tasks 1" end, 200)
 end
 
 return T

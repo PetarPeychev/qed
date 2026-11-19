@@ -328,6 +328,7 @@ term_spawn :: proc(editor: ^Editor, t: ^Terminal) -> bool {
 	t.exited = false
 	t.code = 0
 	editor_log(editor, .Debug, "Terminal", fmt.tprintf("%s spawned: %s (pid %d)", t.name, strings.join(argv, " ", context.temp_allocator), pid))
+	plugin_queue(editor, {event = .Term_Open, a = t.name})
 	return true
 }
 
@@ -381,7 +382,10 @@ term_kill :: proc(editor: ^Editor, t: ^Terminal) {
 	}
 }
 
-term_close :: proc(editor: ^Editor, t: ^Terminal) {
+term_close :: proc(editor: ^Editor, t: ^Terminal, notify := true) {
+	if notify {
+		plugin_queue(editor, {event = .Term_Close, a = t.name})
+	}
 	term_stop(editor, t)
 	term_free_vt(t)
 	term_spec_free(t)
@@ -969,7 +973,7 @@ term_color :: proc(col: tb2.Color) -> vterm.Color {
 
 term_destroy :: proc(editor: ^Editor) {
 	for len(editor.terminal.list) > 0 {
-		term_close(editor, editor.terminal.list[len(editor.terminal.list) - 1])
+		term_close(editor, editor.terminal.list[len(editor.terminal.list) - 1], false)
 	}
 	delete(editor.terminal.list)
 	delete(editor.terminal.zombies)

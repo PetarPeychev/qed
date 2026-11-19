@@ -189,3 +189,22 @@ deco_reload_drops_spans_and_clamps :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+@(test)
+deco_set_text_keeps_first_row_of_hunk :: proc(t: ^testing.T) {
+	b := test_buffer("a", "b", "c", "d")
+	defer buffer_destroy(&b)
+	deco_add(&b, Deco{kind = .Gutter, ns = 1, from = {1, 0}, to = {1, 0}, glyph = 'b'})
+	deco_add(&b, Deco{kind = .Gutter, ns = 1, from = {3, 0}, to = {3, 0}, glyph = 'd'})
+	buffer_set_text(&b, "a\nX\nY\nZ\nd")
+	testing.expect_value(t, deco_glyph_at(&b, 1), 'b')
+	testing.expect_value(t, deco_glyph_at(&b, 3), 0)
+	testing.expect_value(t, deco_glyph_at(&b, 4), 'd')
+
+	c := test_buffer("x", "", "y")
+	defer buffer_destroy(&c)
+	deco_add(&c, Deco{kind = .Gutter, ns = 1, from = {1, 0}, to = {1, 0}, glyph = 'e'})
+	buffer_insert(&c, {1, 0}, "p\nq")
+	testing.expect_value(t, deco_glyph_at(&c, 1), 'e')
+	testing.expect_value(t, deco_glyph_at(&c, 3), 0)
+}

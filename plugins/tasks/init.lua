@@ -132,7 +132,6 @@ local function start(t)
 	end
 	mine[t.name] = true
 	say(t.name, "started")
-	status()
 	return true
 end
 
@@ -204,7 +203,6 @@ local function pick()
 	elseif action == "Close" then
 		qed.term.close(name)
 	end
-	status()
 end
 
 return {
@@ -219,6 +217,7 @@ return {
 			end
 			status()
 		end)
-		qed.every(1000, status)
+		qed.on("term_open", status)
+		qed.on("term_close", status)
 	end,
 }

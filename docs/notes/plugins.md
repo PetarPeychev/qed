@@ -58,7 +58,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
 | module.odin | | replaced | `modules.git` becomes `plugins.git`. `modules.lsp` and `modules.ai` stay until ported. |
 | **custom commands** | | **new plugin** | `command{when}`, `spawn`, `term`, location `pick`, `pane`. |
-| **tasks** | | **new plugin** | `qed.term`, `pick`, `status.set`, `term_exit`. |
+| **tasks** | | **new plugin** | `qed.term`, `pick`, `status.set`, `term_open`/`term_exit`/`term_close`. |
 | **Plugins pane** | | core | Must work when the plugin system itself is broken. |
 
 The API forces these core changes:
@@ -98,7 +98,7 @@ The API is one global, `qed`.
 | `qed.buf.cursor(b) -> pos`, `.set_cursor(b, pos)` | |
 | `qed.buf.selection(b) -> from, to \| nil`, `.set_selection(b, anchor, cursor)` | |
 | `qed.buf.set_language(b, name) -> changed`, `.set_indent(b, "tabs"\|"spaces"\|"auto", width?)`, `.indent(b) -> style, width`, `qed.languages()` | Existing core setters. |
-| `qed.buf.set_base(b, text \| nil, {label?})` | Diff base: gutter, ghost rows, change navigation, revert hunk. Replaces the git base of that buffer until `nil` (git takes over again) or the plugin unloads. `""` is an empty base (every line added). `label` shows as the `±label` status segment. Big files have no diff base. |
+| `qed.buf.set_base(b, text \| nil, {label?})` | Diff base: gutter, ghost rows, change navigation, revert hunk. Replaces the git base of that buffer until `nil` (git takes over again) or the plugin unloads. `""` is an empty base (every line added). `label` shows as the `±label` status segment (`±base` without one). Another plugin's base is left alone (returns false). Big files have no diff base. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
 | `qed.jump(b, pos)` | Switch, reveal, record in the jump list. (`goto` is a Lua keyword.) |
 
@@ -126,6 +126,7 @@ The API is one global, `qed`.
 | `language_changed` | `b` | |
 | `root_changed` | `old`, `new` | |
 | `config_changed`, `theme_changed` | | |
+| `term_open`, `term_close` | `name` | |
 | `term_exit` | `name`, `code` | |
 | `quit` | | yes, bounded by `plugin_hook_timeout_ms` |
 
@@ -139,7 +140,7 @@ There is deliberately no `key` event.
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
-| `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `side` defaults to `left` (after the builtins); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
+| `qed.status.set(id, {text, color?, side?, drop?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()` | |
 
@@ -158,13 +159,15 @@ Core owns PTY and vterm. Each session has a name.
 | `qed.term.close(name)` | Kills the session and frees its scrollback. |
 
 A `term_exit` event fires when a session's process exits, including `kill`, but not
-on `restart`, `close` or teardown. Sessions created by a plugin die when it unloads,
+on `restart`, `close` or teardown. `term_open` fires whenever a session's process starts
+(create, restart, Alt+t), `term_close` when a session is closed (also on plugin unload, not
+at teardown). Sessions created by a plugin die when it unloads,
 unless they were created with `{detach = true}`.
 
 ### Decorations
 - Push only, namespaced per plugin: `ns = qed.deco.ns(name)` (same name, same id). A namespace is usable only by its plugin; unload clears all of them.
 - Colors are theme keys, never hex; an unknown key raises. They resolve per frame, so a theme change recolors.
-- Row anchors shift inside `buffer_insert`/`buffer_delete` (no Lua). An insert at col 0 pushes that row's decorations down with its text. A whole-line delete (col 0 to col 0) drops the deleted rows; a joining delete drops the rows joined into the first. Tints shrink instead of dropping. Spans on any edited row drop. Undo shifts anchors back but never restores dropped decorations. A reload drops spans and clamps the rest.
+- Row anchors shift inside `buffer_insert`/`buffer_delete` (no Lua). An insert at col 0 pushes that row's decorations down with its text, unless the row was empty (a replaced hunk keeps them on its first row). A whole-line delete (col 0 to col 0) drops the deleted rows; a joining delete drops the rows joined into the first. Tints shrink instead of dropping. Spans on any edited row drop. Undo shifts anchors back but never restores dropped decorations. A reload drops spans and clamps the rest.
 
 | Function | Notes |
 |---|---|
@@ -297,7 +300,7 @@ e2e tests of the Odin feature it replaces.
 | 2 | `pickers` (Set Theme, Set Language, Change Indentation) | `pick` await, `on_change` preview, Esc revert, core setters, `theme.set{persist}`. |
 | 3 | `git` (base fetch, stat poll, Set Diff Base, Restore File) | Timers, status push, diff-base primitive, events, dir plugin with `require`, module→plugin. If the Lua reads worse than the Odin did, the API is wrong. |
 | new | `commands`: `plugins.commands.list = [{name, run, output, stdin, save, cwd, env, when, key}]`, with `output = message \| log \| replace \| insert \| clipboard \| terminal \| task \| locations` (schema in CONFIG.md) | User commands end to end. `task` delegates to `tasks`, and `locations` parses `file:line:col` into a path `pick`. |
-| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment `tasks N` shows the running count of every non-shell session (`cmd:` ones included, polled each second since those start outside the plugin) and turns red while an exited session's code is a failure (killed by a signal is not). Running an already-running task restarts it. `task` commands delegate through core: they are sessions named `cmd:<command>` (a prefix tasks may not use, so names never collide), and the picker lists every session. |
+| new | `tasks`: `plugins.tasks.list = [{name, cmd, cwd?, env?}]` | `qed.term` sessions. Task picker shows each task's state, with run / restart / kill / show. A status segment `tasks N` shows the running count of every non-shell session (`cmd:` ones included; refreshed on `term_open`/`term_exit`/`term_close`) and turns red while an exited session's code is a failure (killed by a signal is not). Running an already-running task restarts it. `task` commands delegate through core: they are sessions named `cmd:<command>` (a prefix tasks may not use, so names never collide), and the picker lists every session. |
 
 ## 8. Build phases
 

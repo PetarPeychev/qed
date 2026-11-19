@@ -2058,13 +2058,18 @@ qed_buf_set_base :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 3, "options table expected")
 	}
 	pl := api_loaded(L, editor)
+	if b.base.source == .Plugin && b.base.owner != pl.name {
+		lua.pushboolean(L, false)
+		return 1
+	}
 	if clear_base {
 		if b.base.source == .Plugin {
 			diffbase_clear(b)
 			b.base.tried = false
 		}
-		return 0
+	} else {
+		diffbase_set(b, text, .Plugin, plugin_name_intern(&editor.plugins, pl.name), label)
 	}
-	diffbase_set(b, text, .Plugin, plugin_name_intern(&editor.plugins, pl.name), label)
-	return 0
+	lua.pushboolean(L, true)
+	return 1
 }

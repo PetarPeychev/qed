@@ -407,3 +407,22 @@ slice_equal :: proc(a, b: []$T) -> bool {
 	}
 	return true
 }
+
+@(test)
+e2e_deco_set_base_ownership :: proc(t: ^testing.T) {
+	e := e2e_start("one\ntwo\n")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	a := e2e_plugin(&e, "owna", `return {setup = function() assert(qed.buf.set_base(nil, "one\n") == true) end}`)
+	testing.expect_value(t, a.state, PluginState.Enabled)
+	other := e2e_plugin(&e, "ownb", `return {setup = function()
+		assert(qed.buf.set_base(nil, "zzz\n") == false, "another plugin's base is not replaced")
+		assert(qed.buf.set_base(nil, nil) == false, "nor cleared")
+	end}`)
+	testing.expect_value(t, other.state, PluginState.Enabled)
+	testing.expect_value(t, b.base.owner, "owna")
+	testing.expect_value(t, b.base.blob, "one\n")
+	e2e_render(&e)
+	_, h := editor_viewport(&e.ed)
+	testing.expect(t, strings.contains(e2e_row_text(&e, h), fmt.tprintf("%sbase", ICON_STATUS_DIFF_BASE)), "a label-less plugin base shows a generic indicator")
+}

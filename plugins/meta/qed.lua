@@ -111,7 +111,7 @@ function qed.opt(key) end
 ---@return string
 function qed.shell_quote(s) end
 
----@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_exit"|"quit"
+---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"
 
 ---@class qed.Handle
 ---@field id integer
@@ -121,7 +121,7 @@ function Handle:off() end
 ---Handlers run as coroutines in plugin load order. `buf_changed(b, rev)` and
 ---`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
----`root_changed(old, new)`, `term_exit(name, code)`, `buf_close(b, path)`; other buffer events get `b`.
+---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
 ---@param event qed.Event
 ---@param fn function
 ---@return qed.Handle
@@ -509,10 +509,11 @@ function qed.buf.set_indent(b, style, width) end
 function qed.buf.indent(b) end
 
 ---Diff base: drives the gutter marks, diff-view ghost rows, change navigation and revert hunk.
----Replaces the git base for this buffer until cleared with `nil`; cleared when the plugin unloads.
+---Replaces the git base for this buffer until cleared with `nil`; cleared when the plugin unloads. Another plugin's base is left alone.
 ---@param b qed.Buf
 ---@param text string|nil
----@param opts? {label?: string} label shown in the status bar
+---@param opts? {label?: string} label shown in the status bar (`±base` without one)
+---@return boolean ok false when another plugin owns this buffer's base
 function qed.buf.set_base(b, text, opts) end
 
 qed.fs = {}

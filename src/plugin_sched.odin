@@ -49,7 +49,9 @@ PluginEvent :: enum {
 	Root_Changed,
 	Config_Changed,
 	Theme_Changed,
+	Term_Open,
 	Term_Exit,
+	Term_Close,
 	Quit,
 }
 
@@ -67,7 +69,9 @@ plugin_event_names := [PluginEvent]string {
 	.Root_Changed     = "root_changed",
 	.Config_Changed   = "config_changed",
 	.Theme_Changed    = "theme_changed",
+	.Term_Open        = "term_open",
 	.Term_Exit        = "term_exit",
+	.Term_Close       = "term_close",
 	.Quit             = "quit",
 }
 
@@ -388,6 +392,9 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 		lua.pushodinstring(L, q.a)
 		lua.pushinteger(L, lua.Integer(q.n))
 		return 2
+	case .Term_Open, .Term_Close:
+		lua.pushodinstring(L, q.a)
+		return 1
 	}
 	lua.pushinteger(L, lua.Integer(q.buf))
 	return 1
