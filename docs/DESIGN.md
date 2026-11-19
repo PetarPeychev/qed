@@ -336,7 +336,7 @@ footer hints, and Odin `on.activate`/`on.close` handlers. `Editor.panes` is the 
 - The topmost non-passive pane takes keys, mouse and paste (`pane_stack_dispatch`). Passive panes
   never do and draw under everything focused.
 - Kinds: Exclusive (default; opening one closes the open non-safety exclusive pane, or returns
-  nil while any live pane has a `.Pane` waiter), Child (`parent` handle), Passive. Safety dialogs
+  nil while a `modal` pane is live), Child (`parent` handle), Passive. Safety dialogs
   (`safety`: quit, close, conflict; one each) stay on top: other root panes are inserted below them.
 - Invariant: a pane's descendants follow it contiguously (a child goes right after its parent's
   subtree). `pane_end(handle, activate)` takes that run off the stack, then runs the children's
@@ -360,11 +360,17 @@ the close event is flushed. Events (D8), no Lua during dispatch:
 - `change`: the same flush compares the selected item with `notified`, so moves between flushes
   coalesce; the previous change task is killed.
 - `query`: `plugin_views_pump` (in `plugin_pump`, joined to `plugin_busy` and the poll timeout)
-  starts it once due, killing the previous task, the process it waits on and every process it
-  spawned (`PluginProc.task`); it also lands a pending `accept` once the query task ends.
+  starts it once due, killing the previous task and the foreground `qed.spawn` it waits on
+  (`spawn_bg` processes stay with the plugin); it also lands a pending `accept`. Enter defers
+  only while the query is due, or running with nothing `set`/`append`ed since it started (`landed`).
+- `list.sort`: items stay ordered by key; `append` binary-inserts (shifting the Lua item array too) and
+  keeps the selection and scroll on their item once the user moved (`PaneList.moved`).
 `qed.pick/prompt/confirm/pane` are Lua sugar in `src/prelude.lua`, installed into every plugin's
 `qed` table by `plugin_qed_push`: `ui.open` + `view:wait()` + `view:close()`; pick/prompt/confirm
-open with `kind = "child"` (a child of the focused pane or the active overlay, else exclusive).
+open with `kind = "child"` and `modal` (a child of the focused pane or the active overlay, else
+exclusive). A child from a task not started by the user (`PluginTask.user`: commands, the tree's
+open-deleted callback) may only stack on the caller's own pane, else `"busy"`, so a timer cannot steal
+focus. `ctx.view` is only handed to the view's own plugin. `pane_unload` saves state before marking dead.
 
 Ported: the quit/close/conflict/merge dialogs and every plugin pane.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
@@ -458,7 +464,7 @@ started at the end of `editor_init`. Invariants the code can't show:
   queues the outcome, `plugin_pump` resumes the task. A response nobody waits for
   any more is not applied.
 - When a `buf_pre_save` deadline passes, the late handler tasks are killed with
-  their spawned processes (`plugin_task_kill`), so nothing edits after the save.
+  the `qed.spawn` they wait on (`plugin_task_kill`), so nothing edits after the save.
 - Bundled dir plugin files are listed one by one in `bundled_plugin_dir_files`
   (`plugin.odin`) so `test.lua` stays out of the binary; a test fails when a
   `plugins/<dir>/*.lua` is missing from it. The `test.lua` runner reads from disk.
@@ -792,7 +798,7 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
-matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** `rg --sort path` streamed into the list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
+matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
 file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
