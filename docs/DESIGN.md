@@ -358,6 +358,8 @@ started at the end of `editor_init`. Invariants the code can't show:
 - `#load_directory` doesn't recurse: a bundled dir plugin needs its own embed.
 - User config is read through `editor_config_user` only (never cached); plugin
   `plugins.<name>` changes refresh `qed.config()` and fire `config_changed` on hot reload.
+- A plugin declares its config keys and defaults with `qed.options` in `setup`; core
+  knows only `enabled` before that, so unknown-key warnings cover loaded plugins only.
 - Bindings live in `plugin_api.odin`. Lua sees 1-based rows and byte cols,
   half-open ranges; only `api_pos`/`api_pos_push` convert. Positions are validated
   (range, UTF-8 boundary) before any primitive runs, and a binding raises only
@@ -490,7 +492,7 @@ re-opens LSP).
   adding one = vendor `parser.c` (+`scanner.c`) + `highlights.scm` under
   `lib/tree_sitter/<lang>/`, add the FFI decl + `build.sh` line, fill the
   `LANGUAGE_DEFAULTS` row (grammar/comment/lsp id) + patterns/lsp in
-  `config/config.json` (+ an optional `plugins.format.commands` entry). Queries are vendored **upstream-verbatim**: a predicate
+  `config/config.json` (+ an optional formatter in `plugins/format`'s `qed.options`). Queries are vendored **upstream-verbatim**: a predicate
   evaluator (`predicate.odin`) enforces `#eq?`/`#match?`/`#lua-match?`/`#any-of?`/
   ancestry predicates per match (parsed + regex-compiled once at query build,
   cached per pattern; unknown predicates are skipped, never reject a pattern —

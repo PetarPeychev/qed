@@ -4,7 +4,9 @@ Every qed tunable, in one place. Defaults are compiled into the binary from two
 files, which are the canonical, always-current reference:
 
 - [`config/config.json`](../config/config.json): knobs, keybinds,
-  per-language LSP wiring, and bundled plugin config (formatters, tasks).
+  per-language LSP wiring, and which bundled plugins are enabled.
+- Each plugin's `qed.options{...}` call in its `setup` (bundled ones in
+  [`plugins/`](../plugins/)): that plugin's keys and defaults.
 - [`config/themes/default.json`](../config/themes/default.json): the complete
   color, icon, and tint palette every theme overlays.
 
@@ -57,7 +59,7 @@ formats on demand.
 | `plugins.format.format_on_save` | `false` | Format on every save (after the fixups below). |
 | `plugins.format.trim_trailing_whitespace_on_save` | `false` | Strip trailing whitespace (markdown two-space hard breaks are kept). |
 | `plugins.format.ensure_final_newline_on_save` | `false` | Guarantee exactly one trailing newline. |
-| `plugins.format.commands.<language>` | see `config.json` | External stdin-to-stdout formatter for that language, e.g. `"python": "ruff format --stdin-filename {file} -"`. Absent or `""` falls back to LSP formatting. |
+| `plugins.format.commands.<language>` | see `plugins/format/init.lua` | External stdin-to-stdout formatter for that language, e.g. `"python": "ruff format --stdin-filename {file} -"`. Absent or `""` falls back to LSP formatting. |
 
 A formatter command runs under `sh -c` in the file's directory; `{file}` is replaced
 with the file's quoted absolute path, for tools that take a stdin-filename flag. A
@@ -189,7 +191,7 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log,
 | `plugin_memory_mb` | `64` | Memory cap for the Lua state; a plugin that exceeds it errors instead of growing. `0` means no cap. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
 | `plugins.<name>.enabled` | `true` | Off unloads that plugin (live). `e` in *Debug: Plugins* writes this key. |
-| `plugins.<name>.<key>` | plugin's `defaults` | Per-key override of the plugin's own config; objects merge per key, arrays replace. |
+| `plugins.<name>.<key>` | plugin's `qed.options` | Per-key override of the plugin's own config; objects merge per key, arrays replace. Unknown keys warn once the plugin has loaded; a disabled plugin's keys are not checked. |
 
 A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
 like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
@@ -232,8 +234,9 @@ and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to t
 
 A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool,
 `qed.parse_locations` turns `file:line:col: msg` output into `qed.pick` items (list
-with file preview), and `qed.jump` opens the file there. The API reference with types is
-`plugins/meta/qed.lua`.
+with file preview), and `qed.jump` opens the file there. A plugin's own config keys
+come from `local cfg = qed.options{key = default}` in `setup`, overridden under
+`plugins.<name>`. The API reference with types is `plugins/meta/qed.lua`.
 
 ```lua
 -- ~/.config/qed/plugins/my.lua

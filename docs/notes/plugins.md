@@ -202,6 +202,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | `qed.path.join/dir/base/rel/abs`, `qed.shell_quote` | |
 | `qed.parse_locations(text, {cwd?}) -> {label, path, pos}[]` | Parses `file:row:col: msg`, `file:row:col`, `file:row: msg` and `file:row` lines (CRLF ok; the shortest file wins, so `a:b.txt:4: m` is `a:b.txt`) into `qed.pick` items. Relative files resolve against `cwd` (default the root); lines naming a missing file are skipped; labels are root-relative. `{}` when nothing parses. |
 | `qed.root()`, `qed.version` | |
+| `qed.options(defaults) -> table` | Declares this plugin's config keys and defaults, returns the merged config. Setup only, once per load; raises otherwise. |
 | `qed.config() -> table` | This plugin's merged subtree. Read-only. |
 | `qed.opt(key)` | Read-only core knob. |
 | ⏳ `qed.lsp.format(b) -> bool` | Core LSP formatting. |
@@ -223,10 +224,10 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 |---|---|
 | Sources | Bundled plugins are in repo `plugins/`, embedded via `#load_directory`. User plugins are in `~/.config/qed/plugins/`. |
 | Shape | `name.lua` or `name/init.lua`. `require` resolves only inside the plugin's dir. |
-| Spec | Returns `{defaults = {...}, setup = function(cfg) end}`. All registration happens in `setup`. |
+| Spec | Returns `{setup = function() end}`. All registration happens in `setup`. |
 | Order | Bundled first, then user, alphabetical within each. A user plugin with a bundled name replaces the bundled one. `startup` fires after all plugins are loaded. |
-| Enable | `plugins.<name>.enabled`, default true. Bundled defaults live in the embedded config.json. |
-| Config | `plugins.<name>` is a sparse diff over `defaults`. Unknown keys warn once. |
+| Enable | `plugins.<name>.enabled`, default true. The embedded config.json lists each bundled plugin's `enabled` and nothing else. |
+| Config | `setup` calls `qed.options(defaults)`, the one place a plugin's keys and defaults live. `plugins.<name>` is a sparse diff over them. Unknown keys warn once, after setup ran, and only for enabled plugins that loaded; a disabled or errored plugin's typo surfaces when it loads. |
 | Ownership | Every registration (command, hook, timer, process, term session, decoration ns, status segment, diff base, modal) records its owner. Unloading tears all of it down. |
 | Hot reload | Triggers: the disk poll sees a user plugin file added, removed or changed (any file inside a dir plugin), `enabled` flips, or `r` in the Plugins pane. Only that plugin unloads and reloads; a same-name user plugin appearing or disappearing swaps it with the bundled one. Load order stays bundled-then-user, alphabetical. A plugin loaded after startup gets its own `startup` event. |
 | Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
@@ -240,7 +241,7 @@ Hot reload mechanics:
 - On any difference `plugins_sync` unloads removed, changed or shadow-swapped plugins while they are still in the list, rebuilds the list in load order, then loads. The Plugins pane keeps its selection by name.
 - Unload frees the plugin's tasks first (their `__close` runs), then hooks, timers, processes (whole process group) and pooled threads.
 - A load after startup queues `startup` for that plugin only (`PluginQueued.only`).
-- Config hot reload (`plugins_config_apply`): re-merge each loaded plugin's config, apply `enabled` flips and config-driven reloads (`Plugin.cfg_sig`; subscribers adopt the new signature), flush `config_changed`, then `plugins_rebind` and the unknown-plugin warning. A config that fails to parse leaves plugin state alone.
+- Config hot reload (`plugins_config_apply`): re-merge each loaded plugin's config, apply `enabled` flips and config-driven reloads (`Plugin.cfg_sig`; subscribers adopt the new signature), flush `config_changed`, then `plugins_rebind`, each loaded plugin's unknown keys (`Plugin.unknown`, computed at merge) and the unknown-plugin warning. Outside a config apply, a load warns its own unknown keys. A config that fails to parse leaves plugin state alone.
 - Commands registered after the first full bind (`Plugins.bound`) report their own key problems, except inside that window (`binds_deferred`).
 
 ### Plugins pane (core)
