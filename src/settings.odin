@@ -1319,6 +1319,10 @@ config_persist_key :: proc(key: string, value: json.Value) -> bool {
 }
 
 config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> bool {
+	return config_persist_path_to(path, {key}, value)
+}
+
+config_persist_path_to :: proc(path: string, keys: []string, value: json.Value) -> bool {
 	root: json.Object
 	if data, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil {
 		if v, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator);
@@ -1328,10 +1332,7 @@ config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> b
 			}
 		}
 	}
-	if root == nil {
-		root = make(json.Object, context.temp_allocator)
-	}
-	root[key] = value
+	root = json_object_set(root, keys, value)
 
 	if dir := config_dir(path); dir != "" {
 		os.make_directory_all(dir)
@@ -1340,6 +1341,20 @@ config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> b
 	json_write_value(&sb, root, 0)
 	strings.write_byte(&sb, '\n')
 	return os.write_entire_file(path, transmute([]byte)strings.to_string(sb)) == nil
+}
+
+json_object_set :: proc(obj: json.Object, keys: []string, value: json.Value) -> json.Object {
+	obj := obj
+	if obj == nil {
+		obj = make(json.Object, context.temp_allocator)
+	}
+	if len(keys) == 1 {
+		obj[keys[0]] = value
+		return obj
+	}
+	sub, _ := obj[keys[0]].(json.Object)
+	obj[keys[0]] = json_object_set(sub, keys[1:], value)
+	return obj
 }
 
 config_dir :: proc(path: string) -> string {

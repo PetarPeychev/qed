@@ -236,9 +236,7 @@ e2e_plugin_config :: proc(e: ^E2E, name, cfg: string, hot := false) {
 	e.cfg = v
 	e.ed.plugins.config_override = v.(json.Object)
 	if hot {
-		plugins_config_refresh(&e.ed)
-		plugin_queue(&e.ed, {event = .Config_Changed})
-		plugin_flush(&e.ed)
+		plugins_config_apply(&e.ed, false)
 		return
 	}
 	if pl := plugin_find(&e.ed.plugins, name); pl != nil {

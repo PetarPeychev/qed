@@ -555,6 +555,44 @@ bench_plugin_startup :: proc(t: ^testing.T) {
 }
 
 @(test)
+bench_plugin_poll :: proc(t: ^testing.T) {
+	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
+		return
+	}
+	ROUNDS :: 200
+	run :: proc(files, dir_files: int) {
+		dir := reload_dir()
+		defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
+		for i in 0 ..< files {
+			reload_write(dir, fmt.tprintf("p%03d.lua", i), "return {}")
+		}
+		for i in 0 ..< dir_files {
+			reload_write(dir, fmt.tprintf("big/sub%d/f%03d.lua", i % 4, i), "return {}")
+		}
+		if dir_files > 0 {
+			reload_write(dir, "big/init.lua", "return {}")
+		}
+		ed := Editor{headless = true}
+		editor_plugins_start(&ed, g_bundled_plugins, dir, PLUGIN_MEMORY_MB * 1024 * 1024)
+		start := time.tick_now()
+		for _ in 0 ..< ROUNDS {
+			plugins_poll(&ed)
+			free_all(context.temp_allocator)
+		}
+		fmt.eprintfln("%d user plugin file(s) + dir plugin with %d file(s): %.3f ms/poll", files, dir_files, ms_since(start) / ROUNDS)
+		plugins_shutdown(&ed.plugins)
+		editor_log_destroy(&ed)
+		delete(ed.message_store)
+	}
+	fmt.eprintln("=== plugin file poll bench (runs once per disk poll, 1 s) ===")
+	run(0, 0)
+	run(10, 0)
+	run(50, 0)
+	run(200, 0)
+	run(10, 100)
+}
+
+@(test)
 bench_plugin_keystroke :: proc(t: ^testing.T) {
 	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
 		return

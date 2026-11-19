@@ -148,6 +148,7 @@ PluginQueued :: struct {
 	buf:   u64,
 	n:     i64,
 	a, b:  string,
+	only:  string,
 }
 
 PluginLspResult :: struct {
@@ -528,7 +529,7 @@ plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = n
 	}
 	ids := make([dynamic]u64, context.temp_allocator)
 	for pl in p.list {
-		if pl.state != .Enabled {
+		if pl.state != .Enabled || (q.only != "" && q.only != pl.name) {
 			continue
 		}
 		for h in p.hooks {
@@ -1070,6 +1071,12 @@ plugin_sched_unload :: proc(editor: ^Editor, owner: string) {
 			} else {
 				plugin_task_free(editor, i)
 			}
+		}
+	}
+	for i := len(p.pool) - 1; i >= 0; i -= 1 {
+		if p.pool[i].owner == owner {
+			lua.L_unref(p.L, lua.REGISTRYINDEX, p.pool[i].thread.ref)
+			ordered_remove(&p.pool, i)
 		}
 	}
 }

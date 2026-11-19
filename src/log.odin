@@ -88,6 +88,8 @@ editor_log :: proc(editor: ^Editor, level: LogLevel, source, msg: string, show :
 }
 
 editor_log_destroy :: proc(editor: ^Editor) {
+	delete(editor.logview.source)
+	editor.logview.source = ""
 	for e in editor.log {
 		delete(e.text)
 		delete(e.source)
@@ -308,6 +310,7 @@ LogView :: struct {
 	stick:    bool,
 	filter:   [LogLevel]bool,
 	history:  bool,
+	source:   string,
 }
 
 logview_sel_range :: proc(v: ^LogView) -> (lo, hi: int) {
@@ -349,13 +352,18 @@ logview_filtered :: proc(editor: ^Editor) -> [dynamic]int {
 		if e.seeded && !editor.logview.history {
 			continue
 		}
+		if editor.logview.source != "" && e.source != editor.logview.source {
+			continue
+		}
 		append(&out, i)
 	}
 	return out
 }
 
-logview_open :: proc(editor: ^Editor) {
+logview_open :: proc(editor: ^Editor, source := "") {
 	v := &editor.logview
+	delete(v.source)
+	v.source = strings.clone(source)
 	v.active = true
 	v.anchor = nil
 	editor_clear_message(editor)
@@ -543,7 +551,8 @@ logview_render :: proc(editor: ^Editor) {
 	inner := pane_draw_box(lay.box)
 	logview_reveal(editor)
 
-	pane_text(inner.x + 1, inner.y, inner.w - 2, "Message Log", COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+	title := fmt.tprintf("Message Log  ·  %s", v.source) if v.source != "" else "Message Log"
+	pane_text(inner.x + 1, inner.y, inner.w - 2, title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	pane_hline(lay.box, lay.title_sep_y)
 
 	filtered := logview_filtered(editor)

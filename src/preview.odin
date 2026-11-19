@@ -125,6 +125,22 @@ preview_set_file :: proc(p: ^Preview, path: string, focus, view_h: int) {
 	preview_ensure(p, view_h)
 }
 
+preview_set_text :: proc(p: ^Preview, path, text: string, view_h: int) {
+	preview_reset(p)
+	p.path = strings.clone(path)
+	p.language = language_of(path)
+	text := text
+	for line in strings.split_lines_iterator(&text) {
+		if len(p.src) >= PREVIEW_MAX_LINES {
+			break
+		}
+		append(&p.src, strings.clone(line))
+	}
+	p.empty = len(p.src) == 0
+	preview_content_build(p)
+	preview_ensure(p, view_h)
+}
+
 preview_file_bytes :: proc(path: string, min_bytes, max_lines: int) -> (data: []u8, ok: bool) {
 	fd, err := os.open(path)
 	if err != nil {

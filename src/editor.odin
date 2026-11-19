@@ -197,6 +197,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	aiedit_destroy(&editor.aiedit)
 	term_destroy(editor)
 	plugins_shutdown(&editor.plugins)
+	preview_destroy(&editor.pluginview.source)
 	// Process-global singletons (seeded once at @(init) / lazily, shared across
 	// every editor); real main tears them down once at exit. A headless test reuses
 	// them across many sessions, so freeing them here would dangle the next one.
@@ -1031,6 +1032,9 @@ editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
 	editor.disk_poll = time.tick_now()
 	git_stat_maybe_start(editor)
 	changed := editor_maybe_reload_config(editor)
+	if plugins_poll(editor) {
+		changed = true
+	}
 	if editor_poll_disk(editor) {
 		changed = true
 	}
@@ -1104,16 +1108,11 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		editor.theme_shown = ""
 		theme_preview(path, THEME)
 	}
-	plugins_rebind(editor)
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
 	editor_modules_sync(editor)
-	plugins_config_refresh(editor)
-	plugin_queue(editor, {event = .Config_Changed})
-	if theme_changed {
-		plugin_queue(editor, {event = .Theme_Changed})
-	}
+	plugins_config_apply(editor, theme_changed)
 	if message == "" {
 		message = "config.json reloaded"
 	}
