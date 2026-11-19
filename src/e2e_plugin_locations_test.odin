@@ -36,21 +36,33 @@ location_parse_forms :: proc(t: ^testing.T) {
 
 @(private = "file")
 LOC_PLUGIN :: `
-local function show(loc, err)
-	qed.message(loc and ("%s|%d|%d|%s"):format(loc.label, loc.pos.row, loc.pos.col, qed.path.base(loc.path)) or tostring(err))
+local function dump(items)
+	local parts = {}
+	for _, it in ipairs(items) do
+		parts[#parts + 1] = ("%s|%d|%d|%s"):format(it.label, it.pos.row, it.pos.col, qed.path.rel(it.path))
+	end
+	return table.concat(parts, ";")
 end
-local function cmd(name, text, opts, scope)
-	qed.command{name = name, scope = scope, run = function() show(qed.locations(text, opts)) end}
+local function grep(name, text, scope)
+	qed.command{name = name, scope = scope, run = function()
+		local items = qed.parse_locations(text)
+		local it = qed.pick{items = items, prompt = "Grep >"}
+		if it then qed.jump(qed.open(it.path), it.pos) end
+		qed.message(it and it.label or "nil")
+	end}
 end
 return {setup = function()
-	cmd("Loc: Grep", "a.txt:2:needle here\nb.txt:3:needle\nmissing.txt:3: gone\n", {prompt = "Grep >"})
-	cmd("Loc: Cols", "c.txt:2:3: in a char\r\nc.txt:9:99: past the end\r\n")
-	cmd("Loc: Sub", "x.txt:1\n" .. qed.path.join(qed.root(), "a.txt") .. ":1: abs\n", {cwd = "sub"})
-	cmd("Loc: Bare", "c.txt:2:3\nc.txt:1\n12:30 meeting\n")
-	cmd("Loc: Empty", "")
-	cmd("Loc: Missing", "nope.txt:1: gone\n12:30 meeting\n")
-	cmd("Loc: Tree", "a.txt:2: needle\n", nil, "filetree")
-	qed.command{name = "Loc: Prompt", run = function() qed.prompt{prompt = "P:"} end}
+	local parsed = dump(qed.parse_locations("a.txt:2:needle here\r\nb.txt:3:needle\nmissing.txt:3: gone\n"))
+	qed.command{name = "Loc: Setup", run = function() qed.message(parsed) end}
+	qed.command{name = "Loc: Parse", run = function()
+		qed.message(dump(qed.parse_locations("x.txt:1\n" .. qed.path.join(qed.root(), "a.txt") .. ":1:2: abs\n12:30 meeting\n", {cwd = "sub"})))
+	end}
+	qed.command{name = "Loc: Empty", run = function()
+		qed.message(#qed.parse_locations("") .. " " .. #qed.parse_locations("nope.txt:1: gone\n12:30 meeting\n"))
+	end}
+	grep("Loc: Grep", "a.txt:2:needle here\nb.txt:3:needle\nmissing.txt:3: gone\n")
+	grep("Loc: Cols", "c.txt:2:3: in a char\nc.txt:9:99: past the end\n")
+	grep("Loc: Tree", "a.txt:2: needle\n", "filetree")
 end}`
 
 @(private = "file")
@@ -89,17 +101,28 @@ loc_selected :: proc(e: ^E2E) -> string {
 }
 
 @(test)
-e2e_plugin_locations_jump :: proc(t: ^testing.T) {
+e2e_plugin_parse_locations :: proc(t: ^testing.T) {
+	e := loc_start(t)
+	defer e2e_stop(&e)
+	loc_run(t, &e, "Loc: Setup")
+	testing.expect_value(t, e.ed.message, "a.txt:2: needle here|2|1|a.txt;b.txt:3: needle|3|1|b.txt")
+	loc_run(t, &e, "Loc: Parse")
+	testing.expect_value(t, e.ed.message, "sub/x.txt:1|1|1|sub/x.txt;a.txt:1:2: abs|1|2|a.txt")
+	loc_run(t, &e, "Loc: Empty")
+	testing.expect_value(t, e.ed.message, "0 0")
+}
+
+@(test)
+e2e_plugin_locations_pick_jump :: proc(t: ^testing.T) {
 	e := loc_start(t)
 	defer e2e_stop(&e)
 	e2e_resize(&e, 160, 40)
 	loc_run(t, &e, "Loc: Grep")
 	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.active && ui.paths, "a list + preview picker opens")
+	testing.expect(t, ui.active && ui.paths, "parsed items get the list + preview picker")
 	testing.expect_value(t, len(ui.matches), 2)
 	testing.expect_value(t, loc_selected(&e), "a.txt:2: needle here")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Grep >"), "the prompt renders")
 	testing.expect(t, e2e_grid_has(&e, "three"), "the preview shows the file")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
@@ -107,71 +130,31 @@ e2e_plugin_locations_jump :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	testing.expect_value(t, filepath.base(b.path), "b.txt")
 	testing.expect_value(t, b.cursor, Cursor{2, 0})
-	testing.expect_value(t, e.ed.message, "b.txt:3: needle|3|1|b.txt")
-	testing.expect_value(t, ui.items_ref, 0)
-	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
+	testing.expect_value(t, e.ed.message, "b.txt:3: needle")
+	jl := &e.ed.jumps
+	if testing.expect(t, jl.index >= 1, "the jump is recorded") {
+		testing.expect_value(t, jl.entries[jl.index - 1].path, e.path)
+	}
 
 	loc_run(t, &e, "Loc: Grep")
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "nil")
-	testing.expect_value(t, filepath.base(editor_buffer(&e.ed).path), "b.txt")
 }
 
 @(test)
-e2e_plugin_locations_columns :: proc(t: ^testing.T) {
+e2e_plugin_locations_jump_clamps :: proc(t: ^testing.T) {
 	e := loc_start(t)
 	defer e2e_stop(&e)
 	loc_run(t, &e, "Loc: Cols")
-	testing.expect_value(t, loc_selected(&e), "c.txt:2:3: in a char")
 	e2e_key(&e, .Enter)
 	b := editor_buffer(&e.ed)
 	testing.expect_value(t, filepath.base(b.path), "c.txt")
 	testing.expect_value(t, b.cursor, Cursor{1, 1})
-	testing.expect_value(t, e.ed.message, "c.txt:2:3: in a char|2|3|c.txt")
 	loc_run(t, &e, "Loc: Cols")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, editor_buffer(&e.ed).cursor, Cursor{2, 0})
-	testing.expect_value(t, e.ed.message, "c.txt:9:99: past the end|9|99|c.txt")
-
-	loc_run(t, &e, "Loc: Bare")
-	testing.expect_value(t, len(e.ed.plugins.ui.matches), 2)
-	testing.expect_value(t, loc_selected(&e), "c.txt:2:3")
-	e2e_key(&e, .Arrow_Down)
-	testing.expect_value(t, loc_selected(&e), "c.txt:1")
-	e2e_key(&e, .Esc)
-}
-
-@(test)
-e2e_plugin_locations_cwd :: proc(t: ^testing.T) {
-	e := loc_start(t)
-	defer e2e_stop(&e)
-	loc_run(t, &e, "Loc: Sub")
-	testing.expect_value(t, len(e.ed.plugins.ui.matches), 2)
-	testing.expect_value(t, loc_selected(&e), "sub/x.txt:1")
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, editor_buffer(&e.ed).path, fmt.tprintf("%s/sub/x.txt", e.dir))
-	loc_run(t, &e, "Loc: Sub")
-	e2e_key(&e, .Arrow_Down)
-	testing.expect_value(t, loc_selected(&e), "a.txt:1: abs")
-	e2e_key(&e, .Esc)
-}
-
-@(test)
-e2e_plugin_locations_empty_busy :: proc(t: ^testing.T) {
-	e := loc_start(t)
-	defer e2e_stop(&e)
-	loc_run(t, &e, "Loc: Empty")
-	testing.expect(t, !e.ed.plugins.ui.active, "no picker without locations")
-	testing.expect_value(t, e.ed.message, "no locations")
-	loc_run(t, &e, "Loc: Missing")
-	testing.expect_value(t, e.ed.message, "no locations")
-	loc_run(t, &e, "Loc: Prompt")
-	loc_run(t, &e, "Loc: Grep")
-	testing.expect_value(t, e.ed.message, "busy")
-	testing.expect_value(t, e.ed.plugins.ui.kind, PluginUiKind.Prompt)
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
+	testing.expect_value(t, e.ed.message, "c.txt:9:99: past the end")
 }
 
 @(test)

@@ -58,7 +58,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
 | module.odin | | replaced | `modules.git` becomes `plugins.git`. `modules.lsp` and `modules.ai` stay until ported. |
-| **custom commands** | | user plugins | `command{when}`, `spawn`, `locations`, `term`, `pane`. The config-driven `commands` plugin was dropped in phase 10. |
+| **custom commands** | | user plugins | `command{when}`, `spawn`, `parse_locations` + `pick`, `term`, `pane`. The config-driven `commands` plugin was dropped in phase 10. |
 | **tasks** | | **new plugin** | `qed.term`, `pick`, `status.set`, `term_open`/`term_exit`/`term_close`. |
 | **Plugins pane** | | core | Must work when the plugin system itself is broken. |
 
@@ -101,7 +101,7 @@ The API is one global, `qed`.
 | `qed.buf.set_language(b, name) -> changed`, `.set_indent(b, "tabs"\|"spaces"\|"auto", width?)`, `.indent(b) -> style, width`, `qed.languages()` | Existing core setters. |
 | `qed.buf.set_base(b, text \| nil, {label?}) -> active` | Diff base: gutter, ghost rows, change navigation, revert hunk. Each plugin owns one base per buffer. The plugin that set its first most recently wins; setting again keeps its place, `nil` clears it in place (a later set does not move it up), and `nil` or unload reveals the one beneath, so the `git` plugin's base comes back when another plugin's goes. Returns whether this plugin's base is the one shown. `""` is an empty base (every line added). `label` shows as the `±label` status segment: `±base` when omitted, nothing when `""`. Big files have no diff base. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
-| `qed.jump(b, pos)` | Switch, reveal, record in the jump list. (`goto` is a Lua keyword.) |
+| `qed.jump(b, pos)` | Switch, reveal, record in the jump list. `pos` is clamped to the buffer and a col inside a UTF-8 sequence snaps back. Right after `qed.open` in the same task, the jump is recorded from where the open started. (`goto` is a Lua keyword.) |
 
 ### Commands and keybinds
 | Function | Notes |
@@ -140,7 +140,6 @@ There is deliberately no `key` event.
 | ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout. `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. Esc returns `nil`. |
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
-| ⏳ `qed.locations(text, {cwd?, prompt?}) -> {label, path, pos} \| nil` | Parses `file:row:col: msg`, `file:row:col`, `file:row: msg` and `file:row` lines (CRLF ok; the shortest file wins, so `a:b.txt:4: m` is `a:b.txt`) into a path pick, then opens the chosen file and jumps there (`pos` clamped, a col inside a UTF-8 sequence snaps back, file tree closed). Relative files resolve against `cwd` (default the root); lines naming a missing file are skipped. Labels are root-relative. One result still shows the picker. Esc returns `nil`; nothing parsed returns `nil, "no locations"` without opening anything. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
@@ -198,6 +197,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | `qed.fs.read`, `.write` (atomic), `.exists`, `.stat`, `.list` | Synchronous. |
 | `qed.json.decode`, `.encode` | `core:encoding/json` |
 | `qed.path.join/dir/base/rel/abs`, `qed.shell_quote` | |
+| `qed.parse_locations(text, {cwd?}) -> {label, path, pos}[]` | Parses `file:row:col: msg`, `file:row:col`, `file:row: msg` and `file:row` lines (CRLF ok; the shortest file wins, so `a:b.txt:4: m` is `a:b.txt`) into `qed.pick` items. Relative files resolve against `cwd` (default the root); lines naming a missing file are skipped; labels are root-relative. `{}` when nothing parses. |
 | `qed.root()`, `qed.version` | |
 | `qed.config() -> table` | This plugin's merged subtree. Read-only. |
 | `qed.opt(key)` | Read-only core knob. |
@@ -321,7 +321,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin. | minor |
 | 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view`, `filetree_diff_only` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
-| 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.locations`. | minor |
+| 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` clamps and records from before a preceding `qed.open`. | minor |
 | later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions

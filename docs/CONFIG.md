@@ -220,9 +220,10 @@ and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to t
 
 ## Writing your own commands
 
-A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool and
-`qed.locations` turns `file:line:col: msg` output into a picker that jumps to the
-chosen line. The API reference with types is `plugins/meta/qed.lua`.
+A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool,
+`qed.parse_locations` turns `file:line:col: msg` output into `qed.pick` items (list
+with file preview), and `qed.jump` goes there. The API reference with types is
+`plugins/meta/qed.lua`.
 
 ```lua
 -- ~/.config/qed/plugins/my.lua
@@ -231,8 +232,10 @@ return {setup = function()
     local word = ctx.selection_text or qed.prompt{prompt = "Grep:"}
     if not word or word == "" then return end
     local r = qed.spawn{argv = {"grep", "-rn", "--", word, "."}}
-    local _, err = qed.locations(r.stdout .. r.stderr, {prompt = "Grep >"})
-    if err then qed.message(err, "warn") end
+    local items = qed.parse_locations(r.stdout)
+    if #items == 0 then return qed.message("no matches") end
+    local it = qed.pick{items = items, prompt = "Grep >"}
+    if it then qed.jump(qed.open(it.path), it.pos) end
   end}
 end}
 ```

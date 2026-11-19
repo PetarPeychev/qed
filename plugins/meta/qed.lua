@@ -92,7 +92,7 @@ function qed.save(b) end
 ---@return boolean
 function qed.close(b) end
 
----Switch to `b`, move the cursor to `pos`, and record the jump. Closes the file tree if it is open.
+---Switch to `b`, move the cursor to `pos` (clamped to the buffer, a col inside a UTF-8 sequence snaps back), and record the jump. Closes the file tree if it is open. Right after `qed.open`, the jump is recorded from where the open started.
 ---@param b qed.Buf
 ---@param pos qed.Pos
 function qed.jump(b, pos) end
@@ -114,6 +114,13 @@ function qed.opt(key) end
 ---@param s string
 ---@return string
 function qed.shell_quote(s) end
+
+---Parses compiler/grep output (`file:row:col: msg`, `file:row:col`, `file:row: msg`, `file:row`) into `qed.pick` items with a root-relative `label`, an absolute `path` and the parsed `pos`.
+---Lines naming a missing file are skipped; `{}` when nothing parses. `cwd` resolves relative files, default `qed.root()`.
+---@param text string
+---@param opts? {cwd?: string}
+---@return {label: string, path: string, pos: qed.Pos}[]
+function qed.parse_locations(text, opts) end
 
 ---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"
 
@@ -208,19 +215,6 @@ function qed.every(ms, fn) end
 ---@return string|qed.PickItem|(string|qed.PickItem)[]|nil
 ---@return "busy"|nil err
 function qed.pick(spec) end
-
----@class qed.Location
----@field label string `file:row[:col][: msg]`, the file relative to the root
----@field path string absolute
----@field pos qed.Pos as parsed; the jump clamps it to the file
-
----Waits for a pick from compiler/grep output (`file:row:col: msg`, `file:row:col`, `file:row: msg`, `file:row`) and jumps to the chosen one.
----Lines naming missing files are skipped. `nil` on Esc, `nil, "no locations"` when nothing parses, `nil, "busy"` when another overlay is open.
----@param text string
----@param opts? {cwd?: string, prompt?: string} `cwd` resolves relative files, default `qed.root()`
----@return qed.Location|nil
----@return "busy"|"no locations"|string|nil err
-function qed.locations(text, opts) end
 
 ---Waits for a line of text. `nil` on Esc, `nil, "busy"` when another overlay is open.
 ---@param spec {prompt: string, text?: string}

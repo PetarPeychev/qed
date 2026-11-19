@@ -35,6 +35,7 @@ qed_api := [?]lua.L_Reg {
 	{"config", qed_config},
 	{"opt", qed_opt},
 	{"shell_quote", qed_shell_quote},
+	{"parse_locations", qed_parse_locations},
 	{"on", qed_on},
 	{"spawn", qed_spawn},
 	{"spawn_bg", qed_spawn_bg},
@@ -42,7 +43,6 @@ qed_api := [?]lua.L_Reg {
 	{"defer", qed_defer},
 	{"every", qed_every},
 	{"pick", qed_pick},
-	{"locations", qed_locations},
 	{"prompt", qed_prompt},
 	{"confirm", qed_confirm},
 	{"pane", qed_pane},
@@ -800,13 +800,21 @@ qed_open :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
+	p := &editor.plugins
 	path := api_path(editor, api_string(L, 1))
+	prev := editor_buffer(editor)
+	from, from_pos := prev.id, prev.cursor
 	if !editor_open_path(editor, path) {
 		lua.pushnil(L)
 		lua.pushodinstring(L, fmt.tprintf("cannot open %s", path))
 		return 2
 	}
-	lua.pushinteger(L, lua.Integer(editor_buffer(editor).id))
+	b := editor_buffer(editor)
+	if b.id != from {
+		t := plugin_task_of(p, L)
+		p.open_origin = {task = t.id if t != nil else 0, buf = b.id, from = from, pos = from_pos}
+	}
+	lua.pushinteger(L, lua.Integer(b.id))
 	return 1
 }
 
@@ -883,9 +891,33 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
+	p := &editor.plugins
 	b, idx := api_buf(L, editor, 1)
-	pos := api_pos(L, 2, b)
+	if lua.type(L, 2) != .TABLE {
+		lua.L_argerror(L, 2, "position {row, col} expected")
+	}
+	row, rok := api_field_int(L, 2, "row")
+	col, cok := api_field_int(L, 2, "col")
+	if !rok || !cok {
+		lua.L_argerror(L, 2, "position {row, col} expected")
+	}
+	pos: Cursor
+	pos.row = clamp(row - 1, 0, len(b.lines) - 1)
+	text := b.lines[pos.row].text[:]
+	pos.col = clamp(col - 1, 0, len(text))
+	for pos.col > 0 && pos.col < len(text) && text[pos.col] & 0xC0 == 0x80 {
+		pos.col -= 1
+	}
 	origin := jump_here(editor)
+	oo := p.open_origin
+	p.open_origin = {}
+	t := plugin_task_of(p, L)
+	// qed.jump(qed.open(path), pos) records the jump from where the open started
+	if oo.buf == b.id && idx == editor.current && oo.task == (t.id if t != nil else 0) {
+		if from, _ := api_buf_find(editor, oo.from); from != nil {
+			origin = {path = strings.clone(from.path, context.temp_allocator), row = oo.pos.row, col = oo.pos.col}
+		}
+	}
 	if editor.filetree.active {
 		filetree_close(editor)
 	}
@@ -895,6 +927,126 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	editor_goto(editor, pos.row, pos.col)
 	jump_record(editor, origin)
 	return 0
+}
+
+LOCATION_SPACE :: " \t\n\v\f\r"
+
+location_digits :: proc(line: string, from: int) -> int {
+	i := from
+	for i < len(line) && line[i] >= '0' && line[i] <= '9' {
+		i += 1
+	}
+	return i
+}
+
+location_number :: proc(digits: string) -> int {
+	n := 0
+	for ch in transmute([]u8)digits {
+		n = min(n * 10 + int(ch - '0'), int(max(i32)))
+	}
+	return n
+}
+
+// Lua-pattern semantics: the shortest file wins per form, and an empty file skips to the next form.
+location_parse :: proc(line: string) -> (file, row, col, msg: string, ok: bool) {
+	for pat in 0 ..< 4 {
+		with_col := pat < 2
+		with_msg := pat % 2 == 0
+		for i in 0 ..< len(line) {
+			if line[i] != ':' {
+				continue
+			}
+			r := location_digits(line, i + 1)
+			if r == i + 1 {
+				continue
+			}
+			j := r
+			col_s := ""
+			if with_col {
+				if j >= len(line) || line[j] != ':' {
+					continue
+				}
+				k := location_digits(line, j + 1)
+				if k == j + 1 {
+					continue
+				}
+				col_s = line[j + 1:k]
+				j = k
+			}
+			msg_s := ""
+			if with_msg {
+				if j >= len(line) || line[j] != ':' {
+					continue
+				}
+				msg_s = strings.trim_left(line[j + 1:], LOCATION_SPACE)
+			} else if j != len(line) {
+				continue
+			}
+			if i == 0 {
+				break
+			}
+			return line[:i], line[i + 1:r], col_s, msg_s, true
+		}
+	}
+	return
+}
+
+qed_parse_locations :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	text := api_string(L, 1)
+	cwd := editor.working_root
+	#partial switch lua.type(L, 2) {
+	case .NIL, .NONE:
+	case .TABLE:
+		if dir, ok := api_field_string(L, 2, "cwd"); ok {
+			cwd = api_path(editor, dir)
+		}
+	case:
+		lua.L_argerror(L, 2, "table {cwd?} expected")
+	}
+	lua.L_checkstack(L, 4, "locations")
+	lua.newtable(L)
+	n := 0
+	rest := text
+	for line in strings.split_iterator(&rest, "\n") {
+		file, row, col, msg, ok := location_parse(strings.trim_suffix(line, "\r"))
+		if !ok {
+			continue
+		}
+		path: string
+		if strings.has_prefix(file, "/") {
+			path, _ = filepath.clean(file, context.temp_allocator)
+		} else {
+			path, _ = filepath.join({cwd, file}, context.temp_allocator)
+		}
+		fi, err := os.stat(path, context.temp_allocator)
+		if err != nil || fi.type != .Regular {
+			continue
+		}
+		shown, rerr := filepath.rel(editor.working_root, path, context.temp_allocator)
+		if rerr != .None {
+			shown = path
+		}
+		label := fmt.tprintf("%s:%s", shown, row)
+		if col != "" {
+			label = fmt.tprintf("%s:%s", label, col)
+		}
+		if msg != "" {
+			label = fmt.tprintf("%s: %s", label, msg)
+		}
+		lua.createtable(L, 0, 3)
+		lua.pushodinstring(L, label)
+		lua.setfield(L, -2, "label")
+		lua.pushodinstring(L, path)
+		lua.setfield(L, -2, "path")
+		api_pos_push(L, {location_number(row) - 1, (location_number(col) if col != "" else 1) - 1})
+		lua.setfield(L, -2, "pos")
+		n += 1
+		lua.rawseti(L, -2, lua.Integer(n))
+	}
+	return 1
 }
 
 qed_root :: proc "c" (L: ^lua.State) -> c.int {

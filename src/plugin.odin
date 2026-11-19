@@ -84,6 +84,10 @@ Plugins :: struct {
 	deco_ns:  [dynamic]PluginNs,
 	ns_seq:   u32,
 	status:   [dynamic]PluginStatus,
+	open_origin: struct {
+		task, buf, from: u64,
+		pos:             Cursor,
+	},
 }
 
 PluginEntry :: struct {
