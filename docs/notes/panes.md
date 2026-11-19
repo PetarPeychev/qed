@@ -346,7 +346,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 |---|---|---|
 | M0 (done) | Odin `Pane`, stack, kinds, generic render/key/mouse/paste. Port the 4 core dialogs and `qed.confirm/prompt` onto it as children. | "Collapse the four dialogs" TODO; layout, stack, children |
 | M1 (done) | `qed.ui.open`, queued events, prelude `qed.pick/prompt/confirm/pane`, exclusive persistence by `id`, one split layout (D3). Port phase 12 search to a `query` field + `append` (D9). | pane swap TODO; events through flush, split + preview |
-| M2 | Palette core-built on `qed.command_list`. Cwd picker becomes a Lua plugin on `qed.fs.dirs` + a `path` field (needs `qed.set_root` and an unsaved-outside-root query). | "Collapse the centered pickers" TODO; handles, `path` field, child confirm |
+| M2 (done) | Palette core-built on `qed.command_list`. Cwd picker becomes a Lua plugin on `qed.fs.dirs` + a `path` field (needs `qed.set_root` and an unsaved-outside-root query). | "Collapse the centered pickers" TODO; handles, `path` field, child confirm |
 | M3 | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
 | M4 | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
 | M5 | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
@@ -393,6 +393,23 @@ Views, events and the prelude are in DESIGN.md (Panes). Deviations from §3/§5:
 | Search | Parallel `rg --line-buffered` streamed through `spawn_bg{on_line}` into `append` on a `sort` list keyed `file\0row`; rows are deduped; the previous results stay up until the first new hit; Enter opens a visible hit while rg still runs; `max = 500`, the 501st hit kills rg and shows `500+` (which 500 is nondeterministic, shown sorted, as in phase 12). The plugin kills its rg on requery and close. A spawn error or rg exit code above 1 with no hits shows `Search failed: ...`. Query and selection persist through core `id`, also across a plugin reload. | `--sort path` is single-threaded and block-buffered (first hit 1-2 s on a large tree). |
 | Kill | Task kill frees only the foreground `qed.spawn` the task waits on; `spawn_bg` processes stay with the plugin until it kills them or unloads. | Keeps the pre-save timeout and query supersede killing formatters and searches without reaching into background work. |
 | Layout | Line find is untouched (M3), so D3 changes nothing visible in M1: plugin split panes already had the field over the list column. Palette and cwd picker stay overlays, so "Collapse the centered pickers" stays for M2. | |
+
+### M2 as built
+
+List sources, the `path` field and the palette are in DESIGN.md (Panes). Deviations from §3/§4:
+
+| Area | Built | Why |
+|---|---|---|
+| Handle type | A core `ListSource{kind, filetree, path}` on `PaneList.source`; core fills `list.items` (`pane_list_load`). Lua holds a `qed.List` table naming a `PluginList` record; `list.items = h` copies the source into the pane, so the view outlives the handle. M3/M4 add a kind and a fill case; a shared walk adds its own refcount. | Value sources need no shared state yet. |
+| `qed.command_list` | Core only (`.Commands`), no Lua constructor. | The palette is core (D1); no plugin lists commands. |
+| Methods | None (`count`, `ready`, `get`, `index`, `wait`, `within`, `union`), no `view:set(h)`; `v:set(items)` unbinds the source. | No user until M3/M4. |
+| Materialization | Activate and change hand Lua `{label, path?, detail?}` built from the core items; the view's Lua item table stays empty. | Only touched items cross. |
+| `qed.fs.dirs(path?)` | `path` defaults to the root; under a `path` field the field's text decides. Dotfiles follow the tree's toggle, no option. | Same behavior as the Odin picker. |
+| `path` field | Reports its text resolved to an absolute path (`~`, root-relative, cleaned) in activate, `wait` and close. Double-click drills in instead of activating. | Lua needs no `~` expansion; same UX as before. |
+| Palette over the tree | A Child with `over = &filetree.active` until the tree is a pane (M4). | Smallest step; the render special case is gone. |
+| Core chord | `Pane.chord` (a core command name) beside the plugin `toggle` id. Enter on an empty core list does nothing. | The palette's own chord closes it; Enter with no match kept it open before. |
+| Root change | `qed.set_root` closes outside buffers unconditionally; the `cwd` plugin confirms first (child `qed.confirm`, cancel leaves the picker as typed). The tree's `ConfirmRoot` mode is gone. | Unsaved check is a few lines of Lua over `qed.buf.list/path/modified`. |
+| Names | *Cwd: Change Working Directory*, the tree's *Cwd: Set as Working Directory*, bind `plugins.cwd.keybinds["Change Working Directory"]` (the old top-level key warns where it moved). Plugin messages read `Cwd: Not a directory: ...`. | Phase 13 namespacing; the short id keeps the Plugins pane columns. |
 
 ## 8. Decisions
 

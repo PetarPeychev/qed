@@ -210,6 +210,17 @@ come from the bundled `settings` plugin (no config of its own;
 } }
 ```
 
+### Working directory
+
+*Cwd: Change Working Directory* (`Ctrl+o`, also on the welcome screen) and the file tree's
+*Cwd: Set as Working Directory* (same chord, the selected dir or a file's parent) come from the
+bundled `cwd` plugin. Rebind both with `plugins.cwd.keybinds["Change Working Directory"]`; the old
+top-level `keybinds."Change Working Directory"` warns where it moved.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.cwd.enabled` | `true` | Off removes both commands. |
+
 ### Search
 
 *Search: Find in Files* (`Alt+F`) and the file tree's *Search: Find in Files* (same

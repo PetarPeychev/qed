@@ -41,7 +41,8 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | highlight/predicate/inspect | KS | core | Threads, FFI, per-edit reparse. |
 | textfield/overlay/fuzzy/pane/preview/confirm widgets | KS | core | Exposed as `qed.ui.open`; `qed.pick`, `prompt`, `confirm`, `pane` are Lua sugar over it. |
 | palette + keybind dispatch | KS | core | Gains a dynamic plugin-command list. |
-| find/replace, linefind, jump, cwdpick | | core | Interactive per keystroke. Porting gains nothing. |
+| find/replace, linefind, jump | | core | Interactive per keystroke. Porting gains nothing. |
+| cwdpick | | **plugin** (M2, `plugins/cwd`) | `ui.open` `path` field over `qed.fs.dirs`, `confirm`, `set_root`. Core keeps the field (drill, segment drop, resolve) and the dir listing. |
 | quit/close/disk-conflict dialogs | | core | Safety of unsaved work. |
 | log | | core | `qed.log`, `qed.message`. |
 | clipboard | | core | `qed.clipboard`. |
@@ -137,7 +138,7 @@ There is deliberately no `key` event.
 | Function | Notes |
 |---|---|
 | `qed.message(text, level? \| {level?})`, `qed.log(level, text)` | Always attributed to the plugin's display name. Unknown options raise. |
-| `qed.ui.open(spec) -> view \| nil, "busy"\|"closed"` | A pane on the core model ([panes.md](panes.md) §5, M1 as built): `id`, `place` (`center`/`full`/`split`), `size`, `kind` (`exclusive`/`child`), `parent`, `focus = false` (passive), `title`, `fields` (`{prompt?, text?, mode = filter\|query\|input, count?}`), `list` (`{items, multi?, max?, empty?, selected?, sort?}`), `modal`, `preview = "auto"`, `text` lines, `footer = {hints}`, `on = {activate, change, query, close}`. Items are strings or `{label, detail?, value?, path?, pos?, key?}`. Raises in `setup`. |
+| `qed.ui.open(spec) -> view \| nil, "busy"\|"closed"` | A pane on the core model ([panes.md](panes.md) §5, M1 as built): `id`, `place` (`center`/`full`/`split`), `size`, `kind` (`exclusive`/`child`), `parent`, `focus = false` (passive), `title`, `fields` (`{prompt?, text?, mode = filter\|query\|input\|path, count?}`), `list` (`{items (a table or a `qed.List` handle), multi?, max?, empty?, selected?, sort?}`), `modal`, `preview = "auto"`, `text` lines, `footer = {hints}`, `on = {activate, change, query, close}`. Items are strings or `{label, detail?, value?, path?, pos?, key?}`. Raises in `setup`. |
 | `on.activate(v, items)`, `on.change(v, item)`, `on.query(v, text)`, `on.close(v)` | Queued during input dispatch, run as tasks in the flush before the next frame. `change` coalesces per flush and kills the previous run; `query` runs at open and `PANE_QUERY_DEBOUNCE_MS` (120) after typing stops, killing the previous run and the `qed.spawn` it waits on (not `spawn_bg`); close kills both. Activate leaves the pane open. |
 | `v:set(items, {selected?, more?, hint?})`, `v:append(items)`, `v:update(key, fields)`, `v:text(lines)`, `v:close()` | `set`/`append`/`update`/`text` return false once closed. `max` caps the list and shows `N+`. |
 | ⏳ `v:wait() -> items \| nil, index \| nil, text \| nil` | The next activate (items, the first one's index, the first field's text) or the close (`nil, nil, text`). |
@@ -201,10 +202,12 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | Function | Notes |
 |---|---|
 | `qed.fs.read`, `.write` (atomic), `.exists`, `.stat`, `.list` | Synchronous. |
+| `qed.fs.dirs(path?) -> qed.List` | A core list handle over `path`'s subdirs (default the root), or under a `path` field over the dir its text names, prefix-matched. Items stay in core; activate/change hand Lua `{label, path}`. Freed when collected or on unload. |
 | `qed.json.decode`, `.encode` | `core:encoding/json` |
 | `qed.path.join/dir/base/rel/abs`, `qed.shell_quote` | |
 | `qed.parse_locations(text, {cwd?}) -> {label, path, pos}[]` | Parses `file:row:col: msg`, `file:row:col`, `file:row: msg` and `file:row` lines (CRLF ok; the shortest file wins, so `a:b.txt:4: m` is `a:b.txt`) into `qed.pick` items. Relative files resolve against `cwd` (default the root); lines naming a missing file are skipped; labels are root-relative. `{}` when nothing parses. |
 | `qed.root()`, `qed.version` | |
+| `qed.set_root(path) -> true \| nil, err` | Switch the working root: closes buffers outside it (unsaved too, so confirm first), restarts LSP, resets the tree, fires `root_changed`. `nil, "not a directory: ..."`. |
 | `qed.options(defaults) -> table` | Declares this plugin's config keys and defaults, returns the merged config. Setup only, once per load; raises otherwise. `enabled` and `keybinds` are reserved and raise. |
 | `qed.meta{display_name?}` | Plugin metadata. Setup only, once per load; unknown fields and a non-string or empty `display_name` raise. Must come before any `qed.command`. A display name another loaded plugin uses, or a core log label (`PLUGIN_RESERVED_LABELS`), raises. |
 | `qed.config() -> table` | This plugin's merged subtree. Read-only. |
@@ -330,6 +333,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 12 | Query-driven `qed.pick` (`query`, `on_query`, `picker:set`), the opening command's chord closes a modal, `ctx.files` expands scoped-tab dirs. Project search moves to `plugins/search` (*Find in Files* and the tree's *Search*); `projsearch.odin` and `projsearch_min_query` (now `plugins.search.min_query`) are gone. | minor |
 | 13 | `qed.meta{display_name}`, display names everywhere a plugin is named, automatic `<display name>: ` command prefix, `qed.message` without `source`, keybinds under `plugins.<id>.keybinds` (plugin binds leave the top-level `keybinds`), the `Lua` LSP settings go out only under the config dir, `modules.lsp` becomes `lsp` and `.Lsp` leaves the `Module` enum, `pickers` becomes `settings` (`plugins.settings`), the `tasks` plugin is dropped (`plugins.tasks`, its picker and `tasks N` segment; `qed.term` stays). | minor |
 | M1 | `qed.ui.open` and views (set/append/update/text/close/wait), queued `activate`/`change`/`query`/`close`, exclusive panes persisted by `id`, `ctx.view`; `qed.pick/prompt/confirm/pane` become prelude sugar (`pick` over an open pane is a child, not `"busy"`); `search` streams parallel `rg --line-buffered` into a key-sorted query pane. | minor |
+| M2 | Palette core-built on a commands list source; core list handles (`qed.fs.dirs`), `path` field mode, `qed.set_root`; the cwd picker becomes the bundled `cwd` plugin (*Cwd: Change Working Directory*, tree *Cwd: Set as Working Directory*), `cwdpick.odin` and the top-level `Change Working Directory` keybind are gone. | minor |
 | later | Conflicts, aiedit, fim and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions
