@@ -1,26 +1,13 @@
 package main
 
-import "base:runtime"
-
 Module :: enum {
 	None,
-	Git,
 	Lsp,
 	Ai,
 }
 
-g_git_loaded: bool
-
-@(init)
-module_probe :: proc "contextless" () {
-	context = runtime.default_context()
-	GIT_BINARY_PRESENT = shell_command_exists("git")
-}
-
 module_enabled :: proc(m: Module) -> bool {
 	switch m {
-	case .Git:
-		return g_git_loaded && GIT_BINARY_PRESENT
 	case .Lsp:
 		return LSP_ENABLED
 	case .Ai:
@@ -36,7 +23,6 @@ module_enabled :: proc(m: Module) -> bool {
 // no-op when the module's state already matches). Per-module sync procs are
 // appended here by their subsystem.
 editor_modules_sync :: proc(editor: ^Editor) {
-	git_module_sync(editor)
 	lsp_module_sync(editor)
 	ai_module_sync(editor)
 }

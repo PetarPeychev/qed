@@ -84,11 +84,10 @@ DIFF_VIEW: bool
 LINE_WRAP: bool
 FILETREE_SHOW_DOTFILES: bool
 FILETREE_SHOW_IGNORED: bool
-FILETREE_GIT_DIFF_ONLY: bool
+FILETREE_DIFF_ONLY: bool
 TERMINAL_ESCAPE_CLOSES: bool
 LSP_ENABLED: bool
 AI_ENABLED: bool
-GIT_BINARY_PRESENT: bool
 
 config_bools := [?]Config_Bool {
 	{"cursor_accel", &CURSOR_ACCEL},
@@ -98,7 +97,7 @@ config_bools := [?]Config_Bool {
 	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
 	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
 	{"diff_view", &DIFF_VIEW},
-	{"filetree_diff_only", &FILETREE_GIT_DIFF_ONLY},
+	{"filetree_diff_only", &FILETREE_DIFF_ONLY},
 }
 
 Config_Str :: struct {

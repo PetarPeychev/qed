@@ -154,14 +154,10 @@ qed_status_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
-qed_git_api := [?]lua.L_Reg {
-	{"set_base", qed_git_set_base},
-	{nil, nil},
-}
-
-@(private = "file")
 qed_filetree_api := [?]lua.L_Reg {
-	{"refresh", qed_filetree_refresh},
+	{"provide", qed_filetree_provide},
+	{"set_status", qed_filetree_set_status},
+	{"set_base", qed_filetree_set_base},
 	{nil, nil},
 }
 
@@ -187,7 +183,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"git", qed_git_api[:]}, {"filetree", qed_filetree_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"filetree", qed_filetree_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -2222,39 +2218,148 @@ qed_buf_set_base :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-qed_git_set_base :: proc "c" (L: ^lua.State) -> c.int {
+qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	ref := ""
-	if lua.type(L, 1) > .NIL {
-		ref = api_string(L, 1)
+	t := &editor.filetree
+	pl := api_loaded(L, editor)
+	if lua.type(L, 1) <= .NIL {
+		filetree_provider_unload(editor, pl.name)
+		return 0
 	}
-	label, merge := ref, false
-	if lua.type(L, 2) == .TABLE {
-		if v, ok := api_field_string(L, 2, "label"); ok {
-			label = api_one_line(v)
-		}
-		lua.getfield(L, 2, "merge")
-		merge = bool(lua.toboolean(L, -1))
+	if lua.type(L, 1) != .TABLE {
+		lua.L_argerror(L, 1, "table or nil expected")
+	}
+	label, _ := api_field_string(L, 1, "label")
+	label = api_one_line(label)
+	if label == "" {
+		lua.L_argerror(L, 1, "label must be a non-empty string")
+	}
+	open_t := lua.getfield(L, 1, "open_deleted")
+	if open_t != .FUNCTION && open_t != .NIL {
+		lua.L_argerror(L, 1, "open_deleted must be a function")
+	}
+	ref: i32
+	if open_t == .FUNCTION {
+		ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	} else {
 		lua.pop(L, 1)
-	} else if lua.type(L, 2) > .NIL {
-		lua.L_argerror(L, 2, "options table expected")
 	}
-	api_loaded(L, editor)
-	git_base_set(ref, label, merge)
-	filetree_git_refresh(editor, "")
+	filetree_provider_clear(editor)
+	t.provider = {owner = plugin_name_intern(&editor.plugins, pl.name), label = strings.clone(label), open_ref = ref}
+	t.scanned = false
+	if t.active {
+		filetree_status_request(editor)
+	}
 	return 0
 }
 
-qed_filetree_refresh :: proc "c" (L: ^lua.State) -> c.int {
+api_provider :: proc(L: ^lua.State, editor: ^Editor) {
+	pl := api_loaded(L, editor)
+	if editor.filetree.provider.owner != pl.name {
+		plugin_raise(L, "not the file tree status provider (call qed.filetree.provide first)")
+	}
+}
+
+qed_filetree_set_status :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	path := ""
-	if lua.type(L, 1) > .NIL {
-		path = api_string(L, 1)
+	editor := entry.editor
+	t := &editor.filetree
+	api_provider(L, editor)
+	if lua.type(L, 1) != .TABLE {
+		lua.L_argerror(L, 1, "files table expected")
 	}
-	filetree_git_refresh(entry.editor, path)
+	ignored_t := lua.type(L, 2)
+	if ignored_t != .TABLE && ignored_t > .NIL {
+		lua.L_argerror(L, 2, "ignored list expected")
+	}
+	lua.settop(L, 2)
+	Entry :: struct {
+		path, from: string,
+		mark:       DiffMark,
+		size:       FileTreeSize,
+	}
+	files := make([dynamic]Entry, context.temp_allocator)
+	lua.pushnil(L)
+	for lua.next(L, 1) != 0 {
+		if lua.type(L, -2) != .STRING || lua.type(L, -1) != .TABLE {
+			plugin_raise(L, "files: path = {mark, from?, added?, removed?} expected")
+		}
+		key, _ := lua.toodinstring(L, -2)
+		e := Entry {
+			path = api_path(editor, key),
+		}
+		v := lua.absindex(L, -1)
+		mark, _ := api_field_string(L, v, "mark")
+		switch mark {
+		case "added":
+			e.mark = .Added
+		case "modified":
+			e.mark = .Modified
+		case "deleted":
+			e.mark = .Deleted
+		case:
+			plugin_raise(L, fmt.tprintf("files[%q].mark must be \"added\", \"modified\" or \"deleted\"", key))
+		}
+		if from, ok := api_field_string(L, v, "from"); ok && from != "" {
+			e.from = api_path(editor, from)
+		}
+		added, aok := api_field_int(L, v, "added")
+		removed, rok := api_field_int(L, v, "removed")
+		if added < 0 || removed < 0 {
+			plugin_raise(L, fmt.tprintf("files[%q]: added and removed must not be negative", key))
+		}
+		if aok || rok {
+			e.size = {added, removed}
+		}
+		append(&files, e)
+		lua.pop(L, 1)
+	}
+	ignored := make([dynamic]string, context.temp_allocator)
+	if ignored_t == .TABLE {
+		n := int(lua.rawlen(L, 2))
+		for i in 1 ..= n {
+			if lua.rawgeti(L, 2, lua.Integer(i)) != .STRING {
+				plugin_raise(L, "ignored must be a list of paths")
+			}
+			sv, _ := lua.toodinstring(L, -1)
+			append(&ignored, api_path(editor, sv))
+			lua.pop(L, 1)
+		}
+	}
+	filetree_clear_status(t)
+	root := editor.working_root
+	for e in files {
+		filetree_status_add(t, root, e.path, e.mark)
+		if e.from != "" && e.path not_in t.renames {
+			t.renames[strings.clone(e.path)] = strings.clone(e.from)
+		}
+		if (e.size.added > 0 || e.size.removed > 0) && e.path not_in t.diffsize {
+			t.diffsize[strings.clone(e.path)] = e.size
+		}
+	}
+	for path in ignored {
+		if path not_in t.ignored {
+			t.ignored[strings.clone(path)] = true
+		}
+	}
+	filetree_status_pushed(editor)
+	return 0
+}
+
+qed_filetree_set_base :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	api_provider(L, editor)
+	path := api_path(editor, api_string(L, 1))
+	if lua.type(L, 2) <= .NIL {
+		filetree_base_set(editor, path, nil)
+	} else {
+		filetree_base_set(editor, path, api_text_arg(L, 2))
+	}
 	return 0
 }
 

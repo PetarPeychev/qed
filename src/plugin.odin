@@ -99,6 +99,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/init.lua", #load("../plugins/git/init.lua", string)},
 	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
+	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
 	{"pickers/init.lua", #load("../plugins/pickers/init.lua", string)},
 	{"tasks/init.lua", #load("../plugins/tasks/init.lua", string)},
 }
@@ -208,7 +209,6 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 }
 
 plugins_shutdown :: proc(p: ^Plugins) {
-	g_git_loaded = false
 	plugin_ui_destroy(p)
 	delete(p.persist_path)
 	plugin_sched_shutdown(p)
@@ -538,9 +538,6 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	p := &editor.plugins
 	delete(pl.cfg_sig)
 	pl.cfg_sig = strings.clone(plugin_cfg_sig(pl.name, editor_config_user(editor)))
-	if pl.name == "git" {
-		g_git_loaded = false
-	}
 	if check_enabled && !plugin_cfg_enabled(pl.name, editor_config_user(editor)) {
 		pl.state = .Disabled
 		return
@@ -574,9 +571,6 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	if !ok {
 		plugin_error(editor, pl, msg, tb, true)
 		return
-	}
-	if pl.name == "git" {
-		g_git_loaded = true
 	}
 	editor_log(editor, .Debug, "Plugins", fmt.tprintf("loaded %s (%s) in %.2f ms", pl.name, "bundled" if pl.bundled else "user", ms_since(start)))
 	if p.bound && !p.startup_due {
@@ -824,10 +818,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	plugin_deco_unload(editor, pl.name)
 	plugin_status_unload(p, pl.name)
 	diffbase_unload(editor, pl.name)
-	if pl.name == "git" {
-		g_git_loaded = false
-		git_module_sync(editor)
-	}
+	filetree_provider_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
 			plugin_command_remove(editor, i)
@@ -1378,14 +1369,6 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 			lua.pushodinstring(L, t.entries[i].path)
 			lua.rawseti(L, -2, lua.Integer(i - lo + 1))
 		}
-	case "base":
-		lua.createtable(L, 0, 3)
-		lua.pushodinstring(L, g_diff_base.ref if g_diff_base.ref != "" else "HEAD")
-		lua.setfield(L, -2, "ref")
-		lua.pushodinstring(L, g_diff_base.label if g_diff_base.ref != "" else "HEAD")
-		lua.setfield(L, -2, "label")
-		lua.pushboolean(L, b32(g_diff_base.merge))
-		lua.setfield(L, -2, "merge")
 	case:
 		return 0
 	}

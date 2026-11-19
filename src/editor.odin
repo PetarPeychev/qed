@@ -92,7 +92,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
-		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED, git_diff_only = FILETREE_GIT_DIFF_ONLY},
+		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED, diff_only = FILETREE_DIFF_ONLY, scanned = true},
 		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
 		headless       = headless,
 	}
@@ -140,9 +140,6 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		}
 		editor_log(&editor, .Debug, "Clipboard", fmt.tprintf("using %s", tool))
 	}
-	if !headless && editor.working_root != "" {
-		filetree_scan_start(&editor)
-	}
 	editor_plugins_start(&editor, g_bundled_plugins, "" if headless else plugin_user_dir(), PLUGIN_MEMORY_MB * 1024 * 1024)
 	plugins_rebind(&editor)
 	if !headless {
@@ -179,7 +176,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
 	palette_destroy(&editor.palette)
-	git_base_set("", "", false)
 	cwdpick_destroy(&editor.cwdpick)
 	linefind_destroy(&editor.linefind)
 	find_destroy(&editor.find)
@@ -321,8 +317,8 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				filetree_open_open(editor)
 				return
 			}
-			if module_enabled(.Git) && command_matches(ev, "File Tree: Git") {
-				filetree_open_git(editor)
+			if command_matches(ev, "File Tree: Changes") {
+				filetree_open_changes(editor)
 				return
 			}
 			if command_matches(ev, "File Tree: Unsaved") {
@@ -1512,7 +1508,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		ai_rows = llm_active_rows(editor, b)
 	}
 
-	conflicts := merge_scan(b) if module_enabled(.Git) else nil
+	conflicts := merge_scan(b)
 	conflict_spans := merge_word_map(b, conflicts)
 
 	pal := deco_palette(editor.plugins.colors[:])

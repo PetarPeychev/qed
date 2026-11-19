@@ -52,6 +52,8 @@ PluginEvent :: enum {
 	Term_Open,
 	Term_Exit,
 	Term_Close,
+	Filetree_Refresh,
+	Filetree_Preview,
 	Quit,
 }
 
@@ -72,6 +74,8 @@ plugin_event_names := [PluginEvent]string {
 	.Term_Open        = "term_open",
 	.Term_Exit        = "term_exit",
 	.Term_Close       = "term_close",
+	.Filetree_Refresh = "filetree_refresh",
+	.Filetree_Preview = "filetree_preview",
 	.Quit             = "quit",
 }
 
@@ -374,7 +378,7 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 
 plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 	#partial switch q.event {
-	case .Startup, .Config_Changed, .Theme_Changed, .Quit:
+	case .Startup, .Config_Changed, .Theme_Changed, .Filetree_Refresh, .Quit:
 		return 0
 	case .Buf_Changed:
 		lua.pushinteger(L, lua.Integer(q.buf))
@@ -392,7 +396,7 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 		lua.pushodinstring(L, q.a)
 		lua.pushinteger(L, lua.Integer(q.n))
 		return 2
-	case .Term_Open, .Term_Close:
+	case .Term_Open, .Term_Close, .Filetree_Preview:
 		lua.pushodinstring(L, q.a)
 		return 1
 	}

@@ -224,7 +224,6 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 	delete(editor.working_root)
 	editor.working_root = root
 	editor.hover_active = false
-	git_base_set("", "", false)
 	lsp_restart_all(editor)
 	filetree_root_reset(editor)
 	projsearch_root_reset(&editor.projsearch)

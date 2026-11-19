@@ -1,6 +1,7 @@
 package main
 
 import "base:runtime"
+import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -11,6 +12,7 @@ import "core:sys/posix"
 import "core:thread"
 import "core:time"
 import "core:unicode/utf8"
+import lua "lib:lua"
 import "lib:tb2"
 
 FILETREE_FILTER_DEBOUNCE_MS :: 100
@@ -32,7 +34,7 @@ FileTreeMode :: enum {
 FileTreeScope :: enum {
 	All,
 	Open,
-	Git,
+	Changes,
 	Unsaved,
 }
 
@@ -41,10 +43,34 @@ FileTreeTab :: struct {
 	scope: FileTreeScope,
 }
 
-filetree_tabs := [?]FileTreeTab{{"All", .All}, {"Open", .Open}, {"Git", .Git}, {"Unsaved", .Unsaved}}
+filetree_tabs := [?]FileTreeTab{{"All", .All}, {"Open", .Open}, {"", .Changes}, {"Unsaved", .Unsaved}}
 
-filetree_tab_visible :: proc(scope: FileTreeScope) -> bool {
-	return scope != .Git || module_enabled(.Git)
+FileTreeSize :: struct {
+	added, removed: int,
+}
+
+FileTreeBaseState :: enum {
+	None,
+	Wanted,
+	Text,
+	Missing,
+}
+
+FileTreeProvider :: struct {
+	owner:      string,
+	label:      string,
+	open_ref:   i32,
+	base_path:  string,
+	base_text:  string,
+	base_state: FileTreeBaseState,
+}
+
+filetree_tab_visible :: proc(t: ^FileTree, scope: FileTreeScope) -> bool {
+	return scope != .Changes || t.provider.owner != ""
+}
+
+filetree_tab_label :: proc(t: ^FileTree, tab: FileTreeTab) -> string {
+	return t.provider.label if tab.scope == .Changes else tab.label
 }
 
 FileEntry :: struct {
@@ -72,15 +98,15 @@ FileTree :: struct {
 	preview:         Preview,
 	status:          map[string]DiffMark,
 	ignored:         map[string]bool,
-	diffsize:        map[string]GitDiffSize,
+	diffsize:        map[string]FileTreeSize,
 	renames:         map[string]string,
 	deleted:         [dynamic]string,
 	show_dotfiles:   bool,
 	show_ignored:    bool,
-	git_diff_only:   bool,
+	diff_only:       bool,
 	scope:           FileTreeScope,
 	scope_paths:     map[string]bool,
-	scan_sub:        Subprocess,
+	provider:        FileTreeProvider,
 	scanned:         bool,
 	filter_cands:    [dynamic]FileEntry,
 	filter_valid:    bool,
@@ -157,7 +183,6 @@ filetree_layout :: proc(editor: ^Editor) -> FileTreeLayout {
 
 filetree_destroy :: proc(t: ^FileTree) {
 	filetree_prewarm_cancel(t)
-	subprocess_kill(&t.scan_sub)
 	filetree_clear_entries(t)
 	delete(t.entries)
 	for key in t.expanded {
@@ -181,6 +206,8 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.filter_cands)
 	delete(t.filter_last_idx)
 	delete(t.root_target)
+	filetree_base_reset(t)
+	delete(t.provider.label)
 }
 
 filetree_root_reset :: proc(editor: ^Editor) {
@@ -200,11 +227,12 @@ filetree_root_reset :: proc(editor: ^Editor) {
 	filetree_paths_clear(&t.scope_paths)
 	filetree_filter_cache_clear(t)
 	filetree_clear_status(t)
-	t.scanned = false
+	filetree_base_reset(t)
+	t.scanned = t.provider.owner == ""
 	t.scan_gen += 1
 	t.mode = .Nav
 	textfield_reset(&t.filter)
-	filetree_scan_start(editor)
+	filetree_status_request(editor)
 	if t.active {
 		filetree_rebuild(editor)
 		filetree_prewarm_start(editor)
@@ -289,166 +317,90 @@ filetree_clear_status :: proc(t: ^FileTree) {
 	clear(&t.deleted)
 }
 
-// One repo when the root is inside a git repo; otherwise walk down, pruning at
-// each discovered repo so we never descend into an ignored node_modules. Each
-// repo's status is prefixed with an `@@REPO@@ <toplevel>` marker so the parser
-// knows the base its relative paths join against.
-filetree_scan_cmd :: proc(root: string) -> cstring {
-	q := shell_quote(root)
-	base := ""
-	if g_diff_base.ref != "" {
-		base = fmt.tprintf(
-			`b=%s; if [ "$b" != HEAD ]; then echo @@BASE@@; git -c core.quotePath=false -C "$1" diff --name-status --find-renames "$b" 2>/dev/null; echo @@STATUS@@; fi; `,
-			git_base_rev(`"$1"`),
-		)
-	}
-	return fmt.ctprintf(
-		`scan() (echo "@@REPO@@ $1"; %sgit -c core.quotePath=false -C "$1" status --porcelain --find-renames --ignored=matching --untracked-files=all 2>/dev/null; %s); if top=$(git -C %s rev-parse --show-toplevel 2>/dev/null); then scan "$top"; else find %s -type d -exec sh -c 'test -e "$0/.git"' %s \; -prune -print 2>/dev/null | while IFS= read -r repo; do scan "$repo"; done; fi`,
-		base,
-		git_diffsize_cmd(`"$1"`),
-		q,
-		q,
-		"{}",
-	)
-}
-
-filetree_scan_status :: proc(editor: ^Editor) {
-	root := editor.working_root
-	if root == "" || !module_enabled(.Git) {
-		filetree_clear_status(&editor.filetree)
-		editor.filetree.scanned = true
+filetree_status_request :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	owner := editor.filetree.provider.owner
+	if owner == "" {
 		return
 	}
-	out, ok := shell_capture(filetree_scan_cmd(root))
-	if !ok {
-		return
+	for q in p.queue {
+		if q.event == .Filetree_Refresh {
+			return
+		}
 	}
-	filetree_scan_apply(editor, out)
+	plugin_queue(editor, {event = .Filetree_Refresh, only = owner})
 }
 
-filetree_scan_start :: proc(editor: ^Editor) {
+filetree_base_reset :: proc(t: ^FileTree) {
+	delete(t.provider.base_path)
+	delete(t.provider.base_text)
+	t.provider.base_path = ""
+	t.provider.base_text = ""
+	t.provider.base_state = .None
+}
+
+filetree_status_pushed :: proc(editor: ^Editor) {
 	t := &editor.filetree
-	if t.scan_sub.running {
-		subprocess_kill(&t.scan_sub)
+	filetree_filter_invalidate(t)
+	filetree_base_reset(t)
+	for path, mark in t.status {
+		if mark == .Deleted {
+			append(&t.deleted, path)
+		}
 	}
-	root := editor.working_root
-	if root == "" || !module_enabled(.Git) {
-		filetree_clear_status(t)
-		t.scanned = true
-		return
-	}
-	sub, serr, ok := subprocess_start(string(filetree_scan_cmd(root)), nil, root)
-	if !ok {
-		editor_log(editor, .Debug, "Files", fmt.tprintf("git scan spawn failed (%v)", serr))
-		return
-	}
-	t.scan_sub = sub
-}
-
-filetree_scanning :: proc(editor: ^Editor) -> bool {
-	return editor.filetree.scan_sub.running
-}
-
-filetree_scan_pump :: proc(editor: ^Editor) -> bool {
-	t := &editor.filetree
-	if !t.scan_sub.running {
-		return false
-	}
-	if !subprocess_drain(&t.scan_sub) {
-		return false
-	}
-	filetree_scan_apply(editor, subprocess_output(&t.scan_sub))
-	editor_log(editor, .Debug, "Files", fmt.tprintf("git scan: %d changed path(s)", len(t.status)))
-	subprocess_destroy(&t.scan_sub)
-	// Skip the visual rebuild while an overlay covers the tree — it would clear the
-	// selection/anchor; the next normal rebuild picks up the fresh status.
+	t.scan_gen += 1
+	t.scanned = true
+	editor_log(editor, .Debug, "Files", fmt.tprintf("file tree status: %d path(s) from %s", len(t.status), t.provider.owner))
+	// an overlay over the tree would lose its selection to a rebuild; the next one picks the status up
 	if t.active && !editor.projsearch.active && !editor.palette.active {
 		filetree_rebuild(editor)
 	}
 	if t.active {
 		filetree_prewarm_start(editor)
 	}
-	return true
 }
 
-filetree_scan_apply :: proc(editor: ^Editor, output: string) {
+filetree_provider_clear :: proc(editor: ^Editor) {
 	t := &editor.filetree
+	if t.provider.open_ref != 0 && editor.plugins.L != nil {
+		lua.L_unref(editor.plugins.L, lua.REGISTRYINDEX, c.int(t.provider.open_ref))
+	}
+	delete(t.provider.label)
+	filetree_base_reset(t)
+	t.provider = {}
 	filetree_clear_status(t)
 	filetree_filter_invalidate(t)
 	t.scan_gen += 1
 	t.scanned = true
-	root := editor.working_root
-	out := output
-	top := ""
-	section := ""
-	based := false
-	for line in strings.split_lines_iterator(&out) {
-		if strings.has_prefix(line, "@@REPO@@ ") {
-			top = strings.trim_space(line[len("@@REPO@@ "):])
-			section = ""
-			based = false
-			continue
-		}
-		if line == "@@NUMSTAT@@" || line == "@@UNTRACKED@@" || line == "@@BASE@@" {
-			section = line
-			based ||= line == "@@BASE@@"
-			continue
-		}
-		if line == "@@STATUS@@" {
-			section = ""
-			continue
-		}
-		if top == "" {
-			continue
-		}
-		if section == "@@BASE@@" {
-			if rel, old, mark, ok := git_name_status_line(line); ok {
-				filetree_change_add(t, root, top, rel, old, mark)
-			}
-			continue
-		}
-		if section != "" {
-			rel, size, ok := git_numstat_line(line, section == "@@UNTRACKED@@")
-			if ok && (size.added > 0 || size.deleted > 0) {
-				abs, _ := filepath.join({top, rel}, context.temp_allocator)
-				if abs not_in t.diffsize {
-					t.diffsize[strings.clone(abs)] = size
-				}
-			}
-			continue
-		}
-		rel, old, mark, ok := git_porcelain_line(line)
-		if !ok {
-			continue
-		}
-		if strings.has_prefix(line, "!!") {
-			abs, _ := filepath.join({top, rel}, context.temp_allocator)
-			t.ignored[strings.clone(abs)] = true
-			continue
-		}
-		if based && !strings.has_prefix(line, "??") {
-			continue
-		}
-		filetree_change_add(t, root, top, rel, old, mark)
+	if t.scope == .Changes {
+		t.scope = .All
 	}
-	for path, mark in t.status {
-		if mark == .Deleted {
-			append(&t.deleted, path)
-		}
+	if t.active {
+		filetree_rebuild(editor)
 	}
 }
 
-filetree_change_add :: proc(t: ^FileTree, root, top, rel, old: string, mark: DiffMark) {
-	abs, _ := filepath.join({top, rel}, context.temp_allocator)
-	m := mark
-	if m == .Deleted && os.exists(abs) {
-		m = .Modified
+filetree_provider_unload :: proc(editor: ^Editor, owner: string) {
+	if editor.filetree.provider.owner == owner && owner != "" {
+		filetree_provider_clear(editor)
 	}
-	if old != "" && abs not_in t.renames {
-		o, _ := filepath.join({top, old}, context.temp_allocator)
-		t.renames[strings.clone(abs)] = strings.clone(o)
+}
+
+filetree_base_set :: proc(editor: ^Editor, path: string, text: Maybe(string)) {
+	t := &editor.filetree
+	pv := &t.provider
+	if pv.base_state != .Wanted || pv.base_path != path {
+		return
 	}
-	filetree_status_add(t, root, abs, m)
+	if s, ok := text.?; ok {
+		pv.base_text = strings.clone(s)
+		pv.base_state = .Text
+	} else {
+		pv.base_state = .Missing
+	}
+	if t.active {
+		filetree_load_preview(editor)
+	}
 }
 
 filetree_entry_deleted :: proc(t: ^FileTree, e: FileEntry) -> bool {
@@ -513,7 +465,7 @@ filetree_build_scope :: proc(editor: ^Editor) {
 	root := editor.working_root
 	switch t.scope {
 	case .All:
-	case .Git:
+	case .Changes:
 		for path in t.status {
 			filetree_paths_set(&t.scope_paths, path)
 		}
@@ -734,7 +686,7 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 	filetree_filter_cache_clear(t)
 	walk_at := time.tick_now()
 	filetree_walk(t, editor.working_root, &t.filter_cands)
-	if t.scope == .Git {
+	if t.scope == .Changes {
 		under := strings.concatenate({editor.working_root, "/"}, context.temp_allocator)
 		seen := make(map[string]bool, context.temp_allocator)
 		for d in t.deleted {
@@ -998,9 +950,27 @@ filetree_load_preview :: proc(editor: ^Editor) {
 		return
 	}
 	h := lay.preview_h
-	if t.scope == .Git && module_enabled(.Git) {
-		preview_set_diff(&t.preview, e.path, h, t.git_diff_only, t.renames[e.path])
-		return
+	if t.scope == .Changes && t.provider.owner != "" {
+		pv := &t.provider
+		if pv.base_path != e.path {
+			filetree_base_reset(t)
+			pv.base_path = strings.clone(e.path)
+			if plugin_subscribed(&editor.plugins, pv.owner, .Filetree_Preview) {
+				pv.base_state = .Wanted
+				plugin_queue(editor, {event = .Filetree_Preview, a = e.path, only = pv.owner})
+			} else {
+				pv.base_state = .Missing
+			}
+		}
+		switch pv.base_state {
+		case .Wanted:
+			preview_reset(&t.preview)
+			return
+		case .Text:
+			preview_set_diff(&t.preview, e.path, h, t.diff_only, pv.base_text)
+			return
+		case .Missing, .None:
+		}
 	}
 	if idx := editor_find_buffer(editor, e.path); idx >= 0 {
 		b := &editor.buffers[idx]
@@ -1043,7 +1013,7 @@ filetree_read_dir :: proc(t: ^FileTree, dir: string, depth: int) {
 	for info in infos {
 		append(&rows, Row{info.fullpath, info.type == .Directory})
 	}
-	if t.scope == .Git {
+	if t.scope == .Changes {
 		prefix := strings.concatenate({dir, "/"}, context.temp_allocator)
 		virtual: for d in t.deleted {
 			if !strings.has_prefix(d, prefix) {
@@ -1168,7 +1138,7 @@ filetree_rebuild :: proc(editor: ^Editor) {
 
 filetree_refresh :: proc(editor: ^Editor) {
 	filetree_filter_invalidate(&editor.filetree)
-	filetree_scan_status(editor)
+	filetree_status_request(editor)
 	filetree_rebuild(editor)
 }
 
@@ -1216,18 +1186,21 @@ filetree_open :: proc(editor: ^Editor) {
 	filetree_filter_cache_clear(t)
 	editor_clear_message(editor)
 	filetree_rebuild(editor)
-	filetree_scan_start(editor)
+	filetree_status_request(editor)
 	filetree_prewarm_start(editor)
 }
 
 filetree_open_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
+	if !filetree_tab_visible(&editor.filetree, scope) {
+		return
+	}
 	editor.filetree.scope = scope
 	filetree_open(editor)
 }
 
 filetree_open_all :: proc(editor: ^Editor) {filetree_open_scope(editor, .All)}
 filetree_open_open :: proc(editor: ^Editor) {filetree_open_scope(editor, .Open)}
-filetree_open_git :: proc(editor: ^Editor) {filetree_open_scope(editor, .Git)}
+filetree_open_changes :: proc(editor: ^Editor) {filetree_open_scope(editor, .Changes)}
 filetree_open_unsaved :: proc(editor: ^Editor) {filetree_open_scope(editor, .Unsaved)}
 
 filetree_close :: proc(editor: ^Editor) {
@@ -1265,7 +1238,6 @@ filetree_any_expanded :: proc(t: ^FileTree) -> bool {
 filetree_expand_all :: proc(editor: ^Editor) {
 	t := &editor.filetree
 	if t.scope == .All {
-		filetree_scan_status(editor)
 		filetree_mark_expanded(t, editor.working_root)
 		filetree_rebuild(editor)
 		return
@@ -1321,13 +1293,13 @@ filetree_toggle_ignored :: proc(editor: ^Editor) {
 	filetree_prewarm_start(editor)
 }
 
-filetree_toggle_git_diff :: proc(editor: ^Editor) {
-	editor.filetree.git_diff_only = !editor.filetree.git_diff_only
+filetree_toggle_diff :: proc(editor: ^Editor) {
+	editor.filetree.diff_only = !editor.filetree.diff_only
 	filetree_load_preview(editor)
 }
 
 filetree_set_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
-	if !filetree_tab_visible(scope) || editor.filetree.scope == scope {
+	if !filetree_tab_visible(&editor.filetree, scope) || editor.filetree.scope == scope {
 		return
 	}
 	editor.filetree.scope = scope
@@ -1351,7 +1323,7 @@ filetree_cycle_scope :: proc(editor: ^Editor, delta: int) {
 		if i < 0 || i >= n {
 			return
 		}
-		if filetree_tab_visible(FileTreeScope(i)) {
+		if filetree_tab_visible(&editor.filetree, FileTreeScope(i)) {
 			filetree_set_scope(editor, FileTreeScope(i))
 			return
 		}
@@ -1382,13 +1354,11 @@ filetree_activate :: proc(editor: ^Editor) {
 		return
 	}
 	if filetree_entry_deleted(t, e) {
-		for cmd in editor.plugins.commands {
-			if cmd.filetree && cmd.name == "Restore File" {
-				command_run(editor, cmd)
-				return
-			}
+		if t.provider.open_ref != 0 {
+			plugin_task_start(editor, t.provider.owner, .Command, {ref = t.provider.open_ref, args = .Ctx})
+		} else {
+			editor_log(editor, .Info, "Files", "Deleted file")
 		}
-		editor_log(editor, .Warn, "Files", "Restore File is unavailable (the git plugin is not loaded)")
 		return
 	}
 	path := strings.clone(e.path, context.temp_allocator)
@@ -1980,19 +1950,6 @@ filetree_cmd_rename :: proc(editor: ^Editor) {
 
 filetree_cmd_new :: proc(editor: ^Editor) {filetree_prompt_begin(editor, .New)}
 
-filetree_git_refresh :: proc(editor: ^Editor, path: string) {
-	t := &editor.filetree
-	filetree_filter_invalidate(t)
-	filetree_scan_start(editor)
-	if !t.active {
-		return
-	}
-	if path != "" {
-		filetree_reveal(editor, path)
-	}
-	filetree_preview_touch(editor)
-}
-
 filetree_cmd_delete :: proc(editor: ^Editor) {
 	t := &editor.filetree
 	if filetree_sel_gone(editor) {
@@ -2033,8 +1990,8 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_tab_chord(editor, .Open)
 		return
 	}
-	if module_enabled(.Git) && command_matches(ev, "File Tree: Git") {
-		filetree_tab_chord(editor, .Git)
+	if command_matches(ev, "File Tree: Changes") {
+		filetree_tab_chord(editor, .Changes)
 		return
 	}
 	if command_matches(ev, "File Tree: Unsaved") {
@@ -2137,11 +2094,11 @@ filetree_render :: proc(editor: ^Editor) {
 	sel_lo, sel_hi := filetree_sel_range(t)
 	end := min(t.scroll + lay.body_h, len(t.entries))
 	addw, delw := 0, 0
-	if t.scope == .Git {
+	if t.scope == .Changes {
 		for e in t.entries[t.scroll:end] {
-			if size, ok := t.diffsize[e.path]; ok && !e.is_dir && git_diffsize_label(size) != "" {
+			if size, ok := t.diffsize[e.path]; ok && !e.is_dir {
 				addw = max(addw, digit_count(size.added))
-				delw = max(delw, digit_count(size.deleted))
+				delw = max(delw, digit_count(size.removed))
 			}
 		}
 	}
@@ -2172,7 +2129,7 @@ filetree_render :: proc(editor: ^Editor) {
 			fg = COLOR_FILETREE_IGNORED
 		}
 		label := filetree_row_label(t, e)
-		if old, ok := t.renames[e.path]; ok && t.scope == .Git && !e.is_dir {
+		if old, ok := t.renames[e.path]; ok && t.scope == .Changes && !e.is_dir {
 			rel, _ := filepath.rel(editor.working_root, old, context.temp_allocator)
 			label = fmt.tprintf("%s  %s %s", label, ICON_TREE_RENAMED, rel)
 		}
@@ -2181,8 +2138,8 @@ filetree_render :: proc(editor: ^Editor) {
 		}
 		label_w := lay.left_w - 1
 		sizes := ""
-		if size, ok := t.diffsize[e.path]; ok && t.scope == .Git && !e.is_dir && git_diffsize_label(size) != "" {
-			sizes = fmt.tprintf("%*s  %*s", addw + 1, fmt.tprintf("+%d", size.added), delw + 1, fmt.tprintf("-%d", size.deleted))
+		if size, ok := t.diffsize[e.path]; ok && t.scope == .Changes && !e.is_dir {
+			sizes = fmt.tprintf("%*s  %*s", addw + 1, fmt.tprintf("+%d", size.added), delw + 1, fmt.tprintf("-%d", size.removed))
 			room := label_w - len(sizes) - 1
 			if room >= min(visual_width(transmute([]u8)label), FILETREE_DIFFSIZE_MIN_LABEL) {
 				label_w = room
@@ -2193,7 +2150,7 @@ filetree_render :: proc(editor: ^Editor) {
 		}
 		pane_text(inner.x + 1, y, label_w, label, fg, bg)
 		if sizes != "" {
-			git_diffsize_paint(lay.div_x - len(sizes), y, lay.div_x, sizes, bg)
+			filetree_size_paint(lay.div_x - len(sizes), y, lay.div_x, sizes, bg)
 		}
 	}
 
@@ -2222,38 +2179,54 @@ filetree_render :: proc(editor: ^Editor) {
 	}
 }
 
+filetree_size_paint :: proc(x, y, max_x: int, label: string, bg: tb2.Color) {
+	fg := COLOR_GIT_ADD
+	for i in 0 ..< len(label) {
+		if x + i >= max_x {
+			return
+		}
+		if label[i] == '-' {
+			fg = COLOR_GIT_DEL
+		}
+		tb2.set_cell(i32(x + i), i32(y), rune(label[i]), fg, bg)
+	}
+}
+
 filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
 	x := inner.x + 1
 	drawn := 0
 	for tab in filetree_tabs {
-		if !filetree_tab_visible(tab.scope) {
+		if !filetree_tab_visible(t, tab.scope) {
 			continue
 		}
 		if drawn > 0 {
 			pane_text(x, y, 3, " │ ", COLOR_PANE_BORDER, COLOR_PANE_BG)
 			x += 3
 		}
+		label := filetree_tab_label(t, tab)
+		w := visual_width(transmute([]u8)label)
 		fg := COLOR_PANE_PROMPT_FG if t.scope == tab.scope else COLOR_PANE_SHORTCUT_FG
-		pane_text(x, y, len(tab.label), tab.label, fg, COLOR_PANE_BG)
-		x += len(tab.label)
+		pane_text(x, y, w, label, fg, COLOR_PANE_BG)
+		x += w
 		drawn += 1
 	}
 }
 
-filetree_tab_at_x :: proc(inner: Rect, cx: int) -> (FileTreeScope, bool) {
+filetree_tab_at_x :: proc(t: ^FileTree, inner: Rect, cx: int) -> (FileTreeScope, bool) {
 	x := inner.x + 1
 	drawn := 0
 	for tab in filetree_tabs {
-		if !filetree_tab_visible(tab.scope) {
+		if !filetree_tab_visible(t, tab.scope) {
 			continue
 		}
 		if drawn > 0 {
 			x += 3
 		}
-		if cx >= x && cx < x + len(tab.label) {
+		w := visual_width(transmute([]u8)filetree_tab_label(t, tab))
+		if cx >= x && cx < x + w {
 			return tab.scope, true
 		}
-		x += len(tab.label)
+		x += w
 		drawn += 1
 	}
 	return .All, false
@@ -2285,8 +2258,8 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 		case .All:
 			append(&chips, Chip{fmt.tprintf("%s ignored", command_shortcut("File Tree: Toggle Ignored")), t.show_ignored})
 			append(&chips, Chip{fmt.tprintf("%s dotfiles", command_shortcut("File Tree: Toggle Dotfiles")), t.show_dotfiles})
-		case .Git:
-			append(&chips, Chip{fmt.tprintf("%s diff", command_shortcut("File Tree: Toggle Diff")), t.git_diff_only})
+		case .Changes:
+			append(&chips, Chip{fmt.tprintf("%s diff", command_shortcut("File Tree: Toggle Diff")), t.diff_only})
 		}
 		total := 0
 		for c, i in chips {
@@ -2362,7 +2335,7 @@ filetree_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		overlay_scroll_by(&t.scroll, WHEEL_SCROLL_LINES, len(t.entries), lay.body_h)
 	case .Mouse_Left:
 		if !motion && int(ev.y) == lay.tab_y {
-			if scope, ok := filetree_tab_at_x(lay.inner, int(ev.x)); ok {
+			if scope, ok := filetree_tab_at_x(t, lay.inner, int(ev.x)); ok {
 				filetree_set_scope(editor, scope)
 			}
 			return

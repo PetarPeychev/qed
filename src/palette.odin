@@ -126,7 +126,7 @@ commands := [?]Command {
 	{name = "Command Palette", run = palette_open},
 	{name = "File Tree", run = filetree_open_all},
 	{name = "File Tree: Open", run = filetree_open_open},
-	{name = "File Tree: Git", module = .Git, run = filetree_open_git},
+	{name = "File Tree: Changes", run = filetree_open_changes},
 	{name = "File Tree: Unsaved", run = filetree_open_unsaved},
 	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Find", run = find_open},
@@ -158,7 +158,7 @@ commands := [?]Command {
 	{name = "Diff: Next Change", run = cmd_diff_next},
 	{name = "Diff: Previous Change", run = cmd_diff_prev},
 	{name = "Diff: Revert Hunk", run = cmd_diff_revert},
-	{name = "Git: Resolve Conflict", module = .Git, run = cmd_merge_resolve},
+	{name = "Git: Resolve Conflict", run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", module = .Lsp, run = cmd_diag_next},
 	{name = "LSP: Previous Diagnostic", module = .Lsp, run = cmd_diag_prev},
@@ -181,7 +181,7 @@ filetree_commands := [?]Command {
 	{name = "Set as Working Directory", bind_from = "Change Working Directory", run = filetree_cmd_set_root},
 	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
 	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
-	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", module = .Git, run = filetree_toggle_git_diff},
+	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", run = filetree_toggle_diff},
 	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
 }
 
@@ -206,9 +206,15 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 	if !module_enabled(command_module(name)) {
 		return false
 	}
+	switch name {
+	case "File Tree: Changes", "Toggle Diff":
+		if !filetree_tab_visible(&editor.filetree, .Changes) {
+			return false
+		}
+	}
 	if editor.welcome {
 		switch name {
-		case "File Tree", "File Tree: Open", "File Tree: Git", "File Tree: Unsaved",
+		case "File Tree", "File Tree: Open", "File Tree: Changes", "File Tree: Unsaved",
 		     "Terminal: Toggle", "Find in Files",
 		     "Debug: Plugins", "Debug: Message Log", "Change Working Directory", "Quit":
 			return true

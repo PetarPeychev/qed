@@ -90,6 +90,7 @@ e2e_start :: proc(content := "") -> E2E {
 	ed := editor_init(path, headless = true)
 	// the root is the test process's cwd (the qed repo); keep the git plugin's status out of these sessions
 	append(&ed.plugins.fakes, PluginFake{pattern = fmt.tprintf("git -C %s ", ed.working_root), code = 128})
+	append(&ed.plugins.fakes, PluginFake{pattern = fmt.tprintf("find %s ", ed.working_root)})
 	return E2E{ed = ed, path = path}
 }
 

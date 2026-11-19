@@ -1,5 +1,6 @@
 local repo = require("repo")
 local picker = require("picker")
+local tree = require("tree")
 
 local T = {}
 
@@ -57,12 +58,9 @@ local function pick_base(t, query, selected)
 end
 
 local function base(t)
-	local got
-	local h = qed.command{name = "Probe Base", run = function(ctx) got = ctx.base end}
-	qed.run("Probe Base")
-	t.wait(function() return got ~= nil end)
-	h:remove()
-	return got
+	local s = seg(t, "base")
+	local icon = qed.theme.icon("status_diff_base")
+	return s and s.text:sub(#icon + 1) or ""
 end
 
 local function git_tab_lists(t, name)
@@ -103,6 +101,73 @@ function T.parse_numstat(t)
 	t.eq(d, 0)
 end
 
+function T.parse_name_status(t)
+	local function ns(line)
+		return qed.json.encode({tree.name_status_line(line)})
+	end
+	t.eq(ns("M\tsrc/a.odin"), '["src/a.odin","modified"]')
+	t.eq(ns('A\t"new file.txt"'), '["new file.txt","added"]')
+	t.eq(ns("D\tgone.txt"), '["gone.txt","deleted"]')
+	t.eq(ns("R087\tsrc/old.odin\tlib/new.odin"), '["lib/new.odin","modified","src/old.odin"]')
+	t.eq(tree.name_status_line("R100\tonly-one"), nil)
+	t.eq(tree.name_status_line("garbage"), nil)
+end
+
+function T.parse_porcelain(t)
+	local cases = {
+		{" M a.txt", "a.txt", "modified"},
+		{"?? new.txt", "new.txt", "added"},
+		{"A  staged.txt", "staged.txt", "added"},
+		{"!! build/", "build", "ignored"},
+		{" D gone.txt", "gone.txt", "deleted"},
+		{"D  rm.txt", "rm.txt", "deleted"},
+		{"R  old.txt -> sub/new.txt", "sub/new.txt", "modified", "old.txt"},
+		{"RM old.txt -> new.txt", "new.txt", "modified", "old.txt"},
+		{"RD old.txt -> new.txt", "old.txt", "deleted"},
+		{"AD temp.txt"},
+		{"x"},
+	}
+	for _, c in ipairs(cases) do
+		t.eq(qed.json.encode({tree.porcelain_line(c[1])}), qed.json.encode({c[2], c[3], c[4]}), c[1])
+	end
+end
+
+function T.parse_numstat_paths(t)
+	t.eq(qed.json.encode({tree.numstat_line("3\t1\tsrc/a b.odin", false)}), '["src/a b.odin",3,1]')
+	t.eq(tree.numstat_line("-\t-\timg.png", false), nil, "binary skipped")
+	t.eq(qed.json.encode({tree.numstat_line("dir/x:y.txt:7", true)}), '["dir/x:y.txt",7,0]')
+	t.eq(tree.numstat_line("garbage", true), nil)
+	t.eq(tree.numstat_path("old.txt => new.txt"), "new.txt")
+	t.eq(tree.numstat_path("src/{a => b}/f.odin"), "src/b/f.odin")
+	t.eq(tree.numstat_path("src/{ => sub}/f.odin"), "src/sub/f.odin")
+	t.eq(tree.numstat_path("src/{sub => }/f.odin"), "src/f.odin")
+	t.eq(tree.numstat_path("{old => }/f.odin"), "f.odin")
+	t.eq(tree.numstat_path("dir/{x.txt => y.txt}"), "dir/y.txt")
+end
+
+function T.parse_tree_status(t)
+	local files, ignored = {}, {}
+	tree.parse(files, ignored, "/r/a", {
+		base = "M\tcommitted.txt\nA\tadded.txt\nD\tsub/gone.txt\nR091\told.txt\tmoved.txt\n",
+		status = " M head_only.txt\n?? untracked.txt\n!! ignored.log\n",
+		numstat = "2\t1\t{old.txt => moved.txt}\n0\t3\tsub/gone.txt\n",
+		untracked = "untracked.txt:4\n",
+	})
+	tree.parse(files, ignored, "/r/b", {status = " M plain.txt\nR  x.txt -> y.txt\n D lost.txt\n", numstat = "", untracked = ""})
+	local function f(p) return qed.json.encode(files[p]) end
+	t.eq(files["/r/a/committed.txt"].mark, "modified")
+	t.eq(files["/r/a/added.txt"].mark, "added")
+	t.eq(f("/r/a/untracked.txt"), qed.json.encode({mark = "added", added = 4, removed = 0}))
+	t.eq(f("/r/a/sub/gone.txt"), qed.json.encode({mark = "deleted", added = 0, removed = 3}))
+	t.eq(f("/r/a/moved.txt"), qed.json.encode({mark = "modified", from = "/r/a/old.txt", added = 2, removed = 1}))
+	t.eq(files["/r/a/old.txt"], nil, "rename listed once, at the new path")
+	t.eq(files["/r/a/head_only.txt"], nil, "tracked status replaced by the base diff")
+	t.eq(qed.json.encode(ignored), '["/r/a/ignored.log"]')
+	t.eq(files["/r/b/plain.txt"].mark, "modified")
+	t.eq(f("/r/b/y.txt"), qed.json.encode({mark = "modified", from = "/r/b/x.txt"}))
+	t.eq(files["/r/b/lost.txt"].mark, "deleted")
+end
+
 function T.not_a_repo_picker(t)
 	qed.run("Git: Set Diff Base")
 	t.wait(function() return (t.message()) == "Working directory is not a git repository" end)
@@ -138,23 +203,20 @@ function T.set_diff_base(t)
 	t.ok(t.sh("git commit -q -am second && git branch \"zb'ase\" HEAD~1"))
 	t.wait(mark(t, b, 2, ""), 5000)
 	t.ok(not git_tab_lists(t, "file.txt"), "committed file is clean against HEAD")
-	t.eq(base(t).ref, "HEAD")
+	t.eq(base(t), "", "no base label at HEAD")
 
 	pick_base(t, "seed")
 	local bs = base(t)
-	t.eq(#bs.ref, 40, "a commit pick is a fixed sha")
-	t.eq(bs.merge, false)
-	t.eq(bs.label, bs.ref:sub(1, #bs.label), "labelled with the short sha")
+	t.ok(bs:match("^%x+$") and #bs >= 4 and #bs < 40, "labelled with the short sha: " .. bs)
 	t.eq(t.marks(b)[2], "modified")
 	t.eq(t.marks(b)[1], "")
-	t.ok(on_screen(t, qed.theme.icon("status_diff_base") .. bs.label), "status bar shows the base")
+	t.ok(on_screen(t, qed.theme.icon("status_diff_base") .. bs), "status bar shows the base")
 	t.wait(function() local s = seg(t, "diff"); return s ~= nil and s.text == "+1 -1" end, 5000)
 	t.ok(on_screen(t, "+1 -1"), "diff size is against the base")
 	t.ok(git_tab_lists(t, "file.txt"), "Git tab lists the file changed since the base")
 
 	pick_base(t, "zb'", "zb'ase")
-	t.eq(base(t).ref, "zb'ase")
-	t.eq(base(t).merge, false)
+	t.eq(base(t), "zb'ase")
 	t.eq(t.marks(b)[2], "modified")
 
 	t.ok(t.sh("git branch -f \"zb'ase\" HEAD"))
@@ -164,7 +226,7 @@ function T.set_diff_base(t)
 	t.eq(seg(t, "diff").text, "", "no diff against the moved branch")
 
 	pick_base(t, "", "HEAD")
-	t.eq(base(t).ref, "HEAD")
+	t.eq(base(t), "")
 	t.eq(t.marks(b)[2], "")
 	t.ok(not on_screen(t, qed.theme.icon("status_diff_base")), "no base indicator at HEAD")
 end
@@ -174,10 +236,7 @@ function T.merge_base(t)
 	t.ok(t.sh("git checkout -q -b feature && printf 'one\\nTWO\\n' > file.txt && git commit -qam f && git checkout -q main && printf 'ONE\\ntwo\\n' > file.txt && git commit -qam m && git checkout -q feature"))
 	local b = open(t, "file.txt", "one\nTWO\n")
 	pick_base(t, "merge", "Merge base with main")
-	local bs = base(t)
-	t.eq(bs.ref, "main")
-	t.eq(bs.merge, true)
-	t.eq(bs.label, "main...")
+	t.eq(base(t), "main...")
 	t.eq(t.marks(b)[1], "", "line 1 matches the merge base, not main")
 	t.eq(t.marks(b)[2], "modified")
 end

@@ -290,10 +290,38 @@ preview_ensure :: proc(p: ^Preview, view_h: int) {
 	preview_highlight_range(p, max(0, p.scroll - PREVIEW_PARSE_AHEAD), min(len(p.src), vis_hi + PREVIEW_PARSE_AHEAD))
 }
 
-preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool, old_path := "") {
+preview_diff_file :: proc(path, base: string) -> (base_text: []string, cur: []string, marks: []DiffMark, hunks: []DiffHunk, ok: bool) {
+	if path == "" {
+		return
+	}
+	data: []u8
+	if os.exists(path) {
+		d, derr := os.read_entire_file(path, context.temp_allocator)
+		if derr != nil || len(d) > BIG_FILE_BYTES {
+			return
+		}
+		data = d
+	}
+	bt := diff_split_lines(base)
+	cl := diff_split_lines(string(data))
+	bh := make([dynamic]u64, 0, len(bt), context.temp_allocator)
+	for s in bt {
+		append(&bh, diff_hash(transmute([]u8)s))
+	}
+	ch := make([dynamic]u64, 0, len(cl), context.temp_allocator)
+	for s in cl {
+		append(&ch, diff_hash(transmute([]u8)s))
+	}
+	m := make([]DiffMark, len(cl), context.temp_allocator)
+	hk := make([dynamic]DiffHunk, context.temp_allocator)
+	diff_lines(bh[:], ch[:], m, &hk)
+	return bt[:], cl[:], m, hk[:], true
+}
+
+preview_set_diff :: proc(p: ^Preview, path: string, view_h: int, diff_only: bool, base: string) {
 	preview_reset(p)
 	p.language = language_of(path)
-	base_text, cur, marks, hunks, ok := git_diff_file(path, old_path)
+	base_text, cur, marks, hunks, ok := preview_diff_file(path, base)
 	if !ok {
 		return
 	}

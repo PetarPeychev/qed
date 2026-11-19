@@ -2,43 +2,6 @@ package main
 
 import "core:testing"
 
-@(test)
-git_numstat_line_parse :: proc(t: ^testing.T) {
-	path, size, ok := git_numstat_line("3\t1\tsrc/a b.odin", false)
-	testing.expect(t, ok)
-	testing.expect_value(t, path, "src/a b.odin")
-	testing.expect_value(t, size, GitDiffSize{3, 1})
-
-	_, _, ok = git_numstat_line("-\t-\timg.png", false)
-	testing.expect(t, !ok, "binary skipped")
-
-	path, size, ok = git_numstat_line("dir/x:y.txt:7", true)
-	testing.expect(t, ok)
-	testing.expect_value(t, path, "dir/x:y.txt")
-	testing.expect_value(t, size, GitDiffSize{7, 0})
-
-	_, _, ok = git_numstat_line("garbage", true)
-	testing.expect(t, !ok)
-
-	path, size, ok = git_numstat_line("0\t4\tgone.txt", false)
-	testing.expect(t, ok)
-	testing.expect_value(t, path, "gone.txt")
-	testing.expect_value(t, size, GitDiffSize{0, 4})
-
-	testing.expect_value(t, git_numstat_path("old.txt => new.txt"), "new.txt")
-	testing.expect_value(t, git_numstat_path("src/{a => b}/f.odin"), "src/b/f.odin")
-	testing.expect_value(t, git_numstat_path("src/{ => sub}/f.odin"), "src/sub/f.odin")
-	testing.expect_value(t, git_numstat_path("src/{sub => }/f.odin"), "src/f.odin")
-	testing.expect_value(t, git_numstat_path("{old => }/f.odin"), "f.odin")
-	testing.expect_value(t, git_numstat_path("dir/{x.txt => y.txt}"), "dir/y.txt")
-}
-
-@(test)
-git_diffsize_label_format :: proc(t: ^testing.T) {
-	testing.expect_value(t, git_diffsize_label({}), "")
-	testing.expect_value(t, git_diffsize_label({9, 2}), "+9 -2")
-}
-
 @(private = "file")
 diff_marks :: proc(base, cur: []u64) -> []DiffMark {
 	marks := make([]DiffMark, len(cur))

@@ -469,7 +469,7 @@ test_config_files :: proc(t: ^testing.T) {
 		mod_path,
 		transmute([]byte)string(`{"modules": {"ai": {"enabled": false, "chat_command": "echo hi"}}, "filetree_diff_only": false}`),
 	)
-	FILETREE_GIT_DIFF_ONLY = true
+	FILETREE_DIFF_ONLY = true
 	AI_ENABLED = true
 	LSP_ENABLED = true
 	_, is_err = config_load_from(mod_path)
@@ -477,7 +477,7 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !AI_ENABLED, "modules.ai.enabled override applied")
 	testing.expect(t, LLM_COMPLETION_MODEL == "codestral-latest", "omitted modules.ai key keeps default")
 	testing.expect(t, LSP_ENABLED, "omitted modules.lsp keeps default enabled")
-	testing.expect(t, !FILETREE_GIT_DIFF_ONLY, "top-level filetree_diff_only applies")
+	testing.expect(t, !FILETREE_DIFF_ONLY, "top-level filetree_diff_only applies")
 	testing.expect(t, LLM_CHAT_COMMAND == "echo hi", "modules.ai string override applied")
 
 	mod_bad := fmt.tprintf("%s/modbad.json", dir)

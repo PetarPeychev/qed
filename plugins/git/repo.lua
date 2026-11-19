@@ -37,8 +37,8 @@ end
 
 -- nil outside a repo; an untracked file has an empty base (every line added)
 function M.blob(path, base)
-	local dir = qed.path.dir(path)
-	local r = M.git(dir, {"show", M.rev(dir, base) .. ":./" .. qed.path.base(path)})
+	local dir, rel = M.anchor(path)
+	local r = M.git(dir, {"show", M.rev(dir, base) .. ":./" .. rel})
 	if r.code == 0 then
 		return r.stdout
 	end
@@ -82,11 +82,14 @@ function M.numstat(out, untracked)
 end
 
 -- git diff skips untracked files, so grep counts their lines (-I: binaries count 0)
+function M.untracked(top)
+	return qed.spawn{cmd = "git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' -- 2>/dev/null", cwd = top}.stdout
+end
+
 function M.diffsize(top, rev)
 	local tracked = M.git(top, {"-c", "core.quotePath=false", "diff", rev, "--numstat", "--find-renames"})
-	local untracked = qed.spawn{cmd = "git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' -- 2>/dev/null", cwd = top}
 	local a1, d1 = M.numstat(tracked.code == 0 and tracked.stdout or "", false)
-	local a2 = M.numstat(untracked.stdout, true)
+	local a2 = M.numstat(M.untracked(top), true)
 	return a1 + a2, d1
 end
 

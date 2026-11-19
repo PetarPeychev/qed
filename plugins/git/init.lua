@@ -1,5 +1,6 @@
 local repo = require("repo")
 local picker = require("picker")
+local tree = require("tree")
 
 local POLL_MS = 2000
 
@@ -8,6 +9,9 @@ local base = {}
 local fetched = {}
 local gen = {}
 local stat = {branch = "", ahead = 0, behind = 0, added = 0, deleted = 0, gen = 0, known = false, sha = ""}
+local scan_gen = 0
+local listed = {}
+local provided = false
 
 local function say(text, level)
 	qed.message(text, {level = level, source = "Git"})
@@ -33,6 +37,24 @@ local function fetch_all()
 		if qed.buf.valid(b) then
 			fetch(b)
 		end
+	end
+end
+
+local function scan()
+	scan_gen = scan_gen + 1
+	local mine = scan_gen
+	local files, ignored = tree.scan(qed.root(), base)
+	if mine == scan_gen and provided then
+		listed = files
+		qed.filetree.set_status(files, ignored)
+	end
+end
+
+local function preview(path)
+	local e = listed[path]
+	local text = repo.blob(e and e.from or path, base)
+	if provided then
+		qed.filetree.set_base(path, text)
 	end
 end
 
@@ -82,7 +104,7 @@ local function poll()
 	if moved then
 		qed.log("debug", "diff base moved to " .. sha)
 		fetch_all()
-		qed.filetree.refresh()
+		scan()
 	end
 	if moved or branch ~= stat.branch or ahead ~= stat.ahead or behind ~= stat.behind or added ~= stat.added or deleted ~= stat.deleted then
 		qed.log("debug", ("branch %s ahead %d behind %d diff +%d -%d"):format(branch, ahead, behind, added, deleted))
@@ -116,9 +138,9 @@ local function set_base()
 	if not new then
 		return
 	end
-	qed.git.set_base(new.ref, {label = new.label, merge = new.merge})
 	say("Diff base: " .. (new.ref and new.label or "HEAD"))
 	restart(new)
+	scan()
 end
 
 local function restore(ctx)
@@ -148,8 +170,8 @@ local function restore(ctx)
 		say("Restore failed: " .. name, "error")
 		return
 	end
-	qed.filetree.refresh(path)
 	say("Restored " .. name)
+	scan()
 end
 
 local function when()
@@ -164,11 +186,14 @@ return {
 		qed.on("startup", function()
 			ready = repo.git(qed.root(), {"--version"}).code == 0
 			if not ready then
+				provided = false
+				qed.filetree.provide(nil)
 				return
 			end
 			fetch_all()
 			poll()
 			qed.every(POLL_MS, tick)
+			scan()
 		end)
 		for _, ev in ipairs({"buf_open", "buf_save", "buf_reload"}) do
 			qed.on(ev, function(b)
@@ -180,11 +205,15 @@ return {
 		qed.on("buf_close", function(b)
 			fetched[b], gen[b] = nil, nil
 		end)
+		qed.on("filetree_refresh", scan)
+		qed.on("filetree_preview", preview)
 		qed.on("root_changed", function()
 			if ready then
 				restart({})
 			end
 		end)
 		qed.on("theme_changed", show)
+		qed.filetree.provide{label = "Git", open_deleted = restore}
+		provided = true
 	end,
 }

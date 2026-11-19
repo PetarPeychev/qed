@@ -16,7 +16,6 @@
 ---@field selection_text string|nil
 ---@field file string|nil file tree only: the entry under the cursor (absolute)
 ---@field files string[]|nil file tree only: every selected path, in tree order
----@field base {ref: string, label: string, merge: boolean} diff base (`ref` "HEAD" when unset; `merge` means the merge base of `ref` and HEAD)
 
 ---@class qed.CommandSpec
 ---@field name string
@@ -124,7 +123,7 @@ function qed.shell_quote(s) end
 ---@return {label: string, path: string, pos: qed.Pos}[]
 function qed.parse_locations(text, opts) end
 
----@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"
+---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"filetree_refresh"|"filetree_preview"|"quit"
 
 ---@class qed.Handle
 ---@field id integer
@@ -136,6 +135,7 @@ function Handle:off() end
 ---`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
+---`filetree_refresh()` and `filetree_preview(path)` go only to the file tree status provider (`qed.filetree.provide`).
 ---@param event qed.Event
 ---@param fn function
 ---@return qed.Handle
@@ -275,18 +275,31 @@ function qed.theme.current() end
 ---@return string
 function qed.theme.icon(name) end
 
-qed.git = {}
-
----Tells the core file tree Git tab and `ctx.base` the diff base (`nil` is HEAD) and rescans the tree.
----@param ref string|nil branch, commit or merge-base ref
----@param opts? {label?: string, merge?: boolean} `merge`: the base is `git merge-base ref HEAD`
-function qed.git.set_base(ref, opts) end
-
 qed.filetree = {}
 
----Rescans the file tree's git status; with `path`, also reveals and selects it.
----@param path? string
-function qed.filetree.refresh(path) end
+---@class qed.ProviderSpec
+---@field label string the status tab's name
+---@field open_deleted? fun(ctx: qed.Ctx) runs as a file tree command on `Enter` over a listed deleted file that is missing on disk
+
+---@class qed.FileStatus
+---@field mark "added"|"modified"|"deleted"
+---@field from? string the old path of a rename (shown as `new  ← old`)
+---@field added? integer lines added (shown as `+N -N` on the status tab)
+---@field removed? integer lines removed
+
+---Claims the file tree status tab (one provider; the last call wins) and asks for a `filetree_refresh` when the tree is open. `nil` drops it.
+---@param spec qed.ProviderSpec|nil
+function qed.filetree.provide(spec) end
+
+---Replaces the tree's status: bars, the status tab, sizes, rename labels and deleted ghost rows. `ignored` paths hide unless *Toggle Ignored*.
+---@param files table<string, qed.FileStatus> keyed by path (relative paths resolve against the root)
+---@param ignored? string[]
+function qed.filetree.set_status(files, ignored) end
+
+---Answers `filetree_preview(path)`: the status tab previews `path` diffed against `text`; `nil` shows it plainly.
+---@param path string
+---@param text string|nil
+function qed.filetree.set_base(path, text) end
 
 qed.term = {}
 

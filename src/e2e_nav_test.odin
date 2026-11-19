@@ -66,12 +66,15 @@ nav_write :: proc(path, content: string) {
 	_ = os.write_entire_file(path, transmute([]u8)content)
 }
 
-// The file tree scans git status asynchronously; headless tests never reach the
-// main loop's pump, so drain it to completion before asserting on status.
+// The git plugin pushes file tree status asynchronously; headless tests never reach
+// the main loop's pump, so drain it to completion before asserting on status.
 nav_scan :: proc(e: ^E2E) {
-	for filetree_scanning(&e.ed) {
-		filetree_scan_pump(&e.ed)
-	}
+	e2e_git_settle(e)
+}
+
+nav_preview :: proc(e: ^E2E) {
+	filetree_load_preview(&e.ed)
+	e2e_git_settle(e)
 }
 
 e2e_row :: proc(e: ^E2E, y: int) -> string {
@@ -950,7 +953,7 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	// Git scope prunes to changed files; the untracked add shows up.
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
-	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
 	testing.expect(t, entry_named(tr, "new.txt"), "Git scope lists the untracked add")
 	e2e_key(&e, .Esc)
 }
@@ -982,9 +985,9 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 	nav_alt(&e, 'g')
 	nav_scan(&e)
 	tr := &e.ed.filetree
-	testing.expect_value(t, tr.scope, FileTreeScope.Git)
-	testing.expect_value(t, tr.diffsize[e.path], GitDiffSize{2, 1})
-	testing.expect_value(t, tr.diffsize[newf], GitDiffSize{2, 0})
+	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
+	testing.expect_value(t, tr.diffsize[e.path], FileTreeSize{2, 1})
+	testing.expect_value(t, tr.diffsize[newf], FileTreeSize{2, 0})
 	testing.expect(t, binf not_in tr.diffsize, "binary untracked skipped")
 	testing.expect(t, logf not_in tr.diffsize, "ignored file skipped")
 	e2e_render(&e)
@@ -1034,19 +1037,19 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
-	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
 	for entry, i in tr.entries {
 		if entry.name == "file.txt" {
 			tr.selected = i
 		}
 	}
-	filetree_load_preview(&e.ed)
+	nav_preview(&e)
 
-	testing.expect(t, tr.git_diff_only, "diff-only on by default")
+	testing.expect(t, tr.diff_only, "diff-only on by default")
 	collapsed := len(tr.preview.rows)
 
 	nav_alt(&e, 'd') // File Tree: Toggle Diff
-	testing.expect(t, !tr.git_diff_only, "Alt+d turns full diff on (diff-only off)")
+	testing.expect(t, !tr.diff_only, "Alt+d turns full diff on (diff-only off)")
 	full := len(tr.preview.rows)
 
 	testing.expect(t, full > collapsed, "full diff shows more rows than the collapsed view")
@@ -1449,7 +1452,7 @@ e2e_nav_filetree_toggle_reopens :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.All)
 	nav_alt(&e, 'g')
 	testing.expect(t, e.ed.filetree.active, "Alt+g while open switches to Git, stays open")
-	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Git)
+	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Changes)
 	nav_alt(&e, 'g')
 	testing.expect(t, !e.ed.filetree.active, "Alt+g again (same tab) closes it")
 	nav_alt(&e, 'f')
@@ -1689,7 +1692,7 @@ e2e_nav_filetree_search_git_scope :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
 	tr := &e.ed.filetree
-	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
 
 	e2e_key(&e, .Ctrl_A) // select all changed entries
 	nav_alt(&e, 'F')
@@ -1730,7 +1733,7 @@ e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
 	tr := &e.ed.filetree
-	testing.expect_value(t, tr.scope, FileTreeScope.Git)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
 	testing.expect_value(t, tr.entries[0].name, "sub") // dir sorts first, selected by default
 
 	nav_alt(&e, 'F') // select just the sub/ directory
@@ -1818,7 +1821,7 @@ e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	testing.expect(t, nav_select(tr, "sub"), "vanished dir listed virtually")
 	testing.expect(t, nav_select(tr, "gone.txt"), "deleted file listed under its old dir")
 	testing.expect(t, filetree_entry_deleted(tr, tr.entries[tr.selected]))
-	filetree_load_preview(&e.ed)
+	nav_preview(&e)
 	testing.expect_value(t, len(tr.preview.rows), 2)
 	want := []string{"alpha", "beta"}
 	for r, i in tr.preview.rows {
@@ -1859,7 +1862,6 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 	}
 	e := e2e_git_start("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\n", "old.txt")
 	defer e2e_stop(&e)
-	defer git_base_set("", "", false)
 	e2e_resize(&e, 200, E2E_H)
 	delete(e.ed.working_root)
 	e.ed.working_root = strings.clone(e.dir)
@@ -1873,7 +1875,7 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 		tr := &e.ed.filetree
 		testing.expect(t, !nav_select(tr, "old.txt"), "old path not listed")
 		testing.expect(t, nav_select(tr, "new.txt"), "rename listed at the new path")
-		filetree_load_preview(&e.ed)
+		nav_preview(e)
 		kinds: [dynamic]PreviewRowKind
 		kinds.allocator = context.temp_allocator
 		for r in tr.preview.rows {
@@ -1892,7 +1894,15 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 	check(t, &e)
 
 	e2e_run(fmt.tprintf("cd %s && git commit -qam moved", q))
-	git_base_set("HEAD~1", "HEAD~1", false)
+	for c in e.ed.plugins.commands {
+		if c.name == "Git: Set Diff Base" {
+			plugin_command_run(&e.ed, c)
+		}
+	}
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return !e.ed.plugins.ui.active})
+	e2e_type(&e, "seed")
+	e2e_key(&e, .Enter)
+	e2e_git_settle(&e)
 	check(t, &e)
 }
 
