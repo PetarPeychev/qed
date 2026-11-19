@@ -76,7 +76,7 @@ Editor :: struct {
 	llm:             Llm,
 	aiedit:          AiEdit,
 	fim:             Fim,
-	terminal:        Terminal,
+	terminal:        Terminals,
 	inspect:         Inspect,
 	headless:        bool,
 }

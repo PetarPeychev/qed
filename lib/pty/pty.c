@@ -4,15 +4,18 @@
 #include <stdlib.h>
 #include <signal.h>
 
+extern char **environ;
+
 #ifdef __APPLE__
 #include <util.h>
 #else
 #include <pty.h>
 #endif
 
-// forkpty + exec an interactive shell on the child side. Returns the master fd
-// (-1 on failure) and writes the child pid to *out_pid.
-int qed_pty_spawn(int rows, int cols, const char *shell, const char *cwd, int *out_pid) {
+// forkpty + exec argv on the child side (envp replaces the environment when
+// non-NULL). Returns the master fd (-1 on failure) and writes the child pid to
+// *out_pid. The child is a session leader, so its pid is also its process group.
+int qed_pty_spawn(int rows, int cols, char *const argv[], char **envp, const char *cwd, int *out_pid) {
     struct winsize ws;
     ws.ws_row = (unsigned short)rows;
     ws.ws_col = (unsigned short)cols;
@@ -28,9 +31,12 @@ int qed_pty_spawn(int rows, int cols, const char *shell, const char *cwd, int *o
         if (cwd && cwd[0]) {
             if (chdir(cwd) != 0) { /* fall through with inherited cwd */ }
         }
+        if (envp) {
+            environ = envp;
+        }
         setenv("TERM", "xterm-256color", 1);
         signal(SIGPIPE, SIG_DFL);
-        execl(shell, shell, "-i", (char *)NULL);
+        execvp(argv[0], argv);
         _exit(127);
     }
     *out_pid = pid;

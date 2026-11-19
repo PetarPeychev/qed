@@ -71,6 +71,9 @@ reload_owned :: proc(p: ^Plugins, name: string) -> int {
 	for cmd in p.commands {
 		n += int(cmd.owner == name)
 	}
+	for tm in container_of(p, Editor, "plugins").terminal.list {
+		n += int(tm.owner == name)
+	}
 	return n
 }
 
@@ -356,6 +359,7 @@ plugin_reload_refs_released :: proc(t: ^testing.T) {
 		return {setup = function()
 			qed.command{name = "R: Sleep", run = function() qed.sleep(60000) end}
 			qed.command{name = "R: Proc", run = function() p = qed.spawn_bg{cmd = "sleep 30"} end}
+			qed.command{name = "R: Term", run = function() qed.term.create{name = "rterm", cmd = "sleep 30"} end}
 			qed.every(20, function() end)
 			qed.on("buf_save", function() end)
 		end}`
@@ -367,13 +371,16 @@ plugin_reload_refs_released :: proc(t: ^testing.T) {
 	for _ in 0 ..< 3 {
 		sched_run(t, ed, "R: Sleep")
 		sched_run(t, ed, "R: Proc")
-		testing.expect(t, reload_owned(&ed.plugins, "r") > 4, "the plugin owns tasks, procs, timers and hooks")
+		sched_run(t, ed, "R: Term")
+		testing.expect(t, term_find(ed, "rterm") != nil, "the plugin owns a terminal session")
+		testing.expect(t, reload_owned(&ed.plugins, "r") > 5, "the plugin owns tasks, procs, timers, hooks and a session")
 		pl := plugin_find(&ed.plugins, "r")
 		pl.stamp = 0
 		plugins_poll(ed)
 	}
 	testing.expect_value(t, len(ed.plugins.procs), 0)
 	testing.expect_value(t, len(ed.plugins.tasks), 0)
+	testing.expect_value(t, len(ed.terminal.list), 0)
 	testing.expect(t, ed.plugins.mem.used < baseline + 256 * 1024, "repeated reloads do not grow the Lua heap")
 	L := ed.plugins.L
 	lua.gc(L, .COLLECT)
@@ -384,5 +391,5 @@ plugin_reload_refs_released :: proc(t: ^testing.T) {
 		}
 		lua.pop(L, 1)
 	}
-	testing.expect_value(t, refs, 4)
+	testing.expect_value(t, refs, 5)
 }

@@ -94,6 +94,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"commands/init.lua", #load("../plugins/commands/init.lua", string)},
 	{"format/init.lua", #load("../plugins/format/init.lua", string)},
 	{"pickers/init.lua", #load("../plugins/pickers/init.lua", string)},
+	{"tasks/init.lua", #load("../plugins/tasks/init.lua", string)},
 }
 
 g_bundled_plugins: []PluginFile
@@ -794,6 +795,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	p := &editor.plugins
 	plugin_ui_unload(editor, pl.name)
 	plugin_sched_unload(editor, pl.name)
+	term_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
 			plugin_command_remove(editor, i)

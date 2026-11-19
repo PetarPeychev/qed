@@ -296,7 +296,7 @@ e2e_terminal_pane :: proc(t: ^testing.T) {
 	}
 
 	term_toggle(&e.ed)
-	if !e.ed.terminal.alive {
+	if e.ed.terminal.shown == nil || !e.ed.terminal.shown.alive {
 		return // shell failed to spawn in this environment; nothing to drive.
 	}
 	testing.expect(t, e.ed.terminal.active, "Alt+t opens the terminal")

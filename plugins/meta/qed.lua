@@ -253,15 +253,71 @@ function qed.theme.list() end
 ---@return string
 function qed.theme.current() end
 
-qed.terminal = {}
+qed.term = {}
 
----Clears the prompt line, types `cmd` and Enter into the terminal pane's shell (starting it if needed) and shows the pane.
----With `cwd`, runs it as `(cd cwd && cmd)`.
----@param cmd string
----@param opts? {cwd?: string}
+---@class qed.TermSpec
+---@field name string unique; `"shell"` is the default session and cannot be created
+---@field cmd? string shell command run with `/bin/sh -c`; nil runs an interactive `$SHELL`
+---@field cwd? string defaults to the working root; relative to it
+---@field env? table<string, string> added to qed's environment
+---@field restart? boolean if the name is running, restart it with this spec instead of failing
+---@field detach? boolean survives the plugin's unload (otherwise closed with it)
+
+---@class qed.TermState
+---@field name string
+---@field running boolean
+---@field code? integer exit code of the last run (128 + signal when killed)
+---@field pid? integer while running
+---@field busy? boolean while running: a program other than the session's own process holds the foreground
+
+---Starts a named session in the background (PTY + emulator, not shown). Fails with `nil, "already running"` unless `restart`.
+---An exited session of the same name is replaced.
+---@param spec qed.TermSpec
+---@return string|nil name
+---@return "already running"|"cannot start"|nil err
+function qed.term.create(spec) end
+
+---Shows the session in the terminal pane overlay (`"shell"` starts the default shell if needed, like Alt+t).
+---@param name string
 ---@return boolean|nil ok
----@return "terminal unavailable"|"terminal busy"|nil err busy: a program runs in the terminal
-function qed.terminal.run(cmd, opts) end
+---@return "no such session"|"terminal unavailable"|nil err
+function qed.term.show(name) end
+
+---Hides the terminal pane; sessions keep running.
+function qed.term.hide() end
+
+---Kills the session's process group. Its output stays; `term_exit` fires.
+---@param name string
+---@return boolean|nil ok
+---@return "no such session"|nil err
+function qed.term.kill(name) end
+
+---Kills (without `term_exit`) and respawns with the same spec on a fresh screen.
+---@param name string
+---@return boolean|nil ok
+---@return "no such session"|"cannot start"|nil err
+function qed.term.restart(name) end
+
+---Writes raw bytes to the session's input (`"\r"` is Enter).
+---@param name string
+---@param text string
+---@return boolean|nil ok
+---@return "no such session"|"not running"|nil err
+function qed.term.send(name, text) end
+
+---@param name string
+---@return qed.TermState|nil
+function qed.term.state(name) end
+
+---Every session, in creation order.
+---@return qed.TermState[]
+function qed.term.list() end
+
+---Kills the session and frees its scrollback.
+---@param name string
+---@return boolean|nil ok
+---@return "no such session"|nil err
+function qed.term.close(name) end
 
 qed.clipboard = {}
 

@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
+import "core:time"
 import "lib:pty"
 import "lib:tb2"
 import "lib:vterm"
@@ -22,9 +23,21 @@ TermPos :: struct {
 	row, col: int,
 }
 
+Terminals :: struct {
+	active: bool,
+	list:   [dynamic]^Terminal,
+	shown:  ^Terminal,
+}
+
 Terminal :: struct {
-	active:      bool,
+	name:        string,
+	cmd:         string,
+	cwd:         string,
+	env:         []string,
+	owner:       string,
 	alive:       bool,
+	exited:      bool,
+	code:        int,
 	pty_fd:      int,
 	pid:         int,
 	vt:          ^vterm.VTerm,
@@ -137,8 +150,39 @@ term_sb_free :: proc(t: ^Terminal) {
 	t.sb_view = 0
 }
 
+TERM_SHELL :: "shell"
+TERM_FALLBACK_COLS :: 80
+TERM_FALLBACK_ROWS :: 24
+TERM_REAP_MS :: 1000
+
+TermSpec :: struct {
+	name:  string,
+	cmd:   string,
+	cwd:   string,
+	env:   []string,
+	owner: string,
+}
+
+term_find :: proc(editor: ^Editor, name: string) -> ^Terminal {
+	for t in editor.terminal.list {
+		if t.name == name {
+			return t
+		}
+	}
+	return nil
+}
+
 term_alive :: proc(editor: ^Editor) -> bool {
-	return editor.terminal.alive
+	for t in editor.terminal.list {
+		if t.alive {
+			return true
+		}
+	}
+	return false
+}
+
+term_busy :: proc(t: ^Terminal) -> bool {
+	return t.alive && int(posix.tcgetpgrp(posix.FD(t.pty_fd))) != t.pid
 }
 
 term_grid_size :: proc(editor: ^Editor) -> (cols, rows: int) {
@@ -147,62 +191,93 @@ term_grid_size :: proc(editor: ^Editor) -> (cols, rows: int) {
 }
 
 term_toggle :: proc(editor: ^Editor) {
-	t := &editor.terminal
-	if t.active {
-		t.active = false
+	if editor.terminal.active {
+		editor.terminal.active = false
 		return
 	}
-	if t.vt == nil || !t.alive {
-		term_free_vt(t)
-		if !term_start(editor) {
-			return
-		}
+	if t := term_shell(editor); t != nil {
+		term_show(editor, t)
 	}
-	t.active = true
+}
+
+term_show :: proc(editor: ^Editor, t: ^Terminal) {
+	editor.terminal.shown = t
+	editor.terminal.active = true
 	term_resize(editor)
 }
 
-TermRun :: enum {
-	Ok,
-	Unavailable,
-	Busy,
-}
-
-term_run :: proc(editor: ^Editor, cmd: string) -> TermRun {
-	t := &editor.terminal
-	if t.vt != nil && t.alive && int(posix.tcgetpgrp(posix.FD(t.pty_fd))) != t.pid {
-		return .Busy
-	}
-	if !t.active {
-		term_toggle(editor)
-	}
-	if !t.active || !t.alive {
-		return .Unavailable
-	}
-	line := make([dynamic]u8, 0, len(cmd) + 2, context.temp_allocator)
-	append(&line, 0x15)
-	append(&line, cmd)
-	append(&line, '\r')
-	term_write_all(t, line[:])
-	t.sb_view = 0
-	t.sel_active = false
-	return .Ok
-}
-
-term_start :: proc(editor: ^Editor) -> bool {
-	t := &editor.terminal
+term_shell :: proc(editor: ^Editor) -> ^Terminal {
 	cols, rows := term_grid_size(editor)
 	if cols < 1 || rows < 1 {
 		editor_log(editor, .Error, "Terminal", "window too small")
-		return false
+		return nil
 	}
-	shell := os.get_env("SHELL", context.temp_allocator)
-	if shell == "" {
-		shell = "/bin/sh"
+	t := term_find(editor, TERM_SHELL)
+	if t == nil {
+		ok: bool
+		if t, ok = term_create(editor, {name = TERM_SHELL}); !ok {
+			term_close(editor, t)
+			return nil
+		}
+		return t
 	}
-	fd, pid := pty.spawn(rows, cols, shell, editor.working_root)
+	if !t.alive && !term_spawn(editor, t) {
+		return nil
+	}
+	return t
+}
+
+term_create :: proc(editor: ^Editor, spec: TermSpec) -> (^Terminal, bool) {
+	t := new(Terminal)
+	term_spec_set(t, spec)
+	append(&editor.terminal.list, t)
+	return t, term_spawn(editor, t)
+}
+
+term_spec_set :: proc(t: ^Terminal, spec: TermSpec) {
+	if t.name != spec.name {
+		delete(t.name)
+		t.name = strings.clone(spec.name)
+	}
+	delete(t.cmd)
+	delete(t.cwd)
+	for kv in t.env {
+		delete(kv)
+	}
+	delete(t.env)
+	t.cmd = strings.clone(spec.cmd)
+	t.cwd = strings.clone(spec.cwd)
+	t.env = nil
+	if spec.env != nil {
+		t.env = make([]string, len(spec.env))
+		for kv, i in spec.env {
+			t.env[i] = strings.clone(kv)
+		}
+	}
+	t.owner = spec.owner
+}
+
+term_spawn :: proc(editor: ^Editor, t: ^Terminal) -> bool {
+	term_stop(t)
+	term_free_vt(t)
+	cols, rows := term_grid_size(editor)
+	if cols < 1 || rows < 1 {
+		cols, rows = TERM_FALLBACK_COLS, TERM_FALLBACK_ROWS
+	}
+	argv: []string
+	if t.cmd == "" {
+		shell := os.get_env("SHELL", context.temp_allocator)
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		argv = {shell, "-i"}
+	} else {
+		argv = {"/bin/sh", "-c", t.cmd}
+	}
+	cwd := t.cwd if t.cwd != "" else editor.working_root
+	fd, pid := pty.spawn(rows, cols, argv, t.env, cwd)
 	if fd < 0 {
-		editor_log(editor, .Error, "Terminal", "failed to start shell")
+		editor_log(editor, .Error, "Terminal", fmt.tprintf("failed to start %s", t.name))
 		return false
 	}
 	nfd := posix.FD(fd)
@@ -222,6 +297,10 @@ term_start :: proc(editor: ^Editor) -> bool {
 	}
 	term_sb_free(t)
 	t.altscreen = false
+	t.mouse_mode = false
+	t.mouse_btn = 0
+	t.sel_active = false
+	t.sel_drag = false
 	vterm.screen_set_callbacks(screen, &term_callbacks, t)
 
 	t.vt = vt
@@ -231,8 +310,87 @@ term_start :: proc(editor: ^Editor) -> bool {
 	t.cols = cols
 	t.rows = rows
 	t.alive = true
-	editor_log(editor, .Debug, "Terminal", fmt.tprintf("shell spawned: %s (pid %d)", shell, pid))
+	t.exited = false
+	t.code = 0
+	editor_log(editor, .Debug, "Terminal", fmt.tprintf("%s spawned: %s (pid %d)", t.name, strings.join(argv, " ", context.temp_allocator), pid))
 	return true
+}
+
+term_exit_code :: proc(status: c.int) -> int {
+	if posix.WIFEXITED(status) {
+		return int(posix.WEXITSTATUS(status))
+	}
+	if posix.WIFSIGNALED(status) {
+		return 128 + int(posix.WTERMSIG(status))
+	}
+	return -1
+}
+
+term_stop :: proc(t: ^Terminal) -> bool {
+	if !t.alive {
+		return false
+	}
+	posix.kill(-posix.pid_t(t.pid), .SIGKILL)
+	status: c.int
+	t.code = -1
+	start := time.tick_now()
+	for {
+		r := posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG})
+		if r > 0 {
+			t.code = term_exit_code(status)
+			break
+		}
+		if r < 0 || time.duration_milliseconds(time.tick_since(start)) > TERM_REAP_MS {
+			break
+		}
+		time.sleep(time.Millisecond)
+	}
+	posix.close(posix.FD(t.pty_fd))
+	t.alive = false
+	t.exited = true
+	return true
+}
+
+term_kill :: proc(editor: ^Editor, t: ^Terminal) {
+	if term_stop(t) {
+		editor_log(editor, .Info, "Terminal", fmt.tprintf("%s killed", t.name))
+		plugin_queue(editor, {event = .Term_Exit, a = t.name, n = i64(t.code)})
+	}
+}
+
+term_close :: proc(editor: ^Editor, t: ^Terminal) {
+	term_stop(t)
+	term_free_vt(t)
+	delete(t.sb_ring)
+	term_spec_set(t, {})
+	delete(t.name)
+	ts := &editor.terminal
+	if ts.shown == t {
+		ts.shown = nil
+		ts.active = false
+	}
+	for x, i in ts.list {
+		if x == t {
+			ordered_remove(&ts.list, i)
+			break
+		}
+	}
+	free(t)
+}
+
+term_unload :: proc(editor: ^Editor, owner: string) {
+	ts := &editor.terminal
+	for i := len(ts.list) - 1; i >= 0; i -= 1 {
+		if i < len(ts.list) && ts.list[i].owner == owner {
+			term_close(editor, ts.list[i])
+		}
+	}
+}
+
+term_send :: proc(t: ^Terminal, data: []u8) {
+	term_write_all(t, data)
+	t.sb_view = 0
+	t.sel_active = false
 }
 
 term_push_colors :: proc(state: ^vterm.State, screen: ^vterm.Screen) {
@@ -246,16 +404,16 @@ term_push_colors :: proc(state: ^vterm.State, screen: ^vterm.Screen) {
 }
 
 term_reload_colors :: proc(editor: ^Editor) {
-	t := &editor.terminal
-	if t.vt == nil {
-		return
+	for t in editor.terminal.list {
+		if t.vt != nil {
+			term_push_colors(vterm.obtain_state(t.vt), t.screen)
+		}
 	}
-	term_push_colors(vterm.obtain_state(t.vt), t.screen)
 }
 
 term_resize :: proc(editor: ^Editor) {
-	t := &editor.terminal
-	if t.vt == nil {
+	t := editor.terminal.shown
+	if t == nil || t.vt == nil {
 		return
 	}
 	cols, rows := term_grid_size(editor)
@@ -271,47 +429,48 @@ term_resize :: proc(editor: ^Editor) {
 }
 
 term_pump :: proc(editor: ^Editor) -> bool {
-	t := &editor.terminal
-	if t.vt == nil || !t.alive {
-		return false
-	}
-	fd := posix.FD(t.pty_fd)
-	buf: [16384]u8
-	got := false
-	for {
-		n := posix.read(fd, &buf[0], len(buf))
-		if n > 0 {
-			vterm.input_write(t.vt, &buf[0], c.size_t(n))
-			got = true
+	redraw := false
+	for t in editor.terminal.list {
+		if !t.alive {
 			continue
 		}
-		if n == 0 || posix.errno() != .EAGAIN {
-			term_mark_exited(editor)
-			return true
+		if term_drain(t) && editor.terminal.active && editor.terminal.shown == t {
+			redraw = true
 		}
-		break
+		status: c.int
+		if posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG}) > 0 {
+			term_drain(t)
+			posix.close(posix.FD(t.pty_fd))
+			t.alive = false
+			t.exited = true
+			t.code = term_exit_code(status)
+			editor_log(editor, .Info, "Terminal", fmt.tprintf("%s exited (%d)", t.name, t.code))
+			plugin_queue(editor, {event = .Term_Exit, a = t.name, n = i64(t.code)})
+			redraw = true
+		}
 	}
-	return got && t.active
+	return redraw
 }
 
-term_mark_exited :: proc(editor: ^Editor) {
-	t := &editor.terminal
-	if !t.alive {
-		return
+term_drain :: proc(t: ^Terminal) -> (got: bool) {
+	buf: [16384]u8
+	for {
+		n := posix.read(posix.FD(t.pty_fd), &buf[0], len(buf))
+		if n <= 0 {
+			return
+		}
+		vterm.input_write(t.vt, &buf[0], c.size_t(n))
+		got = true
 	}
-	t.alive = false
-	posix.close(posix.FD(t.pty_fd))
-	status: c.int
-	code := -1
-	if posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG}) > 0 && posix.WIFEXITED(status) {
-		code = int(posix.WEXITSTATUS(status))
-	}
-	editor_log(editor, .Info, "Terminal", "process exited")
-	plugin_queue(editor, {event = .Term_Exit, a = "shell", n = i64(code)})
 }
 
 term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
-	t := &editor.terminal
+	ts := &editor.terminal
+	t := ts.shown
+	if t == nil {
+		ts.active = false
+		return
+	}
 	alt := ev_alt(ev)
 	swapped := ev
 	if ev.ch == 't' {
@@ -320,17 +479,17 @@ term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		swapped.ch = 't'
 	}
 	if command_matches(ev, "Terminal: Toggle") || command_matches(swapped, "Terminal: Toggle") {
-		t.active = false
+		ts.active = false
 		return
 	}
 	// Full-screen programs (alt-screen) own Escape; at a plain shell prompt it
 	// defocuses the pane instead (config-gated).
 	if ev.key == .Esc && !alt && TERMINAL_ESCAPE_CLOSES && !t.altscreen {
-		t.active = false
+		ts.active = false
 		return
 	}
 	if !t.alive {
-		t.active = false
+		ts.active = false
 		return
 	}
 	t.sb_view = 0
@@ -354,7 +513,10 @@ term_mods :: proc(ev: tb2.Event) -> vterm.Modifier {
 }
 
 term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	t := &editor.terminal
+	t := editor.terminal.shown
+	if t == nil {
+		return
+	}
 	motion := ev_motion(ev)
 	shift := ev_shift(ev)
 	mod := term_mods(ev)
@@ -385,7 +547,7 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	// a fresh press re-anchors, and a bare motion starts a drag if one isn't live.
 	if local && ev.key == .Mouse_Left {
 		if !motion && !mouse_in_rect(ev, lay.box) {
-			t.active = false
+			editor.terminal.active = false
 			return
 		}
 		row := clamp(int(ev.y) - lay.inner.y, 0, t.rows - 1)
@@ -402,7 +564,7 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	if !mouse_in_rect(ev, lay.box) {
 		if ev.key == .Mouse_Left && !motion {
-			t.active = false
+			editor.terminal.active = false
 		}
 		return
 	}
@@ -484,7 +646,10 @@ term_cell_at :: proc(t: ^Terminal, vi, col: int, cell: ^vterm.ScreenCell) {
 }
 
 term_copy_selection :: proc(editor: ^Editor) {
-	t := &editor.terminal
+	t := editor.terminal.shown
+	if t == nil {
+		return
+	}
 	// A plain click (no drag) selects nothing — just clear any prior highlight.
 	if !t.sel_active || t.sel_anchor == t.sel_end {
 		t.sel_active = false
@@ -529,7 +694,9 @@ term_copy_selection :: proc(editor: ^Editor) {
 }
 
 term_paste_overlay :: proc(editor: ^Editor, text: string) {
-	term_paste(&editor.terminal, text)
+	if t := editor.terminal.shown; t != nil {
+		term_paste(t, text)
+	}
 }
 
 term_paste :: proc(t: ^Terminal, text: string) {
@@ -650,11 +817,18 @@ term_flush_output :: proc(t: ^Terminal) {
 }
 
 term_render :: proc(editor: ^Editor) {
-	t := &editor.terminal
+	t := editor.terminal.shown
 	lay := overlay_layout(editor)
 	inner := pane_draw_box(lay.box)
-	if t.vt == nil {
+	if t == nil || t.vt == nil {
 		return
+	}
+	if t.name != TERM_SHELL {
+		title := fmt.tprintf(" %s ", t.name)
+		if t.exited {
+			title = fmt.tprintf(" %s (exited %d) ", t.name, t.code)
+		}
+		pane_text(lay.box.x + 2, lay.box.y, max(0, lay.box.w - 4), title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	}
 	rows := min(t.rows, inner.h)
 	cols := min(t.cols, inner.w)
@@ -701,7 +875,7 @@ term_render :: proc(editor: ^Editor) {
 			col += w
 		}
 	}
-	if t.active && t.alive && v == 0 {
+	if editor.terminal.active && t.alive && v == 0 {
 		cur: vterm.Pos
 		vterm.state_get_cursorpos(vterm.obtain_state(t.vt), &cur)
 		if int(cur.row) < rows && int(cur.col) < cols {
@@ -740,18 +914,11 @@ term_color :: proc(col: tb2.Color) -> vterm.Color {
 }
 
 term_destroy :: proc(editor: ^Editor) {
-	t := &editor.terminal
-	if t.alive {
-		posix.kill(posix.pid_t(t.pid), .SIGKILL)
-		posix.close(posix.FD(t.pty_fd))
-		status: c.int
-		posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG})
-		t.alive = false
+	for len(editor.terminal.list) > 0 {
+		term_close(editor, editor.terminal.list[len(editor.terminal.list) - 1])
 	}
-	term_free_vt(t)
-	term_sb_free(t)
-	delete(t.sb_ring)
-	t.sb_ring = nil
+	delete(editor.terminal.list)
+	editor.terminal = {}
 }
 
 term_free_vt :: proc(t: ^Terminal) {
@@ -761,5 +928,4 @@ term_free_vt :: proc(t: ^Terminal) {
 		t.screen = nil
 	}
 	term_sb_free(t)
-	t.alive = false
 }

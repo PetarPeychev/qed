@@ -71,6 +71,10 @@
     },
     "pickers": {
       "enabled": true
+    },
+    "tasks": {
+      "enabled": true,
+      "list": []
     }
   },
   "theme": "default",

@@ -446,6 +446,56 @@ function T.terminal_output(t)
 	t.ok(t.editor().terminal, "the terminal pane is shown")
 end
 
+local function session(name, want_running)
+	return function()
+		local st = qed.term.state(name)
+		return st ~= nil and st.running == want_running
+	end
+end
+
+function T.task_output(t)
+	t.config{list = {
+		{name = "Short", run = "sleep 0.3; echo $X", output = "task", env = {X = "short_done"}},
+		{name = "Long", run = "echo long_up; sleep 30", output = "task"},
+		{name = "BadTask", run = "x", output = "task", stdin = "buffer"},
+	}}
+	t.ok(t.log_has("warn", "", "stdin does not apply to output \"task\""), "stdin is refused")
+	qed.run("Short")
+	t.wait(session("Short", true))
+	expect_message(t, "started", "info", "Short")
+	t.ok(not t.editor().terminal, "a task starts in the background")
+	t.wait(session("Short", false), 5000)
+	t.eq(qed.term.state("Short").code, 0)
+	expect_message(t, "exited 0", "info", "Short")
+	qed.term.show("Short")
+	t.eq(t.editor().session, "Short")
+	t.ok(t.editor().terminal, "the finished task can be shown")
+	qed.term.hide()
+
+	qed.run("Long")
+	t.wait(session("Long", true))
+	local pid = qed.term.state("Long").pid
+	qed.run("Long")
+	t.wait(function() local st = qed.term.state("Long"); return st.running and st.pid ~= pid end)
+	qed.run("Tasks")
+	t.wait(function() return t.ui() ~= nil end)
+	t.eq(t.ui().matches, 2, "the tasks picker lists command tasks")
+	t.key("Esc")
+	t.wait(function() return t.ui() == nil end)
+	qed.term.kill("Long")
+	expect_message(t, "killed (signal 9)", "warn", "Long")
+end
+
+function T.terminal_busy(t)
+	one(t, {name = "Busy", output = "terminal", run = "echo x"})
+	qed.term.show("shell")
+	qed.term.hide()
+	qed.term.send("shell", "sleep 5\r")
+	t.wait(function() local st = qed.term.state("shell"); return st and st.busy end, 4000)
+	qed.run("Busy")
+	expect_message(t, "terminal busy", "error", "Busy")
+end
+
 function T.cancel(t)
 	t.open("a.txt", "x")
 	t.fake_spawn("slowtool", {stdout = "late", delay_ms = 5000})
@@ -478,7 +528,7 @@ function T.invalid_entries_warn(t)
 		{name = "Save", run = "echo x"},
 		{name = "", run = "x"},
 		{name = "NoRun"},
-		{name = "BadOut", run = "x", output = "task"},
+		{name = "BadOut", run = "x", output = "nope"},
 		{name = "BadPane", run = "x", output = "replace", when = {pane = "filetree"}},
 		{name = "BadKey", run = "x", key = "Hyper+x"},
 		{name = "Dupe", run = "echo first"},
@@ -488,7 +538,7 @@ function T.invalid_entries_warn(t)
 	t.ok(t.log_has("warn", "", "\"Save\": command 'Save' already exists"), "a builtin name is refused")
 	t.ok(t.log_has("warn", "", "list[2].name must be a non-empty string"), "empty name")
 	t.ok(t.log_has("warn", "", "\"NoRun\": run must be a non-empty string"), "missing run")
-	t.ok(t.log_has("warn", "", "unknown output \"task\""), "bad output")
+	t.ok(t.log_has("warn", "", "unknown output \"nope\""), "bad output")
 	t.ok(t.log_has("warn", "", "\"BadPane\": output replace/insert"), "edit output in the tree")
 	t.ok(t.log_has("warn", "", "invalid key 'Hyper+x'"), "bad key")
 	t.ok(t.log_has("warn", "", "\"Dupe\": command 'Dupe' already exists"), "duplicate name")

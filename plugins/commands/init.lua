@@ -1,4 +1,4 @@
-local OUTPUTS = {message = true, log = true, replace = true, insert = true, clipboard = true, terminal = true, locations = true}
+local OUTPUTS = {message = true, log = true, replace = true, insert = true, clipboard = true, terminal = true, task = true, locations = true}
 local STDIN = {none = true, selection = true, buffer = true, ["selection-or-buffer"] = true}
 local SAVE = {none = true, current = true, all = true}
 local SAVE_NONE = {replace = true, insert = true, clipboard = true}
@@ -12,6 +12,7 @@ local ENV_VALUE_MAX = 64 * 1024
 
 local handles = {}
 local running = {}
+local tasks = {}
 local seen
 
 local function warn(text)
@@ -170,8 +171,8 @@ local function validate(e, i)
 	if quoted then
 		return nil, ("%s: {%s} is inside quotes in run; placeholders are quoted for you, remove the quotes"):format(where, quoted)
 	end
-	if s.output == "terminal" and s.stdin ~= "none" then
-		return nil, where .. ": stdin does not apply to output \"terminal\""
+	if (s.output == "terminal" or s.output == "task") and s.stdin ~= "none" then
+		return nil, ("%s: stdin does not apply to output %q"):format(where, s.output)
 	end
 	local w = e.when or {}
 	if type(w) ~= "table" then
@@ -357,6 +358,15 @@ local function trim_newline(out, input)
 		out = out:sub(1, -2)
 	end
 	return out
+end
+
+local function exit_text(code)
+	if code == 0 then
+		return "exited 0", "info"
+	elseif code > 128 and code < 160 then
+		return ("killed (signal %d)"):format(code - 128), "warn"
+	end
+	return ("failed (exit %d)"):format(code), "error"
 end
 
 local function plain_error(err)
@@ -555,10 +565,30 @@ local function execute(s, pane, ctx, state)
 	end
 	local cmd = expand(s.run, v, true)
 	if s.output == "terminal" then
-		local done, terr = qed.terminal.run(cmd, {cwd = s.cwd and job.cwd or nil})
-		if not done then
-			say(s.name, terr, "error")
+		if s.cwd then
+			cmd = ("(cd %s && %s)"):format(qed.shell_quote(job.cwd), cmd)
 		end
+		local st = qed.term.state("shell")
+		if st and st.busy then
+			say(s.name, "terminal busy", "error")
+			return
+		end
+		local shown, terr = qed.term.show("shell")
+		if not shown then
+			say(s.name, terr, "error")
+			return
+		end
+		qed.term.send("shell", "\x15" .. cmd .. "\r")
+		return
+	end
+	if s.output == "task" then
+		local started, name, terr = pcall(qed.term.create, {name = s.name, cmd = cmd, cwd = job.cwd, env = environment(s, v), restart = true})
+		if not started or not name then
+			say(s.name, started and terr or plain_error(name), "error")
+			return
+		end
+		tasks[s.name] = true
+		say(s.name, "started")
 		return
 	end
 	local started, proc = pcall(qed.spawn_bg, {cmd = cmd, stdin = stdin, cwd = job.cwd, env = environment(s, v)})
@@ -665,5 +695,10 @@ return {
 		}
 		apply(cfg)
 		qed.on("config_changed", function() apply(qed.config()) end)
+		qed.on("term_exit", function(name, code)
+			if tasks[name] then
+				say(name, exit_text(code))
+			end
+		end)
 	end,
 }

@@ -23,6 +23,7 @@ plugin_test_editor :: proc(bundled: []PluginFile, user_dir := "", cfg_user: json
 }
 
 plugin_test_destroy :: proc(ed: ^Editor) {
+	term_destroy(ed)
 	plugins_shutdown(&ed.plugins)
 	for &b in ed.buffers {
 		buffer_destroy(&b)

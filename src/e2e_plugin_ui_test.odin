@@ -444,29 +444,41 @@ e2e_plugin_ui_unload_restores_theme :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_plugin_terminal_run :: proc(t: ^testing.T) {
+e2e_plugin_term_shell :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
 	tmp, _ := os.temp_dir(context.temp_allocator)
 	dir := fmt.tprintf("%s/qed_term_run_%d", tmp, e2e_seq)
 	os.make_directory(dir)
 	defer os.remove(dir)
-	pl := e2e_plugin(&e, "termrun", fmt.tprintf(`return {{setup = function()
-	qed.command{{name = "Term: Run", run = function() qed.message(tostring(qed.terminal.run("echo qed_run_$((40+2))"))) end}}
-	qed.command{{name = "Term: Cwd", run = function() qed.terminal.run("pwd", {{cwd = %q}}) end}}
-	qed.command{{name = "Term: Sleep", run = function() qed.terminal.run("sleep 3") end}}
-	qed.command{{name = "Term: Again", run = function() local ok, err = qed.terminal.run("echo again"); qed.message(tostring(ok) .. " " .. tostring(err)) end}}
+	pl := e2e_plugin(&e, "termrun", fmt.tprintf(`
+local function type_in(cmd)
+	local st = qed.term.state("shell")
+	if st and st.busy then
+		qed.message("busy")
+		return
+	end
+	qed.message(tostring(qed.term.show("shell")))
+	qed.term.send("shell", "\x15" .. cmd .. "\r")
+end
+return {{setup = function()
+	qed.command{{name = "Term: Run", run = function() type_in("echo qed_run_$((40+2))") end}}
+	qed.command{{name = "Term: Cwd", run = function() type_in("cd %s && pwd") end}}
+	qed.command{{name = "Term: Sleep", run = function() type_in("sleep 3") end}}
+	qed.command{{name = "Term: Again", run = function() type_in("echo again") end}}
 end}}`, dir))
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	ui_run(t, &e, "Term: Run")
 	plugin_pump(&e.ed)
-	if !e.ed.terminal.alive {
+	sh := term_find(&e.ed, TERM_SHELL)
+	if sh == nil || !sh.alive {
 		return
 	}
-	testing.expect(t, e.ed.terminal.active, "qed.terminal.run shows the pane")
+	testing.expect(t, e.ed.terminal.active, "showing the shell opens the pane")
+	testing.expect(t, e.ed.terminal.shown == sh, "the shell is the shown session")
 	testing.expect_value(t, e.ed.message, "true")
 	_, _, ok := e2e_term_wait_row(&e, "qed_run_42", 4000)
-	testing.expect(t, ok, "the typed command runs in the shell")
+	testing.expect(t, ok, "the sent command runs in the shell")
 
 	e2e_key(&e, .Esc)
 	testing.expect(t, !e.ed.terminal.active, "Esc hides the pane")
@@ -474,15 +486,15 @@ end}}`, dir))
 	plugin_pump(&e.ed)
 	testing.expect(t, e.ed.terminal.active, "a hidden pane is shown again")
 	_, _, ok = e2e_term_wait_row(&e, dir, 4000)
-	testing.expect(t, ok, "cwd runs the command in that dir")
+	testing.expect(t, ok, "the shell runs the second command")
 
 	ui_run(t, &e, "Term: Sleep")
 	start := time.tick_now()
-	for int(posix.tcgetpgrp(posix.FD(e.ed.terminal.pty_fd))) == e.ed.terminal.pid && ms_since(start) < 3000 {
+	for !term_busy(sh) && ms_since(start) < 3000 {
 		term_pump(&e.ed)
 		time.sleep(5 * time.Millisecond)
 	}
 	ui_run(t, &e, "Term: Again")
 	plugin_pump(&e.ed)
-	testing.expect_value(t, e.ed.message, "nil terminal busy")
+	testing.expect_value(t, e.ed.message, "busy")
 }

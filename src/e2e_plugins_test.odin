@@ -104,6 +104,7 @@ pt_type :: proc "c" (L: ^lua.State) -> c.int {
 @(private = "file")
 pt_step :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
+	term_pump(&g_pt.ed)
 	plugin_pump(&g_pt.ed)
 	return 0
 }
@@ -127,6 +128,7 @@ pt_wait :: proc "c" (L: ^lua.State) -> c.int {
 		if ms_since(start) > f64(max_ms) {
 			return plugin_raise(L, fmt.tprintf("t.wait timed out after %d ms", max_ms))
 		}
+		term_pump(&g_pt.ed)
 		plugin_pump(&g_pt.ed)
 		time.sleep(time.Millisecond)
 	}
@@ -237,6 +239,7 @@ pt_pump :: proc "c" (L: ^lua.State) -> c.int {
 	ms := api_int(L, 1, "milliseconds expected")
 	start := time.tick_now()
 	for ms_since(start) < f64(ms) {
+		term_pump(&g_pt.ed)
 		plugin_pump(&g_pt.ed)
 		time.sleep(time.Millisecond)
 	}
@@ -351,6 +354,10 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "disk_conflict")
 	lua.pushboolean(L, b32(ed.terminal.active))
 	lua.setfield(L, -2, "terminal")
+	if ed.terminal.active && ed.terminal.shown != nil {
+		lua.pushodinstring(L, ed.terminal.shown.name)
+		lua.setfield(L, -2, "session")
+	}
 	lua.pushboolean(L, b32(ed.filetree.active))
 	lua.setfield(L, -2, "tree")
 	lua.pushboolean(L, b32(ed.palette.active))

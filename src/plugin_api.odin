@@ -118,8 +118,16 @@ qed_theme_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
-qed_terminal_api := [?]lua.L_Reg {
-	{"run", qed_terminal_run},
+qed_term_api := [?]lua.L_Reg {
+	{"create", qed_term_create},
+	{"show", qed_term_show},
+	{"hide", qed_term_hide},
+	{"kill", qed_term_kill},
+	{"restart", qed_term_restart},
+	{"send", qed_term_send},
+	{"state", qed_term_state},
+	{"list", qed_term_list},
+	{"close", qed_term_close},
 	{nil, nil},
 }
 
@@ -145,7 +153,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"terminal", qed_terminal_api[:]}, {"clipboard", qed_clipboard_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -922,33 +930,190 @@ qed_shell_quote :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-qed_terminal_run :: proc "c" (L: ^lua.State) -> c.int {
+api_term_push :: proc(L: ^lua.State, t: ^Terminal) {
+	lua.createtable(L, 0, 5)
+	lua.pushodinstring(L, t.name)
+	lua.setfield(L, -2, "name")
+	lua.pushboolean(L, b32(t.alive))
+	lua.setfield(L, -2, "running")
+	if t.exited {
+		lua.pushinteger(L, lua.Integer(t.code))
+		lua.setfield(L, -2, "code")
+	}
+	if t.alive {
+		lua.pushinteger(L, lua.Integer(t.pid))
+		lua.setfield(L, -2, "pid")
+		lua.pushboolean(L, b32(term_busy(t)))
+		lua.setfield(L, -2, "busy")
+	}
+}
+
+qed_term_create :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	cmd := strings.clone(api_string(L, 1), context.temp_allocator)
-	cwd := ""
-	#partial switch lua.type(L, 2) {
-	case .NIL, .NONE:
-	case .TABLE:
-		cwd, _ = api_field_string(L, 2, "cwd")
-	case:
-		lua.L_argerror(L, 2, "table {cwd?} expected")
+	if lua.type(L, 1) != .TABLE {
+		lua.L_argerror(L, 1, "table {name, cmd?, cwd?, env?, restart?, detach?} expected")
 	}
+	lua.settop(L, 1)
+	lua.L_checkstack(L, 4, "term options")
+	name, _ := api_field_string(L, 1, "name")
+	if name == "" {
+		return plugin_raise(L, "name must be a non-empty string")
+	}
+	if name == TERM_SHELL {
+		return plugin_raise(L, `"shell" is the default session; use qed.term.show("shell")`)
+	}
+	spec := TermSpec{name = name}
+	spec.cmd, _ = api_field_string(L, 1, "cmd")
+	if len(spec.cmd) >= API_ARG_MAX {
+		return plugin_raise(L, fmt.tprintf("cmd too long (%d bytes, limit %d KiB)", len(spec.cmd), API_ARG_MAX / 1024))
+	}
+	if cwd, has_cwd := api_field_string(L, 1, "cwd"); has_cwd {
+		spec.cwd = api_path(editor, cwd)
+	}
+	env_t := lua.getfield(L, 1, "env")
+	if env_t == .TABLE {
+		spec.env = api_env_merge(L)
+	} else if env_t != .NIL {
+		return plugin_raise(L, "env must be a table")
+	}
+	lua.pop(L, 1)
+	for kv in spec.env {
+		if len(kv) >= API_ARG_MAX {
+			return plugin_raise(L, fmt.tprintf("environment value %s too long (%d bytes, limit %d KiB)", kv[:strings.index_byte(kv, '=')], len(kv), API_ARG_MAX / 1024))
+		}
+	}
+	lua.getfield(L, 1, "restart")
+	restart := bool(lua.toboolean(L, -1))
+	lua.getfield(L, 1, "detach")
+	detach := bool(lua.toboolean(L, -1))
+	lua.pop(L, 2)
+	pl := api_loaded(L, editor)
+	if !detach {
+		spec.owner = pl.name
+	}
+	t := term_find(editor, name)
+	if t != nil && t.alive && !restart {
+		return api_fail(L, "already running")
+	}
+	if t == nil {
+		ok: bool
+		if t, ok = term_create(editor, spec); !ok {
+			term_close(editor, t)
+			return api_fail(L, "cannot start")
+		}
+	} else {
+		term_stop(t)
+		term_spec_set(t, spec)
+		if !term_spawn(editor, t) {
+			return api_fail(L, "cannot start")
+		}
+	}
+	lua.pushodinstring(L, name)
+	return 1
+}
+
+qed_term_show :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	name := api_string(L, 1)
 	api_loaded(L, editor)
-	if editor.plugins.loading {
-		return plugin_raise(L, "qed.terminal.run is unavailable while plugins load")
+	t: ^Terminal
+	if name == TERM_SHELL {
+		if t = term_shell(editor); t == nil {
+			return api_fail(L, "terminal unavailable")
+		}
+	} else if t = term_find(editor, name); t == nil {
+		return api_fail(L, "no such session")
 	}
-	if cwd != "" {
-		cmd = fmt.tprintf("(cd %s && %s)", shell_quote(api_path(editor, cwd)), cmd)
+	term_show(editor, t)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_term_hide :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	entry.editor.terminal.active = false
+	return 0
+}
+
+qed_term_kill :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	t := term_find(entry.editor, api_string(L, 1))
+	if t == nil {
+		return api_fail(L, "no such session")
 	}
-	switch term_run(editor, cmd) {
-	case .Ok:
-	case .Unavailable:
-		return api_fail(L, "terminal unavailable")
-	case .Busy:
-		return api_fail(L, "terminal busy")
+	term_kill(entry.editor, t)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_term_restart :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	t := term_find(entry.editor, api_string(L, 1))
+	if t == nil {
+		return api_fail(L, "no such session")
 	}
+	if !term_spawn(entry.editor, t) {
+		return api_fail(L, "cannot start")
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_term_send :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	t := term_find(entry.editor, api_string(L, 1))
+	text := api_string(L, 2)
+	if t == nil {
+		return api_fail(L, "no such session")
+	}
+	if !t.alive {
+		return api_fail(L, "not running")
+	}
+	term_send(t, transmute([]u8)text)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_term_state :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	t := term_find(entry.editor, api_string(L, 1))
+	if t == nil {
+		lua.pushnil(L)
+		return 1
+	}
+	api_term_push(L, t)
+	return 1
+}
+
+qed_term_list :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	list := entry.editor.terminal.list
+	lua.createtable(L, c.int(len(list)), 0)
+	for t, i in list {
+		api_term_push(L, t)
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	return 1
+}
+
+qed_term_close :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	t := term_find(entry.editor, api_string(L, 1))
+	if t == nil {
+		return api_fail(L, "no such session")
+	}
+	term_close(entry.editor, t)
 	lua.pushboolean(L, true)
 	return 1
 }
@@ -1408,6 +1573,33 @@ api_field_string :: proc(L: ^lua.State, t: c.int, key: cstring) -> (string, bool
 	return strings.clone(s, context.temp_allocator), true
 }
 
+api_env_merge :: proc(L: ^lua.State) -> []string {
+	overrides := make(map[string]string, context.temp_allocator)
+	lua.pushnil(L)
+	for lua.next(L, -2) != 0 {
+		if lua.type(L, -2) != .STRING || lua.type(L, -1) != .STRING {
+			plugin_raise(L, "env must map strings to strings")
+		}
+		k, _ := lua.toodinstring(L, -2)
+		v, _ := lua.toodinstring(L, -1)
+		overrides[strings.clone(k, context.temp_allocator)] = strings.clone(v, context.temp_allocator)
+		lua.pop(L, 1)
+	}
+	base, _ := os.environ(context.temp_allocator)
+	env := make([dynamic]string, context.temp_allocator)
+	for kv in base {
+		eq := strings.index_byte(kv, '=')
+		if eq > 0 && kv[:eq] in overrides {
+			continue
+		}
+		append(&env, kv)
+	}
+	for k, v in overrides {
+		append(&env, fmt.tprintf("%s=%s", k, v))
+	}
+	return env[:]
+}
+
 api_spawn_opts :: proc(L: ^lua.State, editor: ^Editor) -> (o: ApiSpawn) {
 	if lua.type(L, 1) != .TABLE {
 		lua.L_argerror(L, 1, "table {cmd | argv, stdin?, cwd?, env?, on_line?} expected")
@@ -1445,30 +1637,7 @@ api_spawn_opts :: proc(L: ^lua.State, editor: ^Editor) -> (o: ApiSpawn) {
 	o.cwd = api_path(editor, cwd) if has_cwd else editor.working_root
 	env_t := lua.getfield(L, 1, "env")
 	if env_t == .TABLE {
-		overrides := make(map[string]string, context.temp_allocator)
-		lua.pushnil(L)
-		for lua.next(L, -2) != 0 {
-			if lua.type(L, -2) != .STRING || lua.type(L, -1) != .STRING {
-				plugin_raise(L, "env must map strings to strings")
-			}
-			k, _ := lua.toodinstring(L, -2)
-			v, _ := lua.toodinstring(L, -1)
-			overrides[strings.clone(k, context.temp_allocator)] = strings.clone(v, context.temp_allocator)
-			lua.pop(L, 1)
-		}
-		base, _ := os.environ(context.temp_allocator)
-		env := make([dynamic]string, context.temp_allocator)
-		for kv in base {
-			eq := strings.index_byte(kv, '=')
-			if eq > 0 && kv[:eq] in overrides {
-				continue
-			}
-			append(&env, kv)
-		}
-		for k, v in overrides {
-			append(&env, fmt.tprintf("%s=%s", k, v))
-		}
-		o.env = env[:]
+		o.env = api_env_merge(L)
 	} else if env_t != .NIL {
 		plugin_raise(L, "env must be a table")
 	}
