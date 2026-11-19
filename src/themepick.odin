@@ -73,6 +73,7 @@ themepick_commit :: proc(editor: ^Editor) {
 	name := tp.names[tp.matches[tp.selected]]
 	themepick_apply(editor, name)
 	theme_persist(name)
+	plugin_queue(editor, {event = .Theme_Changed})
 	editor.config_stamp = buffer_disk_stamp(config_path())
 	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
 	msg := fmt.tprintf("Theme: %s", name)

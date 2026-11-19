@@ -7,6 +7,7 @@ import "core:sync"
 import "core:sys/posix"
 import "core:testing"
 import "core:thread"
+import "core:time"
 import "lib:pty"
 import "lib:tb2"
 
@@ -222,6 +223,22 @@ e2e_plugin :: proc(e: ^E2E, name, src: string) -> ^Plugin {
 	pl := plugins_add(&e.ed.plugins, Plugin{name = name, main = path}, false)
 	plugin_load(&e.ed, pl)
 	return pl
+}
+
+e2e_spawn_fake :: proc(e: ^E2E, pattern, stdout: string, code := 0, delay_ms := 0, stderr := "") {
+	append(&e.ed.plugins.fakes, PluginFake{pattern = pattern, stdout = stdout, stderr = stderr, code = code, delay_ms = delay_ms})
+}
+
+e2e_pump_while :: proc(e: ^E2E, busy: proc(e: ^E2E) -> bool, max_ms := 3000) -> bool {
+	start := time.tick_now()
+	for busy(e) {
+		if ms_since(start) > f64(max_ms) {
+			return false
+		}
+		plugin_pump(&e.ed)
+		time.sleep(time.Millisecond)
+	}
+	return true
 }
 
 e2e_type :: proc(e: ^E2E, s: string) {

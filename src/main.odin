@@ -56,8 +56,8 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || filetree_scanning(&editor) || git_stat_running(&editor) || projsearch_running(&editor) || filetree_filter_pending(&editor) || filetree_preview_pending(&editor) || filetree_prewarming(&editor) {
-				if tb2.peek_event(&ev, i32(LSP_POLL_MS)) == .Ok {
+			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || filetree_scanning(&editor) || git_stat_running(&editor) || projsearch_running(&editor) || filetree_filter_pending(&editor) || filetree_preview_pending(&editor) || filetree_prewarming(&editor) || plugin_busy(&editor) {
+				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
 				redraw := false
@@ -107,6 +107,9 @@ main :: proc() {
 				if editor_maybe_poll_disk(&editor) {
 					redraw = true
 				}
+				if plugin_pump(&editor) {
+					redraw = true
+				}
 				if redraw && !got_event {
 					break
 				}
@@ -114,11 +117,13 @@ main :: proc() {
 					free_all(context.temp_allocator)
 				}
 			} else {
-				if tb2.peek_event(&ev, i32(DISK_POLL_MS)) == .Ok {
+				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, DISK_POLL_MS))) == .Ok {
 					got_event = true
-				} else if editor_maybe_poll_disk(&editor) {
-					break
 				} else {
+					pumped := plugin_pump(&editor)
+					if editor_maybe_poll_disk(&editor) || pumped {
+						break
+					}
 					free_all(context.temp_allocator)
 				}
 			}
@@ -128,6 +133,7 @@ main :: proc() {
 		}
 		free_all(context.temp_allocator)
 	}
+	editor_plugins_quit(&editor)
 }
 
 main_peek :: proc(ms: int) -> (tb2.Event, bool) {
@@ -181,5 +187,8 @@ editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.
 	}
 	if llm_running(editor) {
 		llm_prune_edited(editor)
+	}
+	if !editor.pasting {
+		plugin_flush(editor)
 	}
 }

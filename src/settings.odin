@@ -52,6 +52,7 @@ CODE_LIST_MAX_WIDTH: int
 PREVIEW_MIN_WIDTH: int
 PREVIEW_MAX_WIDTH: int
 PLUGIN_MEMORY_MB: int
+PLUGIN_HOOK_TIMEOUT_MS: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -74,6 +75,7 @@ config_ints := [?]Config_Int {
 	{"preview_min_width", &PREVIEW_MIN_WIDTH},
 	{"preview_max_width", &PREVIEW_MAX_WIDTH},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
+	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
 }
 
 FORMAT_ON_SAVE: bool

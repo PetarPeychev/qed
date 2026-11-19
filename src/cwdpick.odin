@@ -220,6 +220,7 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 		}
 	}
 	root := strings.clone(root)
+	plugin_queue(editor, {event = .Root_Changed, a = editor.working_root, b = root})
 	delete(editor.working_root)
 	editor.working_root = root
 	editor.hover_active = false

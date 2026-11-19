@@ -53,6 +53,9 @@ KContext :: distinct int
 CFunction :: #type proc "c" (L: ^State) -> c.int
 KFunction :: #type proc "c" (L: ^State, status: c.int, ctx: KContext) -> c.int
 Alloc :: #type proc "c" (ud: rawptr, ptr: rawptr, osize, nsize: c.size_t) -> rawptr
+Hook :: #type proc "c" (L: ^State, ar: rawptr)
+
+MASKCOUNT :: 1 << 3
 
 State :: struct {}
 
@@ -94,6 +97,7 @@ foreign lib {
 	pushcclosure :: proc(L: ^State, fn: CFunction, n: c.int) ---
 	pushboolean :: proc(L: ^State, b: b32) ---
 	pushlightuserdata :: proc(L: ^State, p: rawptr) ---
+	pushstring :: proc(L: ^State, s: cstring) -> cstring ---
 
 	getglobal :: proc(L: ^State, name: cstring) -> Type ---
 	getfield :: proc(L: ^State, idx: c.int, k: cstring) -> Type ---
@@ -112,6 +116,14 @@ foreign lib {
 	pcall :: proc(L: ^State, nargs, nresults: c.int, errfunc: c.int, ctx: KContext = 0, k: KFunction = nil) -> Status ---
 
 	error :: proc(L: ^State) -> c.int ---
+	newthread :: proc(L: ^State) -> ^State ---
+	xmove :: proc(from, to: ^State, n: c.int) ---
+	resume :: proc(L: ^State, from: ^State, narg: c.int, nres: ^c.int) -> Status ---
+	closethread :: proc(L: ^State, from: ^State) -> Status ---
+	yieldk :: proc(L: ^State, nresults: c.int, ctx: KContext = 0, k: KFunction = nil) -> c.int ---
+	isyieldable :: proc(L: ^State) -> b32 ---
+	status :: proc(L: ^State) -> Status ---
+	sethook :: proc(L: ^State, f: Hook, mask: c.int, count: c.int) ---
 	next :: proc(L: ^State, idx: c.int) -> c.int ---
 	gc :: proc(L: ^State, what: GCWhat, #c_vararg args: ..c.int) -> c.int ---
 	setupvalue :: proc(L: ^State, funcindex: c.int, n: c.int) -> cstring ---

@@ -232,6 +232,7 @@ editor_set_language :: proc(editor: ^Editor, b: ^Buffer, lang: Language) -> bool
 	b.language = lang
 	highlight_destroy(&b.hl)
 	b.hl = {}
+	plugin_queue(editor, {event = .Language_Changed, buf = b.id})
 	return true
 }
 
@@ -766,6 +767,7 @@ editor_switch_to :: proc(editor: ^Editor, idx: int) {
 	editor.scroll_sub = 0
 	editor.scroll_col = 0
 	editor_scroll(editor)
+	plugin_queue(editor, {event = .Buf_Enter, buf = editor.buffers[idx].id})
 }
 
 editor_close_buffer :: proc(editor: ^Editor) {
@@ -785,6 +787,7 @@ editor_close_current :: proc(editor: ^Editor) {
 
 editor_close_index :: proc(editor: ^Editor, idx: int) {
 	editor.jump_lock = true
+	plugin_queue(editor, {event = .Buf_Close, buf = editor.buffers[idx].id})
 	lsp_did_close(editor, &editor.buffers[idx])
 	buffer_destroy(&editor.buffers[idx])
 	ordered_remove(&editor.buffers, idx)
@@ -823,6 +826,7 @@ editor_open_path :: proc(editor: ^Editor, path: string) -> bool {
 	}
 	editor_log(editor, .Debug, "Lang", fmt.tprintf("detected %s for %s", LANGUAGES[b.language].name, editor_display_path(editor, abs)))
 
+	plugin_queue(editor, {event = .Buf_Open, buf = b.id})
 	scratch := editor.buffers[0]
 	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
 		buffer_destroy(&editor.buffers[0])
@@ -848,6 +852,7 @@ editor_load_buffer :: proc(editor: ^Editor, path: string) -> int {
 		buffer_destroy(&b)
 		return -1
 	}
+	plugin_queue(editor, {event = .Buf_Open, buf = b.id})
 	scratch := editor.buffers[0]
 	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
 		buffer_destroy(&editor.buffers[0])
@@ -894,6 +899,26 @@ editor_save :: proc(editor: ^Editor) {
 }
 
 editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
+	id := b.id
+	if plugin_save_pending(&editor.plugins, id) {
+		editor_log(editor, .Info, "", "Save is waiting for plugins")
+		return
+	}
+	if plugin_pre_save(editor, id) != 0 {
+		return
+	}
+	editor_save_id(editor, id)
+}
+
+editor_save_id :: proc(editor: ^Editor, id: u64) {
+	b, idx := api_buf_find(editor, id)
+	if b == nil {
+		return
+	}
+	if idx != editor.current && buffer_disk_changed(b) {
+		editor_log(editor, .Warn, "", fmt.tprintf("%s changed on disk, not saved", editor_display_path(editor, b.path)))
+		return
+	}
 	trimmed, newlined := buffer_save_fixups(b, editor.trim_trailing_whitespace_on_save, editor.ensure_final_newline_on_save)
 	if trimmed > 0 || newlined {
 		editor_log(editor, .Debug, "Save", fmt.tprintf("fixups: trimmed %d line(s), final-newline=%v", trimmed, newlined))
@@ -958,7 +983,7 @@ editor_after_save :: proc(editor: ^Editor, b: ^Buffer) {
 			editor_close_current(editor)
 		}
 	case .Quit:
-		if lsp_format_pending() {
+		if lsp_format_pending() || len(editor.plugins.saves) > 0 {
 			return
 		}
 		editor_save_intent_clear(editor)
@@ -976,6 +1001,7 @@ editor_force_save :: proc(editor: ^Editor, b: ^Buffer) {
 		editor_log(editor, .Debug, "Save", fmt.tprintf("wrote %s (%d lines, %v)", editor_display_path(editor, b.path), len(b.lines), b.line_ending))
 		editor_log(editor, .Info, "", "Saved")
 		lsp_did_save(editor, b)
+		plugin_queue(editor, {event = .Buf_Save, buf = b.id})
 	case .NoPath:
 		editor_log(editor, .Error, "", "No file name")
 	case .WriteError:
@@ -991,6 +1017,7 @@ editor_reload_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 	lsp_did_close(editor, b)
 	switch buffer_reload(b) {
 	case .None:
+		plugin_queue(editor, {event = .Buf_Reload, buf = b.id})
 		if b == editor_buffer(editor) {
 			editor_scroll(editor)
 			editor_log(editor, .Info, "", "Reloaded from disk")
@@ -1051,6 +1078,10 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
 	editor_modules_sync(editor)
+	plugin_queue(editor, {event = .Config_Changed})
+	if theme_changed {
+		plugin_queue(editor, {event = .Theme_Changed})
+	}
 	if message == "" {
 		message = "config.json reloaded"
 	}

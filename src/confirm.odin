@@ -29,6 +29,7 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 	case 0:
 		quit_dialog_close(editor)
 		conflict := false
+		ids := make([dynamic]u64, context.temp_allocator)
 		for &b in editor.buffers {
 			if !b.modified {
 				continue
@@ -37,11 +38,16 @@ quit_dialog_execute :: proc(editor: ^Editor) {
 				conflict = true
 				continue
 			}
-			editor_save_full(editor, &b)
+			append(&ids, b.id)
+		}
+		for id in ids {
+			if b, _ := api_buf_find(editor, id); b != nil {
+				editor_save_full(editor, b)
+			}
 		}
 		if conflict {
 			editor_log(editor, .Warn, "", fmt.tprintf("File changed on disk — save it with %s to resolve", command_shortcut("Save")))
-		} else if lsp_format_pending() {
+		} else if lsp_format_pending() || len(editor.plugins.saves) > 0 {
 			editor_save_intent_set(editor, .Quit, "")
 		} else if editor_any_modified(editor) {
 			editor_log(editor, .Error, "", "Save failed")

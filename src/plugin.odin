@@ -51,6 +51,20 @@ Plugins :: struct {
 	loading:  bool,
 	config_override: Maybe(json.Object),
 	edit_depth: int,
+	tasks:    [dynamic]PluginTask,
+	pool:     [dynamic]PluginThread,
+	hooks:    [dynamic]PluginHook,
+	subs:     [PluginEvent]int,
+	timers:   [dynamic]PluginTimer,
+	procs:    [dynamic]PluginProc,
+	saves:    [dynamic]PluginSave,
+	queue:    [dynamic]PluginQueued,
+	fakes:    [dynamic]PluginFake,
+	slice:    PluginSlice,
+	seq:      u64,
+	presave:  u64,
+	resumes:  int,
+	startup_due: bool,
 }
 
 PluginEntry :: struct {
@@ -147,6 +161,7 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 	}
 	lua.atpanic(p.L, plugin_panic)
 	lua.getextraspace(p.L)^ = nil
+	lua.sethook(p.L, plugin_hook, lua.MASKCOUNT, PLUGIN_HOOK_COUNT)
 	lua.pushcfunction(p.L, plugin_openlibs)
 	if lua.pcall(p.L, 0, 0, 0) != .OK {
 		lua.close(p.L)
@@ -160,6 +175,7 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 }
 
 plugins_shutdown :: proc(p: ^Plugins) {
+	plugin_sched_shutdown(p)
 	for &cmd in p.commands {
 		plugin_command_free(&cmd)
 	}
@@ -191,6 +207,7 @@ editor_plugins_start :: proc(editor: ^Editor, bundled: []PluginFile, user_dir: s
 		plugin_load(editor, &pl)
 	}
 	plugins_config_warn(editor)
+	p.startup_due = true
 	editor_log(
 		editor,
 		.Debug,
@@ -406,8 +423,13 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin) {
 	lua.pushcfunction(p.L, plugin_load_c)
 	lua.pushlightuserdata(p.L, &args)
 	p.loading = true
+	prev_slice := plugin_slice_begin(p, .Setup)
 	ok, msg, tb := plugin_call(editor, 1, 0)
+	killed := plugin_slice_end(editor, prev_slice, pl.name, .Setup, "setup")
 	p.loading = false
+	if killed {
+		ok, msg, tb = false, fmt.tprintf("setup exceeded its %.0f ms budget", plugin_budgets[.Setup].hard_ms), ""
+	}
 	if !ok {
 		plugin_error(editor, pl, msg, tb, true)
 		return
@@ -451,6 +473,7 @@ plugin_load_c :: proc "c" (L: ^lua.State) -> c.int {
 
 plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	p := &editor.plugins
+	plugin_sched_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
 			lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(p.commands[i].ref))
@@ -932,7 +955,13 @@ plugin_invoke :: proc(editor: ^Editor, owner: string, ref: i32, nresults: c.int)
 	p := &editor.plugins
 	lua.pushcfunction(p.L, plugin_invoke_c)
 	lua.pushinteger(p.L, lua.Integer(ref))
+	p.resumes += 1
+	prev_slice := plugin_slice_begin(p, .When)
 	ok, msg, tb := plugin_call(editor, 1, nresults)
+	if plugin_slice_end(editor, prev_slice, owner, .When, "command when") && ok {
+		lua.pop(p.L, nresults)
+		ok, msg, tb = false, fmt.tprintf("command when exceeded its %.0f ms budget", plugin_budgets[.When].hard_ms), ""
+	}
 	if !ok {
 		if pl := plugin_find(p, owner); pl != nil {
 			plugin_error(editor, pl, msg, tb, false)
@@ -955,7 +984,7 @@ plugin_command_when :: proc(editor: ^Editor, cmd: Command) -> bool {
 }
 
 plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
-	plugin_invoke(editor, cmd.owner, cmd.ref, 0)
+	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx})
 }
 
 plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {

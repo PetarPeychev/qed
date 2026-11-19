@@ -364,6 +364,32 @@ started at the end of `editor_init`. Invariants the code can't show:
   to lua-language-server as `Lua.workspace.library` via `workspace/configuration`
   and the post-`initialized` push (plus `diagnostics.globals = ["qed"]`; applies to
   every Lua project). Unit tests check stub and API against each other.
+- **Scheduler** (`plugin_sched.odin`): every command, event handler, timer tick and
+  `on_line` call runs on a pooled coroutine (`PluginTask`); `setup` and `when` run
+  on the main thread and cannot wait. A waiting binding stores a `PluginWait` on its
+  task and ends with `lua_yieldk`; the continuation builds the result inside the
+  coroutine, so Odin never pushes onto a suspended thread. Waits refuse inside
+  `qed.edit` and in non-task threads. Tasks are found by id after every resume (a
+  nested entry can reallocate `tasks`); unload frees suspended tasks and marks
+  running ones `doomed`, freed when their resume returns.
+- `plugin_pump` (main loop, fast-poll branch and idle timeout) runs due timers and
+  sleeps, drains processes, finishes `buf_pre_save` waits, then `plugin_flush`.
+  `plugin_busy` (startup due, live processes, pending saves, queued events) joins
+  the fast-poll gate; the `peek_event` timeout is clamped to the next deadline.
+- Events never run Lua inside core code: call sites `plugin_queue` (a no-op without
+  subscribers) and `plugin_flush` drains after `editor_step` (skipped mid-paste) and
+  in the pump. `buf_changed`/`cursor_moved` come from comparing `Buffer.plugin_rev`/
+  `plugin_cursor` once per flush. Exceptions: `buf_pre_save` runs inside
+  `editor_save_full`; a handler that waits parks the save in `Plugins.saves` until
+  its tasks end or `plugin_hook_timeout_ms` passes (`editor_save_id` finishes it).
+  `quit` runs after the main loop, pumping until done or the same timeout.
+- Budgets: one count hook (100k instructions) on the main state, inherited by every
+  thread, checks the slice in `Plugins.slice` against `plugin_budgets`. Past the
+  hard limit it yields from the hook when it can (pcall cannot catch that), else
+  raises; the soft limit is a Debug line measured after the resume.
+- `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
+  non-blocking `process_wait`). `Plugins.fakes` (`e2e_spawn_fake`) answers a
+  matching command without forking.
 
 ## Language detection
 
@@ -541,7 +567,7 @@ defaults seeded before main, load + write-back) · `module` (git/lsp/ai enable g
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `langpick` · `basepick` (diff base picker) · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `perf_bench`.
+`format` · `git` · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root.
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -562,7 +588,7 @@ doesn't survive re-init). Harness capabilities: `e2e_mouse` / `e2e_paste` /
 `e2e_resize` (TIOCSWINSZ + SIGWINCH, size restored on stop), a temp-git-repo
 fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
 formatter / chat command / FIM endpoint), a fake stdio LSP server (canned
-JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` (injects a user plugin
+JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` / `e2e_spawn_fake` (injects a user plugin / fakes a `qed.spawn`
 through the real loader). Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow_test.odin`; scope + assertion surfaces:

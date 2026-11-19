@@ -36,6 +36,9 @@ Buffer :: struct {
 	language:      Language,
 	disk:          DiskStamp,
 	disk_conflict: bool,
+	plugin_seen:   bool,
+	plugin_rev:    u64,
+	plugin_cursor: Cursor,
 }
 
 DiskStamp :: struct {

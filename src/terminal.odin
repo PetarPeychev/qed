@@ -275,8 +275,12 @@ term_mark_exited :: proc(editor: ^Editor) {
 	t.alive = false
 	posix.close(posix.FD(t.pty_fd))
 	status: c.int
-	posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG})
+	code := -1
+	if posix.waitpid(posix.pid_t(t.pid), &status, {.NOHANG}) > 0 && posix.WIFEXITED(status) {
+		code = int(posix.WEXITSTATUS(status))
+	}
 	editor_log(editor, .Info, "Terminal", "process exited")
+	plugin_queue(editor, {event = .Term_Exit, a = "shell", n = i64(code)})
 }
 
 term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {

@@ -552,6 +552,39 @@ bench_plugin_startup :: proc(t: ^testing.T) {
 	run("20 synthetic plugins x 5 commands", synthetic)
 }
 
+@(test)
+bench_plugin_keystroke :: proc(t: ^testing.T) {
+	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
+		return
+	}
+	KEYS :: 20000
+	run :: proc(label: string, bundled: []PluginFile) {
+		ed := Editor{headless = true}
+		append(&ed.buffers, buffer_new())
+		editor_plugins_start(&ed, bundled, "", PLUGIN_MEMORY_MB * 1024 * 1024)
+		plugin_pump(&ed)
+		b := &ed.buffers[0]
+		start := time.tick_now()
+		for i in 0 ..< KEYS {
+			buffer_insert_rune(b, 'x' if i % 80 != 79 else '\n')
+			plugin_flush(&ed)
+		}
+		total := ms_since(start)
+		fmt.eprintfln("%s: %.3f us/keystroke (insert + flush), %d Lua entries", label, total * 1000 / KEYS, ed.plugins.resumes)
+		plugins_shutdown(&ed.plugins)
+		buffer_destroy(b)
+		delete(ed.buffers)
+		editor_log_destroy(&ed)
+		delete(ed.message_store)
+	}
+	fmt.eprintln("=== plugin per-keystroke bench ===")
+	run("no plugins", {})
+	run("plugin, no subscribers", {{"q.lua", `return {setup = function() qed.command{name = "Q: Cmd", run = function() end} end}`}})
+	run("one buf_changed subscriber", {{"s.lua", `
+		n = 0
+		return {setup = function() qed.on("buf_changed", function(b, rev) n = n + 1 end) end}`}})
+}
+
 @(private = "file")
 c_buffer :: proc(content: string) -> Buffer {
 	b := buffer_new()

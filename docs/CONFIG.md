@@ -182,6 +182,7 @@ and last error.
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugin_memory_mb` | `64` | Memory cap for the Lua state; a plugin that exceeds it errors instead of growing. `0` means no cap. |
+| `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
 | `plugins.<name>.enabled` | `true` | Off skips loading that plugin. |
 | `plugins.<name>.<key>` | plugin's `defaults` | Per-key override of the plugin's own config; objects merge per key, arrays replace. |
 

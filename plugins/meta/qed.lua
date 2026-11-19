@@ -65,7 +65,7 @@ function qed.edit(b, fn, opts) end
 function qed.open(path) end
 
 ---Save through the full pipeline. Fails without saving if the file changed on disk
----(the conflict dialog opens only for the current buffer).
+---(the conflict dialog opens only for the current buffer). Waits for `buf_pre_save` handlers.
 ---@param b qed.Buf
 ---@return boolean|nil ok
 ---@return string|nil err "no file name" or "changed on disk"
@@ -96,6 +96,75 @@ function qed.opt(key) end
 ---@param s string
 ---@return string
 function qed.shell_quote(s) end
+
+---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_exit"|"quit"
+
+---@class qed.Handle
+---@field id integer
+local Handle = {}
+function Handle:off() end
+
+---Handlers run as coroutines in plugin load order. `buf_changed(b, rev)` and
+---`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
+---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
+---`root_changed(old, new)`, `term_exit(name, code)`; buffer events get `b`.
+---@param event qed.Event
+---@param fn function
+---@return qed.Handle
+function qed.on(event, fn) end
+
+---@class qed.SpawnSpec
+---@field cmd? string run under `sh -c`
+---@field argv? string[] run directly
+---@field stdin? string
+---@field cwd? string defaults to `qed.root()`
+---@field env? table<string, string> merged over the editor's environment
+---@field on_line? fun(line: string) each stdout line as it arrives
+
+---@class qed.SpawnResult
+---@field code integer
+---@field stdout string
+---@field stderr string
+
+---Waits for the process to exit.
+---@param spec qed.SpawnSpec
+---@return qed.SpawnResult
+function qed.spawn(spec) end
+
+---@class qed.Proc
+---@field id integer
+---@field pid? integer
+local Proc = {}
+function Proc:kill() end
+---Waits for the process to exit.
+---@return qed.SpawnResult
+function Proc:wait() end
+
+---Runs in the background; killed when the plugin unloads and on quit.
+---@param spec qed.SpawnSpec
+---@return qed.Proc
+function qed.spawn_bg(spec) end
+
+---Waits `ms` milliseconds.
+---@param ms integer
+function qed.sleep(ms) end
+
+---@class qed.Timer
+---@field id integer
+local Timer = {}
+function Timer:stop() end
+
+---Runs `fn` once after `ms` milliseconds.
+---@param ms integer
+---@param fn fun()
+---@return qed.Timer
+function qed.defer(ms, fn) end
+
+---Runs `fn` every `ms` milliseconds; a tick is skipped while the previous one still runs.
+---@param ms integer
+---@param fn fun()
+---@return qed.Timer
+function qed.every(ms, fn) end
 
 qed.buf = {}
 

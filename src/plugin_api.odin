@@ -35,6 +35,12 @@ qed_api := [?]lua.L_Reg {
 	{"config", qed_config},
 	{"opt", qed_opt},
 	{"shell_quote", qed_shell_quote},
+	{"on", qed_on},
+	{"spawn", qed_spawn},
+	{"spawn_bg", qed_spawn_bg},
+	{"sleep", qed_sleep},
+	{"defer", qed_defer},
+	{"every", qed_every},
 	{nil, nil},
 }
 
@@ -661,6 +667,7 @@ qed_save :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
+	p := &editor.plugins
 	b, idx := api_buf(L, editor, 1)
 	if b.path == "" {
 		return api_fail(L, "no file name")
@@ -671,7 +678,38 @@ qed_save :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		return api_fail(L, "changed on disk")
 	}
-	editor_save_full(editor, b)
+	id := b.id
+	if plugin_save_pending(p, id) {
+		return api_fail(L, "save in progress")
+	}
+	task: u64
+	if t := plugin_task_of(p, L); t != nil && p.edit_depth == 0 && lua.isyieldable(L) {
+		task = t.id
+	}
+	save := plugin_pre_save(editor, id)
+	if save == 0 {
+		editor_save_id(editor, id)
+		return qed_save_result(L, editor, id)
+	}
+	i := plugin_task_index(p, task)
+	if task == 0 || i < 0 {
+		lua.pushboolean(L, true)
+		return 1
+	}
+	p.tasks[i].wait = {kind = .Save, id = save}
+	return lua.yieldk(L, 0, lua.KContext(id), qed_save_k)
+}
+
+qed_save_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	return qed_save_result(L, entry.editor, u64(ctx))
+}
+
+qed_save_result :: proc(L: ^lua.State, editor: ^Editor, id: u64) -> c.int {
+	if b, _ := api_buf_find(editor, id); b != nil && b.modified && buffer_disk_changed(b) {
+		return api_fail(L, "changed on disk")
+	}
 	lua.pushboolean(L, true)
 	return 1
 }
@@ -1062,4 +1100,325 @@ plugin_stub_write :: proc(dir: string) -> bool {
 	}
 	os.make_directory_all(dir)
 	return os.write_entire_file(path, transmute([]u8)string(QED_STUB)) == nil
+}
+
+api_loaded :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
+	pl := plugin_owner(L, editor)
+	if pl == nil || pl.state != .Enabled {
+		plugin_raise(L, "plugin is not loaded")
+	}
+	return pl
+}
+
+api_handle_push :: proc(L: ^lua.State, id: u64, methods: []lua.L_Reg) {
+	lua.createtable(L, 0, c.int(len(methods) + 1))
+	lua.pushinteger(L, lua.Integer(id))
+	lua.setfield(L, -2, "id")
+	for m in methods {
+		lua.pushvalue(L, lua.upvalueindex(1))
+		lua.pushinteger(L, lua.Integer(id))
+		lua.pushcclosure(L, m.func, 2)
+		lua.setfield(L, -2, m.name)
+	}
+}
+
+api_handle_id :: proc(L: ^lua.State) -> u64 {
+	return u64(lua.tointeger(L, lua.upvalueindex(2)))
+}
+
+qed_on :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	name := api_string(L, 1)
+	event: PluginEvent
+	found := false
+	for n, e in plugin_event_names {
+		if n == name {
+			event, found = e, true
+		}
+	}
+	if !found {
+		lua.L_argerror(L, 1, fmt.ctprintf("unknown event '%s'", name))
+	}
+	if lua.type(L, 2) != .FUNCTION {
+		lua.L_argerror(L, 2, "function expected")
+	}
+	pl := api_loaded(L, editor)
+	lua.settop(L, 2)
+	id := plugin_next_id(p)
+	api_handle_push(L, id, {{"off", qed_hook_off}})
+	lua.pushvalue(L, 2)
+	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	append(&p.hooks, PluginHook{id = id, event = event, owner = pl.name, ref = ref})
+	p.subs[event] += 1
+	return 1
+}
+
+qed_hook_off :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	if i := plugin_hook_index(p, api_handle_id(L)); i >= 0 {
+		plugin_hook_remove(p, i)
+	}
+	return 0
+}
+
+api_timer :: proc "c" (L: ^lua.State, every: bool) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	ms := api_int(L, 1, "milliseconds expected")
+	if ms < (1 if every else 0) {
+		lua.L_argerror(L, 1, "interval must be positive" if every else "delay must not be negative")
+	}
+	if lua.type(L, 2) != .FUNCTION {
+		lua.L_argerror(L, 2, "function expected")
+	}
+	pl := api_loaded(L, editor)
+	lua.settop(L, 2)
+	id := plugin_next_id(p)
+	api_handle_push(L, id, {{"stop", qed_timer_stop}})
+	lua.pushvalue(L, 2)
+	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	append(&p.timers, PluginTimer{id = id, owner = pl.name, ref = ref, every_ms = ms if every else 0, due = plugin_tick_add(time.tick_now(), ms)})
+	return 1
+}
+
+qed_defer :: proc "c" (L: ^lua.State) -> c.int {
+	return api_timer(L, false)
+}
+
+qed_every :: proc "c" (L: ^lua.State) -> c.int {
+	return api_timer(L, true)
+}
+
+qed_timer_stop :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	if i := plugin_timer_index(p, api_handle_id(L)); i >= 0 {
+		plugin_timer_remove(p, i)
+	}
+	return 0
+}
+
+qed_sleep :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	ms := api_int(L, 1, "milliseconds expected")
+	if ms < 0 {
+		lua.L_argerror(L, 1, "delay must not be negative")
+	}
+	t := api_await(L, p, "qed.sleep")
+	t.wait = {kind = .Sleep, until = plugin_tick_add(time.tick_now(), ms)}
+	return lua.yieldk(L, 0)
+}
+
+ApiSpawn :: struct {
+	argv:    []string,
+	label:   string,
+	stdin:   string,
+	cwd:     string,
+	env:     []string,
+	on_line: bool,
+}
+
+api_field_string :: proc(L: ^lua.State, t: c.int, key: cstring) -> (string, bool) {
+	tp := lua.getfield(L, t, key)
+	defer lua.pop(L, 1)
+	if tp == .NIL {
+		return "", false
+	}
+	if tp != .STRING {
+		plugin_raise(L, fmt.tprintf("%s must be a string", key))
+	}
+	s, _ := lua.toodinstring(L, -1)
+	return strings.clone(s, context.temp_allocator), true
+}
+
+api_spawn_opts :: proc(L: ^lua.State, editor: ^Editor) -> (o: ApiSpawn) {
+	if lua.type(L, 1) != .TABLE {
+		lua.L_argerror(L, 1, "table {cmd | argv, stdin?, cwd?, env?, on_line?} expected")
+	}
+	lua.settop(L, 1)
+	lua.L_checkstack(L, 4, "spawn options")
+	cmd, has_cmd := api_field_string(L, 1, "cmd")
+	argv_t := lua.getfield(L, 1, "argv")
+	if has_cmd == (argv_t == .TABLE) || (argv_t != .TABLE && argv_t != .NIL) {
+		plugin_raise(L, "exactly one of cmd (string) or argv (table) is required")
+	}
+	if has_cmd {
+		o.argv = make([]string, 3, context.temp_allocator)
+		o.argv[0], o.argv[1], o.argv[2] = "sh", "-c", cmd
+		o.label = cmd
+	} else {
+		n := int(lua.rawlen(L, -1))
+		if n == 0 {
+			plugin_raise(L, "argv must not be empty")
+		}
+		o.argv = make([]string, n, context.temp_allocator)
+		for i in 1 ..= n {
+			if lua.rawgeti(L, -1, lua.Integer(i)) != .STRING {
+				plugin_raise(L, "argv entries must be strings")
+			}
+			s, _ := lua.toodinstring(L, -1)
+			o.argv[i - 1] = strings.clone(s, context.temp_allocator)
+			lua.pop(L, 1)
+		}
+		o.label = strings.join(o.argv, " ", context.temp_allocator)
+	}
+	lua.pop(L, 1)
+	o.stdin, _ = api_field_string(L, 1, "stdin")
+	cwd, has_cwd := api_field_string(L, 1, "cwd")
+	o.cwd = api_path(editor, cwd) if has_cwd else editor.working_root
+	env_t := lua.getfield(L, 1, "env")
+	if env_t == .TABLE {
+		overrides := make(map[string]string, context.temp_allocator)
+		lua.pushnil(L)
+		for lua.next(L, -2) != 0 {
+			if lua.type(L, -2) != .STRING || lua.type(L, -1) != .STRING {
+				plugin_raise(L, "env must map strings to strings")
+			}
+			k, _ := lua.toodinstring(L, -2)
+			v, _ := lua.toodinstring(L, -1)
+			overrides[strings.clone(k, context.temp_allocator)] = strings.clone(v, context.temp_allocator)
+			lua.pop(L, 1)
+		}
+		base, _ := os.environ(context.temp_allocator)
+		env := make([dynamic]string, context.temp_allocator)
+		for kv in base {
+			eq := strings.index_byte(kv, '=')
+			if eq > 0 && kv[:eq] in overrides {
+				continue
+			}
+			append(&env, kv)
+		}
+		for k, v in overrides {
+			append(&env, fmt.tprintf("%s=%s", k, v))
+		}
+		o.env = env[:]
+	} else if env_t != .NIL {
+		plugin_raise(L, "env must be a table")
+	}
+	lua.pop(L, 1)
+	line_t := lua.getfield(L, 1, "on_line")
+	if line_t != .FUNCTION && line_t != .NIL {
+		plugin_raise(L, "on_line must be a function")
+	}
+	lua.pop(L, 1)
+	o.on_line = line_t == .FUNCTION
+	return
+}
+
+api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn, id: u64, bg: bool) {
+	p := &editor.plugins
+	line_ref: i32
+	if o.on_line {
+		lua.getfield(L, 1, "on_line")
+		line_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	}
+	for f in p.fakes {
+		if strings.contains(o.label, f.pattern) {
+			sp := Subprocess{id = id, out = strings.builder_make(), err = strings.builder_make(), exit_code = f.code}
+			strings.write_string(&sp.out, f.stdout)
+			strings.write_string(&sp.err, f.stderr)
+			append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, fake = true, due = plugin_tick_add(time.tick_now(), f.delay_ms)})
+			return
+		}
+	}
+	sp, err, ok := subprocess_spawn(o.argv, transmute([]u8)o.stdin, o.cwd, o.env, true)
+	if !ok {
+		if line_ref != 0 {
+			lua.L_unref(L, lua.REGISTRYINDEX, c.int(line_ref))
+		}
+		plugin_raise(L, fmt.tprintf("cannot start %s: %v", o.label, err))
+	}
+	append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg})
+}
+
+qed_spawn :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	o := api_spawn_opts(L, editor)
+	pl := api_loaded(L, editor)
+	task := api_await(L, p, "qed.spawn").id
+	id := plugin_next_id(p)
+	api_spawn_start(L, editor, pl, o, id, false)
+	p.tasks[plugin_task_index(p, task)].wait = {kind = .Proc, id = id}
+	return lua.yieldk(L, 0, lua.KContext(id), qed_spawn_k)
+}
+
+qed_spawn_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	return api_proc_result(L, &entry.editor.plugins, u64(ctx))
+}
+
+api_proc_result :: proc(L: ^lua.State, p: ^Plugins, id: u64) -> c.int {
+	i := plugin_proc_index(p, id)
+	if i < 0 {
+		return api_fail(L, "process is gone")
+	}
+	pr := &p.procs[i]
+	lua.createtable(L, 0, 3)
+	lua.pushinteger(L, lua.Integer(pr.sp.exit_code))
+	lua.setfield(L, -2, "code")
+	lua.pushodinstring(L, strings.to_string(pr.sp.out))
+	lua.setfield(L, -2, "stdout")
+	lua.pushodinstring(L, strings.to_string(pr.sp.err))
+	lua.setfield(L, -2, "stderr")
+	if !pr.bg {
+		plugin_proc_free(p, i)
+	}
+	return 1
+}
+
+qed_spawn_bg :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	o := api_spawn_opts(L, editor)
+	pl := api_loaded(L, editor)
+	id := plugin_next_id(p)
+	api_handle_push(L, id, {{"kill", qed_proc_kill}, {"wait", qed_proc_wait}})
+	api_spawn_start(L, editor, pl, o, id, true)
+	if !p.procs[len(p.procs) - 1].fake {
+		lua.pushinteger(L, lua.Integer(p.procs[len(p.procs) - 1].sp.process.pid))
+		lua.setfield(L, 2, "pid")
+	}
+	return 1
+}
+
+qed_proc_kill :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	id := api_handle_id(L)
+	if i := plugin_proc_index(p, id); i >= 0 && !p.procs[i].done {
+		plugin_proc_stop(&p.procs[i])
+		plugin_proc_finish(entry.editor, id)
+	}
+	return 0
+}
+
+qed_proc_wait :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	id := api_handle_id(L)
+	i := plugin_proc_index(p, id)
+	if i < 0 || p.procs[i].done {
+		return api_proc_result(L, p, id)
+	}
+	t := api_await(L, p, "proc:wait")
+	t.wait = {kind = .Proc, id = id}
+	return lua.yieldk(L, 0, lua.KContext(id), qed_spawn_k)
 }

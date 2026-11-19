@@ -19,6 +19,7 @@
   "preview_min_width": 70,
   "preview_max_width": 130,
   "plugin_memory_mb": 64,
+  "plugin_hook_timeout_ms": 2000,
   "format_on_save": false,
   "trim_trailing_whitespace_on_save": false,
   "ensure_final_newline_on_save": false,
