@@ -36,7 +36,7 @@ subprocess_start :: proc(cmd: string, stdin_body: []u8, working_dir: string) -> 
 	return subprocess_spawn({"sh", "-c", cmd}, stdin_body, working_dir)
 }
 
-subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: string, env: []string = nil, capture_stderr := false) -> (Subprocess, os.Error, bool) {
+subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: string, env: []string = nil, capture_stderr := false, group := false) -> (Subprocess, os.Error, bool) {
 	posix.sigignore(.SIGPIPE)
 
 	g_subprocess_counter += 1
@@ -73,9 +73,15 @@ subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: strin
 		err_r, err_w = r, w
 	}
 
-	process, serr := os.process_start(
-		{command = command, working_dir = working_dir, env = env, stdin = in_file, stdout = out_w, stderr = err_w},
-	)
+	process: os.Process
+	serr: os.Error
+	if group {
+		process, serr = subprocess_start_group(command, env, working_dir, in_file, out_w, err_w)
+	} else {
+		process, serr = os.process_start(
+			{command = command, working_dir = working_dir, env = env, stdin = in_file, stdout = out_w, stderr = err_w},
+		)
+	}
 	os.close(in_file)
 	os.close(out_w)
 	if err_w != nil {
@@ -98,6 +104,90 @@ subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: strin
 		sp.err = strings.builder_make()
 	}
 	return sp, nil, true
+}
+
+subprocess_exe_path :: proc(name: string) -> (string, bool) {
+	if strings.index_byte(name, '/') >= 0 {
+		return name, posix.access(strings.clone_to_cstring(name, context.temp_allocator), {.X_OK}) == .OK
+	}
+	for dir in strings.split(os.get_env("PATH", context.temp_allocator), ":", context.temp_allocator) {
+		path := fmt.tprintf("%s/%s", dir if dir != "" else ".", name)
+		st: posix.stat_t
+		cpath := strings.clone_to_cstring(path, context.temp_allocator)
+		if posix.stat(cpath, &st) == .OK && posix.S_ISREG(st.st_mode) && posix.access(cpath, {.X_OK}) == .OK {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// Like os.process_start, but the child leads its own process group so a kill reaches its descendants.
+subprocess_start_group :: proc(command: []string, env: []string, working_dir: string, stdin, stdout, stderr: ^os.File) -> (os.Process, os.Error) {
+	exe, found := subprocess_exe_path(command[0])
+	if !found {
+		return {}, .Not_Exist
+	}
+	cexe := strings.clone_to_cstring(exe, context.temp_allocator)
+	cargs := make([]cstring, len(command) + 1, context.temp_allocator)
+	for a, i in command {
+		cargs[i] = strings.clone_to_cstring(a, context.temp_allocator)
+	}
+	envs := env
+	if envs == nil {
+		envs, _ = os.environ(context.temp_allocator)
+	}
+	cenv := make([]cstring, len(envs) + 1, context.temp_allocator)
+	for e, i in envs {
+		cenv[i] = strings.clone_to_cstring(e, context.temp_allocator)
+	}
+	cdir := strings.clone_to_cstring(working_dir, context.temp_allocator)
+	in_fd := posix.FD(os.fd(stdin))
+	out_fd := posix.FD(os.fd(stdout))
+	err_fd := posix.FD(os.fd(stderr)) if stderr != nil else out_fd
+	fail_byte := [1]u8{1}
+	report: [2]posix.FD
+	if posix.pipe(&report) != .OK {
+		return {}, .Unknown
+	}
+	posix.fcntl(report[1], .SETFD, posix.FD_CLOEXEC)
+	pid := posix.fork()
+	if pid < 0 {
+		posix.close(report[0])
+		posix.close(report[1])
+		return {}, .Unknown
+	}
+	if pid == 0 {
+		posix.close(report[0])
+		posix.setpgid(0, 0)
+		posix.dup2(in_fd, 0)
+		posix.dup2(out_fd, 1)
+		posix.dup2(err_fd, 2)
+		if working_dir != "" && posix.chdir(cdir) != .OK {
+			posix.write(report[1], &fail_byte[0], 1)
+			posix._exit(126)
+		}
+		posix.execve(cexe, raw_data(cargs), raw_data(cenv))
+		posix.write(report[1], &fail_byte[0], 1)
+		posix._exit(126)
+	}
+	posix.setpgid(pid, pid)
+	posix.close(report[1])
+	failed: [1]u8
+	n := posix.read(report[0], &failed[0], 1)
+	posix.close(report[0])
+	if n > 0 {
+		status: c.int
+		posix.waitpid(pid, &status, {})
+		return {}, .Not_Exist
+	}
+	return os.process_open(int(pid))
+}
+
+subprocess_kill_group :: proc(p: ^Subprocess) {
+	if p.process.pid > 0 {
+		posix.kill(-posix.pid_t(p.process.pid), .SIGKILL)
+	}
+	_ = os.process_kill(p.process)
 }
 
 // Drain whatever is readable now into `p.out`; returns true once stdout hits EOF

@@ -655,7 +655,7 @@ plugin_proc_stop :: proc(pr: ^PluginProc) {
 	if pr.fake || !pr.sp.running {
 		return
 	}
-	_ = os.process_kill(pr.sp.process)
+	subprocess_kill_group(&pr.sp)
 	subprocess_close_pipes(&pr.sp)
 	state, _ := os.process_wait(pr.sp.process, time.Second)
 	pr.sp.exit_code = state.exit_code

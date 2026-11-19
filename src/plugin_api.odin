@@ -1491,7 +1491,7 @@ api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn
 			return
 		}
 	}
-	sp, err, ok := subprocess_spawn(o.argv, transmute([]u8)o.stdin, o.cwd, o.env, true)
+	sp, err, ok := subprocess_spawn(o.argv, transmute([]u8)o.stdin, o.cwd, o.env, true, group = true)
 	if !ok {
 		if line_ref != 0 {
 			lua.L_unref(L, lua.REGISTRYINDEX, c.int(line_ref))
