@@ -325,7 +325,29 @@ path_ensure_parent_dir :: proc(path: string) {
 	}
 }
 
+PATH_SYMLINK_MAX :: 40
+
+path_symlink_target :: proc(path: string) -> string {
+	cur := path
+	for _ in 0 ..< PATH_SYMLINK_MAX {
+		fi, err := os.lstat(cur, context.temp_allocator)
+		if err != nil || fi.type != .Symlink {
+			return cur
+		}
+		target, lerr := os.read_link(cur, context.temp_allocator)
+		if lerr != nil {
+			return cur
+		}
+		if slash := strings.last_index_byte(cur, '/'); slash >= 0 && !strings.has_prefix(target, "/") {
+			target = strings.concatenate({cur[:slash + 1], target}, context.temp_allocator)
+		}
+		cur = target
+	}
+	return cur
+}
+
 file_write_atomic :: proc(path: string, data: []u8, mode: os.Permissions) -> BufferSaveError {
+	path := path_symlink_target(path)
 	tmp := strings.concatenate({path, ".qed-tmp"}, context.temp_allocator)
 	fd, open_err := os.open(tmp, {.Write, .Create, .Trunc}, mode)
 	if open_err != nil {
