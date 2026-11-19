@@ -319,6 +319,77 @@ function qed.term.list() end
 ---@return "no such session"|nil err
 function qed.term.close(name) end
 
+qed.deco = {}
+
+---A namespace owned by this plugin; the same name returns the same id. Unload clears all of them.
+---@param name string
+---@return integer
+function qed.deco.ns(name) end
+
+---Mark column glyph (shown where the diff base has no mark).
+---@param b qed.Buf
+---@param ns integer
+---@param row integer
+---@param glyph string one single-width character
+---@param color string theme color key
+function qed.deco.gutter(b, ns, row, glyph, color) end
+
+---Line background tint, stacked over diff/conflict tints and under the AI and current-line tints.
+---@param b qed.Buf
+---@param ns integer
+---@param from_row integer
+---@param to_row integer inclusive
+---@param color string theme color key
+---@param alpha? number 0..1, default the theme's `decoration` tint
+function qed.deco.tint(b, ns, from_row, to_row, color, alpha) end
+
+---Virtual rows below (or above) a row, one clipped screen row each.
+---@param b qed.Buf
+---@param ns integer
+---@param row integer
+---@param lines string|string[]
+---@param opts? {above?: boolean, color?: string}
+function qed.deco.ghost(b, ns, row, lines, opts) end
+
+---Style over a range; dropped when any of its rows is edited.
+---@param b qed.Buf
+---@param ns integer
+---@param from qed.Pos
+---@param to qed.Pos
+---@param style {fg?: string, bg?: string, bold?: boolean, underline?: boolean}
+function qed.deco.span(b, ns, from, to, style) end
+
+---Virtual text after the end of a row, clipped to the window.
+---@param b qed.Buf
+---@param ns integer
+---@param row integer
+---@param text string
+---@param color string theme color key
+function qed.deco.eol(b, ns, row, text, color) end
+
+---Removes the namespace's decorations touching rows from_row..to_row (all when omitted).
+---@param b qed.Buf
+---@param ns integer
+---@param from_row? integer
+---@param to_row? integer
+function qed.deco.clear(b, ns, from_row, to_row) end
+
+qed.status = {}
+
+---@class qed.StatusSegment
+---@field text string
+---@field color? string theme color key
+---@field side? "left"|"right" default "left"
+---@field drop? integer drop rank when the bar is too narrow (lowest first, 0 never), default 1
+
+---Sets or replaces this plugin's status bar segment `id`.
+---@param id string
+---@param seg qed.StatusSegment
+function qed.status.set(id, seg) end
+
+---@param id string
+function qed.status.clear(id) end
+
 qed.clipboard = {}
 
 ---@return string
@@ -436,6 +507,13 @@ function qed.buf.set_indent(b, style, width) end
 ---@return "tabs"|"spaces" style
 ---@return integer width
 function qed.buf.indent(b) end
+
+---Diff base: drives the gutter marks, diff-view ghost rows, change navigation and revert hunk.
+---Replaces the git base for this buffer until cleared with `nil`; cleared when the plugin unloads.
+---@param b qed.Buf
+---@param text string|nil
+---@param opts? {label?: string} label shown in the status bar
+function qed.buf.set_base(b, text, opts) end
 
 qed.fs = {}
 

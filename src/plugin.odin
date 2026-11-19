@@ -80,6 +80,10 @@ Plugins :: struct {
 	user_dir: string,
 	bound:    bool,
 	binds_deferred: bool,
+	colors:   [dynamic]string,
+	deco_ns:  [dynamic]PluginNs,
+	ns_seq:   u32,
+	status:   [dynamic]PluginStatus,
 }
 
 PluginEntry :: struct {
@@ -218,6 +222,18 @@ plugins_shutdown :: proc(p: ^Plugins) {
 	}
 	delete(p.names)
 	delete(p.user_dir)
+	for k in p.colors {
+		delete(k)
+	}
+	delete(p.colors)
+	for ns in p.deco_ns {
+		delete(ns.name)
+	}
+	delete(p.deco_ns)
+	for st in p.status {
+		plugin_status_free(st)
+	}
+	delete(p.status)
 	if p.L != nil {
 		lua.close(p.L)
 	}
@@ -796,6 +812,9 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	plugin_ui_unload(editor, pl.name)
 	plugin_sched_unload(editor, pl.name)
 	term_unload(editor, pl.name)
+	plugin_deco_unload(editor, pl.name)
+	plugin_status_unload(p, pl.name)
+	diffbase_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
 			plugin_command_remove(editor, i)

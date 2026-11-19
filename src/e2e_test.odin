@@ -298,6 +298,16 @@ e2e_cell_bg :: proc(e: ^E2E, x, y: int) -> tb2.Color {
 	return e2e_cell_raw(e, x, y).bg
 }
 
+e2e_row_text :: proc(e: ^E2E, y: int) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for x in 0 ..< int(tb2.width()) {
+		if ch := e2e_cell(e, x, y); ch != 0 {
+			strings.write_rune(&sb, ch)
+		}
+	}
+	return strings.trim_right_space(strings.to_string(sb))
+}
+
 e2e_rgb :: proc(c: tb2.Color) -> u64 {
 	return u64(c) & COLOR_RGB_MASK
 }

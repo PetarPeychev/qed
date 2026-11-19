@@ -30,6 +30,28 @@ local function state_text(st)
 	return (exit_text(st.code))
 end
 
+local function failed(code)
+	return code ~= nil and select(2, exit_text(code)) == "error"
+end
+
+local function status()
+	local running, bad = 0, false
+	for _, st in ipairs(qed.term.list()) do
+		if st.name ~= "shell" then
+			if st.running then
+				running = running + 1
+			elseif failed(st.code) then
+				bad = true
+			end
+		end
+	end
+	if running == 0 and not bad then
+		qed.status.clear("tasks")
+		return
+	end
+	qed.status.set("tasks", {text = ("tasks %d"):format(running), color = bad and "error_foreground" or nil})
+end
+
 local function validate(e, i, names)
 	local where = ("plugins.tasks.list[%d]"):format(i)
 	if type(e) ~= "table" then
@@ -110,6 +132,7 @@ local function start(t)
 	end
 	mine[t.name] = true
 	say(t.name, "started")
+	status()
 	return true
 end
 
@@ -181,6 +204,7 @@ local function pick()
 	elseif action == "Close" then
 		qed.term.close(name)
 	end
+	status()
 end
 
 return {
@@ -193,6 +217,8 @@ return {
 			if mine[name] then
 				say(name, exit_text(code))
 			end
+			status()
 		end)
+		qed.every(1000, status)
 	end,
 }

@@ -419,8 +419,8 @@ bench_large_file :: proc(t: ^testing.T) {
 	buffer_open(&ob, path)
 	fmt.eprintfln("buffer_open (read+split+clone+saved snapshot): %.2f ms", ms_since(open_t))
 	gc := time.tick_now()
-	git_gutter_update(&ob)
-	fmt.eprintfln("git_gutter_update COLD (git show HEAD subprocess + hash + diff): %.2f ms", ms_since(gc))
+	diffbase_update(&ob)
+	fmt.eprintfln("diffbase_update COLD (git show HEAD subprocess + hash + diff): %.2f ms", ms_since(gc))
 	buffer_destroy(&ob)
 
 	mid := len(b.lines) / 2
@@ -454,12 +454,12 @@ bench_large_file :: proc(t: ^testing.T) {
 	}, &b)
 	fmt.eprintfln("highlight_update per edit (incremental + viewport): %.2f ms", hl_ns)
 
-	git_gutter_update(&b)
+	diffbase_update(&b)
 	git_ns := bench_avg(20, proc(b: ^Buffer) {
 		bench_touch(b)
-		git_gutter_update(b)
+		diffbase_update(b)
 	}, &b)
-	fmt.eprintfln("git_gutter_update per edit (hash + Myers): %.2f ms", git_ns)
+	fmt.eprintfln("diffbase_update per edit (hash + Myers): %.2f ms", git_ns)
 
 	fmt.eprintfln(
 		"--- combined per-keystroke (snapshot+hl+git, excl. LSP IPC): %.2f ms ---",
@@ -664,4 +664,60 @@ bench_avg :: proc(iters: int, work: proc(b: ^Buffer), b: ^Buffer) -> f64 {
 	}
 	total := time.tick_since(start)
 	return time.duration_milliseconds(total) / f64(iters)
+}
+
+@(test)
+bench_decorations :: proc(t: ^testing.T) {
+	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
+		return
+	}
+	LINES :: 10000
+	sb := strings.builder_make()
+	defer strings.builder_destroy(&sb)
+	for i in 0 ..< LINES {
+		fmt.sbprintf(&sb, "line %d with some text to draw\n", i)
+	}
+	fmt.eprintln("=== decorations bench ===")
+	for n in ([?]int{0, 1000, 10000, 50000}) {
+		e := e2e_start(strings.to_string(sb))
+		b := editor_buffer(&e.ed)
+		color := plugin_color_id(&e.ed.plugins, "git_added")
+		for i in 0 ..< n {
+			row := (i * 7) % LINES
+			switch i % 4 {
+			case 0:
+				deco_add(b, Deco{kind = .Gutter, ns = 1, from = {row, 0}, to = {row, 0}, glyph = '●', color = color})
+			case 1:
+				deco_add(b, Deco{kind = .Tint, ns = 1, from = {row, 0}, to = {row + 1, 0}, color = color, alpha = 0.1})
+			case 2:
+				deco_add(b, Deco{kind = .Eol, ns = 1, from = {row, 0}, to = {row, 0}, text = "note", color = color})
+			case 3:
+				deco_add(b, Deco{kind = .Span, ns = 1, from = {row, 2}, to = {row, 6}, color = color, bold = true})
+			}
+		}
+		for i in 0 ..< n / 100 {
+			row := (i * 97) % LINES
+			deco_add(b, Deco{kind = .Ghost, ns = 1, from = {row, 0}, to = {row, 0}, text = "ghost", lines = 1})
+		}
+		b.cursor = {LINES / 2, 0}
+		editor_scroll(&e.ed)
+		KEYS :: 2000
+		start := time.tick_now()
+		for i in 0 ..< KEYS {
+			buffer_insert(b, b.cursor, "x" if i % 40 != 39 else "\n")
+			b.cursor = {b.cursor.row + (1 if i % 40 == 39 else 0), 0 if i % 40 == 39 else b.cursor.col + 1}
+		}
+		key_us := ms_since(start) * 1000 / KEYS
+		editor_scroll(&e.ed)
+		FRAMES :: 200
+		e2e_render(&e)
+		start = time.tick_now()
+		for _ in 0 ..< FRAMES {
+			editor_render(&e.ed)
+			free_all(context.temp_allocator)
+		}
+		frame_ms := ms_since(start) / FRAMES
+		fmt.eprintfln("%d decorations (+%d ghosts): %.3f us/keystroke (insert + anchor shift), %.3f ms/frame", n, n / 100, key_us, frame_ms)
+		e2e_stop(&e)
+	}
 }

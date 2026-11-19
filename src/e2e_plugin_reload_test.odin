@@ -74,7 +74,11 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(p.procs), 0)
 	testing.expect(t, posix.kill(-pgid, posix.Signal(0)) != .OK, "the process group is gone")
 	testing.expect_value(t, len(p.tasks), 0)
-	testing.expect_value(t, len(p.timers), 0)
+	own_timers := 0
+	for tm in p.timers {
+		own_timers += int(tm.owner == "t")
+	}
+	testing.expect_value(t, own_timers, 0)
 	testing.expect(t, p.mem.used < before - 1024 * 1024, "the old incarnation's heap is reclaimed")
 	plugin_pump(&e.ed)
 	testing.expect(t, p.pane.active, "a plugin loaded at runtime gets its startup event")

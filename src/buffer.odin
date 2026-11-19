@@ -25,7 +25,8 @@ Buffer :: struct {
 	open_kind:     Coalesce,
 	rev:           u64,
 	hl:            Highlight,
-	git:           GitGutter,
+	base:          DiffBase,
+	deco:          DecoStore,
 	diags:         [dynamic]Diagnostic,
 	lsp_open:      bool,
 	lsp_rev:       u64,
@@ -119,7 +120,8 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	delete(buffer.redo)
 	group_destroy(&buffer.open)
 	highlight_destroy(&buffer.hl)
-	git_destroy(&buffer.git)
+	diffbase_destroy(&buffer.base)
+	deco_store_destroy(&buffer.deco)
 	buffer_clear_diags(buffer)
 	delete(buffer.diags)
 	buffer_lsp_changes_clear(buffer)
@@ -304,6 +306,7 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	buffer.hl.valid = false
 
 	buffer_lsp_changes_clear(buffer)
+	deco_after_reload(buffer)
 	buffer.rev += 1
 	buffer.disk = buffer_disk_stamp(buffer.path)
 	buffer.disk_conflict = false
@@ -465,6 +468,7 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 		new_end_point = {u32(end.row), u32(end.col)},
 	})
 	lsp_change_record(buffer, at, at, text)
+	deco_after_insert(buffer, at, end)
 
 	buffer_recompute_modified(buffer)
 	buffer.rev += 1
@@ -482,6 +486,7 @@ buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 		new_end_point = {u32(from.row), u32(from.col)},
 	})
 	lsp_change_record(buffer, from, to, "")
+	deco_after_delete(buffer, from, to)
 
 	sb := strings.builder_make()
 

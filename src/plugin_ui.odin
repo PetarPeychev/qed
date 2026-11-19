@@ -806,3 +806,127 @@ qed_languages :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	return 1
 }
+
+PluginStatus :: struct {
+	owner, id, text, color: string,
+	right:                  bool,
+	drop:                   int,
+}
+
+plugin_status_free :: proc(s: PluginStatus) {
+	delete(s.id)
+	delete(s.text)
+	delete(s.color)
+}
+
+plugin_status_find :: proc(p: ^Plugins, owner, id: string) -> int {
+	for s, i in p.status {
+		if s.owner == owner && s.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
+plugin_status_unload :: proc(p: ^Plugins, owner: string) {
+	for i := len(p.status) - 1; i >= 0; i -= 1 {
+		if p.status[i].owner == owner {
+			plugin_status_free(p.status[i])
+			ordered_remove(&p.status, i)
+		}
+	}
+}
+
+plugin_status_segs :: proc(p: ^Plugins, left, right: ^[dynamic]StatusSeg) {
+	at := 0
+	for s in p.status {
+		fg := COLOR_PANE_FG
+		if s.color != "" {
+			fg = g_theme_colors[s.color] or_else COLOR_PANE_FG
+		}
+		seg := StatusSeg{sep = "  ", text = s.text, fg = fg, drop = s.drop}
+		if s.right {
+			inject_at(right, at, seg)
+			at += 1
+		} else {
+			append(left, seg)
+		}
+	}
+}
+
+api_theme_color :: proc(L: ^lua.State, key: string) {
+	if key not_in g_theme_colors {
+		plugin_raise(L, fmt.tprintf("unknown theme color '%s'", key))
+	}
+}
+
+api_one_line :: proc(s: string) -> string {
+	if !strings.contains_any(s, "\t\r\n") {
+		return s
+	}
+	out, _ := strings.replace_all(s, "\r\n", " ", context.temp_allocator)
+	for ch in ([3]string{"\t", "\r", "\n"}) {
+		out, _ = strings.replace_all(out, ch, " ", context.temp_allocator)
+	}
+	return out
+}
+
+qed_status_set :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	id := api_string(L, 1)
+	if lua.type(L, 2) != .TABLE {
+		lua.L_argerror(L, 2, "table {text, color?, side?, drop?} expected")
+	}
+	lua.settop(L, 2)
+	lua.L_checkstack(L, 4, "status options")
+	text, has_text := api_field_string(L, 2, "text")
+	if !has_text {
+		return plugin_raise(L, "text must be a string")
+	}
+	text = api_one_line(text)
+	color, _ := api_field_string(L, 2, "color")
+	if color != "" {
+		api_theme_color(L, color)
+	}
+	side, _ := api_field_string(L, 2, "side")
+	if side != "" && side != "left" && side != "right" {
+		return plugin_raise(L, `side must be "left" or "right"`)
+	}
+	drop := 1
+	if lua.getfield(L, 2, "drop") != .NIL {
+		drop = api_int(L, -1, "drop must be an integer")
+		if drop < 0 {
+			return plugin_raise(L, "drop must be >= 0")
+		}
+	}
+	lua.pop(L, 1)
+	pl := api_loaded(L, editor)
+	owner := plugin_name_intern(p, pl.name)
+	s := PluginStatus{owner = owner, text = strings.clone(text), color = strings.clone(color), right = side == "right", drop = drop}
+	if i := plugin_status_find(p, owner, id); i >= 0 {
+		s.id = p.status[i].id
+		delete(p.status[i].text)
+		delete(p.status[i].color)
+		p.status[i] = s
+	} else {
+		s.id = strings.clone(id)
+		append(&p.status, s)
+	}
+	return 0
+}
+
+qed_status_clear :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	id := api_string(L, 1)
+	pl := api_loaded(L, entry.editor)
+	if i := plugin_status_find(p, pl.name, id); i >= 0 {
+		plugin_status_free(p.status[i])
+		ordered_remove(&p.status, i)
+	}
+	return 0
+}

@@ -126,6 +126,7 @@
     "git_diff_word": 0.34,
     "conflict": 0.14,
     "conflict_marker": 0.32,
-    "conflict_word": 0.34
+    "conflict_word": 0.34,
+    "decoration": 0.12
   }
 }

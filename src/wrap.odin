@@ -90,7 +90,7 @@ wrap_segment :: proc(text: []u8, width, sub: int) -> (start, end: int) {
 }
 
 // Real (landable) visual rows a logical line occupies: soft-wrap segments when
-// wrapping, else 1. Diff-view ghost rows are counted separately (git_above/below).
+// wrapping, else 1. Ghost rows are counted separately (ghost_above/below).
 line_rows :: proc(b: ^Buffer, width, row: int) -> int {
 	if b.wrap && width > 0 {
 		return wrap_rows(b.lines[row].text[:], width)
@@ -98,8 +98,8 @@ line_rows :: proc(b: ^Buffer, width, row: int) -> int {
 	return 1
 }
 
-// Move k screen rows up from real (row, sub); clamps at the buffer top. Diff-view
-// ghost rows count as steps but are never landed on — a step into them snaps to
+// Move k screen rows up from real (row, sub); clamps at the buffer top.
+// Ghost rows count as steps but are never landed on — a step into them snaps to
 // the adjacent real row.
 vpos_up :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 	row, sub, k := row, sub, k
@@ -112,7 +112,7 @@ vpos_up :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 		if row == 0 {
 			break
 		}
-		ghosts := git_above(b, row) + git_below(b, row - 1)
+		ghosts := ghost_above(b, row) + ghost_below(b, row - 1)
 		if k <= ghosts {
 			row -= 1
 			sub = line_rows(b, width, row) - 1
@@ -139,7 +139,7 @@ vpos_down :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 		if row >= len(b.lines) - 1 {
 			break
 		}
-		ghosts := git_below(b, row) + git_above(b, row + 1)
+		ghosts := ghost_below(b, row) + ghost_above(b, row + 1)
 		if k <= ghosts {
 			row += 1
 			sub = 0
@@ -154,7 +154,7 @@ vpos_down :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 }
 
 // Screen-row count from (r0,s0) down to (r1,s1); assumes the first precedes the
-// second. Includes diff-view ghost rows between them (above-ghosts of r0 are
+// second. Includes ghost rows between them (above-ghosts of r0 are
 // hidden, since r0 anchors the viewport top). Stops early once the count reaches
 // `limit` — a caller that only cares about "on screen or not" avoids walking the
 // whole buffer when the target is far below.
@@ -162,14 +162,14 @@ vpos_dist :: proc(b: ^Buffer, width, r0, s0, r1, s1: int, limit := max(int)) -> 
 	if r0 == r1 {
 		return s1 - s0
 	}
-	total := line_rows(b, width, r0) - s0 + git_below(b, r0)
+	total := line_rows(b, width, r0) - s0 + ghost_below(b, r0)
 	for r in r0 + 1 ..< r1 {
-		total += git_above(b, r) + line_rows(b, width, r) + git_below(b, r)
+		total += ghost_above(b, r) + line_rows(b, width, r) + ghost_below(b, r)
 		if total >= limit {
 			return total
 		}
 	}
-	return total + git_above(b, r1) + s1
+	return total + ghost_above(b, r1) + s1
 }
 
 vpos_cmp :: proc(r0, s0, r1, s1: int) -> int {

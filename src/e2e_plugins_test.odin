@@ -47,6 +47,7 @@ pt_api := [?]lua.L_Reg {
 	{"module", pt_module},
 	{"ui", pt_ui},
 	{"config_path", pt_config_path},
+	{"screen", pt_screen},
 	{nil, nil},
 }
 
@@ -362,6 +363,22 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "tree")
 	lua.pushboolean(L, b32(ed.palette.active))
 	lua.setfield(L, -2, "palette")
+	lua.createtable(L, c.int(len(ed.plugins.status)), 0)
+	for s, i in ed.plugins.status {
+		lua.createtable(L, 0, 5)
+		lua.pushodinstring(L, s.id)
+		lua.setfield(L, -2, "id")
+		lua.pushodinstring(L, s.text)
+		lua.setfield(L, -2, "text")
+		lua.pushodinstring(L, s.color)
+		lua.setfield(L, -2, "color")
+		lua.pushodinstring(L, "right" if s.right else "left")
+		lua.setfield(L, -2, "side")
+		lua.pushodinstring(L, s.owner)
+		lua.setfield(L, -2, "owner")
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	lua.setfield(L, -2, "status")
 	if pn := &ed.plugins.pane; pn.active {
 		lua.createtable(L, 0, 3)
 		lua.pushodinstring(L, pn.title)
@@ -380,6 +397,15 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 		lua.setfield(L, -2, "lines")
 		lua.setfield(L, -2, "pane")
 	}
+	return 1
+}
+
+@(private = "file")
+pt_screen :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	y := api_int(L, 1, "row expected")
+	e2e_render(g_pt)
+	lua.pushodinstring(L, e2e_row_text(g_pt, y))
 	return 1
 }
 

@@ -73,6 +73,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"set_language", qed_buf_set_language},
 	{"set_indent", qed_buf_set_indent},
 	{"indent", qed_buf_indent},
+	{"set_base", qed_buf_set_base},
 	{nil, nil},
 }
 
@@ -132,6 +133,25 @@ qed_term_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
+qed_deco_api := [?]lua.L_Reg {
+	{"ns", qed_deco_ns},
+	{"gutter", qed_deco_gutter},
+	{"tint", qed_deco_tint},
+	{"ghost", qed_deco_ghost},
+	{"span", qed_deco_span},
+	{"eol", qed_deco_eol},
+	{"clear", qed_deco_clear},
+	{nil, nil},
+}
+
+@(private = "file")
+qed_status_api := [?]lua.L_Reg {
+	{"set", qed_status_set},
+	{"clear", qed_status_clear},
+	{nil, nil},
+}
+
+@(private = "file")
 qed_clipboard_api := [?]lua.L_Reg {
 	{"get", qed_clipboard_get},
 	{"set", qed_clipboard_set},
@@ -153,7 +173,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -1804,4 +1824,247 @@ qed_proc_wait :: proc "c" (L: ^lua.State) -> c.int {
 	t := api_await(L, p, "proc:wait")
 	t.wait = {kind = .Proc, id = id}
 	return lua.yieldk(L, 0, lua.KContext(id), qed_spawn_k)
+}
+
+PluginNs :: struct {
+	name, owner: string,
+	id:          u32,
+}
+
+plugin_deco_unload :: proc(editor: ^Editor, owner: string) {
+	p := &editor.plugins
+	for i := len(p.deco_ns) - 1; i >= 0; i -= 1 {
+		ns := p.deco_ns[i]
+		if ns.owner != owner {
+			continue
+		}
+		for &b in editor.buffers {
+			deco_clear(&b, ns.id)
+		}
+		delete(ns.name)
+		ordered_remove(&p.deco_ns, i)
+	}
+}
+
+plugin_color_id :: proc(p: ^Plugins, key: string) -> u16 {
+	for k, i in p.colors {
+		if k == key {
+			return u16(i + 1)
+		}
+	}
+	append(&p.colors, strings.clone(key))
+	return u16(len(p.colors))
+}
+
+api_color :: proc(L: ^lua.State, p: ^Plugins, idx: c.int) -> u16 {
+	key := api_string(L, idx)
+	api_theme_color(L, key)
+	return plugin_color_id(p, key)
+}
+
+api_ns :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> u32 {
+	n := api_int(L, idx, "namespace expected")
+	pl := api_loaded(L, editor)
+	for ns in editor.plugins.deco_ns {
+		if int(ns.id) == n && ns.owner == pl.name {
+			return ns.id
+		}
+	}
+	plugin_raise(L, fmt.tprintf("unknown namespace %d", n))
+	return 0
+}
+
+api_row :: proc(L: ^lua.State, idx: c.int, b: ^Buffer) -> int {
+	row := api_int(L, idx, "row expected")
+	if row < 1 || row > len(b.lines) {
+		lua.L_argerror(L, idx, fmt.ctprintf("row %d out of range 1..%d", row, len(b.lines)))
+	}
+	return row - 1
+}
+
+qed_deco_ns :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	name := api_string(L, 1)
+	pl := api_loaded(L, entry.editor)
+	for ns in p.deco_ns {
+		if ns.owner == pl.name && ns.name == name {
+			lua.pushinteger(L, lua.Integer(ns.id))
+			return 1
+		}
+	}
+	p.ns_seq += 1
+	append(&p.deco_ns, PluginNs{strings.clone(name), plugin_name_intern(p, pl.name), p.ns_seq})
+	lua.pushinteger(L, lua.Integer(p.ns_seq))
+	return 1
+}
+
+qed_deco_gutter :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	row := api_row(L, 3, b)
+	glyph := api_string(L, 4)
+	text := transmute([]u8)glyph
+	if len(text) == 0 || grapheme_next(text, 0) != len(text) || cluster_width(text) != 1 || !utf8.valid_string(glyph) {
+		lua.L_argerror(L, 4, "glyph must be one single-width character")
+	}
+	r, _ := utf8.decode_rune(text)
+	color := api_color(L, &editor.plugins, 5)
+	deco_add(b, Deco{kind = .Gutter, ns = ns, from = {row, 0}, to = {row, 0}, glyph = r, color = color})
+	return 0
+}
+
+qed_deco_tint :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	lo := api_row(L, 3, b)
+	hi := api_row(L, 4, b)
+	if hi < lo {
+		lua.L_argerror(L, 4, "to_row is before from_row")
+	}
+	color := api_color(L, &editor.plugins, 5)
+	alpha := DECO_TINT
+	if lua.type(L, 6) > .NIL {
+		isnum: b32
+		alpha = f32(lua.tonumberx(L, 6, &isnum))
+		if !isnum || alpha < 0 || alpha > 1 {
+			lua.L_argerror(L, 6, "alpha must be a number in 0..1")
+		}
+	}
+	deco_add(b, Deco{kind = .Tint, ns = ns, from = {lo, 0}, to = {hi, 0}, color = color, alpha = alpha})
+	return 0
+}
+
+qed_deco_ghost :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	row := api_row(L, 3, b)
+	lines := make([dynamic]string, context.temp_allocator)
+	#partial switch lua.type(L, 4) {
+	case .STRING:
+		append(&lines, api_text_arg(L, 4))
+	case .TABLE:
+		lua.L_checkstack(L, 2, "ghost lines")
+		for i in 1 ..= int(lua.rawlen(L, 4)) {
+			lua.rawgeti(L, 4, lua.Integer(i))
+			append(&lines, api_text_arg(L, -1))
+			lua.pop(L, 1)
+		}
+	case:
+		lua.L_argerror(L, 4, "lines must be a string or a list of strings")
+	}
+	above := false
+	color: u16
+	if lua.type(L, 5) == .TABLE {
+		lua.getfield(L, 5, "above")
+		above = bool(lua.toboolean(L, -1))
+		lua.pop(L, 1)
+		if lua.getfield(L, 5, "color") != .NIL {
+			color = api_color(L, &editor.plugins, -1)
+		}
+		lua.pop(L, 1)
+	} else if lua.type(L, 5) > .NIL {
+		lua.L_argerror(L, 5, "options table expected")
+	}
+	text := strings.join(lines[:], "\n", context.temp_allocator)
+	if len(lines) == 0 {
+		return 0
+	}
+	n := strings.count(text, "\n") + 1
+	deco_add(b, Deco{kind = .Ghost, ns = ns, from = {row, 0}, to = {row, 0}, text = text, lines = n, above = above, color = color})
+	return 0
+}
+
+qed_deco_span :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	from, to := api_range(L, 3, b)
+	if lua.type(L, 5) != .TABLE {
+		lua.L_argerror(L, 5, "style {fg?, bg?, bold?, underline?} expected")
+	}
+	d := Deco{kind = .Span, ns = ns, from = from, to = to}
+	if lua.getfield(L, 5, "fg") != .NIL {
+		d.color = api_color(L, &editor.plugins, -1)
+	}
+	if lua.getfield(L, 5, "bg") != .NIL {
+		d.bg = api_color(L, &editor.plugins, -1)
+	}
+	lua.getfield(L, 5, "bold")
+	d.bold = bool(lua.toboolean(L, -1))
+	lua.getfield(L, 5, "underline")
+	d.underline = bool(lua.toboolean(L, -1))
+	lua.pop(L, 4)
+	if from != to {
+		deco_add(b, d)
+	}
+	return 0
+}
+
+qed_deco_eol :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	row := api_row(L, 3, b)
+	text := api_one_line(api_text_arg(L, 4))
+	color := api_color(L, &editor.plugins, 5)
+	deco_add(b, Deco{kind = .Eol, ns = ns, from = {row, 0}, to = {row, 0}, text = text, color = color})
+	return 0
+}
+
+qed_deco_clear :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	lo, hi := 0, max(int)
+	if lua.type(L, 3) > .NIL {
+		lo = api_row(L, 3, b)
+	}
+	if lua.type(L, 4) > .NIL {
+		hi = api_row(L, 4, b)
+	}
+	deco_clear(b, ns, lo, hi)
+	return 0
+}
+
+qed_buf_set_base :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	clear_base := lua.type(L, 2) <= .NIL
+	text := "" if clear_base else api_text_arg(L, 2)
+	label := ""
+	if lua.type(L, 3) == .TABLE {
+		label, _ = api_field_string(L, 3, "label")
+		label = api_one_line(label)
+	} else if lua.type(L, 3) > .NIL {
+		lua.L_argerror(L, 3, "options table expected")
+	}
+	pl := api_loaded(L, editor)
+	if clear_base {
+		if b.base.source == .Plugin {
+			diffbase_clear(b)
+			b.base.tried = false
+		}
+		return 0
+	}
+	diffbase_set(b, text, .Plugin, plugin_name_intern(&editor.plugins, pl.name), label)
+	return 0
 }

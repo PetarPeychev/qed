@@ -171,4 +171,40 @@ function T.invalid_entries_warn(t)
 	t.eq(details(t).matches, 2)
 end
 
+local function segment(t)
+	for _, s in ipairs(t.editor().status) do
+		if s.id == "tasks" then
+			return s
+		end
+	end
+end
+
+function T.status_segment(t)
+	t.config{list = {{name = "srv", cmd = "sleep 30"}, {name = "bad", cmd = "exit 4"}, {name = "ok", cmd = "true"}}}
+	t.eq(segment(t), nil, "no segment while nothing ran")
+	choose(t, "srv")
+	qed.term.hide()
+	t.wait(running("srv"))
+	t.eq(segment(t).text, "tasks 1")
+	t.eq(segment(t).color, "")
+	t.ok(t.screen(22):find("tasks 1", 1, true), "segment rendered in the status bar")
+	choose(t, "ok")
+	qed.term.hide()
+	t.wait(exited("ok"))
+	t.wait(function() return segment(t).text == "tasks 1" end)
+	t.eq(segment(t).color, "", "a clean exit stays plain")
+	choose(t, "bad")
+	qed.term.hide()
+	t.wait(exited("bad"))
+	t.wait(function() return segment(t).color == "error_foreground" end)
+	t.eq(segment(t).text, "tasks 1")
+	choose(t, "srv", "Kill")
+	t.wait(function() return segment(t).text == "tasks 0" end)
+	t.eq(segment(t).color, "error_foreground", "red until the failed task reruns")
+	qed.term.close("bad")
+	t.wait(function() return segment(t) == nil end, 3000)
+	qed.term.create{name = "outside", cmd = "sleep 30"}
+	t.wait(function() return segment(t) ~= nil and segment(t).text == "tasks 1" end, 3000)
+end
+
 return T
