@@ -64,9 +64,6 @@ local function validate(e, i, names)
 	if e.name == "shell" then
 		return nil, where .. ": \"shell\" is the terminal pane's own session"
 	end
-	if e.name:sub(1, 4) == "cmd:" then
-		return nil, where .. ": names starting with \"cmd:\" are the commands plugin's task sessions"
-	end
 	if names[e.name] then
 		return nil, where .. ": duplicate name"
 	end

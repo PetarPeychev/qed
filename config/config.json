@@ -48,10 +48,6 @@
     }
   },
   "plugins": {
-    "commands": {
-      "enabled": true,
-      "list": []
-    },
     "format": {
       "enabled": true,
       "format_on_save": false,

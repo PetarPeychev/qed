@@ -173,12 +173,11 @@ function T.exit_messages(t)
 end
 
 function T.invalid_entries_warn(t)
-	t.config{list = {{name = "shell", cmd = "x"}, {name = "nocmd"}, {name = "a", cmd = "x"}, {name = "a", cmd = "y"}, {name = "b", cmd = "x", bogus = 1}, {name = "cmd:z", cmd = "x"}}}
+	t.config{list = {{name = "shell", cmd = "x"}, {name = "nocmd"}, {name = "a", cmd = "x"}, {name = "a", cmd = "y"}, {name = "b", cmd = "x", bogus = 1}}}
 	t.ok(t.log_has("warn", "", "\"shell\" is the terminal pane's own session"), "reserved name")
 	t.ok(t.log_has("warn", "", "\"nocmd\": cmd must be a non-empty string"), "missing cmd")
 	t.ok(t.log_has("warn", "", "\"a\": duplicate name"), "duplicate")
 	t.ok(t.log_has("warn", "", "ignoring unknown key \"bogus\""), "unknown key")
-	t.ok(t.log_has("warn", "", "names starting with \"cmd:\""), "the commands prefix is reserved")
 	t.eq(details(t).matches, 2)
 end
 

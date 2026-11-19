@@ -95,7 +95,6 @@ bundled_plugin_files := #load_directory("../plugins")
 
 // Listed file by file so a dir plugin's test.lua stays out of the binary.
 bundled_plugin_dir_files := [?]PluginFile {
-	{"commands/init.lua", #load("../plugins/commands/init.lua", string)},
 	{"format/init.lua", #load("../plugins/format/init.lua", string)},
 	{"git/init.lua", #load("../plugins/git/init.lua", string)},
 	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},

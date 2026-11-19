@@ -2,6 +2,8 @@ package main
 
 import "core:c"
 import "core:fmt"
+import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import lua "lib:lua"
 import "lib:tb2"
@@ -14,7 +16,7 @@ PluginUiKind :: enum {
 
 PluginPickItem :: struct {
 	label, detail, path: string,
-	row:                 int,
+	row, col:            int,
 }
 
 PluginUi :: struct {
@@ -31,6 +33,7 @@ PluginUi :: struct {
 	change_task: u64,
 	multi:      bool,
 	paths:      bool,
+	locations:  bool,
 	anchor:     Maybe(int),
 	notified:   int,
 	preview:    Preview,
@@ -84,7 +87,7 @@ plugin_ui_release :: proc(p: ^Plugins) {
 	preview_reset(&ui.preview)
 	ui.title, ui.text, ui.owner = "", "", ""
 	ui.items_ref, ui.change_ref, ui.change_task = 0, 0, 0
-	ui.active, ui.done, ui.ok, ui.multi, ui.paths = false, false, false, false, false
+	ui.active, ui.done, ui.ok, ui.multi, ui.paths, ui.locations = false, false, false, false, false, false
 	ui.anchor = nil
 	ui.id = 0
 }
@@ -471,6 +474,9 @@ qed_ui_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int 
 	lua.L_checkstack(L, 4, "ui result")
 	switch ui.kind {
 	case .Pick:
+		if ui.locations {
+			return plugin_locations_jump(L, entry.editor)
+		}
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(ui.items_ref))
 		if ui.multi {
 			lua.createtable(L, c.int(len(ui.result)), 0)
@@ -569,7 +575,7 @@ qed_pick :: proc "c" (L: ^lua.State) -> c.int {
 
 	ui := plugin_ui_open(editor, .Pick, pl.name, prompt)
 	for it in parsed {
-		append(&ui.items, PluginPickItem{strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), it.row})
+		append(&ui.items, PluginPickItem{label = strings.clone(it.label), detail = strings.clone(it.detail), path = strings.clone(it.path), row = it.row})
 		ui.paths ||= it.path != ""
 	}
 	for it in ui.items {
@@ -594,6 +600,191 @@ qed_pick :: proc "c" (L: ^lua.State) -> c.int {
 	ui.notified = ui.matches[ui.selected] if len(ui.matches) > 0 else -1
 	plugin_ui_preview(editor)
 	return plugin_ui_wait(L, p, task)
+}
+
+LOCATION_SPACE :: " \t\n\v\f\r"
+
+location_digits :: proc(line: string, from: int) -> int {
+	i := from
+	for i < len(line) && line[i] >= '0' && line[i] <= '9' {
+		i += 1
+	}
+	return i
+}
+
+location_number :: proc(digits: string) -> int {
+	n := 0
+	for ch in transmute([]u8)digits {
+		n = min(n * 10 + int(ch - '0'), int(max(i32)))
+	}
+	return n
+}
+
+// Lua-pattern semantics: the shortest file wins per form, and an empty file skips to the next form.
+location_parse :: proc(line: string) -> (file, row, col, msg: string, ok: bool) {
+	for pat in 0 ..< 4 {
+		with_col := pat < 2
+		with_msg := pat % 2 == 0
+		for i in 0 ..< len(line) {
+			if line[i] != ':' {
+				continue
+			}
+			r := location_digits(line, i + 1)
+			if r == i + 1 {
+				continue
+			}
+			j := r
+			col_s := ""
+			if with_col {
+				if j >= len(line) || line[j] != ':' {
+					continue
+				}
+				k := location_digits(line, j + 1)
+				if k == j + 1 {
+					continue
+				}
+				col_s = line[j + 1:k]
+				j = k
+			}
+			msg_s := ""
+			if with_msg {
+				if j >= len(line) || line[j] != ':' {
+					continue
+				}
+				msg_s = strings.trim_left(line[j + 1:], LOCATION_SPACE)
+			} else if j != len(line) {
+				continue
+			}
+			if i == 0 {
+				break
+			}
+			return line[:i], line[i + 1:r], col_s, msg_s, true
+		}
+	}
+	return
+}
+
+plugin_locations_parse :: proc(text, cwd, root: string) -> []PluginPickItem {
+	items := make([dynamic]PluginPickItem, context.temp_allocator)
+	rest := text
+	for line in strings.split_iterator(&rest, "\n") {
+		file, row, col, msg, ok := location_parse(strings.trim_suffix(line, "\r"))
+		if !ok {
+			continue
+		}
+		path: string
+		if strings.has_prefix(file, "/") {
+			path, _ = filepath.clean(file, context.temp_allocator)
+		} else {
+			path, _ = filepath.join({cwd, file}, context.temp_allocator)
+		}
+		fi, err := os.stat(path, context.temp_allocator)
+		if err != nil || fi.type != .Regular {
+			continue
+		}
+		shown, rerr := filepath.rel(root, path, context.temp_allocator)
+		if rerr != .None {
+			shown = path
+		}
+		label := fmt.tprintf("%s:%s", shown, row)
+		if col != "" {
+			label = fmt.tprintf("%s:%s", label, col)
+		}
+		if msg != "" {
+			label = fmt.tprintf("%s: %s", label, msg)
+		}
+		append(&items, PluginPickItem{label = label, path = path, row = location_number(row), col = location_number(col) if col != "" else 1})
+	}
+	return items[:]
+}
+
+qed_locations :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	text := strings.clone(api_string(L, 1), context.temp_allocator)
+	cwd := editor.working_root
+	prompt := ""
+	#partial switch lua.type(L, 2) {
+	case .NIL, .NONE:
+	case .TABLE:
+		if dir, ok := api_field_string(L, 2, "cwd"); ok {
+			cwd = api_path(editor, dir)
+		}
+		prompt, _ = api_field_string(L, 2, "prompt")
+	case:
+		lua.L_argerror(L, 2, "table {cwd?, prompt?} expected")
+	}
+	pl := api_loaded(L, editor)
+	task := api_await(L, p, "qed.locations").id
+	parsed := plugin_locations_parse(text, cwd, editor.working_root)
+	if len(parsed) == 0 {
+		return api_fail(L, "no locations")
+	}
+	if plugin_overlay_open(editor) {
+		return api_busy(L)
+	}
+
+	lua.settop(L, 0)
+	lua.L_checkstack(L, 4, "locations")
+	lua.createtable(L, c.int(len(parsed)), 0)
+	for it, i in parsed {
+		lua.createtable(L, 0, 3)
+		lua.pushodinstring(L, it.label)
+		lua.setfield(L, -2, "label")
+		lua.pushodinstring(L, it.path)
+		lua.setfield(L, -2, "path")
+		api_pos_push(L, {it.row - 1, it.col - 1})
+		lua.setfield(L, -2, "pos")
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	ui := plugin_ui_open(editor, .Pick, pl.name, prompt)
+	for it in parsed {
+		append(&ui.items, PluginPickItem{label = strings.clone(it.label), path = strings.clone(it.path), row = it.row, col = it.col})
+		append(&ui.details, "")
+	}
+	for it in ui.items {
+		append(&ui.labels, it.label)
+	}
+	ui.paths = true
+	ui.locations = true
+	ui.items_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	ui.fuzzy = fuzzy_begin(ui.labels[:])
+	fuzzy_list_refilter(&ui.list)
+	fuzzy_list_scroll(&ui.list, plugin_ui_rows(editor))
+	ui.notified = ui.matches[ui.selected] if len(ui.matches) > 0 else -1
+	plugin_ui_preview(editor)
+	return plugin_ui_wait(L, p, task)
+}
+
+plugin_locations_jump :: proc(L: ^lua.State, editor: ^Editor) -> c.int {
+	ui := &editor.plugins.ui
+	it := ui.items[ui.result[0]]
+	path := strings.clone(it.path, context.temp_allocator)
+	row, col := it.row, it.col
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(ui.items_ref))
+	lua.rawgeti(L, -1, lua.Integer(ui.result[0] + 1))
+	lua.remove(L, -2)
+	plugin_ui_clear(editor)
+	origin := jump_here(editor)
+	if !editor_open_path(editor, path) {
+		lua.pop(L, 1)
+		return api_fail(L, fmt.tprintf("cannot open %s", path))
+	}
+	if editor.filetree.active {
+		filetree_close(editor)
+	}
+	b := editor_buffer(editor)
+	r := clamp(row - 1, 0, len(b.lines) - 1)
+	text := b.lines[r].text[:]
+	cl := clamp(col - 1, 0, len(text))
+	for cl > 0 && cl < len(text) && text[cl] & 0xC0 == 0x80 {
+		cl -= 1
+	}
+	editor_goto(editor, r, cl)
+	jump_record(editor, origin)
+	return 1
 }
 
 qed_prompt :: proc "c" (L: ^lua.State) -> c.int {

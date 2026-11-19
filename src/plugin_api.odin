@@ -42,6 +42,7 @@ qed_api := [?]lua.L_Reg {
 	{"defer", qed_defer},
 	{"every", qed_every},
 	{"pick", qed_pick},
+	{"locations", qed_locations},
 	{"prompt", qed_prompt},
 	{"confirm", qed_confirm},
 	{"pane", qed_pane},

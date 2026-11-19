@@ -209,6 +209,19 @@ function qed.every(ms, fn) end
 ---@return "busy"|nil err
 function qed.pick(spec) end
 
+---@class qed.Location
+---@field label string `file:row[:col][: msg]`, the file relative to the root
+---@field path string absolute
+---@field pos qed.Pos as parsed; the jump clamps it to the file
+
+---Waits for a pick from compiler/grep output (`file:row:col: msg`, `file:row:col`, `file:row: msg`, `file:row`) and jumps to the chosen one.
+---Lines naming missing files are skipped. `nil` on Esc, `nil, "no locations"` when nothing parses, `nil, "busy"` when another overlay is open.
+---@param text string
+---@param opts? {cwd?: string, prompt?: string} `cwd` resolves relative files, default `qed.root()`
+---@return qed.Location|nil
+---@return "busy"|"no locations"|string|nil err
+function qed.locations(text, opts) end
+
 ---Waits for a line of text. `nil` on Esc, `nil, "busy"` when another overlay is open.
 ---@param spec {prompt: string, text?: string}
 ---@return string|nil
