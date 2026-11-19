@@ -20,7 +20,7 @@ Buffer :: struct {
     undo, redo:  [dynamic]EditGroup     // inverse-op log; `open` group coalesces
     hl: Highlight, base: DiffBase       // highlight tree + diff base (git or plugin) marks
     deco: DecoStore                     // plugin decorations, row-anchored
-    language: Language                  // detected at open; Set Language overrides
+    language: Language                  // detected at open; Editor: Set Language overrides
     // ... lsp/diag/rev bookkeeping
 }
 Line   :: struct { text: [dynamic]u8 }   // bytes, no line terminator stored
@@ -165,7 +165,7 @@ resolution is baked to capture-id → color arrays at query-build/recolor time, 
 the paint path stays an array index. *Debug: Inspect Tokens* (a **passive**
 floating pane, `inspect.odin` — takes no focus, Esc or the command closes it)
 shows the node ancestry, capture stack, winning resolution chain and predicate
-near-misses under the cursor, live. A theme change — via `qed.theme.set` (the *Set Theme* picker) or the disk
+near-misses under the cursor, live. A theme change — via `qed.theme.set` (the *Editor: Set Theme* picker) or the disk
 poll — funnels through `editor_retheme`: theme colors are baked into two caches
 (each language's `Syntax.colors` palette and every buffer's per-char `hl.colors`),
 so it rebuilds the palettes (`syntax_recolor`) and invalidates the buffers
@@ -270,10 +270,10 @@ two tables (`palette.odin`): the global `commands` and the file-tree
 bind via `Command.bind_from` (the global command's name) — no config key of its own,
 key/alt/shortcut resolved live from the referenced global command
 (`command_effective_bind`), so one config entry drives both dispatch paths (e.g. tree
-Copy follows global *Copy*); a plugin tree command gets the same with `keybind` (the `search` plugin's tree *Search* binds as *Find in Files*, `Alt+F`). The
+Copy follows global *Copy*); plugin commands bind under `plugins.<id>.keybinds` (see Plugins). The
 file-tree-unique commands (Delete, Rename, New, Toggle Dotfiles/Ignored,
 Expand/Collapse All) keep their own `File Tree: …`-namespaced config key
-(`config_name` vs the short display `name`). Every command's default bind is a
+(`config_name` vs the short display `name`). Every core command's default bind is a
 `keybinds` entry in the embedded config — including *Command Palette* (default
 `Ctrl+P`), whose single bind opens whichever palette is contextual (editor vs file
 tree). Only primitive editing/movement stays fixed. Dispatch resolves through the
@@ -328,19 +328,18 @@ documented in `lib/tb2/PATCHES.md`:
 
 ## Modules
 
-`lsp`, `ai` are gated subsystems (`module.odin`, `Module` enum). Each has a
-`modules.<name>.enabled` config flag (default on) and owns its whole config
-subtree under `modules.<name>` — lsp's completion-popup knobs, ai's former `llm.*` block (the
-settings parser walks `config_module_defs`, one typed str/int/bool table set per module).
-Git is the bundled `git` plugin (`plugins.git`; old `modules.git.*` keys warn "moved to") and has
-no core gate. `module_enabled(m)` is the single gate.
-Commands carry a `.module`; `command_available`
-and keybind dispatch no-op a disabled module's commands, so palette + chords drop out
-automatically. Rendering/pump/subprocess seams each guard on `module_enabled` (lsp: server
-spawn/completion/status segment; ai: FIM/edit/chat). After a config hot-reload,
-`editor_modules_sync` calls each module's idempotent `*_module_sync` to tear down live state a
-toggle-off orphaned (stop servers, clear diagnostics, cancel in-flight AI). Merge-conflict
-highlight/resolve (`conflict.odin`) is ungated.
+`ai` is the last gated subsystem (`module.odin`, `Module` enum). It has a
+`modules.ai.enabled` config flag (default on) and owns its whole config subtree under
+`modules.ai` (the settings parser walks `config_module_defs`, one typed str/int/bool
+`Config_Section` per module). Git is the bundled `git` plugin (`plugins.git`; old
+`modules.git.*` keys warn "moved to"). LSP is the plain top-level `lsp` section
+(`config_lsp`; old `modules.lsp.*` keys warn "moved to"), gated on `LSP_ENABLED`: `LSP:`
+commands carry `Command.lsp`, server spawn/completion/status segment check the flag, and
+`lsp_enabled_sync` tears servers down after a reload turns it off. `module_enabled(m)` gates
+the rest: commands carry a `.module`; `command_enabled` covers both, so `command_available`
+and keybind dispatch drop gated commands from palette and chords. After a config hot-reload,
+`editor_modules_sync` calls `ai_module_sync` to cancel in-flight AI a toggle-off orphaned.
+Merge-conflict highlight/resolve (`conflict.odin`) is ungated.
 
 ## Plugins
 
@@ -372,10 +371,11 @@ started at the end of `editor_init`. Invariants the code can't show:
   them all and restores cursor + selection, then re-raises. `plugin_msgh` leaves an
   already-tracebacked message alone, so the re-raise logs one traceback.
 - Type stubs: `plugins/meta/qed.lua` (embedded, written to
-  `$XDG_DATA_HOME/qed/lua/qed.lua` when changed). `lsp_config_lua` hands that dir
-  to lua-language-server as `Lua.workspace.library` via `workspace/configuration`
-  and the post-`initialized` push (plus `diagnostics.globals = ["qed"]`; applies to
-  every Lua project). Unit tests check stub and API against each other.
+  `$XDG_DATA_HOME/qed/lua/qed.lua` when changed). `plugin_luarc_write` writes
+  `~/.config/qed/plugins/.luarc.json` (Lua 5.4, `workspace.library` = that dir) when
+  missing or different; the repo root has its own pointing at `plugins/meta`. No `Lua`
+  settings go over LSP. lua-language-server reads `.luarc.json` only at the workspace root.
+  Unit tests check stub and API against each other.
 - **Scheduler** (`plugin_sched.odin`): every command, event handler, timer tick and
   `on_line` call runs on a pooled coroutine (`PluginTask`); `setup` and `when` run
   on the main thread and cannot wait. A waiting binding stores a `PluginWait` on its
@@ -444,9 +444,17 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Config hot reload (`plugins_config_apply`) runs `plugins_rebind` only after `config_changed` handlers ran (see plugins.md §4 for the full order).
 - Hot reload (`plugins_poll` → `plugins_sync`, before the config reload) is keyed on `Plugin.stamp`; details in plugins.md §4.
 - Plugin names are interned in `Plugins.names` (freed at shutdown): owners in tasks, pooled threads and queued events point at them.
-- Plugin command names are unique per scope (a tree and an editor command may share
+- A plugin's id (`Plugin.name`) is its file/dir name: config key, keybind namespace and
+  owner everywhere in code. `Plugin.display` (id title-cased, or `qed.meta`) labels its
+  messages, log lines and Plugins pane row; `plugin_label(owner)` maps an owner to it.
+  Unload resets it. A plugin `Command` keeps `bare` (the registered name), `name` =
+  `<display>: <bare>` (palette, `qed.run`) and `config_name` (the `plugins.<id>.keybinds`
+  key: `keybind` or `bare`). `qed.meta` during setup renames earlier commands in place.
+- Plugin command visible names are unique per scope (a tree and an editor command may share
   one). `qed.command` returns a handle whose `remove()` unregisters it; removing or
   unloading commands closes the palette, whose rows index `Plugins.commands`.
+- Plugin binds come only from `key=` and `plugins.<id>.keybinds`; `plugin_keys_warn` (after
+  a load and after a config apply) warns names no command of that plugin has.
 - `ctx.selection_text`, `file` and `files` (file tree selection)
   are computed on first read through `__index` and cached on the ctx, so `when` stays
   cheap.
@@ -483,7 +491,7 @@ copy each load resets then overlays. Patterns are `*`-globs matched against the 
 before glob, longer before shorter); built-in defaults cover extensions plus common
 dotfiles (`.bashrc` → shell, …). `lsp_id` and the comment token stay compiled-in.
 Everything — highlight, LSP, status bar, comment token — reads `b.language`. The
-*Set Language* command (bundled `pickers` plugin) overrides it for the session (re-parses,
+*Editor: Set Language* command (bundled `pickers` plugin) overrides it for the session (re-parses,
 re-opens LSP).
 
 ## Multiple servers / grammars
@@ -545,7 +553,7 @@ re-opens LSP).
 - **Formatting** is the bundled `format` plugin (`plugins/format/`). Its `buf_pre_save`
   handler runs the save fixups (trim trailing whitespace, markdown hard breaks kept;
   final newline; one `qed.edit` step) and then, with format-on-save on, formats.
-  *Format Document* / format-on-save prefer `plugins.format.commands.<language>`
+  *Format: Document* / format-on-save prefer `plugins.format.commands.<language>`
   (e.g. Python → `ruff format …`) over `qed.lsp.format`. The command is a
   stdin→stdout filter via `qed.spawn` (`sh -c`, stderr captured, never shown), cwd =
   the file's dir (path-less → root), `{file}` → the shell-quoted absolute path
@@ -663,13 +671,13 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
-defaults seeded before main, load + write-back) · `module` (lsp/ai enable gate +
+defaults seeded before main, load + write-back) · `module` (ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` · `fuzzy` ·
 `cwdpick` · `linefind` · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `search/`: *Find in Files* and the tree's *Search*; `tasks/`: *Tasks* picker and status segment; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Restore File*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/` (display name "Editor"): *Set Theme*, *Set Language*, *Change Indentation*; `search/`: *Find in Files* in the editor and the tree; `tasks/`: *Tasks: Open* picker and status segment; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -694,7 +702,7 @@ plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns 
 table of test functions; `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `hook_timeout`, `module`, `ui` (open plugin overlay state: kind, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `hook_timeout`, `module`, `lsp`, `ui` (open plugin overlay state: kind, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/plugin_ui_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
@@ -713,7 +721,7 @@ bracket re-aligns to its opener), selection +
 selection-aware editing, block indent/dedent, tab-stop backspace (deletes a full
 indent in leading whitespace), clipboard (external + fallback; empty-selection `Ctrl+C`/`Ctrl+X` copy/cut the whole line),
 full Unicode (grapheme + display width), tab-char display + per-buffer
-tabs/spaces + indent-width detect (`Change Indentation`, `pickers` plugin: Auto-detect /
+tabs/spaces + indent-width detect (`Editor: Change Indentation`, `pickers` plugin: Auto-detect /
 Tabs / Spaces:1–4; literal-tab display width stays the global `tab_width`),
 line-comment toggle, move-lines, paragraph/word/smart-home motion, buffer-edge
 arrow clamps (Down on the last line → line end, Up on the first → col 0;
@@ -784,7 +792,7 @@ its ancestor directories, ignored files dimmed (hidden unless *Toggle Ignored*),
 per file on the Changed tab (right-aligned, `+`/`-` columns padded over the visible rows, label
 clipped with `…`, numbers dropped when even a short label cannot fit); deleted files listed on the
 Changed tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter`
-runs the provider's `open_deleted` (the `git` plugin's *Restore File*: confirm, then
+runs the provider's `open_deleted` (the `git` plugin's *Git: Restore File*: confirm, then
 `git restore --source=<base>`, worktree only plus index when the deletion is staged), other file
 commands refuse them; renames listed once at the new path labeled `new  ← old`; unsaved
 open buffers marked with a trailing `●`, propagated to directories),
@@ -801,10 +809,10 @@ to defaults without crashing; UI persistence like the theme picker's Enter write
 only its own key; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
-their command), gated modules (`modules.lsp`/`ai`, each `enabled` + its own config
-subtree; disabling drops the module's commands/UI/subprocesses; live toggle-off tears down via
-`editor_modules_sync`; git is `plugins.git`, auto-off when the binary is absent), JSON themes (sparse overlay chain over the embedded `default.json`
-base — see Rendering; *Set Theme* fuzzy picker with instant preview,
+their command), `lsp.enabled` and the gated `modules.ai` (each with its own config
+subtree; disabling drops the commands/UI/subprocesses; live toggle-off tears down; git is
+`plugins.git`, auto-off when the binary is absent), JSON themes (sparse overlay chain over the embedded `default.json`
+base — see Rendering; *Editor: Set Theme* fuzzy picker with instant preview,
 Enter persists / Esc reverts), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
 typing replaces; multi-line/whitespace selections keep each pane's persisted
@@ -907,13 +915,15 @@ User commands are `qed.command` calls in a user plugin; `qed.parse_locations` tu
 compiler/grep output into `qed.pick` items for a list + preview picker.
 
 Tasks (`tasks` plugin, `plugins.tasks.list`): background terminal sessions;
-the *Tasks* picker lists every session with its state (running / exit code) and
+the *Tasks: Open* picker lists every session with its state (running / exit code) and
 runs, shows, restarts, kills or closes it; exit messages; a `tasks N` status segment (running count, red after a failed exit).
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
 rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), the file tree Changed tab (`qed.filetree`, fed by the `git` plugin); hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
-per-plugin log, and source view (bundled read-only).
+per-plugin log, and source view (bundled read-only); `qed.meta` display names prefixing
+commands and labeling messages; per-plugin keybinds (`plugins.<id>.keybinds`); a generated
+`~/.config/qed/plugins/.luarc.json` for completion.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight
 query, incremental LSP `didChange`, big-file cutoff, in-process fuzzy ranking,

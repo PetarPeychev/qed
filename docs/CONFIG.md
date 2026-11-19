@@ -14,7 +14,7 @@ files, which are the canonical, always-current reference:
 
 You never copy either file. `~/.config/qed/config.json` is a sparse per-key
 diff: put in only the keys you want to change; everything else keeps its
-compiled-in default. qed never writes this file (except *Set Theme*, which
+compiled-in default. qed never writes this file (except *Editor: Set Theme*, which
 persists the single `theme` key when you press Enter on it, via `qed.theme.set`).
 
 - **Hot-reloaded.** Save the file and the change applies live: colors, keybinds,
@@ -31,7 +31,7 @@ A minimal override looks like:
   "line_wrap": false,
   "plugins": { "format": { "format_on_save": true } },
   "theme": "gruvbox-dark",
-  "keybinds": { "Find in Files": "Ctrl+e" }
+  "keybinds": { "Find": "Ctrl+e" }
 }
 ```
 
@@ -50,8 +50,8 @@ A minimal override looks like:
 ## Save behavior and formatting
 
 Owned by the bundled `format` plugin, under `plugins.format`. The three knobs
-default off and seed runtime *Toggle* commands (*Toggle Format on Save*, *Toggle
-Trim Whitespace on Save*, *Toggle Final Newline on Save*). *Format Document*
+default off and seed runtime toggles (*Format: Toggle on Save*, *Format: Toggle
+Trim Whitespace on Save*, *Format: Toggle Final Newline on Save*). *Format: Document*
 formats on demand.
 
 | Key | Default | Meaning |
@@ -111,8 +111,9 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 ## Keybinds
 
-`keybinds` maps a command name to a key string. Only these commands are
-rebindable; primitive editing/movement is fixed. An empty string (`""`) leaves a
+`keybinds` maps a core command name to a key string. Only these commands are
+rebindable; primitive editing/movement is fixed. Plugin commands bind under
+[`plugins.<id>.keybinds`](#plugins). An empty string (`""`) leaves a
 command unbound but still reachable from the palette. Key strings are
 case-sensitive combinations of `Ctrl+`, `Alt+`, and a key (`Ctrl+f`, `Alt+F`,
 `Alt+{`). The `keybinds` block in
@@ -132,33 +133,30 @@ user-overridable fields:
 Formatter commands live in [`plugins.format.commands`](#save-behavior-and-formatting).
 Overriding one field merges over the compiled-in default, so you can point `lsp`
 at a different binary. Syntax highlighting is wired into
-the binary (tree-sitter) and is not configured here. *Set Language* overrides the
+the binary (tree-sitter) and is not configured here. *Editor: Set Language* overrides the
 detected language for the current session.
+
+## LSP
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `lsp.enabled` | `true` | Master switch. Off stops every language server: no diagnostics, completion, hover, go-to-definition or rename, and the `LSP:` commands leave the palette. *Format: Document* works only for languages with a `plugins.format.commands` entry. |
+| `lsp.completion_max_rows` | `8` | Max rows in the completion popup. |
+| `lsp.completion_min_chars` | `1` | Word-char count that auto-triggers completion. |
+
+Per-language server commands live in the [`languages`](#languages) section. The
+old `modules.lsp` keys warn and are ignored.
 
 ## Modules
 
-`lsp` and `ai` are self-contained subsystems under the `modules` section.
-Each has an `enabled` flag (default `true`); setting it `false` removes that
-module entirely — its commands leave the palette and their keybinds go dead, its
-UI (gutter marks, diagnostics, ghost text…) stops rendering, and it never spawns
-a subprocess. Git is the bundled [`git` plugin](#git) now. All of
-a module's own config lives inside its namespace, so everything about it is in one
-place.
+`ai` is a self-contained subsystem under the `modules` section. Its `enabled`
+flag (default `true`) set to `false` removes it entirely: its commands leave the
+palette and their keybinds go dead, its UI stops rendering, and it never spawns
+a subprocess.
 
 ```json
 { "modules": { "ai": { "enabled": false } } }
 ```
-
-### `modules.lsp`
-
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `enabled` | `true` | Master switch. Off stops every language server — no diagnostics, completion, hover, go-to-definition, or rename; *Format Document* works only for languages with a `plugins.format.commands` entry. |
-| `completion_max_rows` | `8` | Max rows in the completion popup. |
-| `completion_min_chars` | `1` | Word-char count that auto-triggers completion. |
-
-Per-language server commands live in the [`languages`](#languages) section, not
-here — a server is a property of its language.
 
 ### `modules.ai`
 
@@ -190,30 +188,37 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log,
 |-----|---------|---------|
 | `plugin_memory_mb` | `64` | Memory cap for the Lua state; a plugin that exceeds it errors instead of growing. `0` means no cap. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
-| `plugins.<name>.enabled` | `true` | Off unloads that plugin (live). `e` in *Debug: Plugins* writes this key. |
-| `plugins.<name>.<key>` | plugin's `qed.options` | Per-key override of the plugin's own config; objects merge per key, arrays replace. Unknown keys warn once the plugin has loaded; a disabled plugin's keys are not checked. |
+| `plugins.<id>.enabled` | `true` | Off unloads that plugin (live) and drops its commands and binds. `e` in *Debug: Plugins* writes this key. |
+| `plugins.<id>.keybinds` | each command's `key` | Binds for that plugin's commands, keyed by the bare command name (`"Set Diff Base"`, not `"Git: Set Diff Base"`). `""` unbinds. A name no command of the loaded plugin has warns; a disabled plugin's binds are not checked. |
+| `plugins.<id>.<key>` | plugin's `qed.options` | Per-key override of the plugin's own config; objects merge per key, arrays replace. Unknown keys warn once the plugin has loaded; a disabled plugin's keys are not checked. |
 
-A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
-like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
-warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under `plugins.<name>`
-reach the plugin through its `config_changed` handler (`format`, `search` and `tasks` apply
-them live, keeping runtime state); a plugin without one is reloaded. Adding,
-removing or editing a file under `plugins/` reloads just that plugin.
-*Set Theme*, *Set Language* and *Change Indentation* come from the bundled `pickers`
-plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
+The id is the plugin's file or dir name. Its display name (the id title-cased, or
+what the plugin sets with `qed.meta`) prefixes its commands in the palette
+(`Git: Set Diff Base`) and labels its messages. A key already taken by a builtin is
+ignored with a warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under
+`plugins.<id>` reach the plugin through its `config_changed` handler (`format`,
+`search` and `tasks` apply them live, keeping runtime state); a plugin without one
+is reloaded. Adding, removing or editing a file under `plugins/` reloads just that
+plugin. *Editor: Set Theme*, *Editor: Set Language* and *Editor: Change Indentation*
+come from the bundled `pickers` plugin (no config of its own;
+`plugins.pickers.enabled = false` removes them).
 
 ```json
-{ "plugins": { "mytool": { "enabled": false } } }
+{ "plugins": {
+  "mytool": { "enabled": false },
+  "git": { "keybinds": { "Set Diff Base": "Alt+b" } }
+} }
 ```
 
 ### Search
 
-*Find in Files* (`Alt+F`) and the file tree's *Search* (same chord, scoped to the
-selection) come from the bundled `search` plugin; both need `rg` on `PATH`.
+*Search: Find in Files* (`Alt+F`) and the file tree's *Search: Find in Files* (same
+chord, scoped to the selection) come from the bundled `search` plugin; both need `rg`
+on `PATH`. Rebind both with `plugins.search.keybinds["Find in Files"]`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.search.enabled` | `true` | Off removes *Find in Files* and the tree's *Search*. |
+| `plugins.search.enabled` | `true` | Off removes both *Find in Files* commands. |
 | `plugins.search.min_query` | `2` | Min query length before a search runs (was `projsearch_min_query`). |
 
 ### Git
@@ -222,13 +227,13 @@ The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
 *Diff: Next/Previous Change*, *Diff: Revert Hunk*), polls the branch, ahead/behind
 and repo diff size into the status bar every 2 s, feeds the file tree's **Changed** tab
 (*File Tree: Changed*, `Alt+g`), and owns *Git: Set Diff Base* and the tree's
-*Restore File* (also `Enter` on a deleted file). A moved branch or HEAD is followed within a poll. It
+*Git: Restore File* (also `Enter` on a deleted file). A moved branch or HEAD is followed within a poll. It
 does nothing when the `git` binary isn't on `PATH`. The old `modules.git` keys warn
 and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to the top level.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Changed** tab and its status bars, *Git: Set Diff Base* and *Restore File*. Merge-conflict highlighting stays. |
+| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Changed** tab and its status bars, *Git: Set Diff Base* and *Git: Restore File*. Merge-conflict highlighting stays. |
 
 ## Writing your own commands
 
@@ -236,12 +241,16 @@ A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool,
 `qed.parse_locations` turns `file:line:col: msg` output into `qed.pick` items (list
 with file preview), and `qed.jump` opens the file there. A plugin's own config keys
 come from `local cfg = qed.options{key = default}` in `setup`, overridden under
-`plugins.<name>`. The API reference with types is `plugins/meta/qed.lua`.
+`plugins.<id>`. The API reference with types is `plugins/meta/qed.lua`.
+
+qed writes `~/.config/qed/plugins/.luarc.json` (only when missing or different),
+pointing lua-language-server at the type stub with Lua 5.4. It applies when that
+dir is the working root (`qed ~/.config/qed/plugins`).
 
 ```lua
 -- ~/.config/qed/plugins/my.lua
 return {setup = function()
-  qed.command{name = "Grep Word", key = "Alt+8", run = function(ctx)
+  qed.command{name = "Grep Word", key = "Alt+8", run = function(ctx) -- palette: "My: Grep Word"
     local word = ctx.selection_text or qed.prompt{prompt = "Grep:"}
     if not word or word == "" then return end
     local r = qed.spawn{argv = {"grep", "-rn", "--", word, "."}}
@@ -256,7 +265,7 @@ end}
 ## Tasks
 
 Long-running or background commands, owned by the bundled `tasks` plugin. Each
-task runs in its own terminal session, hidden until shown. *Tasks* (palette, also
+task runs in its own terminal session, hidden until shown. *Tasks: Open* (palette, also
 on the welcome screen) lists every task and other plugin session with its state:
 `not started`, `running`, `exited 0`, `failed (exit N)`
 or `killed (signal N)`. Picking a task that never ran starts and shows it; otherwise
@@ -281,7 +290,7 @@ pane's title; `Alt+t` always shows the plain shell. Tasks die with qed.
 ## Themes & colors
 
 Colors are not in `config.json`; they live in themes. Set the active theme with
-the `theme` key (or the *Set Theme* picker, which persists it):
+the `theme` key (or the *Editor: Set Theme* picker, which persists it):
 
 ```json
 { "theme": "nord" }

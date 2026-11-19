@@ -57,7 +57,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`) | `pick{query, on_query}`, `picker:set`, `spawn`, `jump`, `ctx.files`. Core keeps the list + preview layout, the preview, the count and hint, and the query debounce (keystroke path). |
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
-| module.odin | | replaced | `modules.git` became `plugins.git`; `.Git` is gone (phase 11). `modules.lsp` and `modules.ai` stay until ported. |
+| module.odin | | replaced | `modules.git` became `plugins.git`; `.Git` is gone (phase 11). `modules.lsp` became the top-level `lsp` section (phase 13). `modules.ai` stays until ported. |
 | **custom commands** | | user plugins | `command{when}`, `spawn`, `parse_locations` + `pick`, `term`, `pane`. The config-driven `commands` plugin was dropped in phase 10. |
 | **tasks** | | **new plugin** | `qed.term`, `pick`, `status.set`, `term_open`/`term_exit`/`term_close`. |
 | **Plugins pane** | | core | Must work when the plugin system itself is broken. |
@@ -106,8 +106,8 @@ The API is one global, `qed`.
 ### Commands and keybinds
 | Function | Notes |
 |---|---|
-| `qed.command{name, run, when?, key?, welcome?, scope?, keybind?} -> handle` | `handle:remove()` unregisters. A name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and `keybinds[name]` binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `keybind` is the `keybinds` key when it differs from `name` (*Restore File* binds as `File Tree: Restore File`, like the builtin tree commands). `welcome = true` also offers it on the welcome screen. |
-| `qed.run(name)` | Run any builtin or plugin command. |
+| `qed.command{name, run, when?, key?, welcome?, scope?, keybind?} -> handle` | `name` is bare; the command is shown and run as `<display name>: <name>` (the visible name). `handle:remove()` unregisters. A visible name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and the one keybind binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and `plugins.<id>.keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `keybind` is the key in `plugins.<id>.keybinds` when it differs from `name`; commands sharing a key share its bind, and one without `key` takes the first `key` among them. `welcome = true` also offers it on the welcome screen. |
+| `qed.run(name)` | Run a builtin or plugin command by visible name. A bare name falls back to the caller's own editor command when no visible name matches. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
 | `ctx` | `{buf, path, language, root, selection_text}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order; on a scoped tab a selected dir stands for its in-scope files). |
 
@@ -136,7 +136,7 @@ There is deliberately no `key` event.
 ### UI
 | Function | Notes |
 |---|---|
-| `qed.message(text, level? \| {level?, source?})`, `qed.log(level, text)` | `source` defaults to the plugin name; `""` is bare. |
+| `qed.message(text, level? \| {level?})`, `qed.log(level, text)` | Always attributed to the plugin's display name. Unknown options raise. |
 | ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?, query?, on_query?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout (match count by the divider). `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. `query` is the initial text, fully selected. Esc returns `nil`. |
 | `on_query(query, picker)` | Makes the pick query-driven: no fuzzy filter, list + preview layout, items only from `picker:set(items, {selected?, more?, hint?}) -> live`. Runs as a task at open and `PLUGIN_QUERY_DEBOUNCE_MS` (120) after the query stops changing; core debounces, so no Lua runs per keystroke. Each run kills the previous one with the `qed.spawn` it waits on, and closing or unloading kills the last. `set` replaces the items (`selected` index, `more` shows `N+`, `hint` shows while empty), fires `on_change` for the new highlight and returns false once the picker is closed. `pick` returns the final query as a third value (also on Esc), and Enter while a query is due or running flushes it and accepts once it ends. |
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
@@ -202,7 +202,8 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | `qed.path.join/dir/base/rel/abs`, `qed.shell_quote` | |
 | `qed.parse_locations(text, {cwd?}) -> {label, path, pos}[]` | Parses `file:row:col: msg`, `file:row:col`, `file:row: msg` and `file:row` lines (CRLF ok; the shortest file wins, so `a:b.txt:4: m` is `a:b.txt`) into `qed.pick` items. Relative files resolve against `cwd` (default the root); lines naming a missing file are skipped; labels are root-relative. `{}` when nothing parses. |
 | `qed.root()`, `qed.version` | |
-| `qed.options(defaults) -> table` | Declares this plugin's config keys and defaults, returns the merged config. Setup only, once per load; raises otherwise. |
+| `qed.options(defaults) -> table` | Declares this plugin's config keys and defaults, returns the merged config. Setup only, once per load; raises otherwise. `enabled` and `keybinds` are reserved. |
+| `qed.meta{display_name?}` | Plugin metadata. Setup only, once per load; unknown fields and a non-string or empty `display_name` raise. Renames commands registered earlier in setup (a clash raises). |
 | `qed.config() -> table` | This plugin's merged subtree. Read-only. |
 | `qed.opt(key)` | Read-only core knob. |
 | ⏳ `qed.lsp.format(b) -> bool` | Core LSP formatting. |
@@ -210,13 +211,8 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 ### Type stubs
 - `plugins/meta/qed.lua` (`---@meta`) is maintained by hand next to `src/plugin_api.odin`. A unit test fails if a registered `qed.*` function is missing from it.
 - The stub is embedded and written to `$XDG_DATA_HOME/qed/lua/qed.lua` whenever its content changes.
-- **Completion without `.luarc.json`.** lua-language-server pulls `Lua` settings through `workspace/configuration`, and qed already answers that in `lsp_config_for_section` (it only handles python sections today). Two changes:
-  - Add a `"Lua"` case returning `{"runtime":{"version":"Lua 5.4"},"workspace":{"library":["<stub dir>"]},"diagnostics":{"globals":["qed"]}}`.
-  - Add the same `"Lua"` object to the post-`initialized` `didChangeConfiguration` push, which is hardcoded to python today.
-
-  Both are keyed on the section name, not the server, so other servers ignore it.
-- The library applies to every Lua file, including `~/.config/qed/plugins/` opened from any working root.
-- Verify against lua-language-server in isolation before relying on it.
+- **Scoped like Neovim's `.luarc.json`.** qed sends no global `Lua` settings. It writes `~/.config/qed/plugins/.luarc.json` (only when missing or different) with `runtime.version = "Lua 5.4"` and `workspace.library = ["<stub dir>"]`; the repo has its own `.luarc.json` at the root pointing at `plugins/meta`.
+- lua-language-server reads `.luarc.json` from the workspace root only (verified with `--check`), so user plugins get the stub when `~/.config/qed/plugins` is the working root, the repo's plugins when the repo is.
 
 ## 4. Lifecycle
 
@@ -227,13 +223,15 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | Spec | Returns `{setup = function() end}`. All registration happens in `setup`. |
 | Order | Bundled first, then user, alphabetical within each. A user plugin with a bundled name replaces the bundled one. `startup` fires after all plugins are loaded. |
 | Enable | `plugins.<name>.enabled`, default true. The embedded config.json lists each bundled plugin's `enabled` and nothing else. |
+| Naming | The id is the file or dir name: config key, keybind namespace, owner in code. The display name is the id title-cased (`my_tools` is "My Tools") or `qed.meta{display_name}`; it prefixes commands (palette, keybind hints), labels messages and log lines, and names the plugin in the Plugins pane. Unload resets it, so a disabled plugin shows the title-cased id. |
+| Keybinds | `plugins.<name>.keybinds[<bare name or keybind>]` over each command's `key`; the top-level `keybinds` holds core commands only (a plugin command there warns where it moved). Names no command of the loaded plugin has warn after load; a disabled or errored plugin's binds are not checked. Disabling drops the binds with the commands. |
 | Config | `setup` calls `qed.options(defaults)`, the one place a plugin's keys and defaults live. `plugins.<name>` is a sparse diff over them. Unknown keys warn once, after setup ran, and only for enabled plugins that loaded; a disabled or errored plugin's typo surfaces when it loads. |
 | Ownership | Every registration (command, hook, timer, process, term session, decoration ns, status segment, diff base, modal) records its owner. Unloading tears all of it down. |
 | Hot reload | Triggers: the disk poll sees a user plugin file added, removed or changed (any file inside a dir plugin), `enabled` flips, or `r` in the Plugins pane. Only that plugin unloads and reloads; a same-name user plugin appearing or disappearing swaps it with the bundled one. Load order stays bundled-then-user, alphabetical. A plugin loaded after startup gets its own `startup` event. |
 | Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
 | Isolation | One `lua_State` with a per-plugin `_ENV`. |
-| Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Load, hook and timer errors disable the plugin; command errors only log. All errors are logged as `.Error` with the plugin as source and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
-| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab follows the file tree status provider, conflicts are ungated. `.Lsp` and `.Ai` stay as modules. |
+| Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Load, hook and timer errors disable the plugin; command errors only log. All errors are logged as `.Error` under the plugin's display name and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
+| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab follows the file tree status provider, conflicts are ungated. Phase 13 made `modules.lsp` the top-level `lsp` section, gated on `LSP_ENABLED`. `.Ai` stays a module. |
 
 Hot reload mechanics:
 - `plugins_poll` runs in the disk poll, before the config reload. It rescans bundled plugins plus `Plugins.user_dir` (headless sessions have none and never poll).
@@ -251,11 +249,11 @@ load.
 
 | Column / action | Behavior |
 |---|---|
-| Rows | name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. Click selects, double click is `Enter`. |
+| Rows | display name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. Click selects, double click is `Enter`. |
 | `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view inside the pane, with a hint to fork it to the user dir. |
 | `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, atomic; refused when config.json doesn't parse) and loads or unloads the plugin. The config stamp is left alone, so the next poll runs the normal reload and finds the flip already applied. |
 | `r` | Reloads the plugin. |
-| `l` | Opens the Message Log filtered to this plugin's source. |
+| `l` | Opens the Message Log filtered to this plugin's display name. |
 
 ## 5. Runtime model
 
@@ -328,6 +326,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` takes a path and clamps `pos`. | minor |
 | 11 | File tree status provider (`qed.filetree.provide{refresh, preview, open_deleted}`, `set_status`, `set_base`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changed*. | minor |
 | 12 | Query-driven `qed.pick` (`query`, `on_query`, `picker:set`), the opening command's chord closes a modal, `ctx.files` expands scoped-tab dirs. Project search moves to `plugins/search` (*Find in Files* and the tree's *Search*); `projsearch.odin` and `projsearch_min_query` (now `plugins.search.min_query`) are gone. | minor |
+| 13 | `qed.meta{display_name}`, display names everywhere a plugin is named, automatic `<display name>: ` command prefix, `qed.message` without `source`, keybinds under `plugins.<id>.keybinds` (plugin binds leave the top-level `keybinds`), `~/.config/qed/plugins/.luarc.json` replaces the global `Lua` LSP settings, `modules.lsp` becomes `lsp` and `.Lsp` leaves the `Module` enum. | minor |
 | later | Interactive panes, conflicts, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions
@@ -335,11 +334,11 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 1. 1-based rows and byte columns, half-open ranges.
 2. Vendor the Lua source in `lib/lua` and build it static, since `vendor:lua` uses the system library on macOS and Linux arm64.
 3. Load, hook and timer errors disable the plugin; command errors only log.
-4. Default keys are declared via `key=` in `qed.command`, overridable by `keybinds[name]`.
+4. Default keys are declared via `key=` in `qed.command`, overridable by `plugins.<id>.keybinds[name]`.
 5. Git: diff engine and tree rendering core, plumbing (including the Git tab's data) in Lua.
 6. One `format` plugin orders save fixups before formatting. No hook priorities.
 7. Formatter config lives in `plugins.format.commands.<lang>`.
-8. The stub is auto-written to `$XDG_DATA_HOME/qed/lua/qed.lua` and fed to lua-ls via `Lua.workspace.library`.
+8. The stub is auto-written to `$XDG_DATA_HOME/qed/lua/qed.lua` and fed to lua-ls via a generated `~/.config/qed/plugins/.luarc.json`, not global LSP settings.
 9. `modules.ai` stays core until decorations exist; then aiedit moves first and fim last.
 10. One Lua state with a per-plugin `_ENV`.
 11. A user plugin with a bundled name replaces the bundled one.
