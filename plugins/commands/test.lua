@@ -358,6 +358,19 @@ function T.locations_with_columns(t)
 	t.eq(qed.buf.cursor().col, 1, "positions clamp to the buffer")
 end
 
+function T.locations_from_filetree(t)
+	t.open("a.txt", "one\nneedle")
+	one(t, {name = "Grep", key = "Alt+j", output = "locations", run = "grep -Hn needle {files}", when = {pane = "filetree"}})
+	t.key("Alt+f")
+	t.key("Alt+j")
+	t.wait(function() return t.ui() ~= nil end)
+	t.eq(t.ui().selected, "a.txt:2: needle")
+	t.key("Enter")
+	t.wait(function() return not t.editor().tree end)
+	t.eq(qed.path.base(qed.buf.path()), "a.txt", "the jump closes the tree")
+	t.eq(qed.buf.cursor().row, 2)
+end
+
 function T.locations_empty_is_success(t)
 	t.open("a.txt", "nothing")
 	one(t, {name = "Grep", output = "locations", run = "grep -n needle a.txt"})

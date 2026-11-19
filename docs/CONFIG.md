@@ -221,7 +221,7 @@ default empty one) and hot-reloads: commands are re-registered on save.
 | `run` | required | Shell string run with `sh -c`. Placeholders below are substituted, each shell-quoted. |
 | `output` | `"message"` | Where the result goes, see below. |
 | `stdin` | `"none"` | `"none"`, `"selection"`, `"buffer"`, or `"selection-or-buffer"`. |
-| `save` | `"current"` | Save before running: `"none"`, `"current"` (the current buffer, if modified), or `"all"`. A failed save aborts the run. |
+| `save` | `"current"` | Save before running: `"none"`, `"current"` (the current buffer if modified; editor commands only), or `"all"`. A failed save aborts the run. |
 | `cwd` | working root | Directory to run in; placeholders allowed (unquoted), relative to the root. |
 | `env` | `{}` | Extra environment, `{"NAME": "value"}`; placeholders allowed (unquoted). |
 | `key` | none | Default keybind; `keybinds["<name>"]` overrides it. |
