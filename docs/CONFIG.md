@@ -88,7 +88,6 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `projsearch_min_query` | `2` | Min query length before project search runs. |
 | `jump_threshold` | `10` | A cursor move farther than this many lines records a jump-list entry. |
 
 ## Timing & limits
@@ -195,8 +194,8 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log,
 A plugin command's keybind is its `key`, overridden by `keybinds["<command name>"]`
 like any builtin (`""` unbinds). A key already taken by a builtin is ignored with a
 warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under `plugins.<name>`
-reach the plugin through its `config_changed` handler (`format` and `tasks` apply
-them live, keeping runtime toggles); a plugin without one is reloaded. Adding,
+reach the plugin through its `config_changed` handler (`format`, `search` and `tasks` apply
+them live, keeping runtime state); a plugin without one is reloaded. Adding,
 removing or editing a file under `plugins/` reloads just that plugin.
 *Set Theme*, *Set Language* and *Change Indentation* come from the bundled `pickers`
 plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
@@ -204,6 +203,16 @@ plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
 ```json
 { "plugins": { "mytool": { "enabled": false } } }
 ```
+
+### Search
+
+*Find in Files* (`Alt+F`) and the file tree's *Search* (same chord, scoped to the
+selection) come from the bundled `search` plugin; both need `rg` on `PATH`.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.search.enabled` | `true` | Off removes *Find in Files* and the tree's *Search*. |
+| `plugins.search.min_query` | `2` | Min query length before a search runs (was `projsearch_min_query`). |
 
 ### Git
 

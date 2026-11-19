@@ -70,6 +70,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Phase 9: port `git`, `modules.git` becomes `plugins.git`.
 - [ ] Phase 10: drop the `commands` plugin, add `qed.parse_locations`.
 - [ ] Phase 11: file tree status provider (`qed.filetree`), Git tab moves to the `git` plugin, `.Git` module gone.
+- [ ] Phase 12: query-driven `qed.pick` (`query`, `on_query`, `picker:set`), project search moves to the `search` plugin.
 
 ## Post-1.0 — deferred
 

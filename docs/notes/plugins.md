@@ -54,7 +54,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
 | file tree Git tab + status bars: status scan, numstat sizes, renames, deleted files, ignored set, preview base, restore | | **plugin** (phase 11, done: `plugins/git/tree.lua`) | `filetree.provide{refresh, preview, open_deleted}`, `filetree.set_status`, `filetree.set_base`. Core keeps the tab, bars, sizes, ghost rows, preview diff and the walk (render and keystroke paths). |
 | conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
-| projsearch | | later | Needs a streaming list+preview picker. |
+| projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`) | `pick{query, on_query}`, `picker:set`, `spawn`, `jump`, `ctx.files`. Core keeps the list + preview layout, the preview, the count and hint, and the query debounce (keystroke path). |
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
 | module.odin | | replaced | `modules.git` became `plugins.git`; `.Git` is gone (phase 11). `modules.lsp` and `modules.ai` stay until ported. |
@@ -109,7 +109,7 @@ The API is one global, `qed`.
 | `qed.command{name, run, when?, key?, welcome?, scope?, keybind?} -> handle` | `handle:remove()` unregisters. A name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and `keybinds[name]` binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `keybind` is the `keybinds` key when it differs from `name` (*Restore File* binds as `File Tree: Restore File`, like the builtin tree commands). `welcome = true` also offers it on the welcome screen. |
 | `qed.run(name)` | Run any builtin or plugin command. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
-| `ctx` | `{buf, path, language, root, selection_text}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
+| `ctx` | `{buf, path, language, root, selection_text}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order; on a scoped tab a selected dir stands for its in-scope files). |
 
 ### Events
 `qed.on(event, fn) -> handle`, removed with `handle:off()`.
@@ -137,7 +137,8 @@ There is deliberately no `key` event.
 | Function | Notes |
 |---|---|
 | `qed.message(text, level? \| {level?, source?})`, `qed.log(level, text)` | `source` defaults to the plugin name; `""` is bare. |
-| ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout. `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. Esc returns `nil`. |
+| ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?, query?, on_query?} -> item \| items[] \| nil` | Items are strings or `{label, detail?, value?, path?, pos?}`. Items with `path` get the core list+preview layout (match count by the divider). `multi = true` uses Shift+↑↓ range select (log-pane model) and returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. `query` is the initial text, fully selected. Esc returns `nil`. |
+| `on_query(query, picker)` | Makes the pick query-driven: no fuzzy filter, list + preview layout, items only from `picker:set(items, {selected?, more?, hint?}) -> live`. Runs as a task at open and `PLUGIN_QUERY_DEBOUNCE_MS` (120) after the query stops changing; core debounces, so no Lua runs per keystroke. Each run kills the previous one with the `qed.spawn` it waits on, and closing or unloading kills the last. `set` replaces the items (`selected` index, `more` shows `N+`, `hint` shows while empty), fires `on_change` for the new highlight and returns false once the picker is closed. |
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
@@ -149,6 +150,7 @@ There is deliberately no `key` event.
 | `qed.filetree.set_base(path, text \| nil)` | Answers `preview(path)`: the Changed tab previews `path` diffed against `text`, raw bytes (a NUL on either side shows a hexdump; `nil`: plain file). A stale path is ignored; every `set_status` drops the cached base, keeping the old rows up until the re-ask is answered. |
 
 - Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.
+- The chord of the command that opened a modal closes it like Esc (the core pane convention).
 - Panes that handle keys (custom key handling, actions) come later. The first consumer would be a tasks or locations pane richer than `pick`.
 
 ### Terminals (`qed.term`)
@@ -324,7 +326,8 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view`, `filetree_diff_only` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
 | 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` takes a path and clamps `pos`. | minor |
 | 11 | File tree status provider (`qed.filetree.provide{refresh, preview, open_deleted}`, `set_status`, `set_base`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changed*. | minor |
-| later | Interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
+| 12 | Query-driven `qed.pick` (`query`, `on_query`, `picker:set`), the opening command's chord closes a modal, `ctx.files` expands scoped-tab dirs. Project search moves to `plugins/search` (*Find in Files* and the tree's *Search*); `projsearch.odin` and `projsearch_min_query` (now `plugins.search.min_query`) are gone. | minor |
+| later | Interactive panes, conflicts, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions
 

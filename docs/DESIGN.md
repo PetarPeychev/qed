@@ -254,7 +254,7 @@ member group is no longer on top).
   subdirs; `/`/Tab drill into the highlight, Backspace after `/` drops a segment, Enter
   commits the path as written). In the file tree the same chord commits the selected dir
   (a file → its parent). `editor_change_root` closes buffers outside the new root (unsaved →
-  confirm), restarts every LSP server and resets file tree / project search / git stat. The
+  confirm), restarts every LSP server, resets the file tree and queues `root_changed`. The
   process cwd never changes; subprocesses get the root explicitly.
 
 ## Clipboard
@@ -270,7 +270,7 @@ two tables (`palette.odin`): the global `commands` and the file-tree
 bind via `Command.bind_from` (the global command's name) — no config key of its own,
 key/alt/shortcut resolved live from the referenced global command
 (`command_effective_bind`), so one config entry drives both dispatch paths (e.g. tree
-Copy follows global *Copy*; tree Search follows *Find in Files*, i.e. `Alt+F`). The
+Copy follows global *Copy*); a plugin tree command gets the same with `keybind` (the `search` plugin's tree *Search* binds as *Find in Files*, `Alt+F`). The
 file-tree-unique commands (Delete, Rename, New, Toggle Dotfiles/Ignored,
 Expand/Collapse All) keep their own `File Tree: …`-namespaced config key
 (`config_name` vs the short display `name`). Every command's default bind is a
@@ -286,7 +286,7 @@ cased (lowercase Ctrl letters) so hints read uniformly. Every pane closes/defocu
 keybind, so rebinds keep the toggle; the terminal's extra `Alt+T` tolerance stays
 hardcoded); the welcome-screen key whitelist resolves the same way.
 
-Every editable text box (palette/picker/line-find/project-search
+Every editable text box (palette/picker/line-find
 queries, find/replace, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
 `TextField` (`textfield.odin`): `{text, caret, anchor}` with buffer-parity binds —
 grapheme + word (`Ctrl+←/→`) motion, smart home/end (`Alt+←/→`), shift-select,
@@ -303,17 +303,17 @@ a click in the query/prompt field places the caret and a button-held drag select
 click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). Shared row/
 field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
 `overlay_prompt_mouse`, `dialog_mouse`; `textfield_mouse` maps a click to a caret).
-List | preview panes (file tree, project search, line jump) split via `overlay_split` with per-list
-min/max (`filetree_list_*_width`; `code_list_*_width` for project search + line jump) and a global
+List | preview panes (file tree, line jump, plugin pickers with paths) split via `overlay_split` with per-list
+min/max (`filetree_list_*_width`; `code_list_*_width` for path pickers + line jump) and a global
 `preview_min_width`/`preview_max_width`. Inner width W (minus the divider) >= both maxes: both at max
 and the box is centered (extra width becomes margin). Below that, the deficit is taken equally from
 each side down to its min, the other side absorbing the rest. W under both mins hides the preview
 (`lay.preview` false: list takes the full inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
 `editor_previews_sync`). The `PICKER_MARGIN_X` side margin is fixed at every width.
-Most panes reset their query on open; **line-find and project-search persist it** —
+Most panes reset their query on open; **line-find persists it**:
 reopened with the text fully selected (`textfield_select_all`) so a keystroke replaces it,
-else edit/arrow to refine. Project-search also restores its selected match; the file tree
-persists its expanded set + selection.
+else edit/arrow to refine. The `search` plugin does the same through `qed.pick{query}` and also
+restores its selected match; the file tree persists its expanded set + selection.
 
 Two terminal workarounds, both
 documented in `lib/tb2/PATCHES.md`:
@@ -419,7 +419,14 @@ started at the end of `editor_init`. Invariants the code can't show:
   task whenever the highlighted item changes (never at open); the previous one is
   killed on each change and on resolve, so a waiting handler can't apply a stale
   preview. `qed.pane` is a non-waiting read-only overlay (`Plugins.pane`).
-  Unloading the owner closes both.
+  Unloading the owner closes both. A modal records the command whose task opened it
+  (`PluginTask.command`); that command's chord closes it like Esc.
+- **Query-driven picks** (`on_query`): typing only marks `query_due`; `plugin_ui_pump`
+  (in `plugin_pump`, joined to `plugin_busy` and the poll timeout) starts the handler as a
+  task once `PLUGIN_QUERY_DEBOUNCE_MS` passed (at open, immediately), killing the previous
+  one and the `qed.spawn` it waits on. `picker:set` swaps `items_ref` and the item list,
+  clears `notified`, and the pump fires `on_change` for the new highlight. Path pickers
+  render the left-half prompt with the count by the divider and a full-height preview.
 - `qed.parse_locations` (pure, `plugin_api.odin`) turns `file:row[:col][: msg]`
   lines into pick items with `path`/`pos`. `qed.jump` takes a buffer id or a path,
   takes the jump origin before opening (an origin in the just-opened file would let
@@ -656,10 +663,10 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 defaults seeded before main, load + write-back) · `module` (lsp/ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` · `pane` (box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` · `fuzzy` ·
-`cwdpick` · `linefind` · `find` (in-buffer find/replace) · `projsearch` · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
+`cwdpick` · `linefind` · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.pick`/`prompt`/`confirm`/`pane`, `qed.theme`) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `tasks/`: *Tasks* picker and status segment; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Restore File*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `pickers/`: *Set Theme*, *Set Language*, *Change Indentation*; `search/`: *Find in Files* and the tree's *Search*; `tasks/`: *Tasks* picker and status segment; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Restore File*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -684,7 +691,7 @@ plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns 
 table of test functions; `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `hook_timeout`, `module`, `ui` (open plugin overlay state), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `hook_timeout`, `module`, `ui` (open plugin overlay state: kind, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/plugin_ui_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
@@ -735,9 +742,9 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`Ctrl+G`,
-matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (**async + debounced** `rg`, parallel scan with results sorted in-process for deterministic order, `PROJSEARCH_DEBOUNCE_MS`;
+matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: **async + debounced** `rg` via `qed.pick{on_query}`, parallel scan with results sorted in Lua for deterministic order, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
-layout — left-half search box, full-height preview, match count (`N`, or `PROJSEARCH_MAX`+ when capped) by the divider),
+layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
 file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
 fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
 lazy per-dir expand, full-height right-side preview; **type-to-filter** (`> ` prompt, in-process
