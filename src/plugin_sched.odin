@@ -268,7 +268,7 @@ plugin_slice_end :: proc(editor: ^Editor, prev: PluginSlice, owner: string, kind
 	}
 	soft := plugin_budgets[kind].soft_ms
 	if ms := time.duration_milliseconds(elapsed); soft > 0 && ms > soft {
-		editor_log(editor, .Debug, owner, fmt.tprintf("%s took %.2f ms (budget %.0f ms)", what, ms, soft))
+		editor_log(editor, .Debug, plugin_label(&editor.plugins, owner), fmt.tprintf("%s took %.2f ms (budget %.0f ms)", what, ms, soft))
 	}
 	return
 }
@@ -1025,7 +1025,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 			continue
 		}
 		for owner in plugin_pending_owners(p, s.tasks[:]) {
-			editor_log(editor, .Warn, owner, fmt.tprintf("buf_pre_save handler still running after %d ms, stopped it and saving", PLUGIN_HOOK_TIMEOUT_MS))
+			editor_log(editor, .Warn, plugin_label(&editor.plugins, owner), fmt.tprintf("buf_pre_save handler still running after %d ms, stopped it and saving", PLUGIN_HOOK_TIMEOUT_MS))
 		}
 		for task in s.tasks {
 			plugin_task_kill(editor, task)
@@ -1068,7 +1068,7 @@ editor_plugins_quit :: proc(editor: ^Editor) {
 		}
 		if plugin_tick_due(deadline, time.tick_now()) {
 			for owner in plugin_pending_owners(p, pending[:]) {
-				editor_log(editor, .Warn, owner, fmt.tprintf("quit handler still running after %d ms, quitting anyway", PLUGIN_HOOK_TIMEOUT_MS))
+				editor_log(editor, .Warn, plugin_label(&editor.plugins, owner), fmt.tprintf("quit handler still running after %d ms, quitting anyway", PLUGIN_HOOK_TIMEOUT_MS))
 			}
 			return
 		}

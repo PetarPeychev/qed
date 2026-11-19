@@ -48,7 +48,7 @@ end
 
 local function search(ctx, scope)
 	if not rg_ready() then
-		qed.message("ripgrep (rg) not found", {level = "error", source = "Find"})
+		qed.message("ripgrep (rg) not found", "error")
 		return
 	end
 	local start, keep = query, selected
@@ -112,9 +112,9 @@ local function search_tree(ctx)
 	end
 	if #paths == 0 then
 		if gone then
-			qed.message("Deleted file: restore it first", {source = "Files"})
+			qed.message("Deleted file: restore it first")
 		else
-			qed.message("Nothing to search in selection", {source = "Search"})
+			qed.message("Nothing to search in selection")
 		end
 		return
 	end
@@ -124,8 +124,8 @@ end
 return {
 	setup = function()
 		min_query = qed.options{min_query = 2}.min_query
-		qed.command{name = "Find in Files", welcome = true, run = search}
-		qed.command{name = "Search", keybind = "Find in Files", scope = "filetree", run = search_tree}
+		qed.command{name = "Find in Files", key = "Alt+F", welcome = true, run = search}
+		qed.command{name = "Find in Files", scope = "filetree", run = search_tree}
 		qed.on("config_changed", function() min_query = qed.config().min_query end)
 		qed.on("root_changed", function() selected = 1 end)
 	end,

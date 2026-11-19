@@ -20,57 +20,58 @@ local function show(v)
 end
 local function cmd(name, run) qed.command{name = name, run = run} end
 return {setup = function()
-	cmd("UI: Strings", function()
+	qed.meta{display_name = "UI"}
+	cmd("Strings", function()
 		local r, err = qed.pick{items = {"alpha", "beta", "gamma"}, initial = 2}
 		show(r or err)
 	end)
-	cmd("UI: Tables", function()
+	cmd("Tables", function()
 		local r = qed.pick{items = {{label = "one", detail = "D1", value = 7}, {label = "two", detail = "D2", value = 8}}, initial = "two"}
 		show(r and r.value)
 	end)
-	cmd("UI: Change", function()
+	cmd("Change", function()
 		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item) qed.log("info", "chg " .. item) end}
 		show(r)
 	end)
-	cmd("UI: Multi", function()
+	cmd("Multi", function()
 		show(qed.pick{items = {"a", "b", "c", "d"}, multi = true})
 	end)
-	cmd("UI: Paths", function()
+	cmd("Paths", function()
 		local dir = qed.path.dir(qed.buf.path())
 		local r = qed.pick{items = {{path = qed.path.join(dir, "p1.txt"), pos = {row = 2, col = 1}}, {label = "second", detail = "DET2", path = qed.path.join(dir, "p2.txt")}}}
 		show(r and r.label)
 	end)
-	cmd("UI: Prompt", function()
+	cmd("Prompt", function()
 		show(qed.prompt{prompt = "Name:", text = "x"})
 	end)
-	cmd("UI: Confirm", function()
+	cmd("Confirm", function()
 		show(qed.confirm("Sure?", {"A", "B", "C"}))
 	end)
-	cmd("UI: Confirm Default", function()
+	cmd("Confirm Default", function()
 		show(qed.confirm("Ok?"))
 	end)
-	cmd("UI: Pane", function()
+	cmd("Pane", function()
 		pane = qed.pane{title = "Pane Title", lines = {"line one", {text = "line two", color = "error_foreground"}}, footer = "my footer"}
 	end)
-	cmd("UI: Pane Set", function() show(pane:set({"line three"})) end)
-	cmd("UI: Pane Close", function() pane:close() end)
-	cmd("UI: Slow", function()
+	cmd("Pane Set", function() show(pane:set({"line three"})) end)
+	cmd("Pane Close", function() pane:close() end)
+	cmd("Slow", function()
 		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item)
 			qed.sleep(40)
 			qed.log("info", "applied " .. item)
 		end}
 		show("picked " .. tostring(r))
 	end)
-	cmd("UI: Chain", function()
+	cmd("Chain", function()
 		local a = qed.pick{items = {"x", "y"}}
 		local b = qed.pick{items = {"p", "q"}}
 		show(tostring(a) .. tostring(b))
 	end)
-	cmd("UI: Persist", function()
+	cmd("Persist", function()
 		local ok, err = qed.theme.set(qed.opt("theme"), {persist = true})
 		show(tostring(ok) .. " " .. tostring(err))
 	end)
-	qed.command{name = "UI: Query", key = "Alt+q", run = function()
+	qed.command{name = "Query", key = "Alt+q", run = function()
 		local r, err, q = qed.pick{query = "ab", on_change = function(it) qed.log("info", "chg " .. it.label) end, on_query = function(q, picker)
 			qed.log("info", "query " .. q)
 			last = picker
@@ -86,11 +87,11 @@ return {setup = function()
 		end}
 		show(r and r.label or err or ("q " .. tostring(q)))
 	end}
-	cmd("UI: Stale", function() show(last:set({"x"})) end)
-	cmd("UI: Query Static", function()
+	cmd("Stale", function() show(last:set({"x"})) end)
+	cmd("Query Static", function()
 		show(qed.pick{items = {"alpha", "beta", "gamma"}, query = "gam"})
 	end)
-	qed.command{name = "UI: Tree Confirm", scope = "filetree", run = function()
+	qed.command{name = "Tree Confirm", scope = "filetree", run = function()
 		show(qed.confirm("Tree?", {"One", "Two"}))
 	end}
 end}`
@@ -131,7 +132,7 @@ e2e_plugin_ui_pick_strings :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect(t, !ui.active, "Enter closes")
 	testing.expect_value(t, e.ed.message, "gamma")
-	testing.expect_value(t, e.ed.message_source, "ui")
+	testing.expect_value(t, e.ed.message_source, "UI")
 	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
 	testing.expect_value(t, pl.last_error, "")
 
@@ -164,7 +165,7 @@ e2e_plugin_ui_pick_on_change :: proc(t: ^testing.T) {
 	count := proc(e: ^E2E, text: string) -> int {
 		n := 0
 		for l in e.ed.log {
-			if l.source == "ui" && l.text == text {
+			if l.source == "UI" && l.text == text {
 				n += 1
 			}
 		}
@@ -354,7 +355,7 @@ e2e_plugin_ui_wait_refused_in_setup :: proc(t: ^testing.T) {
 @(private = "file")
 ui_logged :: proc(e: ^E2E, text: string) -> bool {
 	for l in e.ed.log {
-		if l.source == "ui" && l.text == text {
+		if l.source == "UI" && l.text == text {
 			return true
 		}
 	}
@@ -451,7 +452,7 @@ e2e_plugin_ui_unload_restores_theme :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	pl := plugin_find(&e.ed.plugins, "pickers")
 	bg := COLOR_BG
-	cmd, _ := plugin_test_command(&e.ed, "Set Theme")
+	cmd, _ := plugin_test_command(&e.ed, "Editor: Set Theme")
 	command_run(&e.ed, cmd)
 	e2e_type(&e, "solarized-light")
 	testing.expect_value(t, editor_theme_current(&e.ed), "solarized-light")
@@ -523,7 +524,7 @@ end}}`, dir))
 ui_count :: proc(e: ^E2E, text: string) -> int {
 	n := 0
 	for l in e.ed.log {
-		if l.source == "ui" && l.text == text {
+		if l.source == "UI" && l.text == text {
 			n += 1
 		}
 	}

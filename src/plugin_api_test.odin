@@ -17,7 +17,7 @@ api_test_editor :: proc(code: string, lines: ..string, cfg_user: json.Object = n
 	src := strings.concatenate({`return {
 		setup = function()
 			qed.options{opt = 1, nested = {x = "y"}}
-			qed.command{name = "T: Run", run = function(ctx)
+			qed.command{name = "Run", run = function(ctx)
 `, code, `
 			end}
 		end,
@@ -315,8 +315,9 @@ plugin_api_misc :: proc(t: ^testing.T) {
 		c.opt = 99
 		assert(qed.config().opt == 1, "config copies are read-only")
 		assert(qed.opt("tab_width") == TAB and qed.opt("line_wrap") ~= nil and type(qed.opt("theme")) == "string", "core knobs")
-		assert(type(qed.opt("modules.lsp.completion_max_rows")) == "number", "module knob")
-		assert(not pcall(qed.opt, "nope") and not pcall(qed.opt, "modules.x.y"), "unknown knob")
+		assert(type(qed.opt("lsp.completion_max_rows")) == "number", "lsp knob")
+		assert(type(qed.opt("modules.ai.chat_command")) == "string", "module knob")
+		assert(not pcall(qed.opt, "nope") and not pcall(qed.opt, "modules.x.y") and not pcall(qed.opt, "modules.lsp.enabled") and not pcall(qed.opt, "lsp.nope"), "unknown knob")
 
 		assert(qed.fs.write("sub/f.json", qed.json.encode({b = {1, 2, 3}, a = "x", c = true, d = 1.5})) == true, "write creates parents")
 		assert(qed.fs.read("sub/f.json") == '{"a":"x","b":[1,2,3],"c":true,"d":1.5}', "encode is sorted and compact: " .. qed.fs.read("sub/f.json"))
@@ -429,15 +430,27 @@ plugin_api_stub_write :: proc(t: ^testing.T) {
 }
 
 @(test)
-plugin_api_lsp_lua_config :: proc(t: ^testing.T) {
-	v, err := json.parse_string(lsp_config_for_section("Lua"), allocator = context.temp_allocator)
-	testing.expect(t, err == nil, "Lua settings are valid JSON")
+plugin_api_luarc_write :: proc(t: ^testing.T) {
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	root := fmt.tprintf("%s/qed_luarc_test_%d", tmp, posix.getpid())
+	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(root)))
+	dir := fmt.tprintf("%s/plugins", root)
+	testing.expect_value(t, lsp_config_for_section("Lua"), "null")
+	testing.expect(t, plugin_luarc_write(dir, "/stub/lua"), "first write creates the dir and the file")
+	testing.expect(t, !plugin_luarc_write(dir, "/stub/lua"), "unchanged content is not rewritten")
+	testing.expect(t, plugin_luarc_write(dir, "/other/lua"), "a moved stub dir rewrites it")
+	data, _ := os.read_entire_file(fmt.tprintf("%s/.luarc.json", dir), context.temp_allocator)
+	v, err := json.parse(data, allocator = context.temp_allocator)
+	testing.expect(t, err == nil, ".luarc.json is valid JSON")
 	obj := v.(json.Object)
-	lib := obj["workspace"].(json.Object)["library"].(json.Array)
-	testing.expect_value(t, string(lib[0].(json.String)), plugin_stub_dir())
-	_, has_runtime := obj["runtime"]
-	testing.expect(t, !has_runtime, "the runtime version is left to the project")
-	testing.expect_value(t, string(obj["diagnostics"].(json.Object)["globals"].(json.Array)[0].(json.String)), "qed")
+	testing.expect_value(t, string(obj["runtime"].(json.Object)["version"].(json.String)), "Lua 5.4")
+	testing.expect_value(t, string(obj["workspace"].(json.Object)["library"].(json.Array)[0].(json.String)), "/other/lua")
+	testing.expect(t, !plugin_luarc_write("", "/stub/lua") && !plugin_luarc_write(dir, ""), "no dir, no write")
+	repo, rerr := os.read_entire_file("../.luarc.json", context.temp_allocator)
+	if rerr != nil {
+		repo, rerr = os.read_entire_file(".luarc.json", context.temp_allocator)
+	}
+	testing.expect(t, rerr == nil && strings.contains(string(repo), `"plugins/meta"`), "the repo .luarc.json points at the stub")
 }
 
 @(test)
@@ -544,7 +557,7 @@ plugin_api_edit_error_traceback :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(pl.last_error, "traceback"), "the message carries no traceback")
 	logged := false
 	for e in ed.log {
-		if e.level == .Debug && e.source == "t" {
+		if e.level == .Debug && e.source == "T" {
 			logged = true
 			testing.expect_value(t, strings.count(e.text, "stack traceback:"), 1)
 		}
@@ -556,18 +569,19 @@ plugin_api_edit_error_traceback :: proc(t: ^testing.T) {
 plugin_api_message_source :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		qed.message("plain")
-		qed.message("warned", {level = "warn", source = ""})
-		assert(not pcall(qed.message, "x", {source = 3}), "source must be a string")
+		local ok, err = pcall(qed.message, "x", {level = "warn", source = ""})
+		assert(not ok and tostring(err):find("unknown option 'source'"), "the source option is gone")
 		assert(not pcall(qed.message, "x", {level = "loud"}), "bad level")
+		qed.message("warned", {level = "warn"})
 	`, "abc")
 	defer api_test_destroy(ed)
 	api_test_run(t, ed)
 	testing.expect_value(t, ed.message, "warned")
-	testing.expect_value(t, ed.message_source, "")
+	testing.expect_value(t, ed.message_source, "T")
 	testing.expect_value(t, ed.message_level, LogLevel.Warn)
 	found := false
 	for e in ed.log {
-		found ||= e.text == "plain" && e.source == "t"
+		found ||= e.text == "plain" && e.source == "T"
 	}
-	testing.expect(t, found, "the default source is the plugin name")
+	testing.expect(t, found, "messages are attributed to the plugin's display name")
 }

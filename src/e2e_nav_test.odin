@@ -325,10 +325,10 @@ e2e_nav_palette_welcome_filter :: proc(t: ^testing.T) {
 	testing.expect(t, !has(&e.ed, "Save"), "a buffer-only command is hidden on welcome")
 	testing.expect(t, !has(&e.ed, "Toggle Comment"), "editing commands are hidden on welcome")
 	testing.expect(t, !has(&e.ed, "LSP: Go to Definition"), "LSP commands are hidden on welcome")
-	testing.expect(t, !has(&e.ed, "Set Language"), "buffer-only plugin commands are hidden on welcome")
-	testing.expect(t, !has(&e.ed, "Format Document"), "plugin commands without welcome are hidden")
+	testing.expect(t, !has(&e.ed, "Editor: Set Language"), "buffer-only plugin commands are hidden on welcome")
+	testing.expect(t, !has(&e.ed, "Format: Document"), "plugin commands without welcome are hidden")
 	testing.expect(t, has(&e.ed, "File Tree"), "File Tree stays available on welcome")
-	testing.expect(t, has(&e.ed, "Set Theme"), "Set Theme stays available on welcome")
+	testing.expect(t, has(&e.ed, "Editor: Set Theme"), "Set Theme stays available on welcome")
 	testing.expect(t, has(&e.ed, "Quit"), "Quit stays available on welcome")
 }
 

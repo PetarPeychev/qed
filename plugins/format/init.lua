@@ -159,11 +159,11 @@ return {
 			},
 		})
 		qed.command{
-			name = "Format Document",
+			name = "Document",
 			when = function(ctx) return ctx.buf ~= nil end,
 			run = function(ctx) format(ctx.buf, false) end,
 		}
-		toggle("Toggle Format on Save", "format", "Format")
+		toggle("Toggle on Save", "format", "Format")
 		toggle("Toggle Trim Whitespace on Save", "trim", "Trim whitespace")
 		toggle("Toggle Final Newline on Save", "newline", "Final newline")
 		qed.on("config_changed", function() apply(qed.config()) end)

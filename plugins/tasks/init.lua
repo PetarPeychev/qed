@@ -5,11 +5,11 @@ local mine = {}
 local seen
 
 local function warn(text)
-	qed.message("config.json: " .. text, {level = "warn", source = ""})
+	qed.message("config.json: " .. text, "warn")
 end
 
 local function say(name, text, level)
-	qed.message(text, {level = level, source = name})
+	qed.message(name .. " " .. text, level)
 end
 
 local function exit_text(code)
@@ -177,7 +177,7 @@ local function pick()
 	local item, err = qed.pick{items = list, prompt = "Tasks >"}
 	if not item then
 		if err then
-			qed.message("Tasks: " .. err, "warn")
+			qed.message(err, "warn")
 		end
 		return
 	end
@@ -205,7 +205,7 @@ end
 return {
 	setup = function()
 		apply(qed.options{list = {}})
-		qed.command{name = "Tasks", welcome = true, run = pick}
+		qed.command{name = "Open", welcome = true, run = pick}
 		qed.on("config_changed", function() apply(qed.config()) end)
 		qed.on("term_exit", function(name, code)
 			if mine[name] then

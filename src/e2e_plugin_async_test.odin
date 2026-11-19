@@ -22,7 +22,7 @@ E2E_EVENT_PLUGIN :: `
 				"buf_reload", "buf_changed", "cursor_moved", "language_changed", "root_changed"}) do
 			qed.on(e, rec(e))
 		end
-		qed.command{name = "Ev: Clear", run = function() trace = "" end}
+		qed.command{name = "Clear", run = function() trace = "" end}
 	end}`
 
 e2e_trace :: proc(e: ^E2E) -> string {
@@ -85,7 +85,7 @@ e2e_plugin_events :: proc(t: ^testing.T) {
 e2e_plugin_coalesce :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
-	e2e_plugin(&e, "quiet", `return {setup = function() qed.command{name = "Quiet: Cmd", run = function() end} end}`)
+	e2e_plugin(&e, "quiet", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`)
 	plugin_pump(&e.ed)
 	before := e.ed.plugins.resumes
 	for r in "plain" {

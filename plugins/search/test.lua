@@ -171,7 +171,7 @@ function T.rg_missing(t)
 	local msg, level, source = t.message()
 	t.eq(msg, "ripgrep (rg) not found")
 	t.eq(level, "error")
-	t.eq(source, "Find")
+	t.eq(source, "Search")
 end
 
 function T.tree_dir_scope(t)

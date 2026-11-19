@@ -43,7 +43,7 @@ end}`
 @(private = "file")
 e2e_log_has :: proc(e: ^E2E, text: string) -> bool {
 	for l in e.ed.log {
-		if l.source == "prov" && l.text == text {
+		if l.source == "Prov" && l.text == text {
 			return true
 		}
 	}
@@ -53,7 +53,7 @@ e2e_log_has :: proc(e: ^E2E, text: string) -> bool {
 @(private = "file")
 fts_run :: proc(e: ^E2E, name: string) {
 	for c in e.ed.plugins.commands {
-		if c.name == name {
+		if c.bare == name {
 			plugin_command_run(&e.ed, c)
 		}
 	}
@@ -164,7 +164,7 @@ e2e_filetree_status_owner :: proc(t: ^testing.T) {
 	testing.expect_value(t, other.state, PluginState.Enabled)
 	fts_run(&e, "Provide")
 	fts_run(&e, "Steal")
-	testing.expect_value(t, e.ed.message, "nil taken by prov")
+	testing.expect_value(t, e.ed.message, "nil taken by Prov")
 	testing.expect_value(t, tr.provider.owner, "prov")
 	testing.expect(t, !tr.scanned, "a provider that has not pushed holds the prewarm back")
 	nav_alt(&e, 'f')

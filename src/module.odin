@@ -2,14 +2,11 @@ package main
 
 Module :: enum {
 	None,
-	Lsp,
 	Ai,
 }
 
 module_enabled :: proc(m: Module) -> bool {
 	switch m {
-	case .Lsp:
-		return LSP_ENABLED
 	case .Ai:
 		return AI_ENABLED
 	case .None:
@@ -23,6 +20,5 @@ module_enabled :: proc(m: Module) -> bool {
 // no-op when the module's state already matches). Per-module sync procs are
 // appended here by their subsystem.
 editor_modules_sync :: proc(editor: ^Editor) {
-	lsp_module_sync(editor)
 	ai_module_sync(editor)
 }

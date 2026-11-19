@@ -11,10 +11,10 @@ e2e_plugin_command_palette :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "greet", `
 		return {
 			setup = function()
-				qed.command{name = "Greet: Hello", key = "Alt+j", run = function(ctx)
+				qed.command{name = "Hello", key = "Alt+j", run = function(ctx)
 					qed.message("hello from lua")
 				end}
-				qed.command{name = "Greet: Hidden", when = function() return false end, run = function() end}
+				qed.command{name = "Hidden", when = function() return false end, run = function() end}
 			end,
 		}`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
@@ -32,7 +32,7 @@ e2e_plugin_command_palette :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect(t, !e.ed.palette.active, "Enter runs and closes")
 	testing.expect_value(t, e.ed.message, "hello from lua")
-	testing.expect_value(t, e.ed.message_source, "greet")
+	testing.expect_value(t, e.ed.message_source, "Greet")
 
 	editor_clear_message(&e.ed)
 	e2e_key(&e, tb2.Key(0), .Alt, 'j')
@@ -52,12 +52,12 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect(t, e.ed.pluginview.active, "Debug: Plugins opens the pane")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "fine     user     enabled"), "a healthy plugin row")
-	testing.expect(t, e2e_grid_has(&e, "broken   user     errored"), "an errored plugin row")
-	testing.expect(t, e2e_grid_has(&e, "format   bundled  enabled"), "the bundled format plugin row")
-	testing.expect(t, e2e_grid_has(&e, "pickers  bundled  enabled"), "the bundled pickers plugin row")
-	testing.expect(t, e2e_grid_has(&e, "tasks    bundled  enabled"), "the bundled tasks plugin row")
-	testing.expect(t, e2e_grid_has(&e, "git      bundled  enabled"), "the bundled git plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Fine    user     enabled"), "a healthy plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Broken  user     errored"), "an errored plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Format  bundled  enabled"), "the bundled format plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Editor  bundled  enabled"), "the bundled pickers plugin row shows its display name")
+	testing.expect(t, e2e_grid_has(&e, "Tasks   bundled  enabled"), "the bundled tasks plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Git     bundled  enabled"), "the bundled git plugin row")
 
 	for _ in 0 ..< 6 {
 		e2e_key(&e, .Arrow_Down)
@@ -77,7 +77,7 @@ e2e_plugin_edit_undo :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "wrap", `
 		return {
 			setup = function()
-				qed.command{name = "Wrap: Lines", key = "Alt+j", run = function(ctx)
+				qed.command{name = "Lines", key = "Alt+j", run = function(ctx)
 					local b = ctx.buf
 					qed.edit(b, function()
 						for row = 1, qed.buf.line_count(b) do

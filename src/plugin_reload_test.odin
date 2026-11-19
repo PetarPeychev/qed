@@ -84,7 +84,7 @@ plugin_reload_file_edit :: proc(t: ^testing.T) {
 	reload_write(dir, "a.lua", `
 		big = string.rep("a", 1024 * 1024)
 		return {setup = function()
-			qed.command{name = "A: Ver", run = function() qed.message("v1") end}
+			qed.command{name = "Ver", run = function() qed.message("v1") end}
 			qed.every(1000, function() end)
 			qed.on("buf_save", function() end)
 		end}`)
@@ -93,7 +93,7 @@ plugin_reload_file_edit :: proc(t: ^testing.T) {
 
 	testing.expect(t, !plugins_poll(ed), "an unchanged dir does not reload")
 	before := ed.plugins.mem.used
-	reload_write(dir, "a.lua", `return {setup = function() qed.command{name = "A: Ver", run = function() qed.message("v2!") end} end}`)
+	reload_write(dir, "a.lua", `return {setup = function() qed.command{name = "Ver", run = function() qed.message("v2!") end} end}`)
 	testing.expect(t, plugins_poll(ed), "an edited file reloads")
 	testing.expect_value(t, reload_names(ed), "base:b:Enabled a:u:Enabled")
 	testing.expect(t, ed.plugins.mem.used < before - 512 * 1024, "the old incarnation's memory is reclaimed")
@@ -102,7 +102,7 @@ plugin_reload_file_edit :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(ed.plugins.commands), 1)
 	sched_run(t, ed, "A: Ver")
 	testing.expect_value(t, ed.message, "v2!")
-	testing.expect(t, plugin_test_logged(ed, .Info, "a", "reloaded"), "the reload is reported")
+	testing.expect(t, plugin_test_logged(ed, .Info, "A", "reloaded"), "the reload is reported")
 	testing.expect(t, !plugins_poll(ed), "the new stamp is kept")
 }
 
@@ -149,10 +149,10 @@ plugin_reload_add_remove :: proc(t: ^testing.T) {
 	testing.expect_value(t, sched_var(ed, "starts"), "1")
 
 	reload_write(dir, "c.lua", `return {setup = function()
-		qed.command{name = "C: Cmd", run = function() end}
+		qed.command{name = "Cmd", run = function() end}
 		qed.on("startup", function() c_started = true end)
 	end}`)
-	reload_write(dir, "b.lua", `big = string.rep("b", 1024 * 1024) return {setup = function() qed.command{name = "B: Cmd", run = function() end} end}`)
+	reload_write(dir, "b.lua", `big = string.rep("b", 1024 * 1024) return {setup = function() qed.command{name = "Cmd", run = function() end} end}`)
 	testing.expect(t, plugins_poll(ed), "added files load")
 	testing.expect_value(t, reload_names(ed), "base:b:Enabled a:u:Enabled b:u:Enabled c:u:Enabled")
 	plugin_pump(ed)
@@ -167,9 +167,9 @@ plugin_reload_add_remove :: proc(t: ^testing.T) {
 	testing.expect(t, !has_b, "a removed plugin's commands go")
 	testing.expect_value(t, reload_owned(&ed.plugins, "b"), 0)
 	testing.expect(t, ed.plugins.mem.used < before - 512 * 1024, "a removed plugin's memory is reclaimed")
-	testing.expect(t, plugin_test_logged(ed, .Info, "b", "unloaded"), "the removal is reported")
+	testing.expect(t, plugin_test_logged(ed, .Info, "B", "unloaded"), "the removal is reported")
 
-	reload_write(dir, "b.lua", `return {setup = function() qed.command{name = "B: Again", run = function() end} end}`)
+	reload_write(dir, "b.lua", `return {setup = function() qed.command{name = "Again", run = function() end} end}`)
 	testing.expect(t, plugins_poll(ed), "a plugin can come back under the same name")
 	_, again := plugin_test_command(ed, "B: Again")
 	testing.expect(t, again, "the returning plugin loads")
@@ -181,12 +181,12 @@ plugin_reload_shadowing :: proc(t: ^testing.T) {
 	dir := reload_dir()
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
 	ed := reload_editor({
-		{"sh.lua", `return {setup = function() qed.command{name = "Sh: Bundled", run = function() end} end}`},
+		{"sh.lua", `return {setup = function() qed.command{name = "Bundled", run = function() end} end}`},
 		{"zz.lua", `return {}`},
 	}, dir)
 	defer plugin_test_destroy(ed)
 
-	reload_write(dir, "sh.lua", `return {setup = function() qed.command{name = "Sh: User", run = function() end} end}`)
+	reload_write(dir, "sh.lua", `return {setup = function() qed.command{name = "User", run = function() end} end}`)
 	testing.expect(t, plugins_poll(ed), "a same-name user plugin appears")
 	testing.expect_value(t, reload_names(ed), "zz:b:Enabled sh:u:Enabled")
 	_, bundled := plugin_test_command(ed, "Sh: Bundled")
@@ -205,9 +205,9 @@ plugin_reload_shadowing :: proc(t: ^testing.T) {
 plugin_reload_enabled_flip :: proc(t: ^testing.T) {
 	dir := reload_dir()
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
-	reload_write(dir, "u.lua", `return {setup = function() qed.command{name = "U: Cmd", run = function() end} end}`)
+	reload_write(dir, "u.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`)
 	reload_write(dir, "bad.lua", `return {setup = function() error("boom") end}`)
-	ed := reload_editor({{"bun.lua", `return {setup = function() qed.command{name = "Bun: Cmd", run = function() end} end}`}}, dir)
+	ed := reload_editor({{"bun.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`}}, dir)
 	defer plugin_test_destroy(ed)
 
 	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"u": {"enabled": false}, "bun": {"enabled": false}, "bad": {"enabled": false}}}`)
@@ -219,10 +219,10 @@ plugin_reload_enabled_flip :: proc(t: ^testing.T) {
 	plugins_config_apply(ed, false)
 	testing.expect_value(t, reload_names(ed), "bun:b:Enabled bad:u:Errored u:u:Enabled")
 	testing.expect_value(t, len(ed.plugins.commands), 2)
-	testing.expect(t, plugin_test_logged(ed, .Info, "u", "enabled"), "enabling is reported")
-	testing.expect(t, plugin_test_logged(ed, .Info, "u", "disabled"), "disabling is reported")
+	testing.expect(t, plugin_test_logged(ed, .Info, "U", "enabled"), "enabling is reported")
+	testing.expect(t, plugin_test_logged(ed, .Info, "U", "disabled"), "disabling is reported")
 	plugins_config_apply(ed, false)
-	testing.expect_value(t, reload_logged_count(ed, .Error, "bad", "boom"), 2)
+	testing.expect_value(t, reload_logged_count(ed, .Error, "Bad", "boom"), 2)
 
 	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"u": {"enabled": false}}}`)
 	plugins_config_apply(ed, false, parsed = false)
@@ -231,7 +231,7 @@ plugin_reload_enabled_flip :: proc(t: ^testing.T) {
 	testing.expect_value(t, plugin_find(&ed.plugins, "u").state, PluginState.Disabled)
 	os.remove(fmt.tprintf("%s/u.lua", dir))
 	plugins_poll(ed)
-	testing.expect(t, !plugin_test_logged(ed, .Info, "u", "unloaded"), "removing a disabled plugin is not reported as an unload")
+	testing.expect(t, !plugin_test_logged(ed, .Info, "U", "unloaded"), "removing a disabled plugin is not reported as an unload")
 }
 
 @(test)
@@ -241,7 +241,7 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 			loads = (loads or 0) + 1
 			return {setup = function()
 				local cfg = qed.options{greeting = "hi"}
-				qed.command{name = "Plain: Greet", run = function() qed.message(cfg.greeting) end}
+				qed.command{name = "Greet", run = function() qed.message(cfg.greeting) end}
 			end}`},
 		{"aware.lua", `
 			aware_loads = (aware_loads or 0) + 1
@@ -256,8 +256,8 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 	plugins_config_apply(ed, false)
 	sched_run(t, ed, "Plain: Greet")
 	testing.expect_value(t, ed.message, "yo")
-	testing.expect(t, plugin_test_logged(ed, .Info, "plain", "reloaded (config changed)"), "a plugin without config_changed reloads")
-	testing.expect(t, !plugin_test_logged(ed, .Info, "aware", "reloaded"), "a plugin with config_changed keeps its state")
+	testing.expect(t, plugin_test_logged(ed, .Info, "Plain", "reloaded (config changed)"), "a plugin without config_changed reloads")
+	testing.expect(t, !plugin_test_logged(ed, .Info, "Aware", "reloaded"), "a plugin with config_changed keeps its state")
 	testing.expect_value(t, sched_var(ed, "seen"), "hey")
 	testing.expect_value(t, sched_var(ed, "aware_loads"), "1")
 	testing.expect_value(t, plugin_find(&ed.plugins, "aware").cfg_sig, plugin_cfg_sig("aware", ed.plugins.config_override.?))
@@ -265,15 +265,15 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 
 	editor_clear_message(ed)
 	plugins_config_apply(ed, false)
-	testing.expect_value(t, reload_logged_count(ed, .Info, "plain", "reloaded"), 1)
+	testing.expect_value(t, reload_logged_count(ed, .Info, "Plain", "reloaded"), 1)
 }
 
 @(test)
 plugin_reload_error_keeps_running :: proc(t: ^testing.T) {
 	dir := reload_dir()
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
-	reload_write(dir, "e.lua", `return {setup = function() qed.command{name = "E: Cmd", run = function() end} end}`)
-	reload_write(dir, "ok.lua", `return {setup = function() qed.command{name = "Ok: Cmd", run = function() qed.message("ok") end} end}`)
+	reload_write(dir, "e.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`)
+	reload_write(dir, "ok.lua", `return {setup = function() qed.command{name = "Cmd", run = function() qed.message("ok") end} end}`)
 	ed := reload_editor({}, dir)
 	defer plugin_test_destroy(ed)
 
@@ -287,7 +287,7 @@ plugin_reload_error_keeps_running :: proc(t: ^testing.T) {
 	sched_run(t, ed, "Ok: Cmd")
 	testing.expect_value(t, ed.message, "ok")
 
-	reload_write(dir, "e.lua", `return {setup = function() qed.command{name = "E: Fixed", run = function() end} end}`)
+	reload_write(dir, "e.lua", `return {setup = function() qed.command{name = "Fixed", run = function() end} end}`)
 	testing.expect(t, plugins_poll(ed), "the fix is noticed")
 	e = plugin_find(&ed.plugins, "e")
 	testing.expect_value(t, e.state, PluginState.Enabled)
@@ -316,18 +316,17 @@ plugin_reload_keybind_order :: proc(t: ^testing.T) {
 	defer plugin_test_destroy(ed)
 
 	ed.plugins.config_override = plugin_test_cfg(`{
-		"keybinds": {"Late: Cmd": "Alt+k"},
-		"plugins": {"cmds": {"list": [{"name": "Late: Cmd"}, {"name": "Late: Quit", "key": "Ctrl+q"}]}}
+		"plugins": {"cmds": {"keybinds": {"Late": "Alt+k"}, "list": [{"name": "Late"}, {"name": "Quit", "key": "Ctrl+q"}]}}
 	}`)
 	plugins_config_apply(ed, false)
-	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `unknown keybinds/"Late: Cmd"`), "a keybind for a command added by config_changed is known")
-	late, ok := plugin_test_command(ed, "Late: Cmd")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"Late"`), "a keybind for a command added by config_changed is known")
+	late, ok := plugin_test_command(ed, "Cmds: Late")
 	testing.expect(t, ok && late.shortcut == "Alt+k", "the new command takes its user bind")
-	testing.expect_value(t, reload_logged_count(ed, .Warn, "cmds", `keybinds/Late: Quit (Ctrl+q is "Quit")`), 1)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "Cmds", `plugins/cmds/keybinds/Quit (Ctrl+q is "Quit")`), 1)
 
-	reload_write(dir, "late.lua", `return {setup = function() qed.command{name = "Late: Save", key = "Ctrl+s", run = function() end} end}`)
+	reload_write(dir, "late.lua", `return {setup = function() qed.command{name = "Save", key = "Ctrl+s", run = function() end} end}`)
 	plugins_poll(ed)
-	testing.expect_value(t, reload_logged_count(ed, .Warn, "late", `keybinds/Late: Save (Ctrl+s is "Save")`), 1)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "Late", `plugins/late/keybinds/Save (Ctrl+s is "Save")`), 1)
 }
 
 @(test)
@@ -350,7 +349,7 @@ plugin_reload_keeps_order :: proc(t: ^testing.T) {
 			append(&order, e.source)
 		}
 	}
-	testing.expect_value(t, strings.join(order[:], " ", context.temp_allocator), "a b")
+	testing.expect_value(t, strings.join(order[:], " ", context.temp_allocator), "A B")
 }
 
 @(test)
@@ -360,9 +359,9 @@ plugin_reload_refs_released :: proc(t: ^testing.T) {
 	src := `
 		big = string.rep("r", 1024 * 1024)
 		return {setup = function()
-			qed.command{name = "R: Sleep", run = function() qed.sleep(60000) end}
-			qed.command{name = "R: Proc", run = function() p = qed.spawn_bg{cmd = "sleep 30"} end}
-			qed.command{name = "R: Term", run = function() qed.term.create{name = "rterm", cmd = "sleep 30"} end}
+			qed.command{name = "Sleep", run = function() qed.sleep(60000) end}
+			qed.command{name = "Proc", run = function() p = qed.spawn_bg{cmd = "sleep 30"} end}
+			qed.command{name = "Term", run = function() qed.term.create{name = "rterm", cmd = "sleep 30"} end}
 			qed.every(20, function() end)
 			qed.on("buf_save", function() end)
 		end}`

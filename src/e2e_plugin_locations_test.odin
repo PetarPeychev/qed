@@ -53,20 +53,20 @@ local function grep(name, text, scope)
 end
 return {setup = function()
 	local parsed = dump(qed.parse_locations("a.txt:2:needle here\r\nb.txt:3:needle\nmissing.txt:3: gone\n"))
-	qed.command{name = "Loc: Setup", run = function() qed.message(parsed) end}
-	qed.command{name = "Loc: Parse", run = function()
+	qed.command{name = "Setup", run = function() qed.message(parsed) end}
+	qed.command{name = "Parse", run = function()
 		qed.message(dump(qed.parse_locations("x.txt:1\n" .. qed.path.join(qed.root(), "a.txt") .. ":1:2: abs\n12:30 meeting\n", {cwd = "sub"})))
 	end}
-	qed.command{name = "Loc: Empty", run = function()
+	qed.command{name = "Empty", run = function()
 		qed.message(#qed.parse_locations("") .. " " .. #qed.parse_locations("nope.txt:1: gone\n12:30 meeting\n"))
 	end}
-	qed.command{name = "Loc: Bad", run = function()
+	qed.command{name = "Bad", run = function()
 		local ok, err = qed.jump("sub", {row = 1, col = 1})
 		qed.message(tostring(ok) .. " " .. tostring(err))
 	end}
-	grep("Loc: Grep", "a.txt:2:needle here\nb.txt:3:needle\nmissing.txt:3: gone\n")
-	grep("Loc: Cols", "c.txt:2:3: in a char\nc.txt:9:99: past the end\n")
-	grep("Loc: Tree", "a.txt:2: needle\n", "filetree")
+	grep("Grep", "a.txt:2:needle here\nb.txt:3:needle\nmissing.txt:3: gone\n")
+	grep("Cols", "c.txt:2:3: in a char\nc.txt:9:99: past the end\n")
+	grep("Tree", "a.txt:2: needle\n", "filetree")
 end}`
 
 @(private = "file")

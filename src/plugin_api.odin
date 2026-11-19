@@ -34,6 +34,7 @@ qed_api := [?]lua.L_Reg {
 	{"root", qed_root},
 	{"config", qed_config},
 	{"options", qed_options},
+	{"meta", qed_meta},
 	{"opt", qed_opt},
 	{"shell_quote", qed_shell_quote},
 	{"parse_locations", qed_parse_locations},
@@ -1087,6 +1088,71 @@ qed_options :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+qed_meta :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	pl := plugin_owner(L, entry.editor)
+	if pl == nil || p.setup != pl {
+		return plugin_raise(L, "qed.meta() is only callable during setup")
+	}
+	if pl.meta_set {
+		return plugin_raise(L, "qed.meta() is callable once per load")
+	}
+	if lua.type(L, 1) != .TABLE {
+		return lua.L_argerror(L, 1, "table {display_name?} expected")
+	}
+	lua.settop(L, 1)
+	lua.pushnil(L)
+	for lua.next(L, 1) != 0 {
+		k: string
+		if lua.type(L, -2) == .STRING {
+			k, _ = lua.toodinstring(L, -2)
+		}
+		if k != "display_name" {
+			return plugin_raise(L, fmt.tprintf("qed.meta: unknown field '%s'", lua.L_tostring(L, -2)))
+		}
+		lua.pop(L, 1)
+	}
+	display := pl.display
+	if dt := lua.getfield(L, 1, "display_name"); dt != .NIL {
+		s: string
+		if dt == .STRING {
+			s, _ = lua.toodinstring(L, -1)
+		}
+		if strings.trim_space(s) == "" {
+			return lua.L_argerror(L, 1, "display_name must be a non-empty string")
+		}
+		display = s
+	}
+	for cmd in p.commands {
+		if cmd.owner != pl.name {
+			continue
+		}
+		visible := fmt.tprintf("%s: %s", display, cmd.bare)
+		if plugin_command_taken(p, visible, cmd.filetree, pl.name) {
+			return plugin_raise(L, fmt.tprintf("command '%s' already exists", visible))
+		}
+	}
+	pl.meta_set = true
+	if display == pl.display {
+		return 0
+	}
+	if entry.editor.palette.active {
+		palette_close(entry.editor)
+	}
+	display = strings.clone(display)
+	delete(pl.display)
+	pl.display = display
+	for &cmd in p.commands {
+		if cmd.owner == pl.name {
+			delete(cmd.name)
+			cmd.name = fmt.aprintf("%s: %s", display, cmd.bare)
+		}
+	}
+	return 0
+}
+
 qed_opt :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
@@ -1103,6 +1169,8 @@ qed_opt :: proc "c" (L: ^lua.State) -> c.int {
 			return plugin_raise(L, fmt.tprintf("unknown option '%s'", key))
 		}
 		ints, bools, strs, name = def.ints, def.bools, def.strs, rest[dot + 1:]
+	} else if strings.has_prefix(key, "lsp.") {
+		ints, bools, name = config_lsp.ints, config_lsp.bools, key[len("lsp."):]
 	} else if key == "theme" {
 		lua.pushodinstring(L, THEME)
 		return 1
@@ -1640,6 +1708,23 @@ plugin_stub_write :: proc(dir: string) -> bool {
 	}
 	os.make_directory_all(dir)
 	return os.write_entire_file(path, transmute([]u8)string(QED_STUB)) == nil
+}
+
+plugin_luarc :: proc(stub_dir: string) -> string {
+	return fmt.tprintf("{{\n  \"runtime\": {{\"version\": \"Lua 5.4\"}},\n  \"workspace\": {{\"library\": [%s]}}\n}}\n", lsp_json_string(stub_dir))
+}
+
+plugin_luarc_write :: proc(user_dir, stub_dir: string) -> bool {
+	if user_dir == "" || stub_dir == "" {
+		return false
+	}
+	path := fmt.tprintf("%s/.luarc.json", user_dir)
+	want := plugin_luarc(stub_dir)
+	if data, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(data) == want {
+		return false
+	}
+	os.make_directory_all(user_dir)
+	return os.write_entire_file(path, transmute([]u8)want) == nil
 }
 
 api_loaded :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
@@ -2276,7 +2361,7 @@ qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	if t.provider.owner != "" && t.provider.owner != pl.name {
 		lua.pushnil(L)
-		lua.pushodinstring(L, fmt.tprintf("taken by %s", t.provider.owner))
+		lua.pushodinstring(L, fmt.tprintf("taken by %s", plugin_label(&entry.editor.plugins, t.provider.owner)))
 		return 2
 	}
 	refs: [3]i32

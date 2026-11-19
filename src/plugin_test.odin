@@ -55,6 +55,11 @@ plugin_test_command :: proc(ed: ^Editor, name: string) -> (Command, bool) {
 			return cmd, true
 		}
 	}
+	for cmd in ed.plugins.commands {
+		if cmd.bare == name {
+			return cmd, true
+		}
+	}
 	return {}, false
 }
 
@@ -73,7 +78,7 @@ plugin_load_ok :: proc(t: ^testing.T) {
 		{"hello.lua", `
 			return {
 				setup = function()
-					qed.command{name = "Hello: Greet", run = function(ctx)
+					qed.command{name = "Greet", run = function(ctx)
 						qed.message("hi " .. ctx.path .. " " .. ctx.language .. " " .. ctx.root)
 					end}
 				end,
@@ -96,7 +101,7 @@ plugin_load_ok :: proc(t: ^testing.T) {
 	testing.expect_value(t, cmd.owner, "hello")
 	command_run(ed, cmd)
 	testing.expect_value(t, ed.message, "hi  text ")
-	testing.expect_value(t, ed.message_source, "hello")
+	testing.expect_value(t, ed.message_source, "Hello")
 }
 
 @(test)
@@ -108,12 +113,12 @@ plugin_load_error_disables :: proc(t: ^testing.T) {
 		{"halfway.lua", `
 			return {
 				setup = function()
-					qed.command{name = "Halfway: Cmd", run = function() end}
+					qed.command{name = "Cmd", run = function() end}
 					local t = nil
 					return t.field
 				end,
 			}`},
-		{"fine.lua", `return {setup = function() qed.command{name = "Fine: Cmd", run = function() end} end}`},
+		{"fine.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},
 	})
 	defer plugin_test_destroy(ed)
 
@@ -124,12 +129,12 @@ plugin_load_error_disables :: proc(t: ^testing.T) {
 		}
 		testing.expectf(t, pl.state == .Errored, "%s is errored", pl.name)
 		testing.expectf(t, pl.last_error != "", "%s kept its last error", pl.name)
-		testing.expectf(t, plugin_test_logged(ed, .Error, pl.name, ""), "%s logged an error under its name", pl.name)
+		testing.expectf(t, plugin_test_logged(ed, .Error, pl.display, ""), "%s logged an error under its name", pl.name)
 	}
 	crash := plugin_find(&ed.plugins, "crash")
 	testing.expect(t, strings.contains(crash.last_error, "boom"), "runtime error message kept")
 	testing.expect(t, !strings.contains(crash.last_error, "stack traceback"), "last error is the message, not the traceback")
-	testing.expect(t, plugin_test_logged(ed, .Debug, "crash", "stack traceback"), "traceback goes to the Debug log")
+	testing.expect(t, plugin_test_logged(ed, .Debug, "Crash", "stack traceback"), "traceback goes to the Debug log")
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "notable").last_error, "must return a table"), "spec shape enforced")
 	_, half := plugin_test_command(ed, "Halfway: Cmd")
 	testing.expect(t, !half, "a failed setup unregisters what it registered")
@@ -156,7 +161,7 @@ plugin_env_isolation :: proc(t: ^testing.T) {
 	testing.expect_value(t, plugin_find(&ed.plugins, "b").state, PluginState.Enabled)
 	testing.expect_value(t, plugin_find(&ed.plugins, "b").last_error, "")
 	testing.expect_value(t, plugin_test_global(ed, "leaked"), "")
-	testing.expect(t, plugin_test_logged(ed, .Info, "b", "b sees\t1\tnil"), "print logs under the plugin, never to stdout")
+	testing.expect(t, plugin_test_logged(ed, .Info, "B", "b sees\t1\tnil"), "print logs under the plugin, never to stdout")
 }
 
 @(test)
@@ -206,11 +211,11 @@ plugin_user_dir_load :: proc(t: ^testing.T) {
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
 	_ = os.write_entire_file(fmt.tprintf("%s/dirp/init.lua", dir), transmute([]u8)string(`return {setup = function() qed.command{name = require("names").cmd, run = function() end} end}`))
 	_ = os.write_entire_file(fmt.tprintf("%s/dirp/names.lua", dir), transmute([]u8)string(`return {cmd = "Dir: Cmd"}`))
-	_ = os.write_entire_file(fmt.tprintf("%s/shadow.lua", dir), transmute([]u8)string(`return {setup = function() qed.command{name = "Shadow: User", run = function() end} end}`))
+	_ = os.write_entire_file(fmt.tprintf("%s/shadow.lua", dir), transmute([]u8)string(`return {setup = function() qed.command{name = "User", run = function() end} end}`))
 	_ = os.write_entire_file(fmt.tprintf("%s/readme.md", dir), transmute([]u8)string("ignored"))
 
 	ed := plugin_test_editor({
-		{"shadow.lua", `return {setup = function() qed.command{name = "Shadow: Bundled", run = function() end} end}`},
+		{"shadow.lua", `return {setup = function() qed.command{name = "Bundled", run = function() end} end}`},
 		{"zeta.lua", `return {}`},
 	}, dir)
 	defer plugin_test_destroy(ed)
@@ -234,7 +239,7 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 			local t = {}
 			for i = 1, 1e7 do t[i] = string.rep("x", 64) .. i end
 			return {}`},
-		{"small.lua", `return {setup = function() qed.command{name = "Small: Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
+		{"small.lua", `return {setup = function() qed.command{name = "Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
 	}, mem_cap = 4 * 1024 * 1024)
 	defer plugin_test_destroy(ed)
 
@@ -310,7 +315,7 @@ plugin_options_misuse :: proc(t: ^testing.T) {
 			local ok, err = pcall(qed.options, {a = 1})
 			top_err = tostring(err)
 			return {setup = function()
-				qed.command{name = "Top: Late", run = function() qed.options{a = 1} end}
+				qed.command{name = "Late", run = function() qed.options{a = 1} end}
 			end}`},
 		{"twice.lua", `return {setup = function() qed.options{a = 1} qed.options{a = 2} end}`},
 		{"notable.lua", `return {setup = function() qed.options(1) end}`},
@@ -329,32 +334,33 @@ plugin_options_misuse :: proc(t: ^testing.T) {
 
 @(test)
 plugin_commands_dispatch :: proc(t: ^testing.T) {
-	cfg := plugin_test_cfg(`{"keybinds": {"Cmd: A": "Alt+k", "Cmd: Unbound": ""}}`)
+	cfg := plugin_test_cfg(`{"plugins": {"cmd": {"keybinds": {"A": "Alt+k", "Unbound": ""}}}}`)
 	ed := plugin_test_editor({
 		{"cmd.lua", `
 			return {
 				setup = function()
-					qed.command{name = "Cmd: A", key = "Alt+j", run = function() qed.run("Cmd: B") end}
-					qed.command{name = "Cmd: B", key = "Alt+q", run = function() runs = (runs or 0) + 1; qed.message("B " .. runs) end}
-					qed.command{name = "Cmd: Unbound", key = "Alt+w", run = function() end}
-					qed.command{name = "Cmd: Gated", key = "Alt+y", when = function(ctx) return ctx.selection_text ~= nil end, run = function(ctx) qed.message("sel " .. ctx.selection_text) end}
-					qed.command{name = "Cmd: Fail", run = function() error("cmd failed") end}
-					qed.command{name = "Cmd: Unknown", run = function() qed.run("No Such Command") end}
-					qed.command{name = "Cmd: Tree", key = "Alt+j", scope = "filetree", run = function() qed.message("tree") end}
+					qed.command{name = "A", key = "Alt+j", run = function() qed.run("B") end}
+					qed.command{name = "B", key = "Alt+q", run = function() runs = (runs or 0) + 1; qed.message("B " .. runs) end}
+					qed.command{name = "Unbound", key = "Alt+w", run = function() end}
+					qed.command{name = "Gated", key = "Alt+y", when = function(ctx) return ctx.selection_text ~= nil end, run = function(ctx) qed.message("sel " .. ctx.selection_text) end}
+					qed.command{name = "Fail", run = function() error("cmd failed") end}
+					qed.command{name = "Unknown", run = function() qed.run("No Such Command") end}
+					qed.command{name = "Tree", key = "Alt+j", scope = "filetree", run = function() qed.message("tree") end}
 				end,
 			}`},
-		{"dupe.lua", `return {setup = function() qed.command{name = "Cmd: A", run = function() end} end}`},
-		{"builtin.lua", `return {setup = function() qed.command{name = "Save", run = function() end} end}`},
+		{"dupe.lua", `return {setup = function() qed.command{name = "A", run = function() end} qed.command{name = "A", run = function() end} end}`},
+		{"file_tree.lua", `return {setup = function() qed.command{name = "Open", run = function() end} end}`},
 		{"badkey.lua", `return {setup = function() qed.command{name = "Bad: Key", key = "Hyper+x", run = function() end} end}`},
 		{"badscope.lua", `return {setup = function() qed.command{name = "Bad: Scope", scope = "nowhere", run = function() end} end}`},
 		{"norun.lua", `return {setup = function() qed.command{name = "No: Run"} end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
-	for name in ([?]string{"dupe", "builtin", "badkey", "badscope", "norun"}) {
+	for name in ([?]string{"dupe", "file_tree", "badkey", "badscope", "norun"}) {
 		testing.expectf(t, plugin_find(&ed.plugins, name).state == .Errored, "%s: invalid registration errors the plugin", name)
 	}
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "dupe").last_error, "already exists"), "duplicate name rejected")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "dupe").last_error, "'Dupe: A' already exists"), "duplicate name rejected")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "file_tree").last_error, "'File Tree: Open' already exists"), "a visible name equal to a builtin is rejected")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
 	a, ok := plugin_command_for_event(ed, alt('k'), false)
@@ -369,7 +375,7 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 
 	plugin_command_chord(ed, a)
 	testing.expect_value(t, ed.message, "B 1")
-	testing.expect_value(t, ed.message_source, "cmd")
+	testing.expect_value(t, ed.message_source, "Cmd")
 
 	gated, _ := plugin_test_command(ed, "Cmd: Gated")
 	editor_clear_message(ed)
@@ -386,7 +392,7 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 	pl := plugin_find(&ed.plugins, "cmd")
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	testing.expect(t, strings.contains(pl.last_error, "cmd failed"), "a command error is kept")
-	testing.expect(t, plugin_test_logged(ed, .Error, "cmd", "cmd failed"), "a command error only logs")
+	testing.expect(t, plugin_test_logged(ed, .Error, "Cmd", "cmd failed"), "a command error only logs")
 	unknown, _ := plugin_test_command(ed, "Cmd: Unknown")
 	command_run(ed, unknown)
 	testing.expect(t, strings.contains(pl.last_error, "unknown command 'No Such Command'"), "qed.run rejects unknown names")
@@ -402,13 +408,13 @@ plugin_unload_cleans :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"keep.lua", `
 			sentinel = setmetatable({}, {__gc = function() qed.log("info", "keep finalized") end})
-			return {setup = function() qed.command{name = "Keep: Cmd", run = function() end} end}`},
+			return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},
 		{"drop.lua", `
 			big = string.rep("z", 1024 * 1024)
 			sentinel = setmetatable({}, {__gc = function() qed.log("info", "drop finalized") end})
 			return {setup = function()
-				qed.command{name = "Drop: One", run = function() qed.message(big) end}
-				qed.command{name = "Drop: Two", when = function() return #big > 0 end, run = function() qed.message(big) end}
+				qed.command{name = "One", run = function() qed.message(big) end}
+				qed.command{name = "Two", when = function() return #big > 0 end, run = function() qed.message(big) end}
 			end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -424,7 +430,7 @@ plugin_unload_cleans :: proc(t: ^testing.T) {
 	testing.expect(t, lua.rawgeti(ed.plugins.L, lua.REGISTRYINDEX, lua.Integer(env)) != .TABLE, "env ref released")
 	lua.pop(ed.plugins.L, 1)
 	testing.expect(t, ed.plugins.mem.used < before - 1024 * 1024 / 2, "command closures no longer pin the env")
-	testing.expect(t, !plugin_test_logged(ed, .Info, "drop", "finalized"), "a finalizer outside a plugin call cannot reach the qed API")
+	testing.expect(t, !plugin_test_logged(ed, .Info, "Drop", "finalized"), "a finalizer outside a plugin call cannot reach the qed API")
 }
 
 @(test)
@@ -441,13 +447,13 @@ plugin_run_refused_while_loading :: proc(t: ^testing.T) {
 
 @(test)
 plugin_keybind_warnings :: proc(t: ^testing.T) {
-	cfg := plugin_test_cfg(`{"keybinds": {"Clash: User": "Ctrl+s", "Clash: Bad": "Hyper+q", "No Such Command": "Alt+x"}}`)
+	cfg := plugin_test_cfg(`{"keybinds": {"No Such Command": "Alt+x"}, "plugins": {"clash": {"keybinds": {"User": "Ctrl+s", "Bad": "Hyper+q"}}}}`)
 	ed := plugin_test_editor({
 		{"clash.lua", `
 			return {setup = function()
-				qed.command{name = "Clash: Default", key = "Ctrl+q", run = function() end}
-				qed.command{name = "Clash: User", run = function() end}
-				qed.command{name = "Clash: Bad", key = "Alt+j", run = function() end}
+				qed.command{name = "Default", key = "Ctrl+q", run = function() end}
+				qed.command{name = "User", run = function() end}
+				qed.command{name = "Bad", key = "Alt+j", run = function() end}
 			end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
@@ -457,9 +463,177 @@ plugin_keybind_warnings :: proc(t: ^testing.T) {
 		cmd, _ := plugin_test_command(ed, name)
 		testing.expectf(t, cmd.shortcut == "", "%s stays unbound", name)
 	}
-	testing.expect(t, plugin_test_logged(ed, .Warn, "clash", `keybinds/Clash: Default (Ctrl+q is "Quit")`), "a plugin key taken by a builtin warns under the plugin")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `keybinds/Clash: User (Ctrl+s is "Save")`), "a user bind taken by a builtin warns as config")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", "keybinds/Clash: Bad"), "an invalid user bind warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "Clash", `plugins/clash/keybinds/Default (Ctrl+q is "Quit")`), "a plugin key taken by a builtin warns under the plugin")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/clash/keybinds/User (Ctrl+s is "Save")`), "a user bind taken by a builtin warns as config")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", "plugins/clash/keybinds/Bad"), "an invalid user bind warns")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"No Such Command"`), "an unknown keybind name warns")
-	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `unknown keybinds/"Clash: User"`), "plugin command names are known keybinds")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"User"`), "plugin command names are known plugin keybinds")
+}
+
+@(test)
+plugin_meta_display :: proc(t: ^testing.T) {
+	cfg := plugin_test_cfg(`{"plugins": {"off_one": {"enabled": false}}}`)
+	ed := plugin_test_editor({
+		{"my_tools.lua", `return {setup = function()
+			qed.command{name = "Run", run = function() qed.message("ran") end}
+		end}`},
+		{"renamed.lua", `return {setup = function()
+			qed.command{name = "Base", run = function() qed.message("based") end}
+			qed.meta{display_name = "Gitty"}
+			qed.command{name = "After", run = function() end}
+		end}`},
+		{"off_one.lua", `return {setup = function() qed.meta{display_name = "Never"} end}`},
+	}, cfg_user = cfg)
+	defer plugin_test_destroy(ed)
+
+	testing.expect_value(t, plugin_title_case("git", context.temp_allocator), "Git")
+	testing.expect_value(t, plugin_title_case("my_tools", context.temp_allocator), "My Tools")
+	testing.expect_value(t, plugin_title_case("a_b2_c", context.temp_allocator), "A B2 C")
+	testing.expect_value(t, plugin_find(&ed.plugins, "my_tools").display, "My Tools")
+	run, ok := plugin_test_command(ed, "My Tools: Run")
+	testing.expect(t, ok && run.bare == "Run" && run.config_name == "Run", "the visible name is prefixed with the title-cased id")
+	command_run(ed, run)
+	testing.expect_value(t, ed.message_source, "My Tools")
+
+	testing.expect_value(t, plugin_find(&ed.plugins, "renamed").display, "Gitty")
+	_, base := plugin_test_command(ed, "Gitty: Base")
+	_, after := plugin_test_command(ed, "Gitty: After")
+	testing.expect(t, base && after, "qed.meta renames commands registered before it")
+	_, stale := plugin_test_command(ed, "Renamed: Base")
+	testing.expect(t, !stale, "the default prefix is gone")
+
+	off := plugin_find(&ed.plugins, "off_one")
+	testing.expect_value(t, off.state, PluginState.Disabled)
+	testing.expect(t, strings.has_prefix(pluginview_row(off^, 8), "Off One "), "a disabled plugin shows its title-cased id")
+	testing.expect(t, strings.has_prefix(pluginview_row(plugin_find(&ed.plugins, "renamed")^, 8), "Gitty "), "the pane shows the display name")
+
+	ren := plugin_find(&ed.plugins, "renamed")
+	plugin_unload(ed, ren)
+	testing.expect_value(t, ren.display, "Renamed")
+	plugin_load(ed, ren)
+	testing.expect_value(t, ren.display, "Gitty")
+	testing.expect(t, plugin_test_logged(ed, .Debug, "Plugins", "loaded renamed"), "code identity stays the id")
+}
+
+@(test)
+plugin_meta_misuse :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"top.lua", `
+			local ok, err = pcall(qed.meta, {display_name = "X"})
+			top_err = tostring(err)
+			return {setup = function()
+				qed.command{name = "Late", run = function() qed.meta{display_name = "Y"} end}
+			end}`},
+		{"twice.lua", `return {setup = function() qed.meta{display_name = "A"} qed.meta{display_name = "B"} end}`},
+		{"unknown.lua", `return {setup = function() qed.meta{display_name = "A", version = 2} end}`},
+		{"badtype.lua", `return {setup = function() qed.meta{display_name = 3} end}`},
+		{"empty.lua", `return {setup = function() qed.meta{display_name = ""} end}`},
+		{"x_first.lua", `return {setup = function() qed.command{name = "Go", run = function() end} end}`},
+		{"y_clash.lua", `return {setup = function()
+			qed.command{name = "Go", run = function() end}
+			qed.meta{display_name = "X First"}
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	testing.expect(t, strings.contains(sched_var(ed, "top_err"), "only callable during setup"), "the main chunk cannot call qed.meta")
+	cmd, _ := plugin_test_command(ed, "Top: Late")
+	command_run(ed, cmd)
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "top").last_error, "only callable during setup"), "a command cannot call qed.meta")
+	expect := [?]struct {
+		name, fragment: string,
+	}{{"twice", "once per load"}, {"unknown", "unknown field 'version'"}, {"badtype", "display_name must be"}, {"empty", "display_name must be"}, {"y_clash", "command 'X First: Go' already exists"}}
+	for e in expect {
+		pl := plugin_find(&ed.plugins, e.name)
+		testing.expectf(t, pl.state == .Errored && strings.contains(pl.last_error, e.fragment), "%s: %s (got %q)", e.name, e.fragment, pl.last_error)
+	}
+	_, first := plugin_test_command(ed, "X First: Go")
+	testing.expect(t, first, "the clashing plugin did not take the name")
+	testing.expect_value(t, plugin_find(&ed.plugins, "twice").display, "Twice")
+}
+
+@(test)
+plugin_palette_prefix_and_run :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"alpha.lua", `return {setup = function()
+			qed.command{name = "Hello", run = function() qed.message("alpha hello") end}
+			qed.command{name = "Bare", run = function() qed.run("Hello") end}
+			qed.command{name = "Full", run = function() qed.run("Beta: Hello") end}
+			qed.command{name = "Other", run = function() qed.run("Only") end}
+		end}`},
+		{"beta.lua", `return {setup = function()
+			qed.command{name = "Hello", run = function() qed.message("beta hello") end}
+			qed.command{name = "Only", run = function() end}
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	palette_open(ed)
+	names := fmt.tprintf("|%s|", strings.join(ed.palette.names[:], "|", context.temp_allocator))
+	palette_close(ed)
+	testing.expect(t, strings.contains(names, "|Alpha: Hello|") && strings.contains(names, "|Beta: Hello|"), "the palette shows prefixed names")
+	testing.expect(t, !strings.contains(names, "|Hello|"), "no bare name in the palette")
+
+	run := proc(ed: ^Editor, name: string) {
+		cmd, _ := plugin_test_command(ed, name)
+		command_run(ed, cmd)
+	}
+	run(ed, "Alpha: Bare")
+	testing.expect_value(t, ed.message, "alpha hello")
+	run(ed, "Alpha: Full")
+	testing.expect_value(t, ed.message, "beta hello")
+	testing.expect_value(t, ed.message_source, "Beta")
+	run(ed, "Alpha: Other")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "alpha").last_error, "unknown command 'Only'"), "a bare name resolves only within the caller")
+}
+
+@(test)
+plugin_keybinds_namespaced :: proc(t: ^testing.T) {
+	cfg := plugin_test_cfg(`{
+		"keybinds": {"Run": "Alt+u"},
+		"plugins": {
+			"a": {"keybinds": {"Run": "Alt+k", "Nope": "Alt+x", "Search": "Alt+n"}},
+			"b": {"keybinds": {}},
+			"c": {"enabled": false, "keybinds": {"Whatever": "Alt+w"}}
+		}
+	}`)
+	ed := plugin_test_editor({
+		{"a.lua", `return {setup = function()
+			qed.command{name = "Run", key = "Alt+1", run = function() end}
+			qed.command{name = "Search", key = "Alt+j", run = function() end}
+			qed.command{name = "Search Tree", keybind = "Search", scope = "filetree", run = function() end}
+		end}`},
+		{"b.lua", `return {setup = function() qed.command{name = "Run", key = "Alt+2", run = function() end} end}`},
+		{"c.lua", `return {setup = function() qed.command{name = "Whatever", run = function() end} end}`},
+	}, cfg_user = cfg)
+	defer plugin_test_destroy(ed)
+	plugins_rebind(ed)
+
+	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
+	a, aok := plugin_command_for_event(ed, alt('k'), false)
+	testing.expect(t, aok && a.name == "A: Run", "plugins.a.keybinds overrides a's key")
+	_, old := plugin_command_for_event(ed, alt('1'), false)
+	testing.expect(t, !old, "a's default is replaced")
+	b, bok := plugin_command_for_event(ed, alt('2'), false)
+	testing.expect(t, bok && b.name == "B: Run", "the same bare name in b keeps its own key")
+	tree, tok := plugin_command_for_event(ed, alt('n'), true)
+	testing.expect(t, tok && tree.name == "A: Search Tree", "keybind shares the bind key within the plugin")
+	ed_search, sok := plugin_command_for_event(ed, alt('n'), false)
+	testing.expect(t, sok && ed_search.name == "A: Search", "both sharing commands move together")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown plugins/a/keybinds/"Nope"`), "an unknown command in a loaded plugin's keybinds warns")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/a/keybinds/"Run"`), "known commands do not warn")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "Whatever"), "a disabled plugin's keybinds do not warn")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"Run" (moved to plugins/`), "a plugin command in the top-level keybinds warns where it moved")
+
+	plugin_enabled_set(ed, plugin_find(&ed.plugins, "b"), false)
+	_, gone := plugin_command_for_event(ed, alt('2'), false)
+	testing.expect(t, !gone, "disabling a plugin drops its binds")
+
+	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"a": {"keybinds": {"Run": 5}}}}`)
+	plugins_config_apply(ed, false)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", "plugins/a/keybinds/Run"), "an invalid plugin bind warns")
+	shared, shok := plugin_command_for_event(ed, alt('j'), true)
+	testing.expect(t, shok && shared.name == "A: Search Tree", "a keybind sharer without key takes the shared default")
+	_, a1 := plugin_command_for_event(ed, alt('1'), false)
+	testing.expect(t, !a1, "an invalid user bind leaves the command unbound")
 }

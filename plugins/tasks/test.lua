@@ -26,7 +26,7 @@ local function picking(t, selected)
 end
 
 local function choose(t, item, action)
-	qed.run("Tasks")
+	qed.run("Tasks: Open")
 	t.wait(function() return t.ui() ~= nil end)
 	t.type(item)
 	t.wait(picking(t, item))
@@ -41,7 +41,7 @@ local function choose(t, item, action)
 end
 
 local function details(t)
-	qed.run("Tasks")
+	qed.run("Tasks: Open")
 	t.wait(function() return t.ui() ~= nil end)
 	local ui = t.ui()
 	t.key("Esc")
@@ -139,7 +139,7 @@ function T.run_show_restart_kill(t)
 	t.config{list = {{name = "srv", cmd = "echo srv_up; sleep 30"}}}
 	choose(t, "srv")
 	t.wait(running("srv"))
-	t.wait(message_is(t, "started"))
+	t.wait(message_is(t, "srv started"))
 	t.eq(t.editor().session, "srv", "running a task that never ran shows it")
 	qed.term.hide()
 	local pid = qed.term.state("srv").pid
@@ -150,7 +150,7 @@ function T.run_show_restart_kill(t)
 	t.ok(qed.term.state("srv").running and qed.term.state("srv").pid ~= pid, "restart respawns")
 	choose(t, "srv", "Kill")
 	t.wait(exited("srv"))
-	t.wait(message_is(t, "killed (signal 9)"))
+	t.wait(message_is(t, "srv killed (signal 9)"))
 	choose(t, "srv", "Run")
 	t.wait(running("srv"))
 	t.ok(not t.editor().terminal, "Run on an exited task stays in the background")
@@ -164,20 +164,20 @@ function T.exit_messages(t)
 	t.config{list = {{name = "bad", cmd = "exit 4"}, {name = "good", cmd = "true"}}}
 	choose(t, "bad")
 	qed.term.hide()
-	t.wait(message_is(t, "failed (exit 4)"))
+	t.wait(message_is(t, "bad failed (exit 4)"))
 	local _, level, source = t.message()
 	t.eq(level, "error")
-	t.eq(source, "bad")
+	t.eq(source, "Tasks")
 	choose(t, "good")
-	t.wait(message_is(t, "exited 0"))
+	t.wait(message_is(t, "good exited 0"))
 end
 
 function T.invalid_entries_warn(t)
 	t.config{list = {{name = "shell", cmd = "x"}, {name = "nocmd"}, {name = "a", cmd = "x"}, {name = "a", cmd = "y"}, {name = "b", cmd = "x", bogus = 1}}}
-	t.ok(t.log_has("warn", "", "\"shell\" is the terminal pane's own session"), "reserved name")
-	t.ok(t.log_has("warn", "", "\"nocmd\": cmd must be a non-empty string"), "missing cmd")
-	t.ok(t.log_has("warn", "", "\"a\": duplicate name"), "duplicate")
-	t.ok(t.log_has("warn", "", "ignoring unknown key \"bogus\""), "unknown key")
+	t.ok(t.log_has("warn", "Tasks", "\"shell\" is the terminal pane's own session"), "reserved name")
+	t.ok(t.log_has("warn", "Tasks", "\"nocmd\": cmd must be a non-empty string"), "missing cmd")
+	t.ok(t.log_has("warn", "Tasks", "\"a\": duplicate name"), "duplicate")
+	t.ok(t.log_has("warn", "Tasks", "ignoring unknown key \"bogus\""), "unknown key")
 	t.eq(details(t).matches, 2)
 end
 

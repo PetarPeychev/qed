@@ -310,8 +310,15 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 	}
 	mods, mods_ok := g_config_defaults["modules"].(json.Object)
 	testing.expect(t, mods_ok, "embedded modules object")
+	_, lsp_in_modules := mods["lsp"]
+	testing.expect(t, !lsp_in_modules, "lsp is a top-level section, not a module")
+	sections := make(json.Object, context.temp_allocator)
+	sections["lsp"] = g_config_defaults["lsp"]
 	for def in config_module_defs {
-		sub_val, has := mods[def.name]
+		sections[def.name] = mods[def.name]
+	}
+	for def in ([?]Config_Section{config_lsp, config_module_defs[0]}) {
+		sub_val, has := sections[def.name]
 		testing.expectf(t, has, "embedded modules/%s present", def.name)
 		sub, sub_ok := sub_val.(json.Object)
 		testing.expectf(t, sub_ok, "embedded modules/%s is an object", def.name)
@@ -476,20 +483,24 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !is_err, "module override is not an error")
 	testing.expect(t, !AI_ENABLED, "modules.ai.enabled override applied")
 	testing.expect(t, LLM_COMPLETION_MODEL == "codestral-latest", "omitted modules.ai key keeps default")
-	testing.expect(t, LSP_ENABLED, "omitted modules.lsp keeps default enabled")
+	testing.expect(t, LSP_ENABLED, "omitted lsp keeps default enabled")
 	testing.expect(t, !FILETREE_DIFF_ONLY, "top-level filetree_diff_only applies")
 	testing.expect(t, LLM_CHAT_COMMAND == "echo hi", "modules.ai string override applied")
 
 	mod_bad := fmt.tprintf("%s/modbad.json", dir)
 	_ = os.write_entire_file(
 		mod_bad,
-		transmute([]byte)string(`{"modules": {"lsp": {"enabled": 3, "bogus": true}, "git": {"enabled": false, "diff_view": true, "filetree_diff_only": false}}}`),
+		transmute([]byte)string(`{"lsp": {"enabled": 3, "bogus": true}, "modules": {"ai": {"nope": 1}, "lsp": {"completion_max_rows": 4}, "git": {"enabled": false, "diff_view": true, "filetree_diff_only": false}}}`),
 	)
 	DIFF_VIEW = false
+	rows := COMPLETION_MAX_ROWS
 	msg, is_err = config_load_from(mod_bad)
-	testing.expect(t, is_err, "invalid module value reports an error")
-	testing.expect(t, strings.contains(msg, "modules/lsp/enabled"), "names the invalid module subkey")
-	testing.expect(t, strings.contains(msg, `modules/lsp/"bogus"`), "warns the unknown module subkey")
+	testing.expect(t, is_err, "invalid lsp value reports an error")
+	testing.expect(t, strings.contains(msg, "lsp/enabled"), "names the invalid lsp subkey")
+	testing.expect(t, strings.contains(msg, `unknown lsp/"bogus"`), "warns the unknown lsp subkey")
+	testing.expect(t, strings.contains(msg, `unknown modules/ai/"nope"`), "warns the unknown module subkey")
+	testing.expect(t, strings.contains(msg, `modules/lsp/"completion_max_rows" (moved to lsp/completion_max_rows)`), "modules.lsp moved")
+	testing.expect_value(t, COMPLETION_MAX_ROWS, rows)
 	testing.expect(t, strings.contains(msg, `modules/git/"enabled" (moved to plugins/git/enabled)`), "modules.git.enabled moved")
 	testing.expect(t, strings.contains(msg, `modules/git/"diff_view" (moved to diff_view)`), "diff_view moved to core")
 	testing.expect(t, strings.contains(msg, `modules/git/"filetree_diff_only" (moved to filetree_diff_only)`), "filetree_diff_only moved")

@@ -14,7 +14,7 @@ local renames = {}
 local provided = false
 
 local function say(text, level)
-	qed.message(text, {level = level, source = "Git"})
+	qed.message(text, level)
 end
 
 local function fetch(b)
@@ -203,8 +203,8 @@ end
 return {
 	setup = function()
 		show()
-		qed.command{name = "Git: Set Diff Base", run = set_base, when = when}
-		qed.command{name = "Restore File", keybind = "File Tree: Restore File", scope = "filetree", run = restore, when = when}
+		qed.command{name = "Set Diff Base", run = set_base, when = when}
+		qed.command{name = "Restore File", scope = "filetree", run = restore, when = when}
 		qed.on("startup", function()
 			ready = repo.git(qed.root(), {"--version"}).code == 0
 			if not ready then

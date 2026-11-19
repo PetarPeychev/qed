@@ -244,8 +244,8 @@ lsp_stop :: proc(editor: ^Editor) {
 	g_lsps = nil
 }
 
-lsp_module_sync :: proc(editor: ^Editor) {
-	if module_enabled(.Lsp) {
+lsp_enabled_sync :: proc(editor: ^Editor) {
+	if LSP_ENABLED {
 		return
 	}
 	lsp_restart_all(editor)
@@ -327,7 +327,7 @@ lsp_send :: proc(editor: ^Editor, lsp: ^Lsp, body: string) {
 }
 
 lsp_sync :: proc(editor: ^Editor) {
-	if !module_enabled(.Lsp) {
+	if !LSP_ENABLED {
 		return
 	}
 	for &b in editor.buffers {
@@ -640,7 +640,7 @@ lsp_handle :: proc(editor: ^Editor, lsp: ^Lsp, body: string) -> bool {
 				lsp.sync_kind = lsp_sync_kind(obj)
 				lsp_parse_caps(lsp, obj)
 				lsp_send(editor, lsp, `{"jsonrpc":"2.0","method":"initialized","params":{}}`)
-				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}},"Lua":%s}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE, lsp_config_lua()))
+				lsp_send(editor, lsp, fmt.tprintf(`{{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{{"settings":{{"python":{{"analysis":{{"diagnosticMode":"%s"}}}},"basedpyright":{{"analysis":{{"diagnosticMode":"%s"}}}}}}}}}}`, LSP_DIAGNOSTIC_MODE, LSP_DIAGNOSTIC_MODE))
 				editor_log(editor, .Debug, "LSP", fmt.tprintf("%s initialized (%s)", lsp_display_name(lsp.server), lsp_caps_summary(lsp)))
 				return true
 			}
@@ -660,18 +660,8 @@ lsp_config_for_section :: proc(section: string) -> string {
 		return fmt.tprintf(`{{"analysis":{{"diagnosticMode":"%s"}}}}`, LSP_DIAGNOSTIC_MODE)
 	case "python.analysis", "basedpyright.analysis", "pyright.analysis":
 		return fmt.tprintf(`{{"diagnosticMode":"%s"}}`, LSP_DIAGNOSTIC_MODE)
-	case "Lua":
-		return lsp_config_lua()
 	}
 	return "null"
-}
-
-lsp_config_lua :: proc() -> string {
-	dir := plugin_stub_dir()
-	if dir == "" {
-		return `{"diagnostics":{"globals":["qed"]}}`
-	}
-	return fmt.tprintf(`{{"workspace":{{"library":[%s]}},"diagnostics":{{"globals":["qed"]}}}}`, lsp_json_string(dir))
 }
 
 lsp_caps_summary :: proc(lsp: ^Lsp) -> string {
@@ -989,7 +979,7 @@ lsp_apply_rename :: proc(editor: ^Editor, obj: json.Object) -> bool {
 }
 
 lsp_format_unavailable :: proc(b: ^Buffer) -> string {
-	if !module_enabled(.Lsp) {
+	if !LSP_ENABLED {
 		return "disabled"
 	}
 	if LANGUAGES[b.language].lsp_server == "" {

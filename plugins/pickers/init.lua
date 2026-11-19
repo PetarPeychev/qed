@@ -1,9 +1,5 @@
 local INDENT = {"Auto-detect", "Tabs", "Spaces:4", "Spaces:3", "Spaces:2", "Spaces:1"}
 
-local function say(text)
-	qed.message(text, {source = ""})
-end
-
 local function has_buf(ctx)
 	return ctx.buf ~= nil
 end
@@ -27,13 +23,13 @@ local function set_theme()
 		qed.message(err, "error")
 		return
 	end
-	say("Theme: " .. name)
+	qed.message("Theme set to " .. name)
 end
 
 local function set_language(ctx)
 	local name = qed.pick{items = qed.languages()}
 	if name and qed.buf.valid(ctx.buf) and qed.buf.set_language(ctx.buf, name) then
-		say("Language: " .. name)
+		qed.message("Language set to " .. name)
 	end
 end
 
@@ -51,11 +47,12 @@ local function change_indent(ctx)
 		qed.buf.set_indent(b, "spaces", tonumber(choice:match("%d+")))
 	end
 	local style, width = qed.buf.indent(b)
-	say("Indentation: " .. (style == "tabs" and "Tabs" or ("Spaces:" .. width)))
+	qed.message("Indentation set to " .. (style == "tabs" and "Tabs" or ("Spaces:" .. width)))
 end
 
 return {
 	setup = function()
+		qed.meta{display_name = "Editor"}
 		qed.command{name = "Set Theme", welcome = true, run = set_theme}
 		qed.command{name = "Set Language", when = has_buf, run = set_language}
 		qed.command{name = "Change Indentation", when = has_buf, run = change_indent}

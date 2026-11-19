@@ -18,13 +18,16 @@
 ---@field files string[]|nil file tree only: every selected path, in tree order; on a scoped tab (Open, Changed, Unsaved) a selected dir stands for its in-scope files
 
 ---@class qed.CommandSpec
----@field name string
+---@field name string bare name; the palette shows `<display name>: <name>`
 ---@field run fun(ctx: qed.Ctx)
 ---@field when? fun(ctx: qed.Ctx): boolean
----@field key? string default chord, overridden by config `keybinds[name]`
+---@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`
 ---@field scope? "editor"|"filetree"
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
----@field keybind? string the `keybinds` key, default `name`
+---@field keybind? string the key in `plugins.<id>.keybinds`, default `name`; commands sharing it share the bind and the first `key` among them
+
+---@class qed.Meta
+---@field display_name? string shown wherever the plugin is named (palette prefix, message and log labels, Plugins pane); default the id title-cased (`my_tools` is "My Tools")
 
 ---@class qed.Stat
 ---@field size integer
@@ -38,14 +41,14 @@ qed = {}
 ---@type string
 qed.version = ""
 
----Writes `text` to the Message Log (Alt+L) under this plugin's name; never shown on the status line. Raises on an unknown level.
+---Writes `text` to the Message Log (Alt+L) under this plugin's display name; never shown on the status line. Raises on an unknown level.
 ---@param level qed.Level
 ---@param text any
 function qed.log(level, text) end
 
----Shows `text` on the message line, attributed to this plugin unless `opts.source` says otherwise (`""` is bare).
+---Shows `text` on the message line as `<display name>: text`. Raises on an unknown level or option.
 ---@param text any
----@param opts? qed.Level|{level?: qed.Level, source?: string}
+---@param opts? qed.Level|{level?: qed.Level}
 function qed.message(text, opts) end
 
 ---@class qed.CommandHandle
@@ -55,12 +58,12 @@ local CommandHandle = {}
 ---@return boolean
 function CommandHandle:remove() end
 
----A name may be registered once per scope; builtin names are refused.
+---Registers `<display name>: <name>`. A visible name may be registered once per scope (one editor and one file tree command); taken names raise.
 ---@param spec qed.CommandSpec
 ---@return qed.CommandHandle
 function qed.command(spec) end
 
----Run a builtin or plugin command by name.
+---Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command when no visible name matches.
 ---@param name string
 ---@return boolean ran
 function qed.run(name) end
@@ -102,17 +105,21 @@ function qed.jump(target, pos) end
 ---@return string
 function qed.root() end
 
----Declares this plugin's config keys and defaults; returns the merged config (`plugins.<name>` over `defaults`). Setup only, once per load.
+---Declares this plugin's config keys and defaults; returns the merged config (`plugins.<id>` over `defaults`; `enabled` and `keybinds` are reserved). Setup only, once per load.
 ---@generic T: table
 ---@param defaults T
 ---@return T
 function qed.options(defaults) end
 
+---Sets plugin metadata. Setup only, once per load; unknown fields raise.
+---@param meta qed.Meta
+function qed.meta(meta) end
+
 ---This plugin's merged config (a fresh copy each call).
 ---@return table
 function qed.config() end
 
----Read-only core knob, e.g. `"tab_width"`, `"theme"`, `"modules.lsp.completion_max_rows"`.
+---Read-only core knob, e.g. `"tab_width"`, `"theme"`, `"lsp.completion_max_rows"`.
 ---@param key string
 ---@return integer|boolean|string
 function qed.opt(key) end

@@ -113,7 +113,7 @@ LLM_COMPLETION_DEBOUNCE_MS: int
 LLM_COMPLETION_CONTEXT_LINES: int
 LLM_COMPLETION_ENABLED: bool
 
-Config_Module :: struct {
+Config_Section :: struct {
 	name:  string,
 	strs:  []Config_Str,
 	ints:  []Config_Int,
@@ -149,8 +149,9 @@ config_ai_bools := [?]Config_Bool {
 	{"completion_enabled", &LLM_COMPLETION_ENABLED},
 }
 
-config_module_defs := [?]Config_Module {
-	{"lsp", nil, config_lsp_ints[:], config_lsp_bools[:]},
+config_lsp := Config_Section{"lsp", nil, config_lsp_ints[:], config_lsp_bools[:]}
+
+config_module_defs := [?]Config_Section {
 	{"ai", config_ai_strs[:], config_ai_ints[:], config_ai_bools[:]},
 }
 
@@ -598,6 +599,15 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 		}
 	}
 
+	if lsp_val, present := root["lsp"]; present {
+		if lsp_obj, is_obj := lsp_val.(json.Object); is_obj {
+			config_apply_ints(lsp_obj, config_lsp.ints, "lsp", invalid)
+			config_apply_bools(lsp_obj, config_lsp.bools, "lsp", invalid)
+		} else {
+			append(invalid, "lsp")
+		}
+	}
+
 	if mods_val, present := root["modules"]; present {
 		if mods_obj, is_obj := mods_val.(json.Object); is_obj {
 			for def in config_module_defs {
@@ -636,7 +646,7 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	for key in root {
 		switch key {
-		case "theme", "keybinds", "languages", "modules", "plugins":
+		case "theme", "keybinds", "languages", "lsp", "modules", "plugins":
 			continue
 		}
 		known := false
@@ -663,8 +673,33 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 		}
 	}
 
+	if lsp_obj, ok := root["lsp"].(json.Object); ok {
+		for key in lsp_obj {
+			known := false
+			for it in config_lsp.ints {
+				known ||= it.key == key
+			}
+			for it in config_lsp.bools {
+				known ||= it.key == key
+			}
+			if !known {
+				append(warnings, fmt.tprintf("unknown lsp/%q", key))
+			}
+		}
+	}
+
 	if mods_obj, ok := root["modules"].(json.Object); ok {
 		for mod_key, mod_val in mods_obj {
+			if mod_key == "lsp" {
+				sub, is_obj := mod_val.(json.Object)
+				if !is_obj {
+					append(warnings, "modules/lsp (moved to lsp)")
+				}
+				for key in sub {
+					append(warnings, fmt.tprintf("modules/lsp/%q (moved to lsp/%s)", key, key))
+				}
+				continue
+			}
 			if mod_key == "git" {
 				sub, is_obj := mod_val.(json.Object)
 				if !is_obj {
@@ -708,7 +743,7 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	}
 }
 
-config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []string) -> [dynamic]string {
+config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {
 	warnings := make([dynamic]string, context.temp_allocator)
 	if kb_obj, ok := root["keybinds"].(json.Object); ok {
 		for key in kb_obj {
@@ -727,15 +762,22 @@ config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []string) ->
 					}
 				}
 			}
-			if !found && !slice.contains(plugin_commands, key) {
-				append(&warnings, fmt.tprintf("unknown keybinds/%q", key))
+			if found {
+				continue
 			}
+			moved := ""
+			for cmd in plugin_commands {
+				if cmd.name == key || cmd.bare == key {
+					moved = fmt.tprintf(" (moved to plugins/%s/keybinds)", cmd.owner)
+				}
+			}
+			append(&warnings, fmt.tprintf("unknown keybinds/%q%s", key, moved))
 		}
 	}
 	return warnings
 }
 
-config_module_def :: proc(name: string) -> (Config_Module, bool) {
+config_module_def :: proc(name: string) -> (Config_Section, bool) {
 	for def in config_module_defs {
 		if def.name == name {
 			return def, true

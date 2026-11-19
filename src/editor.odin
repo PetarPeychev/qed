@@ -143,6 +143,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	plugins_rebind(&editor)
 	if !headless {
 		plugin_stub_write(plugin_stub_dir())
+		plugin_luarc_write(plugin_user_dir(), plugin_stub_dir())
 		editor_log(
 			&editor,
 			.Debug,
@@ -584,7 +585,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	if alt && ev.ch != 0 {
 		if cmd, ok := command_for_alt(ev.ch); ok {
-			if module_enabled(cmd.module) {
+			if command_enabled(cmd) {
 				cmd.run(editor)
 			}
 		} else if pcmd, pok := plugin_command_for_event(editor, ev, false); pok {
@@ -594,7 +595,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 
 	if cmd, ok := command_for_key(ev.key); ok {
-		if module_enabled(cmd.module) {
+		if command_enabled(cmd) {
 			cmd.run(editor)
 		}
 		return
@@ -1091,6 +1092,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor.config_stamp = buffer_disk_stamp(path)
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
+	lsp_enabled_sync(editor)
 	editor_modules_sync(editor)
 	plugins_config_apply(editor, theme_changed, !g_config_user_broken)
 	if message == "" {
@@ -1824,7 +1826,7 @@ editor_render_status :: proc(editor: ^Editor) {
 		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name), fg = fg, drop = 4})
 		if b.big {
 			append(&right, StatusSeg{sep = "  ", text = "big", fg = fg, drop = 3})
-		} else if module_enabled(.Lsp) {
+		} else if LSP_ENABLED {
 			if label, lsp_fg, ok := lsp_status_label(b); ok {
 				append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LSP, label), fg = lsp_fg, drop = 2})
 			}

@@ -45,6 +45,7 @@ pt_api := [?]lua.L_Reg {
 	{"pump", pt_pump},
 	{"hook_timeout", pt_hook_timeout},
 	{"module", pt_module},
+	{"lsp", pt_lsp},
 	{"ui", pt_ui},
 	{"config_path", pt_config_path},
 	{"screen", pt_screen},
@@ -261,14 +262,17 @@ pt_hook_timeout :: proc "c" (L: ^lua.State) -> c.int {
 pt_module :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
 	on := bool(lua.toboolean(L, 2))
-	switch api_string(L, 1) {
-	case "lsp":
-		LSP_ENABLED = on
-	case "ai":
-		AI_ENABLED = on
-	case:
-		return plugin_raise(L, "t.module: lsp or ai expected")
+	if api_string(L, 1) != "ai" {
+		return plugin_raise(L, "t.module: ai expected")
 	}
+	AI_ENABLED = on
+	return 0
+}
+
+@(private = "file")
+pt_lsp :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	LSP_ENABLED = bool(lua.toboolean(L, 1))
 	return 0
 }
 

@@ -27,12 +27,12 @@
   "terminal_escape_closes": true,
   "diff_view": false,
   "filetree_diff_only": true,
+  "lsp": {
+    "enabled": true,
+    "completion_max_rows": 8,
+    "completion_min_chars": 1
+  },
   "modules": {
-    "lsp": {
-      "enabled": true,
-      "completion_max_rows": 8,
-      "completion_min_chars": 1
-    },
     "ai": {
       "enabled": true,
       "chat_command": "claude -p",
@@ -74,7 +74,6 @@
     "Find": "Ctrl+f",
     "Replace": "Ctrl+h",
     "Find Line": "Ctrl+g",
-    "Find in Files": "Alt+F",
     "Change Working Directory": "Ctrl+o",
     "Go to Start of File": "Alt+{",
     "Go to End of File": "Alt+}",
@@ -90,24 +89,16 @@
     "Paste": "Ctrl+v",
     "Select All": "Ctrl+a",
     "Toggle Comment": "Ctrl+/",
-    "Change Indentation": "",
-    "Set Language": "",
-    "Set Theme": "",
     "LSP: Go to Definition": "Alt+d",
     "LSP: Hover": "Alt+s",
     "LSP: Rename Symbol": "Alt+r",
     "AI: Edit Selection": "Ctrl+k",
     "AI: Cancel Edits": "",
     "AI: Toggle Inline Completion": "",
-    "Format Document": "",
-    "Toggle Format on Save": "",
-    "Toggle Trim Whitespace on Save": "",
-    "Toggle Final Newline on Save": "",
     "Diff: Toggle Diff View": "",
     "Diff: Next Change": "Alt+'",
     "Diff: Previous Change": "Alt+;",
     "Diff: Revert Hunk": "Alt+z",
-    "Git: Set Diff Base": "",
     "Git: Resolve Conflict": "Alt+m",
     "Toggle Line Wrap": "",
     "LSP: Next Diagnostic": "Alt+>",
@@ -122,7 +113,6 @@
     "File Tree: Toggle Dotfiles": "Alt+.",
     "File Tree: Toggle Ignored": "Alt+i",
     "File Tree: Toggle Diff": "Alt+d",
-    "File Tree: Restore File": "",
     "File Tree: Expand/Collapse All": "Alt+e"
   },
   "languages": {

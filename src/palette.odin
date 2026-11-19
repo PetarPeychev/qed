@@ -7,12 +7,14 @@ PALETTE_WIDTH :: 60
 
 Command :: struct {
 	name:        string,
+	bare:        string,
 	config_name: string,
 	bind_from:   string,
 	shortcut:    string,
 	key:         tb2.Key,
 	alt_ch:      rune,
 	module:      Module,
+	lsp:         bool,
 	run:         proc(editor: ^Editor),
 	owner:       string,
 	id:          u64,
@@ -147,9 +149,9 @@ commands := [?]Command {
 	{name = "Paste", run = editor_paste},
 	{name = "Select All", run = cmd_select_all},
 	{name = "Toggle Comment", run = cmd_toggle_comment},
-	{name = "LSP: Go to Definition", module = .Lsp, run = cmd_lsp_definition},
-	{name = "LSP: Hover", module = .Lsp, run = cmd_lsp_hover},
-	{name = "LSP: Rename Symbol", module = .Lsp, run = cmd_lsp_rename},
+	{name = "LSP: Go to Definition", lsp = true, run = cmd_lsp_definition},
+	{name = "LSP: Hover", lsp = true, run = cmd_lsp_hover},
+	{name = "LSP: Rename Symbol", lsp = true, run = cmd_lsp_rename},
 	{name = "AI: Edit Selection", module = .Ai, run = cmd_ai_edit},
 	{name = "AI: Cancel Edits", module = .Ai, run = cmd_ai_cancel},
 	{name = "AI: Toggle Inline Completion", module = .Ai, run = cmd_toggle_inline_completion},
@@ -159,9 +161,9 @@ commands := [?]Command {
 	{name = "Diff: Revert Hunk", run = cmd_diff_revert},
 	{name = "Git: Resolve Conflict", run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
-	{name = "LSP: Next Diagnostic", module = .Lsp, run = cmd_diag_next},
-	{name = "LSP: Previous Diagnostic", module = .Lsp, run = cmd_diag_prev},
-	{name = "LSP: Restart", module = .Lsp, run = cmd_lsp_restart},
+	{name = "LSP: Next Diagnostic", lsp = true, run = cmd_diag_next},
+	{name = "LSP: Previous Diagnostic", lsp = true, run = cmd_diag_prev},
+	{name = "LSP: Restart", lsp = true, run = cmd_lsp_restart},
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
 	{name = "Debug: Message Log", run = cmd_message_log},
 	{name = "Debug: Plugins", run = cmd_plugins},
@@ -183,25 +185,29 @@ filetree_commands := [?]Command {
 	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
 }
 
-command_module :: proc(name: string) -> Module {
+command_enabled :: proc(cmd: Command) -> bool {
+	return module_enabled(cmd.module) && (!cmd.lsp || LSP_ENABLED)
+}
+
+command_gated :: proc(name: string) -> bool {
 	for cmd in commands {
 		if cmd.name == name {
-			return cmd.module
+			return !command_enabled(cmd)
 		}
 	}
 	for cmd in filetree_commands {
 		if cmd.name == name {
-			return cmd.module
+			return !command_enabled(cmd)
 		}
 	}
-	return .None
+	return false
 }
 
 command_available :: proc(editor: ^Editor, name: string) -> bool {
 	if name == "Command Palette" {
 		return false
 	}
-	if !module_enabled(command_module(name)) {
+	if command_gated(name) {
 		return false
 	}
 	switch name {

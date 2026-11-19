@@ -47,9 +47,9 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	reload_write(dir, "t.lua", `
 		big = string.rep("z", 2 * 1024 * 1024)
 		return {setup = function()
-			qed.command{name = "T: Pick", run = function() picked = qed.pick{items = {"a", "b"}} end}
-			qed.command{name = "T: Sleep", run = function() qed.sleep(60000) end}
-			qed.command{name = "T: Proc", run = function() proc = qed.spawn_bg{cmd = "sleep 30 & sleep 30; wait"} end}
+			qed.command{name = "Pick", run = function() picked = qed.pick{items = {"a", "b"}} end}
+			qed.command{name = "Sleep", run = function() qed.sleep(60000) end}
+			qed.command{name = "Proc", run = function() proc = qed.spawn_bg{cmd = "sleep 30 & sleep 30; wait"} end}
 			qed.every(20, function() end)
 		end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the new user plugin loads")
@@ -105,7 +105,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 
 	reload_write(dir, "alpha.lua", `return {setup = function()
 		qed.log("info", "alpha says hi")
-		qed.command{name = "Alpha: Cmd", run = function() end}
+		qed.command{name = "Cmd", run = function() end}
 	end}`)
 	plugins_poll(&e.ed)
 	editor_log(&e.ed, .Info, "other", "not alpha")
@@ -117,7 +117,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect(t, v.active, "the pane opens")
 	e2e_reload_select(&e, "alpha")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "alpha    user     enabled"), "the user plugin row")
+	testing.expect(t, e2e_grid_has(&e, "Alpha   user     enabled"), "the user plugin row")
 
 	_ = os.write_entire_file(e.ed.plugins.persist_path, transmute([]u8)string(`{"tab_width": 2}`))
 	stamp := DiskStamp{mtime = 42, ok = true}
@@ -132,10 +132,10 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(string(data), `"alpha": {`) && strings.contains(string(data), `"enabled": false`), "e persists only plugins.alpha.enabled")
 	testing.expect(t, strings.contains(string(data), `"tab_width": 2`), "an unpolled external edit survives the persist")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "alpha    user     disabled"), "the row shows disabled")
+	testing.expect(t, e2e_grid_has(&e, "Alpha   user     disabled"), "the row shows disabled")
 
 	e2e_key(&e, tb2.Key(0), {}, 'r')
-	testing.expect(t, strings.contains(e.ed.message, "alpha is disabled"), "r on a disabled plugin explains")
+	testing.expect(t, strings.contains(e.ed.message, "Alpha is disabled"), "r on a disabled plugin explains")
 
 	e2e_key(&e, tb2.Key(0), {}, 'e')
 	alpha = plugin_find(&e.ed.plugins, "alpha")
@@ -144,8 +144,8 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(string(data), `"enabled": true`), "e persists the flip back")
 
 	e2e_key(&e, tb2.Key(0), {}, 'r')
-	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "alpha", "reloaded"), 1)
-	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "alpha", "alpha says hi"), 3)
+	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "Alpha", "reloaded"), 1)
+	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "Alpha", "alpha says hi"), 3)
 
 	reload_write(dir, "aaa.lua", `return {}`)
 	plugins_poll(&e.ed)
@@ -153,7 +153,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	e2e_key(&e, tb2.Key(0), {}, 'l')
 	testing.expect(t, e.ed.logview.active, "l opens the message log")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Message Log  ·  alpha"), "filtered to the plugin")
+	testing.expect(t, e2e_grid_has(&e, "Message Log  ·  Alpha"), "filtered to the plugin")
 	testing.expect(t, e2e_grid_has(&e, "alpha says hi"), "the plugin's entries show")
 	testing.expect(t, !e2e_grid_has(&e, "not alpha"), "other sources are hidden")
 	e2e_key(&e, .Esc)

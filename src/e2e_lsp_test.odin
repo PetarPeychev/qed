@@ -391,11 +391,11 @@ e2e_lsp_format_document :: proc(t: ^testing.T) {
 
 	testing.expect(t, e2e_lsp_wait(&e, pred_diags), "server should be ready")
 	b := editor_buffer(&e.ed)
-	cmd, ok := plugin_test_command(&e.ed, "Format Document")
+	cmd, ok := plugin_test_command(&e.ed, "Format: Document")
 	testing.expect(t, ok, "the format plugin registers Format Document")
 	command_run(&e.ed, cmd)
 	testing.expect(t, e2e_lsp_wait(&e, pred_formatted), "no external command falls back to qed.lsp.format")
-	testing.expect_value(t, e.ed.message_source, "format")
+	testing.expect_value(t, e.ed.message_source, "Format")
 	testing.expect_value(t, string(b.lines[0].text[:]), "formatted")
 	testing.expect_value(t, string(b.lines[1].text[:]), "alpha beta")
 
