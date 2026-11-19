@@ -3,7 +3,6 @@ local M = {}
 local function trim(s)
 	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
-M.trim = trim
 
 function M.git(dir, args)
 	local argv = {"git", "-C", dir}
@@ -36,13 +35,17 @@ function M.rev(dir, base)
 	return sha ~= "" and sha or "HEAD"
 end
 
+-- nil outside a repo; an untracked file has an empty base (every line added)
 function M.blob(path, base)
 	local dir = qed.path.dir(path)
-	if M.git(dir, {"rev-parse", "--show-toplevel"}).code ~= 0 then
+	local r = M.git(dir, {"show", M.rev(dir, base) .. ":./" .. qed.path.base(path)})
+	if r.code == 0 then
+		return r.stdout
+	end
+	if r.code < 0 or r.code == 127 or r.stderr:find("not a git repository", 1, true) then
 		return nil
 	end
-	local r = M.git(dir, {"show", M.rev(dir, base) .. ":./" .. qed.path.base(path)})
-	return r.code == 0 and r.stdout or ""
+	return ""
 end
 
 -- a deleted or renamed path's own dir may be gone, so git runs from its nearest existing ancestor

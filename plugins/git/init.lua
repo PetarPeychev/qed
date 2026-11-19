@@ -7,7 +7,7 @@ local ready = false
 local base = {}
 local fetched = {}
 local gen = {}
-local stat = {branch = "", ahead = 0, behind = 0, added = 0, deleted = 0, gen = 0}
+local stat = {branch = "", ahead = 0, behind = 0, added = 0, deleted = 0, gen = 0, known = false, sha = ""}
 
 local function say(text, level)
 	qed.message(text, {level = level, source = "Git"})
@@ -24,7 +24,7 @@ local function fetch(b)
 		blob = repo.blob(path, base)
 	end
 	if qed.buf.valid(b) and gen[b] == mine then
-		qed.buf.set_base(b, blob, {label = base.ref and base.label or ""})
+		qed.buf.set_base(b, blob, {label = ""})
 	end
 end
 
@@ -39,7 +39,7 @@ end
 local function show()
 	local icon = qed.theme.icon
 	local on = stat.branch ~= ""
-	qed.status.set("branch", {text = on and (icon("status_branch") .. " " .. stat.branch) or "", drop = 9})
+	qed.status.set("branch", {text = on and (icon("status_branch") .. " " .. stat.branch) or "", drop = 9, early = true})
 	local ab = ""
 	if on and stat.ahead > 0 then
 		ab = icon("status_ahead") .. stat.ahead
@@ -47,26 +47,29 @@ local function show()
 	if on and stat.behind > 0 then
 		ab = ab .. icon("status_behind") .. stat.behind
 	end
-	qed.status.set("ahead_behind", {text = ab, sep = " ", drop = 7})
+	qed.status.set("ahead_behind", {text = ab, sep = " ", drop = 7, early = true})
+	local label = on and base.ref and (icon("status_diff_base") .. base.label) or ""
+	qed.status.set("base", {text = label, drop = 8, early = true})
 	local diff = ""
 	if on and (stat.added > 0 or stat.deleted > 0) then
 		diff = {{text = "+" .. stat.added, color = "git_added"}, {text = " -" .. stat.deleted, color = "git_deleted"}}
 	end
-	qed.status.set("diff", {text = diff, drop = 6})
+	qed.status.set("diff", {text = diff, drop = 6, early = true})
 end
 
 local function poll()
 	stat.gen = stat.gen + 1
 	local mine = stat.gen
 	local root = qed.root()
-	local branch, ahead, behind, sha, added, deleted = "", nil, nil, "", 0, 0
+	local branch, ahead, behind, sha, added, deleted = "", 0, 0, "", 0, 0
 	local top = repo.out(root, {"rev-parse", "--show-toplevel"})
 	if top ~= "" then
 		branch = repo.out(root, {"symbolic-ref", "--short", "-q", "HEAD"})
 		if branch == "" then
 			branch = repo.out(root, {"rev-parse", "--short", "HEAD"})
 		end
-		behind, ahead = repo.out(root, {"rev-list", "--left-right", "--count", "@{u}...HEAD"}):match("^(%d+)%s+(%d+)$")
+		local b, a = repo.out(root, {"rev-list", "--left-right", "--count", "@{u}...HEAD"}):match("^(%d+)%s+(%d+)$")
+		behind, ahead = tonumber(b) or 0, tonumber(a) or 0
 		local rev = repo.rev(top, base)
 		sha = repo.out(root, {"rev-parse", "-q", "--verify", rev})
 		added, deleted = repo.diffsize(top, rev)
@@ -81,7 +84,6 @@ local function poll()
 		fetch_all()
 		qed.filetree.refresh()
 	end
-	ahead, behind = tonumber(ahead) or 0, tonumber(behind) or 0
 	if moved or branch ~= stat.branch or ahead ~= stat.ahead or behind ~= stat.behind or added ~= stat.added or deleted ~= stat.deleted then
 		qed.log("debug", ("branch %s ahead %d behind %d diff +%d -%d"):format(branch, ahead, behind, added, deleted))
 	end
@@ -91,7 +93,7 @@ end
 
 local function tick()
 	for _, b in ipairs(qed.buf.list()) do
-		if fetched[b] ~= qed.buf.path(b) then
+		if qed.buf.valid(b) and fetched[b] ~= qed.buf.path(b) then
 			fetch(b)
 		end
 	end
@@ -101,6 +103,7 @@ end
 local function restart(new)
 	base = new
 	stat.known = false
+	show()
 	fetch_all()
 	poll()
 end
@@ -157,7 +160,7 @@ return {
 	setup = function()
 		show()
 		qed.command{name = "Git: Set Diff Base", run = set_base, when = when}
-		qed.command{name = "Restore File", scope = "filetree", run = restore, when = when}
+		qed.command{name = "Restore File", keybind = "File Tree: Restore File", scope = "filetree", run = restore, when = when}
 		qed.on("startup", function()
 			ready = repo.git(qed.root(), {"--version"}).code == 0
 			if not ready then
@@ -183,6 +186,5 @@ return {
 			end
 		end)
 		qed.on("theme_changed", show)
-		qed.on("config_changed", function() end)
 	end,
 }

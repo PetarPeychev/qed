@@ -9,8 +9,7 @@ Module :: enum {
 	Ai,
 }
 
-// true until the plugin system says otherwise, so editors without plugins (unit tests) keep git-gated code on
-g_git_loaded := true
+g_git_loaded: bool
 
 @(init)
 module_probe :: proc "contextless" () {

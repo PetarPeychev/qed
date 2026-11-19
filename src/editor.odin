@@ -1512,7 +1512,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		ai_rows = llm_active_rows(editor, b)
 	}
 
-	conflicts := merge_scan(b)
+	conflicts := merge_scan(b) if module_enabled(.Git) else nil
 	conflict_spans := merge_word_map(b, conflicts)
 
 	pal := deco_palette(editor.plugins.colors[:])
@@ -1846,15 +1846,16 @@ editor_render_status :: proc(editor: ^Editor) {
 		indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
 		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_INDENT, indent), fg = fg, drop = 1})
 	}
+	plugin_status_segs(&editor.plugins, &left, &right, true)
 	if !editor.welcome {
 		if base := diffbase_active(editor_buffer(editor)); base != nil && base.label != "" {
 			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, base.label), fg = fg, drop = 8})
 		}
 	}
-	plugin_status_segs(&editor.plugins, &left, &right)
 	if len(editor.buffers) > 1 {
 		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("[%d/%d]", editor.current + 1, len(editor.buffers)), fg = fg, drop = 10})
 	}
+	plugin_status_segs(&editor.plugins, &left, &right, false)
 	status_fit(left[:], right[:], full_w)
 	editor_render_row(0, h, full_w, "", fg, COLOR_PANE_BG)
 	status_draw(left[:], 0, h, full_w)

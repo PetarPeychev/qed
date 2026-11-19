@@ -1385,9 +1385,10 @@ filetree_activate :: proc(editor: ^Editor) {
 		for cmd in editor.plugins.commands {
 			if cmd.filetree && cmd.name == "Restore File" {
 				command_run(editor, cmd)
-				break
+				return
 			}
 		}
+		editor_log(editor, .Warn, "Files", "Restore File is unavailable (the git plugin is not loaded)")
 		return
 	}
 	path := strings.clone(e.path, context.temp_allocator)

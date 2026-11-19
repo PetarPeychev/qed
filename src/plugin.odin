@@ -209,7 +209,7 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 }
 
 plugins_shutdown :: proc(p: ^Plugins) {
-	g_git_loaded = true
+	g_git_loaded = false
 	plugin_ui_destroy(p)
 	delete(p.persist_path)
 	plugin_sched_shutdown(p)
@@ -539,11 +539,11 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	p := &editor.plugins
 	delete(pl.cfg_sig)
 	pl.cfg_sig = strings.clone(plugin_cfg_sig(pl.name, editor_config_user(editor)))
+	if pl.name == "git" {
+		g_git_loaded = false
+	}
 	if check_enabled && !plugin_cfg_enabled(pl.name, editor_config_user(editor)) {
 		pl.state = .Disabled
-		if pl.name == "git" {
-			g_git_loaded = false
-		}
 		return
 	}
 	pl.state = .Enabled
@@ -825,7 +825,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	plugin_deco_unload(editor, pl.name)
 	plugin_status_unload(p, pl.name)
 	diffbase_unload(editor, pl.name)
-	if pl.name == "git" && g_git_loaded {
+	if pl.name == "git" {
 		g_git_loaded = false
 		git_module_sync(editor)
 	}
@@ -1083,6 +1083,11 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		return lua.L_argerror(L, 1, "welcome must be a boolean")
 	}
 	welcome := bool(lua.toboolean(L, 7))
+	keybind_t := lua.getfield(L, 1, "keybind")
+	if keybind_t != .STRING && keybind_t != .NIL {
+		return lua.L_argerror(L, 1, "keybind must be a string")
+	}
+	keybind_s, _ := lua.toodinstring(L, 8)
 	filetree := scope_s == "filetree"
 	if plugin_command_taken(p, name, filetree) {
 		return plugin_raise(L, fmt.tprintf("command '%s' already exists", name))
@@ -1105,6 +1110,7 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		filetree    = filetree,
 		welcome     = welcome,
 		key_default = strings.clone(key_s) if key_t == .STRING else "",
+		config_name = strings.clone(keybind_s) if keybind_t == .STRING else "",
 		ref         = ref,
 		when_ref    = when_ref,
 	}
@@ -1207,6 +1213,7 @@ plugin_command_free :: proc(cmd: ^Command) {
 	delete(cmd.name)
 	delete(cmd.shortcut)
 	delete(cmd.key_default)
+	delete(cmd.config_name)
 }
 
 editor_config_user :: proc(editor: ^Editor) -> json.Object {
@@ -1234,14 +1241,14 @@ plugin_bind_taken :: proc(key: tb2.Key, alt_ch: rune, filetree: bool) -> string 
 
 plugin_command_bind :: proc(cmd: ^Command, cfg_user: json.Object) -> (problem: string, from_user: bool) {
 	bind := cmd.key_default
-	if v, ok := plugin_keybind(g_config_defaults, cmd.name); ok {
+	if v, ok := plugin_keybind(g_config_defaults, command_config_name(cmd^)); ok {
 		bind = string(v.(json.String) or_else "")
 	}
-	if v, ok := plugin_keybind(cfg_user, cmd.name); ok {
+	if v, ok := plugin_keybind(cfg_user, command_config_name(cmd^)); ok {
 		s, is_str := v.(json.String)
 		_, _, parses := parse_keybind(string(s))
 		if !is_str || (s != "" && !parses) {
-			problem = fmt.tprintf("keybinds/%s", cmd.name)
+			problem = fmt.tprintf("keybinds/%s", command_config_name(cmd^))
 		} else {
 			bind = string(s)
 		}
@@ -1256,10 +1263,10 @@ plugin_command_bind :: proc(cmd: ^Command, cfg_user: json.Object) -> (problem: s
 	}
 	key, alt_ch, ok := parse_keybind(bind)
 	if !ok {
-		return fmt.tprintf("keybinds/%s", cmd.name), from_user
+		return fmt.tprintf("keybinds/%s", command_config_name(cmd^)), from_user
 	}
 	if taken := plugin_bind_taken(key, alt_ch, cmd.filetree); taken != "" {
-		return fmt.tprintf("keybinds/%s (%s is %q)", cmd.name, bind, taken), from_user
+		return fmt.tprintf("keybinds/%s (%s is %q)", command_config_name(cmd^), bind, taken), from_user
 	}
 	cmd.key = key
 	cmd.alt_ch = alt_ch
@@ -1293,7 +1300,7 @@ plugins_rebind :: proc(editor: ^Editor) {
 plugin_command_names :: proc(p: ^Plugins, allocator := context.temp_allocator) -> []string {
 	names := make([]string, len(p.commands), allocator)
 	for cmd, i in p.commands {
-		names[i] = cmd.name
+		names[i] = command_config_name(cmd)
 	}
 	return names
 }

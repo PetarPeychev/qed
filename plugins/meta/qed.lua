@@ -25,6 +25,7 @@
 ---@field key? string default chord, overridden by config `keybinds[name]`
 ---@field scope? "editor"|"filetree"
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
+---@field keybind? string the `keybinds` key, default `name`
 
 ---@class qed.Stat
 ---@field size integer
@@ -398,7 +399,8 @@ qed.status = {}
 ---@field text string|{text: string, color?: string}[] chunks paint in their own colors; `""` hides the segment but keeps its place
 ---@field color? string theme color key
 ---@field sep? string text before the segment, default two spaces
----@field side? "left"|"right" default "left"
+---@field side? "left"|"right" default "left" (after the builtins and the `[n/m]` buffer counter)
+---@field early? boolean left side only: before `[n/m]` and the diff base label (the git segments)
 ---@field drop? integer drop rank when the bar is too narrow (lowest first, 0 never), default 1
 
 ---Sets or replaces this plugin's status bar segment `id`.

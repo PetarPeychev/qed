@@ -36,6 +36,7 @@ DiffChange :: struct {
 
 DiffBaseSlot :: struct {
 	owner, label, text: string,
+	none:               bool,
 }
 
 DiffBase :: struct {
@@ -71,8 +72,12 @@ diff_hash :: proc(bytes: []u8) -> u64 {
 }
 
 diffbase_active :: proc(b: ^Buffer) -> ^DiffBaseSlot {
-	n := len(b.base.slots)
-	return &b.base.slots[n - 1] if n > 0 else nil
+	#reverse for &s in b.base.slots {
+		if !s.none {
+			return &s
+		}
+	}
+	return nil
 }
 
 diffbase_owner :: proc(b: ^Buffer) -> string {
@@ -99,40 +104,34 @@ diffbase_rebuild :: proc(b: ^Buffer) {
 	}
 }
 
-// Each owner keeps its slot in first-set order, so a later plugin's base stays on top while an earlier one updates beneath it.
+// Each owner keeps its slot in first-set order (a cleared one stays as `none`), so a later plugin's base stays on top while an earlier one updates beneath it.
 diffbase_set :: proc(b: ^Buffer, owner, text: string, label := "") {
-	g := &b.base
-	for &s, i in g.slots {
-		if s.owner != owner {
-			continue
+	slot: ^DiffBaseSlot
+	for &s in b.base.slots {
+		if s.owner == owner {
+			slot = &s
 		}
-		delete(s.label)
-		delete(s.text)
-		s.label = strings.clone(label)
-		s.text = strings.clone(text)
-		if i == len(g.slots) - 1 {
-			diffbase_rebuild(b)
-		}
-		return
 	}
-	append(&g.slots, DiffBaseSlot{owner, strings.clone(label), strings.clone(text)})
+	if slot == nil {
+		append(&b.base.slots, DiffBaseSlot{owner = owner})
+		slot = &b.base.slots[len(b.base.slots) - 1]
+	}
+	delete(slot.label)
+	delete(slot.text)
+	slot.label = strings.clone(label)
+	slot.text = strings.clone(text)
+	slot.none = false
 	diffbase_rebuild(b)
 }
 
 diffbase_clear :: proc(b: ^Buffer, owner: string) {
-	g := &b.base
-	for s, i in g.slots {
-		if s.owner != owner {
-			continue
-		}
-		top := i == len(g.slots) - 1
-		delete(s.label)
-		delete(s.text)
-		ordered_remove(&g.slots, i)
-		if top {
+	for &s in b.base.slots {
+		if s.owner == owner && !s.none {
+			delete(s.label)
+			delete(s.text)
+			s.label, s.text, s.none = "", "", true
 			diffbase_rebuild(b)
 		}
-		return
 	}
 }
 
@@ -152,7 +151,15 @@ diffbase_update :: proc(b: ^Buffer) {
 
 diffbase_unload :: proc(editor: ^Editor, owner: string) {
 	for &b in editor.buffers {
-		diffbase_clear(&b, owner)
+		for s, i in b.base.slots {
+			if s.owner == owner {
+				delete(s.label)
+				delete(s.text)
+				ordered_remove(&b.base.slots, i)
+				diffbase_rebuild(&b)
+				break
+			}
+		}
 	}
 }
 
@@ -168,7 +175,7 @@ diffbase_recompute :: proc(b: ^Buffer) {
 	}
 	clear(&g.hunks)
 	clear(&g.changes)
-	if len(g.slots) == 0 {
+	if diffbase_active(b) == nil {
 		return
 	}
 
@@ -470,7 +477,7 @@ diffbase_revert :: proc(editor: ^Editor) {
 	}
 	diffbase_update(b)
 	g := &b.base
-	if len(g.slots) == 0 {
+	if diffbase_active(b) == nil {
 		editor_log(editor, .Info, "Diff", "No diff base")
 		return
 	}

@@ -65,9 +65,10 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
 1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
-path + `●` modified flag + `line/total` + `±label` of the current buffer's diff base (its `set_base` label) + plugin
-segments (the `git` plugin's branch, `↑ahead↓behind` and diff size) + `[n/m]`; right side: language + LSP + indent style / `big`). Both sides are
-`StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap (plugin `qed.status` segments join them, left before `[n/m]`, right before the builtins): shorten the path from
+path + `●` modified flag + `line/total` + `early` plugin segments (the `git` plugin's branch, `↑ahead↓behind`, `±label`
+diff base and diff size) + `±label` of another plugin's base on the current buffer (its `set_base` label) + `[n/m]` + other
+plugin segments; right side: language + LSP + indent style / `big`). Both sides are
+`StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap (plugin right segments sit before the builtins): shorten the path from
 the left (`…/dir/name`, down to the bare name), then drop segments by `drop` rank (indent, LSP, `big`,
 language, AI count, then diff size, ahead/behind, diff base, branch, `[n/m]`), then clip the filename; then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
@@ -85,9 +86,10 @@ Diff view below.
 **Diff engine** (`diffbase.odin`, `Buffer.base`): the line-hash Myers engine behind the gutter marks,
 ghost rows, word spans, change navigation and revert. Its text only comes from plugins
 (`qed.buf.set_base`; the bundled `git` plugin pushes the base blob). Each plugin owns one slot per
-buffer (`DiffBase.slots`, first-set order); the newest owner's slot is active, an owner updating
-its slot keeps its place, and clearing or unloading reveals the slot beneath (so git takes over
-again when another plugin's base goes).
+buffer (`DiffBase.slots`, first-set order); the newest owner's non-cleared slot is active, an owner
+updating its slot keeps its place, clearing marks it `none` (keeping its place, so git's transient
+`nil` never reorders it above another plugin) and unloading removes it; either reveals the slot
+beneath, so git takes over again when another plugin's base goes.
 
 **Diff view** (global `g_diff_view`): with diff view on, a hunk's
 removed/base lines render inline as dim-red **ghost rows** (`editor_render_hunk_ghosts`)
@@ -334,7 +336,8 @@ settings parser walks `config_module_defs`, one typed str/int/bool table set per
 Git is the bundled `git` plugin (`plugins.git`; old `modules.git.*` keys warn "moved to"); `.Git`
 is "the git plugin is loaded" (`g_git_loaded`, true outside a plugin system) ANDed with
 `GIT_BINARY_PRESENT`, probed once at startup, and gates the core pieces still git-only: the file
-tree Git tab and its status bars, `git_diff_file`, conflicts. Unloading the git plugin runs
+tree Git tab and its status bars, `git_diff_file`, conflict render (`merge_scan` itself is ungated). `g_git_loaded`
+is false from the start of the plugin's load until its setup succeeds. Unloading the git plugin runs
 `git_module_sync` (base spec cleared, Git tab left). `module_enabled(m)` is the single gate.
 Commands carry a `.module`; `command_available`
 and keybind dispatch no-op a disabled module's commands, so palette + chords drop out
@@ -824,7 +827,7 @@ inline-diff-view style (dim-red ghost rows, added/modified tint, word-level high
 built by `git_diff_file` (base-vs-worktree for a non-open file, reusing the gutter's line-hash diff; a rename diffs
 against the old path's base blob, a deleted file previews entirely as ghost rows).
 *File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.git_diff_only` seeded from config
-`plugins.git.filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
+`filetree_diff_only`, default on) switches the Git preview between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
 gap-collapsing never fires).
 Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`): navigation only marks the preview

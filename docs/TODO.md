@@ -68,6 +68,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Phase 7: N terminal sessions, `qed.term`, `tasks` plugin.
 - [ ] Phase 8: decoration store, `status.set`, diff-base primitive.
 - [ ] Phase 9: port `git`, `modules.git` becomes `plugins.git`.
+- [ ] Git Tab to Lua: drop the interim seams (`g_git_loaded` + `"git"` name checks in plugin.odin, `qed.git.set_base`, `qed.filetree.refresh`, filetree `Enter` running "Restore File" by name).
 
 ## Post-1.0 — deferred
 

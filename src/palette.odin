@@ -225,7 +225,7 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 	}
 	switch name {
 	case "Diff: Next Change", "Diff: Previous Change", "Diff: Revert Hunk":
-		return len(editor_buffer(editor).base.slots) > 0
+		return diffbase_active(editor_buffer(editor)) != nil
 	}
 	return true
 }

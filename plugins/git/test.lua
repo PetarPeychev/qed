@@ -37,7 +37,7 @@ local function on_screen(t, needle)
 			return true
 		end
 	end
-	return false
+	return false, t.screen(22)
 end
 
 local function mark(t, b, row, want)
@@ -246,6 +246,78 @@ function T.disable_removes_git(t)
 	t.config({enabled = true}, {hot = true})
 	t.settle()
 	t.eq(t.marks(b)[1], "modified", "base back on re-enable")
+end
+
+function T.status_order(t)
+	init(t, {["file.txt"] = "one\ntwo\n", ["other.txt"] = "x\n"})
+	t.ok(t.sh("git branch up && git branch -q -u up && git commit -q --allow-empty -m ahead && git branch basebr HEAD~1"))
+	open(t, "other.txt", "x\n")
+	local b = open(t, "file.txt", "one\ntwo\n")
+	qed.buf.insert(b, {row = 1, col = 4}, "X")
+	save(t, b)
+	qed.status.set("late", {text = "LATE"})
+	pick_base(t, "basebr", "basebr")
+	t.wait(function() return seg(t, "diff").text == "+1 -1" end, 5000)
+	local icon = qed.theme.icon
+	local want = ("%s main %s1  %sbasebr  +1 -1  [3/3]  LATE"):format(icon("status_branch"), icon("status_ahead"), icon("status_diff_base"))
+	local found, row = on_screen(t, want)
+	t.ok(found, "branch, ahead, base, diff size, buffer counter, then other plugins: " .. tostring(row))
+	qed.status.clear("late")
+	t.eq(qed.buf.set_base(b, "one\n", {label = "m"}), true, "a later plugin's base goes on top")
+	t.ok(on_screen(t, "+1 -1  " .. icon("status_diff_base") .. "m  [3/3]"), "another plugin's label sits after the git segments")
+end
+
+function T.welcome_shows_base(t)
+	init(t, {["file.txt"] = "one\n"})
+	t.ok(t.sh("git branch basebr"))
+	t.eq(qed.buf.list()[1] ~= nil, true)
+	qed.close(qed.buf.current())
+	t.ok(t.editor().welcome, "welcome screen")
+	pick_base(t, "basebr", "basebr")
+	t.wait(function() return on_screen(t, qed.theme.icon("status_diff_base") .. "basebr") end, 5000)
+end
+
+function T.stacking_with_another_plugin(t)
+	init(t, {["file.txt"] = "one\ntwo\n"})
+	local b = open(t, "file.txt", "one\ntwo\n")
+	qed.buf.insert(b, {row = 1, col = 4}, "X")
+	save(t, b)
+	t.eq(t.marks(b)[1], "modified", "git base")
+	t.eq(qed.buf.set_base(b, "oneX\ntwo\nthree\n"), true)
+	t.eq(t.marks(b)[1], "", "the later plugin's base wins")
+	t.ok(t.sh("mv .git .git.off"))
+	save(t, b)
+	t.eq(t.marks(b)[1], "", "git's transient nil changes nothing on top")
+	t.ok(t.sh("mv .git.off .git"))
+	save(t, b)
+	t.eq(t.marks(b)[1], "", "git setting its base again stays beneath")
+	t.eq(qed.buf.set_base(b, nil), false)
+	t.eq(t.marks(b)[1], "modified", "clearing reveals git's base")
+end
+
+function T.close_buffer_mid_fetch(t)
+	init(t, {["file.txt"] = "one\n", ["b.txt"] = "b\n"})
+	open(t, "file.txt", "one\n")
+	t.fake_spawn(" show ", {stdout = "b\n", delay_ms = 300})
+	local b2 = t.open("b.txt", "b\n")
+	t.pump(50)
+	qed.close(b2)
+	t.pump(2500)
+	t.settle()
+	t.ok(not qed.buf.valid(b2), "closed")
+end
+
+function T.git_vanishes_mid_session(t)
+	init(t, {["file.txt"] = "one\n"})
+	local b = open(t, "file.txt", "one\n")
+	qed.buf.insert(b, {row = 1, col = 4}, "X")
+	t.eq(t.marks(b)[1], "modified")
+	t.wait(function() local s = seg(t, "branch"); return s ~= nil and s.text ~= "" end, 5000)
+	t.fake_spawn("git -C", {code = 127, stderr = "sh: 1: git: not found"})
+	save(t, b)
+	t.eq(t.marks(b)[1], "", "no base once git is gone")
+	t.wait(function() return seg(t, "branch").text == "" end, 5000)
+	t.eq(seg(t, "diff").text, "")
 end
 
 return T

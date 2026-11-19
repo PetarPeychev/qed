@@ -810,7 +810,7 @@ qed_languages :: proc "c" (L: ^lua.State) -> c.int {
 PluginStatus :: struct {
 	owner, id, text, color, sep: string,
 	chunks:                      [dynamic]PluginPaneLine,
-	right:                       bool,
+	right, early:                bool,
 	drop:                        int,
 }
 
@@ -844,10 +844,10 @@ plugin_status_unload :: proc(p: ^Plugins, owner: string) {
 	}
 }
 
-plugin_status_segs :: proc(p: ^Plugins, left, right: ^[dynamic]StatusSeg) {
+plugin_status_segs :: proc(p: ^Plugins, left, right: ^[dynamic]StatusSeg, early: bool) {
 	at := 0
 	for s in p.status {
-		if s.text == "" {
+		if s.text == "" || (s.right ? early : s.early != early) {
 			continue
 		}
 		fg := COLOR_PANE_FG
@@ -925,6 +925,9 @@ qed_status_set :: proc "c" (L: ^lua.State) -> c.int {
 	if v, ok := api_field_string(L, 2, "sep"); ok {
 		sep = api_one_line(v)
 	}
+	lua.getfield(L, 2, "early")
+	early := bool(lua.toboolean(L, -1))
+	lua.pop(L, 1)
 	color, _ := api_field_string(L, 2, "color")
 	if color != "" {
 		api_theme_color(L, color)
@@ -943,7 +946,7 @@ qed_status_set :: proc "c" (L: ^lua.State) -> c.int {
 	lua.pop(L, 1)
 	pl := api_loaded(L, editor)
 	owner := plugin_name_intern(p, pl.name)
-	s := PluginStatus{owner = owner, text = strings.clone(text), color = strings.clone(color), sep = strings.clone(sep), right = side == "right", drop = drop}
+	s := PluginStatus{owner = owner, text = strings.clone(text), color = strings.clone(color), sep = strings.clone(sep), right = side == "right", early = early, drop = drop}
 	for c in chunks {
 		append(&s.chunks, PluginPaneLine{strings.clone(c.text), strings.clone(c.color)})
 	}

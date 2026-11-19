@@ -467,8 +467,9 @@ test_config_files :: proc(t: ^testing.T) {
 	mod_path := fmt.tprintf("%s/modules.json", dir)
 	_ = os.write_entire_file(
 		mod_path,
-		transmute([]byte)string(`{"modules": {"ai": {"enabled": false, "chat_command": "echo hi"}}}`),
+		transmute([]byte)string(`{"modules": {"ai": {"enabled": false, "chat_command": "echo hi"}}, "filetree_diff_only": false}`),
 	)
+	FILETREE_GIT_DIFF_ONLY = true
 	AI_ENABLED = true
 	LSP_ENABLED = true
 	_, is_err = config_load_from(mod_path)
@@ -476,14 +477,14 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !AI_ENABLED, "modules.ai.enabled override applied")
 	testing.expect(t, LLM_COMPLETION_MODEL == "codestral-latest", "omitted modules.ai key keeps default")
 	testing.expect(t, LSP_ENABLED, "omitted modules.lsp keeps default enabled")
+	testing.expect(t, !FILETREE_GIT_DIFF_ONLY, "top-level filetree_diff_only applies")
 	testing.expect(t, LLM_CHAT_COMMAND == "echo hi", "modules.ai string override applied")
 
 	mod_bad := fmt.tprintf("%s/modbad.json", dir)
 	_ = os.write_entire_file(
 		mod_bad,
-		transmute([]byte)string(`{"modules": {"lsp": {"enabled": 3, "bogus": true}, "git": {"enabled": false, "diff_view": true, "filetree_diff_only": false}}, "plugins": {"git": {"filetree_diff_only": false}}}`),
+		transmute([]byte)string(`{"modules": {"lsp": {"enabled": 3, "bogus": true}, "git": {"enabled": false, "diff_view": true, "filetree_diff_only": false}}}`),
 	)
-	FILETREE_GIT_DIFF_ONLY = true
 	DIFF_VIEW = false
 	msg, is_err = config_load_from(mod_bad)
 	testing.expect(t, is_err, "invalid module value reports an error")
@@ -491,9 +492,12 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(msg, `modules/lsp/"bogus"`), "warns the unknown module subkey")
 	testing.expect(t, strings.contains(msg, `modules/git/"enabled" (moved to plugins/git/enabled)`), "modules.git.enabled moved")
 	testing.expect(t, strings.contains(msg, `modules/git/"diff_view" (moved to diff_view)`), "diff_view moved to core")
-	testing.expect(t, strings.contains(msg, `modules/git/"filetree_diff_only" (moved to plugins/git/filetree_diff_only)`), "filetree_diff_only moved")
+	testing.expect(t, strings.contains(msg, `modules/git/"filetree_diff_only" (moved to filetree_diff_only)`), "filetree_diff_only moved")
 	testing.expect(t, !DIFF_VIEW, "a moved key is not applied")
-	testing.expect(t, !FILETREE_GIT_DIFF_ONLY, "plugins.git.filetree_diff_only applies")
+	mod_scalar := fmt.tprintf("%s/modscalar.json", dir)
+	_ = os.write_entire_file(mod_scalar, transmute([]byte)string(`{"modules": {"git": false}}`))
+	msg, is_err = config_load_from(mod_scalar)
+	testing.expect(t, strings.contains(msg, "modules/git (moved to plugins/git)"), "a non-object modules.git warns too")
 
 	// Unknown top-level key: warned, file untouched.
 	unknown_path := fmt.tprintf("%s/unknown.json", dir)

@@ -300,7 +300,7 @@ fim_render :: proc(editor: ^Editor, cx, cy: int) {
 	gutter := editor_gutter_width(editor)
 	_, vh := editor_viewport(editor)
 	full_w := int(tb2.width())
-	m_side, m_marker := merge_side(merge_scan(b), b.cursor.row)
+	m_side, m_marker := merge_side(merge_scan(b) if module_enabled(.Git) else nil, b.cursor.row)
 	line_bg := editor_line_bg(true, false, diff_mark_at(b, b.cursor.row), diff_view_on(), m_side, m_marker)
 
 	emit :: proc(text: string, gutter, full_w, y, bx: int, fg, bg: tb2.Color) -> int {

@@ -98,14 +98,14 @@ The API is one global, `qed`.
 | `qed.buf.cursor(b) -> pos`, `.set_cursor(b, pos)` | |
 | `qed.buf.selection(b) -> from, to \| nil`, `.set_selection(b, anchor, cursor)` | |
 | `qed.buf.set_language(b, name) -> changed`, `.set_indent(b, "tabs"\|"spaces"\|"auto", width?)`, `.indent(b) -> style, width`, `qed.languages()` | Existing core setters. |
-| `qed.buf.set_base(b, text \| nil, {label?}) -> active` | Diff base: gutter, ghost rows, change navigation, revert hunk. Each plugin owns one base per buffer. The plugin that set its first most recently wins; setting again keeps its place, and `nil` (or unload) reveals the one beneath, so the `git` plugin's base comes back when another plugin's goes. Returns whether this plugin's base is the one shown. `""` is an empty base (every line added). `label` shows as the `±label` status segment: `±base` when omitted, nothing when `""`. Big files have no diff base. |
+| `qed.buf.set_base(b, text \| nil, {label?}) -> active` | Diff base: gutter, ghost rows, change navigation, revert hunk. Each plugin owns one base per buffer. The plugin that set its first most recently wins; setting again keeps its place, `nil` clears it in place (a later set does not move it up), and `nil` or unload reveals the one beneath, so the `git` plugin's base comes back when another plugin's goes. Returns whether this plugin's base is the one shown. `""` is an empty base (every line added). `label` shows as the `±label` status segment: `±base` when omitted, nothing when `""`. Big files have no diff base. |
 | `qed.open(path) -> b`, `qed.save(b)`, `qed.close(b)` | `save` runs the full pipeline, including `buf_pre_save`. |
 | `qed.jump(b, pos)` | Switch, reveal, record in the jump list. (`goto` is a Lua keyword.) |
 
 ### Commands and keybinds
 | Function | Notes |
 |---|---|
-| `qed.command{name, run, when?, key?, welcome?, scope?} -> handle` | `handle:remove()` unregisters. A name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and `keybinds[name]` binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `welcome = true` also offers it on the welcome screen. |
+| `qed.command{name, run, when?, key?, welcome?, scope?, keybind?} -> handle` | `handle:remove()` unregisters. A name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and `keybinds[name]` binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and config `keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `keybind` is the `keybinds` key when it differs from `name` (*Restore File* binds as `File Tree: Restore File`, like the builtin tree commands). `welcome = true` also offers it on the welcome screen. |
 | `qed.run(name)` | Run any builtin or plugin command. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
 | `ctx` | `{buf, path, language, root, selection_text, base}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order). |
@@ -140,7 +140,7 @@ There is deliberately no `key` event.
 | ⏳ `qed.prompt{prompt, text?} -> string \| nil` | Shared `TextField`. |
 | ⏳ `qed.confirm(question, choices?) -> index \| nil` | Shared `dialog_*`. |
 | `qed.pane{title, lines, footer?} -> pane` | Read-only floating pane. `pane:set(lines)` and `pane:close()`. Lines are strings or `{text, color}`. |
-| `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins, before the `[n/m]` buffer counter); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
+| `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
 | `qed.git.set_base(ref \| nil, {label?, merge?})` | Interim, until the file tree status provider: tells the core Git tab and `ctx.base` the diff base and rescans the tree. |
@@ -319,7 +319,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 6 | Hot reload, live enable/disable, plugin file poll. **Full Plugins pane** (`e`/`r`/`l`/`Enter`). Poll cost: ~13 us per user plugin file (0.15 ms for 10, 2.6 ms for 200, `bench_plugin_poll`). | minor |
 | 7 | `Terminal` → N sessions, `qed.term`, `term_exit`. `tasks` plugin + `output = "task"`. | minor |
 | 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
-| 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
+| 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view`, `filetree_diff_only` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
 | later | File tree status provider, interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions

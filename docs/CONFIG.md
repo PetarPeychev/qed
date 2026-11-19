@@ -106,6 +106,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *Alt+i* |
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
 | `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle Diff View*. |
+| `filetree_diff_only` | `true` | File-tree Git preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
 
 ## Keybinds
 
@@ -211,12 +212,11 @@ The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
 and repo diff size into the status bar every 2 s, and owns *Git: Set Diff Base* and
 the file tree's *Restore File*. A moved branch or HEAD is followed within a poll. It
 does nothing when the `git` binary isn't on `PATH`. The old `modules.git` keys warn
-and are ignored: `enabled` and `filetree_diff_only` moved here, `diff_view` to the top level.
+and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to the top level.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Git** tab, *Git: Set Diff Base*, *Restore File*, and merge-conflict highlighting/resolve. |
-| `plugins.git.filetree_diff_only` | `true` | File-tree Git preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
 
 ## User commands
 
