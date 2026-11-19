@@ -44,10 +44,6 @@ qed_api := [?]lua.L_Reg {
 	{"sleep", qed_sleep},
 	{"defer", qed_defer},
 	{"every", qed_every},
-	{"pick", qed_pick},
-	{"prompt", qed_prompt},
-	{"confirm", qed_confirm},
-	{"pane", qed_pane},
 	{"languages", qed_languages},
 	{nil, nil},
 }
@@ -171,6 +167,12 @@ qed_clipboard_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
+qed_ui_api := [?]lua.L_Reg {
+	{"open", qed_ui_open},
+	{nil, nil},
+}
+
+@(private = "file")
 qed_text_api := [?]lua.L_Reg {
 	{"width", qed_text_width},
 	{nil, nil},
@@ -185,13 +187,14 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"filetree", qed_filetree_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"filetree", qed_filetree_api[:]}, {"ui", qed_ui_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
 		lua.L_setfuncs(L, raw_data(s.regs), 1)
 		lua.setfield(L, -2, s.name)
 	}
+	plugin_prelude_install(L)
 }
 
 api_enter :: proc "c" (L: ^lua.State) -> ^PluginEntry {
@@ -1954,6 +1957,10 @@ api_spawn_opts :: proc(L: ^lua.State, editor: ^Editor) -> (o: ApiSpawn) {
 
 api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn, id: u64, bg: bool) {
 	p := &editor.plugins
+	task: u64
+	if t := plugin_task_of(p, L); t != nil {
+		task = t.id
+	}
 	line_ref: i32
 	if o.on_line {
 		lua.getfield(L, 1, "on_line")
@@ -1964,7 +1971,7 @@ api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn
 			sp := Subprocess{id = id, out = strings.builder_make(), err = strings.builder_make(), exit_code = f.code}
 			strings.write_string(&sp.out, f.stdout)
 			strings.write_string(&sp.err, f.stderr)
-			append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, fake = true, due = plugin_tick_add(time.tick_now(), f.delay_ms)})
+			append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, fake = true, due = plugin_tick_add(time.tick_now(), f.delay_ms), task = task})
 			return
 		}
 	}
@@ -1975,7 +1982,7 @@ api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn
 		}
 		plugin_raise(L, fmt.tprintf("cannot start %s: %v", o.label, err))
 	}
-	append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg})
+	append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, task = task})
 }
 
 qed_spawn :: proc "c" (L: ^lua.State) -> c.int {

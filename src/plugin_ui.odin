@@ -7,191 +7,127 @@ import "core:time"
 import lua "lib:lua"
 import "lib:tb2"
 
-PLUGIN_QUERY_DEBOUNCE_MS :: 120
+QED_PRELUDE :: #load("prelude.lua", string)
 
-PluginPickItem :: struct {
-	label, detail, path: string,
-	row:                 int,
+ViewEvent :: enum {
+	Activate,
+	Change,
+	Query,
+	Close,
 }
 
-PluginUi :: struct {
-	using list: FuzzyList,
-	id:         u64,
-	owner:      string,
-	title:      string,
-	items:      [dynamic]PluginPickItem,
-	labels:     [dynamic]string,
-	details:    [dynamic]string,
-	items_ref:  i32,
-	change_ref: i32,
+view_event_names := [ViewEvent]cstring {
+	.Activate = "activate",
+	.Change   = "change",
+	.Query    = "query",
+	.Close    = "close",
+}
+
+UiView :: struct {
+	handle:      u64,
+	owner:       string,
+	view_ref:    i32,
+	items_ref:   i32,
+	on:          [ViewEvent]i32,
 	change_task: u64,
-	query_ref:  i32,
-	handle_ref: i32,
-	query_task: u64,
-	query_due:  bool,
-	query_at:   time.Tick,
-	command:    u64,
-	hint:       string,
-	more:       bool,
-	accept:     bool,
-	multi:      bool,
-	paths:      bool,
-	anchor:     Maybe(int),
-	notified:   int,
-	preview:    Preview,
-	done:       bool,
-	ok:         bool,
-	result:     [dynamic]int,
-	text:       string,
+	query_task:  u64,
+}
+
+UiViewEvent :: struct {
+	handle:   u64,
+	kind:     ViewEvent,
+	sel:      []int,
+	text:     string,
+	has_text: bool,
 }
 
 PluginAnswer :: struct {
-	handle:     u64,
-	ok, prompt: bool,
-	index:      int,
-	text:       string,
+	handle:    u64,
+	ok:        bool,
+	items_ref: i32,
+	sel:       []int,
+	text:      string,
+	has_text:  bool,
 }
 
-PluginPaneLine :: struct {
-	text, color: string,
+@(private = "file")
+qed_view_methods := [?]lua.L_Reg {
+	{"set", qed_view_set},
+	{"append", qed_view_append},
+	{"update", qed_view_update},
+	{"text", qed_view_text},
+	{"close", qed_view_close},
+	{"wait", qed_view_wait},
 }
 
-PluginPane :: struct {
-	active: bool,
-	id:     u64,
-	owner:  string,
-	title:  string,
-	footer: string,
-	lines:  [dynamic]PluginPaneLine,
-	scroll: int,
+plugin_prelude_c :: proc "c" (L: ^lua.State) -> c.int {
+	if lua.L_loadbuffer(L, raw_data(QED_PRELUDE), c.size_t(len(QED_PRELUDE)), "=qed prelude", "t") != .OK {
+		return lua.error(L)
+	}
+	lua.call(L, 0, 1)
+	lua.setfield(L, lua.REGISTRYINDEX, "qed.prelude")
+	return 0
 }
 
-plugin_ui_clear :: proc(editor: ^Editor) {
-	plugin_task_kill(editor, editor.plugins.ui.change_task)
-	plugin_task_kill(editor, editor.plugins.ui.query_task)
-	plugin_ui_release(&editor.plugins)
+plugin_prelude_install :: proc(L: ^lua.State) {
+	if lua.getfield(L, lua.REGISTRYINDEX, "qed.prelude") != .FUNCTION {
+		lua.pop(L, 1)
+		return
+	}
+	lua.pushvalue(L, -2)
+	lua.call(L, 1, 0)
 }
 
-plugin_ui_release :: proc(p: ^Plugins) {
-	ui := &p.ui
-	if p.L != nil {
-		if ui.items_ref != 0 {
-			lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(ui.items_ref))
+plugin_view_index :: proc(p: ^Plugins, handle: u64) -> int {
+	for v, i in p.views {
+		if v.handle == handle {
+			return i
 		}
-		for ref in ([3]i32{ui.change_ref, ui.query_ref, ui.handle_ref}) {
+	}
+	return -1
+}
+
+plugin_view_release :: proc(p: ^Plugins, i: int) {
+	v := p.views[i]
+	if p.L != nil {
+		refs := [?]i32{v.view_ref, v.items_ref, v.on[.Activate], v.on[.Change], v.on[.Query], v.on[.Close]}
+		for ref in refs {
 			if ref != 0 {
 				lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(ref))
 			}
 		}
 	}
-	plugin_ui_items_free(ui)
-	clear(&ui.result)
-	delete(ui.title)
-	delete(ui.text)
-	delete(ui.hint)
-	fuzzy_end(&ui.fuzzy)
-	preview_reset(&ui.preview)
-	ui.title, ui.text, ui.owner, ui.hint = "", "", "", ""
-	ui.items_ref, ui.change_ref, ui.change_task = 0, 0, 0
-	ui.query_ref, ui.handle_ref, ui.query_task, ui.command = 0, 0, 0, 0
-	ui.active, ui.done, ui.ok, ui.multi, ui.paths, ui.query_due, ui.more, ui.accept = false, false, false, false, false, false, false, false
-	ui.anchor = nil
-	ui.id = 0
+	ordered_remove(&p.views, i)
 }
 
-plugin_ui_items_free :: proc(ui: ^PluginUi) {
-	for it in ui.items {
-		delete(it.label)
-		delete(it.detail)
-		delete(it.path)
-	}
-	clear(&ui.items)
-	clear(&ui.labels)
-	clear(&ui.details)
-}
-
-plugin_ui_items_set :: proc(ui: ^PluginUi, items: []PluginPickItem) {
-	plugin_ui_items_free(ui)
-	for it in items {
-		append(&ui.items, PluginPickItem{strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), it.row})
-		ui.paths ||= it.path != ""
-	}
-	for it in ui.items {
-		append(&ui.labels, it.label)
-		append(&ui.details, it.detail)
-	}
-}
-
-plugin_ui_due :: proc(p: ^Plugins) -> bool {
-	ui := &p.ui
-	if !ui.active || ui.query_ref == 0 {
-		return false
-	}
-	return ui.query_due || ui.accept || (len(ui.matches) > 0 && ui.matches[ui.selected] != ui.notified)
-}
-
-plugin_ui_query_touch :: proc(ui: ^PluginUi) {
-	ui.accept = false
-	ui.query_due = true
-	ui.query_at = time.tick_add(time.tick_now(), PLUGIN_QUERY_DEBOUNCE_MS * time.Millisecond)
-}
-
-plugin_ui_pump :: proc(editor: ^Editor) {
-	ui := &editor.plugins.ui
-	if !plugin_ui_due(&editor.plugins) {
-		return
-	}
-	if ui.query_due && plugin_tick_due(ui.query_at, time.tick_now()) {
-		ui.query_due = false
-		plugin_task_kill(editor, ui.query_task)
-		ui.query_task = 0
-		id := ui.id
-		task, finished := plugin_task_start(editor, ui.owner, .Command, {ref = ui.query_ref, args = .Query, line = strings.clone(textfield_str(&ui.field), context.temp_allocator), item_ref = ui.handle_ref})
-		if ui = &editor.plugins.ui; !finished && ui.active && ui.id == id {
-			ui.query_task = task
-		}
-	}
-	plugin_ui_changed(editor)
-	if ui = &editor.plugins.ui; ui.accept && !ui.query_due && !plugin_task_alive(&editor.plugins, ui.query_task) {
-		ui.accept = false
-		plugin_ui_accept(editor)
-	}
-}
-
-plugin_pane_close :: proc(p: ^Plugins) {
-	pn := &p.pane
-	for l in pn.lines {
-		delete(l.text)
-		delete(l.color)
-	}
-	clear(&pn.lines)
-	delete(pn.title)
-	delete(pn.footer)
-	pn.title, pn.footer, pn.owner = "", "", ""
-	pn.active = false
-	pn.id = 0
-	pn.scroll = 0
+plugin_view_event_free :: proc(ev: UiViewEvent) {
+	delete(ev.sel)
+	delete(ev.text)
 }
 
 plugin_ui_destroy :: proc(p: ^Plugins) {
-	plugin_ui_release(p)
-	delete(p.ui.items)
-	delete(p.ui.labels)
-	delete(p.ui.details)
-	delete(p.ui.result)
-	fuzzy_list_destroy(&p.ui.list)
-	preview_destroy(&p.ui.preview)
-	plugin_pane_close(p)
-	delete(p.pane.lines)
+	for len(p.views) > 0 {
+		plugin_view_release(p, len(p.views) - 1)
+	}
+	delete(p.views)
+	for ev in p.view_events {
+		plugin_view_event_free(ev)
+	}
+	delete(p.view_events)
 }
 
 plugin_ui_unload :: proc(editor: ^Editor, owner: string) {
 	p := &editor.plugins
-	if p.ui.id != 0 && p.ui.owner == owner {
-		plugin_ui_clear(editor)
+	for i := len(p.views) - 1; i >= 0; i -= 1 {
+		if p.views[i].owner == owner {
+			plugin_view_release(p, i)
+		}
 	}
-	if p.pane.active && p.pane.owner == owner {
-		plugin_pane_close(p)
+	for i := len(p.view_events) - 1; i >= 0; i -= 1 {
+		if plugin_view_index(p, p.view_events[i].handle) < 0 {
+			plugin_view_event_free(p.view_events[i])
+			ordered_remove(&p.view_events, i)
+		}
 	}
 	pane_unload(editor, owner)
 	if p.theme_owner == owner {
@@ -200,689 +136,234 @@ plugin_ui_unload :: proc(editor: ^Editor, owner: string) {
 	}
 }
 
-plugin_overlay_open :: proc(editor: ^Editor) -> bool {
-	if pane_focus(editor) != nil {
-		return true
-	}
-	for ov in editor_overlays(editor) {
-		if ov.active^ && ov.active != &editor.filetree.active {
-			return true
-		}
-	}
-	return false
-}
-
-plugin_ui_prefix :: proc(ui: ^PluginUi) -> string {
-	return fmt.tprintf("%s ", ui.title) if ui.title != "" else "> "
-}
-
-plugin_ui_rows :: proc(editor: ^Editor) -> int {
-	ui := &editor.plugins.ui
-	return overlay_layout(editor, .Code).body_h if ui.paths else PALETTE_MAX_ROWS
-}
-
-plugin_ui_preview :: proc(editor: ^Editor) {
-	ui := &editor.plugins.ui
-	if !ui.paths {
-		return
-	}
-	lay := overlay_layout(editor, .Code)
-	if len(ui.matches) == 0 || !lay.preview {
-		preview_reset(&ui.preview)
-		return
-	}
-	it := ui.items[ui.matches[ui.selected]]
-	preview_set_file(&ui.preview, it.path, it.row, lay.body_h)
-}
-
-plugin_ui_changed :: proc(editor: ^Editor) {
-	ui := &editor.plugins.ui
-	if !ui.active || len(ui.matches) == 0 {
-		return
-	}
-	item := ui.matches[ui.selected]
-	if item == ui.notified {
-		return
-	}
-	ui.notified = item
-	if ui.change_ref == 0 {
-		return
-	}
-	plugin_task_kill(editor, ui.change_task)
-	ui.change_task = 0
-	id, finished := plugin_task_start(editor, ui.owner, .Command, {ref = ui.change_ref, args = .Item, item_ref = ui.items_ref, item = item + 1})
-	if !finished && editor.plugins.ui.active {
-		editor.plugins.ui.change_task = id
-	}
-}
-
-plugin_ui_resolve :: proc(editor: ^Editor, ok: bool) {
-	p := &editor.plugins
-	ui := &p.ui
-	if !ui.active {
-		return
-	}
-	ui.active = false
-	ui.done = true
-	ui.ok = ok
-	if ui.query_ref != 0 {
-		ui.text = strings.clone(textfield_str(&ui.field))
-	}
-	if ok {
-		lo, hi := ui.selected, ui.selected
-		if a, has := ui.anchor.?; has && ui.multi {
-			lo, hi = min(a, ui.selected), max(a, ui.selected)
-		}
-		for pos in lo ..= hi {
-			append(&ui.result, ui.matches[pos])
-		}
-	}
-	fuzzy_end(&ui.fuzzy)
-	preview_reset(&ui.preview)
-	plugin_task_kill(editor, ui.change_task)
-	plugin_task_kill(editor, ui.query_task)
-	ui.change_task, ui.query_task = 0, 0
-	id := ui.id
-	for w in plugin_waiters(p, .Ui, id) {
-		plugin_task_resume(editor, w, 0)
-	}
-	if p.ui.id == id {
-		plugin_ui_clear(editor)
-	}
-}
-
-plugin_ui_accept :: proc(editor: ^Editor) {
-	ui := &editor.plugins.ui
-	if ui.query_ref != 0 && (ui.query_due || plugin_task_alive(&editor.plugins, ui.query_task)) {
-		ui.accept = true
-		ui.query_at = time.tick_now()
-		return
-	}
-	if len(ui.matches) == 0 {
-		return
-	}
-	plugin_ui_resolve(editor, true)
-}
-
-plugin_ui_cancel :: proc(editor: ^Editor) {
-	plugin_ui_resolve(editor, false)
-}
-
-plugin_ui_count :: proc(ui: ^PluginUi, lay: OverlayLayout) -> (count: string, prompt_w: int) {
-	if n := len(ui.matches); n > 0 {
-		count = fmt.tprintf("%d+" if ui.more else "%d", n)
-	}
-	prompt_w = lay.left_w - 1
-	if count != "" {
-		prompt_w = max(1, prompt_w - len(count) - 1)
-	}
-	return
-}
-
-plugin_ui_chord :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
+plugin_command_id_matches :: proc(editor: ^Editor, id: u64, ev: tb2.Event) -> bool {
 	for cmd in editor.plugins.commands {
-		if cmd.id == editor.plugins.ui.command {
+		if cmd.id == id {
 			return plugin_command_matches(cmd, ev)
 		}
 	}
 	return false
 }
 
-plugin_ui_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	ui := &editor.plugins.ui
-	if plugin_ui_chord(editor, ev) {
-		plugin_ui_cancel(editor)
-		return
+plugin_view_queue :: proc(editor: ^Editor, pn: ^Pane, kind: ViewEvent, sel: []int) {
+	ev := UiViewEvent{handle = pn.handle, kind = kind, sel = sel}
+	if len(pn.fields) > 0 {
+		ev.text = strings.clone(textfield_str(&pn.fields[0].field))
+		ev.has_text = true
 	}
-	nav := ev.key == .Esc || ev.key == .Enter || ev.key == .Arrow_Up || ev.key == .Arrow_Down
-	if ui.multi && ev_shift(ev) && (ev.key == .Arrow_Up || ev.key == .Arrow_Down) {
-		if ui.anchor == nil {
-			ui.anchor = ui.selected
-		}
-		fuzzy_list_move(&ui.list, -1 if ev.key == .Arrow_Up else 1, plugin_ui_rows(editor))
-	} else if ui.query_ref != 0 && !nav {
-		if textfield_key(&ui.field, ev) {
-			plugin_ui_query_touch(ui)
-		}
-	} else {
-		prev := ui.selected
-		if fuzzy_list_key(editor, &ui.list, ev, plugin_ui_accept, plugin_ui_cancel, plugin_ui_rows(editor)) || ui.selected != prev {
-			ui.anchor = nil
-		}
-	}
-	if ui.active {
-		plugin_ui_preview(editor)
-		plugin_ui_changed(editor)
-	}
+	append(&editor.plugins.view_events, ev)
 }
 
-plugin_ui_paste :: proc(editor: ^Editor, text: string) {
-	ui := &editor.plugins.ui
-	if ui.query_ref != 0 {
-		if textfield_insert_flat(&ui.field, text) {
-			plugin_ui_query_touch(ui)
-		}
-	} else if textfield_insert_flat(&ui.field, text) {
-		fuzzy_list_refilter(&ui.list)
-		ui.anchor = nil
-		plugin_ui_preview(editor)
-		plugin_ui_changed(editor)
-	}
+plugin_view_closed :: proc(editor: ^Editor, pn: ^Pane) {
+	pane_save(editor, pn)
+	plugin_view_queue(editor, pn, .Close, nil)
 }
 
-plugin_ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	ui := &editor.plugins.ui
-	prev := ui.selected
-	if ui.paths {
-		lay := overlay_layout(editor, .Code)
-		if lay.preview && preview_wheel(&ui.preview, ev, {lay.right_x, lay.inner.y, lay.right_w, lay.inner.h}, lay.inner.h) {
-			return
-		}
-		_, prompt_w := plugin_ui_count(ui, lay)
-		idx, activate := overlay_list_mouse(editor, ev, lay, len(ui.matches), &ui.scroll, &ui.field, plugin_ui_cancel, plugin_ui_prefix(ui), prompt_w)
-		if idx < 0 {
-			return
-		}
-		ui.selected = idx
-		if activate {
-			plugin_ui_accept(editor)
-		}
-	} else {
-		fuzzy_list_center_mouse(editor, &ui.list, ev, plugin_ui_accept, plugin_ui_cancel, plugin_ui_prefix(ui))
-	}
-	if ui.active && ui.selected != prev {
-		ui.anchor = nil
-		plugin_ui_preview(editor)
-		plugin_ui_changed(editor)
-	}
-}
-
-plugin_ui_render :: proc(editor: ^Editor) {
-	ui := &editor.plugins.ui
-	if !ui.paths {
-		fuzzy_list_center_render(editor, &ui.list, ui.labels[:], ui.details[:], plugin_ui_prefix(ui), ui.anchor if ui.multi else nil)
-		return
-	}
-	lay := overlay_layout(editor, .Code)
-	inner := pane_draw_box(lay.box)
-	count, prompt_w := plugin_ui_count(ui, lay)
-	if count != "" {
-		pane_text(lay.div_x - len(count), inner.y, len(count), count, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	}
-	overlay_prompt_render(inner.x + 1, inner.y, prompt_w, &ui.field, plugin_ui_prefix(ui))
-	if len(ui.matches) == 0 && ui.hint != "" {
-		pane_text(inner.x + 1, lay.body_top, lay.left_w - 1, ui.hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	}
-	end := min(ui.scroll + lay.body_h, len(ui.matches))
-	for i in ui.scroll ..< end {
-		item := ui.matches[i]
-		y := lay.body_top + (i - ui.scroll)
-		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		if overlay_row_selected(i, ui.selected, ui.anchor if ui.multi else nil) {
-			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, lay.left_w, fg, bg)
-		}
-		pane_text(inner.x + 1, y, lay.left_w - 1, ui.labels[item], fg, bg)
-		if d := ui.details[item]; d != "" {
-			dw := visual_width(transmute([]u8)d)
-			pane_text(inner.x + lay.left_w - 1 - dw, y, dw, d, COLOR_PANE_SEL_FG if bg == COLOR_PANE_SEL_BG else COLOR_PANE_SHORTCUT_FG, bg)
-		}
-	}
-	if lay.preview {
-		preview_render(&ui.preview, lay.right_x + 1, inner.y, lay.right_w - 1, inner.h)
-		bottom := lay.box.y + lay.box.h - 1
-		for y in lay.box.y + 1 ..< bottom {
-			tb2.set_cell(i32(lay.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
-		}
-		tb2.set_cell(i32(lay.div_x), i32(lay.box.y), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
-		tb2.set_cell(i32(lay.div_x), i32(bottom), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	}
-	tb2.set_cell(i32(lay.box.x), i32(lay.title_sep_y), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	for x in inner.x ..< lay.div_x {
-		tb2.set_cell(i32(x), i32(lay.title_sep_y), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	}
-	tb2.set_cell(i32(lay.div_x), i32(lay.title_sep_y), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	pane_draw_scrollbar(lay.div_x, lay.body_top, lay.body_h, ui.scroll, len(ui.matches))
-}
-
-plugin_pane_body_h :: proc(editor: ^Editor) -> int {
-	lay := logview_layout(editor)
-	return max(1, lay.footer_sep_y - lay.body_top)
-}
-
-plugin_pane_scroll :: proc(editor: ^Editor, delta: int) {
-	pn := &editor.plugins.pane
-	overlay_scroll_by(&pn.scroll, delta, len(pn.lines), plugin_pane_body_h(editor))
-}
-
-plugin_pane_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	#partial switch ev.key {
-	case .Esc:
-		plugin_pane_close(&editor.plugins)
-	case .Arrow_Up:
-		plugin_pane_scroll(editor, -1)
-	case .Arrow_Down:
-		plugin_pane_scroll(editor, 1)
-	}
-}
-
-plugin_pane_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	#partial switch ev.key {
-	case .Mouse_Wheel_Up:
-		plugin_pane_scroll(editor, -WHEEL_SCROLL_LINES)
-	case .Mouse_Wheel_Down:
-		plugin_pane_scroll(editor, WHEEL_SCROLL_LINES)
-	case .Mouse_Left:
-		if !mouse_in_rect(ev, logview_layout(editor).box) && !ev_motion(ev) {
-			plugin_pane_close(&editor.plugins)
-		}
-	}
-}
-
-plugin_pane_render :: proc(editor: ^Editor) {
-	pn := &editor.plugins.pane
-	lay := logview_layout(editor)
-	inner := pane_draw_box(lay.box)
-	pane_text(inner.x + 1, inner.y, inner.w - 2, pn.title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_hline(lay.box, lay.title_sep_y)
-	h := plugin_pane_body_h(editor)
-	pn.scroll = clamp(pn.scroll, 0, max(0, len(pn.lines) - h))
-	for i in pn.scroll ..< min(pn.scroll + h, len(pn.lines)) {
-		l := pn.lines[i]
-		fg := COLOR_PANE_FG
-		if col, ok := g_theme_colors[l.color]; ok && l.color != "" {
-			fg = col
-		}
-		pane_text(inner.x + 1, lay.body_top + i - pn.scroll, inner.w - 2, l.text, fg, COLOR_PANE_BG)
-	}
-	pane_draw_scrollbar(lay.box.x + lay.box.w - 1, lay.body_top, h, pn.scroll, len(pn.lines))
-	pane_hline(lay.box, lay.footer_sep_y)
-	footer := pn.footer if pn.footer != "" else "↑↓ scroll  Esc close"
-	pane_text(inner.x + 1, lay.footer_y, inner.w - 2, footer, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	tb2.hide_cursor()
-}
-
-api_busy :: proc(L: ^lua.State) -> c.int {
-	return api_fail(L, "busy")
-}
-
-plugin_ui_open :: proc(editor: ^Editor, owner, title: string) -> ^PluginUi {
+plugin_view_activate :: proc(editor: ^Editor, pn: ^Pane) {
 	p := &editor.plugins
-	plugin_ui_clear(editor)
-	ui := &p.ui
-	ui.owner = owner
-	ui.id = plugin_next_id(p)
-	ui.title = strings.clone(title)
-	fuzzy_list_reset(&ui.list)
-	editor_clear_message(editor)
-	return ui
+	vi := plugin_view_index(p, pn.handle)
+	if pane_query(pn) != nil && (pn.query_due || (vi >= 0 && plugin_task_alive(p, p.views[vi].query_task))) {
+		pn.accept = true
+		pn.query_at = time.tick_now()
+		return
+	}
+	plugin_view_activate_now(editor, pn)
 }
 
-plugin_ui_wait :: proc(L: ^lua.State, p: ^Plugins, task: u64) -> c.int {
-	ui := &p.ui
-	ui.active = true
-	p.tasks[plugin_task_index(p, task)].wait = {kind = .Ui, id = ui.id}
-	return lua.yieldk(L, 0, lua.KContext(ui.id), qed_ui_k)
-}
-
-qed_ui_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
-	entry := plugin_entry(L)
-	if entry == nil || entry.editor.plugins.current != L {
-		return lua.yieldk(L, 0, ctx, qed_ui_k)
-	}
-	context = entry.ctx
-	p := &entry.editor.plugins
-	ui := &p.ui
-	if ui.id != u64(ctx) || !ui.done {
-		lua.pushnil(L)
-		return 1
-	}
-	lua.L_checkstack(L, 4, "ui result")
-	query := ui.query_ref != 0
-	if !ui.ok {
-		lua.pushnil(L)
-		if !query {
-			return 1
+plugin_view_activate_now :: proc(editor: ^Editor, pn: ^Pane) {
+	if !pn.has_list {
+		for f in pn.fields {
+			if f.mode == .Input {
+				plugin_view_queue(editor, pn, .Activate, nil)
+				return
+			}
 		}
-		lua.pushnil(L)
-		lua.pushodinstring(L, ui.text)
-		return 3
+		return
 	}
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(ui.items_ref))
-	if ui.multi {
-		lua.createtable(L, c.int(len(ui.result)), 0)
-		for item, i in ui.result {
-			lua.rawgeti(L, -2, lua.Integer(item + 1))
-			lua.rawseti(L, -2, lua.Integer(i + 1))
-		}
-	} else {
-		lua.rawgeti(L, -1, lua.Integer(ui.result[0] + 1))
+	if pane_count(pn) == 0 {
+		return
 	}
-	lua.remove(L, -2)
-	if query {
-		lua.pushnil(L)
-		lua.pushodinstring(L, ui.text)
+	lo, hi := pn.list.sel, pn.list.sel
+	if a, ok := pn.list.anchor.?; ok && pn.list.multi {
+		lo, hi = min(a, pn.list.sel), max(a, pn.list.sel)
 	}
-	plugin_ui_clear(entry.editor)
-	return 3 if query else 1
+	sel := make([]int, hi - lo + 1)
+	for pos in lo ..= hi {
+		sel[pos - lo] = pane_item_index(pn, pos)
+	}
+	plugin_view_queue(editor, pn, .Activate, sel)
 }
 
-api_pick_items :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> []PluginPickItem {
-	lua.L_checkstack(L, 4, "pick items")
+plugin_views_due :: proc(editor: ^Editor) -> bool {
+	for p in editor.panes {
+		if p.ctx.lua && (p.query_due || p.accept) {
+			return true
+		}
+	}
+	return false
+}
+
+plugin_views_pump :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	now := time.tick_now()
+	for i := 0; i < len(p.views); i += 1 {
+		v := p.views[i]
+		pi := pane_index(editor, v.handle)
+		if pi < 0 || !pane_live(editor, &editor.panes[pi]) {
+			continue
+		}
+		if pn := &editor.panes[pi]; pn.query_due && plugin_tick_due(pn.query_at, now) {
+			pn.query_due = false
+			text := strings.clone(textfield_str(&pane_query(pn).field), context.temp_allocator)
+			plugin_task_kill(editor, v.query_task)
+			task: u64
+			if v.on[.Query] != 0 {
+				id, finished := plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Query], args = .View_Text, view_ref = v.view_ref, line = text})
+				task = 0 if finished else id
+			}
+			if j := plugin_view_index(p, v.handle); j >= 0 {
+				p.views[j].query_task = task
+			}
+		}
+		j := plugin_view_index(p, v.handle)
+		if pi = pane_index(editor, v.handle); pi < 0 || j < 0 {
+			continue
+		}
+		if pn := &editor.panes[pi]; pn.accept && !pn.query_due && !plugin_task_alive(p, p.views[j].query_task) {
+			pn.accept = false
+			plugin_view_activate_now(editor, pn)
+		}
+	}
+}
+
+plugin_views_flush :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	for i := 0; i < len(p.views); i += 1 {
+		v := p.views[i]
+		pi := pane_index(editor, v.handle)
+		if pi < 0 || !pane_live(editor, &editor.panes[pi]) {
+			continue
+		}
+		pn := &editor.panes[pi]
+		if pane_count(pn) == 0 {
+			continue
+		}
+		item := pane_item_index(pn, pn.list.sel)
+		if item == pn.notified {
+			continue
+		}
+		pn.notified = item
+		if v.on[.Change] == 0 {
+			continue
+		}
+		plugin_task_kill(editor, v.change_task)
+		task, finished := plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Change], args = .View_Item, view_ref = v.view_ref, item_ref = v.items_ref, item = item + 1})
+		if j := plugin_view_index(p, v.handle); j >= 0 {
+			p.views[j].change_task = 0 if finished else task
+		}
+	}
+	for _ in 0 ..< PLUGIN_FLUSH_ROUNDS {
+		if len(p.view_events) == 0 {
+			break
+		}
+		batch := p.view_events
+		p.view_events = {}
+		for ev in batch {
+			plugin_view_event(editor, ev)
+			plugin_view_event_free(ev)
+		}
+		delete(batch)
+	}
+}
+
+plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
+	p := &editor.plugins
+	vi := plugin_view_index(p, ev.handle)
+	if vi < 0 {
+		return
+	}
+	v := p.views[vi]
+	if ev.kind == .Close {
+		plugin_task_kill(editor, v.change_task)
+		plugin_task_kill(editor, v.query_task)
+	}
+	prev := p.answer
+	p.answer = {handle = ev.handle, ok = ev.kind == .Activate, items_ref = v.items_ref, sel = ev.sel, text = ev.text, has_text = ev.has_text}
+	for w in plugin_waiters(p, .Pane, ev.handle) {
+		plugin_task_resume(editor, w, 0)
+	}
+	p.answer = prev
+	if ref := v.on[ev.kind]; ref != 0 {
+		args := PluginArgs.View_Items if ev.kind == .Activate else .View
+		plugin_task_start(editor, v.owner, .Command, {ref = ref, args = args, view_ref = v.view_ref, item_ref = v.items_ref, items = ev.sel})
+	}
+	if ev.kind == .Close {
+		if vi = plugin_view_index(p, ev.handle); vi >= 0 {
+			plugin_view_release(p, vi)
+		}
+	}
+}
+
+api_opt_bool :: proc(L: ^lua.State, t: c.int, key: cstring) -> bool {
+	tp := lua.getfield(L, t, key)
+	b := bool(lua.toboolean(L, -1))
+	lua.pop(L, 1)
+	if tp != .NIL && tp != .BOOLEAN {
+		plugin_raise(L, fmt.tprintf("%s must be a boolean", key))
+	}
+	return b
+}
+
+api_view_item :: proc(L: ^lua.State, editor: ^Editor, t: c.int) -> (it: PaneItem) {
+	it.label, _ = api_field_string(L, t, "label")
+	it.detail, _ = api_field_string(L, t, "detail")
+	it.path, _ = api_field_string(L, t, "path")
+	it.key, _ = api_field_string(L, t, "key")
+	#partial switch lua.getfield(L, t, "pos") {
+	case .TABLE:
+		it.row, _ = api_field_int(L, lua.gettop(L), "row")
+	case .NIL:
+	case:
+		plugin_raise(L, "pos must be a table {row, col}")
+	}
+	lua.pop(L, 1)
+	if it.label == "" {
+		it.label = it.path
+	}
+	if it.path != "" {
+		it.path = api_path(editor, it.path)
+	}
+	return
+}
+
+api_view_items :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> []PaneItem {
+	idx := lua.absindex(L, idx)
+	lua.L_checkstack(L, 4, "view items")
 	n := int(lua.rawlen(L, idx))
-	parsed := make([]PluginPickItem, n, context.temp_allocator)
+	out := make([]PaneItem, n, context.temp_allocator)
 	for i in 1 ..= n {
 		#partial switch lua.rawgeti(L, idx, lua.Integer(i)) {
 		case .STRING:
 			s, _ := lua.toodinstring(L, -1)
-			parsed[i - 1].label = strings.clone(s, context.temp_allocator)
+			out[i - 1].label = strings.clone(s, context.temp_allocator)
 		case .TABLE:
-			t := lua.gettop(L)
-			it := &parsed[i - 1]
-			it.label, _ = api_field_string(L, t, "label")
-			it.detail, _ = api_field_string(L, t, "detail")
-			it.path, _ = api_field_string(L, t, "path")
-			if lua.getfield(L, t, "pos") == .TABLE {
-				it.row, _ = api_field_int(L, lua.gettop(L), "row")
-			}
-			lua.pop(L, 1)
-			if it.label == "" {
-				it.label = it.path
-			}
-			if it.path != "" {
-				it.path = api_path(editor, it.path)
-			}
+			out[i - 1] = api_view_item(L, editor, lua.gettop(L))
 		case:
 			plugin_raise(L, fmt.tprintf("items[%d] must be a string or a table", i))
 		}
 		lua.pop(L, 1)
 	}
-	return parsed
+	return out
 }
 
-qed_pick :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	p := &editor.plugins
-	if lua.type(L, 1) != .TABLE {
-		lua.L_argerror(L, 1, "table {items, prompt?, initial?, on_change?, multi?, query?, on_query?} expected")
-	}
-	lua.settop(L, 1)
-	lua.L_checkstack(L, 6, "pick options")
-	query_t := lua.getfield(L, 1, "on_query")
-	lua.pop(L, 1)
-	if query_t != .FUNCTION && query_t != .NIL {
-		plugin_raise(L, "on_query must be a function")
-	}
-	parsed: []PluginPickItem
-	#partial switch lua.getfield(L, 1, "items") {
-	case .TABLE:
-		parsed = api_pick_items(L, editor, 2)
-	case .NIL:
-		if query_t != .FUNCTION {
-			plugin_raise(L, "items must be a table")
-		}
-		lua.pop(L, 1)
-		lua.newtable(L)
-	case:
-		plugin_raise(L, "items must be a table")
-	}
-	text, _ := api_field_string(L, 1, "query")
-	prompt, _ := api_field_string(L, 1, "prompt")
-	initial := -1
-	#partial switch lua.getfield(L, 1, "initial") {
-	case .NIL:
-	case .NUMBER:
-		initial = api_int(L, -1, "initial must be an item index") - 1
-	case .STRING:
-		s, _ := lua.toodinstring(L, -1)
-		for it, i in parsed {
-			if it.label == s {
-				initial = i
-				break
-			}
-		}
-	case:
-		plugin_raise(L, "initial must be an item index or label")
-	}
-	lua.pop(L, 1)
-	change_t := lua.getfield(L, 1, "on_change")
-	lua.pop(L, 1)
-	if change_t != .FUNCTION && change_t != .NIL {
-		plugin_raise(L, "on_change must be a function")
-	}
-	multi_t := lua.getfield(L, 1, "multi")
-	multi := bool(lua.toboolean(L, -1))
-	lua.pop(L, 1)
-	if multi_t != .BOOLEAN && multi_t != .NIL {
-		plugin_raise(L, "multi must be a boolean")
-	}
-	pl := api_loaded(L, editor)
-	task := api_await(L, p, "qed.pick")
-	task_id, command := task.id, task.command
-	if plugin_overlay_open(editor) {
-		return api_busy(L)
-	}
-
-	ui := plugin_ui_open(editor, pl.name, prompt)
-	ui.command = command
-	plugin_ui_items_set(ui, parsed)
-	ui.multi = multi
-	ui.items_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
-	if change_t == .FUNCTION {
-		lua.getfield(L, 1, "on_change")
-		ui.change_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
-	}
-	textfield_set(&ui.field, text)
-	textfield_select_all(&ui.field)
-	ui.fuzzy = fuzzy_begin(ui.labels[:] if query_t != .FUNCTION else nil)
-	fuzzy_list_refilter(&ui.list)
-	if query_t == .FUNCTION {
-		lua.getfield(L, 1, "on_query")
-		ui.query_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
-		api_handle_push(L, ui.id, {{"set", qed_picker_set}})
-		ui.handle_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
-		ui.paths = true
-		ui.query_due = true
-		ui.query_at = time.tick_now()
-	}
-	for m, i in ui.matches {
-		if m == initial {
-			ui.selected = i
-			break
-		}
-	}
-	fuzzy_list_scroll(&ui.list, plugin_ui_rows(editor))
-	ui.notified = ui.matches[ui.selected] if len(ui.matches) > 0 else -1
-	plugin_ui_preview(editor)
-	return plugin_ui_wait(L, p, task_id)
-}
-
-qed_picker_set :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	if lua.type(L, 2) != .TABLE {
-		lua.L_argerror(L, 2, "items table expected")
-	}
-	#partial switch lua.type(L, 3) {
-	case .NIL, .NONE, .TABLE:
-	case:
-		lua.L_argerror(L, 3, "options table expected")
-	}
-	lua.settop(L, 3)
-	items := api_pick_items(L, editor, 2)
-	selected := 1
-	more := false
-	hint := ""
-	if lua.type(L, 3) == .TABLE {
-		if lua.getfield(L, 3, "selected") != .NIL {
-			selected = api_int(L, -1, "selected must be an item index")
-		}
-		lua.pop(L, 1)
-		lua.getfield(L, 3, "more")
-		more = bool(lua.toboolean(L, -1))
-		lua.pop(L, 1)
-		hint, _ = api_field_string(L, 3, "hint")
-	}
-	ui := &editor.plugins.ui
-	live := ui.active && ui.id == api_handle_id(L)
-	if !live {
-		lua.pushboolean(L, false)
-		return 1
-	}
-	plugin_ui_items_set(ui, items)
-	lua.L_unref(L, lua.REGISTRYINDEX, c.int(ui.items_ref))
-	lua.pushvalue(L, 2)
-	ui.items_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
-	delete(ui.hint)
-	ui.hint = strings.clone(hint)
-	ui.more = more
-	clear(&ui.matches)
-	for i in 0 ..< len(items) {
-		append(&ui.matches, i)
-	}
-	ui.anchor = nil
-	ui.notified = -1
-	ui.selected = clamp(selected - 1, 0, max(0, len(items) - 1))
-	rows := plugin_ui_rows(editor)
-	ui.scroll = max(0, ui.selected - rows / 2)
-	fuzzy_list_scroll(&ui.list, rows)
-	plugin_ui_preview(editor)
-	lua.pushboolean(L, true)
-	return 1
-}
-
-qed_prompt :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	p := &editor.plugins
-	if lua.type(L, 1) != .TABLE {
-		lua.L_argerror(L, 1, "table {prompt, text?} expected")
-	}
-	lua.settop(L, 1)
-	prompt, _ := api_field_string(L, 1, "prompt")
-	text, _ := api_field_string(L, 1, "text")
-	pl := api_loaded(L, editor)
-	task := api_await(L, p, "qed.prompt").id
-	if pane_safety_open(editor) {
-		return api_busy(L)
-	}
-	prefix := fmt.tprintf("%s ", prompt) if prompt != "" else "> "
-	fields := []PaneField{{prompt = prefix}}
-	pn := plugin_ask_open(editor, pl.name, {size = .Palette, fields = fields})
-	if pn == nil {
-		return api_busy(L)
-	}
-	textfield_set(&pn.fields[0].field, text)
-	return plugin_ask_wait(L, p, task, pn.handle)
-}
-
-qed_confirm :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	p := &editor.plugins
-	question := strings.clone(api_string(L, 1), context.temp_allocator)
-	choices := make([dynamic]string, context.temp_allocator)
-	#partial switch lua.type(L, 2) {
-	case .NIL, .NONE:
-		append(&choices, "Yes", "No")
-	case .TABLE:
-		lua.L_checkstack(L, 2, "confirm choices")
-		for i in 1 ..= int(lua.rawlen(L, 2)) {
-			if lua.rawgeti(L, 2, lua.Integer(i)) != .STRING {
-				plugin_raise(L, "choices must be strings")
-			}
-			s, _ := lua.toodinstring(L, -1)
-			append(&choices, strings.clone(s, context.temp_allocator))
-			lua.pop(L, 1)
-		}
-		if len(choices) == 0 {
-			lua.L_argerror(L, 2, "choices must not be empty")
-		}
-	case:
-		lua.L_argerror(L, 2, "choices must be a table of strings")
-	}
-	pl := api_loaded(L, editor)
-	task := api_await(L, p, "qed.confirm").id
-	if pane_safety_open(editor) {
-		return api_busy(L)
-	}
-	text := []string{question}
-	pn := plugin_ask_open(editor, pl.name, {text = text, list = {items = choices[:]}})
-	if pn == nil {
-		return api_busy(L)
-	}
-	return plugin_ask_wait(L, p, task, pn.handle)
-}
-
-plugin_ask_open :: proc(editor: ^Editor, owner: string, spec: Pane) -> ^Pane {
-	spec := spec
-	spec.owner = plugin_name_intern(&editor.plugins, owner)
-	spec.on = {activate = plugin_ask_activate, close = plugin_ask_close}
-	if f := pane_focus(editor); f != nil {
-		spec.kind, spec.parent = .Child, f.handle
-	} else if ov := editor_overlay_active(editor); ov != nil {
-		spec.kind, spec.over = .Child, ov
-	}
-	editor_clear_message(editor)
-	return pane_open(editor, spec)
-}
-
-plugin_ask_wait :: proc(L: ^lua.State, p: ^Plugins, task, handle: u64) -> c.int {
-	p.tasks[plugin_task_index(p, task)].wait = {kind = .Pane, id = handle}
-	return lua.yieldk(L, 0, lua.KContext(handle), qed_ask_k)
-}
-
-plugin_ask_answer :: proc(editor: ^Editor, pn: ^Pane, ok: bool) {
-	p := &editor.plugins
-	prev := p.answer
-	p.answer = {handle = pn.handle, ok = ok, index = pn.list.sel}
-	if len(pn.fields) > 0 {
-		p.answer.text = textfield_str(&pn.fields[0].field)
-		p.answer.prompt = true
-	}
-	for w in plugin_waiters(p, .Pane, pn.handle) {
-		plugin_task_resume(editor, w, 0)
-	}
-	p.answer = prev
-}
-
-plugin_ask_activate :: proc(editor: ^Editor, pn: ^Pane) {
-	plugin_ask_answer(editor, pn, true)
-}
-
-plugin_ask_close :: proc(editor: ^Editor, pn: ^Pane) {
-	plugin_ask_answer(editor, pn, false)
-}
-
-qed_ask_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
-	entry := plugin_entry(L)
-	if entry == nil || entry.editor.plugins.current != L {
-		return lua.yieldk(L, 0, ctx, qed_ask_k)
-	}
-	context = entry.ctx
-	a := entry.editor.plugins.answer
-	if a.handle != u64(ctx) || !a.ok {
-		lua.pushnil(L)
-	} else if a.prompt {
-		lua.pushodinstring(L, a.text)
-	} else {
-		lua.pushinteger(L, lua.Integer(a.index + 1))
-	}
-	return 1
-}
-
-api_pane_lines :: proc(L: ^lua.State, idx: c.int) -> []PluginPaneLine {
+api_pane_lines :: proc(L: ^lua.State, idx: c.int) -> []PaneLine {
+	idx := lua.absindex(L, idx)
 	if lua.type(L, idx) != .TABLE {
 		plugin_raise(L, "lines must be a table")
 	}
 	lua.L_checkstack(L, 4, "pane lines")
 	n := int(lua.rawlen(L, idx))
-	out := make([]PluginPaneLine, n, context.temp_allocator)
+	out := make([]PaneLine, n, context.temp_allocator)
 	for i in 1 ..= n {
 		#partial switch lua.rawgeti(L, idx, lua.Integer(i)) {
 		case .STRING:
@@ -900,69 +381,552 @@ api_pane_lines :: proc(L: ^lua.State, idx: c.int) -> []PluginPaneLine {
 	return out
 }
 
-plugin_pane_set :: proc(pn: ^PluginPane, lines: []PluginPaneLine) {
-	for l in pn.lines {
-		delete(l.text)
-		delete(l.color)
-	}
-	clear(&pn.lines)
-	for l in lines {
-		append(&pn.lines, PluginPaneLine{strings.clone(l.text), strings.clone(l.color)})
+api_items_copy :: proc(L: ^lua.State, src: c.int, dst: c.int, from, n: int) {
+	for i in 1 ..= n {
+		lua.rawgeti(L, src, lua.Integer(i))
+		lua.rawseti(L, dst, lua.Integer(from + i))
 	}
 }
 
-qed_pane :: proc "c" (L: ^lua.State) -> c.int {
+qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
 	p := &editor.plugins
 	if lua.type(L, 1) != .TABLE {
-		lua.L_argerror(L, 1, "table {title, lines, footer?} expected")
+		lua.L_argerror(L, 1, "spec table expected")
 	}
 	lua.settop(L, 1)
-	title, _ := api_field_string(L, 1, "title")
-	footer, _ := api_field_string(L, 1, "footer")
-	lua.getfield(L, 1, "lines")
-	lines := api_pane_lines(L, 2)
-	lua.settop(L, 1)
+	lua.L_checkstack(L, 8, "ui spec")
 	pl := api_loaded(L, editor)
-	if plugin_overlay_open(editor) {
-		return api_busy(L)
+	if p.setup != nil {
+		plugin_raise(L, "qed.ui.open cannot run during setup")
 	}
-	plugin_pane_close(p)
-	pn := &p.pane
-	pn.id = plugin_next_id(p)
-	pn.owner = pl.name
-	pn.title = strings.clone(title)
-	pn.footer = strings.clone(footer)
-	plugin_pane_set(pn, lines)
-	pn.active = true
+	spec: Pane
+	spec.id, _ = api_field_string(L, 1, "id")
+	spec.title, _ = api_field_string(L, 1, "title")
+	place, _ := api_field_string(L, 1, "place")
+	switch place {
+	case "", "center":
+		spec.place = .Center
+	case "full":
+		spec.place = .Full
+	case "split":
+		spec.place = .Split
+	case:
+		plugin_raise(L, `place must be "center", "full" or "split"`)
+	}
+	size, _ := api_field_string(L, 1, "size")
+	switch {
+	case size == "" && spec.place == .Split, size == "split:code" && spec.place == .Split:
+		spec.size = .Code
+	case size == "" || size == "palette" && spec.place == .Center:
+		spec.size = .Palette
+	case size == "dialog" && spec.place == .Center:
+		spec.size = .Dialog
+	case:
+		plugin_raise(L, fmt.tprintf("size %q does not fit place %q", size, place))
+	}
+	kind, _ := api_field_string(L, 1, "kind")
+	if kind != "" && kind != "exclusive" && kind != "child" {
+		plugin_raise(L, `kind must be "exclusive" or "child"`)
+	}
+	focus_t := lua.getfield(L, 1, "focus")
+	passive := focus_t == .BOOLEAN && !lua.toboolean(L, -1)
+	lua.pop(L, 1)
+	if focus_t != .NIL && focus_t != .BOOLEAN {
+		plugin_raise(L, "focus must be a boolean")
+	}
+	parent: u64
+	#partial switch lua.getfield(L, 1, "parent") {
+	case .TABLE:
+		id, ok := api_field_int(L, lua.gettop(L), "id")
+		if !ok {
+			plugin_raise(L, "parent must be a view")
+		}
+		parent = u64(id)
+	case .NIL:
+	case:
+		plugin_raise(L, "parent must be a view")
+	}
+	lua.pop(L, 1)
+
+	texts: []string
+	given: []bool
+	#partial switch lua.getfield(L, 1, "fields") {
+	case .TABLE:
+		t := lua.gettop(L)
+		n := int(lua.rawlen(L, t))
+		spec.fields = make([]PaneField, n, context.temp_allocator)
+		texts = make([]string, n, context.temp_allocator)
+		given = make([]bool, n, context.temp_allocator)
+		for i in 0 ..< n {
+			if lua.rawgeti(L, t, lua.Integer(i + 1)) != .TABLE {
+				plugin_raise(L, fmt.tprintf("fields[%d] must be a table", i + 1))
+			}
+			ft := lua.gettop(L)
+			f := &spec.fields[i]
+			f.prompt, _ = api_field_string(L, ft, "prompt")
+			texts[i], given[i] = api_field_string(L, ft, "text")
+			mode, _ := api_field_string(L, ft, "mode")
+			switch mode {
+			case "", "filter":
+				f.mode = .Filter
+			case "query":
+				f.mode = .Query
+			case "input":
+				f.mode = .Input
+			case:
+				plugin_raise(L, `mode must be "filter", "query" or "input"`)
+			}
+			f.count = api_opt_bool(L, ft, "count")
+			lua.pop(L, 1)
+		}
+	case .NIL:
+	case:
+		plugin_raise(L, "fields must be a table")
+	}
+	lua.pop(L, 1)
+
+	items: []PaneItem
+	selected := 0
+	#partial switch lua.getfield(L, 1, "list") {
+	case .TABLE:
+		t := lua.gettop(L)
+		spec.has_list = true
+		#partial switch lua.getfield(L, t, "items") {
+		case .TABLE:
+			items = api_view_items(L, editor, -1)
+		case .NIL:
+		case:
+			plugin_raise(L, "items must be a table")
+		}
+		lua.pop(L, 1)
+		spec.list.multi = api_opt_bool(L, t, "multi")
+		spec.list.empty, _ = api_field_string(L, t, "empty")
+		if lua.getfield(L, t, "max") != .NIL {
+			spec.list.max = max(0, api_int(L, -1, "max must be an integer"))
+		}
+		lua.pop(L, 1)
+		if lua.getfield(L, t, "selected") != .NIL {
+			selected = api_int(L, -1, "selected must be an item index")
+		}
+		lua.pop(L, 1)
+	case .NIL:
+	case:
+		plugin_raise(L, "list must be a table")
+	}
+	lua.pop(L, 1)
+
+	#partial switch lua.getfield(L, 1, "preview") {
+	case .STRING:
+		s, _ := lua.toodinstring(L, -1)
+		if s != "auto" {
+			plugin_raise(L, `preview must be "auto" or false`)
+		}
+		spec.auto_preview = true
+	case .NIL:
+	case .BOOLEAN:
+		if lua.toboolean(L, -1) {
+			plugin_raise(L, `preview must be "auto" or false`)
+		}
+	case:
+		plugin_raise(L, `preview must be "auto" or false`)
+	}
+	lua.pop(L, 1)
+
+	#partial switch lua.getfield(L, 1, "text") {
+	case .TABLE:
+		spec.text = api_pane_lines(L, -1)
+	case .NIL:
+	case:
+		plugin_raise(L, "text must be a table")
+	}
+	lua.pop(L, 1)
+
+	#partial switch lua.getfield(L, 1, "footer") {
+	case .TABLE:
+		if lua.getfield(L, -1, "hints") == .TABLE {
+			t := lua.gettop(L)
+			n := int(lua.rawlen(L, t))
+			spec.footer = make([]PaneHint, n, context.temp_allocator)
+			for i in 0 ..< n {
+				if lua.rawgeti(L, t, lua.Integer(i + 1)) != .TABLE {
+					plugin_raise(L, fmt.tprintf("hints[%d] must be a table {label, cmd?}", i + 1))
+				}
+				spec.footer[i].label, _ = api_field_string(L, lua.gettop(L), "label")
+				spec.footer[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
+				lua.pop(L, 1)
+			}
+		}
+		lua.pop(L, 1)
+	case .NIL:
+	case:
+		plugin_raise(L, "footer must be a table {hints}")
+	}
+	lua.pop(L, 1)
+
+	on_t := lua.getfield(L, 1, "on")
+	if on_t != .NIL && on_t != .TABLE {
+		plugin_raise(L, "on must be a table of handlers")
+	}
+	if on_t == .TABLE {
+		for name in view_event_names {
+			tp := lua.getfield(L, -1, name)
+			lua.pop(L, 1)
+			if tp != .NIL && tp != .FUNCTION {
+				plugin_raise(L, fmt.tprintf("on.%s must be a function", name))
+			}
+		}
+	}
+	lua.pop(L, 1)
+
+	if pane_safety_open(editor) {
+		return api_fail(L, "busy")
+	}
+	switch {
+	case passive:
+		spec.kind = .Passive
+	case parent != 0:
+		i := pane_index(editor, parent)
+		if i < 0 || !pane_live(editor, &editor.panes[i]) {
+			return api_fail(L, "closed")
+		}
+		spec.kind, spec.parent = .Child, parent
+	case kind == "child":
+		if f := pane_focus(editor); f != nil {
+			spec.kind, spec.parent = .Child, f.handle
+		} else if ov := editor_overlay_active(editor); ov != nil {
+			spec.kind, spec.over = .Child, ov
+		}
+	}
+	keep := len(items)
+	if spec.list.max > 0 && keep > spec.list.max {
+		keep = spec.list.max
+		spec.list.more = true
+	}
+	spec.list.items = make([dynamic]PaneItem, 0, keep, context.temp_allocator)
+	append(&spec.list.items, ..items[:keep])
+	spec.owner = plugin_name_intern(p, pl.name)
+	spec.ctx.lua = true
+	spec.on = {activate = plugin_view_activate, close = plugin_view_closed}
+	if t := plugin_task_of(p, L); t != nil {
+		spec.toggle = t.command
+	}
+	pn := pane_open(editor, spec)
+	if pn == nil {
+		return api_fail(L, "busy")
+	}
+	handle := pn.handle
+	saved := pane_saved_find(editor, spec.id) if spec.id != "" else nil
+	restored := saved != nil
+	for &f, i in pn.fields {
+		text := texts[i]
+		if given[i] {
+			restored = false
+		} else if saved != nil && i < len(saved.texts) {
+			text = saved.texts[i]
+		}
+		textfield_set(&f.field, text)
+		if f.mode != .Input {
+			textfield_select_all(&f.field)
+		}
+	}
+	pane_refilter(pn)
+	rows := pane_geom(editor, pn).list.h
+	if selected > 0 {
+		pane_select(pn, selected - 1, rows)
+	} else if restored && saved.key != "" {
+		pn.list.restore = strings.clone(saved.key)
+		pane_restore(pn, rows)
+	}
+	if pane_count(pn) > 0 {
+		pn.notified = pane_item_index(pn, pn.list.sel)
+	}
+	if pane_query(pn) != nil {
+		pn.query_due = true
+		pn.query_at = time.tick_now()
+	}
+
+	api_handle_push(L, handle, qed_view_methods[:])
+	lua.pushvalue(L, -1)
+	v := UiView {
+		handle   = handle,
+		owner    = spec.owner,
+		view_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX)),
+	}
+	lua.createtable(L, c.int(keep), 0)
+	if lua.getfield(L, 1, "list") == .TABLE && lua.getfield(L, -1, "items") == .TABLE {
+		api_items_copy(L, lua.gettop(L), lua.gettop(L) - 2, 0, keep)
+	}
+	lua.settop(L, 3)
+	v.items_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	if lua.getfield(L, 1, "on") == .TABLE {
+		for name, ev in view_event_names {
+			if lua.getfield(L, 3, name) == .FUNCTION {
+				v.on[ev] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+			} else {
+				lua.pop(L, 1)
+			}
+		}
+	}
+	lua.settop(L, 2)
+	append(&p.views, v)
 	editor_clear_message(editor)
-	api_handle_push(L, pn.id, {{"set", qed_pane_set}, {"close", qed_pane_close}})
+	if i := pane_index(editor, handle); i >= 0 {
+		pane_preview_sync(editor, &editor.panes[i])
+	}
 	return 1
 }
 
-qed_pane_set :: proc "c" (L: ^lua.State) -> c.int {
+api_view_live :: proc(L: ^lua.State, editor: ^Editor) -> (pn: ^Pane, vi: int) {
+	handle := api_handle_id(L)
+	vi = plugin_view_index(&editor.plugins, handle)
+	pi := pane_index(editor, handle)
+	if vi < 0 || pi < 0 {
+		return nil, -1
+	}
+	return &editor.panes[pi], vi
+}
+
+pane_refilter_keep :: proc(p: ^Pane) {
+	if pane_filter(p) == nil {
+		return
+	}
+	prev := pane_item_index(p, p.list.sel) if pane_count(p) > 0 else -1
+	pane_refilter(p)
+	for m, i in p.list.matches {
+		if m == prev {
+			p.list.sel = i
+		}
+	}
+}
+
+qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	pn := &entry.editor.plugins.pane
-	lines := api_pane_lines(L, 2)
-	live := pn.active && pn.id == api_handle_id(L)
-	if live {
-		plugin_pane_set(pn, lines)
+	editor := entry.editor
+	p := &editor.plugins
+	if lua.type(L, 2) != .TABLE {
+		lua.L_argerror(L, 2, "items table expected")
 	}
-	lua.pushboolean(L, b32(live))
+	#partial switch lua.type(L, 3) {
+	case .NIL, .NONE, .TABLE:
+	case:
+		lua.L_argerror(L, 3, "options table expected")
+	}
+	lua.settop(L, 3)
+	items := api_view_items(L, editor, 2)
+	selected := 0
+	more := false
+	hint := ""
+	if lua.type(L, 3) == .TABLE {
+		if lua.getfield(L, 3, "selected") != .NIL {
+			selected = api_int(L, -1, "selected must be an item index")
+		}
+		lua.pop(L, 1)
+		more = api_opt_bool(L, 3, "more")
+		hint, _ = api_field_string(L, 3, "hint")
+	}
+	pn, vi := api_view_live(L, editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	handle := pn.handle
+	keep := len(items)
+	if pn.list.max > 0 && keep > pn.list.max {
+		keep = pn.list.max
+		more = true
+	}
+	lua.createtable(L, c.int(keep), 0)
+	api_items_copy(L, 2, 4, 0, keep)
+	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	vi = plugin_view_index(p, handle)
+	lua.L_unref(L, lua.REGISTRYINDEX, c.int(p.views[vi].items_ref))
+	p.views[vi].items_ref = ref
+	pn = &editor.panes[pane_index(editor, handle)]
+	pane_items_clear(pn)
+	pane_items_add(pn, items[:keep])
+	pn.list.more = more
+	delete(pn.list.hint)
+	pn.list.hint = strings.clone(hint)
+	pane_refilter(pn)
+	rows := pane_geom(editor, pn).list.h
+	pn.list.sel, pn.list.scroll, pn.list.anchor = 0, 0, nil
+	if selected > 0 {
+		delete(pn.list.restore)
+		pn.list.restore = ""
+		pn.list.sel = clamp(selected - 1, 0, max(0, pane_count(pn) - 1))
+		pn.list.scroll = max(0, pn.list.sel - rows / 2)
+		pane_scroll_fit(pn, rows)
+	} else {
+		pane_restore(pn, rows)
+	}
+	pn.notified = -1
+	pane_preview_sync(editor, pn)
+	lua.pushboolean(L, true)
 	return 1
 }
 
-qed_pane_close :: proc "c" (L: ^lua.State) -> c.int {
+qed_view_append :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	if lua.type(L, 2) != .TABLE {
+		lua.L_argerror(L, 2, "items table expected")
+	}
+	lua.settop(L, 2)
+	items := api_view_items(L, editor, 2)
+	pn, vi := api_view_live(L, editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	n := len(pn.list.items)
+	room := len(items)
+	if pn.list.max > 0 && n + room > pn.list.max {
+		room = max(0, pn.list.max - n)
+		pn.list.more = true
+	}
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].items_ref))
+	api_items_copy(L, 2, 3, n, room)
+	lua.settop(L, 2)
+	prev := pane_item_index(pn, pn.list.sel) if pane_count(pn) > 0 else -1
+	pane_items_add(pn, items[:room])
+	if pane_filter(pn) != nil {
+		pane_refilter(pn)
+		for m, i in pn.list.matches {
+			if m == prev {
+				pn.list.sel = i
+			}
+		}
+	}
+	pane_restore(pn, pane_geom(editor, pn).list.h)
+	pane_preview_sync(editor, pn)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_update :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	key := strings.clone(api_string(L, 2), context.temp_allocator)
+	if lua.type(L, 3) != .TABLE {
+		lua.L_argerror(L, 3, "fields table expected")
+	}
+	lua.settop(L, 3)
+	api_view_item(L, editor, 3)
+	pn, vi := api_view_live(L, editor)
+	idx := -1
+	if pn != nil {
+		for it, i in pn.list.items {
+			if pane_item_key(it) == key {
+				idx = i
+				break
+			}
+		}
+	}
+	if idx < 0 {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].items_ref))
+	if lua.rawgeti(L, 4, lua.Integer(idx + 1)) != .TABLE {
+		s, _ := lua.toodinstring(L, -1)
+		label := strings.clone(s, context.temp_allocator)
+		lua.pop(L, 1)
+		lua.createtable(L, 0, 2)
+		lua.pushodinstring(L, label)
+		lua.setfield(L, -2, "label")
+	}
+	lua.pushnil(L)
+	for lua.next(L, 3) != 0 {
+		lua.pushvalue(L, -2)
+		lua.insert(L, -2)
+		lua.rawset(L, 5)
+	}
+	it := api_view_item(L, editor, 5)
+	lua.rawseti(L, 4, lua.Integer(idx + 1))
+	lua.settop(L, 3)
+	pane_item_free(pn.list.items[idx])
+	pn.list.items[idx] = pane_item_clone(it)
+	pane_refilter_keep(pn)
+	pane_preview_sync(editor, pn)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_text :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	lines := api_pane_lines(L, 2)
+	pn, _ := api_view_live(L, entry.editor)
+	if pn != nil {
+		pane_lines_free(pn.text)
+		pn.text = pane_lines_clone(lines)
+	}
+	lua.pushboolean(L, b32(pn != nil))
+	return 1
+}
+
+qed_view_close :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	pane_end(entry.editor, api_handle_id(L), false)
+	return 0
+}
+
+qed_view_wait :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	p := &entry.editor.plugins
-	if p.pane.active && p.pane.id == api_handle_id(L) {
-		plugin_pane_close(p)
+	handle := api_handle_id(L)
+	if plugin_view_index(p, handle) < 0 {
+		lua.pushnil(L)
+		return 1
 	}
-	return 0
+	t := api_await(L, p, "view:wait")
+	t.wait = {kind = .Pane, id = handle}
+	return lua.yieldk(L, 0, lua.KContext(handle), qed_view_wait_k)
+}
+
+qed_view_wait_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil || entry.editor.plugins.current != L {
+		return lua.yieldk(L, 0, ctx, qed_view_wait_k)
+	}
+	context = entry.ctx
+	a := entry.editor.plugins.answer
+	lua.L_checkstack(L, 5, "view result")
+	if a.handle != u64(ctx) {
+		lua.pushnil(L)
+		return 1
+	}
+	if a.ok {
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(a.items_ref))
+		lua.createtable(L, c.int(len(a.sel)), 0)
+		for idx, i in a.sel {
+			lua.rawgeti(L, -2, lua.Integer(idx + 1))
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+		lua.remove(L, -2)
+		if len(a.sel) > 0 {
+			lua.pushinteger(L, lua.Integer(a.sel[0] + 1))
+		} else {
+			lua.pushnil(L)
+		}
+	} else {
+		lua.pushnil(L)
+		lua.pushnil(L)
+	}
+	if a.has_text {
+		lua.pushodinstring(L, a.text)
+	} else {
+		lua.pushnil(L)
+	}
+	return 3
 }
 
 qed_theme_set :: proc "c" (L: ^lua.State) -> c.int {
@@ -1027,7 +991,7 @@ qed_languages :: proc "c" (L: ^lua.State) -> c.int {
 
 PluginStatus :: struct {
 	owner, id, text, color, sep: string,
-	chunks:                      [dynamic]PluginPaneLine,
+	chunks:                      [dynamic]PaneLine,
 	right, early:                bool,
 	drop:                        int,
 }
@@ -1118,7 +1082,7 @@ qed_status_set :: proc "c" (L: ^lua.State) -> c.int {
 	lua.settop(L, 2)
 	lua.L_checkstack(L, 4, "status options")
 	text := ""
-	chunks: []PluginPaneLine
+	chunks: []PaneLine
 	lua.getfield(L, 2, "text")
 	#partial switch lua.type(L, -1) {
 	case .STRING:
@@ -1166,7 +1130,7 @@ qed_status_set :: proc "c" (L: ^lua.State) -> c.int {
 	owner := plugin_name_intern(p, pl.name)
 	s := PluginStatus{owner = owner, text = strings.clone(text), color = strings.clone(color), sep = strings.clone(sep), right = side == "right", early = early, drop = drop}
 	for c in chunks {
-		append(&s.chunks, PluginPaneLine{strings.clone(c.text), strings.clone(c.color)})
+		append(&s.chunks, PaneLine{strings.clone(c.text), strings.clone(c.color)})
 	}
 	if i := plugin_status_find(p, owner, id); i >= 0 {
 		s.id = p.status[i].id

@@ -254,8 +254,8 @@ merge_actions := [?]string{"Keep Ours", "Keep Theirs", "Keep Both"}
 
 merge_dialog_open :: proc(editor: ^Editor) {
 	editor_clear_message(editor)
-	text := []string{"Resolve merge conflict:"}
-	if pane_open(editor, {id = "merge", ctx = {buf = editor_buffer(editor).id}, text = text, list = {items = merge_actions[:]}, on = {activate = merge_dialog_execute}}) == nil {
+	text := []PaneLine{{text = "Resolve merge conflict:"}}
+	if pane_open(editor, {id = "merge", ctx = {buf = editor_buffer(editor).id}, text = text, list = {items = pane_labels(merge_actions[:])}, on = {activate = merge_dialog_execute}}) == nil {
 		editor_log(editor, .Warn, "Git", "busy")
 	}
 }

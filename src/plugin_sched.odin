@@ -83,7 +83,6 @@ PluginWaitKind :: enum {
 	Proc,
 	Save,
 	Lsp,
-	Ui,
 	Pane,
 }
 
@@ -142,6 +141,7 @@ PluginProc :: struct {
 	killed:   bool,
 	orphan:   bool,
 	due:      time.Tick,
+	task:     u64,
 }
 
 PluginSave :: struct {
@@ -183,8 +183,10 @@ PluginArgs :: enum {
 	Ctx,
 	Line,
 	Event,
-	Item,
-	Query,
+	View,
+	View_Item,
+	View_Items,
+	View_Text,
 }
 
 PluginStart :: struct {
@@ -194,6 +196,8 @@ PluginStart :: struct {
 	ev:       PluginQueued,
 	item_ref: i32,
 	item:     int,
+	items:    []int,
+	view_ref: i32,
 	command:  u64,
 }
 
@@ -371,14 +375,28 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 		nargs = 1
 	case .Event:
 		nargs = plugin_event_push(L, start.ev)
-	case .Item:
+	case .View:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
+		nargs = 1
+	case .View_Item:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
 		lua.rawgeti(L, -1, lua.Integer(start.item))
 		lua.remove(L, -2)
-		nargs = 1
-	case .Query:
-		lua.pushodinstring(L, start.line)
+		nargs = 2
+	case .View_Items:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
+		lua.createtable(L, c.int(len(start.items)), 0)
+		for idx, i in start.items {
+			lua.rawgeti(L, -2, lua.Integer(idx + 1))
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+		lua.remove(L, -2)
+		nargs = 2
+	case .View_Text:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
+		lua.pushodinstring(L, start.line)
 		nargs = 2
 	}
 	lua.call(L, nargs, 0, 0, plugin_co_k)
@@ -617,6 +635,7 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 			}
 		}
 	}
+	plugin_views_flush(editor)
 	for _ in 0 ..< PLUGIN_FLUSH_ROUNDS {
 		if len(p.queue) == 0 {
 			break
@@ -803,6 +822,11 @@ plugin_task_kill :: proc(editor: ^Editor, id: u64) {
 			plugin_proc_free(p, j)
 		}
 	}
+	for j := len(p.procs) - 1; j >= 0; j -= 1 {
+		if j < len(p.procs) && p.procs[j].task == id {
+			plugin_proc_free(p, j)
+		}
+	}
 	if i = plugin_task_index(p, id); i < 0 {
 		return
 	}
@@ -824,7 +848,7 @@ plugin_lsp_result :: proc(p: ^Plugins, id: u64) -> (PluginLspResult, bool) {
 
 plugin_busy :: proc(editor: ^Editor) -> bool {
 	p := &editor.plugins
-	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 || plugin_ui_due(p) {
+	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 || len(p.view_events) > 0 || plugin_views_due(editor) {
 		return true
 	}
 	for pr in p.procs {
@@ -859,8 +883,10 @@ plugin_timeout_ms :: proc(editor: ^Editor, cap: int) -> int {
 	for s in p.saves {
 		consider(&best, now, s.deadline)
 	}
-	if p.ui.active && p.ui.query_due {
-		consider(&best, now, p.ui.query_at)
+	for q in editor.panes {
+		if q.ctx.lua && q.query_due {
+			consider(&best, now, q.query_at)
+		}
 	}
 	return best
 }
@@ -1009,7 +1035,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 	}
 	clear(&p.lsp_results)
 
-	plugin_ui_pump(editor)
+	plugin_views_pump(editor)
 
 	clear(&due)
 	for s in p.saves {

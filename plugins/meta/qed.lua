@@ -209,36 +209,111 @@ function qed.defer(ms, fn) end
 ---@return qed.Timer
 function qed.every(ms, fn) end
 
----@class qed.PickItem
+---@class qed.UiItem
 ---@field label? string defaults to `path`
 ---@field detail? string shown dim, right-aligned
 ---@field value? any carried through untouched
----@field path? string any item with a path switches to the list + file preview layout
+---@field path? string previewed by a split pane with `preview = "auto"`; a `qed.pick` item with a path switches it to the list + file preview layout
 ---@field pos? qed.Pos preview focus row
+---@field key? string identity for `View:update` and for restoring the selection by `id` (default `label`)
+
+---@alias qed.PaneLine string|{text: string, color?: string} color is a theme color key, e.g. `"error_foreground"`
+
+---@class qed.UiField
+---@field prompt? string prefix, default `"> "`
+---@field text? string initial text, fully selected unless `mode` is input; without it a pane with an `id` restores the last text
+---@field mode? "filter"|"query"|"input" filter (default) fuzzy-filters the list per key; query fires `on.query` at open and 120 ms after typing stops; input submits its text on Enter
+---@field count? boolean shows the match count (`N+` past `list.max` or after `set{more}`) at the end of the row
+
+---@class qed.UiList
+---@field items? (string|qed.UiItem)[]
+---@field multi? boolean Shift+Up/Down selects a range
+---@field max? integer items past it are dropped and the count shows `N+`
+---@field empty? string dim hint while the list is empty
+---@field selected? integer item index to start on
+
+---@class qed.UiHandlers
+---@field activate? fun(v: qed.View, items: (string|qed.UiItem)[]) Enter or double-click: the selection (the range with `multi`), `{}` for a pane without a list; the pane stays open
+---@field change? fun(v: qed.View, item: string|qed.UiItem) the highlighted item changed (not at open, also after `View:set`); a newer change kills the previous run
+---@field query? fun(v: qed.View, text: string) the query field settled; a newer query kills the previous run and its processes, and so does the close
+---@field close? fun(v: qed.View) any close: Esc, click outside, the opening command's chord, `View:close`, a parent closing, an exclusive pane replacing it
+
+---@class qed.UiSpec
+---@field id? string the fields' text and the selected item's key persist under it across opens
+---@field place? "center"|"full"|"split" center (default) is a centered box, full fills the screen, split puts a full-height preview column beside the fields and list
+---@field size? "palette"|"dialog"|"split:code" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default)
+---@field kind? "exclusive"|"child" exclusive (default) closes the open exclusive pane; child stacks on what has focus (a pane or a core overlay), else opens exclusive
+---@field parent? qed.View stack on this view (usually `ctx.view`): Esc returns to it, closing it closes this one
+---@field focus? boolean false opens a passive pane: drawn under focused panes, never takes input
+---@field title? string
+---@field fields? qed.UiField[] Tab cycles them
+---@field list? qed.UiList
+---@field preview? "auto"|false split: previews the selected item's `path` at `pos.row`
+---@field text? qed.PaneLine[] lines above the list (center) or the scrollable body (full or split without a list)
+---@field footer? {hints: {label: string, cmd?: string}[]} bottom row; a hint with `cmd` is prefixed with that command's live shortcut
+---@field on? qed.UiHandlers handlers run as tasks after input dispatch, before the next frame
+
+---@class qed.View
+---@field id integer
+local View = {}
+---Replaces the items. `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty. Returns false once closed.
+---@param items (string|qed.UiItem)[]
+---@param opts? {selected?: integer, more?: boolean, hint?: string}
+---@return boolean
+function View:set(items, opts) end
+---Adds items at the end and keeps the selection. Returns false once closed.
+---@param items (string|qed.UiItem)[]
+---@return boolean
+function View:append(items) end
+---Merges `fields` into the item whose key is `key` (a string item becomes `{label = s}` first). Returns false if closed or not found.
+---@param key string
+---@param fields qed.UiItem
+---@return boolean
+function View:update(key, fields) end
+---Replaces the text lines. Returns false once closed.
+---@param lines qed.PaneLine[]
+---@return boolean
+function View:text(lines) end
+---Closes the pane and its children; a no-op once closed.
+function View:close() end
+---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.
+---@return (string|qed.UiItem)[]|nil items
+---@return integer|nil index
+---@return string|nil text
+function View:wait() end
+
+qed.ui = {}
+
+---Opens a pane. Returns `nil, "busy"` while a quit, close or conflict dialog shows, or when an exclusive open meets a pane someone waits on (`View:wait`, `qed.pick/prompt/confirm`); `nil, "closed"` when `parent` is gone. Raises in `setup`.
+---Commands run while a view has focus get it as `ctx.view`.
+---@param spec qed.UiSpec
+---@return qed.View|nil
+---@return "busy"|"closed"|nil err
+function qed.ui.open(spec) end
 
 ---@class qed.PickSpec
----@field items? (string|qed.PickItem)[] required unless `on_query` is set
+---@field items? (string|qed.UiItem)[] required unless `on_query` is set
 ---@field prompt? string replaces the `>` prefix
 ---@field initial? integer|string item index or label to start on
----@field on_change? fun(item: string|qed.PickItem) the highlighted item changed (live preview), also after `Picker:set`
+---@field on_change? fun(item: string|qed.UiItem) the highlighted item changed (live preview), also after `Picker:set`
 ---@field multi? boolean Shift+Up/Down selects a range; returns the items in list order
 ---@field query? string initial query text, fully selected
----@field on_query? fun(query: string, picker: qed.Picker) the plugin supplies the items (no fuzzy filter, list + preview layout); runs at open and 120 ms after the query stops changing; the previous run is killed with the process it waits on, and so is the last one when the picker closes
+---@field on_query? fun(query: string, picker: qed.Picker) the plugin supplies the items (no fuzzy filter, list + preview layout); runs at open and 120 ms after the query stops changing; the previous run is killed with its processes, and so is the last one when the picker closes
 
 ---@class qed.Picker
 ---@field id integer
 local Picker = {}
----Replaces the items of an open `on_query` picker. `selected` is the item index to highlight (default 1), `more` shows the count as `N+`, `hint` is dim text shown while `items` is empty. Returns false once the picker is closed.
----@param items (string|qed.PickItem)[]
+---Replaces the items of an open `on_query` picker (`View:set`). Returns false once the picker is closed.
+---@param items (string|qed.UiItem)[]
 ---@param opts? {selected?: integer, more?: boolean, hint?: string}
 ---@return boolean
 function Picker:set(items, opts) end
 
----Waits for a fuzzy pick. Returns the chosen item (the value passed in), or `nil` on Esc.
----The opening command's chord closes it like Esc. Returns `nil, "busy"` while another pane or overlay is open (the file tree excepted).
+---Waits for a fuzzy pick (a `qed.ui.open` child pane). Returns the chosen item (the value passed in), or `nil` on Esc.
+---The opening command's chord closes it like Esc. Stacks on an open pane or overlay; returns `nil, "busy"` only while a quit, close or conflict dialog shows.
 ---With `on_query`, a third value is the final query text (also on Esc), and Enter while a query is due or running waits for its `set`.
 ---@param spec qed.PickSpec
----@return string|qed.PickItem|(string|qed.PickItem)[]|nil
+---@return string|qed.UiItem|(string|qed.UiItem)[]|nil
 ---@return "busy"|nil err
 ---@return string|nil query
 function qed.pick(spec) end
@@ -258,8 +333,6 @@ function qed.prompt(spec) end
 ---@return "busy"|nil err
 function qed.confirm(question, choices) end
 
----@alias qed.PaneLine string|{text: string, color?: string} color is a theme color key, e.g. `"error_foreground"`
-
 ---@class qed.Pane
 ---@field id integer
 local Pane = {}
@@ -270,7 +343,7 @@ function Pane:set(lines) end
 ---Closes the pane if it is still the one showing; otherwise a no-op.
 function Pane:close() end
 
----Read-only floating pane (arrows/wheel scroll, Esc closes). `nil, "busy"` while another pane or overlay is open.
+---Read-only exclusive `full` pane (arrows/wheel scroll, Esc closes). `nil, "busy"` like an exclusive `qed.ui.open`.
 ---@param spec {title: string, lines: qed.PaneLine[], footer?: string}
 ---@return qed.Pane|nil
 ---@return "busy"|nil err

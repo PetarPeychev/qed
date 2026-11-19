@@ -113,8 +113,25 @@ ui_run :: proc(t: ^testing.T, e: ^E2E, name: string, loc := #caller_location) {
 
 @(private = "file")
 ui_selected :: proc(e: ^E2E) -> string {
-	ui := &e.ed.plugins.ui
-	return ui.labels[ui.matches[ui.selected]]
+	return test_view_selected(&e.ed)
+}
+
+@(private = "file")
+ui_open :: proc(e: ^E2E) -> bool {
+	return test_view(&e.ed) != nil
+}
+
+@(private = "file")
+ui_type :: proc(e: ^E2E, s: string) {
+	e2e_type(e, s)
+	plugin_flush(&e.ed)
+}
+
+@(private = "file")
+ui_click :: proc(e: ^E2E, x, y: int) {
+	e2e_mouse(e, x, y)
+	pane_stack_sync(&e.ed)
+	plugin_flush(&e.ed)
 }
 
 @(private = "file")
@@ -136,15 +153,14 @@ e2e_plugin_ui_pick_strings :: proc(t: ^testing.T) {
 	e, pl := ui_start(t)
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Strings")
-	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.active, "qed.pick opens the overlay")
+	testing.expect(t, ui_open(&e), "qed.pick opens a pane")
 	testing.expect_value(t, ui_selected(&e), "beta")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "gamma"), "items are listed")
 	e2e_key(&e, .Arrow_Down)
 	testing.expect_value(t, ui_selected(&e), "gamma")
 	e2e_key(&e, .Enter)
-	testing.expect(t, !ui.active, "Enter closes")
+	testing.expect(t, !ui_open(&e), "Enter closes")
 	testing.expect_value(t, e.ed.message, "gamma")
 	testing.expect_value(t, e.ed.message_source, "UI")
 	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
@@ -154,9 +170,9 @@ e2e_plugin_ui_pick_strings :: proc(t: ^testing.T) {
 	e2e_type(&e, "alp")
 	testing.expect_value(t, ui_selected(&e), "alpha")
 	e2e_key(&e, .Esc)
-	testing.expect(t, !ui.active, "Esc closes")
+	testing.expect(t, !ui_open(&e), "Esc closes")
 	testing.expect_value(t, e.ed.message, "nil")
-	testing.expect_value(t, ui.items_ref, 0)
+	testing.expect_value(t, len(e.ed.plugins.views), 0)
 }
 
 @(test)
@@ -191,7 +207,7 @@ e2e_plugin_ui_pick_on_change :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Arrow_Down)
 	testing.expect_value(t, count(&e, "chg c"), 1)
-	e2e_type(&e, "a")
+	ui_type(&e, "a")
 	testing.expect_value(t, count(&e, "chg a"), 1)
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "nil")
@@ -232,9 +248,9 @@ e2e_plugin_ui_pick_paths :: proc(t: ^testing.T) {
 	defer os.remove(p2)
 	e2e_resize(&e, 160, 40)
 	ui_run(t, &e, "UI: Paths")
-	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.paths, "path items use the list + preview layout")
-	testing.expect(t, preview_loaded(&ui.preview), "the preview loads")
+	v := test_view(&e.ed)
+	testing.expect(t, v.place == .Split, "path items use the list + preview layout")
+	testing.expect(t, preview_loaded(&v.preview), "the preview loads")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "focus here"), "the preview shows the file")
 	e2e_key(&e, .Arrow_Down)
@@ -283,7 +299,7 @@ e2e_plugin_ui_pane :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Pane")
-	testing.expect(t, e.ed.plugins.pane.active, "qed.pane opens")
+	testing.expect(t, ui_open(&e), "qed.pane opens")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Pane Title"), "title")
 	testing.expect(t, e2e_grid_has(&e, "line two"), "lines")
@@ -294,13 +310,13 @@ e2e_plugin_ui_pane :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_grid_has(&e, "line three"), "pane:set replaces the lines")
 	testing.expect(t, !e2e_grid_has(&e, "line one"), "old lines are gone")
 	ui_run(t, &e, "UI: Pane Close")
-	testing.expect(t, !e.ed.plugins.pane.active, "pane:close closes")
+	testing.expect(t, !ui_open(&e), "pane:close closes")
 	ui_run(t, &e, "UI: Pane Set")
 	testing.expect_value(t, e.ed.message, "false")
 
 	ui_run(t, &e, "UI: Pane")
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.plugins.pane.active, "Esc closes the pane")
+	testing.expect(t, !ui_open(&e), "Esc closes the pane")
 }
 
 @(test)
@@ -308,15 +324,19 @@ e2e_plugin_ui_busy :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Prompt")
+	prompt := pane_focus(&e.ed).handle
 	ui_run(t, &e, "UI: Strings")
-	testing.expect_value(t, e.ed.message, "busy")
-	testing.expect(t, ui_prompt_open(&e), "the prompt stays")
+	testing.expect_value(t, test_view(&e.ed).parent, prompt)
 	ui_run(t, &e, "UI: Pane")
-	testing.expect(t, !e.ed.plugins.pane.active, "a pane is refused while a modal is open")
+	testing.expect_value(t, len(e.ed.panes), 2)
+	e2e_key(&e, .Esc)
+	testing.expect(t, ui_prompt_open(&e), "Esc returns to the prompt")
 	e2e_key(&e, .Esc)
 	e2e_key(&e, .Ctrl_P)
 	ui_run(t, &e, "UI: Strings")
-	testing.expect_value(t, e.ed.message, "busy")
+	testing.expect(t, test_view(&e.ed).over == &e.ed.palette.active, "a pick over an overlay sits on it")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "nil")
 }
 
 @(test)
@@ -326,10 +346,8 @@ e2e_plugin_ui_unload_closes :: proc(t: ^testing.T) {
 	ui_run(t, &e, "UI: Change")
 	testing.expect_value(t, len(e.ed.plugins.tasks), 1)
 	plugin_unload(&e.ed, pl)
-	ui := &e.ed.plugins.ui
-	testing.expect(t, !ui.active, "unloading the owner closes the modal")
-	testing.expect_value(t, ui.id, 0)
-	testing.expect_value(t, ui.change_ref, 0)
+	testing.expect(t, !ui_open(&e), "unloading the owner closes the modal")
+	testing.expect_value(t, len(e.ed.plugins.views), 0)
 	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
 	e2e_key(&e, .Esc)
 }
@@ -340,20 +358,20 @@ e2e_plugin_ui_mouse :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Change")
 	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + 3)
-	e2e_mouse(&e, box.x + 3, box.y + 4)
+	ui_click(&e, box.x + 3, box.y + 4)
 	testing.expect_value(t, ui_selected(&e), "b")
 	has_chg := false
 	for l in e.ed.log {
 		has_chg ||= l.text == "chg b"
 	}
 	testing.expect(t, has_chg, "a click fires on_change")
-	e2e_mouse(&e, box.x + 3, box.y + 4)
-	testing.expect(t, !e.ed.plugins.ui.active, "a double click activates")
+	ui_click(&e, box.x + 3, box.y + 4)
+	testing.expect(t, !ui_open(&e), "a double click activates")
 	testing.expect_value(t, e.ed.message, "b")
 
 	ui_run(t, &e, "UI: Strings")
-	e2e_mouse(&e, 0, 0)
-	testing.expect(t, !e.ed.plugins.ui.active, "a click outside dismisses")
+	ui_click(&e, 0, 0)
+	testing.expect(t, !ui_open(&e), "a click outside dismisses")
 	testing.expect_value(t, e.ed.message, "nil")
 }
 
@@ -363,7 +381,7 @@ e2e_plugin_ui_wait_refused_in_setup :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	pl := e2e_plugin(&e, "eager", `return {setup = function() qed.pick{items = {"a"}} end}`)
 	testing.expect_value(t, pl.state, PluginState.Errored)
-	testing.expect(t, !e.ed.plugins.ui.active, "no overlay opens")
+	testing.expect_value(t, len(e.ed.panes), 0)
 }
 
 @(private = "file")
@@ -419,14 +437,13 @@ e2e_plugin_ui_chained_pick :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Chain")
 	e2e_key(&e, .Enter)
-	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.active, "the continuation opens a second pick")
+	testing.expect(t, ui_open(&e), "the continuation opens a second pick")
 	testing.expect_value(t, ui_selected(&e), "p")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "xq")
-	testing.expect(t, !ui.active, "both picks resolved")
-	testing.expect_value(t, ui.items_ref, 0)
+	testing.expect(t, !ui_open(&e), "both picks resolved")
+	testing.expect_value(t, len(e.ed.plugins.views), 0)
 	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
 }
 
@@ -464,7 +481,7 @@ e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
 ui_ask_wait :: proc(e: ^E2E) -> ^Pane {
 	e2e_pump_while(e, proc(e: ^E2E) -> bool {
 		p := pane_focus(&e.ed)
-		return p == nil || p.owner != "ui"
+		return p == nil || p.owner != "ui" || p.parent == 0
 	})
 	return pane_focus(&e.ed)
 }
@@ -487,6 +504,7 @@ e2e_plugin_ui_confirm_over_exclusive :: proc(t: ^testing.T) {
 
 	ui_run(t, &e, "UI: Prompt")
 	pane_end(&e.ed, merge, false)
+	plugin_flush(&e.ed)
 	testing.expect_value(t, e.ed.message, "nil")
 	testing.expect_value(t, len(e.ed.panes), 0)
 }
@@ -509,6 +527,7 @@ e2e_plugin_ui_confirm_parent_overlay_closes :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, !e2e_grid_has(&e, "Tree?"), "an orphan is not drawn")
 	pane_stack_sync(&e.ed)
+	plugin_flush(&e.ed)
 	testing.expect_value(t, len(e.ed.panes), 0)
 	testing.expect_value(t, e.ed.message, "nil")
 }
@@ -518,14 +537,14 @@ e2e_plugin_ui_confirm_over_pick :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Pick Ask")
-	testing.expect(t, e.ed.plugins.ui.active, "the pick is open")
+	pick := pane_focus(&e.ed).handle
 	p := ui_ask_wait(&e)
-	testing.expect(t, p != nil && p.over == &e.ed.plugins.ui.active, "a deferred confirm stacks over the pick")
+	testing.expect(t, p != nil && p.parent == pick, "a deferred confirm is a child of the pick")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Over?"), "the confirm renders over the pick")
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "ask 1")
-	testing.expect(t, e.ed.plugins.ui.active, "the pick stays open")
+	testing.expect_value(t, pane_focus(&e.ed).handle, pick)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "a")
 }
@@ -591,7 +610,7 @@ e2e_plugin_ui_prompt_mouse_box :: proc(t: ^testing.T) {
 	ui_run(t, &e, "UI: Prompt")
 	p := pane_focus(&e.ed)
 	textfield_set(&p.fields[0].field, "abcdef")
-	box := pane_box(&e.ed, p)
+	box := pane_geom(&e.ed, p).box
 	tx := box.x + 2 + len("Name: ")
 	e2e_mouse(&e, tx + 2, box.y)
 	testing.expect_value(t, p.fields[0].caret, 2)
@@ -599,7 +618,7 @@ e2e_plugin_ui_prompt_mouse_box :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.fields[0].caret, 5)
 	testing.expect_value(t, p.fields[0].anchor, 2)
 	testing.expect(t, pane_focus(&e.ed) == p, "a drag out of the box keeps the prompt")
-	e2e_mouse(&e, 0, 0)
+	ui_click(&e, 0, 0)
 	testing.expect_value(t, e.ed.message, "nil")
 }
 
@@ -640,6 +659,7 @@ e2e_plugin_ui_unload_closes_children :: proc(t: ^testing.T) {
 	testing.expect(t, pane_focus(&e.ed) == nil, "the owner's panes and their children lose focus at once")
 	testing.expect(t, e.ed.message != "ui2 nil", "no Lua runs during the unload")
 	pane_stack_sync(&e.ed)
+	plugin_flush(&e.ed)
 	testing.expect_value(t, len(e.ed.panes), 0)
 	testing.expect_value(t, e.ed.message, "ui2 nil")
 }
@@ -652,11 +672,11 @@ e2e_plugin_ui_unload_restores_theme :: proc(t: ^testing.T) {
 	bg := COLOR_BG
 	cmd, _ := plugin_test_command(&e.ed, "Settings: Theme")
 	command_run(&e.ed, cmd)
-	e2e_type(&e, "solarized-light")
+	ui_type(&e, "solarized-light")
 	testing.expect_value(t, editor_theme_current(&e.ed), "solarized-light")
 	testing.expect(t, COLOR_BG != bg, "the preview applied")
 	plugin_unload(&e.ed, pl)
-	testing.expect(t, !e.ed.plugins.ui.active, "the picker closed")
+	testing.expect(t, !ui_open(&e), "the picker closed")
 	testing.expect_value(t, e.ed.theme_shown, "")
 	testing.expect_value(t, COLOR_BG, bg)
 	testing.expect_value(t, editor_theme_current(&e.ed), THEME)
@@ -734,15 +754,15 @@ e2e_plugin_ui_query_set :: proc(t: ^testing.T) {
 	e, pl := ui_start(t)
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Query")
-	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.active && ui.paths, "an on_query pick opens in the list + preview layout")
-	testing.expect_value(t, textfield_str(&ui.field), "ab")
-	testing.expect_value(t, ui.field.anchor, 0)
-	testing.expect_value(t, ui.field.caret, 2)
-	testing.expect_value(t, len(ui.matches), 0)
+	v := test_view(&e.ed)
+	testing.expect(t, v.place == .Split, "an on_query pick opens in the list + preview layout")
+	testing.expect_value(t, textfield_str(&v.fields[0].field), "ab")
+	testing.expect_value(t, v.fields[0].anchor, 0)
+	testing.expect_value(t, v.fields[0].caret, 2)
+	testing.expect_value(t, pane_count(v), 0)
 	ui_pump(&e, 5)
 	testing.expect_value(t, ui_count(&e, "query ab"), 1)
-	testing.expect_value(t, len(ui.matches), 3)
+	testing.expect_value(t, pane_count(test_view(&e.ed)), 3)
 	testing.expect_value(t, ui_selected(&e), "ab2")
 	testing.expect(t, ui_logged(&e, "chg ab2"), "set fires on_change for the new highlight")
 	e2e_render(&e)
@@ -752,17 +772,16 @@ e2e_plugin_ui_query_set :: proc(t: ^testing.T) {
 	e2e_type(&e, "xyz")
 	testing.expect_value(t, ui_count(&e, "query x"), 0)
 	testing.expect_value(t, ui_selected(&e), "ab2")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	testing.expect_value(t, ui_count(&e, "query xyz"), 1)
 	testing.expect_value(t, ui_count(&e, "query x") + ui_count(&e, "query xy"), 0)
 	testing.expect_value(t, ui_selected(&e), "xyz2")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
-	testing.expect(t, !ui.active, "Enter closes")
+	testing.expect(t, !ui_open(&e), "Enter closes")
 	testing.expect_value(t, e.ed.message, "xyz3")
 	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
-	testing.expect_value(t, ui.query_ref, 0)
-	testing.expect_value(t, ui.handle_ref, 0)
+	testing.expect_value(t, len(e.ed.plugins.views), 0)
 	testing.expect_value(t, pl.last_error, "")
 
 	ui_run(t, &e, "UI: Stale")
@@ -776,18 +795,17 @@ e2e_plugin_ui_query_hint_more :: proc(t: ^testing.T) {
 	ui_run(t, &e, "UI: Query")
 	ui_pump(&e, 5)
 	e2e_key(&e, .Backspace2)
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
-	ui := &e.ed.plugins.ui
-	testing.expect_value(t, len(ui.matches), 0)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
+	testing.expect_value(t, pane_count(test_view(&e.ed)), 0)
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "type something"), "the hint renders while the list is empty")
 	e2e_type(&e, "more")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	e2e_render(&e)
 	testing.expect(t, !e2e_grid_has(&e, "type something"), "items hide the hint")
 	testing.expect(t, e2e_grid_has(&e, "3+│"), "more shows N+")
 	e2e_paste(&e, "x")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	testing.expect_value(t, ui_selected(&e), "morex2")
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "q morex")
@@ -799,17 +817,17 @@ e2e_plugin_ui_query_kills_search :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Query")
 	e2e_type(&e, "slow")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	p := &e.ed.plugins
 	testing.expect_value(t, len(p.procs), 1)
 	e2e_type(&e, "er")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	testing.expect_value(t, len(p.procs), 0)
 	testing.expect_value(t, ui_selected(&e), "slower2")
 
 	e2e_key(&e, .Backspace2)
 	e2e_key(&e, .Backspace2)
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	testing.expect_value(t, len(p.procs), 1)
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "q slow")
@@ -824,13 +842,12 @@ e2e_plugin_ui_query_unload :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Query")
 	e2e_type(&e, "slow")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	p := &e.ed.plugins
 	testing.expect_value(t, len(p.procs), 1)
 	plugin_unload(&e.ed, pl)
-	testing.expect(t, !p.ui.active, "unloading the owner closes the picker")
-	testing.expect_value(t, p.ui.query_ref, 0)
-	testing.expect_value(t, p.ui.handle_ref, 0)
+	testing.expect(t, !ui_open(&e), "unloading the owner closes the picker")
+	testing.expect_value(t, len(p.views), 0)
 	testing.expect_value(t, len(p.procs), 0)
 	testing.expect_value(t, len(p.tasks), 0)
 	testing.expect(t, !plugin_busy(&e.ed), "nothing left to pump")
@@ -842,24 +859,27 @@ e2e_plugin_ui_query_busy_chord :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Prompt")
 	ui_run(t, &e, "UI: Query")
-	testing.expect_value(t, e.ed.message, "busy")
+	testing.expect(t, test_view(&e.ed).kind == .Child, "a pick over a prompt is its child")
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "q ab")
 	testing.expect(t, ui_prompt_open(&e), "the prompt stays")
 	e2e_key(&e, .Esc)
 
 	nav_alt(&e, 'q')
-	testing.expect(t, e.ed.plugins.ui.active, "the chord opens the picker")
+	testing.expect(t, ui_open(&e), "the chord opens the picker")
 	e2e_type(&e, "slow")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
 	nav_alt(&e, 'q')
-	testing.expect(t, !e.ed.plugins.ui.active, "the opening command's chord closes it")
+	testing.expect(t, !ui_open(&e), "the opening command's chord closes it")
+	plugin_flush(&e.ed)
 	testing.expect_value(t, e.ed.message, "q slow")
 	testing.expect_value(t, len(e.ed.plugins.procs), 0)
 
 	ui_run(t, &e, "UI: Query Static")
-	ui := &e.ed.plugins.ui
-	testing.expect_value(t, textfield_str(&ui.field), "gam")
+	v := test_view(&e.ed)
+	testing.expect_value(t, textfield_str(&v.fields[0].field), "gam")
 	testing.expect_value(t, ui_selected(&e), "gamma")
-	testing.expect_value(t, len(ui.matches), 1)
+	testing.expect_value(t, pane_count(v), 1)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "gamma")
 }
@@ -878,10 +898,9 @@ e2e_plugin_ui_query_fast_close :: proc(t: ^testing.T) {
 	ui_pump(&e, 5)
 	e2e_type(&e, "xyz")
 	e2e_key(&e, .Enter)
-	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.active, "Enter waits for the due query")
+	testing.expect(t, ui_open(&e), "Enter waits for the due query")
 	ui_pump(&e, 20)
-	testing.expect(t, !ui.active, "the accept lands once the query set its items")
+	testing.expect(t, !ui_open(&e), "the accept lands once the query set its items")
 	testing.expect_value(t, ui_count(&e, "query xyz"), 1)
 	testing.expect_value(t, e.ed.message, "xyz2")
 
@@ -890,8 +909,8 @@ e2e_plugin_ui_query_fast_close :: proc(t: ^testing.T) {
 	e2e_type(&e, "slow")
 	e2e_key(&e, .Enter)
 	e2e_type(&e, "er")
-	ui_pump(&e, PLUGIN_QUERY_DEBOUNCE_MS + 60)
-	testing.expect(t, ui.active, "typing after Enter drops the pending accept")
+	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
+	testing.expect(t, ui_open(&e), "typing after Enter drops the pending accept")
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, len(e.ed.plugins.procs), 0)
 }
@@ -903,13 +922,13 @@ e2e_plugin_ui_query_prompt_click :: proc(t: ^testing.T) {
 	e2e_resize(&e, 160, 40)
 	ui_run(t, &e, "UI: Query")
 	ui_pump(&e, 5)
-	ui := &e.ed.plugins.ui
+	f := &test_view(&e.ed).fields[0]
 	lay := overlay_layout(&e.ed, .Code)
 	testing.expect(t, lay.preview, "wide enough for the preview")
-	textfield_set(&ui.field, "abcdef")
+	textfield_set(&f.field, "abcdef")
 	e2e_mouse(&e, lay.right_x + 4, lay.inner.y)
-	testing.expect_value(t, ui.field.caret, 6)
+	testing.expect_value(t, f.caret, 6)
 	e2e_mouse(&e, lay.inner.x + 1 + 2 + 3, lay.inner.y)
-	testing.expect_value(t, ui.field.caret, 3)
+	testing.expect_value(t, f.caret, 3)
 	e2e_key(&e, .Esc)
 }

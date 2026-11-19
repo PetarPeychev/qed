@@ -1,6 +1,8 @@
 package main
 
+import "core:fmt"
 import "core:strings"
+import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
 
@@ -105,15 +107,24 @@ pane_text :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
 	}
 }
 
+PANE_QUERY_DEBOUNCE_MS :: 120
+
 PaneKind :: enum {
 	Exclusive,
 	Child,
 	Passive,
 }
 
+PanePlace :: enum {
+	Center,
+	Full,
+	Split,
+}
+
 PaneSize :: enum {
 	Dialog,
 	Palette,
+	Code,
 }
 
 PaneAction :: enum {
@@ -122,45 +133,103 @@ PaneAction :: enum {
 	Close,
 }
 
+PaneFieldMode :: enum {
+	Input,
+	Filter,
+	Query,
+}
+
 PaneField :: struct {
 	prompt:      string,
+	mode:        PaneFieldMode,
+	count:       bool,
 	using field: TextField,
 }
 
+PaneItem :: struct {
+	label, detail, path, key: string,
+	row:                      int,
+}
+
+PaneLine :: struct {
+	text, color: string,
+}
+
+PaneHint :: struct {
+	label, cmd: string,
+}
+
 PaneList :: struct {
-	items: []string,
-	sel:   int,
+	items:   [dynamic]PaneItem,
+	matches: [dynamic]int,
+	sel:     int,
+	scroll:  int,
+	anchor:  Maybe(int),
+	multi:   bool,
+	max:     int,
+	more:    bool,
+	empty:   string,
+	hint:    string,
+	restore: string,
 }
 
 PaneHandler :: proc(editor: ^Editor, p: ^Pane)
 
 PaneCtx :: struct {
 	buf: u64,
+	lua: bool,
 }
 
 Pane :: struct {
-	handle: u64,
-	id:     string,
-	owner:  string,
-	kind:   PaneKind,
-	safety: bool,
-	dead:   bool,
-	parent: u64,
-	over:   ^bool, // legacy Overlay this child sits on; goes away once every overlay is a Pane
-	size:   PaneSize,
-	ctx:    PaneCtx,
-	fields: []PaneField,
-	text:   []string,
-	list:   PaneList,
-	on:     struct {
+	handle:       u64,
+	id:           string,
+	owner:        string,
+	kind:         PaneKind,
+	safety:       bool,
+	dead:         bool,
+	parent:       u64,
+	over:         ^bool, // legacy Overlay this child sits on; goes away once every overlay is a Pane
+	place:        PanePlace,
+	size:         PaneSize,
+	ctx:          PaneCtx,
+	title:        string,
+	fields:       []PaneField,
+	focus:        int,
+	text:         []PaneLine,
+	scroll:       int,
+	list:         PaneList,
+	has_list:     bool,
+	auto_preview: bool,
+	preview:      Preview,
+	footer:       []PaneHint,
+	toggle:       u64,
+	query_due:    bool,
+	query_at:     time.Tick,
+	accept:       bool,
+	notified:     int,
+	on:           struct {
 		activate, close: PaneHandler,
 	},
+}
+
+PaneSaved :: struct {
+	id:    string,
+	texts: []string,
+	key:   string,
+}
+
+pane_labels :: proc(labels: []string) -> [dynamic]PaneItem {
+	items := make([dynamic]PaneItem, len(labels), context.temp_allocator)
+	for s, i in labels {
+		items[i].label = s
+	}
+	return items
 }
 
 pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	if spec.kind == .Exclusive && !spec.safety {
 		for &q in editor.panes {
-			if q.owner != "" && q.kind != .Passive && pane_live(editor, &q) {
+			if q.kind != .Passive && pane_live(editor, &q) && len(plugin_waiters(&editor.plugins, .Pane, q.handle)) > 0 {
 				return nil
 			}
 		}
@@ -192,38 +261,94 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	editor.pane_seq += 1
 	p.handle = editor.pane_seq
 	p.id = strings.clone(spec.id)
-	p.text = make([]string, len(spec.text))
-	for s, i in spec.text {
-		p.text[i] = strings.clone(s)
-	}
-	p.list.items = make([]string, len(spec.list.items))
-	for s, i in spec.list.items {
-		p.list.items[i] = strings.clone(s)
+	p.title = strings.clone(spec.title)
+	p.text = pane_lines_clone(spec.text)
+	p.has_list = spec.has_list || len(spec.list.items) > 0
+	p.list.items = {}
+	p.list.matches = {}
+	pane_items_add(&p, spec.list.items[:])
+	p.list.empty = strings.clone(spec.list.empty)
+	p.list.hint = ""
+	p.list.restore = ""
+	p.footer = make([]PaneHint, len(spec.footer))
+	for h, i in spec.footer {
+		p.footer[i] = {strings.clone(h.label), strings.clone(h.cmd)}
 	}
 	p.fields = make([]PaneField, len(spec.fields))
 	for f, i in spec.fields {
 		p.fields[i].prompt = strings.clone(f.prompt)
+		p.fields[i].mode = f.mode
+		p.fields[i].count = f.count
 		p.fields[i].anchor = -1
 	}
+	p.preview = {}
+	p.notified = -1
 	inject_at(&editor.panes, at, p)
 	return &editor.panes[at]
 }
 
+pane_lines_clone :: proc(lines: []PaneLine) -> []PaneLine {
+	out := make([]PaneLine, len(lines))
+	for l, i in lines {
+		out[i] = {strings.clone(l.text), strings.clone(l.color)}
+	}
+	return out
+}
+
+pane_lines_free :: proc(lines: []PaneLine) {
+	for l in lines {
+		delete(l.text)
+		delete(l.color)
+	}
+	delete(lines)
+}
+
+pane_item_free :: proc(it: PaneItem) {
+	delete(it.label)
+	delete(it.detail)
+	delete(it.path)
+	delete(it.key)
+}
+
+pane_item_clone :: proc(it: PaneItem) -> PaneItem {
+	return {strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), strings.clone(it.key), it.row}
+}
+
+pane_items_add :: proc(p: ^Pane, items: []PaneItem) {
+	for it in items {
+		append(&p.list.items, pane_item_clone(it))
+	}
+}
+
+pane_items_clear :: proc(p: ^Pane) {
+	for it in p.list.items {
+		pane_item_free(it)
+	}
+	clear(&p.list.items)
+	clear(&p.list.matches)
+}
+
 pane_free :: proc(p: ^Pane) {
 	delete(p.id)
-	for s in p.text {
-		delete(s)
-	}
-	delete(p.text)
-	for s in p.list.items {
-		delete(s)
-	}
+	delete(p.title)
+	pane_lines_free(p.text)
+	pane_items_clear(p)
 	delete(p.list.items)
+	delete(p.list.matches)
+	delete(p.list.empty)
+	delete(p.list.hint)
+	delete(p.list.restore)
+	for h in p.footer {
+		delete(h.label)
+		delete(h.cmd)
+	}
+	delete(p.footer)
 	for &f in p.fields {
 		delete(f.prompt)
 		textfield_destroy(&f.field)
 	}
 	delete(p.fields)
+	preview_destroy(&p.preview)
 }
 
 pane_index :: proc(editor: ^Editor, handle: u64) -> int {
@@ -318,6 +443,15 @@ pane_safety_open :: proc(editor: ^Editor) -> bool {
 	return false
 }
 
+pane_lua_open :: proc(editor: ^Editor) -> bool {
+	for &p in editor.panes {
+		if p.ctx.lua && pane_live(editor, &p) {
+			return true
+		}
+	}
+	return false
+}
+
 pane_stack_sync :: proc(editor: ^Editor) {
 	for {
 		h: u64
@@ -328,9 +462,22 @@ pane_stack_sync :: proc(editor: ^Editor) {
 			}
 		}
 		if h == 0 {
-			return
+			break
 		}
 		pane_end(editor, h, false)
+	}
+	pane_stack_fit(editor, false)
+}
+
+pane_stack_fit :: proc(editor: ^Editor, resize: bool) {
+	for &p in editor.panes {
+		if !pane_live(editor, &p) {
+			continue
+		}
+		if resize && p.has_list {
+			pane_scroll_fit(&p, pane_geom(editor, &p).list.h)
+		}
+		pane_preview_sync(editor, &p)
 	}
 }
 
@@ -349,6 +496,49 @@ pane_stack_destroy :: proc(editor: ^Editor) {
 		pane_free(&p)
 	}
 	delete(editor.panes)
+	for s in editor.pane_saved {
+		pane_saved_free(s)
+	}
+	delete(editor.pane_saved)
+}
+
+pane_saved_free :: proc(s: PaneSaved) {
+	delete(s.id)
+	for t in s.texts {
+		delete(t)
+	}
+	delete(s.texts)
+	delete(s.key)
+}
+
+pane_saved_find :: proc(editor: ^Editor, id: string) -> ^PaneSaved {
+	for &s in editor.pane_saved {
+		if s.id == id {
+			return &s
+		}
+	}
+	return nil
+}
+
+pane_save :: proc(editor: ^Editor, p: ^Pane) {
+	if p.id == "" {
+		return
+	}
+	s := pane_saved_find(editor, p.id)
+	if s == nil {
+		append(&editor.pane_saved, PaneSaved{id = strings.clone(p.id)})
+		s = &editor.pane_saved[len(editor.pane_saved) - 1]
+	}
+	for t in s.texts {
+		delete(t)
+	}
+	delete(s.texts)
+	delete(s.key)
+	s.texts = make([]string, len(p.fields))
+	for &f, i in p.fields {
+		s.texts[i] = strings.clone(textfield_str(&f.field))
+	}
+	s.key = strings.clone(pane_selected_key(p))
 }
 
 pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
@@ -359,15 +549,18 @@ pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	action := PaneAction.None
 	#partial switch ev.type {
 	case .Key:
-		action = pane_key(p, ev)
+		action = pane_key(editor, p, ev)
 	case .Mouse:
 		action = pane_mouse(editor, p, ev)
 	case .Resize:
 		editor_overlay_resize(editor)
 	}
-	if action != .None {
+	if action == .Activate && p.ctx.lua {
+		p.on.activate(editor, p)
+	} else if action != .None {
 		pane_end(editor, p.handle, action == .Activate)
 	}
+	pane_stack_fit(editor, false)
 	return true
 }
 
@@ -377,6 +570,7 @@ pane_stack_paste :: proc(editor: ^Editor, text: string) -> bool {
 		return false
 	}
 	pane_paste(p, text)
+	pane_stack_fit(editor, false)
 	return true
 }
 
@@ -390,108 +584,478 @@ pane_stack_render :: proc(editor: ^Editor, passive: bool) -> (drew: bool) {
 	return
 }
 
-pane_rows :: proc(p: ^Pane) -> (head, rows: int) {
-	head = len(p.fields) + len(p.text)
-	rows = head + len(p.list.items)
-	if head > 0 && len(p.list.items) > 0 {
-		rows += 1
+pane_filter :: proc(p: ^Pane) -> ^PaneField {
+	for &f in p.fields {
+		if f.mode == .Filter {
+			return &f
+		}
+	}
+	return nil
+}
+
+pane_query :: proc(p: ^Pane) -> ^PaneField {
+	for &f in p.fields {
+		if f.mode == .Query {
+			return &f
+		}
+	}
+	return nil
+}
+
+pane_count :: proc(p: ^Pane) -> int {
+	return len(p.list.matches) if pane_filter(p) != nil else len(p.list.items)
+}
+
+pane_item_index :: proc(p: ^Pane, i: int) -> int {
+	return p.list.matches[i] if pane_filter(p) != nil else i
+}
+
+pane_item_key :: proc(it: PaneItem) -> string {
+	return it.key if it.key != "" else it.label
+}
+
+pane_selected_key :: proc(p: ^Pane) -> string {
+	if pane_count(p) == 0 {
+		return ""
+	}
+	return pane_item_key(p.list.items[pane_item_index(p, p.list.sel)])
+}
+
+pane_hint :: proc(p: ^Pane) -> string {
+	return p.list.hint if p.list.hint != "" else p.list.empty
+}
+
+pane_prompt :: proc(f: ^PaneField) -> string {
+	return f.prompt if f.prompt != "" else "> "
+}
+
+pane_refilter :: proc(p: ^Pane) {
+	f := pane_filter(p)
+	if f == nil {
+		return
+	}
+	labels := make([]string, len(p.list.items), context.temp_allocator)
+	for it, i in p.list.items {
+		labels[i] = it.label
+	}
+	fz := fuzzy_begin(labels)
+	clear(&p.list.matches)
+	for idx in fuzzy_rank(&fz, textfield_str(&f.field)) {
+		append(&p.list.matches, idx)
+	}
+	p.list.sel, p.list.scroll, p.list.anchor = 0, 0, nil
+}
+
+pane_scroll_fit :: proc(p: ^Pane, rows: int) {
+	if p.list.sel < p.list.scroll {
+		p.list.scroll = p.list.sel
+	}
+	if rows > 0 && p.list.sel >= p.list.scroll + rows {
+		p.list.scroll = p.list.sel - rows + 1
+	}
+}
+
+pane_select :: proc(p: ^Pane, i, rows: int) {
+	n := pane_count(p)
+	if n == 0 {
+		return
+	}
+	p.list.sel = clamp(i, 0, n - 1)
+	pane_scroll_fit(p, rows)
+}
+
+pane_restore :: proc(p: ^Pane, rows: int) {
+	if p.list.restore == "" {
+		return
+	}
+	for i in 0 ..< pane_count(p) {
+		if pane_item_key(p.list.items[pane_item_index(p, i)]) == p.list.restore {
+			p.list.sel = i
+			p.list.scroll = max(0, i - rows / 2)
+			pane_scroll_fit(p, rows)
+			delete(p.list.restore)
+			p.list.restore = ""
+			return
+		}
+	}
+}
+
+pane_field_changed :: proc(p: ^Pane, f: ^PaneField) {
+	p.accept = false
+	delete(p.list.restore)
+	p.list.restore = ""
+	switch f.mode {
+	case .Filter:
+		pane_refilter(p)
+	case .Query:
+		p.query_due = true
+		p.query_at = time.tick_add(time.tick_now(), PANE_QUERY_DEBOUNCE_MS * time.Millisecond)
+	case .Input:
+	}
+}
+
+pane_preview_sync :: proc(editor: ^Editor, p: ^Pane) {
+	if !p.auto_preview {
+		return
+	}
+	g := pane_geom(editor, p)
+	path, row := "", 0
+	if g.has_preview && pane_count(p) > 0 {
+		it := p.list.items[pane_item_index(p, p.list.sel)]
+		path, row = it.path, it.row
+	}
+	if path == "" {
+		if preview_loaded(&p.preview) {
+			preview_reset(&p.preview)
+		}
+		return
+	}
+	if preview_loaded(&p.preview) && p.preview.path == path && p.preview.focus == row {
+		return
+	}
+	preview_set_file(&p.preview, path, row, g.preview.h)
+}
+
+PaneGeom :: struct {
+	box, inner:                Rect,
+	title_y, footer_y:         int,
+	field_x, field_y, field_w: int,
+	text, list, preview:       Rect,
+	has_preview:               bool,
+	seps:                      [3]int,
+	nsep:                      int,
+	left_sep:                  int,
+	div_x:                     int,
+}
+
+pane_geom_sep :: proc(g: ^PaneGeom, y: int) {
+	g.seps[g.nsep] = y
+	g.nsep += 1
+}
+
+pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
+	g.title_y, g.footer_y, g.left_sep = -1, -1, -1
+	nf := len(p.fields)
+	if p.place == .Center {
+		n := pane_count(p)
+		rows := min(n, PALETTE_MAX_ROWS) if p.size == .Palette else n
+		if n == 0 && pane_hint(p) != "" {
+			rows = 1
+		}
+		head := (1 if p.title != "" else 0) + nf + len(p.text)
+		sep := head > 0 && p.has_list
+		w := PALETTE_WIDTH
+		if p.size == .Dialog {
+			w = visual_width(transmute([]u8)p.title)
+			for l in p.text {
+				w = max(w, visual_width(transmute([]u8)l.text))
+			}
+			for it in p.list.items {
+				w = max(w, visual_width(transmute([]u8)it.label))
+			}
+			w = min(w + 2, int(tb2.width()) - 4)
+		}
+		g.box = pane_center(editor, w, head + rows + (1 if sep else 0) + (2 if len(p.footer) > 0 else 0))
+		g.inner = {g.box.x + 1, g.box.y + 1, g.box.w - 2, g.box.h - 2}
+		y := g.inner.y
+		if p.title != "" {
+			g.title_y = y
+			y += 1
+		}
+		g.field_x, g.field_y, g.field_w = g.inner.x + 1, y, g.inner.w - 2
+		y += nf
+		g.text = {g.inner.x + 1, y, g.inner.w - 2, len(p.text)}
+		y += len(p.text)
+		if sep {
+			pane_geom_sep(&g, y)
+			y += 1
+		}
+		g.list = {g.inner.x, y, g.inner.w, rows}
+		if len(p.footer) > 0 {
+			pane_geom_sep(&g, y + rows)
+			g.footer_y = y + rows + 1
+		}
+		g.div_x = g.inner.x + g.inner.w
+		return
+	}
+	split := p.place == .Split && p.auto_preview
+	lay := overlay_layout(editor, .Code if split else .None)
+	g.box, g.inner = lay.box, lay.inner
+	y := g.inner.y
+	bottom := g.inner.y + g.inner.h
+	if p.title != "" {
+		g.title_y = y
+		pane_geom_sep(&g, y + 1)
+		y += 2
+	}
+	if len(p.footer) > 0 {
+		g.footer_y = bottom - 1
+		pane_geom_sep(&g, bottom - 2)
+		bottom -= 2
+	}
+	g.div_x = g.inner.x + lay.left_w
+	if split {
+		g.has_preview = lay.preview
+		g.preview = {lay.right_x, y, lay.right_w, max(0, bottom - y)}
+	}
+	g.field_x, g.field_y = g.inner.x + 1, y
+	g.field_w = lay.left_w - 1 if p.place == .Split else g.inner.w - 2
+	y += nf
+	if nf > 0 {
+		if p.place == .Split {
+			g.left_sep = y
+		} else {
+			pane_geom_sep(&g, y)
+		}
+		y += 1
+	}
+	if p.has_list {
+		g.list = {g.inner.x, y, lay.left_w, max(0, bottom - y)}
+	} else {
+		g.text = {g.inner.x + 1, y, g.inner.w - 2, max(0, bottom - y)}
 	}
 	return
 }
 
-pane_box :: proc(editor: ^Editor, p: ^Pane) -> Rect {
-	_, rows := pane_rows(p)
-	w := PALETTE_WIDTH
-	if p.size == .Dialog {
-		w = 0
-		for s in p.text {
-			w = max(w, len(s))
-		}
-		for s in p.list.items {
-			w = max(w, len(s))
-		}
-		w = min(w + 2, int(tb2.width()) - 4)
+pane_count_text :: proc(p: ^Pane) -> string {
+	n := pane_count(p)
+	if n == 0 {
+		return ""
 	}
-	return pane_center(editor, w, rows)
+	return fmt.tprintf("%d+" if p.list.more else "%d", n)
 }
 
-pane_list_top :: proc(p: ^Pane, inner: Rect) -> int {
-	head, _ := pane_rows(p)
-	return inner.y + head + (1 if head > 0 else 0)
+pane_shortcut :: proc(editor: ^Editor, name: string) -> string {
+	if s := command_shortcut(name); s != "" {
+		return s
+	}
+	for cmd in editor.plugins.commands {
+		if cmd.name == name {
+			return cmd.shortcut
+		}
+	}
+	return ""
+}
+
+pane_footer_text :: proc(editor: ^Editor, p: ^Pane) -> string {
+	parts := make([]string, len(p.footer), context.temp_allocator)
+	for h, i in p.footer {
+		parts[i] = h.label
+		if key := pane_shortcut(editor, h.cmd); h.cmd != "" && key != "" {
+			parts[i] = fmt.tprintf("%s %s", key, h.label)
+		}
+	}
+	return strings.join(parts, "  ", context.temp_allocator)
+}
+
+pane_render_field :: proc(p: ^Pane, g: PaneGeom, i: int, count: string) {
+	f := &p.fields[i]
+	y := g.field_y + i
+	w := g.field_w
+	if f.count && count != "" {
+		pane_text(g.div_x - len(count), y, len(count), count, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+		w = max(1, w - len(count) - 1)
+	}
+	overlay_prompt_render(g.field_x, y, w, &f.field, pane_prompt(f))
 }
 
 pane_render :: proc(editor: ^Editor, p: ^Pane) {
-	box := pane_box(editor, p)
-	inner := pane_draw_box(box)
-	y := inner.y
-	for &f in p.fields {
-		overlay_prompt_render(inner.x + 1, y, inner.w - 2, &f.field, f.prompt)
-		y += 1
+	g := pane_geom(editor, p)
+	pane_draw_box(g.box)
+	for y in g.seps[:g.nsep] {
+		pane_hline(g.box, y)
 	}
-	for s in p.text {
-		pane_text(inner.x + 1, y, inner.w - 2, s, COLOR_PANE_FG, COLOR_PANE_BG)
-		y += 1
+	if g.title_y >= 0 {
+		pane_text(g.inner.x + 1, g.title_y, g.inner.w - 2, p.title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	}
-	if len(p.list.items) > 0 && y > inner.y {
-		pane_hline(box, y)
+	if g.footer_y >= 0 {
+		pane_text(g.inner.x + 1, g.footer_y, g.inner.w - 2, pane_footer_text(editor, p), COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 	}
-	top := pane_list_top(p, inner)
-	for s, i in p.list.items {
-		fg, bg := COLOR_PANE_FG, COLOR_PANE_BG
-		if i == p.list.sel {
-			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, top + i, inner.w, fg, bg)
+	if g.has_preview {
+		preview_render(&p.preview, g.preview.x + 1, g.preview.y, g.preview.w - 1, g.preview.h)
+		top, bottom := g.preview.y - 1, g.preview.y + g.preview.h
+		for y in top + 1 ..< bottom {
+			tb2.set_cell(i32(g.div_x), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
 		}
-		pane_text(inner.x + 1, top + i, inner.w - 2, s, fg, bg)
+		tb2.set_cell(i32(g.div_x), i32(top), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		tb2.set_cell(i32(g.div_x), i32(bottom), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	}
+	if g.left_sep >= 0 {
+		tb2.set_cell(i32(g.box.x), i32(g.left_sep), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		for x in g.inner.x ..< g.div_x {
+			tb2.set_cell(i32(x), i32(g.left_sep), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		}
+		tb2.set_cell(i32(g.div_x), i32(g.left_sep), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
+	}
+
+	p.scroll = clamp(p.scroll, 0, max(0, len(p.text) - g.text.h))
+	for i in 0 ..< g.text.h {
+		if p.scroll + i >= len(p.text) {
+			break
+		}
+		l := p.text[p.scroll + i]
+		fg := COLOR_PANE_FG
+		if c, ok := g_theme_colors[l.color]; ok && l.color != "" {
+			fg = c
+		}
+		pane_text(g.text.x, g.text.y + i, g.text.w, l.text, fg, COLOR_PANE_BG)
+	}
+	if p.place != .Center {
+		pane_draw_scrollbar(g.box.x + g.box.w - 1, g.text.y, g.text.h, p.scroll, len(p.text))
+	}
+
+	n := pane_count(p)
+	lw := g.list.w - (1 if p.place == .Split else 2)
+	if hint := pane_hint(p); n == 0 && hint != "" && g.list.h > 0 {
+		pane_text(g.list.x + 1, g.list.y, lw, hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+	}
+	for r in 0 ..< g.list.h {
+		i := p.list.scroll + r
+		if i >= n {
+			break
+		}
+		it := p.list.items[pane_item_index(p, i)]
+		y := g.list.y + r
+		fg, bg, dfg := COLOR_PANE_FG, COLOR_PANE_BG, COLOR_PANE_SHORTCUT_FG
+		if overlay_row_selected(i, p.list.sel, p.list.anchor if p.list.multi else nil) {
+			fg, bg, dfg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG, COLOR_PANE_SEL_FG
+			pane_fill_row(g.list.x, y, g.list.w, fg, bg)
+		}
+		pane_text(g.list.x + 1, y, lw, it.label, fg, bg)
+		if it.detail != "" {
+			dw := visual_width(transmute([]u8)it.detail)
+			pane_text(g.list.x + g.list.w - 1 - dw, y, dw, it.detail, dfg, bg)
+		}
+	}
+	if p.has_list {
+		pane_draw_scrollbar(g.div_x, g.list.y, g.list.h, p.list.scroll, n)
+	}
+
 	if len(p.fields) == 0 {
 		tb2.hide_cursor()
+		return
 	}
+	count := pane_count_text(p)
+	for i in 0 ..< len(p.fields) {
+		if i != p.focus {
+			pane_render_field(p, g, i, count)
+		}
+	}
+	pane_render_field(p, g, p.focus, count)
 }
 
-pane_key :: proc(p: ^Pane, ev: tb2.Event) -> PaneAction {
+pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
+	if p.toggle != 0 && plugin_command_id_matches(editor, p.toggle, ev) {
+		return .Close
+	}
 	#partial switch ev.key {
 	case .Esc:
 		return .Close
 	case .Enter:
 		return .Activate
-	case .Arrow_Up, .Arrow_Down:
-		if n := len(p.list.items); n > 0 {
-			p.list.sel = clamp(p.list.sel + (-1 if ev.key == .Arrow_Up else 1), 0, n - 1)
+	case .Arrow_Up, .Arrow_Down, .Pgup, .Pgdn:
+		g := pane_geom(editor, p)
+		page := g.list.h if p.has_list else g.text.h
+		d := 1
+		#partial switch ev.key {
+		case .Arrow_Up:
+			d = -1
+		case .Pgup:
+			d = -max(1, page)
+		case .Pgdn:
+			d = max(1, page)
+		}
+		if p.has_list {
+			if pane_count(p) > 0 {
+				if p.list.multi && ev_shift(ev) && (ev.key == .Arrow_Up || ev.key == .Arrow_Down) {
+					if p.list.anchor == nil {
+						p.list.anchor = p.list.sel
+					}
+				} else {
+					p.list.anchor = nil
+				}
+				delete(p.list.restore)
+				p.list.restore = ""
+				pane_select(p, p.list.sel + d, g.list.h)
+			}
+			return .None
+		}
+		if len(p.fields) == 0 {
+			overlay_scroll_by(&p.scroll, d, len(p.text), g.text.h)
+			return .None
+		}
+	case .Tab:
+		if len(p.fields) > 1 {
+			p.focus = (p.focus + 1) % len(p.fields)
 			return .None
 		}
 	}
 	if len(p.fields) > 0 {
-		textfield_key(&p.fields[0].field, ev)
+		f := &p.fields[p.focus]
+		if textfield_key(&f.field, ev) {
+			pane_field_changed(p, f)
+		}
 	}
 	return .None
 }
 
 pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
-	if ev.key != .Mouse_Left {
+	g := pane_geom(editor, p)
+	n := pane_count(p)
+	#partial switch ev.key {
+	case .Mouse_Wheel_Up, .Mouse_Wheel_Down:
+		d := -WHEEL_SCROLL_LINES if ev.key == .Mouse_Wheel_Up else WHEEL_SCROLL_LINES
+		if g.has_preview && mouse_in_rect(ev, g.preview) {
+			preview_scroll_by(&p.preview, d, g.preview.h)
+		} else if p.has_list {
+			overlay_scroll_by(&p.list.scroll, d, n, g.list.h)
+		} else {
+			overlay_scroll_by(&p.scroll, d, len(p.text), g.text.h)
+		}
+		return .None
+	case .Mouse_Left:
+	case:
 		return .None
 	}
-	box := pane_box(editor, p)
-	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
 	motion := ev_motion(ev)
-	if off := overlay_row_off(ev, Rect{inner.x, pane_list_top(p, inner), inner.w, len(p.list.items)}); off >= 0 {
-		p.list.sel = off
-		return .Activate if !motion && overlay_double_click(editor, off) else .None
+	for &f, i in p.fields {
+		y := g.field_y + i
+		if !motion && int(ev.y) == y && int(ev.x) >= g.field_x && int(ev.x) < g.field_x + g.field_w {
+			p.focus = i
+			overlay_prompt_mouse(&f.field, g.field_x, y, g.field_w, ev, pane_prompt(&f))
+			return .None
+		}
 	}
-	if len(p.fields) > 0 && (motion || mouse_in_rect(ev, box)) {
-		fe := ev
-		fe.y = i32(inner.y)
-		overlay_prompt_mouse(&p.fields[0].field, inner.x + 1, inner.y, inner.w - 2, fe, p.fields[0].prompt)
+	if off := overlay_row_off(ev, g.list); off >= 0 {
+		if i := p.list.scroll + off; i < n {
+			p.list.sel, p.list.anchor = i, nil
+			delete(p.list.restore)
+			p.list.restore = ""
+			if !motion && overlay_double_click(editor, i) {
+				return .Activate
+			}
+		}
 		return .None
 	}
-	if !mouse_in_rect(ev, box) && !motion {
+	if len(p.fields) > 0 && (motion || (p.place == .Center && mouse_in_rect(ev, g.box))) {
+		f := &p.fields[p.focus]
+		fe := ev
+		fe.y = i32(g.field_y + p.focus)
+		overlay_prompt_mouse(&f.field, g.field_x, g.field_y + p.focus, g.field_w, fe, pane_prompt(f))
+		return .None
+	}
+	if !mouse_in_rect(ev, g.box) && !motion {
 		return .Close
 	}
 	return .None
 }
 
 pane_paste :: proc(p: ^Pane, text: string) {
-	if len(p.fields) > 0 {
-		textfield_insert_flat(&p.fields[0].field, text)
+	if len(p.fields) == 0 {
+		return
+	}
+	f := &p.fields[p.focus]
+	if textfield_insert_flat(&f.field, text) {
+		pane_field_changed(p, f)
 	}
 }

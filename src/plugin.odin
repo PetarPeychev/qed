@@ -76,8 +76,8 @@ Plugins :: struct {
 	resumes:  int,
 	startup_due: bool,
 	current:  ^lua.State,
-	ui:       PluginUi,
-	pane:     PluginPane,
+	views:    [dynamic]UiView,
+	view_events: [dynamic]UiViewEvent,
 	answer:   PluginAnswer,
 	persist_path: string,
 	theme_owner: string,
@@ -203,7 +203,12 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 	lua.getextraspace(p.L)^ = nil
 	lua.sethook(p.L, plugin_hook, lua.MASKCOUNT, PLUGIN_HOOK_COUNT)
 	lua.pushcfunction(p.L, plugin_openlibs)
-	if lua.pcall(p.L, 0, 0, 0) != .OK {
+	ok := lua.pcall(p.L, 0, 0, 0) == .OK
+	if ok {
+		lua.pushcfunction(p.L, plugin_prelude_c)
+		ok = lua.pcall(p.L, 0, 0, 0) == .OK
+	}
+	if !ok {
 		lua.close(p.L)
 		p.L = nil
 		free(p.mem)
@@ -1469,6 +1474,12 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
 	lua.pushcfunction(L, plugin_ctx_index)
 	lua.setfield(L, -2, "__index")
 	lua.setmetatable(L, -2)
+	if f := pane_focus(editor); f != nil && f.ctx.lua {
+		if vi := plugin_view_index(&editor.plugins, f.handle); vi >= 0 {
+			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].view_ref))
+			lua.setfield(L, -2, "view")
+		}
+	}
 	if editor.welcome || len(editor.buffers) == 0 {
 		return
 	}

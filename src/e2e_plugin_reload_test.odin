@@ -60,7 +60,7 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 			command_run(&e.ed, cmd)
 		}
 	}
-	testing.expect(t, p.ui.active, "the pick modal is open")
+	testing.expect(t, test_view(&e.ed) != nil, "the pick modal is open")
 	owned_procs := proc(p: ^Plugins) -> (n: int) {
 		for pr in p.procs {
 			n += int(pr.owner == "t")
@@ -81,19 +81,19 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 		qed.on("startup", function() qed.pane{title = "Hello pane", lines = {"x"}} end)
 	end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
-	testing.expect(t, !p.ui.active, "the modal closes")
+	testing.expect(t, test_view(&e.ed) == nil, "the modal closes")
 	testing.expect_value(t, owned_procs(p), 0)
 	testing.expect(t, posix.kill(-pgid, posix.Signal(0)) != .OK, "the process group is gone")
 	testing.expect_value(t, reload_owned(p, "t"), 1)
 	testing.expect(t, p.mem.used < before - 1024 * 1024, "the old incarnation's heap is reclaimed")
 	plugin_pump(&e.ed)
-	testing.expect(t, p.pane.active, "a plugin loaded at runtime gets its startup event")
+	testing.expect(t, test_view(&e.ed) != nil, "a plugin loaded at runtime gets its startup event")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Hello pane"), "the pane renders")
 
 	reload_write(dir, "t.lua", `return {setup = function() end}`)
 	plugins_poll(&e.ed)
-	testing.expect(t, !p.pane.active, "the pane closes on reload")
+	testing.expect(t, test_view(&e.ed) == nil, "the pane closes on reload")
 	testing.expect_value(t, reload_owned(p, "t"), 0)
 	e2e_render(&e)
 }

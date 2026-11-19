@@ -35,6 +35,7 @@ Editor :: struct {
 	log_open:        bool,
 	panes:           [dynamic]Pane,
 	pane_seq:        u64,
+	pane_saved:      [dynamic]PaneSaved,
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
 	theme_stamp:     DiskStamp,
@@ -235,15 +236,13 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [12]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [10]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
 		{&editor.pluginview.active, pluginview_dispatch_key, pluginview_render, pluginview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.palette.active, palette_dispatch_key, palette_render, palette_dispatch_mouse, palette_paste},
-		{&editor.plugins.ui.active, plugin_ui_dispatch_key, plugin_ui_render, plugin_ui_dispatch_mouse, plugin_ui_paste},
-		{&editor.plugins.pane.active, plugin_pane_dispatch_key, plugin_pane_render, plugin_pane_dispatch_mouse, nil},
 		{&editor.cwdpick.active, cwdpick_dispatch_key, cwdpick_render, cwdpick_dispatch_mouse, cwdpick_paste},
 		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
@@ -377,12 +376,7 @@ editor_previews_sync :: proc(editor: ^Editor) {
 	if editor.linefind.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.linefind.preview) {
 		linefind_load_preview(editor)
 	}
-	if editor.plugins.ui.active {
-		fuzzy_list_scroll(&editor.plugins.ui.list, plugin_ui_rows(editor))
-		if overlay_layout(editor, .Code).preview && !preview_loaded(&editor.plugins.ui.preview) {
-			plugin_ui_preview(editor)
-		}
-	}
+	pane_stack_fit(editor, true)
 }
 
 editor_paste_route :: proc(editor: ^Editor, text: string) {
@@ -1094,7 +1088,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
 	message, is_error := config_load_from(path)
-	if !editor.plugins.ui.active || editor.theme_shown == "" || !theme_preview(path, editor.theme_shown) {
+	if !pane_lua_open(editor) || editor.theme_shown == "" || !theme_preview(path, editor.theme_shown) {
 		delete(editor.theme_shown)
 		editor.theme_shown = ""
 		theme_preview(path, THEME)
@@ -1233,8 +1227,8 @@ editor_render :: proc(editor: ^Editor) {
 
 	pane_stack_render(editor, true)
 	covered := false
-	// legacy 2-deep stack: remove once the palette and qed.pick/pane are Panes (M1, M2)
-	if (editor.palette.active || editor.plugins.ui.active || editor.plugins.pane.active) && editor.filetree.active {
+	// legacy 2-deep stack: remove once the palette is a Pane (M2)
+	if editor.palette.active && editor.filetree.active {
 		filetree_render(editor)
 	}
 	for ov in editor_overlays(editor) {

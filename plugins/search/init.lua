@@ -2,7 +2,6 @@ local MAX = 500
 local MAX_COLUMNS = 300
 
 local min_query
-local query, selected = "", 1
 local has_rg = false
 
 local function rg_ready()
@@ -13,37 +12,48 @@ local function rg_ready()
 	return has_rg
 end
 
-local function parse(out)
-	local hits = {}
-	for line in out:gmatch("[^\n]+") do
-		local file, row, col, text = line:match("^(.-):(%d+):(%d+):(.*)$")
-		if file and file ~= "" then
-			hits[#hits + 1] = {file = file, row = tonumber(row), col = tonumber(col), text = text:gsub("\r$", "")}
-		end
+local function short_hint()
+	return ("Type at least %d characters to search"):format(min_query)
+end
+
+local function rg_cmd(text, args)
+	-- stdin is the spawn's empty body; without </dev/null rg searches it instead of the tree
+	return ("rg --vimgrep -F -S --sort path -M %d --max-columns-preview -e %s%s </dev/null 2>/dev/null"):format(MAX_COLUMNS, qed.shell_quote(text), args)
+end
+
+local function query(v, text, args)
+	if #text < min_query then
+		v:set({}, {hint = short_hint()})
+		return
 	end
-	table.sort(hits, function(a, b)
-		if a.file ~= b.file then
-			return a.file < b.file
+	local root, n, prev = qed.root(), 0, nil
+	local proc
+	proc = qed.spawn_bg{cmd = rg_cmd(text, args), on_line = function(line)
+		local file, row, col, hit = line:match("^(.-):(%d+):(%d+):(.*)$")
+		if not file or file == "" or file .. ":" .. row == prev then
+			return
 		end
-		if a.row ~= b.row then
-			return a.row < b.row
+		prev = file .. ":" .. row
+		n = n + 1
+		local item = {
+			label = ("%s:%s  %s"):format(file, row, hit:gsub("\r$", ""):match("^[ \t]*(.*)")),
+			path = qed.path.join(root, file),
+			pos = {row = tonumber(row), col = tonumber(col)},
+		}
+		-- the previous results stay up until the first new hit, so typing does not flash an empty list
+		if n == 1 then
+			v:set({item})
+		else
+			v:append({item})
 		end
-		return a.col < b.col
-	end)
-	local items, prev = {}, nil
-	for _, h in ipairs(hits) do
-		local key = h.file .. ":" .. h.row
-		if key ~= prev then
-			prev = key
-			items[#items + 1] = {
-				label = ("%s:%d  %s"):format(h.file, h.row, h.text:match("^[ \t]*(.*)")),
-				path = qed.path.join(qed.root(), h.file),
-				pos = {row = h.row, col = h.col},
-				n = #items + 1,
-			}
+		if n > MAX then
+			proc:kill()
 		end
+	end}
+	proc:wait()
+	if n == 0 then
+		v:set({}, {hint = "No matches"})
 	end
-	return items, #hits
 end
 
 local function search(ctx, scope)
@@ -51,10 +61,10 @@ local function search(ctx, scope)
 		qed.message("ripgrep (rg) not found", "error")
 		return
 	end
-	local start, keep = query, selected
+	local start
 	local sel = ctx.selection_text
 	if sel and not sel:find("\n") and sel:find("[^ \t]") then
-		start, keep = sel, 1
+		start = sel
 	end
 	local args = ""
 	for _, path in ipairs(scope or {}) do
@@ -63,42 +73,20 @@ local function search(ctx, scope)
 	if args ~= "" then
 		args = " --" .. args
 	end
-	local first = true
-	local item, _, last = qed.pick{
-		query = start,
-		on_change = function(it)
-			selected = it.n
-		end,
-		on_query = function(text, picker)
-			query = text
-			local pick = first and text == start and keep or 1
-			first = false
-			if #text < min_query then
-				selected = 1
-				picker:set({}, {hint = ("Type at least %d characters to search"):format(min_query)})
-				return
-			end
-			-- stdin is the spawn's empty body; without </dev/null rg searches it instead of the tree
-			local cmd = ("rg --vimgrep -F -S -M %d --max-columns-preview -e %s%s </dev/null 2>/dev/null | head -n %d"):format(MAX_COLUMNS, qed.shell_quote(text), args, MAX)
-			local r, err = qed.spawn{cmd = cmd}
-			if not r then
-				selected = 1
-				picker:set({}, {hint = "Search failed: " .. err})
-				return
-			end
-			local items, lines = parse(r.stdout)
-			if #items == 0 then
-				selected = 1
-			end
-			picker:set(items, {selected = pick, more = lines >= MAX})
-		end,
+	qed.ui.open{
+		id = "search",
+		place = "split",
+		fields = {{mode = "query", count = true, text = start}},
+		list = {max = MAX, empty = short_hint()},
+		preview = "auto",
+		on = {
+			query = function(v, text) query(v, text, args) end,
+			activate = function(v, items)
+				v:close()
+				qed.jump(items[1].path, items[1].pos)
+			end,
+		},
 	}
-	if last then
-		query = last
-	end
-	if item then
-		qed.jump(item.path, item.pos)
-	end
 end
 
 local function search_tree(ctx)
@@ -127,6 +115,5 @@ return {
 		qed.command{name = "Find in Files", key = "Alt+F", welcome = true, run = search}
 		qed.command{name = "Find in Files", scope = "filetree", run = search_tree}
 		qed.on("config_changed", function() min_query = qed.config().min_query end)
-		qed.on("root_changed", function() selected = 1 end)
 	end,
 }

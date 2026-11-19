@@ -98,11 +98,6 @@ loc_run :: proc(t: ^testing.T, e: ^E2E, name: string, loc := #caller_location) {
 	testing.expectf(t, false, "%s registered", name, loc = loc)
 }
 
-@(private = "file")
-loc_selected :: proc(e: ^E2E) -> string {
-	ui := &e.ed.plugins.ui
-	return ui.labels[ui.matches[ui.selected]]
-}
 
 @(test)
 e2e_plugin_parse_locations :: proc(t: ^testing.T) {
@@ -122,15 +117,15 @@ e2e_plugin_locations_pick_jump :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_resize(&e, 160, 40)
 	loc_run(t, &e, "Loc: Grep")
-	ui := &e.ed.plugins.ui
-	testing.expect(t, ui.active && ui.paths, "parsed items get the list + preview picker")
-	testing.expect_value(t, len(ui.matches), 2)
-	testing.expect_value(t, loc_selected(&e), "a.txt:2: needle here")
+	v := test_view(&e.ed)
+	testing.expect(t, v != nil && v.place == .Split, "parsed items get the list + preview picker")
+	testing.expect_value(t, pane_count(v), 2)
+	testing.expect_value(t, test_view_selected(&e.ed), "a.txt:2: needle here")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "three"), "the preview shows the file")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
-	testing.expect(t, !ui.active, "Enter closes")
+	testing.expect(t, test_view(&e.ed) == nil, "Enter closes")
 	b := editor_buffer(&e.ed)
 	testing.expect_value(t, filepath.base(b.path), "b.txt")
 	testing.expect_value(t, b.cursor, Cursor{2, 0})
@@ -171,7 +166,7 @@ e2e_plugin_locations_filetree :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	filetree_open_all(&e.ed)
 	loc_run(t, &e, "Loc: Tree")
-	testing.expect(t, e.ed.plugins.ui.active, "a picker opens over the tree")
+	testing.expect(t, test_view(&e.ed) != nil, "a picker opens over the tree")
 	e2e_key(&e, .Enter)
 	testing.expect(t, !e.ed.filetree.active, "the jump closes the tree")
 	b := editor_buffer(&e.ed)

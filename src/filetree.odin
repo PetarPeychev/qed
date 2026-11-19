@@ -370,7 +370,7 @@ filetree_status_pushed :: proc(editor: ^Editor) {
 	t.scanned = true
 	editor_log(editor, .Debug, "Files", fmt.tprintf("file tree status: %d path(s) from %s", len(t.status), t.provider.owner))
 	// an overlay over the tree would lose its selection to a rebuild; the next one picks the status up
-	if t.active && !editor.plugins.ui.active && !editor.palette.active && pane_focus(editor) == nil {
+	if t.active && !editor.palette.active && pane_focus(editor) == nil {
 		filetree_rebuild(editor)
 	}
 	if t.active {

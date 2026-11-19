@@ -14,8 +14,8 @@ quit_dialog_open :: proc(editor: ^Editor) {
 		return
 	}
 	editor_clear_message(editor)
-	text := []string{quit_dialog_question(editor)}
-	pane_open(editor, {id = "quit", safety = true, text = text, list = {items = quit_actions[:]}, on = {activate = quit_dialog_execute}})
+	text := []PaneLine{{text = quit_dialog_question(editor)}}
+	pane_open(editor, {id = "quit", safety = true, text = text, list = {items = pane_labels(quit_actions[:])}, on = {activate = quit_dialog_execute}})
 }
 
 quit_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
@@ -80,8 +80,8 @@ close_dialog_open :: proc(editor: ^Editor) {
 	editor_clear_message(editor)
 	b := editor_buffer(editor)
 	name := filepath.base(b.path) if b.path != "" else "[No Name]"
-	text := []string{fmt.tprintf("Save changes to %s?", name)}
-	pane_open(editor, {id = "close", safety = true, ctx = {buf = b.id}, text = text, list = {items = close_actions[:]}, on = {activate = close_dialog_execute}})
+	text := []PaneLine{{text = fmt.tprintf("Save changes to %s?", name)}}
+	pane_open(editor, {id = "close", safety = true, ctx = {buf = b.id}, text = text, list = {items = pane_labels(close_actions[:])}, on = {activate = close_dialog_execute}})
 }
 
 close_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
@@ -116,8 +116,8 @@ conflict_dialog_open :: proc(editor: ^Editor, b: ^Buffer) {
 	}
 	editor_clear_message(editor)
 	name := filepath.base(b.path) if b.path != "" else "[No Name]"
-	text := []string{fmt.tprintf("%s changed on disk since you loaded it.", name)}
-	pane_open(editor, {id = "conflict", safety = true, ctx = {buf = b.id}, text = text, list = {items = conflict_actions[:]}, on = {activate = conflict_dialog_execute}})
+	text := []PaneLine{{text = fmt.tprintf("%s changed on disk since you loaded it.", name)}}
+	pane_open(editor, {id = "conflict", safety = true, ctx = {buf = b.id}, text = text, list = {items = pane_labels(conflict_actions[:])}, on = {activate = conflict_dialog_execute}})
 }
 
 conflict_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
@@ -135,9 +135,9 @@ conflict_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 }
 
 dialog_pane :: proc(question: string, actions: []string, selected: int) -> Pane {
-	text := make([]string, 1, context.temp_allocator)
-	text[0] = question
-	return {text = text, list = {items = actions, sel = selected}}
+	text := make([]PaneLine, 1, context.temp_allocator)
+	text[0].text = question
+	return {text = text, has_list = true, list = {items = pane_labels(actions), sel = selected}}
 }
 
 dialog_act :: proc(editor: ^Editor, action: PaneAction, execute, close: proc(editor: ^Editor)) {
@@ -151,7 +151,7 @@ dialog_act :: proc(editor: ^Editor, action: PaneAction, execute, close: proc(edi
 
 dialog_key :: proc(editor: ^Editor, ev: tb2.Event, question: string, actions: []string, selected: ^int, execute, close: proc(editor: ^Editor)) {
 	p := dialog_pane(question, actions, selected^)
-	action := pane_key(&p, ev)
+	action := pane_key(editor, &p, ev)
 	selected^ = p.list.sel
 	dialog_act(editor, action, execute, close)
 }

@@ -1606,7 +1606,7 @@ e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return pane_focus(&e.ed) == nil})
 	pn := pane_focus(&e.ed)
 	testing.expect(t, pn != nil && pn.owner == "git" && len(pn.list.items) > 0, "the git plugin asks to confirm")
-	testing.expect_value(t, pn.text[0], "Restore gone.txt from HEAD?")
+	testing.expect_value(t, pn.text[0].text, "Restore gone.txt from HEAD?")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
@@ -1661,7 +1661,7 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 			plugin_command_run(&e.ed, c)
 		}
 	}
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return !e.ed.plugins.ui.active})
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return test_view(&e.ed) == nil})
 	e2e_type(&e, "seed")
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
