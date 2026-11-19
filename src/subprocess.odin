@@ -4,6 +4,7 @@ import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:sys/posix"
 import "core:time"
 
@@ -39,8 +40,8 @@ subprocess_start :: proc(cmd: string, stdin_body: []u8, working_dir: string) -> 
 subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: string, env: []string = nil, capture_stderr := false, group := false) -> (Subprocess, os.Error, bool) {
 	posix.sigignore(.SIGPIPE)
 
-	g_subprocess_counter += 1
-	tmp := fmt.tprintf("/tmp/qed-subproc-%d-%d.tmp", posix.getpid(), g_subprocess_counter)
+	id := sync.atomic_add(&g_subprocess_counter, 1) + 1
+	tmp := fmt.tprintf("/tmp/qed-subproc-%d-%d.tmp", posix.getpid(), id)
 	fd, oerr := os.open(tmp, {.Write, .Create, .Trunc}, os.perm(0o600))
 	if oerr != nil {
 		return {}, oerr, false
@@ -97,7 +98,7 @@ subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: strin
 	}
 
 	fd_set_nonblock(out_r)
-	sp := Subprocess{id = u64(g_subprocess_counter), process = process, stdout = out_r, out = strings.builder_make(), running = true}
+	sp := Subprocess{id = u64(id), process = process, stdout = out_r, out = strings.builder_make(), running = true}
 	if err_r != nil {
 		fd_set_nonblock(err_r)
 		sp.stderr = err_r
