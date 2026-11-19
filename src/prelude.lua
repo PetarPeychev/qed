@@ -43,6 +43,9 @@ return function(qed)
 		items = items or {}
 		local split, selected = on_query ~= nil, nil
 		if type(initial) == "number" then
+			if math.type(initial) ~= "integer" then
+				error("initial must be an item index", 2)
+			end
 			selected = initial >= 1 and initial <= #items and initial or nil
 		elseif initial ~= nil and type(initial) ~= "string" then
 			error("initial must be an item index or label", 2)
@@ -56,6 +59,7 @@ return function(qed)
 		local picker
 		local v, err = open{
 			kind = "child",
+			modal = true,
 			place = split and "split" or "center",
 			fields = {{prompt = prefix(spec.prompt), text = spec.query, mode = on_query and "query" or "filter", count = split}},
 			list = {items = items, multi = spec.multi, selected = selected},
@@ -83,7 +87,7 @@ return function(qed)
 		if type(spec) ~= "table" then
 			error("table {prompt, text?} expected", 2)
 		end
-		local v, err = open{kind = "child", fields = {{prompt = prefix(spec.prompt), text = spec.text, mode = "input"}}}
+		local v, err = open{kind = "child", modal = true, fields = {{prompt = prefix(spec.prompt), text = spec.text, mode = "input"}}}
 		if not v then
 			return nil, err
 		end
@@ -110,7 +114,7 @@ return function(qed)
 				error("choices must be strings", 2)
 			end
 		end
-		local v, err = open{kind = "child", size = "dialog", text = {question}, list = {items = choices}}
+		local v, err = open{kind = "child", modal = true, size = "dialog", text = {question}, list = {items = choices}}
 		if not v then
 			return nil, err
 		end

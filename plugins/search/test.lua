@@ -248,4 +248,112 @@ function T.tree_changes_dir_scope(t)
 	t.key("Esc")
 end
 
+local function fifo_scope(t, body)
+	write("a.txt", body)
+	t.ok(t.sh("mkfifo b_fifo"), "mkfifo")
+	t.key("Alt+f")
+	t.settle()
+	for _ = 1, 4 do
+		t.key("Up")
+	end
+	t.key("Shift+Down")
+end
+
+function T.streams_while_rg_runs(t)
+	if not rg(t) then
+		return
+	end
+	fifo_scope(t, "x needle_fifo\n")
+	open(t)
+	t.type("needle_fifo")
+	local ui = results(t)
+	t.eq(ui.labels[1], "a.txt:1  x needle_fifo", "a hit shows while rg still runs")
+	t.eq(t.procs(), 1, "rg is still blocked on the fifo")
+	t.type("x")
+	t.pump(250)
+	t.eq(t.procs(), 1, "a requery kills the previous rg")
+	t.key("Esc")
+	t.eq(t.procs(), 0, "closing kills rg")
+	t.key("Esc")
+end
+
+function T.enter_while_rg_runs(t)
+	if not rg(t) then
+		return
+	end
+	fifo_scope(t, "first\nneedle_enter here\n")
+	open(t)
+	t.type("needle_enter")
+	results(t)
+	t.eq(t.procs(), 1, "rg still runs")
+	t.key("Enter")
+	t.wait(function() return t.ui() == nil end)
+	t.eq(qed.path.base(qed.buf.path()), "a.txt", "Enter opens a visible hit without waiting for rg")
+	t.eq(qed.buf.cursor().row, 2)
+	t.eq(t.procs(), 0, "and kills rg")
+end
+
+function T.cap_kills_rg(t)
+	if not rg(t) then
+		return
+	end
+	local lines = {}
+	for i = 1, 600 do
+		lines[i] = "needle_cap " .. i
+	end
+	fifo_scope(t, table.concat(lines, "\n") .. "\n")
+	open(t)
+	t.type("needle_cap")
+	t.wait(function() local ui = t.ui(); return ui.matches == 500 and t.procs() == 0 end)
+	t.ok(on_screen(t, "500+"), "the count shows 500+")
+	local ui = t.ui()
+	t.eq(ui.labels[1], "a.txt:1  needle_cap 1", "shown in key order")
+	t.eq(ui.labels[2], "a.txt:2  needle_cap 2")
+	t.key("Esc")
+	t.key("Esc")
+end
+
+function T.dedupes_rows(t)
+	if not rg(t) then
+		return
+	end
+	write("d.txt", "needle_dup and needle_dup\n")
+	open(t)
+	t.type("needle_dup")
+	results(t)
+	t.pump(100)
+	t.eq(t.ui().matches, 1, "two hits on one row are one item")
+	t.key("Esc")
+end
+
+function T.selection_restored_while_streaming(t)
+	if not rg(t) then
+		return
+	end
+	write("a.txt", "needle_rs one\nneedle_rs two\n")
+	write("b.txt", "needle_rs three\n")
+	write("c.txt", "needle_rs four\n")
+	open(t)
+	t.type("needle_rs")
+	t.wait(function() return t.ui().matches == 4 end)
+	t.key("Down")
+	t.key("Down")
+	t.eq(t.ui().selected, "b.txt:1  needle_rs three")
+	t.key("Esc")
+	open(t)
+	t.wait(function() local ui = t.ui(); return ui.matches == 4 and ui.selected == "b.txt:1  needle_rs three" end)
+	t.key("Esc")
+end
+
+function T.rg_failure_hint(t)
+	if not rg(t) then
+		return
+	end
+	t.fake_spawn("rg --vimgrep", {code = 2})
+	open(t)
+	t.type("needle_fail")
+	t.wait(function() return t.ui().hint == "Search failed: rg exit code 2" end)
+	t.key("Esc")
+end
+
 return T

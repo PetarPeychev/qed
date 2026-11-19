@@ -1466,7 +1466,7 @@ plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, filetree: bool)
 	return {}, false
 }
 
-plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
+plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string) {
 	lua.createtable(L, 0, 4)
 	lua.pushodinstring(L, editor.working_root)
 	lua.setfield(L, -2, "root")
@@ -1476,8 +1476,10 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor) {
 	lua.setmetatable(L, -2)
 	if f := pane_focus(editor); f != nil && f.ctx.lua {
 		if vi := plugin_view_index(&editor.plugins, f.handle); vi >= 0 {
-			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].view_ref))
-			lua.setfield(L, -2, "view")
+			if editor.plugins.views[vi].owner == owner {
+				lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].view_ref))
+				lua.setfield(L, -2, "view")
+			}
 		}
 	}
 	if editor.welcome || len(editor.buffers) == 0 {
@@ -1540,8 +1542,10 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 plugin_invoke_c :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
 	context = entry.ctx
+	s, _ := lua.toodinstring(L, 2)
+	owner := strings.clone(s, context.temp_allocator)
 	lua.rawgeti(L, lua.REGISTRYINDEX, lua.tointeger(L, 1))
-	plugin_ctx_push(L, entry.editor)
+	plugin_ctx_push(L, entry.editor, owner)
 	lua.call(L, 1, 1)
 	return 1
 }
@@ -1550,9 +1554,10 @@ plugin_invoke :: proc(editor: ^Editor, owner: string, ref: i32, nresults: c.int)
 	p := &editor.plugins
 	lua.pushcfunction(p.L, plugin_invoke_c)
 	lua.pushinteger(p.L, lua.Integer(ref))
+	lua.pushodinstring(p.L, owner)
 	p.resumes += 1
 	prev_slice := plugin_slice_begin(p, .When)
-	ok, msg, tb := plugin_call(editor, 1, nresults)
+	ok, msg, tb := plugin_call(editor, 2, nresults)
 	if plugin_slice_end(editor, prev_slice, owner, .When, "command when") && ok {
 		lua.pop(p.L, nresults)
 		ok, msg, tb = false, fmt.tprintf("command when exceeded its %.0f ms budget", plugin_budgets[.When].hard_ms), ""
@@ -1579,7 +1584,7 @@ plugin_command_when :: proc(editor: ^Editor, cmd: Command) -> bool {
 }
 
 plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
-	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.id})
+	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.id, user = true})
 }
 
 plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {

@@ -110,6 +110,7 @@ PluginTask :: struct {
 	event:   PluginEvent,
 	wait:    PluginWait,
 	command: u64,
+	user:    bool,
 	running: bool,
 	doomed:  bool,
 }
@@ -141,7 +142,6 @@ PluginProc :: struct {
 	killed:   bool,
 	orphan:   bool,
 	due:      time.Tick,
-	task:     u64,
 }
 
 PluginSave :: struct {
@@ -199,6 +199,7 @@ PluginStart :: struct {
 	items:    []int,
 	view_ref: i32,
 	command:  u64,
+	user:     bool,
 }
 
 plugin_tick_add :: proc(t: time.Tick, ms: int) -> time.Tick {
@@ -368,7 +369,8 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 	switch start.args {
 	case .None:
 	case .Ctx:
-		plugin_ctx_push(L, entry.editor)
+		t := plugin_task_of(&entry.editor.plugins, L)
+		plugin_ctx_push(L, entry.editor, t.owner if t != nil else "")
 		nargs = 1
 	case .Line:
 		lua.pushodinstring(L, start.line)
@@ -444,7 +446,7 @@ plugin_task_start :: proc(editor: ^Editor, owner: string, kind: PluginKind, star
 		return 0, true
 	}
 	id = plugin_next_id(p)
-	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command})
+	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command, user = start.user})
 	start := start
 	lua.pushcfunction(th.co, plugin_co_main)
 	lua.pushlightuserdata(th.co, &start)
@@ -818,12 +820,7 @@ plugin_task_kill :: proc(editor: ^Editor, id: u64) {
 		return
 	}
 	if w := p.tasks[i].wait; w.kind == .Proc {
-		if j := plugin_proc_index(p, w.id); j >= 0 {
-			plugin_proc_free(p, j)
-		}
-	}
-	for j := len(p.procs) - 1; j >= 0; j -= 1 {
-		if j < len(p.procs) && p.procs[j].task == id {
+		if j := plugin_proc_index(p, w.id); j >= 0 && !p.procs[j].bg {
 			plugin_proc_free(p, j)
 		}
 	}

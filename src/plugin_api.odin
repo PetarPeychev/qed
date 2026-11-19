@@ -1957,10 +1957,6 @@ api_spawn_opts :: proc(L: ^lua.State, editor: ^Editor) -> (o: ApiSpawn) {
 
 api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn, id: u64, bg: bool) {
 	p := &editor.plugins
-	task: u64
-	if t := plugin_task_of(p, L); t != nil {
-		task = t.id
-	}
 	line_ref: i32
 	if o.on_line {
 		lua.getfield(L, 1, "on_line")
@@ -1971,7 +1967,7 @@ api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn
 			sp := Subprocess{id = id, out = strings.builder_make(), err = strings.builder_make(), exit_code = f.code}
 			strings.write_string(&sp.out, f.stdout)
 			strings.write_string(&sp.err, f.stderr)
-			append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, fake = true, due = plugin_tick_add(time.tick_now(), f.delay_ms), task = task})
+			append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, fake = true, due = plugin_tick_add(time.tick_now(), f.delay_ms)})
 			return
 		}
 	}
@@ -1982,7 +1978,7 @@ api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn
 		}
 		plugin_raise(L, fmt.tprintf("cannot start %s: %v", o.label, err))
 	}
-	append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, task = task})
+	append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg})
 }
 
 qed_spawn :: proc "c" (L: ^lua.State) -> c.int {

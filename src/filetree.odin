@@ -1384,7 +1384,7 @@ filetree_activate :: proc(editor: ^Editor) {
 	}
 	if filetree_entry_deleted(t, e) {
 		if t.provider.open_ref != 0 {
-			plugin_task_start(editor, t.provider.owner, .Command, {ref = t.provider.open_ref, args = .Ctx})
+			plugin_task_start(editor, t.provider.owner, .Command, {ref = t.provider.open_ref, args = .Ctx, user = true})
 		} else {
 			editor_log(editor, .Info, "Files", "Deleted file")
 		}

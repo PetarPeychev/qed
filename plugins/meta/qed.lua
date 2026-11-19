@@ -231,18 +231,20 @@ function qed.every(ms, fn) end
 ---@field max? integer items past it are dropped and the count shows `N+`
 ---@field empty? string dim hint while the list is empty
 ---@field selected? integer item index to start on
+---@field sort? boolean keep the items ordered by key: `append` inserts in place and the selection follows its item once the user moved it
 
 ---@class qed.UiHandlers
 ---@field activate? fun(v: qed.View, items: (string|qed.UiItem)[]) Enter or double-click: the selection (the range with `multi`), `{}` for a pane without a list; the pane stays open
 ---@field change? fun(v: qed.View, item: string|qed.UiItem) the highlighted item changed (not at open, also after `View:set`); a newer change kills the previous run
----@field query? fun(v: qed.View, text: string) the query field settled; a newer query kills the previous run and its processes, and so does the close
+---@field query? fun(v: qed.View, text: string) the query field settled; a newer query and the close kill the previous run and the `qed.spawn` it waits on (`qed.spawn_bg` processes stay the plugin's to kill)
 ---@field close? fun(v: qed.View) any close: Esc, click outside, the opening command's chord, `View:close`, a parent closing, an exclusive pane replacing it
 
 ---@class qed.UiSpec
----@field id? string the fields' text and the selected item's key persist under it across opens
+---@field id? string the fields' text and the selected item's key persist under it across opens (and plugin reloads)
+---@field modal? boolean exclusive opens are refused as busy while it is open (`qed.pick/prompt/confirm` set it); a non-modal pane is replaced and its waiters get `nil`
 ---@field place? "center"|"full"|"split" center (default) is a centered box, full fills the screen, split puts a full-height preview column beside the fields and list
 ---@field size? "palette"|"dialog"|"split:code" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default)
----@field kind? "exclusive"|"child" exclusive (default) closes the open exclusive pane; child stacks on what has focus (a pane or a core overlay), else opens exclusive
+---@field kind? "exclusive"|"child" exclusive (default) closes the open exclusive pane; child stacks on what has focus (a pane or a core overlay), else opens exclusive; outside a user's command it stacks only on the plugin's own pane, else returns busy
 ---@field parent? qed.View stack on this view (usually `ctx.view`): Esc returns to it, closing it closes this one
 ---@field focus? boolean false opens a passive pane: drawn under focused panes, never takes input
 ---@field title? string
@@ -284,8 +286,8 @@ function View:wait() end
 
 qed.ui = {}
 
----Opens a pane. Returns `nil, "busy"` while a quit, close or conflict dialog shows, or when an exclusive open meets a pane someone waits on (`View:wait`, `qed.pick/prompt/confirm`); `nil, "closed"` when `parent` is gone. Raises in `setup`.
----Commands run while a view has focus get it as `ctx.view`.
+---Opens a pane. Returns `nil, "busy"` while a quit, close or conflict dialog shows, or when an exclusive open meets a `modal` pane; `nil, "closed"` when `parent` is gone. Raises in `setup`.
+---A command of the view's own plugin run while the view has focus gets it as `ctx.view` (reachable once panes get scoped commands).
 ---@param spec qed.UiSpec
 ---@return qed.View|nil
 ---@return "busy"|"closed"|nil err
@@ -310,7 +312,7 @@ local Picker = {}
 function Picker:set(items, opts) end
 
 ---Waits for a fuzzy pick (a `qed.ui.open` child pane). Returns the chosen item (the value passed in), or `nil` on Esc.
----The opening command's chord closes it like Esc. Stacks on an open pane or overlay; returns `nil, "busy"` only while a quit, close or conflict dialog shows.
+---The opening command's chord closes it like Esc. Stacks on an open pane or overlay (outside a user's command only on the plugin's own pane); otherwise `nil, "busy"` only while a quit, close or conflict dialog shows.
 ---With `on_query`, a third value is the final query text (also on Esc), and Enter while a query is due or running waits for its `set`.
 ---@param spec qed.PickSpec
 ---@return string|qed.UiItem|(string|qed.UiItem)[]|nil

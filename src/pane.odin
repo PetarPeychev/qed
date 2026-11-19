@@ -171,6 +171,8 @@ PaneList :: struct {
 	empty:   string,
 	hint:    string,
 	restore: string,
+	sort:    bool,
+	moved:   bool,
 }
 
 PaneHandler :: proc(editor: ^Editor, p: ^Pane)
@@ -186,6 +188,7 @@ Pane :: struct {
 	owner:        string,
 	kind:         PaneKind,
 	safety:       bool,
+	modal:        bool,
 	dead:         bool,
 	parent:       u64,
 	over:         ^bool, // legacy Overlay this child sits on; goes away once every overlay is a Pane
@@ -206,6 +209,7 @@ Pane :: struct {
 	query_due:    bool,
 	query_at:     time.Tick,
 	accept:       bool,
+	landed:       bool,
 	notified:     int,
 	on:           struct {
 		activate, close: PaneHandler,
@@ -229,7 +233,7 @@ pane_labels :: proc(labels: []string) -> [dynamic]PaneItem {
 pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	if spec.kind == .Exclusive && !spec.safety {
 		for &q in editor.panes {
-			if q.kind != .Passive && pane_live(editor, &q) && len(plugin_waiters(&editor.plugins, .Pane, q.handle)) > 0 {
+			if q.modal && q.kind != .Passive && pane_live(editor, &q) {
 				return nil
 			}
 		}
@@ -485,6 +489,9 @@ pane_stack_fit :: proc(editor: ^Editor, resize: bool) {
 pane_unload :: proc(editor: ^Editor, owner: string) {
 	for &p in editor.panes {
 		if p.owner == owner {
+			if p.ctx.lua {
+				pane_save(editor, &p)
+			}
 			p.on = {}
 			p.dead = true
 		}
@@ -643,7 +650,34 @@ pane_refilter :: proc(p: ^Pane) {
 	for idx in fuzzy_rank(&fz, textfield_str(&f.field)) {
 		append(&p.list.matches, idx)
 	}
-	p.list.sel, p.list.scroll, p.list.anchor = 0, 0, nil
+	p.list.sel, p.list.scroll, p.list.anchor, p.list.moved = 0, 0, nil, false
+}
+
+pane_marks :: proc(p: ^Pane) -> (sel, anchor: int) {
+	sel, anchor = -1, -1
+	if pane_count(p) > 0 {
+		sel = pane_item_index(p, p.list.sel)
+	}
+	if a, ok := p.list.anchor.?; ok {
+		anchor = pane_item_index(p, a)
+	}
+	return
+}
+
+// a full re-rank per call is O(n log n); fine for the small lists that change under a filter
+pane_refilter_keep :: proc(p: ^Pane, rows, sel, anchor: int) {
+	moved, scroll := p.list.moved, p.list.scroll
+	pane_refilter(p)
+	for m, i in p.list.matches {
+		if m == sel {
+			p.list.sel = i
+		}
+		if m == anchor {
+			p.list.anchor = i
+		}
+	}
+	p.list.moved, p.list.scroll = moved, scroll
+	pane_scroll_fit(p, rows)
 }
 
 pane_scroll_fit :: proc(p: ^Pane, rows: int) {
@@ -672,6 +706,7 @@ pane_restore :: proc(p: ^Pane, rows: int) {
 		if pane_item_key(p.list.items[pane_item_index(p, i)]) == p.list.restore {
 			p.list.sel = i
 			p.list.scroll = max(0, i - rows / 2)
+			p.list.moved = true
 			pane_scroll_fit(p, rows)
 			delete(p.list.restore)
 			p.list.restore = ""
@@ -976,6 +1011,7 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 				}
 				delete(p.list.restore)
 				p.list.restore = ""
+				p.list.moved = true
 				pane_select(p, p.list.sel + d, g.list.h)
 			}
 			return .None
@@ -1028,7 +1064,7 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	}
 	if off := overlay_row_off(ev, g.list); off >= 0 {
 		if i := p.list.scroll + off; i < n {
-			p.list.sel, p.list.anchor = i, nil
+			p.list.sel, p.list.anchor, p.list.moved = i, nil, true
 			delete(p.list.restore)
 			p.list.restore = ""
 			if !motion && overlay_double_click(editor, i) {

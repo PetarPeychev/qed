@@ -242,7 +242,8 @@ e2e_ui_open_query_debounce_kill :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(e.ed.plugins.procs), 2)
 	e2e_type(&e, "er")
 	view_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	testing.expect_value(t, len(e.ed.plugins.procs), 0)
+	testing.expect_value(t, len(e.ed.plugins.procs), 1)
+	testing.expect(t, e.ed.plugins.procs[0].bg, "the superseded task's spawn is killed, its spawn_bg is the plugin's to kill")
 	testing.expect_value(t, test_view_selected(&e.ed), "slower1")
 	testing.expect(t, !view_logged(&e, "slow done"), "the superseded query never resumes")
 	e2e_key(&e, .Esc)
@@ -369,4 +370,54 @@ e2e_ui_open_busy_over_ask :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.message, "asked 1")
 	view_run(t, &e, "V: Busy")
 	testing.expect(t, test_view(&e.ed) != nil, "free again")
+}
+
+@(test)
+e2e_ui_open_waiter_replaced :: proc(t: ^testing.T) {
+	e, _ := view_start(t)
+	defer e2e_stop(&e)
+	view_run(t, &e, "V: Center")
+	view_run(t, &e, "V: Wait")
+	view_run(t, &e, "V: Other")
+	plugin_flush(&e.ed)
+	testing.expect(t, view_logged(&e, "wait nil nil "), "a non-modal pane with a waiter is replaced, its wait resolves nil")
+	testing.expect_value(t, test_view_selected(&e.ed), "o")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_ui_open_foreign_ask :: proc(t: ^testing.T) {
+	e, _ := view_start(t)
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "asker", `return {setup = function()
+		qed.command{name = "View", run = function(ctx) qed.message("view " .. tostring(ctx.view)) end}
+		qed.command{name = "Later", run = function()
+			qed.defer(0, function() local r, err = qed.confirm("L?"); qed.message("later " .. tostring(err)) end)
+		end}
+		qed.command{name = "Now", run = function() qed.message("now " .. tostring(qed.confirm("N?"))) end}
+	end}`)
+	view_run(t, &e, "V: Center")
+	view_run(t, &e, "Asker: View")
+	testing.expect_value(t, e.ed.message, "view nil")
+	view_run(t, &e, "Asker: Later")
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return !strings.has_prefix(e.ed.message, "later")})
+	testing.expect_value(t, e.ed.message, "later busy")
+	testing.expect_value(t, len(e.ed.panes), 1)
+	view_run(t, &e, "Asker: Now")
+	testing.expect_value(t, len(e.ed.panes), 2)
+	e2e_key(&e, .Esc)
+	testing.expect_value(t, e.ed.message, "now nil")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_ui_open_unload_saves :: proc(t: ^testing.T) {
+	e, pl := view_start(t)
+	defer e2e_stop(&e)
+	view_run(t, &e, "V: Persist")
+	e2e_type(&e, "th")
+	plugin_unload(&e.ed, pl)
+	s := pane_saved_find(&e.ed, "keep")
+	testing.expect(t, s != nil && len(s.texts) == 1 && s.texts[0] == "th", "an unload keeps the persisted text")
+	testing.expect(t, s != nil && s.key == "three", "and the selection")
 }

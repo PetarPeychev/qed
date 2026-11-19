@@ -52,6 +52,7 @@ pt_api := [?]lua.L_Reg {
 	{"sh", pt_sh},
 	{"marks", pt_marks},
 	{"settle", pt_settle},
+	{"procs", pt_procs},
 	{nil, nil},
 }
 
@@ -424,6 +425,18 @@ pt_marks :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushodinstring(L, names[diff_mark_at(b, r)])
 		lua.rawseti(L, -2, lua.Integer(r + 1))
 	}
+	return 1
+}
+
+@(private = "file")
+pt_procs :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	n := 0
+	for pr in entry.editor.plugins.procs {
+		n += int(pr.owner == g_pt_target && !pr.done)
+	}
+	lua.pushinteger(L, lua.Integer(n))
 	return 1
 }
 

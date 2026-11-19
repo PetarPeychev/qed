@@ -2,6 +2,7 @@ local MAX = 500
 local MAX_COLUMNS = 300
 
 local min_query
+local running
 local has_rg = false
 
 local function rg_ready()
@@ -18,25 +19,37 @@ end
 
 local function rg_cmd(text, args)
 	-- stdin is the spawn's empty body; without </dev/null rg searches it instead of the tree
-	return ("rg --vimgrep -F -S --sort path -M %d --max-columns-preview -e %s%s </dev/null 2>/dev/null"):format(MAX_COLUMNS, qed.shell_quote(text), args)
+	return ("rg --vimgrep -F -S --line-buffered -M %d --max-columns-preview -e %s%s </dev/null 2>/dev/null"):format(MAX_COLUMNS, qed.shell_quote(text), args)
+end
+
+local function stop()
+	if running then
+		running:kill()
+		running = nil
+	end
 end
 
 local function query(v, text, args)
+	stop()
 	if #text < min_query then
 		v:set({}, {hint = short_hint()})
 		return
 	end
-	local root, n, prev = qed.root(), 0, nil
-	local proc
-	proc = qed.spawn_bg{cmd = rg_cmd(text, args), on_line = function(line)
+	local root, n, seen = qed.root(), 0, {}
+	local ok, proc = pcall(qed.spawn_bg, {cmd = rg_cmd(text, args), on_line = function(line)
 		local file, row, col, hit = line:match("^(.-):(%d+):(%d+):(.*)$")
-		if not file or file == "" or file .. ":" .. row == prev then
+		if not file or file == "" then
 			return
 		end
-		prev = file .. ":" .. row
+		local key = file .. "\0" .. ("%09d"):format(tonumber(row))
+		if seen[key] then
+			return
+		end
+		seen[key] = true
 		n = n + 1
 		local item = {
 			label = ("%s:%s  %s"):format(file, row, hit:gsub("\r$", ""):match("^[ \t]*(.*)")),
+			key = key,
 			path = qed.path.join(root, file),
 			pos = {row = tonumber(row), col = tonumber(col)},
 		}
@@ -47,12 +60,17 @@ local function query(v, text, args)
 			v:append({item})
 		end
 		if n > MAX then
-			proc:kill()
+			stop()
 		end
-	end}
-	proc:wait()
-	if n == 0 then
-		v:set({}, {hint = "No matches"})
+	end})
+	if not ok then
+		v:set({}, {hint = "Search failed: " .. tostring(proc)})
+		return
+	end
+	running = proc
+	local r = proc:wait()
+	if n == 0 and r then
+		v:set({}, {hint = r.code > 1 and ("Search failed: rg exit code %d"):format(r.code) or "No matches"})
 	end
 end
 
@@ -77,10 +95,11 @@ local function search(ctx, scope)
 		id = "search",
 		place = "split",
 		fields = {{mode = "query", count = true, text = start}},
-		list = {max = MAX, empty = short_hint()},
+		list = {max = MAX, sort = true, empty = short_hint()},
 		preview = "auto",
 		on = {
 			query = function(v, text) query(v, text, args) end,
+			close = stop,
 			activate = function(v, items)
 				v:close()
 				qed.jump(items[1].path, items[1].pos)
