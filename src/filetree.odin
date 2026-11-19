@@ -34,7 +34,7 @@ FileTreeMode :: enum {
 FileTreeScope :: enum {
 	All,
 	Open,
-	Changes,
+	Changed,
 	Unsaved,
 }
 
@@ -43,7 +43,7 @@ FileTreeTab :: struct {
 	scope: FileTreeScope,
 }
 
-filetree_tabs := [?]FileTreeTab{{"All", .All}, {"Open", .Open}, {"", .Changes}, {"Unsaved", .Unsaved}}
+filetree_tabs := [?]FileTreeTab{{"All", .All}, {"Open", .Open}, {"Changed", .Changed}, {"Unsaved", .Unsaved}}
 
 FileTreeSize :: struct {
 	added, removed: int,
@@ -58,7 +58,6 @@ FileTreeBaseState :: enum {
 
 FileTreeProvider :: struct {
 	owner:      string,
-	label:      string,
 	open_ref:   i32,
 	base_path:  string,
 	base_text:  string,
@@ -66,12 +65,9 @@ FileTreeProvider :: struct {
 }
 
 filetree_tab_visible :: proc(t: ^FileTree, scope: FileTreeScope) -> bool {
-	return scope != .Changes || t.provider.owner != ""
+	return scope != .Changed || t.provider.owner != ""
 }
 
-filetree_tab_label :: proc(t: ^FileTree, tab: FileTreeTab) -> string {
-	return t.provider.label if tab.scope == .Changes else tab.label
-}
 
 FileEntry :: struct {
 	path:   string,
@@ -207,7 +203,6 @@ filetree_destroy :: proc(t: ^FileTree) {
 	delete(t.filter_last_idx)
 	delete(t.root_target)
 	filetree_base_reset(t)
-	delete(t.provider.label)
 }
 
 filetree_root_reset :: proc(editor: ^Editor) {
@@ -365,14 +360,13 @@ filetree_provider_clear :: proc(editor: ^Editor) {
 	if t.provider.open_ref != 0 && editor.plugins.L != nil {
 		lua.L_unref(editor.plugins.L, lua.REGISTRYINDEX, c.int(t.provider.open_ref))
 	}
-	delete(t.provider.label)
 	filetree_base_reset(t)
 	t.provider = {}
 	filetree_clear_status(t)
 	filetree_filter_invalidate(t)
 	t.scan_gen += 1
 	t.scanned = true
-	if t.scope == .Changes {
+	if t.scope == .Changed {
 		t.scope = .All
 	}
 	if t.active {
@@ -465,7 +459,7 @@ filetree_build_scope :: proc(editor: ^Editor) {
 	root := editor.working_root
 	switch t.scope {
 	case .All:
-	case .Changes:
+	case .Changed:
 		for path in t.status {
 			filetree_paths_set(&t.scope_paths, path)
 		}
@@ -686,7 +680,7 @@ filetree_filter_refresh_cache :: proc(editor: ^Editor) {
 	filetree_filter_cache_clear(t)
 	walk_at := time.tick_now()
 	filetree_walk(t, editor.working_root, &t.filter_cands)
-	if t.scope == .Changes {
+	if t.scope == .Changed {
 		under := strings.concatenate({editor.working_root, "/"}, context.temp_allocator)
 		seen := make(map[string]bool, context.temp_allocator)
 		for d in t.deleted {
@@ -950,7 +944,7 @@ filetree_load_preview :: proc(editor: ^Editor) {
 		return
 	}
 	h := lay.preview_h
-	if t.scope == .Changes && t.provider.owner != "" {
+	if t.scope == .Changed && t.provider.owner != "" {
 		pv := &t.provider
 		if pv.base_path != e.path {
 			filetree_base_reset(t)
@@ -1013,7 +1007,7 @@ filetree_read_dir :: proc(t: ^FileTree, dir: string, depth: int) {
 	for info in infos {
 		append(&rows, Row{info.fullpath, info.type == .Directory})
 	}
-	if t.scope == .Changes {
+	if t.scope == .Changed {
 		prefix := strings.concatenate({dir, "/"}, context.temp_allocator)
 		virtual: for d in t.deleted {
 			if !strings.has_prefix(d, prefix) {
@@ -1200,7 +1194,7 @@ filetree_open_scope :: proc(editor: ^Editor, scope: FileTreeScope) {
 
 filetree_open_all :: proc(editor: ^Editor) {filetree_open_scope(editor, .All)}
 filetree_open_open :: proc(editor: ^Editor) {filetree_open_scope(editor, .Open)}
-filetree_open_changes :: proc(editor: ^Editor) {filetree_open_scope(editor, .Changes)}
+filetree_open_changed :: proc(editor: ^Editor) {filetree_open_scope(editor, .Changed)}
 filetree_open_unsaved :: proc(editor: ^Editor) {filetree_open_scope(editor, .Unsaved)}
 
 filetree_close :: proc(editor: ^Editor) {
@@ -1990,8 +1984,8 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		filetree_tab_chord(editor, .Open)
 		return
 	}
-	if command_matches(ev, "File Tree: Changes") {
-		filetree_tab_chord(editor, .Changes)
+	if command_matches(ev, "File Tree: Changed") {
+		filetree_tab_chord(editor, .Changed)
 		return
 	}
 	if command_matches(ev, "File Tree: Unsaved") {
@@ -2094,7 +2088,7 @@ filetree_render :: proc(editor: ^Editor) {
 	sel_lo, sel_hi := filetree_sel_range(t)
 	end := min(t.scroll + lay.body_h, len(t.entries))
 	addw, delw := 0, 0
-	if t.scope == .Changes {
+	if t.scope == .Changed {
 		for e in t.entries[t.scroll:end] {
 			if size, ok := t.diffsize[e.path]; ok && !e.is_dir {
 				addw = max(addw, digit_count(size.added))
@@ -2129,7 +2123,7 @@ filetree_render :: proc(editor: ^Editor) {
 			fg = COLOR_FILETREE_IGNORED
 		}
 		label := filetree_row_label(t, e)
-		if old, ok := t.renames[e.path]; ok && t.scope == .Changes && !e.is_dir {
+		if old, ok := t.renames[e.path]; ok && t.scope == .Changed && !e.is_dir {
 			rel, _ := filepath.rel(editor.working_root, old, context.temp_allocator)
 			label = fmt.tprintf("%s  %s %s", label, ICON_TREE_RENAMED, rel)
 		}
@@ -2138,7 +2132,7 @@ filetree_render :: proc(editor: ^Editor) {
 		}
 		label_w := lay.left_w - 1
 		sizes := ""
-		if size, ok := t.diffsize[e.path]; ok && t.scope == .Changes && !e.is_dir {
+		if size, ok := t.diffsize[e.path]; ok && t.scope == .Changed && !e.is_dir {
 			sizes = fmt.tprintf("%*s  %*s", addw + 1, fmt.tprintf("+%d", size.added), delw + 1, fmt.tprintf("-%d", size.removed))
 			room := label_w - len(sizes) - 1
 			if room >= min(visual_width(transmute([]u8)label), FILETREE_DIFFSIZE_MIN_LABEL) {
@@ -2203,11 +2197,9 @@ filetree_render_tabs :: proc(t: ^FileTree, inner: Rect, y: int) {
 			pane_text(x, y, 3, " │ ", COLOR_PANE_BORDER, COLOR_PANE_BG)
 			x += 3
 		}
-		label := filetree_tab_label(t, tab)
-		w := visual_width(transmute([]u8)label)
 		fg := COLOR_PANE_PROMPT_FG if t.scope == tab.scope else COLOR_PANE_SHORTCUT_FG
-		pane_text(x, y, w, label, fg, COLOR_PANE_BG)
-		x += w
+		pane_text(x, y, len(tab.label), tab.label, fg, COLOR_PANE_BG)
+		x += len(tab.label)
 		drawn += 1
 	}
 }
@@ -2222,11 +2214,10 @@ filetree_tab_at_x :: proc(t: ^FileTree, inner: Rect, cx: int) -> (FileTreeScope,
 		if drawn > 0 {
 			x += 3
 		}
-		w := visual_width(transmute([]u8)filetree_tab_label(t, tab))
-		if cx >= x && cx < x + w {
+		if cx >= x && cx < x + len(tab.label) {
 			return tab.scope, true
 		}
-		x += w
+		x += len(tab.label)
 		drawn += 1
 	}
 	return .All, false
@@ -2258,7 +2249,7 @@ filetree_render_footer :: proc(editor: ^Editor, lay: FileTreeLayout) {
 		case .All:
 			append(&chips, Chip{fmt.tprintf("%s ignored", command_shortcut("File Tree: Toggle Ignored")), t.show_ignored})
 			append(&chips, Chip{fmt.tprintf("%s dotfiles", command_shortcut("File Tree: Toggle Dotfiles")), t.show_dotfiles})
-		case .Changes:
+		case .Changed:
 			append(&chips, Chip{fmt.tprintf("%s diff", command_shortcut("File Tree: Toggle Diff")), t.diff_only})
 		}
 		total := 0

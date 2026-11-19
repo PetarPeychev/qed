@@ -110,7 +110,7 @@ no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 *Git: Set Diff Base* (`qed.pick`: HEAD, merge base with the default branch, local + remote refs,
 last 50 commits). Branch and merge-base picks are live refs, re-resolved per fetch (falls back to
 HEAD in a repo where the ref doesn't resolve); commit picks are a fixed sha. The base lives only in
-the plugin, which also feeds the file tree status tab (see File tree status provider): with a base,
+the plugin, which also feeds the file tree Changed tab (see File tree status provider): with a base,
 each repo's `diff --name-status <base>` replaces its tracked `status` lines. A working-root change
 resets the base. The plugin's 2 s stat poll also resolves the base sha; when it changes (a moved
 branch, or HEAD under the default base) it refetches every buffer's base and rescans the tree.
@@ -762,18 +762,18 @@ keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch d
 cut+paste and rename both repath open buffers; the open buffer's row keeps an accent fg even
 selected; hint-row footer with tab-aware right-aligned toggle-state chips (log-pane style, lit
 when on, shortcuts config-driven via `command_shortcut` — `Alt+i ignored`/`Alt+. dotfiles` on
-`All`, `Alt+d diff` on the status tab); view toggles `Alt+e` expand/collapse-all (skips gitignored +
+`All`, `Alt+d diff` on the Changed tab); view toggles `Alt+e` expand/collapse-all (skips gitignored +
 hidden dotdirs), `Alt+.`/`Alt+i` show dotfiles / gitignored (both hidden by default, config
 `filetree_show_dotfiles`/`filetree_show_ignored`), also listed in the command palette;
-header scope tab bar (`All`/`Open`/status tab/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g` (*File Tree: Changes*)/`Alt+u`
+header scope tab bar (`All`/`Open`/`Changed`/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g` (*File Tree: Changed*)/`Alt+u`
 open the pane on that tab from the editor and switch/toggle-close it while open — same chord
 again on its own tab closes — or `←`/`→`/click; also on the welcome screen) restricting the
 tree to a pruned, auto-expanded view of matching files + ancestors; status bars from the
 **file tree status provider** (below): a green/yellow `▌` per added/modified file propagated up
 its ancestor directories, ignored files dimmed (hidden unless *Toggle Ignored*), a colored `+N -N`
-per file on the status tab (right-aligned, `+`/`-` columns padded over the visible rows, label
+per file on the Changed tab (right-aligned, `+`/`-` columns padded over the visible rows, label
 clipped with `…`, numbers dropped when even a short label cannot fit); deleted files listed on the
-status tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter`
+Changed tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter`
 runs the provider's `open_deleted` (the `git` plugin's *Restore File*: confirm, then
 `git restore --source=<base>`, worktree only plus index when the deletion is staged), other file
 commands refuse them; renames listed once at the new path labeled `new  ← old`; unsaved
@@ -816,7 +816,7 @@ read in-process up to the line cap; buffer source (file-tree open buffers / line
 byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrapped
 rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
 both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a
-nil error with 0 bytes.) The file-tree status tab
+nil error with 0 bytes.) The file-tree Changed tab
 previews a diff instead: changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `preview_diff_file` (the provider's base text vs the file on disk, reusing the gutter's
@@ -830,13 +830,13 @@ dirty (`filetree_preview_touch`) and the main loop flushes it once selection set
 can't back up the input queue or flood the provider with base requests.
 
 **File tree status provider** (`FileTree.provider`, `qed.filetree.*`): one plugin owns the status
-tab (`qed.filetree.provide{label, open_deleted?}`, the last call wins, unload clears it); the tab is
-hidden and *File Tree: Changes* / *Toggle Diff* are unavailable without one. Core asks with
+tab (`qed.filetree.provide{open_deleted?}`, the last call wins, unload clears it); the tab is
+hidden and *File Tree: Changed* / *Toggle Diff* are unavailable without one. Core asks with
 `filetree_refresh` (tree open, root change, a tree file operation, `provide` over an open tree), queued once per
 iteration and delivered only to the provider; the provider pushes `qed.filetree.set_status(files, ignored)`
 (per-file `mark`, rename `from`, `added`/`removed`), which core validates before touching state,
 then propagates marks to ancestors, rebuilds and restarts the prewarm (`scanned` stays false from
-`provide` until the first push so the walk never runs without the ignored set). The status tab's
+`provide` until the first push so the walk never runs without the ignored set). The Changed tab's
 preview sends `filetree_preview(path)` and shows nothing until `qed.filetree.set_base(path, text|nil)`
 answers; the single cached base (`base_path`/`base_state`) resets on every push, so a moved base
 re-asks. Lua never runs on render or per keystroke: both events are queued and run as coroutines.
@@ -895,7 +895,7 @@ the *Tasks* picker lists every session with its state (running / exit code) and
 runs, shows, restarts, kills or closes it; exit messages; a `tasks N` status segment (running count, red after a failed exit).
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
-rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), the file tree status tab (`qed.filetree`, fed by the `git` plugin); hot reload on file add/remove/edit
+rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), the file tree Changed tab (`qed.filetree`, fed by the `git` plugin); hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only).
 

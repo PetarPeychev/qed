@@ -317,8 +317,8 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				filetree_open_open(editor)
 				return
 			}
-			if command_matches(ev, "File Tree: Changes") {
-				filetree_open_changes(editor)
+			if command_matches(ev, "File Tree: Changed") {
+				filetree_open_changed(editor)
 				return
 			}
 			if command_matches(ev, "File Tree: Unsaved") {

@@ -213,7 +213,7 @@ return {
 			end
 		end)
 		qed.on("theme_changed", show)
-		qed.filetree.provide{label = "Git", open_deleted = restore}
+		qed.filetree.provide{open_deleted = restore}
 		provided = true
 	end,
 }

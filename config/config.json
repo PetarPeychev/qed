@@ -78,7 +78,7 @@
     "Command Palette": "Ctrl+p",
     "File Tree": "Alt+f",
     "File Tree: Open": "Alt+o",
-    "File Tree: Changes": "Alt+g",
+    "File Tree: Changed": "Alt+g",
     "File Tree: Unsaved": "Alt+u",
     "Terminal: Toggle": "Alt+t",
     "Find": "Ctrl+f",

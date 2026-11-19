@@ -953,7 +953,7 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	// Git scope prunes to changed files; the untracked add shows up.
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
-	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 	testing.expect(t, entry_named(tr, "new.txt"), "Git scope lists the untracked add")
 	e2e_key(&e, .Esc)
 }
@@ -985,7 +985,7 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 	nav_alt(&e, 'g')
 	nav_scan(&e)
 	tr := &e.ed.filetree
-	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 	testing.expect_value(t, tr.diffsize[e.path], FileTreeSize{2, 1})
 	testing.expect_value(t, tr.diffsize[newf], FileTreeSize{2, 0})
 	testing.expect(t, binf not_in tr.diffsize, "binary untracked skipped")
@@ -1037,7 +1037,7 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
-	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 	for entry, i in tr.entries {
 		if entry.name == "file.txt" {
 			tr.selected = i
@@ -1452,7 +1452,7 @@ e2e_nav_filetree_toggle_reopens :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.All)
 	nav_alt(&e, 'g')
 	testing.expect(t, e.ed.filetree.active, "Alt+g while open switches to Git, stays open")
-	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Changes)
+	testing.expect_value(t, e.ed.filetree.scope, FileTreeScope.Changed)
 	nav_alt(&e, 'g')
 	testing.expect(t, !e.ed.filetree.active, "Alt+g again (same tab) closes it")
 	nav_alt(&e, 'f')
@@ -1692,7 +1692,7 @@ e2e_nav_filetree_search_git_scope :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
 	tr := &e.ed.filetree
-	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 
 	e2e_key(&e, .Ctrl_A) // select all changed entries
 	nav_alt(&e, 'F')
@@ -1733,7 +1733,7 @@ e2e_nav_filetree_search_git_dir_scope :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Right) // All -> Open
 	e2e_key(&e, .Arrow_Right) // Open -> Git
 	tr := &e.ed.filetree
-	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 	testing.expect_value(t, tr.entries[0].name, "sub") // dir sorts first, selected by default
 
 	nav_alt(&e, 'F') // select just the sub/ directory

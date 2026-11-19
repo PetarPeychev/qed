@@ -82,7 +82,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `palette_max_rows` | `8` | Max visible palette rows. |
-| `preview_diff_context` | `3` | Context lines around each hunk in the file-tree status tab's diff preview. |
+| `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Changed tab's diff preview. |
 
 ## Search & navigation
 
@@ -106,7 +106,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *Alt+i* |
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
 | `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle Diff View*. |
-| `filetree_diff_only` | `true` | The file-tree status tab's preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
+| `filetree_diff_only` | `true` | The file-tree Changed tab's preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
 
 ## Keybinds
 
@@ -209,15 +209,15 @@ plugin (no config of its own; `plugins.pickers.enabled = false` removes them).
 
 The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
 *Diff: Next/Previous Change*, *Diff: Revert Hunk*), polls the branch, ahead/behind
-and repo diff size into the status bar every 2 s, feeds the file tree's **Git** tab
-(*File Tree: Changes*, `Alt+g`), and owns *Git: Set Diff Base* and the tree's
+and repo diff size into the status bar every 2 s, feeds the file tree's **Changed** tab
+(*File Tree: Changed*, `Alt+g`), and owns *Git: Set Diff Base* and the tree's
 *Restore File* (also `Enter` on a deleted file). A moved branch or HEAD is followed within a poll. It
 does nothing when the `git` binary isn't on `PATH`. The old `modules.git` keys warn
 and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to the top level.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Git** tab and its status bars, *Git: Set Diff Base* and *Restore File*. Merge-conflict highlighting stays. |
+| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Changed** tab and its status bars, *Git: Set Diff Base* and *Restore File*. Merge-conflict highlighting stays. |
 
 ## Writing your own commands
 

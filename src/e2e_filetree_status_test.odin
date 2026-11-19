@@ -27,7 +27,7 @@ return {setup = function()
 		end
 	end)
 	qed.command{name = "Provide", run = function()
-		qed.filetree.provide{label = "VCS", open_deleted = function(ctx) qed.message("open " .. qed.path.rel(ctx.file)) end}
+		qed.filetree.provide{open_deleted = function(ctx) qed.message("open " .. qed.path.rel(ctx.file)) end}
 	end}
 	qed.command{name = "Unprovide", run = function() qed.filetree.provide(nil) end}
 	qed.command{name = "Bad Mark", run = function()
@@ -76,16 +76,16 @@ e2e_filetree_status_provider :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	tr := &e.ed.filetree
 
-	testing.expect(t, !filetree_tab_visible(tr, .Changes), "no status tab without a provider")
-	testing.expect(t, !command_available(&e.ed, "File Tree: Changes"), "its command is unavailable too")
+	testing.expect(t, !filetree_tab_visible(tr, .Changed), "no status tab without a provider")
+	testing.expect(t, !command_available(&e.ed, "File Tree: Changed"), "its command is unavailable too")
 	nav_alt(&e, 'f')
 	nav_scan(&e)
 	testing.expect(t, !e2e_log_has(&e, "refresh"), "no refresh without a provider")
 
 	fts_run(&e, "Provide")
 	testing.expect(t, e2e_log_has(&e, "refresh"), "provide over an open tree asks for a refresh")
-	testing.expect(t, filetree_tab_visible(tr, .Changes), "the tab appears")
-	testing.expect(t, command_available(&e.ed, "File Tree: Changes"))
+	testing.expect(t, filetree_tab_visible(tr, .Changed), "the tab appears")
+	testing.expect(t, command_available(&e.ed, "File Tree: Changed"))
 	testing.expect(t, !nav_select(tr, "junk"), "ignored dirs hide")
 	testing.expect_value(t, tr.status[fmt.tprintf("%s/a.txt", e.dir)], DiffMark.Modified)
 	testing.expect_value(t, tr.status[fmt.tprintf("%s/sub", e.dir)], DiffMark.Modified)
@@ -93,10 +93,10 @@ e2e_filetree_status_provider :: proc(t: ^testing.T) {
 	testing.expect(t, nav_select(tr, "junk"), "Toggle Ignored shows them")
 
 	nav_alt(&e, 'g')
-	testing.expect_value(t, tr.scope, FileTreeScope.Changes)
+	testing.expect_value(t, tr.scope, FileTreeScope.Changed)
 	e2e_render(&e)
-	_, _, tab := nav_screen_find(&e, "All │ Open │ VCS │ Unsaved")
-	testing.expect(t, tab, "the tab carries the provider's label")
+	_, _, tab := nav_screen_find(&e, "All │ Open │ Changed │ Unsaved")
+	testing.expect(t, tab, "the Changed tab shows with a provider")
 	_, _, renamed := nav_screen_find(&e, fmt.tprintf("new.txt  %s orig.txt", ICON_TREE_RENAMED))
 	testing.expect(t, renamed, "rename label")
 	_, _, sized := nav_screen_find(&e, "+3  -1")
@@ -136,7 +136,7 @@ e2e_filetree_status_provider :: proc(t: ^testing.T) {
 	testing.expect(t, nav_select(tr, "a.txt"), "and leaves the status alone")
 
 	fts_run(&e, "Unprovide")
-	testing.expect(t, !filetree_tab_visible(tr, .Changes), "provide(nil) drops the tab")
+	testing.expect(t, !filetree_tab_visible(tr, .Changed), "provide(nil) drops the tab")
 	testing.expect_value(t, tr.scope, FileTreeScope.All)
 	testing.expect_value(t, len(tr.status), 0)
 	e2e_key(&e, .Esc)
@@ -150,7 +150,7 @@ e2e_filetree_status_owner :: proc(t: ^testing.T) {
 	other := e2e_plugin(&e, "other", `return {setup = function()
 		assert(not pcall(qed.filetree.set_status, {}), "set_status needs provide")
 		assert(not pcall(qed.filetree.set_base, "a.txt", "x"), "set_base needs provide")
-		assert(not pcall(qed.filetree.provide, {label = ""}), "label required")
+		assert(not pcall(qed.filetree.provide, 1), "spec table required")
 	end}`)
 	testing.expect_value(t, other.state, PluginState.Enabled)
 	fts_run(&e, "Provide")
@@ -160,7 +160,7 @@ e2e_filetree_status_owner :: proc(t: ^testing.T) {
 	testing.expect(t, len(tr.status) > 0, "opening the tree asks for status")
 	testing.expect(t, tr.scanned)
 	plugin_unload(&e.ed, pl)
-	testing.expect(t, !filetree_tab_visible(tr, .Changes), "unload drops the provider")
+	testing.expect(t, !filetree_tab_visible(tr, .Changed), "unload drops the provider")
 	testing.expect_value(t, len(tr.status), 0)
 	testing.expect(t, tr.scanned, "no provider means nothing to wait for")
 }

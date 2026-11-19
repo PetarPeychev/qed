@@ -126,7 +126,7 @@ commands := [?]Command {
 	{name = "Command Palette", run = palette_open},
 	{name = "File Tree", run = filetree_open_all},
 	{name = "File Tree: Open", run = filetree_open_open},
-	{name = "File Tree: Changes", run = filetree_open_changes},
+	{name = "File Tree: Changed", run = filetree_open_changed},
 	{name = "File Tree: Unsaved", run = filetree_open_unsaved},
 	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Find", run = find_open},
@@ -207,14 +207,14 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 		return false
 	}
 	switch name {
-	case "File Tree: Changes", "Toggle Diff":
-		if !filetree_tab_visible(&editor.filetree, .Changes) {
+	case "File Tree: Changed", "Toggle Diff":
+		if !filetree_tab_visible(&editor.filetree, .Changed) {
 			return false
 		}
 	}
 	if editor.welcome {
 		switch name {
-		case "File Tree", "File Tree: Open", "File Tree: Changes", "File Tree: Unsaved",
+		case "File Tree", "File Tree: Open", "File Tree: Changed", "File Tree: Unsaved",
 		     "Terminal: Toggle", "Find in Files",
 		     "Debug: Plugins", "Debug: Message Log", "Change Working Directory", "Quit":
 			return true

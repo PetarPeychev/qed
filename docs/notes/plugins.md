@@ -130,7 +130,7 @@ The API is one global, `qed`.
 | `term_open`, `term_close` | `name` | |
 | `term_exit` | `name`, `code` | |
 | `filetree_refresh` | | provider only: tree opened, root changed, a tree file operation, or `provide` while the tree is open |
-| `filetree_preview` | `path` | provider only: the status tab wants a base for `path` |
+| `filetree_preview` | `path` | provider only: the Changed tab wants a base for `path` |
 | `quit` | | yes, bounded by `plugin_hook_timeout_ms` |
 
 There is deliberately no `key` event.
@@ -146,9 +146,9 @@ There is deliberately no `key` event.
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
-| `qed.filetree.provide{label, open_deleted?} \| nil` | Claims the status tab (one provider, the last call wins; unload or `nil` drops it, and the tab with it) and queues a `filetree_refresh` when the tree is open (the `git` plugin also scans at startup, so the first open is instant). `open_deleted(ctx)` runs as a tree command on `Enter` over a listed deleted file missing on disk. |
+| `qed.filetree.provide{open_deleted?} \| nil` | Claims the Changed tab (one provider, the last call wins; unload or `nil` drops it, and the tab with it) and queues a `filetree_refresh` when the tree is open (the `git` plugin also scans at startup, so the first open is instant). `open_deleted(ctx)` runs as a tree command on `Enter` over a listed deleted file missing on disk. |
 | `qed.filetree.set_status(files, ignored?)` | Replaces the tree status. `files[path] = {mark = "added"\|"modified"\|"deleted", from?, added?, removed?}`; `from` is a rename's old path, `added`/`removed` the `+N -N` sizes. Core propagates marks to ancestor dirs, lists deleted files virtually and hides `ignored` paths unless *Toggle Ignored*. Validated before anything changes. Raises unless the caller is the provider. |
-| `qed.filetree.set_base(path, text \| nil)` | Answers `filetree_preview(path)`: the status tab previews `path` diffed against `text` (`nil`: plain file). A stale path is ignored; every `set_status` drops the cached base. |
+| `qed.filetree.set_base(path, text \| nil)` | Answers `filetree_preview(path)`: the Changed tab previews `path` diffed against `text` (`nil`: plain file). A stale path is ignored; every `set_status` drops the cached base. |
 
 - Only one modal wait at a time. If another overlay is open, the call returns `nil, "busy"`.
 - Panes that handle keys (custom key handling, actions) come later. The first consumer would be a tasks or locations pane richer than `pick`.
@@ -325,7 +325,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 8 | Decorations store, `status.set`, diff-base primitive (`git.odin` fetches the blob and pushes it through `diffbase_set`). The `tasks` status segment. | patch |
 | 9 | Port 3 `git`, `modules.git` → `plugins.git` (`diff_view`, `filetree_diff_only` moved to the top level). `Git: Next/Previous Change`, `Revert Hunk`, `Toggle Diff View` became `Diff: ...`, gated on a diff base. | minor |
 | 10 | Drop the `commands` plugin (`plugins.commands`, `cmd:` sessions); user commands are `qed.command` in a user plugin. Add `qed.parse_locations`; `qed.jump` takes a path and clamps `pos`. | minor |
-| 11 | File tree status provider (`qed.filetree.provide/set_status/set_base`, `filetree_refresh`/`filetree_preview`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changes*. | minor |
+| 11 | File tree status provider (`qed.filetree.provide/set_status/set_base`, `filetree_refresh`/`filetree_preview`); the Git tab's scan, sizes, renames, deleted files, ignored set and preview base move to `plugins/git/tree.lua`. `git.odin`, `qed.git.set_base`, `qed.filetree.refresh`, `ctx.base`, the `.Git` module and `g_git_loaded` are gone; *File Tree: Git* becomes *File Tree: Changed*. | minor |
 | later | Interactive panes, conflicts, projsearch, aiedit, fim, `qed --test-plugin`. | |
 
 ## 9. Decisions

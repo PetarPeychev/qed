@@ -278,25 +278,24 @@ function qed.theme.icon(name) end
 qed.filetree = {}
 
 ---@class qed.ProviderSpec
----@field label string the status tab's name
 ---@field open_deleted? fun(ctx: qed.Ctx) runs as a file tree command on `Enter` over a listed deleted file that is missing on disk
 
 ---@class qed.FileStatus
 ---@field mark "added"|"modified"|"deleted"
 ---@field from? string the old path of a rename (shown as `new  ← old`)
----@field added? integer lines added (shown as `+N -N` on the status tab)
+---@field added? integer lines added (shown as `+N -N` on the Changed tab)
 ---@field removed? integer lines removed
 
----Claims the file tree status tab (one provider; the last call wins) and asks for a `filetree_refresh` when the tree is open. `nil` drops it.
+---Claims the file tree's Changed tab (one provider; the last call wins) and asks for a `filetree_refresh` when the tree is open. `nil` drops it.
 ---@param spec qed.ProviderSpec|nil
 function qed.filetree.provide(spec) end
 
----Replaces the tree's status: bars, the status tab, sizes, rename labels and deleted ghost rows. `ignored` paths hide unless *Toggle Ignored*.
+---Replaces the tree's status: bars, the Changed tab, sizes, rename labels and deleted ghost rows. `ignored` paths hide unless *Toggle Ignored*.
 ---@param files table<string, qed.FileStatus> keyed by path (relative paths resolve against the root)
 ---@param ignored? string[]
 function qed.filetree.set_status(files, ignored) end
 
----Answers `filetree_preview(path)`: the status tab previews `path` diffed against `text`; `nil` shows it plainly.
+---Answers `filetree_preview(path)`: the Changed tab previews `path` diffed against `text`; `nil` shows it plainly.
 ---@param path string
 ---@param text string|nil
 function qed.filetree.set_base(path, text) end

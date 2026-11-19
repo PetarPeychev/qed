@@ -2231,11 +2231,6 @@ qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 	if lua.type(L, 1) != .TABLE {
 		lua.L_argerror(L, 1, "table or nil expected")
 	}
-	label, _ := api_field_string(L, 1, "label")
-	label = api_one_line(label)
-	if label == "" {
-		lua.L_argerror(L, 1, "label must be a non-empty string")
-	}
 	open_t := lua.getfield(L, 1, "open_deleted")
 	if open_t != .FUNCTION && open_t != .NIL {
 		lua.L_argerror(L, 1, "open_deleted must be a function")
@@ -2247,7 +2242,7 @@ qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pop(L, 1)
 	}
 	filetree_provider_clear(editor)
-	t.provider = {owner = plugin_name_intern(&editor.plugins, pl.name), label = strings.clone(label), open_ref = ref}
+	t.provider = {owner = plugin_name_intern(&editor.plugins, pl.name), open_ref = ref}
 	t.scanned = false
 	if t.active {
 		filetree_status_request(editor)
