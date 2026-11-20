@@ -419,3 +419,34 @@ test_save_parent_is_file_errors :: proc(t: ^testing.T) {
 	testing.expect(t, !os.is_dir(parent))
 	testing.expect(t, !os.exists(path))
 }
+
+@(test)
+test_set_content_splits_lines :: proc(t: ^testing.T) {
+	Case :: struct {
+		data:  string,
+		lines: []string,
+	}
+	cases := []Case {
+		{"", {""}},
+		{"a", {"a"}},
+		{"a\n", {"a", ""}},
+		{"\n\n", {"", "", ""}},
+		{"a\r\nb\r\n", {"a", "b", ""}},
+		{"x\ry\r\r\nz", {"x\ry\r", "z"}},
+	}
+	for c in cases {
+		b := buffer_new()
+		buffer_set_content(&b, transmute([]u8)c.data)
+		got := make([dynamic]string, context.temp_allocator)
+		for l in b.lines {
+			append(&got, string(l.text[:]))
+		}
+		same := len(got) == len(c.lines)
+		for i in 0 ..< min(len(got), len(c.lines)) {
+			same &&= got[i] == c.lines[i]
+		}
+		testing.expectf(t, same, "%q: lines %q, want %q", c.data, got[:], c.lines)
+		testing.expect_value(t, b.saved, strings.join(c.lines, "\n", context.temp_allocator))
+		buffer_destroy(&b)
+	}
+}

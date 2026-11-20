@@ -137,7 +137,11 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 }
 
 buffer_snapshot :: proc(buffer: ^Buffer) -> string {
-	sb := strings.builder_make()
+	size := max(len(buffer.lines) - 1, 0)
+	for line in buffer.lines {
+		size += len(line.text)
+	}
+	sb := strings.builder_make_len_cap(0, size)
 	for line, i in buffer.lines {
 		if i > 0 {
 			strings.write_byte(&sb, '\n')
@@ -232,13 +236,19 @@ buffer_set_content :: proc(buffer: ^Buffer, data: []u8) {
 	}
 	clear(&buffer.lines)
 
-	segments := strings.split(string(data), "\n", context.temp_allocator)
-	for segment in segments {
-		s := segment
+	reserve(&buffer.lines, strings.count(string(data), "\n") + 1)
+	rest := string(data)
+	for {
+		nl := strings.index_byte(rest, '\n')
+		s := rest if nl < 0 else rest[:nl]
 		if len(s) > 0 && s[len(s) - 1] == '\r' {
 			s = s[:len(s) - 1]
 		}
 		append(&buffer.lines, Line{text = slice.clone_to_dynamic(transmute([]u8)s)})
+		if nl < 0 {
+			break
+		}
+		rest = rest[nl + 1:]
 	}
 	if len(buffer.lines) == 0 {
 		append(&buffer.lines, Line{})
