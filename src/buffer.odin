@@ -40,6 +40,7 @@ Buffer :: struct {
 	plugin_seen:   bool,
 	plugin_rev:    u64,
 	plugin_cursor: Cursor,
+	typed_rev:     u64,
 }
 
 DiskStamp :: struct {

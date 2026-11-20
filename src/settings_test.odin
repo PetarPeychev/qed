@@ -313,18 +313,13 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 		_, f_has := sub["formatter"]
 		testing.expectf(t, !f_has, "embedded language %s has no formatter (plugins.format.commands owns it)", key)
 	}
-	mods, mods_ok := g_config_defaults["modules"].(json.Object)
-	testing.expect(t, mods_ok, "embedded modules object")
-	_, lsp_in_modules := mods["lsp"]
-	testing.expect(t, !lsp_in_modules, "lsp is a top-level section, not a module")
+	_, mods_has := g_config_defaults["modules"]
+	testing.expect(t, !mods_has, "no embedded modules section (ai is the bundled ai plugin)")
 	sections := make(json.Object, context.temp_allocator)
 	sections["lsp"] = g_config_defaults["lsp"]
-	for def in config_module_defs {
-		sections[def.name] = mods[def.name]
-	}
-	for def in ([?]Config_Section{config_lsp, config_module_defs[0]}) {
+	for def in ([?]Config_Section{config_lsp}) {
 		sub_val, has := sections[def.name]
-		testing.expectf(t, has, "embedded modules/%s present", def.name)
+		testing.expectf(t, has, "embedded %s present", def.name)
 		sub, sub_ok := sub_val.(json.Object)
 		testing.expectf(t, sub_ok, "embedded modules/%s is an object", def.name)
 		if !sub_ok {
@@ -492,24 +487,20 @@ test_config_files :: proc(t: ^testing.T) {
 	_, py2_lsp := py2["lsp"]
 	testing.expect(t, !py2_lsp, "omitted python lsp is NOT filled into user file")
 
-	// Module namespace: a sparse override applies the present keys, sibling keys and
-	// other modules keep defaults; a nested string knob overlays; an invalid type and
-	// an unknown subkey are both reported with a modules/<name>/<key> path.
+	// The old modules.ai keys moved to the bundled ai plugin: each warns and is ignored.
 	mod_path := fmt.tprintf("%s/modules.json", dir)
 	_ = os.write_entire_file(
 		mod_path,
 		transmute([]byte)string(`{"modules": {"ai": {"enabled": false, "chat_command": "echo hi"}}, "filetree_diff_only": false}`),
 	)
 	FILETREE_DIFF_ONLY = true
-	AI_ENABLED = true
 	LSP_ENABLED = true
-	_, is_err = config_load_from(mod_path)
-	testing.expect(t, !is_err, "module override is not an error")
-	testing.expect(t, !AI_ENABLED, "modules.ai.enabled override applied")
-	testing.expect(t, LLM_COMPLETION_MODEL == "codestral-latest", "omitted modules.ai key keeps default")
+	msg, is_err = config_load_from(mod_path)
+	testing.expect(t, is_err, "a moved key warns")
+	testing.expect(t, strings.contains(msg, `modules/ai/"enabled" (moved to plugins/ai/enabled)`), "modules.ai.enabled moved")
+	testing.expect(t, strings.contains(msg, `modules/ai/"chat_command" (moved to plugins/ai/chat_command)`), "modules.ai.chat_command moved")
 	testing.expect(t, LSP_ENABLED, "omitted lsp keeps default enabled")
 	testing.expect(t, !FILETREE_DIFF_ONLY, "top-level filetree_diff_only applies")
-	testing.expect(t, LLM_CHAT_COMMAND == "echo hi", "modules.ai string override applied")
 
 	mod_bad := fmt.tprintf("%s/modbad.json", dir)
 	_ = os.write_entire_file(
@@ -522,7 +513,7 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, is_err, "invalid lsp value reports an error")
 	testing.expect(t, strings.contains(msg, "lsp/enabled"), "names the invalid lsp subkey")
 	testing.expect(t, strings.contains(msg, `unknown lsp/"bogus"`), "warns the unknown lsp subkey")
-	testing.expect(t, strings.contains(msg, `unknown modules/ai/"nope"`), "warns the unknown module subkey")
+	testing.expect(t, strings.contains(msg, `modules/ai/"nope" (moved to plugins/ai/nope)`), "modules.ai moved")
 	testing.expect(t, strings.contains(msg, `modules/lsp/"completion_max_rows" (moved to lsp/completion_max_rows)`), "modules.lsp moved")
 	testing.expect_value(t, COMPLETION_MAX_ROWS, rows)
 	testing.expect(t, strings.contains(msg, `modules/git/"enabled" (moved to plugins/git/enabled)`), "modules.git.enabled moved")

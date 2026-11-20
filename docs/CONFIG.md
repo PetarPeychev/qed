@@ -163,35 +163,6 @@ detected language for the current session.
 Per-language server commands live in the [`languages`](#languages) section. The
 old `modules.lsp` keys warn and are ignored.
 
-## Modules
-
-`ai` is a self-contained subsystem under the `modules` section. Its `enabled`
-flag (default `true`) set to `false` removes it entirely: its commands leave the
-palette and their keybinds go dead, its UI stops rendering, and it never spawns
-a subprocess.
-
-```json
-{ "modules": { "ai": { "enabled": false } } }
-```
-
-### `modules.ai`
-
-Configures both AI features (selection edit + inline FIM completion). See
-[notes/ai.md](notes/ai.md) for the architecture.
-
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `enabled` | `true` | Master switch. Off removes *AI: Edit Selection* (`Ctrl+K`) and inline completion, and cancels anything in flight. |
-| `chat_command` | `claude -p` | Shell command for the AI edit; buffer and prompt go in on stdin. |
-| `edit_prompt` | *(template)* | The instruction template; `{path}`, `{instruction}`, `{file}` are substituted. |
-| `completion_enabled` | `false` | Enable inline FIM ghost-text completion (an independent sub-toggle; needs the module on). *AI: Toggle Inline Completion*. |
-| `completion_endpoint` | Codestral FIM URL | FIM HTTP endpoint. |
-| `completion_model` | `codestral-latest` | FIM model name. |
-| `completion_api_key_env` | `CODESTRAL_API_KEY` | Env var the `curl` child reads the API key from (qed never holds it). |
-| `completion_max_tokens` | `256` | Max tokens per FIM suggestion. |
-| `completion_debounce_ms` | `350` | Idle delay before firing a FIM request. |
-| `completion_context_lines` | `200` | Lines of prefix/suffix context sent with each FIM request. |
-
 ## Plugins
 
 Lua plugins: bundled ones ship in the binary, your own go in
@@ -329,6 +300,27 @@ jumps to the next block outside one. Rebind with `plugins.conflict.keybinds.Reso
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.conflict.enabled` | `true` | Off removes the highlighting and *Conflict: Resolve*. |
+
+### AI
+
+The bundled `ai` plugin: *AI: Edit Selection* (`Ctrl+k`, `plugins.ai.keybinds."Edit Selection"`) sends the
+selection plus an instruction to a chat command, *AI: Cancel Edits* kills the running ones, and inline
+completion shows FIM ghost-text while you type (`Tab` accepts, `Ctrl+Right` one word). See
+[notes/ai.md](notes/ai.md). The old `modules.ai` keys warn and are ignored; each moved here under the same
+name, and the old `keybinds` entries (`AI: Edit Selection`, ...) moved to `plugins.ai.keybinds`.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.ai.enabled` | `true` | Off removes the AI commands and inline completion and kills anything in flight. |
+| `plugins.ai.chat_command` | `claude -p` | Shell command for the AI edit; the prompt goes in on stdin. |
+| `plugins.ai.edit_prompt` | *(template)* | The instruction template; `{path}`, `{instruction}`, `{file}`, `{selection}` are substituted. |
+| `plugins.ai.completion_enabled` | `false` | Inline FIM completion. *AI: Toggle Inline Completion* flips it for the session. |
+| `plugins.ai.completion_endpoint` | Codestral FIM URL | FIM HTTP endpoint. |
+| `plugins.ai.completion_model` | `codestral-latest` | FIM model name. |
+| `plugins.ai.completion_api_key_env` | `CODESTRAL_API_KEY` | Env var the `curl` child reads the API key from (qed never holds it). |
+| `plugins.ai.completion_max_tokens` | `256` | Max tokens per FIM suggestion. |
+| `plugins.ai.completion_debounce_ms` | `350` | Idle delay after typing before a FIM request. |
+| `plugins.ai.completion_context_lines` | `200` | Lines of prefix/suffix context sent with each FIM request. |
 
 ## Writing your own commands
 

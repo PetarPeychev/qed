@@ -26,9 +26,17 @@ Deco :: struct {
 	above, blend:    bool,
 }
 
+DecoMark :: struct {
+	id:       u64,
+	ns:       u32,
+	from, to: Cursor,
+}
+
 DecoStore :: struct {
 	items:       [dynamic]Deco,
 	ghosts:      [dynamic]Deco,
+	marks:       [dynamic]DecoMark,
+	inline:      Deco,
 	above:       [dynamic]int,
 	below:       [dynamic]int,
 	ghost_dirty: bool,
@@ -70,6 +78,8 @@ deco_store_destroy :: proc(s: ^DecoStore) {
 	}
 	delete(s.items)
 	delete(s.ghosts)
+	delete(s.marks)
+	delete(s.inline.text)
 	delete(s.above)
 	delete(s.below)
 }
@@ -96,6 +106,18 @@ deco_clear :: proc(b: ^Buffer, ns: u32, lo := 0, hi := max(int)) {
 			w += 1
 		}
 		resize(list, w)
+	}
+	w := 0
+	for m in b.deco.marks {
+		if m.ns == ns && m.from.row <= hi && m.to.row >= lo {
+			continue
+		}
+		b.deco.marks[w] = m
+		w += 1
+	}
+	resize(&b.deco.marks, w)
+	if b.deco.inline.ns == ns && b.deco.inline.from.row >= lo && b.deco.inline.from.row <= hi {
+		inline_clear(b)
 	}
 }
 
@@ -134,6 +156,24 @@ deco_after_insert :: proc(b: ^Buffer, at, end: Cursor) {
 		}
 		resize(list, w)
 	}
+	inline_clear(b)
+	w := 0
+	for m in b.deco.marks {
+		m := m
+		if cursor_before(m.from, at) && cursor_before(at, m.to) {
+			continue
+		}
+		if !cursor_before(at, m.to) && m.from != m.to {
+			b.deco.marks[w] = m
+			w += 1
+			continue
+		}
+		m.to = pos_shift_insert(m.to, at, end)
+		m.from = pos_shift_insert(m.from, at, end)
+		b.deco.marks[w] = m
+		w += 1
+	}
+	resize(&b.deco.marks, w)
 }
 
 deco_delete_row :: proc(r: int, from, to: Cursor, whole: bool) -> (int, bool) {
@@ -184,6 +224,19 @@ deco_after_delete :: proc(b: ^Buffer, from, to: Cursor) {
 		}
 		resize(list, w)
 	}
+	inline_clear(b)
+	w := 0
+	for m in b.deco.marks {
+		m := m
+		if cursor_before(from, m.to) && cursor_before(m.from, to) {
+			continue
+		}
+		m.from = pos_shift_delete(m.from, from, to)
+		m.to = pos_shift_delete(m.to, from, to)
+		b.deco.marks[w] = m
+		w += 1
+	}
+	resize(&b.deco.marks, w)
 }
 
 deco_after_reload :: proc(b: ^Buffer) {
@@ -204,6 +257,8 @@ deco_after_reload :: proc(b: ^Buffer) {
 		}
 		resize(list, w)
 	}
+	clear(&b.deco.marks)
+	inline_clear(b)
 }
 
 deco_ghost_count :: proc(b: ^Buffer, row: int, above: bool) -> int {
@@ -355,5 +410,156 @@ editor_render_eol :: proc(gutter, y, w, x: int, eols: []RowEol, bg: tb2.Color) {
 			}
 			x += cw
 		}
+	}
+}
+
+inline_clear :: proc(b: ^Buffer) {
+	delete(b.deco.inline.text)
+	b.deco.inline = {}
+}
+
+inline_set :: proc(b: ^Buffer, ns: u32, at: Cursor, text: string) {
+	inline_clear(b)
+	b.deco.inline = Deco {
+		ns   = ns,
+		from = at,
+		to   = at,
+		text = strings.clone(text),
+	}
+}
+
+inline_active :: proc(editor: ^Editor) -> bool {
+	b := editor_buffer(editor)
+	return len(b.deco.inline.text) > 0 && b.cursor == b.deco.inline.from && !selection_active(b)
+}
+
+// Extra screen rows the shown ghost reserves below the cursor line (its inline
+// first line adds none), so continuation lines land on blank rows.
+inline_gap :: proc(editor: ^Editor) -> int {
+	if !inline_active(editor) {
+		return 0
+	}
+	return strings.count(editor_buffer(editor).deco.inline.text, "\n")
+}
+
+inline_dismiss :: proc(editor: ^Editor) {
+	inline_clear(editor_buffer(editor))
+}
+
+inline_key :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
+	#partial switch ev.key {
+	case .Tab:
+		inline_accept(editor)
+		return true
+	case .Esc:
+		inline_dismiss(editor)
+		return true
+	case .Arrow_Right:
+		if ev_ctrl(ev) {
+			inline_accept_word(editor)
+			return true
+		}
+	}
+	return false
+}
+
+inline_accept :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	text := strings.clone(b.deco.inline.text, context.temp_allocator)
+	buffer_insert_text(b, text, .Atomic)
+	editor_scroll(editor)
+}
+
+inline_accept_word :: proc(editor: ^Editor) {
+	b := editor_buffer(editor)
+	ghost := strings.clone(b.deco.inline.text, context.temp_allocator)
+	ns := b.deco.inline.ns
+	n := inline_word_len(ghost)
+	buffer_insert_text(b, ghost[:n], .Atomic)
+	if rest := ghost[n:]; len(strings.trim_space(rest)) > 0 {
+		inline_set(b, ns, b.cursor, rest)
+	}
+	editor_scroll(editor)
+}
+
+// One accept step: leading blanks + a single same-class token, or a newline plus
+// its following indentation. Rune-safe so a multibyte char is never split.
+inline_word_len :: proc(s: string) -> int {
+	i := 0
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i += 1
+	}
+	if i < len(s) && s[i] == '\n' {
+		i += 1
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i += 1
+		}
+		return i
+	}
+	if i >= len(s) {
+		return i
+	}
+	r0, n0 := utf8.decode_rune(s[i:])
+	cls := char_class(r0)
+	i += n0
+	for i < len(s) {
+		if s[i] == ' ' || s[i] == '\t' || s[i] == '\n' {
+			break
+		}
+		r, n := utf8.decode_rune(s[i:])
+		if char_class(r) != cls {
+			break
+		}
+		i += n
+	}
+	return i
+}
+
+inline_render :: proc(editor: ^Editor, cx, cy: int) {
+	b := editor_buffer(editor)
+	gutter := editor_gutter_width(editor)
+	_, vh := editor_viewport(editor)
+	full_w := int(tb2.width())
+	drow := deco_rows(b, b.cursor.row, b.cursor.row + 1, deco_palette(editor.plugins.colors[:]))
+	line_bg := editor_line_bg(true, diff_mark_at(b, b.cursor.row), diff_view_on(), drow[0].tints[:])
+
+	emit :: proc(text: string, gutter, full_w, y, bx: int, fg, bg: tb2.Color) -> int {
+		bx := bx
+		for r in text {
+			if r == '\t' {
+				bx = gutter + ((bx - gutter) / TAB_WIDTH + 1) * TAB_WIDTH
+				continue
+			}
+			if bx >= full_w {
+				break
+			}
+			if bx >= gutter {
+				tb2.set_cell(i32(bx), i32(y), r, fg, bg)
+			}
+			bx += 1
+		}
+		return bx
+	}
+
+	y := cy
+	bx := cx
+	for line, li in strings.split(b.deco.inline.text, "\n", context.temp_allocator) {
+		if li > 0 {
+			y += 1
+			if y >= vh {
+				return
+			}
+			bx = gutter
+		}
+		bg := line_bg if y == cy else COLOR_BG
+		bx = emit(line, gutter, full_w, y, bx, COLOR_GHOST_FG, bg)
+	}
+
+	// The buffer render stopped the cursor line at the caret; re-emit its suffix
+	// after the ghost so a mid-line ghost no longer overwrites the rest of the line.
+	suffix := string(b.lines[b.cursor.row].text[b.cursor.col:])
+	if len(suffix) > 0 {
+		bg := line_bg if y == cy else COLOR_BG
+		emit(suffix, gutter, full_w, y, bx, COLOR_FG, bg)
 	}
 }

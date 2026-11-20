@@ -168,6 +168,7 @@ PluginQueued :: struct {
 	n:     i64,
 	a, b:  string,
 	only:  string,
+	typed: bool,
 }
 
 PluginLspResult :: struct {
@@ -464,7 +465,8 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 	case .Buf_Changed:
 		lua.pushinteger(L, lua.Integer(q.buf))
 		lua.pushinteger(L, lua.Integer(q.n))
-		return 2
+		lua.pushboolean(L, b32(q.typed))
+		return 3
 	case .Buf_Close:
 		lua.pushinteger(L, lua.Integer(q.buf))
 		lua.pushodinstring(L, q.a)
@@ -688,7 +690,7 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 			}
 			if b.rev != b.plugin_rev {
 				b.plugin_rev = b.rev
-				plugin_queue(editor, {event = .Buf_Changed, buf = b.id, n = i64(b.rev)})
+				plugin_queue(editor, {event = .Buf_Changed, buf = b.id, n = i64(b.rev), typed = b.typed_rev == b.rev})
 			}
 			if b.cursor != b.plugin_cursor {
 				b.plugin_cursor = b.cursor

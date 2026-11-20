@@ -36,21 +36,10 @@
     "completion_max_rows": 8,
     "completion_min_chars": 1
   },
-  "modules": {
-    "ai": {
-      "enabled": true,
-      "chat_command": "claude -p",
-      "edit_prompt": "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region — and nothing else — inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}",
-      "completion_endpoint": "https://codestral.mistral.ai/v1/fim/completions",
-      "completion_model": "codestral-latest",
-      "completion_api_key_env": "CODESTRAL_API_KEY",
-      "completion_max_tokens": 256,
-      "completion_debounce_ms": 350,
-      "completion_context_lines": 200,
-      "completion_enabled": false
-    }
-  },
   "plugins": {
+    "ai": {
+      "enabled": true
+    },
     "conflict": {
       "enabled": true
     },
@@ -102,9 +91,6 @@
     "LSP: Go to Definition": "Alt+d",
     "LSP: Hover": "Alt+s",
     "LSP: Rename Symbol": "Alt+r",
-    "AI: Edit Selection": "Ctrl+k",
-    "AI: Cancel Edits": "",
-    "AI: Toggle Inline Completion": "",
     "Diff: Toggle Diff View": "",
     "Diff: Next Change": "Alt+'",
     "Diff: Previous Change": "Alt+;",

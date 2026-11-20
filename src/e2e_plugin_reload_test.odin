@@ -22,11 +22,13 @@ e2e_reload_stop :: proc(e: ^E2E, dir: string) {
 }
 
 e2e_reload_select :: proc(e: ^E2E, name: string) {
+	p := pane_find(&e.ed, "plugins")
 	for pl, i in e.ed.plugins.list {
 		if pl.name == name {
-			pane_find(&e.ed, "plugins").list.sel = i
+			p.list.sel = i
 		}
 	}
+	pane_scroll_fit(p, pane_geom(&e.ed, p).list.h)
 }
 
 e2e_reload_row_y :: proc(e: ^E2E, name: string) -> int {
@@ -182,8 +184,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	testing.expect(t, test_pane_open(&e.ed, "plugins") && !test_pane_open(&e.ed, "plugin_source"), "Esc leaves the source view")
 
-	e2e_mouse(&e, g.inner.x + 2, g.list.y + 1, .Mouse_Wheel_Down)
-	e2e_render(&e)
+	e2e_reload_select(&e, "alpha")
 	y := e2e_reload_row_y(&e, "alpha")
 	e2e_mouse(&e, g.inner.x + 2, y)
 	testing.expect_value(t, e2e_reload_selected(&e), "alpha")

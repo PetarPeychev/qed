@@ -4,7 +4,7 @@ import "core:testing"
 
 @(test)
 subprocess_reports_exit_code :: proc(t: ^testing.T) {
-	sub, err, ok := subprocess_start("exit 7", nil, "/")
+	sub, err, ok := subprocess_spawn({"sh", "-c", "exit 7"}, nil, "/")
 	testing.expect(t, ok, "spawn succeeded")
 	testing.expect(t, err == nil, "no spawn error")
 	defer subprocess_destroy(&sub)

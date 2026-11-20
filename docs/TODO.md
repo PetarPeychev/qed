@@ -80,7 +80,8 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Pane model M4: walk service behind `qed.fs.walk` handles (`count`/`ready`/`within`/`union`), `qed.fs.copy/rename/remove/mkdir`, the file tree core-built on the model (tabs, tree list, marks, chips, footer input, child confirms and palette); Lua tabs, marks, footer, tree expand, preview ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M5: the file tree becomes the bundled `filetree` plugin over walk handles, `walk.odin` keeps only the walk service, the Changed tab through a temporary provider shim ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M6: plugin exports (`qed.export/plugin/caller`), namespaced custom events (`qed.emit`), `plugin_loaded`/`plugin_unloaded`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`) through `filetree` exports; the provider shim and `qed.filetree.*` are gone; task errors no longer disable a plugin ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M7 (conflict): the merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`, `plugins.conflict.keybinds.Resolve`); `qed.buf.find_lines`, `qed.text.diff`, theme tint keys as deco alphas, blended spans; `conflict.odin` and the core `merge` pane are gone ([notes/panes.md](notes/panes.md) §7).
+- [ ] Pane model M7: the merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`) and AI becomes the bundled `ai` plugin (`plugins.ai`); `qed.buf.find_lines`, `qed.text.diff`, `qed.deco.mark`/`range`/`inline`, theme tint keys as deco alphas, blended spans, `buf_changed`'s `typed`; `conflict.odin`, the core `merge` pane, `aiedit.odin`/`llm.odin`/`fim.odin`, `modules.ai` and `.Ai` are gone ([notes/panes.md](notes/panes.md) §7).
+- [ ] Pane model M8: delete the empty module scaffolding (`module.odin`, `Command.module`, `config_module_defs`, the `modules` parsing; keep the moved-key hints).
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred
@@ -101,12 +102,12 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 
 ### AI / LLM assist
 
-See [notes/ai.md](notes/ai.md) for the two-backend architecture and config schema.
+The bundled `ai` plugin; see [notes/ai.md](notes/ai.md) for the two-backend architecture and config schema.
 
-- [ ] Context + prompt: floating prompt pane, cursor-context aware, insert/replace.
-- [ ] Let an AI edit touch code outside the selection (add a missing import etc.) — whole-file rewrite or agentic mode; `Ctrl+K` today is selection-replace only.
-- [ ] `modules.ai` config: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
-- [ ] Shared inline virtual-text primitive (ghost-text + inline diagnostics) — unify with git ghost rows first, see [notes/refactors.md](notes/refactors.md).
+- [ ] `ai` plugin: context + prompt (no selection): prompt pane, cursor-context aware, insert/replace.
+- [ ] `ai` plugin: let an edit touch code outside the selection (add a missing import etc.), as a whole-file rewrite or agentic mode; *AI: Edit Selection* is selection-replace only.
+- [ ] `plugins.ai` config: independent `completion` (FIM) and `chat` providers, each a shell command or named HTTP provider (provider-neutral).
+- [ ] Share the core inline ghost (`qed.deco.inline`) with inline diagnostics; unify with ghost rows first, see [notes/refactors.md](notes/refactors.md).
 
 ### Syntax highlighting (tree-sitter)
 
@@ -135,7 +136,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 ### Performance
 
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
-- [ ] Cache `llm_locate` per (path, rev) — an in-flight AI edit rebuilds + searches the whole buffer every render.
 - [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
 - [ ] Migrate remaining interactive-path blocking spawns (`format_external`, `git show`) to the async subprocess runner.
 - [ ] Per-frame `line_wrap` memo — measure first, only if profiling shows wrap cost.
@@ -144,7 +144,3 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 - [ ] Message Log (`Alt+l`): a fuzzy filter/search field (the last piece of unifying it with the file tree on the pane model).
 - [ ] `buffer_intel_reset` choke point for the language-change / repath / reload teardown dance.
-
-### E2E test coverage
-
-- [ ] FIM ghost × LSP completion-popup coexistence e2e — needs the FIM stub and the fake LSP wired into one session (assert both render, `Tab` accepts ghost, `Enter` the menu).

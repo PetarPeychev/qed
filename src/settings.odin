@@ -89,7 +89,6 @@ FILETREE_SHOW_IGNORED: bool
 FILETREE_DIFF_ONLY: bool
 TERMINAL_ESCAPE_CLOSES: bool
 LSP_ENABLED: bool
-AI_ENABLED: bool
 
 config_bools := [?]Config_Bool {
 	{"cursor_accel", &CURSOR_ACCEL},
@@ -132,16 +131,6 @@ backdrop_parse :: proc(s: string) -> (PaneBackdrop, bool) {
 	return .None, false
 }
 
-LLM_CHAT_COMMAND: string
-LLM_EDIT_PROMPT: string
-LLM_COMPLETION_ENDPOINT: string
-LLM_COMPLETION_MODEL: string
-LLM_COMPLETION_API_KEY_ENV: string
-LLM_COMPLETION_MAX_TOKENS: int
-LLM_COMPLETION_DEBOUNCE_MS: int
-LLM_COMPLETION_CONTEXT_LINES: int
-LLM_COMPLETION_ENABLED: bool
-
 Config_Section :: struct {
 	name:  string,
 	strs:  []Config_Str,
@@ -159,30 +148,9 @@ config_lsp_bools := [?]Config_Bool {
 	{"enabled", &LSP_ENABLED},
 }
 
-config_ai_strs := [?]Config_Str {
-	{"chat_command", &LLM_CHAT_COMMAND},
-	{"edit_prompt", &LLM_EDIT_PROMPT},
-	{"completion_endpoint", &LLM_COMPLETION_ENDPOINT},
-	{"completion_model", &LLM_COMPLETION_MODEL},
-	{"completion_api_key_env", &LLM_COMPLETION_API_KEY_ENV},
-}
-
-config_ai_ints := [?]Config_Int {
-	{"completion_max_tokens", &LLM_COMPLETION_MAX_TOKENS},
-	{"completion_debounce_ms", &LLM_COMPLETION_DEBOUNCE_MS},
-	{"completion_context_lines", &LLM_COMPLETION_CONTEXT_LINES},
-}
-
-config_ai_bools := [?]Config_Bool {
-	{"enabled", &AI_ENABLED},
-	{"completion_enabled", &LLM_COMPLETION_ENABLED},
-}
-
 config_lsp := Config_Section{"lsp", nil, config_lsp_ints[:], config_lsp_bools[:]}
 
-config_module_defs := [?]Config_Section {
-	{"ai", config_ai_strs[:], config_ai_ints[:], config_ai_bools[:]},
-}
+config_module_defs: []Config_Section
 
 Config_Float :: struct {
 	key: string,
@@ -457,9 +425,6 @@ settings_destroy :: proc "contextless" () {
 	}
 	for &cmd in pane_commands {
 		delete(cmd.shortcut, os.heap_allocator())
-	}
-	for it in config_ai_strs {
-		delete(it.ptr^, os.heap_allocator())
 	}
 	for it in config_icons {
 		delete(it.ptr^, os.heap_allocator())
@@ -784,6 +749,16 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 				}
 				continue
 			}
+			if mod_key == "ai" {
+				sub, is_obj := mod_val.(json.Object)
+				if !is_obj {
+					append(warnings, "modules/ai (moved to plugins/ai)")
+				}
+				for key in sub {
+					append(warnings, fmt.tprintf("modules/ai/%q (moved to plugins/ai/%s)", key, key))
+				}
+				continue
+			}
 			if mod_key == "git" {
 				sub, is_obj := mod_val.(json.Object)
 				if !is_obj {
@@ -854,6 +829,9 @@ CONFIG_KEYBINDS_MOVED :: [?]struct {
 	{"File Tree: Toggle Ignored", "filetree", "Toggle Ignored"},
 	{"File Tree: Toggle Diff", "filetree", "Toggle Diff"},
 	{"File Tree: Expand/Collapse All", "filetree", "Expand/Collapse All"},
+	{"AI: Edit Selection", "ai", "Edit Selection"},
+	{"AI: Cancel Edits", "ai", "Cancel Edits"},
+	{"AI: Toggle Inline Completion", "ai", "Toggle Inline Completion"},
 }
 
 config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {

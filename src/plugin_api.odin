@@ -155,6 +155,9 @@ qed_deco_api := [?]lua.L_Reg {
 	{"ghost", qed_deco_ghost},
 	{"span", qed_deco_span},
 	{"eol", qed_deco_eol},
+	{"mark", qed_deco_mark},
+	{"range", qed_deco_range},
+	{"inline", qed_deco_inline},
 	{"clear", qed_deco_clear},
 	{nil, nil},
 }
@@ -1224,7 +1227,7 @@ qed_options :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-PLUGIN_RESERVED_LABELS :: [?]string{"AI", "Clipboard", "Config", "Diff", "FIM", "Files", "Git", "Lang", "LSP", "Plugins", "Rename", "Save", "Startup", "Syntax", "Terminal"}
+PLUGIN_RESERVED_LABELS :: [?]string{"Clipboard", "Config", "Diff", "Files", "Git", "Lang", "LSP", "Plugins", "Rename", "Save", "Startup", "Syntax", "Terminal"}
 
 qed_meta :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
@@ -2606,6 +2609,54 @@ api_alpha :: proc(L: ^lua.State, idx: c.int) -> (alpha: f32, tint: u8) {
 		lua.L_argerror(L, idx, "alpha must be a number in 0..1 or a theme tint key")
 	}
 	return
+}
+
+qed_deco_mark :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	from, to := api_range(L, 3, b)
+	editor.plugins.mark_seq += 1
+	append(&b.deco.marks, DecoMark{editor.plugins.mark_seq, ns, from, to})
+	lua.pushinteger(L, lua.Integer(editor.plugins.mark_seq))
+	return 1
+}
+
+qed_deco_range :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	id := u64(api_int(L, 3, "mark id expected"))
+	for m in b.deco.marks {
+		if m.id == id && m.ns == ns {
+			api_pos_push(L, m.from)
+			api_pos_push(L, m.to)
+			return 2
+		}
+	}
+	lua.pushnil(L)
+	return 1
+}
+
+qed_deco_inline :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	ns := api_ns(L, editor, 2)
+	at := api_pos(L, 3, b)
+	text := api_text_arg(L, 4)
+	stale := api_rev_stale(L, 5, b)
+	shown := !stale && at == b.cursor && !selection_active(b) && len(text) > 0
+	if shown {
+		inline_set(b, ns, at, text)
+	}
+	lua.pushboolean(L, b32(shown))
+	return 1
 }
 
 qed_deco_ghost :: proc "c" (L: ^lua.State) -> c.int {

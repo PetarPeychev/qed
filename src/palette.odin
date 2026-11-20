@@ -110,17 +110,6 @@ cmd_toggle_line_wrap :: proc(editor: ^Editor) {
 	editor_log(editor, .Info, "", fmt.tprintf("Line wrap: %s", "on" if b.wrap else "off"))
 }
 
-cmd_toggle_inline_completion :: proc(editor: ^Editor) {
-	editor.fim.enabled = !editor.fim.enabled
-	editor.fim.warned = false
-	if !editor.fim.enabled {
-		fim_dismiss(editor)
-	}
-	editor_log(editor, .Info, "", fmt.tprintf("Inline completion: %s", "on" if editor.fim.enabled else "off"))
-}
-
-cmd_ai_edit :: proc(editor: ^Editor) {aiedit_open(editor)}
-cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
 cmd_message_log :: proc(editor: ^Editor) {logview_open(editor)}
 cmd_plugins :: proc(editor: ^Editor) {pluginview_open(editor)}
@@ -153,9 +142,6 @@ commands := [?]Command {
 	{name = "LSP: Go to Definition", lsp = true, run = cmd_lsp_definition},
 	{name = "LSP: Hover", lsp = true, run = cmd_lsp_hover},
 	{name = "LSP: Rename Symbol", lsp = true, run = cmd_lsp_rename},
-	{name = "AI: Edit Selection", module = .Ai, run = cmd_ai_edit},
-	{name = "AI: Cancel Edits", module = .Ai, run = cmd_ai_cancel},
-	{name = "AI: Toggle Inline Completion", module = .Ai, run = cmd_toggle_inline_completion},
 	{name = "Diff: Toggle Diff View", run = cmd_toggle_diff_view},
 	{name = "Diff: Next Change", run = cmd_diff_next},
 	{name = "Diff: Previous Change", run = cmd_diff_prev},

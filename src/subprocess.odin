@@ -28,15 +28,9 @@ fd_set_nonblock :: proc(file: ^os.File) {
 	posix.fcntl(fd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
 }
 
-// Spawn `cmd` under `sh -c` with `stdin_body` on its stdin and a non-blocking pipe
-// on its stdout, for main-loop polling via subprocess_drain. The body goes through
-// a temp file (not a pipe) so a large body can't deadlock before the child reads,
-// and the temp is unlinked immediately — so the command MUST consume stdin, never a
-// `@file` reference to the temp (see the FIM curl quirk in DESIGN.md).
-subprocess_start :: proc(cmd: string, stdin_body: []u8, working_dir: string) -> (Subprocess, os.Error, bool) {
-	return subprocess_spawn({"sh", "-c", cmd}, stdin_body, working_dir)
-}
-
+// The body goes through a temp file (not a pipe) so a large body can't deadlock
+// before the child reads; the temp is unlinked at once, so a command must read
+// stdin, never a `@file` reference to it.
 subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: string, env: []string = nil, capture_stderr := false, group := false) -> (Subprocess, os.Error, bool) {
 	posix.sigignore(.SIGPIPE)
 
