@@ -19,6 +19,7 @@ CLUSTER_SAMPLES := []string {
 	"ascii then mark áb́̂",
 	"שלום مرحبا",
 	"क्ष indic",
+	"wrap at words, a\u0301 b\tcd x\u200dy longwordlongword end",
 }
 
 @(private = "file")

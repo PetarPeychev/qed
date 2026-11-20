@@ -20,11 +20,14 @@ line_wrap :: proc(text: []u8, width: int, allocator := context.temp_allocator) -
 	seg_start_v := 0 // absolute visual column at the current segment start
 	last_break := -1 // byte offset just after the most recent space in this segment
 	last_break_v := 0
+	seg_start := 0
 
 	for cs := 0; cs < len(text); {
-		ce := cluster_end(text, cs)
-		cw := seg_width(text, cs, ce, v)
-		seg_start := segs[len(segs) - 1]
+		ce, cw := cs + 1, 1
+		if c := text[cs]; c < 0x20 || c >= 0x7f || (ce < len(text) && text[ce] >= 0x80) {
+			ce = cluster_end(text, cs)
+			cw = seg_width(text, cs, ce, v)
+		}
 		if v + cw - seg_start_v > width && cs > seg_start {
 			if last_break > seg_start {
 				append(&segs, last_break)
@@ -34,6 +37,7 @@ line_wrap :: proc(text: []u8, width: int, allocator := context.temp_allocator) -
 				seg_start_v = v
 			}
 			last_break = -1
+			seg_start = segs[len(segs) - 1]
 		}
 		v += cw
 		if text[cs] == ' ' || text[cs] == '\t' {
