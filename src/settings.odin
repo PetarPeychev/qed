@@ -709,7 +709,6 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	}
 }
 
-// Entries point at final names, so a lookup never chains. The longest entry naming the path or a parent wins; `*` is one segment.
 CONFIG_MOVED :: [?][2]string {
 	{"format_on_save", "plugins/format/on_save"},
 	{"trim_trailing_whitespace_on_save", "plugins/format/trim_whitespace_on_save"},
