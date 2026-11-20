@@ -49,9 +49,22 @@ test_walk_within_union_ignored :: proc(t: ^testing.T) {
 	walk_cands(ed, w)
 	testing.expect_value(t, w.builds, builds)
 
-	ed.filetree.ignored[strings.clone(fmt.tprintf("%s/sub", root))] = true
-	walk_invalidate(ed)
-	testing.expect(t, !walk_valid(ed, w), "an invalidation stamps the walk stale")
+	walk_invalidate(ed, "/nowhere/else.txt")
+	testing.expect(t, walk_valid(w), "a write outside the root leaves the walk alone")
+	ignore := make(map[string]bool, context.temp_allocator)
+	ignore[fmt.tprintf("%s/sub", root)] = true
+	gen := w.gen
+	walk_ignore_set(ed, root, ignore, true)
+	testing.expect(t, !walk_valid(w) && w.gen > gen, "a new ignore set stamps the walk stale")
+	gen = w.gen
+	walk_ignore_set(ed, root, ignore, true)
+	testing.expect_value(t, w.gen, gen)
+	testing.expect(t, strings.contains(walk_rels(walk_cands(ed, w), root), "sub/b.txt"), "a stale walk serves its old candidates")
+	testing.expect(t, w.pw.active, "while the prewarm reruns it")
+	for !walk_valid(w) {
+		walk_pump(ed)
+	}
+	testing.expect(t, w.gen > gen, "landing bumps the stamp")
 	testing.expect_value(t, walk_rels(walk_cands(ed, w), root), "a.txt,main.txt,other,other/d.txt")
 	wi := walk_acquire(ed, root, false, true)
 	defer walk_release(wi)
@@ -80,17 +93,21 @@ test_walk_within_union_ignored :: proc(t: ^testing.T) {
 
 @(private = "file")
 WALK_PLUGIN :: `
-local v, h
+local v, h, hw, hd
 local function note(s) qed.log("info", s) end
 local function cmd(name, run) qed.command{name = name, run = run} end
 local function res(ok, err) return tostring(ok) .. ":" .. tostring(err) end
 return {setup = function()
 	qed.meta{display_name = "W"}
+	cmd("Make", function()
+		hw, hd = qed.fs.walk{}, qed.fs.walk{dotfiles = true}
+		note(("first %s ready %s scoped %s"):format(res(hw:count()), tostring(hw:ready()), res(hw:within{"sub/b.txt"}:count())))
+		hd:count()
+	end)
 	cmd("Counts", function()
-		local w = qed.fs.walk{}
-		local n = w:count()
-		note(("count %d ready %s within %d union %d dot %d"):format(n, tostring(w:ready()),
-			w:within{"sub/b.txt"}:count(), w:within{"sub/b.txt"}:union{"gone/z.txt"}:count(), qed.fs.walk{dotfiles = true}:count()))
+		local w = hw
+		note(("count %d ready %s within %d union %d dot %d"):format(w:count(), tostring(w:ready()),
+			w:within{"sub/b.txt"}:count(), w:within{"sub/b.txt"}:union{"gone/z.txt"}:count(), hd:count()))
 		note("narrow " .. tostring(pcall(function() w:within{"a"}:within{"b"} end)))
 		note("dirs " .. tostring(pcall(function() qed.fs.dirs{}:count() end)))
 	end)
@@ -122,6 +139,7 @@ return {setup = function()
 				expand = function(_, item, open) note(("expand %s %s %s"):format(qed.path.base(item.path), tostring(item.dir), tostring(open))) end,
 				submit = function(_, text) note("submit " .. tostring(text)) end,
 				activate = function(_, items) note("activate " .. qed.path.base(items[1].path)) end,
+				change = function(_, item) note("change " .. qed.path.base(item.path)) end,
 			}}
 	end)
 	cmd("Chip", function() note("chip ran") end)
@@ -136,6 +154,17 @@ return {setup = function()
 	cmd("Expand", function() note("expand all " .. tostring(v:expand(true))) end)
 	cmd("Diff", function() note("preview " .. tostring(v:preview{path = "a.txt", base = "old\n"})) end)
 	cmd("Mk", function() qed.fs.mkdir("fresh") end)
+	cmd("Write", function() qed.fs.write("written.txt", "w") end)
+	cmd("Ignore", function() h:ignore{"other"} end)
+	cmd("Reveal", function() note("reveal " .. tostring(v:reveal("sub/deep/c.txt"))) end)
+	cmd("Select", function() v:set(h, {selected = "a.txt"}) end)
+	cmd("Into", function()
+		note("copy into " .. res(qed.fs.copy("sub", "sub/deep/sub")))
+		note("rename into " .. res(qed.fs.rename("sub", "sub/x")))
+		note("remove root " .. res(qed.fs.remove(qed.root())))
+		note("copy fifo " .. res(qed.fs.copy("pipe", "pipe2")))
+		note("copy dir with fifo " .. res(qed.fs.copy("other", "other2")))
+	end)
 end}`
 
 @(private = "file")
@@ -169,6 +198,11 @@ walk_start :: proc(t: ^testing.T) -> E2E {
 e2e_walk_lua_handles :: proc(t: ^testing.T) {
 	e := walk_start(t)
 	defer e2e_stop(&e)
+	walk_run_cmd(t, &e, "W: Make")
+	testing.expect(t, walk_logged(&e, "first nil:pending ready false scoped 2:nil"), "count is pending until the walk lands; a listed scope is ready at once")
+	for walk_busy(&e.ed) {
+		walk_pump(&e.ed)
+	}
 	walk_run_cmd(t, &e, "W: Counts")
 	for l in e.ed.log {
 		if l.source == "W" && strings.has_prefix(l.text, "count") {
@@ -186,9 +220,11 @@ e2e_walk_fs_writes :: proc(t: ^testing.T) {
 	root := e.ed.working_root
 	posix.symlink(strings.clone_to_cstring(fmt.tprintf("%s/sub", root), context.temp_allocator), strings.clone_to_cstring(fmt.tprintf("%s/link", root), context.temp_allocator))
 	inside := fmt.tprintf("%s/made/sub/b.txt", root)
-	gen := e.ed.walk_gen
+	w := walk_acquire(&e.ed, root, false, false)
+	walk_cands(&e.ed, w)
 	walk_run_cmd(t, &e, "W: Fs")
-	testing.expect(t, e.ed.walk_gen > gen, "writes invalidate walks")
+	testing.expect(t, !walk_valid(w), "writes invalidate walks")
+	walk_release(w)
 	for line in ([]string{"mkdir true:nil", "mkdir again nil:exists", "copy true:nil", "copy over nil:exists", "copy missing nil:not found", "rename true:nil", "rename over nil:exists", "rename link true:nil", "copy link true:nil", "remove true:nil", "remove link true:nil", "remove missing nil:not found"}) {
 		testing.expectf(t, walk_logged(&e, line), "logged %q", line)
 	}
@@ -318,4 +354,105 @@ e2e_walk_lua_tree_view :: proc(t: ^testing.T) {
 	testing.expect(t, test_view(&e.ed) == nil, "Esc with an empty filter closes")
 	saved := pane_saved_find(&e.ed, "wt")
 	testing.expect(t, saved != nil && len(saved.expanded) > 0, "expanded dirs persist by id")
+}
+
+@(test)
+e2e_walk_fs_refusals :: proc(t: ^testing.T) {
+	e := walk_start(t)
+	defer e2e_stop(&e)
+	root := e.ed.working_root
+	posix.mkfifo(strings.clone_to_cstring(fmt.tprintf("%s/pipe", root), context.temp_allocator), {.IRUSR, .IWUSR})
+	posix.mkfifo(strings.clone_to_cstring(fmt.tprintf("%s/other/fifo", root), context.temp_allocator), {.IRUSR, .IWUSR})
+	walk_run_cmd(t, &e, "W: Into")
+	for line in ([]string{"copy into nil:into itself", "rename into nil:into itself", "remove root nil:the root", "copy fifo nil:not a file, dir or link", "copy dir with fifo true:nil"}) {
+		testing.expectf(t, walk_logged(&e, line), "logged %q", line)
+	}
+	testing.expect(t, os.exists(fmt.tprintf("%s/other2/d.txt", root)) && !fs_lexists(fmt.tprintf("%s/other2/fifo", root)), "special files are skipped")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/sub/deep/sub", root)), "nothing copied into itself")
+}
+
+@(test)
+e2e_walk_tree_keys :: proc(t: ^testing.T) {
+	e := walk_start(t)
+	defer e2e_stop(&e)
+	root := e.ed.working_root
+	e2e_resize(&e, 160, 40)
+	walk_run_cmd(t, &e, "W: Tree")
+	plugin_flush(&e.ed)
+	e2e_type(&e, "txt")
+	plugin_flush(&e.ed)
+	first := test_view_selected(&e.ed)
+	testing.expect(t, walk_logged(&e, fmt.tprintf("change %s", first[strings.last_index_byte(first, '/') + 1:])), "change fires for a new filtered selection")
+	e2e_key(&e, .Arrow_Down)
+	plugin_flush(&e.ed)
+	second := test_view_selected(&e.ed)
+	testing.expect(t, walk_logged(&e, fmt.tprintf("change %s", second[strings.last_index_byte(second, '/') + 1:])), "and when moving in the filtered list")
+	e2e_key(&e, .Esc)
+
+	walk_run_cmd(t, &e, "W: Reveal")
+	testing.expect(t, walk_logged(&e, "reveal true"), "reveal finds a nested file")
+	testing.expect_value(t, ft_rel(&e, root), "sub/deep/c.txt")
+	walk_run_cmd(t, &e, "W: Select")
+	testing.expect_value(t, ft_rel(&e, root), "a.txt")
+
+	v := test_view(&e.ed)
+	v.list.anchor = v.list.sel
+	v.list.sel = 0
+	walk_run_cmd(t, &e, "W: Write")
+	e2e_render(&e)
+	v = test_view(&e.ed)
+	testing.expect(t, v.list.anchor != nil, "a refill keeps the range")
+	if a, ok := v.list.anchor.?; ok {
+		testing.expect_value(t, walk_rel(v.list.source.entries[a].path, root), "a.txt")
+	}
+
+	walk_run_cmd(t, &e, "W: Ignore")
+	v = test_view(&e.ed)
+	testing.expect(t, v.list.source.walk.stale && len(v.list.source.walk.ignore) == 1, "h:ignore restales the walk")
+	list_walk_fill(&e.ed, v)
+	testing.expect(t, !strings.contains(walk_rels(v.list.source.entries[:], root), "other"), "ignored paths drop from the tree")
+}
+
+@(private = "file")
+ft_rel :: proc(e: ^E2E, root: string) -> string {
+	v := test_view(&e.ed)
+	return walk_rel(v.list.source.entries[v.list.sel].path, root)
+}
+
+@(test)
+e2e_walk_tree_filter_after_write :: proc(t: ^testing.T) {
+	e := e2e_root_start("m")
+	defer e2e_stop(&e)
+	root := e.ed.working_root
+	walk_tree_fixture(root)
+	e.ed.filetree.scanned = true
+	filetree_open_all(&e.ed)
+	for walk_busy(&e.ed) {
+		walk_pump(&e.ed)
+	}
+	w := ft_pane(&e.ed).list.source.walk
+	testing.expectf(t, len(w.cands) > 0, "prewarm landed %d (built %v stale %v ready %v)", len(w.cands), w.built, w.stale, w.ignore_ready)
+	e2e_type(&e, "txt")
+	testing.expect(t, len(ft_entries(&e.ed)) > 0, "filtered rows")
+	e2e_key(&e, .Esc)
+	for _ in 0 ..< 2 {
+		e2e_key(&e, .Arrow_Down)
+	}
+	e2e_key(&e, .Arrow_Down, .Shift)
+	e2e_key(&e, .Ctrl_D)
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	for walk_busy(&e.ed) {
+		walk_pump(&e.ed)
+	}
+	e2e_key(&e, .Ctrl_N)
+	e2e_type(&e, "new/f.txt")
+	e2e_key(&e, .Enter)
+	e2e_type(&e, "f.t")
+	testing.expect(t, w.pw.active, "the filter serves the stale walk while the prewarm reruns it")
+	for walk_busy(&e.ed) {
+		walk_pump(&e.ed)
+	}
+	e2e_render(&e)
+	testing.expectf(t, len(ft_entries(&e.ed)) > 0, "filtered rows after writes: cands %d built %v stale %v", len(w.cands), w.built, w.stale)
 }

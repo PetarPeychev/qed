@@ -85,12 +85,14 @@ qed_view_methods := [?]lua.L_Reg {
 	{"tab", qed_view_tab},
 	{"preview", qed_view_preview},
 	{"expand", qed_view_expand},
+	{"reveal", qed_view_reveal},
 }
 
 @(private = "file")
 qed_walk_methods := [?]lua.L_Reg {
 	{"count", qed_walk_count},
 	{"ready", qed_walk_ready},
+	{"ignore", qed_walk_ignore},
 	{"within", qed_walk_within},
 	{"union", qed_walk_union},
 }
@@ -347,6 +349,22 @@ plugin_views_pump :: proc(editor: ^Editor) {
 	}
 }
 
+// walk lists rebuild their rows on every refill, so their selection is tracked by key
+plugin_view_moved :: proc(editor: ^Editor, pn: ^Pane) -> (item: int, moved: bool) {
+	item = pane_item_index(pn, pn.list.sel)
+	if pn.list.source.kind != .Walk {
+		moved = item != pn.notified
+		pn.notified = item
+		return
+	}
+	key := pane_selected_key(editor, pn)
+	moved = pn.notified < 0 || key != pn.notified_key
+	pn.notified = item
+	delete(pn.notified_key)
+	pn.notified_key = strings.clone(key)
+	return
+}
+
 plugin_views_flush :: proc(editor: ^Editor) {
 	p := &editor.plugins
 	for h in plugin_view_handles(p) {
@@ -359,11 +377,10 @@ plugin_views_flush :: proc(editor: ^Editor) {
 		if pane_count(editor, pn) == 0 {
 			continue
 		}
-		item := pane_item_index(pn, pn.list.sel)
-		if item == pn.notified {
+		item, moved := plugin_view_moved(editor, pn)
+		if !moved {
 			continue
 		}
-		pn.notified = item
 		if v.on[.Change] == 0 {
 			continue
 		}
@@ -485,9 +502,10 @@ qed_fs_walk :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 1, "options table expected")
 	}
 	lua.settop(L, 0)
+	w := walk_acquire(editor, root, dotfiles, ignored)
 	// a new handle sees the disk as of now
-	walk_invalidate(editor)
-	api_list_push(L, editor, {kind = .Walk, walk = walk_acquire(editor, root, dotfiles, ignored)})
+	walk_refresh(editor, w)
+	api_list_push(L, editor, {kind = .Walk, walk = w})
 	return 1
 }
 
@@ -520,8 +538,26 @@ qed_walk_count :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	src := api_walk_handle(L, entry.editor)
+	// never a synchronous full walk inside a Lua slice
+	if !walk_ready(entry.editor, src) {
+		walk_prewarm(entry.editor, src.walk)
+		return api_fail(L, "pending")
+	}
 	lua.pushinteger(L, lua.Integer(len(walk_source_cands(entry.editor, src))))
 	return 1
+}
+
+qed_walk_ignore :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	src := api_walk_handle(L, editor)
+	set := make(map[string]bool, context.temp_allocator)
+	for path in api_paths(L, editor, 2) {
+		set[path] = true
+	}
+	walk_ignore_set(editor, src.walk.root, set, true)
+	return 0
 }
 
 qed_walk_ready :: proc "c" (L: ^lua.State) -> c.int {
@@ -1131,7 +1167,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		pane_restore(editor, pn, rows)
 	}
 	if pane_count(editor, pn) > 0 {
-		pn.notified = pane_item_index(pn, pn.list.sel)
+		plugin_view_moved(editor, pn)
 	}
 	if pane_query(pn) != nil {
 		pn.query_due = true
@@ -1256,6 +1292,12 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
 	p := &editor.plugins
 	src := p.lists[li].src
+	selected := ""
+	if lua.type(L, 3) == .TABLE {
+		if k, ok := api_field_string(L, 3, "selected"); ok {
+			selected = api_path(editor, k) if src.kind == .Walk else k
+		}
+	}
 	pn, vi := api_view_live(L, editor)
 	if pn == nil {
 		lua.pushboolean(L, false)
@@ -1274,6 +1316,9 @@ api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
 	pn.list.source = list_source_clone(src)
 	pn.list.more, pn.landed = false, true
 	pane_list_load(editor, pn)
+	if selected != "" {
+		keep = selected
+	}
 	if keep != "" && list_restores(src.kind) {
 		pn.list.restore = strings.clone(keep)
 		pane_restore(editor, pn, pane_geom(editor, pn).list.h)
@@ -1620,6 +1665,26 @@ qed_view_expand :: proc "c" (L: ^lua.State) -> c.int {
 		list_walk_fill(editor, pn)
 	}
 	lua.pushboolean(L, b32(ok))
+	return 1
+}
+
+qed_view_reveal :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	path := api_path(editor, api_string(L, 2))
+	pn, _ := api_view_live(L, editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if !pn.list.tree {
+		plugin_raise(L, "reveal needs a list.tree view")
+	}
+	if f := pane_filter(pn); f != nil {
+		textfield_reset(&f.field)
+	}
+	lua.pushboolean(L, b32(pane_tree_reveal(editor, pn, path)))
 	return 1
 }
 

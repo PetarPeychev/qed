@@ -1320,6 +1320,13 @@ e2e_nav_filetree_batch_delete :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_D)
 	testing.expect_value(t, ft_mode(&e.ed), FtMode.ConfirmDelete)
 	testing.expect_value(t, filetree_delete_question(&e.ed), "Delete 3 items?")
+	// a refill under the confirm (a status push, a write) must not shrink what it deletes
+	walk_stale(ft_pane(&e.ed).list.source.walk)
+	nav_write(fmt.tprintf("%s/zz.txt", e.ed.working_root), "z")
+	list_walk_fill(&e.ed, ft_pane(&e.ed))
+	lo, hi := ft_sel_range(&e.ed)
+	testing.expect_value(t, hi - lo, 2)
+	ft_pane(&e.ed).list.anchor = nil
 
 	e2e_key(&e, .Arrow_Down) // Cancel -> Delete
 	e2e_key(&e, .Enter) // one confirmation deletes all

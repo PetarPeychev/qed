@@ -275,6 +275,7 @@ Pane :: struct {
 	accept:       bool,
 	landed:       bool,
 	notified:     int,
+	notified_key: string,
 	backdrop:     PaneBackdrop,
 	on:           struct {
 		activate, close, tab: PaneHandler,
@@ -363,6 +364,7 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	p.list.columns = slice.clone(spec.list.columns)
 	p.footer_field = {anchor = -1}
 	p.preview_key = ""
+	p.notified_key = ""
 	p.scope = strings.clone(spec.scope)
 	p.fields = make([]PaneField, len(spec.fields))
 	for f, i in spec.fields {
@@ -464,6 +466,7 @@ pane_free :: proc(p: ^Pane) {
 	textfield_destroy(&p.footer_field.field)
 	delete(p.footer_field.prompt)
 	delete(p.preview_key)
+	delete(p.notified_key)
 	delete(p.scope)
 	for &f in p.fields {
 		delete(f.prompt)
@@ -1640,7 +1643,6 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	if (p.toggle != 0 && plugin_command_id_matches(editor, p.toggle, ev)) || (p.chord != "" && command_matches(ev, p.chord)) {
 		return .Close
 	}
-	// a tab's own chord switches to it, and on the active tab closes the pane
 	for t, i in p.tabs {
 		if t.cmd != "" && pane_cmd_matches(editor, ev, t.cmd) {
 			if i == p.tab {

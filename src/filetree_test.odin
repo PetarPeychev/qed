@@ -231,7 +231,7 @@ test_filetree_prewarm_parity :: proc(t: ^testing.T) {
 		thread.yield()
 	}
 	testing.expect(t, !w.pw.active, "prewarm should settle")
-	testing.expect(t, walk_valid(&editor, w), "prewarm should fill the cache")
+	testing.expect(t, walk_valid(w), "prewarm should fill the cache")
 
 	got := rel_set(w.cands[:], root)
 	want := walk_reference_set(root)
@@ -250,7 +250,7 @@ test_filetree_prewarm_midflight :: proc(t: ^testing.T) {
 	// a filter arriving before the walk finishes takes the join path
 	got := rel_set(walk_cands(&editor, w), root)
 	testing.expect(t, !w.pw.active, "prewarm should be settled")
-	testing.expect(t, walk_valid(&editor, w), "cache should be valid after join")
+	testing.expect(t, walk_valid(w), "cache should be valid after join")
 	testing.expect_value(t, w.builds, 1)
 	set_equal(t, got, walk_reference_set(root), "midflight-vs-sync")
 }
@@ -264,9 +264,9 @@ test_filetree_prewarm_discard_on_mismatch :: proc(t: ^testing.T) {
 
 	walk_prewarm(&editor, w)
 	// a write mid-walk invalidates the snapshot
-	walk_invalidate(&editor)
+	walk_invalidate(&editor, root)
 	adopted := walk_prewarm_finish(&editor, w)
 	testing.expect(t, !adopted, "a stale snapshot must be discarded")
-	testing.expect(t, !walk_valid(&editor, w), "cache must not be filled from a stale snapshot")
+	testing.expect(t, !walk_valid(w), "cache must not be filled from a stale snapshot")
 	testing.expect(t, !w.pw.active, "prewarm should be settled")
 }

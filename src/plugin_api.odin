@@ -1552,6 +1552,7 @@ qed_fs_write :: proc "c" (L: ^lua.State) -> c.int {
 	if file_write_atomic(path, transmute([]u8)data, mode) != .None {
 		return api_fail(L, fmt.tprintf("cannot write %s", path))
 	}
+	walk_invalidate(entry.editor, path)
 	lua.pushboolean(L, true)
 	return 1
 }

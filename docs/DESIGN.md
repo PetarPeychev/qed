@@ -813,7 +813,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `module` (ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
-`confirm` (quit/close/conflict dialogs, `dialog_*` adapters) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` (walk service, `qed.fs` writes, file tree pane) · `fuzzy` ·
+`confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` (walk service, `qed.fs` writes, file tree pane) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
@@ -905,12 +905,12 @@ lazy per-dir expand, full-height right-side preview; **type-to-filter** (`> ` pr
 fuzzy, debounced `FILETREE_FILTER_DEBOUNCE_MS`) into a flat, relevance-ranked list of files *and* directories (empty query = the
 browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree); the candidate list is a
 **parallel `readdir` walk** (`d_type`, no per-entry stat, single-clone, `FILETREE_WALK_THREADS`) **prewarmed on a background thread**
-from open/scan-completion (`FILETREE_PREWARM`, immutable ignored-map snapshot + `scan_gen` validation) so the first keystroke hits a warm cache;
+from open/scan-completion (`FILETREE_PREWARM`, ignore-set snapshot, adopted only while the walk was not invalidated meanwhile) so the first keystroke hits a warm cache;
 extending the query re-ranks only the prior match set (a longer subsequence matches a subset), and the visible list is capped at
 `FILETREE_FILTER_MAX_RESULTS` (the full ranked set is retained for narrowing) with the match count (`FILETREE_FILTER_MAX_RESULTS`+ when capped) on the filter line;
 selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/paste (internal
 clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
-delete (floating recursive-delete confirm dialog, shared `dialog_*`), `Ctrl+R` rename, `Ctrl+N`
+delete (child confirm dialog on the tree), `Ctrl+R` rename, `Ctrl+N`
 new (unified: trailing `/` = directory, else file; nested names create missing parents via
 `path_ensure_parent_dir`), `Ctrl+A` select-all-scope, `Ctrl+W` close open buffers (the **Open**
 tab doubles as the buffer switcher — in-memory preview, `Enter` switches; `Ctrl+W` silent for
@@ -994,9 +994,13 @@ or flood the provider with base requests.
 scope `filetree`, `keep`) over a **walk handle**. The walk service: `Walk{root, dotfiles, ignored}` records
 in `Editor.walks`, shared by equal options and refcounted by list sources (`walk_gc` frees unreferenced ones
 once their prewarm landed); the candidate set comes from the parallel `readdir` walk (`walk_run`) or a
-background prewarm (ignore-set snapshot, adopted only if `Walk.gen` still equals `Editor.walk_gen`). Every
-`qed.fs` write, status push, root change and tree open calls `walk_invalidate` (bumps `walk_gen`); open walk
-lists see the new stamp and refill keeping the selected path. `within(paths)`/`union(paths)` narrow through a
+background prewarm (ignore-set snapshot, adopted only if `Walk.gen` did not move meanwhile). Each walk has its
+own ignore set (per root: `walk_ignore_set`, fed by the provider's status push today and `h:ignore` from Lua;
+only a changed set restales). A `qed.fs` write (`fs_*`, `qed.fs.write`) restales only the walks whose root can
+contain the path (`walk_invalidate`); a tree open or `qed.fs.walk` call restales just that walk. A stale walk
+keeps serving its old candidates while the prewarm reruns it; only a first walk with nothing to serve runs on
+the main thread. Restaling and adopting bump `Walk.gen`, the list stamp, so open walk lists refill keeping the
+selected and anchor paths. Confirm dialogs freeze their target paths when they open (`FileTree.targets`). `within(paths)`/`union(paths)` narrow through a
 refcounted `WalkScope` (listed paths keep their descendants and skip the dotfiles/ignored rules; virtual
 paths and their missing parents are injected when absent). `list_walk_fill` builds the rows: lazy per-dir
 `readdir` for the browsable tree, or under a filter a ranked, capped (`list.max`, 500) path list that narrows
@@ -1004,8 +1008,11 @@ the previous hits as the query grows. Tabs are `within` scopes (Open, Unsaved: b
 provider's files plus `union` of deleted ones). `filetree_source_sync` rebuilds source, tabs, chips and marks
 (provider bars, dim ignored, deleted fg, rename suffix and sizes on Changed) from `FileTree`. New:/Rename: is
 the footer input; delete and close confirms are child dialogs. `qed.fs.copy/rename/remove/mkdir` (`fs_*`)
-refuse an existing target, never follow symlinks (copied as links), rename across filesystems and repaths
-buffers; the tree's paste, rename, delete and New dir go through them.
+refuse an existing target, a target inside the source (`into itself`), special files (fifos, sockets,
+devices; skipped inside a copied dir) and removing the root or an ancestor; they never follow symlinks (copied
+as links), stream file data through a fixed buffer, fall back to copy + remove only on `EXDEV` (keeping mtimes;
+a failed remove drops the copy and fails) and repath buffers; the tree's paste, rename, delete and New dir go
+through them.
 
 **File tree status provider** (`FileTree.provider`, `qed.filetree.*`): one plugin owns the Changed
 tab (`qed.filetree.provide{refresh?, preview?, open_deleted?}`; another plugin gets `nil, "taken by"`,

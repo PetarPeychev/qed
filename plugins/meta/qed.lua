@@ -259,9 +259,13 @@ function qed.every(ms, fn) end
 ---@class qed.List
 ---@field id integer
 local List = {}
----Walk handles: the number of items, walking synchronously if the walk has not landed yet.
----@return integer
+---Walk handles: the number of items, or `nil, "pending"` while `ready()` is false (it starts the background walk; a `within` handle is always ready).
+---@return integer|nil
+---@return "pending"|nil err
 function List:count() end
+---Walk handles: replaces the ignore set of every walk of this root (paths hidden unless `ignored`); a change reruns them.
+---@param paths string[]
+function List:ignore(paths) end
 ---Walk handles: false while the walk (or its background prewarm) is still running.
 ---@return boolean
 function List:ready() end
@@ -320,9 +324,9 @@ function List:union(paths) end
 ---@class qed.View
 ---@field id integer
 local View = {}
----Replaces the items. `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty. Returns false once closed.
----@param items (string|qed.UiItem)[]
----@param opts? {selected?: integer, more?: boolean, hint?: string}
+---Replaces the items, or swaps in a list handle (then `selected` is an item key, a path for a walk). `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty. Returns false once closed.
+---@param items (string|qed.UiItem)[]|qed.List
+---@param opts? {selected?: integer|string, more?: boolean, hint?: string}
 ---@return boolean
 function View:set(items, opts) end
 ---Adds items at the end and keeps the selection. Returns false once closed. Raises on a list backed by a `qed.List` (replace it with `View:set`).
@@ -374,6 +378,10 @@ function View:preview(spec) end
 ---@param open? boolean
 ---@return boolean
 function View:expand(what, open) end
+---Tree lists: clears the filter, expands `path`'s ancestors and selects it. Returns whether it is listed.
+---@param path string
+---@return boolean
+function View:reveal(path) end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.
 ---@return (string|qed.UiItem)[]|nil items
 ---@return integer|nil index
@@ -832,26 +840,26 @@ function qed.fs.list(dir) end
 ---@return qed.List
 function qed.fs.dirs(opts) end
 
----A list handle over every file and dir under `root` (default `qed.root()`): a threaded parallel walk, prewarmed in the background when a view opens over it, shared by handles with the same options, rerun after `qed.fs` writes and root changes. Dotfiles and paths the file tree status provider marks ignored are left out unless `dotfiles`/`ignored`. Items `{label, path, dir?, depth?}`. A filter field ranks paths (capped at `list.max`, default 500, narrowing the previous hits as the query grows), debounced.
+---A list handle over every file and dir under `root` (default `qed.root()`): a threaded parallel walk, prewarmed in the background when a view opens over it, shared by handles with the same options, rerun after `qed.fs` writes under its root (serving the old items until the rerun lands). Dotfiles and the root's ignore set (`List:ignore`, or the file tree status provider's) are left out unless `dotfiles`/`ignored`. Items `{label, path, dir?, depth?}`. A filter field ranks paths (capped at `list.max`, default 500, narrowing the previous hits as the query grows), debounced.
 ---@param opts? {root?: string, dotfiles?: boolean, ignored?: boolean}
 ---@return qed.List
 function qed.fs.walk(opts) end
 
----Copies a file or dir tree (modes kept, symlinks copied as links). Refuses an existing `dst` (`nil, "exists"`); creates missing parent dirs.
+---Copies a file or dir tree (modes kept, symlinks copied as links, fifos and devices skipped). Refuses an existing `dst`, a `dst` inside `src` and a special `src`; creates missing parent dirs.
 ---@param src string
 ---@param dst string
 ---@return boolean|nil ok
 ---@return "exists"|"not found"|string|nil err
 function qed.fs.copy(src, dst) end
 
----Moves a file or dir, across filesystems too, and repaths open buffers under it. Refuses an existing `dst`.
+---Moves a file or dir, across filesystems too (mtimes kept), and repaths open buffers under it. Refuses an existing `dst` or a `dst` inside `src`.
 ---@param src string
 ---@param dst string
 ---@return boolean|nil ok
 ---@return "exists"|"not found"|string|nil err
 function qed.fs.rename(src, dst) end
 
----Deletes a file or a dir tree; symlinks are removed, never followed. Open buffers stay.
+---Deletes a file or a dir tree; symlinks are removed, never followed. Refuses the root and its ancestors. Open buffers stay.
 ---@param path string
 ---@return boolean|nil ok
 ---@return "not found"|string|nil err

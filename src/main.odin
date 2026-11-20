@@ -73,7 +73,9 @@ main :: proc() {
 				if fim_pump(&editor) {
 					redraw = true
 				}
-				walk_pump(&editor)
+				if walk_pump(&editor) {
+					redraw = true
+				}
 				if pane_stack_pump(&editor) {
 					redraw = true
 				}

@@ -35,7 +35,6 @@ Editor :: struct {
 	log_open:        bool,
 	panes:           [dynamic]Pane,
 	walks:           [dynamic]^Walk,
-	walk_gen:        u64,
 	pane_seq:        u64,
 	pane_saved:      [dynamic]PaneSaved,
 	disk_poll:       time.Tick,

@@ -124,7 +124,7 @@ list_stamp :: proc(editor: ^Editor, p: ^Pane) -> u64 {
 	case .Plugins:
 		return u64(len(editor.plugins.list))
 	case .Walk:
-		return editor.walk_gen + 1
+		return src.walk.gen + 1 if src.walk != nil else 0
 	}
 	return 0
 }
