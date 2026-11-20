@@ -2,6 +2,7 @@ package main
 
 import "core:c"
 import "core:fmt"
+import "core:os"
 import "core:strings"
 
 foreign import libc "system:c"
@@ -65,4 +66,30 @@ shell_command_exists :: proc(name: string) -> bool {
 		return false
 	}
 	return pclose(stream) == 0
+}
+
+shell_has :: proc(name: string) -> bool {
+	out, ok := shell_capture(strings.clone_to_cstring(fmt.tprintf("command -v %s 2>/dev/null", name), context.temp_allocator))
+	return ok && strings.trim_space(out) != ""
+}
+
+url_opener :: proc() -> (string, bool) {
+	when ODIN_OS == .Darwin {
+		return "open", true
+	}
+	if rel, err := os.read_entire_file("/proc/sys/kernel/osrelease", context.temp_allocator); err == nil && strings.contains(strings.to_lower(string(rel), context.temp_allocator), "microsoft") {
+		for name in ([]string{"wslview", "explorer.exe"}) {
+			if shell_has(name) {
+				return name, true
+			}
+		}
+		return "", false
+	}
+	return "xdg-open", shell_has("xdg-open")
+}
+
+// backgrounded with output discarded: returns at once and leaves no child to reap
+url_open :: proc(cmd: string) -> bool {
+	_, ok := shell_capture(strings.clone_to_cstring(fmt.tprintf("%s >/dev/null 2>&1 &", cmd), context.temp_allocator))
+	return ok
 }

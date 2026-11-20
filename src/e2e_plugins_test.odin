@@ -49,6 +49,7 @@ pt_api := [?]lua.L_Reg {
 	{"ui", pt_ui},
 	{"config_path", pt_config_path},
 	{"screen", pt_screen},
+	{"click", pt_click},
 	{"sh", pt_sh},
 	{"marks", pt_marks},
 	{"settle", pt_settle},
@@ -403,6 +404,28 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.setfield(L, -2, "status")
 	return 1
+}
+
+@(private = "file")
+pt_click :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	needle := utf8.string_to_runes(api_string(L, 1), context.temp_allocator)
+	e2e_render(g_pt)
+	for y in 0 ..< int(tb2.height()) {
+		row := make([]rune, int(tb2.width()), context.temp_allocator)
+		for x in 0 ..< len(row) {
+			row[x] = e2e_cell(g_pt, x, y)
+		}
+		for x in 0 ..= len(row) - len(needle) {
+			if slice.equal(row[x:x + len(needle)], needle) {
+				e2e_mouse(g_pt, x, y)
+				pane_stack_sync(&g_pt.ed)
+				plugin_flush(&g_pt.ed)
+				return 0
+			}
+		}
+	}
+	return plugin_raise(L, "t.click: text not on screen")
 }
 
 @(private = "file")

@@ -381,3 +381,37 @@ test_md_hover_style :: proc(t: ^testing.T) {
 	wide := md_all_text(md_render(src, 76, .Go))
 	testing.expect(t, strings.contains(wide, "[1] https://pkg.go.dev/fmt#Fprintf"), "footnote url")
 }
+
+@(test)
+test_md_link_targets :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	lines := md_render("a [b **c**](https://x.y) d <https://q.r> [e](#f)", 80, .Plain)
+	testing.expect_value(t, md_line_link(lines[0], 0), "")
+	testing.expect_value(t, md_line_link(lines[0], 2), "https://x.y")
+	testing.expect_value(t, md_line_link(lines[0], 4), "https://x.y")
+	testing.expect_value(t, md_line_link(lines[0], 6), "https://x.y")
+	text := md_line_text(lines[0])
+	testing.expect_value(t, md_line_link(lines[0], strings.index(text, "q.r")), "https://q.r")
+	testing.expect_value(t, md_line_link(lines[0], strings.index(text, " e") + 1), "#f")
+	foot := lines[len(lines) - 1]
+	testing.expect_value(t, md_line_link(foot, 5), "https://x.y")
+	wrapped := md_render("[one two three four](https://w.x)", 8, .Plain)
+	for line in wrapped[:2] {
+		testing.expect_value(t, md_line_link(line, 0), "https://w.x")
+	}
+}
+
+@(test)
+test_md_slugs :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	lines := md_render("# The `qed` Table!\n\n## Deep Dive\n\n## Deep Dive\n\ntext", 80, .Plain)
+	slugs := make([dynamic]string, context.temp_allocator)
+	for line in lines {
+		if line.slug != "" {
+			append(&slugs, line.slug)
+		}
+	}
+	md_expect_texts(t, slugs[:], {"the-qed-table", "deep-dive", "deep-dive-1"})
+}

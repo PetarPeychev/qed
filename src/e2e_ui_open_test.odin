@@ -6,6 +6,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:testing"
 import "core:time"
+import "lib:tb2"
 
 @(private = "file")
 VIEW_PLUGIN :: `
@@ -71,6 +72,11 @@ return {setup = function()
 	cmd("Md Set", function() note("md " .. tostring(v:markdown("# New"))) end)
 	cmd("Narrow", function() v = qed.ui.open{list = {items = {"a"}}, max_width = 20} end)
 	cmd("Bad Md", function() qed.ui.open{markdown = "x"} end)
+	cmd("Dim", function() v = qed.ui.open{list = {items = {"a"}}, backdrop = "dim"} end)
+	cmd("Blank", function() v = qed.ui.open{list = {items = {"a"}}, backdrop = "blank"} end)
+	cmd("Linked", function()
+		v = qed.ui.open{place = "full", markdown = "[out](https://x.y/z) and [up](#top)\n\n# Top", on = {link = function(_, target) note("link " .. target) end}}
+	end)
 	cmd("Busy", function()
 		local r, err = qed.ui.open{list = {items = {"b"}}}
 		note(("busy %s %s"):format(tostring(r), tostring(err)))
@@ -461,4 +467,60 @@ e2e_ui_open_markdown :: proc(t: ^testing.T) {
 	view_run(t, &e, "V: Bad Md")
 	plugin_flush(&e.ed)
 	testing.expect(t, test_view(&e.ed) == nil, "markdown outside a full pane is refused")
+}
+
+@(test)
+e2e_ui_open_backdrop :: proc(t: ^testing.T) {
+	e, _ := view_start(t)
+	defer e2e_stop(&e)
+	status_y := int(tb2.height()) - 2
+	e2e_render(&e)
+	text_fg := e2e_cell_fg(&e, editor_gutter_width(&e.ed), 0)
+	status_fg := e2e_cell_fg(&e, 1, status_y)
+	view_run(t, &e, "V: Dim")
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, editor_gutter_width(&e.ed), 0), 'a')
+	testing.expect(t, e2e_cell_fg(&e, editor_gutter_width(&e.ed), 0) != text_fg, "dim fades the editor text")
+	testing.expect_value(t, e2e_cell_fg(&e, 1, status_y), status_fg)
+	e2e_key(&e, .Esc)
+	view_run(t, &e, "V: Blank")
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, editor_gutter_width(&e.ed), 0), ' ')
+	testing.expect(t, strings.trim_space(e2e_row_text(&e, status_y)) != "", "the status bar stays")
+	e2e_key(&e, .Esc)
+
+	e2e_key(&e, tb2.Key(0), .Alt, 'f')
+	e2e_render(&e)
+	tree_fg := e2e_cell_fg(&e, PICKER_MARGIN_X, PICKER_MARGIN_Y)
+	view_run(t, &e, "V: Dim")
+	e2e_render(&e)
+	testing.expect(t, e2e_cell_fg(&e, PICKER_MARGIN_X, PICKER_MARGIN_Y) != tree_fg, "a pane underneath fades too")
+	testing.expect_value(t, e2e_cell_fg(&e, 1, status_y), status_fg)
+}
+
+@(test)
+e2e_ui_open_links :: proc(t: ^testing.T) {
+	e, _ := view_start(t)
+	defer e2e_stop(&e)
+	view_run(t, &e, "V: Linked")
+	v := test_view(&e.ed)
+	g := pane_geom(&e.ed, v)
+	pane_body_rows(v, g)
+	e2e_mouse(&e, g.text.x + 1, g.text.y)
+	plugin_flush(&e.ed)
+	testing.expect(t, view_logged(&e, "link https://x.y/z"), "a link click reaches on.link")
+	lines := md_texts(test_view(&e.ed).md_lines)
+	top := -1
+	for l, i in lines {
+		if l == "Top" {
+			top = i
+		}
+	}
+	up := strings.index(lines[0], "up")
+	e2e_mouse(&e, g.text.x + up, g.text.y)
+	plugin_flush(&e.ed)
+	e2e_render(&e)
+	testing.expect_value(t, test_view(&e.ed).scroll, min(top, max(0, len(lines) - g.text.h)))
+	testing.expect(t, !view_logged(&e, "link #top"), "anchors stay in core")
+	e2e_key(&e, .Esc)
 }

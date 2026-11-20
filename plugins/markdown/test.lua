@@ -102,4 +102,59 @@ function T.max_width(t)
 	t.key("Esc")
 end
 
+local function pad(body)
+	return "\n\n\n\n\n\n" .. body
+end
+
+function T.anchor_link_scrolls(t)
+	local parts = {"intro [jump-to-second](#second-part)", ""}
+	for i = 1, 60 do
+		parts[#parts + 1] = "filler " .. i
+		parts[#parts + 1] = ""
+	end
+	parts[#parts + 1] = "## Second part"
+	parts[#parts + 1] = ""
+	parts[#parts + 1] = "tail text"
+	t.open("anchors.md", pad(table.concat(parts, "\n")))
+	open(t)
+	t.click("jump-to-second")
+	t.ok(t.ui().scroll > 0, "the anchor scrolls the preview")
+	t.ok(on_screen(t, "tail text"), "the heading is in view")
+	t.key("Esc")
+end
+
+function T.file_link_opens_heading(t)
+	local other = qed.path.join(qed.root(), "docs/other.md")
+	qed.fs.write(other, "# Top\n\ntext\n\n## Deep Dive\n\nbody\n\n## Deep Dive\n\nsecond")
+	t.open("links.md", pad("see [the-other-doc](docs/other.md#deep-dive-1) here"))
+	open(t)
+	t.click("the-other-doc")
+	t.wait(function() return t.ui() == nil end)
+	t.eq(qed.buf.path(), other, "the linked file opens")
+	t.eq(qed.buf.cursor().row, 9, "on the second Deep Dive heading")
+end
+
+function T.url_link_opens_url(t)
+	t.open("urls.md", pad("visit [the-site](https://example.com/x) now"))
+	open(t)
+	t.click("the-site")
+	t.wait(function() return t.log_has("debug", "", "Open URL: https://example.com/x") end)
+	t.ok(t.ui() ~= nil, "the preview stays open")
+	t.click("[1] https")
+	t.wait(function() return t.log_has("debug", "", "Open URL: https://example.com/x") end)
+	t.key("Esc")
+end
+
+function T.backdrop(t)
+	t.open("bd.md", "raw markdown text here\n\n\n\n\n\n# Doc")
+	open(t)
+	t.ok(t.screen(0):find("raw markdown", 1, true) ~= nil, "dim keeps the text, only its color changes")
+	t.key("Esc")
+	t.config({backdrop = "blank"}, {hot = true})
+	open(t)
+	t.ok(t.screen(0):find("raw markdown", 1, true) == nil, "blank clears the editor text")
+	t.ok(t.screen(22):find("bd.md", 1, true) ~= nil, "the status bar stays")
+	t.key("Esc")
+end
+
 return T

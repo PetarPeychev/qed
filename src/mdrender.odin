@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:strconv"
 import "core:strings"
+import "core:unicode"
 import "core:unicode/utf8"
 import "lib:tb2"
 
@@ -11,12 +12,14 @@ import "lib:tb2"
 MdSpan :: struct {
 	text:   string,
 	fg, bg: tb2.Color,
+	link:   string,
 }
 
 MdLine :: struct {
 	spans:            []MdSpan,
 	fill:             rune,
 	fill_fg, fill_bg: tb2.Color,
+	slug:             string,
 }
 
 MdCell :: struct {
@@ -24,6 +27,7 @@ MdCell :: struct {
 	fg, bg:     tb2.Color,
 	w:          int,
 	space, brk: bool,
+	link:       string,
 }
 
 MdKind :: enum {
@@ -89,6 +93,8 @@ MdRender :: struct {
 	style:       MdStyle,
 	refs:        map[string]string,
 	links:       [dynamic]string,
+	link:        string,
+	slugs:       map[string]int,
 	prefix:      [dynamic]MdPrefix,
 	gap, tight:  bool,
 	depth:       int,
@@ -128,6 +134,7 @@ md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
 	}
 	r.refs = make(map[string]string, context.temp_allocator)
 	r.links = make([dynamic]string, context.temp_allocator)
+	r.slugs = make(map[string]int, context.temp_allocator)
 	r.prefix = make([dynamic]MdPrefix, context.temp_allocator)
 	raw := strings.split(src, "\n", context.temp_allocator)
 	for &l in raw {
@@ -139,7 +146,7 @@ md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
 		for url, i in r.links {
 			mark := fmt.tprintf("[%d] ", i + 1)
 			append(&r.prefix, MdPrefix{mark, strings.repeat(" ", len(mark), context.temp_allocator), r.style.dim, true})
-			for row in md_wrap_hard({{text = url, fg = r.style.dim}}, md_avail(&r)) {
+			for row in md_wrap_hard({{text = url, fg = r.style.dim, link = url}}, md_avail(&r)) {
 				md_emit(&r, row)
 			}
 			pop(&r.prefix)
@@ -706,7 +713,12 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 		md_emit_wrapped(r, md_inline(r, b.text, r.style.fg))
 	case .Heading:
 		md_gap(r)
-		md_emit_wrapped(r, md_inline(r, b.text, r.style.heading))
+		spans := md_inline(r, b.text, r.style.heading)
+		at := len(r.out)
+		md_emit_wrapped(r, spans)
+		if at < len(r.out) {
+			r.out[at].slug = md_slug(r, md_line_text({spans = spans}))
+		}
 		if b.level == 1 {
 			md_emit(r, nil, '━', tb2.Color(u64(r.style.heading) & COLOR_RGB_MASK))
 		} else if b.level == 2 {
@@ -796,7 +808,7 @@ md_emit_code :: proc(r: ^MdRender, code: []string, info: string) {
 		}
 		for row in md_wrap_hard(spans, w) {
 			content := make([dynamic]MdSpan, 0, len(row) + 1, context.temp_allocator)
-			append(&content, MdSpan{" ", COLOR_PANE_FG, bg})
+			append(&content, MdSpan{text = " ", fg = COLOR_PANE_FG, bg = bg})
 			append(&content, ..row)
 			md_emit(r, content[:], ' ', COLOR_PANE_FG, bg)
 		}
@@ -962,7 +974,7 @@ md_avail :: proc(r: ^MdRender) -> int {
 md_emit :: proc(r: ^MdRender, content: []MdSpan, fill: rune = 0, fill_fg: tb2.Color = {}, fill_bg: tb2.Color = {}) {
 	spans := md_prefix_spans(r, true)
 	append(&spans, ..content)
-	append(&r.out, MdLine{spans[:], fill, fill_fg, fill_bg})
+	append(&r.out, MdLine{spans = spans[:], fill = fill, fill_fg = fill_fg, fill_bg = fill_bg})
 }
 
 md_emit_blank :: proc(r: ^MdRender) {
@@ -1006,7 +1018,7 @@ md_inline_flush :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, sb: ^strings.Buil
 	if r.strong > 0 {
 		extra |= u64(tb2.Color.Bold)
 	}
-	append(spans, MdSpan{text = strings.clone(strings.to_string(sb^), context.temp_allocator), fg = tb2.Color(u64(fg) | extra)})
+	append(spans, MdSpan{text = strings.clone(strings.to_string(sb^), context.temp_allocator), fg = tb2.Color(u64(fg) | extra), link = r.link})
 	strings.builder_reset(sb)
 }
 
@@ -1030,7 +1042,7 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 				if len(code) >= 2 && code[0] == ' ' && code[len(code) - 1] == ' ' && strings.trim_space(code) != "" {
 					code = code[1:len(code) - 1]
 				}
-				append(spans, MdSpan{text = code, fg = md_fg(r.style.code, fg), bg = r.style.code_bg})
+				append(spans, MdSpan{text = code, fg = md_fg(r.style.code, fg), bg = r.style.code_bg, link = r.link})
 				i = close + n
 				continue
 			}
@@ -1042,7 +1054,7 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 				if label_end, _, end, ok := md_link_at(r, text, i + 1); ok {
 					md_inline_flush(r, spans, &sb, fg)
 					alt := md_plain(text[i + 2:label_end])
-					append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim})
+					append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, link = r.link})
 					i = end
 					continue
 				}
@@ -1051,15 +1063,18 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 			if label_end, dest, end, ok := md_link_at(r, text, i); ok {
 				md_inline_flush(r, spans, &sb, fg)
 				inner := text[i + 1:label_end]
+				outer := r.link
+				r.link = dest
 				md_inline_into(r, spans, inner, md_fg(r.style.link, fg, u64(tb2.Color.Underline)))
 				md_footnote(r, spans, dest, inner)
+				r.link = outer
 				i = end
 				continue
 			}
 		case '<':
 			if end, url, ok := md_autolink(text, i); ok {
 				md_inline_flush(r, spans, &sb, fg)
-				append(spans, MdSpan{text = url, fg = md_fg(r.style.link, fg, u64(tb2.Color.Underline))})
+				append(spans, MdSpan{text = url, fg = md_fg(r.style.link, fg, u64(tb2.Color.Underline)), link = url})
 				i = end
 				continue
 			}
@@ -1112,7 +1127,7 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 					end -= 1
 				}
 				md_inline_flush(r, spans, &sb, fg)
-				append(spans, MdSpan{text = text[i:end], fg = md_fg(r.style.link, fg, u64(tb2.Color.Underline))})
+				append(spans, MdSpan{text = text[i:end], fg = md_fg(r.style.link, fg, u64(tb2.Color.Underline)), link = text[i:end]})
 				i = end
 				continue
 			}
@@ -1138,7 +1153,7 @@ md_footnote :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, dest, label: string) 
 		append(&r.links, dest)
 		n = len(r.links) - 1
 	}
-	append(spans, MdSpan{text = fmt.tprintf("[%d]", n + 1), fg = r.style.dim})
+	append(spans, MdSpan{text = fmt.tprintf("[%d]", n + 1), fg = r.style.dim, link = dest})
 }
 
 md_plain :: proc(s: string) -> string {
@@ -1522,11 +1537,11 @@ md_cells :: proc(spans: []MdSpan) -> [dynamic]MdCell {
 				col = 0
 			case '\t':
 				for next := (col / TAB_WIDTH + 1) * TAB_WIDTH; col < next; col += 1 {
-					append(&cells, MdCell{" ", sp.fg, sp.bg, 1, true, false})
+					append(&cells, MdCell{" ", sp.fg, sp.bg, 1, true, false, sp.link})
 				}
 			case:
 				cw := md_rune_width(r)
-				append(&cells, MdCell{sp.text[i:i + sz], sp.fg, sp.bg, cw, r == ' ', false})
+				append(&cells, MdCell{sp.text[i:i + sz], sp.fg, sp.bg, cw, r == ' ', false, sp.link})
 				col += cw
 			}
 			i += sz
@@ -1539,16 +1554,17 @@ md_cells_to_spans :: proc(cells: []MdCell) -> []MdSpan {
 	spans := make([dynamic]MdSpan, context.temp_allocator)
 	sb := strings.builder_make(context.temp_allocator)
 	fg, bg: tb2.Color
+	link: string
 	for c, k in cells {
-		if k > 0 && (c.fg != fg || c.bg != bg) {
-			append(&spans, MdSpan{strings.clone(strings.to_string(sb), context.temp_allocator), fg, bg})
+		if k > 0 && (c.fg != fg || c.bg != bg || c.link != link) {
+			append(&spans, MdSpan{strings.clone(strings.to_string(sb), context.temp_allocator), fg, bg, link})
 			strings.builder_reset(&sb)
 		}
-		fg, bg = c.fg, c.bg
+		fg, bg, link = c.fg, c.bg, c.link
 		strings.write_string(&sb, c.text)
 	}
 	if len(cells) > 0 {
-		append(&spans, MdSpan{strings.clone(strings.to_string(sb), context.temp_allocator), fg, bg})
+		append(&spans, MdSpan{strings.clone(strings.to_string(sb), context.temp_allocator), fg, bg, link})
 	}
 	return spans[:]
 }
@@ -1634,6 +1650,35 @@ md_wrap_hard :: proc(spans: []MdSpan, width: int) -> [][]MdSpan {
 	}
 	append(&out, md_cells_to_spans(line[:]))
 	return out[:]
+}
+
+// GitHub heading anchors: lowercase, spaces to '-', punctuation dropped, repeats get -1, -2
+md_slug :: proc(r: ^MdRender, text: string) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for c in strings.to_lower(text, context.temp_allocator) {
+		switch {
+		case c == ' ':
+			strings.write_byte(&sb, '-')
+		case c == '-' || c == '_' || unicode.is_letter(c) || unicode.is_digit(c):
+			strings.write_rune(&sb, c)
+		}
+	}
+	slug := strings.to_string(sb)
+	n := r.slugs[slug]
+	r.slugs[slug] = n + 1
+	return slug if n == 0 else fmt.tprintf("%s-%d", slug, n)
+}
+
+md_line_link :: proc(line: MdLine, col: int) -> string {
+	x := 0
+	for sp in line.spans {
+		w := md_text_width(sp.text)
+		if col >= x && col < x + w {
+			return sp.link
+		}
+		x += w
+	}
+	return ""
 }
 
 md_line_width :: proc(line: MdLine) -> int {

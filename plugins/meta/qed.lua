@@ -105,6 +105,12 @@ function qed.jump(target, pos) end
 ---@return string
 function qed.root() end
 
+---Opens a URL with the platform opener (macOS `open`; WSL `wslview`, else `explorer.exe`; Linux `xdg-open`), detached. `nil, err` when no opener is found or it cannot start.
+---@param url string
+---@return true|nil
+---@return string|nil err
+function qed.open_url(url) end
+
 ---@class qed.Unsaved
 ---@field total integer buffers outside the new root
 ---@field unsaved integer of them unsaved
@@ -255,6 +261,7 @@ function qed.every(ms, fn) end
 ---@field change? fun(v: qed.View, item: string|qed.UiItem) the highlighted item changed (not at open, also after `View:set`); a newer change kills the previous run
 ---@field query? fun(v: qed.View, text: string) the query field settled; a newer query and the close kill the previous run and the `qed.spawn` it waits on (`qed.spawn_bg` processes stay the plugin's to kill)
 ---@field close? fun(v: qed.View) any close: Esc, click outside, the opening command's chord, `View:close`, a parent closing, an exclusive pane replacing it
+---@field link? fun(v: qed.View, target: string) a click on a link in a `markdown` body: the raw destination (URL, relative path, `path#anchor`); `#anchor` links scroll the body in core and never reach here
 
 ---@class qed.UiSpec
 ---@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads)
@@ -270,6 +277,7 @@ function qed.every(ms, fn) end
 ---@field preview? "auto"|false split: previews the selected item's `path` at `pos.row`
 ---@field text? qed.PaneLine[] lines above the list (center) or the scrollable body (full or split without a list)
 ---@field markdown? string full only, without list or text: the body is this markdown, rendered by core at the pane width (the LSP hover renderer); arrows, PgUp/PgDn, Home/End and the wheel scroll it
+---@field backdrop? "none"|"dim"|"blank" what happens to everything drawn under the pane (the editor and panes below, never the status rows): left alone (default), faded (theme tint `pane_backdrop`) or cleared to the background
 ---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
 ---@field footer? {hints: {label: string, cmd?: string}[]} bottom row; a hint with `cmd` is prefixed with that command's live shortcut
 ---@field on? qed.UiHandlers handlers run as tasks after input dispatch, before the next frame

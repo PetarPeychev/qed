@@ -32,6 +32,7 @@ qed_api := [?]lua.L_Reg {
 	{"close", qed_close},
 	{"jump", qed_jump},
 	{"root", qed_root},
+	{"open_url", qed_open_url},
 	{"set_root", qed_set_root},
 	{"config", qed_config},
 	{"options", qed_options},
@@ -1051,6 +1052,28 @@ qed_parse_locations :: proc "c" (L: ^lua.State) -> c.int {
 		n += 1
 		lua.rawseti(L, -2, lua.Integer(n))
 	}
+	return 1
+}
+
+qed_open_url :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	url := strings.clone(api_string(L, 1), context.temp_allocator)
+	if editor.headless {
+		editor_log(editor, .Debug, "", fmt.tprintf("Open URL: %s", url))
+		lua.pushboolean(L, true)
+		return 1
+	}
+	opener, ok := url_opener()
+	if !ok {
+		return api_fail(L, "no URL opener found (xdg-open, wslview or explorer.exe)")
+	}
+	editor_log(editor, .Debug, "", fmt.tprintf("Open URL: %s %s", opener, url))
+	if !url_open(fmt.tprintf("%s %s", opener, shell_quote(url))) {
+		return api_fail(L, fmt.tprintf("cannot run %s", opener))
+	}
+	lua.pushboolean(L, true)
 	return 1
 }
 

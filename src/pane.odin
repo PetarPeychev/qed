@@ -181,6 +181,12 @@ PaneList :: struct {
 
 PaneHandler :: proc(editor: ^Editor, p: ^Pane)
 
+PaneBackdrop :: enum {
+	None,
+	Dim,
+	Blank,
+}
+
 PaneCtx :: struct {
 	buf: u64,
 	lua: bool,
@@ -222,8 +228,10 @@ Pane :: struct {
 	accept:       bool,
 	landed:       bool,
 	notified:     int,
+	backdrop:     PaneBackdrop,
 	on:           struct {
 		activate, close: PaneHandler,
+		link:            proc(editor: ^Editor, p: ^Pane, target: string),
 	},
 }
 
@@ -928,6 +936,7 @@ pane_render_field :: proc(p: ^Pane, g: PaneGeom, i: int, count: string) {
 
 pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	g := pane_geom(editor, p)
+	pane_backdrop(p.backdrop)
 	pane_draw_box(g.box)
 	for y in g.seps[:g.nsep] {
 		pane_hline(g.box, y)
@@ -1123,6 +1132,12 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		}
 		return .None
 	}
+	if p.has_md && !motion && mouse_in_rect(ev, g.text) {
+		if row := p.scroll + int(ev.y) - g.text.y; row < len(p.md_lines) {
+			pane_md_follow(editor, p, md_line_link(p.md_lines[row], int(ev.x) - g.text.x))
+		}
+		return .None
+	}
 	if len(p.fields) > 0 && (motion || (p.place == .Center && mouse_in_rect(ev, g.box))) {
 		f := &p.fields[p.focus]
 		fe := ev
@@ -1134,6 +1149,40 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		return .Close
 	}
 	return .None
+}
+
+pane_md_follow :: proc(editor: ^Editor, p: ^Pane, target: string) {
+	switch {
+	case target == "":
+	case target[0] == '#':
+		for line, i in p.md_lines {
+			if line.slug != "" && line.slug == target[1:] {
+				p.scroll = i
+				return
+			}
+		}
+	case p.on.link != nil:
+		p.on.link(editor, p, target)
+	}
+}
+
+// everything drawn so far except the status rows, so panes underneath fade too
+pane_backdrop :: proc(mode: PaneBackdrop) {
+	if mode == .None {
+		return
+	}
+	for y in 0 ..< int(tb2.height()) - STATUS_ROWS {
+		for x in 0 ..< int(tb2.width()) {
+			if mode == .Blank {
+				tb2.set_cell(i32(x), i32(y), ' ', COLOR_FG, COLOR_BG)
+				continue
+			}
+			cell: ^tb2.Cell_Raw
+			if tb2.get_cell(i32(x), i32(y), 1, &cell) == .Ok && cell != nil {
+				cell.fg = tb2.Color(u64(color_over(cell.fg, cell.bg, PANE_BACKDROP_TINT)) | color_attrs(cell.fg))
+			}
+		}
+	}
 }
 
 pane_body_rows :: proc(p: ^Pane, g: PaneGeom) -> int {

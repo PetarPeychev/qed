@@ -15,6 +15,7 @@ ViewEvent :: enum {
 	Change,
 	Query,
 	Close,
+	Link,
 }
 
 view_event_names := [ViewEvent]cstring {
@@ -22,6 +23,7 @@ view_event_names := [ViewEvent]cstring {
 	.Change   = "change",
 	.Query    = "query",
 	.Close    = "close",
+	.Link     = "link",
 }
 
 UiView :: struct {
@@ -100,7 +102,7 @@ plugin_view_index :: proc(p: ^Plugins, handle: u64) -> int {
 plugin_view_release :: proc(p: ^Plugins, i: int) {
 	v := p.views[i]
 	if p.L != nil {
-		refs := [?]i32{v.view_ref, v.items_ref, v.on[.Activate], v.on[.Change], v.on[.Query], v.on[.Close]}
+		refs := [?]i32{v.view_ref, v.items_ref, v.on[.Activate], v.on[.Change], v.on[.Query], v.on[.Close], v.on[.Link]}
 		for ref in refs {
 			if ref != 0 {
 				lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(ref))
@@ -200,6 +202,10 @@ plugin_view_queue :: proc(editor: ^Editor, pn: ^Pane, kind: ViewEvent, sel: []in
 plugin_view_closed :: proc(editor: ^Editor, pn: ^Pane) {
 	pane_save(editor, pn)
 	plugin_view_queue(editor, pn, .Close, nil)
+}
+
+plugin_view_link :: proc(editor: ^Editor, pn: ^Pane, target: string) {
+	append(&editor.plugins.view_events, UiViewEvent{handle = pn.handle, kind = .Link, text = strings.clone(target), has_text = true})
 }
 
 plugin_view_activate :: proc(editor: ^Editor, pn: ^Pane) {
@@ -341,6 +347,12 @@ plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
 		return
 	}
 	v := p.views[vi]
+	if ev.kind == .Link {
+		if v.on[.Link] != 0 {
+			plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Link], args = .View_Text, view_ref = v.view_ref, line = ev.text})
+		}
+		return
+	}
 	if ev.kind == .Close {
 		plugin_task_kill(editor, v.change_task)
 		plugin_task_kill(editor, v.query_task)
@@ -745,6 +757,16 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		spec.md, spec.has_md = md, true
 	}
+	backdrop, _ := api_field_string(L, 1, "backdrop")
+	switch backdrop {
+	case "", "none":
+	case "dim":
+		spec.backdrop = .Dim
+	case "blank":
+		spec.backdrop = .Blank
+	case:
+		plugin_raise(L, `backdrop must be "none", "dim" or "blank"`)
+	}
 	if lua.getfield(L, 1, "max_width") != .NIL {
 		spec.max_width = api_int(L, -1, "max_width must be an integer")
 		if spec.max_width < 1 || spec.place == .Split {
@@ -828,7 +850,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	append(&spec.list.items, ..api_items_ordered(items, perm))
 	spec.owner = plugin_name_intern(p, pl.name)
 	spec.ctx.lua = true
-	spec.on = {activate = plugin_view_activate, close = plugin_view_closed}
+	spec.on = {activate = plugin_view_activate, close = plugin_view_closed, link = plugin_view_link}
 	if t := plugin_task_of(p, L); t != nil {
 		spec.toggle = t.command
 	}
