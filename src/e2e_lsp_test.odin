@@ -154,12 +154,14 @@ e2e_lsp_start :: proc(seed: string) -> E2E {
 }
 
 // Restore LANGUAGES before e2e_stop unlocks (the running server keeps its own
-// pointer into g_fake_cmd, so free it only after editor_shutdown tore it down).
+// pointer into the command, so free it only after editor_shutdown tore it down,
+// via a local: once unlocked, the next session owns g_fake_cmd).
 e2e_lsp_stop :: proc(e: ^E2E) {
 	LANGUAGES[.Plain] = g_fake_saved
-	e2e_stop(e)
-	delete(g_fake_cmd)
+	cmd := g_fake_cmd
 	g_fake_cmd = ""
+	e2e_stop(e)
+	delete(cmd)
 }
 
 // Pump the LSP transport until `pred` holds or the deadline passes, mirroring the
