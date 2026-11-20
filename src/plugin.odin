@@ -41,8 +41,17 @@ Plugin :: struct {
 	keys_due:   bool,
 	exports:    c.int,
 	gen:        u64,
-	repeats:    int,
+	errors:     PluginErrors,
 }
+
+PluginErrors :: struct {
+	counts:              map[string]int,
+	window:              time.Tick,
+	logged, suppressed:  int,
+}
+
+PLUGIN_ERRORS_PER_SECOND :: 3
+PLUGIN_ERROR_MESSAGES_MAX :: 32
 
 PluginFile :: struct {
 	path: string,
@@ -420,6 +429,8 @@ plugin_strings_free :: proc(pl: ^Plugin) {
 	delete(pl.last_error)
 	delete(pl.cfg_sig)
 	delete(pl.unknown)
+	plugin_errors_forget(&pl.errors)
+	delete(pl.errors.counts)
 }
 
 plugins_add :: proc(p: ^Plugins, pl: Plugin, bundled: bool) -> ^Plugin {
@@ -636,26 +647,67 @@ plugin_call :: proc(editor: ^Editor, nargs, nresults: c.int) -> (ok: bool, messa
 	return false, full, ""
 }
 
-// a handler failing the same way on every tick logs at the 2nd, 4th, 8th, ... repeat
 plugin_error :: proc(editor: ^Editor, pl: ^Plugin, message, traceback: string, disable: bool) {
-	if !disable && message == pl.last_error {
-		pl.repeats += 1
-		if pl.repeats & (pl.repeats - 1) == 0 {
-			editor_log(editor, .Error, pl.display, fmt.tprintf("%s (repeated %d times)", message, pl.repeats))
-		}
-		return
-	}
 	delete(pl.last_error)
 	pl.last_error = strings.clone(message)
-	pl.repeats = 1
-	editor_log(editor, .Error, pl.display, message)
-	if traceback != "" {
-		editor_log(editor, .Debug, pl.display, traceback)
-	}
 	if disable {
+		editor_log(editor, .Error, pl.display, message)
+		if traceback != "" {
+			editor_log(editor, .Debug, pl.display, traceback)
+		}
 		plugin_unload(editor, pl)
 		pl.state = .Errored
+		return
 	}
+	e := &pl.errors
+	if len(e.counts) >= PLUGIN_ERROR_MESSAGES_MAX && message not_in e.counts {
+		plugin_errors_forget(e)
+	}
+	n := e.counts[message] or_else 0
+	if n == 0 {
+		e.counts[strings.clone(message)] = 1
+	} else {
+		e.counts[message] = n + 1
+	}
+	n += 1
+	now := time.tick_now()
+	if e.window == {} || time.tick_diff(e.window, now) >= time.Second {
+		plugin_errors_flush(editor, pl)
+		e.window, e.logged = now, 0
+	}
+	if e.logged >= PLUGIN_ERRORS_PER_SECOND {
+		e.suppressed += 1
+		return
+	}
+	e.logged += 1
+	editor_log(editor, .Error, pl.display, message if n == 1 else fmt.tprintf("%s (%d times)", message, n))
+	if n == 1 && traceback != "" {
+		editor_log(editor, .Debug, pl.display, traceback)
+	}
+}
+
+plugin_errors_flush :: proc(editor: ^Editor, pl: ^Plugin) {
+	if pl.errors.suppressed > 0 {
+		editor_log(editor, .Error, pl.display, fmt.tprintf("(%d more errors suppressed)", pl.errors.suppressed), show = false)
+		pl.errors.suppressed = 0
+	}
+}
+
+plugins_errors_flush :: proc(editor: ^Editor) {
+	now := time.tick_now()
+	for &pl in editor.plugins.list {
+		if pl.errors.suppressed > 0 && time.tick_diff(pl.errors.window, now) >= time.Second {
+			plugin_errors_flush(editor, &pl)
+			pl.errors.window, pl.errors.logged = now, 0
+		}
+	}
+}
+
+plugin_errors_forget :: proc(e: ^PluginErrors) {
+	for k in e.counts {
+		delete(k)
+	}
+	clear(&e.counts)
 }
 
 PluginLoad :: struct {
@@ -676,7 +728,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	plugin_display_reset(pl)
 	delete(pl.last_error)
 	pl.last_error = ""
-	pl.repeats = 0
+	plugin_errors_forget(&pl.errors)
 	start := time.tick_now()
 	defer pl.load_ms = ms_since(start)
 	if p.L == nil {
@@ -954,6 +1006,20 @@ plugins_config_refresh :: proc(editor: ^Editor) {
 
 plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	p := &editor.plugins
+	inside := make([dynamic]u64, context.temp_allocator)
+	for call in p.calls {
+		for t in p.tasks {
+			if t.co == call.co && call.owner == pl.name && t.owner != pl.name {
+				append(&inside, t.id)
+			}
+		}
+	}
+	for id in inside {
+		if i := plugin_task_index(p, id); i >= 0 {
+			editor_log(editor, .Warn, plugin_label(p, p.tasks[i].owner), fmt.tprintf("task stopped: %s unloaded during a call into it", pl.display))
+			plugin_task_kill(editor, id)
+		}
+	}
 	plugin_ui_unload(editor, pl.name)
 	plugin_sched_unload(editor, pl.name)
 	term_unload(editor, pl.name)
@@ -997,15 +1063,15 @@ plugin_env_create :: proc(L: ^lua.State, pl: ^Plugin) {
 	lua.setfield(L, -2, "__index")
 	lua.setmetatable(L, env)
 
-	plugin_qed_push(L, pl.name)
+	plugin_qed_push(L, pl)
 	lua.setfield(L, env, "qed")
 
-	lua.pushodinstring(L, pl.name)
+	plugin_key_push(L, pl)
 	lua.newtable(L)
 	lua.pushcclosure(L, plugin_require, 2)
 	lua.setfield(L, env, "require")
 
-	lua.pushodinstring(L, pl.name)
+	plugin_key_push(L, pl)
 	lua.pushcclosure(L, plugin_print, 1)
 	lua.setfield(L, env, "print")
 
@@ -1017,9 +1083,30 @@ plugin_raise :: proc(L: ^lua.State, msg: string) -> c.int {
 	return lua.error(L)
 }
 
+// the qed closures' first upvalue is "<id>\x00<load generation>", so code kept from an unloaded load is refused after a reload
+plugin_key_push :: proc(L: ^lua.State, pl: ^Plugin) {
+	lua.pushodinstring(L, fmt.tprintf("%s\x00%d", pl.name, pl.gen))
+}
+
+plugin_key :: proc(L: ^lua.State, idx: c.int) -> (name: string, gen: u64) {
+	key, _ := lua.toodinstring(L, idx)
+	i := strings.index_byte(key, 0)
+	if i < 0 {
+		return key, 0
+	}
+	for ch in key[i + 1:] {
+		gen = gen * 10 + u64(ch - '0')
+	}
+	return key[:i], gen
+}
+
 plugin_owner :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
-	name, _ := lua.toodinstring(L, lua.upvalueindex(1))
-	return plugin_find(&editor.plugins, name)
+	name, gen := plugin_key(L, lua.upvalueindex(1))
+	pl := plugin_find(&editor.plugins, name)
+	if pl != nil && gen != 0 && pl.gen != gen {
+		return nil
+	}
+	return pl
 }
 
 plugin_require :: proc "c" (L: ^lua.State) -> c.int {
@@ -1348,7 +1435,7 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 			return 1
 		}
 	}
-	caller, _ := lua.toodinstring(L, lua.upvalueindex(1))
+	caller, _ := plugin_key(L, lua.upvalueindex(1))
 	found := -1
 	for cmd, i in editor.plugins.commands {
 		if cmd.scope != "" {

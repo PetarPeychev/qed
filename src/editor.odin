@@ -33,6 +33,8 @@ Editor :: struct {
 	plugins:         Plugins,
 	log_file:        ^os.File,
 	log_open:        bool,
+	log_rotated:     bool,
+	log_bytes:       int,
 	panes:           [dynamic]Pane,
 	walks:           [dynamic]^Walk,
 	pane_seq:        u64,

@@ -125,10 +125,12 @@ plugin_sched_yield_resume :: proc(t: ^testing.T) {
 plugin_sched_event_error_logs :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"ev.lua", `
+			local n = 0
 			return {setup = function()
 				qed.command{name = "Cmd", run = function() end}
 				qed.on("startup", function()
 					qed.every(1, function() error("tick boom") end)
+					qed.every(1, function() n = n + 1; error("tock " .. (n % 2)) end)
 					error("handler boom")
 				end)
 			end}`},
@@ -137,22 +139,28 @@ plugin_sched_event_error_logs :: proc(t: ^testing.T) {
 
 	pl := plugin_find(&ed.plugins, "ev")
 	start := time.tick_now()
-	for pl.repeats < 9 && ms_since(start) < 3000 {
+	for ms_since(start) < 1500 {
 		plugin_pump(ed)
 		time.sleep(time.Millisecond)
 	}
 	testing.expect_value(t, pl.state, PluginState.Enabled)
-	testing.expect(t, plugin_test_logged(ed, .Error, "Ev", "handler boom"), "the handler error is logged")
-	testing.expect(t, strings.contains(pl.last_error, "tick boom"), "the last error is kept")
 	_, has := plugin_test_command(ed, "Ev: Cmd")
 	testing.expect(t, has, "the plugin stays loaded")
-	testing.expect_value(t, len(ed.plugins.timers), 1)
-	logged := 0
+	testing.expect_value(t, len(ed.plugins.timers), 2)
+	testing.expect(t, plugin_test_logged(ed, .Error, "Ev", "handler boom"), "the first error is logged")
+	errors, tracebacks := 0, 0
 	for l in ed.log {
-		logged += int(l.level == .Error && l.source == "Ev" && strings.contains(l.text, "tick boom"))
+		if l.source == "Ev" && l.level == .Error {
+			errors += 1
+		}
+		if l.source == "Ev" && l.level == .Debug && strings.contains(l.text, "traceback") {
+			tracebacks += 1
+		}
 	}
-	testing.expect_value(t, logged, 4)
-	testing.expect(t, plugin_test_logged(ed, .Error, "Ev", fmt.tprintf("%s (repeated 8 times)", pl.last_error)), "repeats collapse")
+	testing.expectf(t, errors <= 3 * 2 + 2, "at most a few errors per second, got %d", errors)
+	testing.expect(t, tracebacks <= 4, "a traceback only for a message's first time")
+	testing.expect(t, plugin_test_logged(ed, .Error, "Ev", "more errors suppressed)"), "suppressed errors are summarized")
+	testing.expect(t, plugin_test_logged(ed, .Error, "Ev", " times)"), "a repeat carries its count")
 }
 
 @(test)

@@ -184,9 +184,9 @@ qed_text_api := [?]lua.L_Reg {
 	{nil, nil},
 }
 
-plugin_qed_push :: proc(L: ^lua.State, name: string) {
+plugin_qed_push :: proc(L: ^lua.State, pl: ^Plugin) {
 	lua.newtable(L)
-	lua.pushodinstring(L, name)
+	plugin_key_push(L, pl)
 	lua.L_setfuncs(L, raw_data(qed_api[:]), 1)
 	lua.pushodinstring(L, VERSION)
 	lua.setfield(L, -2, "version")
@@ -196,7 +196,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"ui", qed_ui_api[:]}}
 	for s in subs {
 		lua.newtable(L)
-		lua.pushodinstring(L, name)
+		plugin_key_push(L, pl)
 		lua.L_setfuncs(L, raw_data(s.regs), 1)
 		lua.setfield(L, -2, s.name)
 	}
@@ -2028,15 +2028,20 @@ plugin_export_call :: proc "c" (L: ^lua.State) -> c.int {
 	if pl == nil || pl.state != .Enabled || pl.gen != u64(lua.tointeger(L, lua.upvalueindex(2))) || pl.exports == lua.NOREF {
 		return plugin_raise(L, fmt.tprintf("plugin '%s' was unloaded", owner))
 	}
+	if L != p.L && plugin_task_of(p, L) == nil {
+		return plugin_raise(L, "exported functions can only be called from a command, handler or timer, not a coroutine of your own")
+	}
 	n := lua.gettop(L)
 	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.exports))
 	lua.pushvalue(L, lua.upvalueindex(4))
 	lua.rawget(L, -2)
 	lua.remove(L, -2)
 	lua.insert(L, 1)
-	caller, _ := lua.toodinstring(L, lua.upvalueindex(3))
+	lua.pushcfunction(L, plugin_msgh)
+	lua.insert(L, 1)
+	caller, _ := plugin_key(L, lua.upvalueindex(3))
 	append(&p.calls, PluginCall{co = L, owner = pl.name, caller = plugin_name_intern(p, caller)})
-	status := lua.pcall(L, n, lua.MULTRET, 0, 0, plugin_export_k)
+	status := lua.pcall(L, n, lua.MULTRET, 1, 0, plugin_export_k)
 	return plugin_export_k(L, c.int(status), 0)
 }
 
@@ -2049,6 +2054,7 @@ plugin_export_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) ->
 			break
 		}
 	}
+	lua.remove(L, 1)
 	if lua.Status(status) != .OK && lua.Status(status) != .YIELD {
 		return lua.error(L)
 	}
@@ -2059,7 +2065,7 @@ qed_caller :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	p := &entry.editor.plugins
-	me, _ := lua.toodinstring(L, lua.upvalueindex(1))
+	me, _ := plugin_key(L, lua.upvalueindex(1))
 	for i := len(p.calls) - 1; i >= 0; i -= 1 {
 		if c := p.calls[i]; c.co == L && c.owner == me {
 			lua.pushodinstring(L, c.caller)

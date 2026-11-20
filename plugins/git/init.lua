@@ -113,9 +113,16 @@ local function scan()
 	repeat
 		dirty = false
 		job = {}
-		local files, ignored, full = tree.scan(qed.root(), base, job)
+		local ok, files, ignored, full = pcall(tree.scan, qed.root(), base, job)
+		if not ok then
+			qed.log("error", "scan: " .. tostring(files))
+			files = nil
+		end
 		if files and not dirty then
 			publish(files, ignored, full)
+		elseif not ok and not published then
+			published = {files = {}, ignored = {}, paths = {}, marks = {}}
+			push()
 		end
 	until not dirty
 	scanning, job = false, nil

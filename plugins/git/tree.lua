@@ -268,7 +268,6 @@ local function parent(p)
 	return p:match("^(.+)/[^/]*$") or p
 end
 
--- "same", "fields" (same paths and deleted set, other fields moved) or "paths"; nil once stop() says a newer scan took over
 function M.compare(a, b, stop)
 	local n, fields = 0, false
 	for path, f in pairs(a.files) do
@@ -295,7 +294,6 @@ function M.compare(a, b, stop)
 	return fields and "fields" or "same"
 end
 
--- marks by path (a deleted file shows as modified on its ancestors), the changed paths and the deleted ones
 function M.view(files, ignored, stop)
 	local status, changed, gone = {}, {}, {}
 	local under = qed.root() .. "/"

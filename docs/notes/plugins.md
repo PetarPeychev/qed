@@ -146,8 +146,8 @@ Per [panes.md](panes.md) §6 (D10). Setup registers only; cross-plugin calls hap
 
 | Function | Notes |
 |---|---|
-| `qed.export(fns)` | Setup only, once per load; `fns` maps names to functions (anything else raises). They run in the caller's task (they may wait) against the owner's state. |
-| `qed.plugin(id) -> table \| nil` | The owner's exports, or `nil` when it is not loaded (the installed check). Raises during setup. Each call raises `plugin '<id>' was unloaded` once the owner unloads or reloads, so callers drop it on `plugin_unloaded` and fetch again on `plugin_loaded`. Tables passed either way are read-only by convention. |
+| `qed.export(fns)` | Setup only, once per load; `fns` maps names to functions (anything else raises). They run in the caller's task (they may wait) against the owner's state; a call from a coroutine the plugin made itself raises. Unloading the owner stops every task inside one of its calls (the caller gets a warning), and code kept from an old load (closures, handles) raises once the plugin reloads. |
+| `qed.plugin(id) -> table \| nil` | The owner's exports, or `nil` when it is not loaded (the installed check). Raises during setup. The proxy's `qed.caller()` is whoever called `qed.plugin`. Each call raises `plugin '<id>' was unloaded` once the owner unloads or reloads, so callers drop it on `plugin_unloaded` and fetch again on `plugin_loaded`. Tables passed either way are read-only by convention. |
 | `qed.caller() -> id \| nil` | Inside an exported function, the calling plugin, so owners key per-caller state and drop it on `plugin_unloaded`; `nil` elsewhere. |
 | `qed.emit(name, data?)` | `name` is `"<own id>:<event>"` (anything else raises). Queued like core events, one task per `qed.on(name)` handler, all given the same `data`; a no-op without subscribers. Handlers go with their plugin. |
 
@@ -164,6 +164,7 @@ task; `missing(path)` runs on Enter over a listed path missing on disk), `remove
 | `on.activate(v, items)`, `on.change(v, item)`, `on.query(v, text)`, `on.close(v)` | Queued during input dispatch, run as tasks in the flush before the next frame. `change` coalesces per flush and kills the previous run; `query` runs at open and `PANE_QUERY_DEBOUNCE_MS` (120) after typing stops, killing the previous run and the `qed.spawn` it waits on (not `spawn_bg`); close kills both. Activate leaves the pane open. |
 | `qed.open_url(url) -> true \| nil, err` | Platform opener (macOS `open`, WSL `wslview` else `explorer.exe`, Linux `xdg-open`), detached; headless sessions only log `Open URL:` at Debug. |
 | `v:set(items, {selected?, more?, hint?})`, `v:append(items)`, `v:update(key, fields)`, `v:text(lines)`, `v:markdown(text)`, `v:anchor(slug)`, `v:close()` | `set`/`append`/`update`/`text`/`markdown` return false once closed; `anchor` scrolls a markdown body to a heading slug and returns whether it found one. `max` caps the list and shows `N+`. `markdown` keeps the scroll; core renders at the pane width, caches per width and theme, so a `buf_changed` handler only passes text. The scroll persists by `id`. |
+| `v:tab(i?, tabs?) -> i \| false` | The active tab; `i` switches without `on.tab`; `tabs` replaces the tab row first (validated before anything changes). |
 | ⏳ `v:wait() -> items \| nil, index \| nil, text \| nil` | The next activate (items, the first one's index, the first field's text) or the close (`nil, nil, text`). |
 | ⏳ `qed.pick{items, prompt?, initial?, multi?, on_change?, query?, on_query?} -> item \| items[] \| nil` | Sugar: a child `ui.open` + `wait` + `close`. Items with `path` get the split layout (count by the divider). `multi = true` returns `items[]`. `on_change` is for live preview. `initial` is an item index or label. `query` is the initial text, fully selected. Esc returns `nil`. |
 | `on_query(query, picker)` | Sugar for a `query` field: items only from `picker:set(items, {selected?, more?, hint?}) -> live` (`view:set`). `pick` returns the final query as a third value (also on Esc), and Enter while a query is due or running accepts once it ends. |
@@ -174,7 +175,7 @@ task; `missing(path)` runs on Enter over a listed path missing on disk), `remove
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
 
-- `qed.pick`/`prompt`/`confirm` stack as a child over an open pane or overlay; they return `nil, "busy"` only while a core safety dialog (quit, close, conflict) shows. Outside a user's command they stack only on the plugin's own pane, else `"busy"`. An exclusive open (`qed.ui.open` default, `qed.pane`) is also `"busy"` while a `modal` pane (the sugar's) is open, and otherwise closes the open exclusive pane, whose waiters get `nil`.
+- `qed.pick`/`prompt`/`confirm` stack as a child over an open pane or overlay; they return `nil, "busy"` only while a core safety dialog (quit, close, conflict) shows. Outside a user's command they stack only on the plugin's own pane, or, from a view's `activate`, on that view and its children; else `"busy"`. An exclusive open (`qed.ui.open` default, `qed.pane`) is also `"busy"` while a `modal` pane (the sugar's) is open, and otherwise closes the open exclusive pane, whose waiters get `nil`.
 - The chord of the command that opened a pane closes it like Esc (the core pane convention). A command of the view's own plugin run while it has focus (a `scope` command's chord or the scoped Ctrl+P) gets it as `ctx.view`.
 
 ### Terminals (`qed.term`)

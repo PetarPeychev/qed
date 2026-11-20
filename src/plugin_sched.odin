@@ -118,6 +118,7 @@ PluginTask :: struct {
 	event:   PluginEvent,
 	wait:    PluginWait,
 	command: u64,
+	view:    u64,
 	user:    bool,
 	running: bool,
 	doomed:  bool,
@@ -212,6 +213,7 @@ PluginStart :: struct {
 	pitems:   []PaneItem,
 	view_ref: i32,
 	command:  u64,
+	view:     u64,
 	user:     bool,
 }
 
@@ -499,7 +501,7 @@ plugin_task_start :: proc(editor: ^Editor, owner: string, kind: PluginKind, star
 		return 0, true
 	}
 	id = plugin_next_id(p)
-	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command, user = start.user})
+	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command, view = start.view, user = start.user})
 	start := start
 	lua.pushcfunction(th.co, plugin_co_main)
 	lua.pushlightuserdata(th.co, &start)
@@ -1093,6 +1095,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 	clear(&p.lsp_results)
 
 	plugin_views_pump(editor)
+	plugins_errors_flush(editor)
 
 	clear(&due)
 	for s in p.saves {

@@ -135,7 +135,8 @@ draws `Source: text` and colours by level — `.Info` → `COLOR_FG`, `.Warn` �
 `COLOR_WARN_FG`, `.Error` → `COLOR_ERROR_FG`. `.Debug` entries are always log-only
 (never touch the line). `editor_clear_message` (or an empty `msg`) blanks the line and
 is never logged. The disk log lives at `$XDG_STATE_HOME/qed/qed.log` (append, flushed
-per write, rotated to `qed.log.old` past 4 MB, session-start marker with version);
+per write, rotated to `qed.log.old` past `LOG_ROTATE_BYTES` (4 MB) at session start and again mid-session,
+session-start marker with version);
 disk logging is skipped when `headless`. *Debug: Message Log* (`Alt+l`) opens a
 full core pane (`log`, scope `log`, see Panes) over the ring through the `.Log` source:
 timestamped rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
@@ -425,8 +426,9 @@ the close event is flushed. Events (D8), no Lua during dispatch:
 `qed.pick/prompt/confirm/pane` are Lua sugar in `src/prelude.lua`, installed into every plugin's
 `qed` table by `plugin_qed_push`: `ui.open` + `view:wait()` + `view:close()`; pick/prompt/confirm
 open with `kind = "child"` and `modal` (a child of the focused pane or the active overlay, else
-exclusive). A child from a task not started by the user (`PluginTask.user`: commands and view
-`activate`) may only stack on the caller's own pane, else `"busy"`, so a timer cannot steal
+exclusive). A child from a task not started by the user (`PluginTask.user`: commands) may only stack
+on the caller's own pane, or from a view's `activate` task (`PluginTask.view`) on that view and its children, else
+`"busy"`, so a timer cannot steal
 focus; an open from such a task also leaves the message line alone. `ctx.view` is only handed to the view's
 own plugin. `pane_unload` saves state before marking dead.
 
@@ -525,7 +527,10 @@ started at the end of `editor_init`. Invariants the code can't show:
   functions on `Plugin.exports`; `qed.plugin(id)` (raises during setup) builds a fresh proxy of C closures holding
   owner, load generation (`Plugin.gen`), caller and name, so a call after the owner unloads or reloads raises and
   the proxy keeps nothing alive. A call runs in the caller's task through `lua_pcallk` (yields allowed), with a
-  `PluginCall{co, owner, caller}` pushed for `qed.caller()` and popped by the continuation or `plugin_task_free`.
+  `PluginCall{co, owner, caller}` pushed for `qed.caller()` and popped by the continuation or `plugin_task_free`;
+  calls from a plugin's own coroutines are refused, and a message handler keeps the callee's frames in the traceback.
+  Unloading the owner kills every task inside one of its calls. Each plugin's qed closures carry `"<id>\0<gen>"` as
+  their first upvalue, so `plugin_owner` rejects code from an older load.
   `qed.emit("<own id>:<event>", data)` queues a `.Custom` event (data held as a registry ref) for hooks of that
   name; `plugin_loaded`/`plugin_unloaded` are queued by `plugin_load`/`plugin_unload` after startup and skip their
   subject. Hooks of every kind go with their owner.
@@ -535,8 +540,9 @@ started at the end of `editor_init`. Invariants the code can't show:
   hard limit it yields from the hook when it can (pcall cannot catch that), else
   raises and drops the hook count to 1 until the slice ends; the task is stopped with a warning and the plugin
   stays loaded. A task's own Lua error (or out-of-memory) is logged at Error and the plugin stays loaded too;
-  only load and setup errors mark it errored. `plugin_error` collapses a repeat of the plugin's last error:
-  it logs again at the 2nd, 4th, 8th, ... repeat with `(repeated N times)`. The soft limit
+  only load and setup errors mark it errored. `plugin_error` rate-limits per plugin (`PluginErrors`): at most
+  `PLUGIN_ERRORS_PER_SECOND` entries per window, the rest summarized by the pump as `(N more errors suppressed)`;
+  a known message shows `(N times)` and only its first occurrence logs the traceback. The soft limit
   (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry's time is credited back to
   the outer slice. `__close` handlers run by `closethread` get the event budget.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
@@ -1000,7 +1006,7 @@ active tab's closes. Other plugins reach the tree only through its exports (`qed
 paths, virtual?, cmd?, detail?, preview?, missing?}` adds or replaces the caller's tab (between Open and Unsaved; the
 same `paths`/`virtual` tables keep the cached narrowed handle), `remove_tab(label)`, `set_marks(marks)` (shown on every
 tab; several callers merge, later id wins per path), `set_ignored(paths|false)` (fed to the walks' ignore set; `false`
-holds the prewarm) and `open(label)`. All of it is keyed by `qed.caller()` and dropped on `plugin_unloaded`; an export
+holds the prewarm) and `open(label)` (the whole open, narrowed fill included, runs in the caller's task). All of it is keyed by `qed.caller()` and dropped on `plugin_unloaded`; an export
 stores and defers one `sync` (`qed.defer(0)`), which updates the tab row in place (`v:tab(i, tabs)`), source, marks
 and preview. Marks go out with `v:marks` (suffix and sizes only on a `detail` tab), chips with `v:footer`, New:/Rename:
 as the footer input, delete and close confirms as `qed.confirm` children with their targets taken before the

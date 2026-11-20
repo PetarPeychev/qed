@@ -62,7 +62,6 @@ local function owners(map)
 	return out
 end
 
--- one plugin's marks go to the view as they are; several are merged, the later id winning per path
 local function marks(my)
 	if built.marks then
 		return built.marks
@@ -128,7 +127,6 @@ local function push_marks(my)
 	return true
 end
 
--- tabs other plugins add sit between Open and Unsaved
 local function tabs()
 	local out, at = {TABS[1], TABS[2]}, 1
 	for _, t in ipairs(added) do

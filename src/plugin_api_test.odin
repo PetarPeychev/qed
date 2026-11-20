@@ -397,7 +397,8 @@ plugin_api_stub_complete :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({})
 	defer plugin_test_destroy(ed)
 	L := ed.plugins.L
-	plugin_qed_push(L, "stub")
+	stub := Plugin{name = "stub"}
+	plugin_qed_push(L, &stub)
 	want := make([dynamic]string, context.temp_allocator)
 	api_test_walk(L, "qed", &want)
 	lua.pop(L, 1)

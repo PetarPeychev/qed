@@ -274,3 +274,84 @@ e2e_plugin_lifecycle_events :: proc(t: ^testing.T) {
 	testing.expect_value(t, ft_scope(&e.ed), "Git")
 	testing.expect(t, nav_select(&e.ed, "file.txt"))
 }
+
+@(private = "file")
+PARK_OWNER :: `
+return {setup = function()
+	qed.export{
+		park = function()
+			qed.sleep(30)
+			qed.log("info", "parked code still runs")
+		end,
+		stash = function()
+			return function() return pcall(qed.defer, 0, function() end) end
+		end,
+	}
+end}`
+
+@(private = "file")
+PARK_USER :: `
+local own, stale
+return {setup = function()
+	qed.on("startup", function() own = qed.plugin("own") end)
+	qed.command{name = "Park", run = function() own.park() end}
+	qed.command{name = "Stash", run = function() stale = own.stash() end}
+	qed.command{name = "Stale", run = function() qed.message(tostring(stale())) end}
+	qed.command{name = "Raw", run = function()
+		local co = coroutine.create(function() return qed.plugin("own").stash() end)
+		local ok, err = coroutine.resume(co)
+		qed.message(tostring(ok) .. " " .. tostring(err))
+	end}
+end}`
+
+@(test)
+e2e_plugin_export_unload_stops_callers :: proc(t: ^testing.T) {
+	e := e2e_root_start("x")
+	defer e2e_stop(&e)
+	own := link_plugin(&e, "own", PARK_OWNER)
+	link_plugin(&e, "use", PARK_USER)
+	e2e_git_settle(&e)
+
+	link_run(&e, "Use: Stash")
+	testing.expect_value(t, link_run(&e, "Use: Stale"), "true")
+	cmd, _ := plugin_test_command(&e.ed, "Use: Park")
+	plugin_command_run(&e.ed, cmd)
+	testing.expect_value(t, len(e.ed.plugins.calls), 1)
+	plugin_reload(&e.ed, own)
+	testing.expect_value(t, len(e.ed.plugins.calls), 0)
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return true}, 80)
+	testing.expect_value(t, link_logged(&e, "Own", "parked code still runs"), 0)
+	testing.expect(t, plugin_test_logged(&e.ed, .Warn, "Use", "task stopped: Own unloaded during a call into it"), "the caller's task ends with a warning")
+	testing.expect_value(t, link_run(&e, "Use: Stale"), "false")
+	msg := link_run(&e, "Use: Raw")
+	testing.expect(t, strings.has_prefix(msg, "false ") && strings.contains(msg, "not a coroutine of your own"), msg)
+	testing.expect_value(t, len(e.ed.plugins.calls), 0)
+}
+
+@(test)
+e2e_plugin_export_unload_mid_open :: proc(t: ^testing.T) {
+	e := e2e_root_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin_config(&e, "git", `{"enabled": false}`)
+	link_plugin(&e, "big", `return {setup = function()
+		qed.command{name = "Open", run = function()
+			local ft = qed.plugin("filetree")
+			local paths = {}
+			for i = 1, 5000 do
+				paths[i] = qed.root() .. "/f" .. i
+			end
+			ft.set_tab{label = "Big", paths = paths}
+			ft.open("Big")
+			qed.log("info", "opened")
+		end}
+	end}`)
+	e2e_git_settle(&e)
+	cmd, _ := plugin_test_command(&e.ed, "Big: Open")
+	plugin_command_run(&e.ed, cmd)
+	testing.expect_value(t, len(e.ed.plugins.calls), 1)
+	plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "filetree"))
+	e2e_git_settle(&e)
+	testing.expect_value(t, link_logged(&e, "Big", "opened"), 0)
+	testing.expect(t, !filetree_active(&e.ed), "the unloaded tree's open does not finish")
+	testing.expect_value(t, len(e.ed.plugins.calls), 0)
+}

@@ -193,6 +193,7 @@ function qed.export(fns) end
 
 ---Another plugin's exports, or nil when it is not loaded (the installed check). Raises during setup: call it from `startup` or `plugin_loaded`.
 ---Each call raises once that plugin unloads or reloads; fetch again on `plugin_loaded`. Tables passed either way are read-only by convention.
+---The exports see the plugin that called `qed.plugin` as their `qed.caller()`. Calls from a coroutine the plugin created itself raise.
 ---@param id string
 ---@return table|nil
 function qed.plugin(id) end
@@ -330,7 +331,7 @@ function List:release() end
 ---@field size? "palette"|"dialog"|"split:code"|"split:tree" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default) or split:tree (the `filetree_list_*` widths)
 ---@field tabs? (string|{label: string, cmd?: string})[] a tab row over both columns; Left/Right and clicks switch, a tab's `cmd` (visible command name) chord switches to it and on the active tab closes the pane
 ---@field tab? integer the tab to start on
----@field kind? "exclusive"|"child" exclusive (default) closes the open exclusive pane; child stacks on what has focus (a pane or a core overlay), else opens exclusive; outside a user's command it stacks only on the plugin's own pane, else returns busy
+---@field kind? "exclusive"|"child" exclusive (default) closes the open exclusive pane; child stacks on what has focus (a pane or a core overlay), else opens exclusive; outside a user's command it stacks only on the plugin's own pane (from a view's `activate`, also on that view and its children), else returns busy
 ---@field parent? qed.View stack on this view (usually `ctx.view`): Esc returns to it, closing it closes this one
 ---@field focus? boolean false opens a passive pane: drawn under focused panes, never takes input
 ---@field title? string
@@ -460,7 +461,7 @@ local Picker = {}
 function Picker:set(items, opts) end
 
 ---Waits for a fuzzy pick (a `qed.ui.open` child pane). Returns the chosen item (the value passed in), or `nil` on Esc.
----The opening command's chord closes it like Esc. Stacks on an open pane or overlay (outside a user's command only on the plugin's own pane); otherwise `nil, "busy"` only while a quit, close or conflict dialog shows.
+---The opening command's chord closes it like Esc. Stacks on an open pane or overlay (outside a user's command only on the plugin's own pane, or from a view's `activate` on that view and its children); otherwise `nil, "busy"` only while a quit, close or conflict dialog shows.
 ---With `on_query`, a third value is the final query text (also on Esc), and Enter while a query is due or running waits for its `set`.
 ---@param spec qed.PickSpec
 ---@return string|qed.UiItem|(string|qed.UiItem)[]|nil

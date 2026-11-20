@@ -455,7 +455,7 @@ plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
 	p.answer = prev
 	if ref := v.on[ev.kind]; ref != 0 {
 		args := PluginArgs.View_Items if ev.kind == .Activate else .View
-		plugin_task_start(editor, v.owner, .Command, {ref = ref, args = args, view_ref = v.view_ref, item_ref = v.items_ref, items = ev.sel, pitems = ev.items, user = ev.kind == .Activate})
+		plugin_task_start(editor, v.owner, .Command, {ref = ref, args = args, view_ref = v.view_ref, item_ref = v.items_ref, items = ev.sel, pitems = ev.items, view = ev.handle if ev.kind == .Activate else 0})
 	}
 	if ev.kind == .Close {
 		if vi = plugin_view_index(p, ev.handle); vi >= 0 {
@@ -1111,11 +1111,12 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		spec.kind, spec.parent = .Child, parent
 	case kind == "child":
-		// only a user's command may stack over a pane or overlay it does not own
+		// only a user's command, or an activate over its own view, may stack over a pane or overlay it does not own
 		t := plugin_task_of(p, L)
 		user := t != nil && t.user
 		if f := pane_focus(editor); f != nil {
-			if !user && f.owner != pl.name {
+			from_view := t != nil && t.view != 0 && (f.handle == t.view || pane_descends(editor, f, t.view))
+			if !user && !from_view && f.owner != pl.name {
 				return api_fail(L, "busy")
 			}
 			spec.kind, spec.parent = .Child, f.handle
@@ -1621,13 +1622,14 @@ qed_view_tab :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushboolean(L, false)
 		return 1
 	}
+	count := len(tabs) if lua.type(L, 3) > .NIL else len(pn.tabs)
+	if set && (i < 0 || i >= count) {
+		plugin_raise(L, "tab is out of range")
+	}
 	if lua.type(L, 3) > .NIL {
 		pane_tabs_set(pn, tabs)
 	}
 	if set {
-		if i < 0 || i >= len(pn.tabs) {
-			plugin_raise(L, "tab is out of range")
-		}
 		pn.tab = i
 	}
 	lua.pushinteger(L, lua.Integer(pn.tab + 1))

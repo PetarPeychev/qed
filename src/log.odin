@@ -175,19 +175,27 @@ editor_log_open :: proc(editor: ^Editor) {
 	}
 	os.make_directory_all(dir)
 	path := fmt.tprintf("%s/qed.log", dir)
-	if info, err := os.stat(path, context.temp_allocator); err == nil && info.size > LOG_ROTATE_BYTES {
+	editor.log_bytes = 0
+	if info, err := os.stat(path, context.temp_allocator); err == nil {
+		editor.log_bytes = int(info.size)
+	}
+	if editor.log_bytes > LOG_ROTATE_BYTES {
 		os.remove(fmt.tprintf("%s/qed.log.old", dir))
 		os.rename(path, fmt.tprintf("%s/qed.log.old", dir))
+		editor.log_bytes = 0
 	}
 	h, oerr := os.open(path, {.Write, .Create, .Append}, os.perm(0o644))
 	if oerr != nil {
 		return
 	}
 	editor.log_file = h
-	os.write(
-		h,
-		transmute([]u8)fmt.tprintf("=== qed %s — session started %s ===\n", VERSION, log_stamp(time.now())),
-	)
+	what := "session continues" if editor.log_rotated else "session started"
+	editor_log_write(editor, fmt.tprintf("=== qed %s, %s %s ===\n", VERSION, what, log_stamp(time.now())))
+}
+
+editor_log_write :: proc(editor: ^Editor, line: string) {
+	os.write(editor.log_file, transmute([]u8)line)
+	editor.log_bytes += len(line)
 }
 
 editor_log_disk :: proc(editor: ^Editor, entry: LogEntry) {
@@ -200,7 +208,14 @@ editor_log_disk :: proc(editor: ^Editor, entry: LogEntry) {
 	if editor.log_file == nil {
 		return
 	}
-	os.write(editor.log_file, transmute([]u8)log_line(entry))
+	editor_log_write(editor, log_line(entry))
+	// rotation used to happen only at session start, so a long session could grow the file without bound
+	if editor.log_bytes > LOG_ROTATE_BYTES {
+		os.close(editor.log_file)
+		editor.log_file = nil
+		editor.log_rotated = true
+		editor_log_open(editor)
+	}
 }
 
 log_line :: proc(entry: LogEntry) -> string {

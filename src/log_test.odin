@@ -1,6 +1,9 @@
 package main
 
 import "core:fmt"
+import "core:os"
+import "core:strings"
+import "core:sys/posix"
 import "core:testing"
 import "core:time"
 
@@ -104,4 +107,29 @@ log_line_formats_source_and_level :: proc(t: ^testing.T) {
 
 	dbg := log_line(LogEntry{time = time.Time{}, level = .Debug, source = "", text = "trace"})
 	testing.expect_value(t, dbg, fmt.tprintf("%s [DEBUG] trace\n", stamp))
+}
+
+@(test)
+log_disk_rotates_mid_session :: proc(t: ^testing.T) {
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	dir := fmt.tprintf("%s/qed_log_rotate_%d", tmp, posix.getpid())
+	os.make_directory(dir)
+	posix.setenv("XDG_STATE_HOME", strings.clone_to_cstring(dir, context.temp_allocator), true)
+	ed := Editor{}
+	line := strings.repeat("x", 1000, context.temp_allocator)
+	for _ in 0 ..< LOG_ROTATE_BYTES / 1000 + 50 {
+		editor_log(&ed, .Info, "T", line, show = false)
+	}
+	editor_log_destroy(&ed)
+	delete(ed.message_store)
+	posix.unsetenv("XDG_STATE_HOME")
+	cur, cerr := os.stat(fmt.tprintf("%s/qed/qed.log", dir), context.temp_allocator)
+	old, oerr := os.stat(fmt.tprintf("%s/qed/qed.log.old", dir), context.temp_allocator)
+	testing.expect(t, cerr == nil && oerr == nil, "rotated during the session")
+	testing.expect(t, cur.size < LOG_ROTATE_BYTES, "the live log stays under the cap")
+	testing.expect(t, old.size > LOG_ROTATE_BYTES, "the old one holds the rest")
+	os.remove(fmt.tprintf("%s/qed/qed.log", dir))
+	os.remove(fmt.tprintf("%s/qed/qed.log.old", dir))
+	os.remove(fmt.tprintf("%s/qed", dir))
+	os.remove(dir)
 }
