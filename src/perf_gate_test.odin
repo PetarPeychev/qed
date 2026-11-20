@@ -175,6 +175,8 @@ gate_long :: proc(name: string, row: int, wrap: bool) {
 	gate_record(50, gate_mean(&e, char('x'), undo = true), fmt.tprintf("type %s", tag))
 	gate_record(50, gate_mean(&e, key(.Arrow_Right)), fmt.tprintf("arrow right %s", tag))
 	gate_record(50, gate_mean(&e, key(.Arrow_Down)), fmt.tprintf("arrow down %s", tag))
+	gate_place(&e, row, len(b.lines[row].text))
+	gate_record(50, gate_mean(&e, key(.Arrow_Left)), fmt.tprintf("arrow left from line end %s", tag))
 	gate_place(&e, row, mid)
 	gate_record(50, gate_mean(&e, key(.Arrow_Right, .Shift)), fmt.tprintf("select %s", tag))
 	gate_place(&e, max(row - 5, 0), 0)

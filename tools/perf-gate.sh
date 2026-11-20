@@ -1,12 +1,13 @@
 #!/bin/sh
-# perf-gate.sh [CORPUS_DIR] [debug]: generate the stress corpus if needed, then run the
-# headless benchmark gate (bench_gate) on an -o:speed build. QED_GATE_ONLY=files,long,panes,plugins
-# narrows it. Runs under a 6 GB address-space cap and a 30 min timeout.
+# perf-gate.sh [CORPUS_DIR] [default]: generate the stress corpus if needed, then run the
+# headless benchmark gate (bench_gate) on an -o:speed build ("default": build.sh's optimization).
+# QED_GATE_ONLY=files,long,longoff,longon,panes,plugins and QED_GATE_FILES=a.c,b.md narrow it.
+# Runs under a 6 GB address-space cap and a 30 min timeout.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 corpus=${1:-${TMPDIR:-/tmp}/qed-corpus}
 opt=-o:speed
-[ "${2:-}" != debug ] || opt=
+[ "${2:-}" != default ] || opt=
 python3 "$root/tools/gen-corpus.py" "$corpus"
 cd "$root"
 ulimit -v 6000000
