@@ -81,3 +81,18 @@ e2e_long_line_find_highlights :: proc(t: ^testing.T) {
 		testing.expectf(t, hl == in_match, "col %d highlighted=%v, want %v", col, hl, in_match)
 	}
 }
+
+@(test)
+e2e_find_first_byte_skip_keeps_matches :: proc(t: ^testing.T) {
+	e := e2e_start("xFoo foo FOO\nnone\nfoofoo")
+	defer e2e_stop(&e)
+	e2e_key(&e, .Ctrl_F)
+	e2e_type(&e, "foo")
+	testing.expect_value(t, len(e.ed.find.matches), 5)
+	textfield_set(&e.ed.find.field, "Foo")
+	find_scan(&e.ed)
+	testing.expect_value(t, len(e.ed.find.matches), 1)
+	if len(e.ed.find.matches) == 1 {
+		testing.expect_value(t, e.ed.find.matches[0], FindMatch{0, 1, 4})
+	}
+}

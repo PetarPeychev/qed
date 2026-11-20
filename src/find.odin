@@ -130,10 +130,16 @@ find_scan :: proc(editor: ^Editor) {
 		}
 	} else {
 		n := len(q)
+		first := ascii_lower(q[0]) if ci else q[0]
 		outer2: for line, row in b.lines {
 			s := string(line.text[:])
 			start := 0
 			for start + n <= len(s) {
+				c := ascii_lower(s[start]) if ci else s[start]
+				if c != first {
+					start += 1
+					continue
+				}
 				if find_eq(s[start:start + n], q, ci) {
 					append(&f.matches, FindMatch{row, start, start + n})
 					if len(f.matches) >= FIND_MAX_MATCHES {
