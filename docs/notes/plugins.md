@@ -59,9 +59,9 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | file tree | | **plugin** (M5, `plugins/filetree`) | `qed.fs.walk` handles, `ui.open` (tabs, tree list, marks, footer input, chips), `v:select`, `qed.fs.*` writes, `qed.confirm`. Core keeps the walk, tree rows, render, filter and preview. |
 | conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
 | projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`; on `qed.ui.open` since M1) | `ui.open{id, query field}`, `view:set/append`, `spawn_bg{on_line}`, `jump`, `ctx.files`. Core keeps the split layout, the preview, the count and hint, the query debounce (keystroke path) and the query/selection memory (`id`). |
-| llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
-| fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
-| module.odin | | replaced | `modules.git` became `plugins.git`; `.Git` is gone (phase 11). `modules.lsp` became the top-level `lsp` section (phase 13). `modules.ai` stays until ported. |
+| llm / aiedit | KS (relocate per render) | **plugin** (M7, `plugins/ai`) | `prompt`, `spawn_bg`, `deco.mark`/`range` (range anchors), tints by theme tint name, `edit`, `status.set`. |
+| fim | KS (debounce) | **plugin** (M7, `plugins/ai`); core keeps the ghost | `buf_changed` `typed` + `defer` for the debounce, `spawn_bg` curl, `deco.inline`. Core renders the ghost and handles Tab / Ctrl+Right / dismiss on the keystroke path; Lua only supplies the text. |
+| module.odin | | replaced | `modules.git` became `plugins.git`; `.Git` is gone (phase 11). `modules.lsp` became the top-level `lsp` section (phase 13). `modules.ai` became `plugins.ai`, `.Ai` is gone (M7); the empty scaffolding goes in M8. |
 | **custom commands** | | user plugins | `command{when}`, `spawn`, `parse_locations` + `pick`, `term`, `pane`. The config-driven `commands` plugin was dropped in phase 10. |
 | **tasks** | | dropped (phase 13) | Was a bundled plugin over `qed.term`; the API stays, covered by `src/term_test.lua`. |
 | **Plugins pane** | | core | Must work when the plugin system itself is broken. |
@@ -127,7 +127,7 @@ The API is one global, `qed`.
 | `buf_open`, `buf_close`, `buf_enter` | `b` | |
 | `buf_pre_save` | `b` | **yes**, bounded by `plugin_hook_timeout_ms`. On timeout the save proceeds, logging `.Warn` with the slow plugin's name. |
 | `buf_save`, `buf_reload` | `b` | |
-| `buf_changed` | `b`, `rev` | coalesced |
+| `buf_changed` | `b`, `rev`, `typed` | coalesced. `typed`: the latest change was the user typing a character, Enter, Backspace or Delete (no Ctrl/Alt), not a paste, undo, command or plugin edit. |
 | `cursor_moved` | `b` | coalesced |
 | `language_changed` | `b` | |
 | `root_changed` | `old`, `new` | |
@@ -203,11 +203,13 @@ unless they were created with `{detach = true}`.
 | Function | Notes |
 |---|---|
 | `qed.deco.gutter(b, ns, row, glyph, color)` | Mark column, one single-width glyph. A diff-base mark on the row wins; among decorations the last pushed wins. |
-| `qed.deco.tint(b, ns, from_row, to_row, color, alpha?)` | Goes through the `editor_line_bg` stack: diff hunk, conflict, decoration tints (push order), AI edit, current line. `alpha` defaults to the theme tint `decoration`. |
+| `qed.deco.tint(b, ns, from_row, to_row, color, alpha?)` | Goes through the `editor_line_bg` stack: diff hunk, conflict, decoration tints (push order), current line. `alpha` is a number or a theme tint name (`"ai_edit"`, resolved per frame); default the theme tint `decoration`. |
 | `qed.deco.ghost(b, ns, row, lines, {above?, color?})` | Virtual rows, one clipped row each, folded into the screen-mapping walkers like the diff ghosts. Order: decoration ghosts above, diff ghosts above, the row, decoration ghosts below, diff ghosts below. Like the diff ghosts, ghosts above the top screen row are hidden. `color` defaults to `ghost_foreground`. |
 | `qed.deco.span(b, ns, from, to, style)` | `{fg?, bg?, bold?, underline?}`, over syntax and diff word colors, under find matches and the selection. |
 | `qed.deco.eol(b, ns, row, text, color)` | Virtual text one cell after the line end (last wrapped row), clipped at the window edge (a wide char never splits). Several on a row join with a space. |
-| `qed.deco.clear(b, ns, from_row?, to_row?)` | Decorations touching the rows; all when omitted. |
+| `qed.deco.mark(b, ns, from, to) -> id`, `qed.deco.range(b, ns, id) -> from, to \| nil` | A range anchor, never drawn. Text inserted at or before `from` shifts it, at or after `to` leaves it; an edit overlapping its inside, a reload or a clear removes it (`range` then returns nil). |
+| `qed.deco.inline(b, ns, pos, text, {rev?}) -> shown` | One per buffer: dimmed text at the cursor, not in the buffer, continuation lines on reserved rows. Shown while the cursor stays at `pos` without a selection. Core handles its keys before anything else: `Tab` inserts it, `Ctrl+Right` its next word (the rest stays), any other key, a click or an edit drops it. `false` (nothing set) when `pos` is not the cursor, a selection is active, `text` is empty or `rev` is stale. |
+| `qed.deco.clear(b, ns, from_row?, to_row?)` | Decorations, marks and the inline ghost touching the rows; all when omitted. |
 
 Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~40 us per keystroke (anchor shift) and ~0.17 ms per frame; 50k add ~160 us and ~1.2 ms.
 
@@ -261,7 +263,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
 | Isolation | One `lua_State` with a per-plugin `_ENV`. |
 | Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Only load and setup errors mark the plugin errored (unloaded). A Lua error in a command, handler, timer or any other task is logged and the plugin stays loaded; a repeat of the plugin's last error logs again only at the 2nd, 4th, 8th, ... repeat (`(repeated N times)`). A task over its budget or out of memory is stopped with a warning. All errors are logged as `.Error` under the plugin's display name and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
-| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab is the `git` plugin's (through `filetree` exports since M6), conflicts are ungated. Phase 13 made `modules.lsp` the top-level `lsp` section, gated on `LSP_ENABLED`. `.Ai` stays a module. |
+| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab is the `git` plugin's (through `filetree` exports since M6), conflicts are ungated. Phase 13 made `modules.lsp` the top-level `lsp` section, gated on `LSP_ENABLED`. M7 made `modules.ai` the bundled `ai` plugin. |
 
 Hot reload mechanics:
 - `plugins_poll` runs in the disk poll, before the config reload. It rescans bundled plugins plus `Plugins.user_dir` (headless sessions have none and never poll).
@@ -364,7 +366,8 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | M4 | `qed.fs.walk` handles (`count`, `ready`, `within`, `union`), `qed.fs.copy/rename/remove/mkdir`; the file tree core-built on the pane model; `qed.ui.open` tabs, marks, footer chips and input, tree lists, `v:preview`, `v:expand`; `search` stacks as a child over the tree. | minor |
 | M5 | The file tree becomes the bundled `filetree` plugin (*File Tree: All* replaces *File Tree*, binds under `plugins.filetree.keybinds`); `filetree.odin` becomes `walk.odin`; temporary `qed.filetree.listen/state/request` shim; `toggle = false`, `jump_closes`, `v:select`, `v:expand()`, `h:ignore(false)`, `qed.close{discard}`. | minor |
 | M6 | `qed.export`/`qed.plugin`/`qed.caller`, `qed.emit` + `qed.on("<plugin>:<event>")`, `plugin_loaded`/`plugin_unloaded`; `filetree` exports `set_tab`/`remove_tab`/`set_marks`/`set_ignored`/`open`, `v:tab(i, tabs)`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`, `plugins.git.keybinds.Changes`; *File Tree: Changed* is gone); `treeshim.odin`, `qed.filetree.*` and the `.Provider` task kind are gone; task errors no longer disable a plugin. | minor |
-| later | Conflicts, aiedit, fim and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
+| M7 (AI) | The bundled `ai` plugin (*AI: Edit Selection*, *Cancel Edits*, *Toggle Inline Completion*, `plugins.ai.*`, binds under `plugins.ai.keybinds`); `qed.deco.mark`/`range`/`inline`, theme tint names in `qed.deco.tint`, `buf_changed`'s `typed`; `aiedit.odin`, `llm.odin`, `fim.odin`, `modules.ai` and `.Ai` are gone. | minor |
+| later | Conflicts and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions
 
@@ -376,7 +379,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 6. One `format` plugin orders save fixups before formatting. No hook priorities.
 7. Formatter config lives in `plugins.format.commands.<lang>`.
 8. The stub is auto-written to `$XDG_DATA_HOME/qed/lua/qed.lua` and fed to lua-ls via `Lua.workspace.library`, sent only when the working root is under the config dir. No Lua type file is written.
-9. `modules.ai` stays core until decorations exist; then aiedit moves first and fim last.
+9. AI moved in M7 once decorations existed. The inline ghost stays core: accepting and dismissing it are keystroke-path work, so Lua only supplies the text.
 10. One Lua state with a per-plugin `_ENV`.
 11. A user plugin with a bundled name replaces the bundled one.
 12. Background sessions are core `qed.term`; the bundled `tasks` plugin was dropped in phase 13.

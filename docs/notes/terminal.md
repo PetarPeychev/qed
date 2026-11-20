@@ -52,10 +52,9 @@ destroyed at shutdown (kill child, `pclose`-equivalent, `vterm_free`).
 
 ## Main-loop pump (the one thing overlays don't do today)
 
-PTY output is asynchronous, so — exactly like `lsp_pump`/`fim_pump` in `main.odin`
-— add `term_pump`: non-blocking `read(pty_fd)` → `vterm_input_write` → mark dirty →
+PTY output is asynchronous, so (like `lsp_pump` in `main.odin`) add `term_pump`: non-blocking `read(pty_fd)` → `vterm_input_write` → mark dirty →
 request redraw. Extend the loop's fast-poll gate
-(`lsp_running() || llm_running() || fim_active() || highlight_busy()`) with
+(`lsp_running() || highlight_busy() || ...`) with
 `term_alive(&editor)` so the shell stays responsive while focused. On child exit
 (`read` EOF / `waitpid`) set `alive=false` and show a "[process exited]" line.
 

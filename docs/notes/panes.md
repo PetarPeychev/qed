@@ -350,7 +350,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M4 (done) | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
 | M5 (done) | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
 | M6 (done) | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
-| M7 | Conflict UI and AI (aiedit, then fim) ported onto the model and decorations. | |
+| M7 (AI done) | Conflict UI and AI (aiedit, then fim) ported onto the model and decorations. | inline ghost with no Lua on the keystroke path (D8) |
 | M8 | Remove the module system (`modules.*`, `module_enabled`). | |
 | M9 | Review every bundled plugin's config keys (existing TODO). | |
 | later | Inspect, hover/diag/completion on `cursor`/`corner`; terminal chrome on a `Term` body (core). | shared renderer only |
@@ -502,6 +502,22 @@ Communication is in DESIGN.md (Plugins, File tree, Git tab) and plugins.md (Plug
 | Errors | A task's Lua error no longer disables its plugin (Petar); only load and setup errors do. Errors are rate-limited per plugin (3 per second, the rest summarized), known messages show a count, and only a message's first occurrence logs a traceback; the disk log also rotates mid-session. | A race against an unload must not take a plugin down. |
 | Removed | `treeshim.odin`, `Plugins.shim`, `qed.filetree.*`, the `.Provider` task kind, `PluginQueued.ref`, the M5 status tests (ported to `e2e_filetree_tab_test.odin` on the exports). | |
 | Scale | `bench_filetree_changed` now drives the real git plugin over faked git output (every push moves the sizes) and reports the max slice of both plugins. WSL2, M6 vs M5 on the same bench: 30k changed: git slices <= 49 ms (M5 up to 95), filetree <= 44 ms (M5 54); 50k: git pushes <= 56 ms (M5 up to 194), filetree <= 84 ms (M5 92). The largest remaining slice is the first narrowed fill after an open (~85-90 ms at 50k), in git's task when *Git: Changes* opens the tree. | |
+
+### M7 as built: AI
+
+The plugin is in DESIGN.md (AI plugin); the primitives in plugins.md (Decorations, Events). Deviations from §7:
+
+| Area | Built | Why |
+|---|---|---|
+| Range tracking | `qed.deco.mark`/`range`: a byte-position anchor shifted by the primitives and removed when an edit overlaps its inside. The plugin cancels on `buf_changed` when its mark is gone and re-tints from the mark. | The old content search (`llm_locate`, per render and per edit) could relocate onto a duplicate of the block; an anchor is exact and costs nothing per frame. |
+| Tint | A plain decoration tint with the theme tint name `"ai_edit"` (`qed.deco.tint` takes a tint name, resolved per frame). The fixed AI layer in `editor_line_bg` is gone, so the AI tint now sits with the other decoration tints under the current line. | Themes keep their `ai_edit` strength without a plugin-readable tint API. |
+| Inline ghost | Core (`DecoStore.inline`, `qed.deco.inline`): render, row reservation, `Tab` / `Ctrl+Right` / any-key dismiss, all in `editor_dispatch_key`. Any edit clears it. | D8: no raw-key interception by plugins. |
+| Trigger | `buf_changed` gets `typed` (the latest change was typing); the plugin debounces with `qed.defer` and kills the pending timer and `curl` on the next typed change. Paste, undo, accepts and plugin edits do not ask. | The old trigger list (printable, Enter, Backspace, Delete; no Ctrl/Alt) without a raw key event. |
+| HTTP | Still `curl` through `qed.spawn_bg`; no `qed.http`. | Reuses what exists. |
+| Idle cost | The plugin subscribes to `buf_changed` only while a request runs or completion is on. | No task per keystroke for an idle plugin. |
+| Prompt | `qed.prompt{prompt = "AI edit:"}`, a modal child pane, replaces the `aiedit` overlay. | Last overlay besides terminal and find. |
+| Messages | Same texts minus the redundant `AI edit` prefix, now attributed `AI: ...` (e.g. `AI: Edit applied`, `AI: Edit cancelled: block edited`). The `AI:N` count is a right-side plugin segment. | Plugin messages always carry the display name. |
+| Removed | `aiedit.odin`, `llm.odin`, `fim.odin`, `llm_test.odin`, `subprocess_start`, `modules.ai`, `.Ai`, `AI_ENABLED`, the `LLM_*` globals, `editor_modules_sync`, `t.module`; `AI`/`FIM` leave the reserved log labels. `module.odin` is left as empty scaffolding for M8. | |
 
 ## 8. Decisions
 

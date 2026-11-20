@@ -59,8 +59,8 @@ consecutive visual rows, breaking at word boundaries (a word wider than the widt
 hard-breaks), tab/grapheme-width aware. Continuation rows get a blank gutter.
 `line_wrap` yields per-line segment start offsets; `vpos_*` walk/measure visual
 rows (bounded by the viewport). The render loop iterates visual rows; the row
-renderer draws a byte range `[col_start,col_end)` at an `x_origin`. Ghost-text
-(FIM) on the cursor line renders inline through the same wrap layout
+renderer draws a byte range `[col_start,col_end)` at an `x_origin`. The inline
+ghost (`qed.deco.inline`) on the cursor line renders through the same wrap layout
 (`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
 
 Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
@@ -70,14 +70,14 @@ diff base and diff size) + `±label` of another plugin's base on the current buf
 plugin segments; right side: language + LSP + indent style / `big`). Both sides are
 `StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap (plugin right segments sit before the builtins): shorten the path from
 the left (`…/dir/name`, down to the bare name), then drop segments by `drop` rank (indent, LSP, `big`,
-language, AI count, then diff size, ahead/behind, diff base, branch, `[n/m]`), then clip the filename; then a
+language, then diff size, ahead/behind, diff base, branch, `[n/m]`), then clip the filename; then a
 1-row **message line** (transient errors / prompts / status). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
 
 Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`),
 stacked bottom→top: optional git-hunk row tint → conflict tint → plugin decoration
-tints → AI-edit tint → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
+tints → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
 (`*_TINT`) and tint colors are both theme-overridable. The
 row tint is part of **diff view** (*Diff: Toggle Diff View*, config
 `diff_view`, off by default), separate from the always-on gutter mark — see
@@ -289,7 +289,7 @@ keybind, so rebinds keep the toggle; the terminal's extra `Alt+T` tolerance stay
 hardcoded); the welcome-screen key whitelist resolves the same way.
 
 Every editable text box (palette/picker/line-find
-queries, find/replace, rename, AI-edit, footer inputs) is one shared single-line widget,
+queries, find/replace, rename, footer inputs) is one shared single-line widget,
 `TextField` (`textfield.odin`): `{text, caret, anchor}` with buffer-parity binds —
 grapheme + word (`Ctrl+←/→`) motion, smart home/end (`Alt+←/→`), shift-select,
 `Ctrl+A`, `Ctrl+X/C/V` (paste flattens newlines), delete-selection. `textfield_key`
@@ -444,7 +444,7 @@ before the box, to every cell drawn so far except the status rows, so panes belo
 
 Ported: the quit/close/conflict/merge dialogs, the command palette, the Message Log, the Plugins pane, the LSP
 rename prompt, the working-root picker (`workspace` plugin), line find (`goto` plugin), the file tree (`filetree`
-plugin) and every plugin pane. Still legacy overlays: terminal, AI edit prompt, find bar.
+plugin), the AI edit prompt (`ai` plugin) and every plugin pane. Still legacy overlays: terminal, find bar.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
 `Overlay` vtable entries (`editor_overlays`). The stack sits above them: an overlay gets input only
 when no pane has focus, and render draws the active overlay, then the stack. A child opened over
@@ -454,17 +454,11 @@ overlay.
 
 ## Modules
 
-`ai` is the last gated subsystem (`module.odin`, `Module` enum). It has a
-`modules.ai.enabled` config flag (default on) and owns its whole config subtree under
-`modules.ai` (the settings parser walks `config_module_defs`, one typed str/int/bool
-`Config_Section` per module). Git is the bundled `git` plugin (`plugins.git`; old
-`modules.git.*` keys warn "moved to"). LSP is the plain top-level `lsp` section
-(`config_lsp`; old `modules.lsp.*` keys warn "moved to"), gated on `LSP_ENABLED`: `LSP:`
-commands carry `Command.lsp`, server spawn/completion/status segment check the flag, and
-`lsp_enabled_sync` tears servers down after a reload turns it off. `module_enabled(m)` gates
-the rest: commands carry a `.module`; `command_enabled` covers both, so `command_available`
-and keybind dispatch drop gated commands from palette and chords. After a config hot-reload,
-`editor_modules_sync` calls `ai_module_sync` to cancel in-flight AI a toggle-off orphaned.
+No gated subsystem is left: `ai` became the bundled `ai` plugin (`plugins.ai`), `git` the `git`
+plugin, LSP the top-level `lsp` section gated on `LSP_ENABLED` (`LSP:` commands carry `Command.lsp`,
+`lsp_enabled_sync` tears servers down after a reload turns it off). Old `modules.ai.*`, `modules.git.*`
+and `modules.lsp.*` keys warn "moved to". `module.odin` (`Module` with only `.None`,
+`module_enabled`, `Command.module`, `config_module_defs`) is dead scaffolding M8 deletes.
 Merge-conflict highlight/resolve (`conflict.odin`) is ungated.
 
 ## Plugins
@@ -519,7 +513,8 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Events never run Lua inside core code: call sites `plugin_queue` (a no-op without
   subscribers) and `plugin_flush` drains after `editor_step` (skipped mid-paste) and
   in the pump. `buf_changed`/`cursor_moved` come from comparing `Buffer.plugin_rev`/
-  `plugin_cursor` once per flush. Exceptions: `buf_pre_save` runs inside
+  `plugin_cursor` once per flush; `buf_changed`'s `typed` is `Buffer.typed_rev == rev`, which
+  `editor_dispatch_key` sets when a character, Enter, Backspace or Delete without Ctrl/Alt changed the buffer. Exceptions: `buf_pre_save` runs inside
   `editor_save_full`; a handler that waits parks the save in `Plugins.saves` until
   its tasks end or `plugin_hook_timeout_ms` passes (`editor_save_id` finishes it).
   `quit` runs after the main loop, pumping until done or the same timeout.
@@ -596,7 +591,13 @@ started at the end of `editor_init`. Invariants the code can't show:
   `qed.jump` closes every pane opened with `jump_closes` (the file tree).
 - **Decorations** (`deco.odin`): `Buffer.deco` holds plain `Deco` records (ghosts in their own list, with
   per-row above/below counts rebuilt lazily after a ghost or line change, so the walkers stay O(1) per row). `buffer_insert`/`buffer_delete` shift row anchors and drop spans on
-  edited rows (rules in plugins.md §3), so a keystroke runs no Lua. Colors are interned theme keys
+  edited rows (rules in plugins.md §3), so a keystroke runs no Lua. Marks (`DecoStore.marks`, `qed.deco.mark`)
+  shift by byte position and are removed when an edit overlaps their inside. The inline ghost
+  (`DecoStore.inline`, one per buffer) is cleared by any edit or reload; core renders it while the cursor
+  sits on it (`inline_gap` reserves the rows below for its continuation lines) and handles its keys in
+  `editor_dispatch_key` before anything else: `Tab` inserts it, `Ctrl+Right` one word (`inline_word_len`),
+  any other key or a click drops it, all synchronously. A tint may name a theme tint (`Deco.tint`, resolved
+  per frame). Colors are interned theme keys
   (`Plugins.colors`), resolved into a per-frame palette; `deco_rows` buckets the visible rows once per
   frame. Namespaces (`Plugins.deco_ns`), status segments (`Plugins.status`) and plugin diff bases
   record their plugin; unload clears them.
@@ -669,7 +670,7 @@ re-opens LSP).
   typed prefix (dismissing on an invalid edit) and re-requests when the result was `isIncomplete`.
   `snippetSupport:false` is advertised so items arrive as plain text; a stray snippet is truncated
   at its first placeholder. `Enter` accepts — replacing the whole current word and applying any
-  `additionalTextEdits` (auto-import) in the same undo group (`Tab` is reserved for the FIM ghost,
+  `additionalTextEdits` (auto-import) in the same undo group (`Tab` is reserved for the inline ghost,
   which coexists with the popup); `Esc`/movement/non-word input dismisses.
   Formatting (`qed.lsp.format`) carries the buffer `rev` so a stale result (doc
   changed mid-request) is dropped; the response, a server error or a server stop
@@ -727,52 +728,29 @@ code color has under 3:1 contrast on the band. Tables fit columns to content, ke
 fits, share the rest evenly and wrap cells; below 3 columns per cell, rows become `header: value`
 lines.
 
-## AI edit
+## AI plugin
 
-*Selection + prompt* (`Ctrl+K`, `aiedit.odin` → `llm.odin`): a caret prompt takes an
-instruction; qed sends the whole buffer — with the selection wrapped in
-`<<<SELECT…SELECT>>>` — plus the instruction to a configurable chat command
-(`modules.ai.chat_command`, default `claude -p`; `modules.ai.edit_prompt` is the template). The
-command runs through the shared **async subprocess** runner (`subprocess.odin`:
-spawn-with-stdin-body + non-blocking stdout drain + cancel, pumped next to `lsp_pump`);
-multiple run concurrently and are cancellable (*AI: Cancel Edits* / shutdown kill
-them). Each request stores the target buffer **path** (survives `[]Buffer` realloc)
-and the original selected **text**. On completion: the reply's **last fenced code
-block** is extracted (the model may reason first), the block is **relocated** by
-content search nearest the original range — so unrelated edits elsewhere don't
-invalidate it; editing the block itself cancels the request immediately
-(`llm_prune_edited`, kills the subprocess so it stops burning tokens) — the selection's
-leading/trailing **whitespace framing is reattached**, and the range is replaced
-as **one undo group** with the cursor/selection translated in place (no jump to the
-edit). While a request is in flight its rows carry a faint highlight
-(`COLOR_AI_EDIT_BG`, lighter `COLOR_AI_EDIT_CURRENT_BG` on the cursor line),
-relocated live each render by the same content search so it tracks edits above/below.
-The full prompt/response are logged as `.Debug` entries (disk log + ring). The
-selection-replace contract can't touch code outside the region (e.g. add an
-import); that's a TODO. See [notes/ai.md](notes/ai.md).
+`plugins/ai` (`plugins.ai`). *AI: Edit Selection* (`Ctrl+k`): with a selection, `qed.prompt` takes an
+instruction; the whole buffer, the selection wrapped in `<<<SELECT…SELECT>>>`, goes through the
+`edit_prompt` template to `chat_command` (default `claude -p`) on stdin via `qed.spawn_bg`. Requests run
+concurrently, each tracked by a `qed.deco.mark` over its range and tinted (`ai_edit_background`, theme tint
+`ai_edit`) while in flight, with an `AI:N` status segment. An edit inside the range cancels the request
+(`buf_changed`, kills the process); edits elsewhere move the mark. The reply's last fenced block replaces
+the marked range as one `qed.edit` step with the selection's whitespace framing reattached and the cursor
+and selection kept on the new text. *AI: Cancel Edits* kills them all. Prompt and response are logged at
+Debug.
 
-## Inline completion
-
-*Ghost-text FIM* (`fim.odin`): with `fim.enabled` (config `modules.ai.completion_enabled`,
-seeded at startup, *AI: Toggle Inline Completion* flips it), typing arms a debounced
-(`COMPLETION_DEBOUNCE_MS`) request. `prefix`/`suffix` are the buffer around the cursor
-clamped to `completion_context_lines`, sent to a FIM endpoint (default Codestral
-`/v1/fim/completions`) as an async `curl` subprocess through the shared
-`subprocess.odin` runner (like the AI edit), pumped in the main loop; any edit
-cancels the in-flight request and re-arms.
-The reply's `choices[0].message.content` is stored as dimmed virtual text
-(`COLOR_GHOST_FG`) drawn at the cursor, **not** backed by the buffer; multi-line
-suggestions reserve blank rows via `fim_ghost_gap` (the buffer render offsets rows below
-the cursor down) so continuation lines don't paint over real text. Ghost is valid only
-while the cursor sits at `ghost_at`. `Tab` accepts all, `Ctrl+Right` a word (both one
-`buffer_insert_text` undo group); other keys / mouse / cursor move dismiss. The ghost and the
-LSP completion popup **coexist** — both render and stay live as you type; the keys disambiguate
-(`Tab` accepts the ghost, `Enter` the menu), and a multi-line ghost floats the popup above the
-caret so both stay visible (`completion_render`). The API key is
-read from `$CODESTRAL_API_KEY` (config `completion_api_key_env`) by the curl child, never
-held by qed. **External quirk:** the POST body is fed on **stdin** (`--data-binary @-`),
-not `@file` — the async spawn unlinks the temp immediately and curl opens a `@file`
-lazily, so a `@file` races to an empty body. Request/response are traced at `.Debug`.
+Inline completion (`completion_enabled`, *AI: Toggle Inline Completion*): a `buf_changed` with `typed`
+arms a `qed.defer(completion_debounce_ms)` timer (each typed change kills the pending timer and request);
+the request is `curl` through `qed.spawn_bg` to a FIM endpoint (default Codestral), prefix and suffix
+clamped to `completion_context_lines`, the key read by the curl child from `$completion_api_key_env`.
+**External quirk:** the body goes on curl's stdin (`--data-binary @-`); the spawn unlinks its temp at once,
+so a lazily opened `@file` would race to an empty body. A
+reply for the same buffer, rev and cursor becomes `qed.deco.inline` text; Lua never sees the keys that
+accept or dismiss it. The plugin subscribes to `buf_changed` only while a request runs or completion is on.
+The ghost and the LSP completion popup coexist: `Tab` takes the ghost (and closes the popup), `Enter` the
+menu, and a multi-line ghost floats the popup above the caret (`completion_render`). See
+[notes/ai.md](notes/ai.md).
 
 ## Terminal pane
 
@@ -830,13 +808,12 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
-defaults seeded before main, load + write-back) · `module` (ai enable gate +
-hot-reload teardown) · `clipboard` · `shell` ·
+defaults seeded before main, load + write-back) · `module` (dead, M8 removes it) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
+`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `conflict` (merge-marker highlight + resolve) · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*).
+Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -861,9 +838,9 @@ plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns 
 table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `hook_timeout`, `module`, `lsp`, `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `hook_timeout`, `lsp`, `bg` (rendered cell background), `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
-`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/scope/workspace/walk_test.odin`; scope + assertion surfaces:
+`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/scope/workspace/walk_test.odin` (`ai`: the inline ghost and the LSP popup together); scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
 The headless e2e suite stays the main net. To smoke-test a visible change on the real binary,
 `tools/tmux-qed.sh` (`start` / `keys` / `capture [--color]` / `stop`) runs `./qed` in a detached
@@ -940,9 +917,8 @@ to defaults without crashing; UI persistence like the theme picker's Enter write
 only its own key; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
-their command), `lsp.enabled` and the gated `modules.ai` (each with its own config
-subtree; disabling drops the commands/UI/subprocesses; live toggle-off tears down; git is
-`plugins.git`, auto-off when the binary is absent), JSON themes (sparse overlay chain over the embedded `default.json`
+their command), `lsp.enabled` (live toggle-off tears servers down; git is
+`plugins.git`, auto-off when the binary is absent; AI is `plugins.ai`), JSON themes (sparse overlay chain over the embedded `default.json`
 base, see Rendering; *Settings: Theme* fuzzy picker with instant preview,
 Enter persists / Esc reverts), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
@@ -1065,21 +1041,18 @@ merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker 
 emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
 theirs / both, or jump to next conflict).
 
-AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command
-(`modules.ai.chat_command`, default `claude -p`) — whole-file context, concurrent
-cancellable async subprocesses, fenced-block extraction, content-relocated apply
-as one undo group with whitespace framing preserved. Inline FIM completion
-(ghost-text): auto-triggered debounced suggestions from a FIM endpoint (default
-Codestral `/v1/fim/completions` via `curl`), dimmed virtual text with multi-line
-push-down, `Tab` accepts all / `Ctrl+Right` a word, `Esc`/edit/move/mouse dismiss,
-coexists with the LSP popup (`Tab` ghost / `Enter` menu, popup floats above a multi-line ghost);
-`modules.ai.completion_enabled` + *AI: Toggle Inline Completion*.
+AI assist (`ai` plugin, `plugins.ai`): selection + prompt (`Ctrl+k`) via a configurable chat command
+(default `claude -p`): whole-file context, concurrent cancellable requests tracked by range marks and
+tinted while in flight, fenced-block extraction, one undo step with whitespace framing preserved. Inline FIM
+completion: debounced suggestions on typing from a FIM endpoint (default Codestral via `curl`), shown as the
+core inline ghost (multi-line push-down, `Tab` all / `Ctrl+Right` a word, any other key/edit/click
+dismisses), coexisting with the LSP popup; `completion_enabled` + *AI: Toggle Inline Completion*.
 
 User commands are `qed.command` calls in a user plugin; `qed.parse_locations` turns
 compiler/grep output into `qed.pick` items for a list + preview picker.
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
-rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed.emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
+rows, spans, end-of-line text, range marks, the inline ghost), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed.emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only); `qed.meta` display names prefixing
 commands and labeling messages; per-plugin keybinds (`plugins.<id>.keybinds`); Lua

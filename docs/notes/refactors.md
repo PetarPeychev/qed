@@ -15,18 +15,9 @@ since `editor_render_buffer` calls `bracket_match` per render. Gated on
 underline. Fix: cap the scan at a few thousand lines from the cursor and
 return not-found past it; an unmatched-bracket underline loses nothing.
 
-### Cache `llm_locate` per (path, rev)
-
-While an AI edit is in flight, every render calls `llm_active_rows` →
-`llm_locate` (`llm.odin`), which concatenates the **entire buffer** into a
-temp string and substring-searches it — per request, per frame.
-`llm_prune_edited` repeats the same work after every edit. Fix: cache the
-located `(from, to)` on the request keyed by `b.rev`; recompute only when the
-rev changed. Same shape as the git gutter's `computed`/`rev` guard.
-
 ### Cache `merge_scan` / `merge_word_map` per rev
 
-Both run per render (`editor_render_buffer`, also `fim_render`): O(n) marker
+Both run per render (`editor_render_buffer`, also `inline_render`): O(n) marker
 prefix checks plus a Myers diff + word spans when conflicts exist. Cache the
 conflict list + span map on the buffer keyed by `b.rev` (the git-gutter
 pattern again). Only matters for large files, but the fix is mechanical.
@@ -53,7 +44,7 @@ gutter" half of the same TODO line.
 ### Migrate interactive-path blocking spawns to the async runner
 
 Two subprocess mechanisms coexist: blocking `popen` (`shell.odin`) and the
-async `subprocess.odin` runner (used by LLM/FIM/file-tree scan + prewarm/project search).
+async `subprocess.odin` runner (behind `qed.spawn`, used by every plugin process).
 Blocking spawns still sit on latency-sensitive paths:
 
 - `format_external`: freezes the UI for the formatter's full runtime,
@@ -103,20 +94,20 @@ ritual around per-picker callbacks. Payoff is future panes — TODO already
 lists find-references and symbol-search pickers; after this each costs ~30
 lines instead of ~150.
 
-### Unify virtual rows (git ghosts, FIM ghost, inline diagnostics)
+### Unify virtual rows (git ghosts, the inline ghost, inline diagnostics)
 
 Three mechanisms exist for "screen content not backed by buffer rows":
 
 1. git diff ghost rows — `git_above`/`git_below` counts folded into the vpos
    walkers + `editor_render_hunk_ghosts`,
-2. FIM ghost — `fim_ghost_gap` row reservation + `editor_render_ghost_line`
-   (wrapped) + the cursor-line-suffix hack in `fim_render` (unwrapped),
+2. the inline ghost (`qed.deco.inline`): `inline_gap` row reservation + `editor_render_ghost_line`
+   (wrapped) + the cursor-line-suffix hack in `inline_render` (unwrapped),
 3. (planned) inline diagnostic virtual text — the AI-section TODO's "shared
    inline virtual-text primitive".
 
 Generalize the walkers' git-specific hooks into one per-buffer provider —
 "N extra rows above/below row R, rendered by X" — and one ghost-row renderer.
-Then FIM stops special-casing wrap vs no-wrap, and inline diagnostics /
+Then the inline ghost stops special-casing wrap vs no-wrap, and inline diagnostics /
 sticky scroll drop in without adding a fourth interleaved concern to
 `editor_render_buffer` (already a ~150-line loop juggling seven). **Do this
 before starting the inline-diagnostics TODO.**
