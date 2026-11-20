@@ -180,6 +180,12 @@ reproduces the old "stripped" behavior for that one pattern.
   additions described below.
 - **`common/scanner.h` include path** — layout patch (drops the `src/` level),
   documented above; not a query.
+- **`lua/scanner.c` error-recovery bail** — during error recovery tree-sitter
+  marks every external token valid, and `scan_block_content` then walked from each
+  recovery position to EOF looking for `]]`. A file full of parse errors (merge
+  conflict markers) reparsed in O(n²): ~29 s per keystroke on 2000 conflict blocks.
+  The scanner now returns false when both `BLOCK_STRING_START` and
+  `BLOCK_STRING_CONTENT` are valid (only possible in recovery).
 - **`rust/highlights.scm`** — vendored verbatim, including an upstream typo on the
   SCREAMING-constant rule: `(#match? @constant "^[A-Z][A-Z\d_]+$'")` has a stray
   `'` after the `$` end anchor, so under a real regex it can never match. The

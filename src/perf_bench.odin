@@ -38,6 +38,7 @@ test_highlight_incremental :: proc(t: ^testing.T) {
 	highlight_correctness(t)
 	preview_highlight(t)
 	highlight_perf(t)
+	highlight_error_heavy(t)
 }
 
 // End-to-end proof that the query predicate evaluator is live and the capture
@@ -376,6 +377,28 @@ highlight_perf :: proc(t: ^testing.T) {
 	// repaint real colors — not leave the viewport blank.
 	highlight_settle(&b, mid, mid + PERF_VIEWPORT)
 	testing.expect(t, highlight_painted(&b, mid), "async incremental reparse should repaint real colors after edits settle")
+}
+
+// conflict markers are Lua parse errors; the scanner's recovery once scanned to EOF per step (~29 s/keystroke)
+highlight_error_heavy :: proc(t: ^testing.T) {
+	sb := strings.builder_make(context.temp_allocator)
+	for i in 0 ..< 2000 {
+		fmt.sbprintf(&sb, "local a%d = %d\n<<<<<<< HEAD\nlocal v%d = %d\nshared\n=======\nlocal v%d = %d + 1\nshared\n>>>>>>> b\n\n", i, i, i, i, i, i)
+	}
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	delete(b.path)
+	b.path = strings.clone("c.lua")
+	b.language = .Lua
+	buffer_insert(&b, Cursor{0, 0}, strings.to_string(sb))
+	highlight_settle(&b, 0, 60)
+	highlight_update(&b, 0, 60)
+	start := time.tick_now()
+	buffer_insert(&b, Cursor{9002, 0}, "z")
+	highlight_update(&b, 8990, 9050)
+	highlight_settle(&b, 8990, 9050)
+	ms := ms_since(start)
+	testing.expectf(t, ms < 2000, "error-heavy Lua reparse took %.0f ms", ms)
 }
 
 @(private = "file")

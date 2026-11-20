@@ -157,6 +157,12 @@ static bool scan_comment_content(Scanner *scanner, TSLexer *lexer) {
 bool tree_sitter_lua_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
   Scanner *scanner = (Scanner *)payload;
 
+  // qed patch: error recovery marks every token valid; block content scanned from
+  // an arbitrary position walks to EOF, so each recovery step was O(file).
+  if (valid_symbols[BLOCK_STRING_CONTENT] && valid_symbols[BLOCK_STRING_START]) {
+    return false;
+  }
+
   if (valid_symbols[BLOCK_STRING_END] && scan_block_end(scanner, lexer)) {
     reset_state(scanner);
     lexer->result_symbol = BLOCK_STRING_END;
