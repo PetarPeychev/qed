@@ -268,6 +268,7 @@ Pane :: struct {
 	preview_off:  bool,
 	scope:        string,
 	keep:         bool,
+	jump_closes:  bool,
 	toggle:       u64,
 	chord:        string,
 	query_due:    bool,
@@ -282,7 +283,6 @@ Pane :: struct {
 		link:                 proc(editor: ^Editor, p: ^Pane, target: string) -> bool,
 		footer:               proc(editor: ^Editor, p: ^Pane) -> string,
 		submit:               proc(editor: ^Editor, p: ^Pane, text: string, ok: bool),
-		preview:              proc(editor: ^Editor, p: ^Pane, it: PaneItem) -> bool,
 		expand:               proc(editor: ^Editor, p: ^Pane, path: string, on: bool),
 	},
 }
@@ -1047,7 +1047,7 @@ pane_field_changed :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
 	case .Filter:
 		if p.list.source.kind == .Walk {
 			p.refill_due = true
-			p.refill_at = time.tick_add(time.tick_now(), FILETREE_FILTER_DEBOUNCE_MS * time.Millisecond)
+			p.refill_at = time.tick_add(time.tick_now(), WALK_FILTER_DEBOUNCE_MS * time.Millisecond)
 		} else {
 			pane_refilter(editor, p)
 		}
@@ -1082,7 +1082,7 @@ pane_preview_sync :: proc(editor: ^Editor, p: ^Pane) {
 	p.preview_key = strings.clone(key)
 	if p.list.source.kind == .Walk && it.path != "" {
 		p.preview_due = true
-		p.preview_at = time.tick_add(time.tick_now(), FILETREE_PREVIEW_DEBOUNCE_MS * time.Millisecond)
+		p.preview_at = time.tick_add(time.tick_now(), WALK_PREVIEW_DEBOUNCE_MS * time.Millisecond)
 		return
 	}
 	pane_preview_load(editor, p)
@@ -1094,9 +1094,6 @@ pane_preview_load :: proc(editor: ^Editor, p: ^Pane) {
 		return
 	}
 	it, g := pane_preview_item(editor, p)
-	if p.on.preview != nil && p.on.preview(editor, p, it) {
-		return
-	}
 	b, _ := api_buf_find(editor, it.buf)
 	if it.dir || (it.path == "" && b == nil) {
 		if preview_loaded(&p.preview) {
@@ -1406,7 +1403,7 @@ pane_mark_dim :: proc(p: ^Pane, path: string) -> bool {
 		if m, ok := p.marks[q]; ok && m.dim {
 			return true
 		}
-		np := filetree_parent_dir(q)
+		np := path_parent(q)
 		if np == q {
 			return false
 		}

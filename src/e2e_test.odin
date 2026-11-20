@@ -138,7 +138,7 @@ e2e_mouse :: proc(e: ^E2E, x, y: int, button: tb2.Key = .Mouse_Left, motion := f
 	if motion {
 		m = tb2.Mod(u8(m) | u8(tb2.Mod.Motion))
 	}
-	editor_dispatch(&e.ed, tb2.Event{type = .Mouse, key = button, x = i32(x), y = i32(y), mod = m})
+	e2e_step(e, tb2.Event{type = .Mouse, key = button, x = i32(x), y = i32(y), mod = m})
 }
 
 // Bracketed paste: the same Paste_Begin / keys / Paste_End the real terminal

@@ -269,7 +269,7 @@ list_commands_fill :: proc(editor: ^Editor, p: ^Pane) {
 	src := &p.list.source
 	list_source_uncache(src)
 	for cmd in (commands[:] if src.scope == "" else pane_commands[:]) {
-		if cmd.scope == src.scope && command_available(editor, cmd.name) {
+		if cmd.scope == src.scope && command_available(editor, cmd.name, src.scope) {
 			append(&src.cache, strings.clone(cmd.name))
 			append(&src.ids, 0)
 		}

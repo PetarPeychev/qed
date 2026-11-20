@@ -430,8 +430,7 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(msg, "moved to plugins/format/format_on_save"), "a moved knob names its new home")
 
 	// A rebind drives both dispatch and hints. The configured shortcut string renders
-	// verbatim. A shared file-tree command (Copy) borrows the global bind, so rebinding
-	// global "Copy" moves the tree Copy chord too; a unique one (New) keeps its own key.
+	// verbatim. A pane command that borrows a global bind (log Copy) follows its rebind.
 	kb_path := fmt.tprintf("%s/keybinds.json", dir)
 	_ = os.write_entire_file(
 		kb_path,
@@ -439,16 +438,17 @@ test_config_files :: proc(t: ^testing.T) {
 	)
 	_, is_err = config_load_from(kb_path)
 	testing.expect(t, !is_err, "rebind load is not an error")
+	kb_json, _ := json.parse_string(`{"keybinds": {"File Tree: New": "Ctrl+t"}}`, allocator = context.temp_allocator)
+	moved := config_keybinds_unknown(kb_json.(json.Object), nil)
+	testing.expect(t, len(moved) == 1 && moved[0] == `unknown keybinds/"File Tree: New" (moved to plugins/filetree/keybinds/"New")`, "a moved tree bind says where")
 	testing.expect(t, command_shortcut("Command Palette") == "Ctrl+g", "palette hint renders the configured string verbatim")
 	pcmd, pok := command_for_key(.Ctrl_G)
 	testing.expect(t, pok && pcmd.name == "Command Palette", "rebound palette bind dispatches")
 	testing.expect(t, command_matches(tb2.Event{type = .Key, key = .Ctrl_G}, "Command Palette"), "command_matches honors the rebind")
-	ccmd, ccok := pane_command_for_event("filetree", tb2.Event{type = .Key, key = .Ctrl_B}, false)
-	testing.expect(t, ccok && ccmd.name == "Copy", "tree Copy follows the rebound global Copy bind")
-	_, oldc := pane_command_for_event("filetree", tb2.Event{type = .Key, key = .Ctrl_C}, false)
-	testing.expect(t, !oldc, "tree Copy no longer answers the old Ctrl+C")
-	ncmd, nok := pane_command_for_event("filetree", tb2.Event{type = .Key, key = .Ctrl_T}, false)
-	testing.expect(t, nok && ncmd.name == "New", "unique tree command keeps its own independent bind")
+	ccmd, ccok := pane_command_for_event("log", tb2.Event{type = .Key, key = .Ctrl_B}, false)
+	testing.expect(t, ccok && ccmd.name == "Copy", "log Copy follows the rebound global Copy bind")
+	_, oldc := pane_command_for_event("log", tb2.Event{type = .Key, key = .Ctrl_C}, false)
+	testing.expect(t, !oldc, "log Copy no longer answers the old Ctrl+C")
 
 	// Pane-scoped binds: a collision in one scope is reported and dropped, a swap is fine.
 	clash_path := fmt.tprintf("%s/clash.json", dir)

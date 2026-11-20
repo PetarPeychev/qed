@@ -598,7 +598,7 @@ api_await :: proc(L: ^lua.State, p: ^Plugins, what: string) -> ^PluginTask {
 plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = nil) {
 	p := &editor.plugins
 	if p.L != nil && q.ref != 0 {
-		if filetree_provider_live(editor, q.only, q.ref) {
+		if tree_shim_live(editor, q.only, q.ref) {
 			plugin_task_start(editor, q.only, .Provider, {ref = q.ref, args = .Line if q.a != "" else .None, line = q.a})
 		}
 		return

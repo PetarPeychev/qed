@@ -102,14 +102,6 @@ close_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 	}
 }
 
-close_question :: proc(total, unsaved: int) -> string {
-	plural := "" if total == 1 else "s"
-	if unsaved > 0 {
-		return fmt.tprintf("Close %d buffer%s? (%d unsaved)", total, plural, unsaved)
-	}
-	return fmt.tprintf("Close %d buffer%s?", total, plural)
-}
-
 conflict_dialog_open :: proc(editor: ^Editor, b: ^Buffer) {
 	if pane_find(editor, "conflict") != nil {
 		return

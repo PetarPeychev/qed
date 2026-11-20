@@ -87,7 +87,13 @@ walk_fixture :: proc(tag: string) -> string {
 }
 
 @(private = "file")
-walk_gather :: proc(ft: ^FileTree, root: string, threads := 4) -> (rel: map[string]bool, n: int) {
+WalkOpts :: struct {
+	show_dotfiles, show_ignored: bool,
+	ignored:                     map[string]bool,
+}
+
+@(private = "file")
+walk_gather :: proc(ft: ^WalkOpts, root: string, threads := 4) -> (rel: map[string]bool, n: int) {
 	out := make([dynamic]FileEntry, context.temp_allocator)
 	admit := WalkAdmit{dotfiles = ft.show_dotfiles, ignored = ft.show_ignored, ignore = &ft.ignored}
 	walk_run(&admit, root, &out, threads)
@@ -113,19 +119,19 @@ walk_expect :: proc(t: ^testing.T, got: map[string]bool, n: int, want: []WalkWan
 }
 
 @(test)
-test_filetree_walk_default :: proc(t: ^testing.T) {
+test_walk_walk_default :: proc(t: ^testing.T) {
 	root := walk_fixture("default")
 	defer {os.remove_all(root);delete(root)}
-	ft: FileTree
+	ft: WalkOpts
 	got, n := walk_gather(&ft, root)
 	walk_expect(t, got, n, WALK_BASE[:])
 }
 
 @(test)
-test_filetree_walk_dotfiles :: proc(t: ^testing.T) {
+test_walk_walk_dotfiles :: proc(t: ^testing.T) {
 	root := walk_fixture("dotfiles")
 	defer {os.remove_all(root);delete(root)}
-	ft: FileTree
+	ft: WalkOpts
 	ft.show_dotfiles = true
 	got, n := walk_gather(&ft, root)
 	want := [?]WalkWant {
@@ -143,10 +149,10 @@ test_filetree_walk_dotfiles :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_filetree_walk_ignored :: proc(t: ^testing.T) {
+test_walk_walk_ignored :: proc(t: ^testing.T) {
 	root := walk_fixture("ignored")
 	defer {os.remove_all(root);delete(root)}
-	ft: FileTree
+	ft: WalkOpts
 	ft.ignored[strings.clone(fmt.tprintf("%s/sub", root))] = true
 	defer {
 		for key in ft.ignored {
@@ -164,11 +170,11 @@ test_filetree_walk_ignored :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_filetree_walk_parallel_parity :: proc(t: ^testing.T) {
+test_walk_walk_parallel_parity :: proc(t: ^testing.T) {
 	root := walk_stress_fixture("stress")
 	defer {os.remove_all(root);delete(root)}
 
-	ft: FileTree
+	ft: WalkOpts
 	serial, sn := walk_gather(&ft, root, 1)
 	par, pn := walk_gather(&ft, root, 8)
 
@@ -184,10 +190,10 @@ test_filetree_walk_parallel_parity :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_filetree_walk_ignored_file :: proc(t: ^testing.T) {
+test_walk_walk_ignored_file :: proc(t: ^testing.T) {
 	root := walk_fixture("ignoredfile")
 	defer {os.remove_all(root);delete(root)}
-	ft: FileTree
+	ft: WalkOpts
 	ft.ignored[strings.clone(fmt.tprintf("%s/a.txt", root))] = true
 	defer {
 		for key in ft.ignored {
@@ -214,12 +220,11 @@ test_filetree_walk_ignored_file :: proc(t: ^testing.T) {
 prewarm_editor :: proc(root: string) -> (Editor, ^Walk) {
 	editor: Editor
 	editor.working_root = root
-	editor.filetree.scanned = true
 	return editor, walk_acquire(&editor, root, false, false)
 }
 
 @(test)
-test_filetree_prewarm_parity :: proc(t: ^testing.T) {
+test_walk_prewarm_parity :: proc(t: ^testing.T) {
 	root := walk_stress_fixture("pwparity")
 	defer {os.remove_all(root);delete(root)}
 	editor, w := prewarm_editor(root)
@@ -240,7 +245,7 @@ test_filetree_prewarm_parity :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_filetree_prewarm_midflight :: proc(t: ^testing.T) {
+test_walk_prewarm_midflight :: proc(t: ^testing.T) {
 	root := walk_stress_fixture("pwmid")
 	defer {os.remove_all(root);delete(root)}
 	editor, w := prewarm_editor(root)
@@ -256,7 +261,7 @@ test_filetree_prewarm_midflight :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_filetree_prewarm_discard_on_mismatch :: proc(t: ^testing.T) {
+test_walk_prewarm_discard_on_mismatch :: proc(t: ^testing.T) {
 	root := walk_stress_fixture("pwmismatch")
 	defer {os.remove_all(root);delete(root)}
 	editor, w := prewarm_editor(root)

@@ -463,7 +463,6 @@ e2e_cwd_tree_set_root :: proc(t: ^testing.T) {
 	root := strings.clone(e.ed.working_root, context.temp_allocator)
 	alpha := fmt.tprintf("%s/alpha", root)
 	nav_write(fmt.tprintf("%s/in.txt", alpha), "inside")
-	ft := &e.ed.filetree
 
 	nav_alt(&e, 'f')
 	testing.expect(t, cwd_tree_select(&e, "file.txt"), "top-level file row")
@@ -514,16 +513,15 @@ e2e_cwd_tree_keeps_scope :: proc(t: ^testing.T) {
 	inside := fmt.tprintf("%s/in.txt", alpha)
 	nav_write(inside, "inside")
 	testing.expect(t, editor_open_path(&e.ed, inside), "open inside buffer")
-	ft := &e.ed.filetree
 
 	nav_alt(&e, 'o')
-	testing.expect_value(t, ft.scope, FileTreeScope.Open)
+	testing.expect_value(t, ft_scope(&e.ed), "Open")
 	testing.expect_value(t, cwd_tree_names(&e), "alpha,in.txt,main.txt")
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "alpha row")
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, e.ed.working_root, alpha)
 	testing.expect(t, filetree_active(&e.ed), "tree stays open")
-	testing.expect_value(t, ft.scope, FileTreeScope.Open)
+	testing.expect_value(t, ft_scope(&e.ed), "Open")
 	testing.expect_value(t, cwd_tree_names(&e), "in.txt")
 	testing.expect_value(t, len(e.ed.buffers), 1)
 }
@@ -535,7 +533,6 @@ e2e_cwd_tree_unsaved_confirm :: proc(t: ^testing.T) {
 	cwd_fixture(&e)
 	root := strings.clone(e.ed.working_root, context.temp_allocator)
 	e2e_type(&e, "x")
-	ft := &e.ed.filetree
 
 	nav_alt(&e, 'f')
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "alpha row")

@@ -23,7 +23,7 @@
 ---@field run fun(ctx: qed.Ctx)
 ---@field when? fun(ctx: qed.Ctx): boolean
 ---@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`; a bare key (`"x"`) is allowed outside the editor and file tree scopes and fires only in a pane without fields
----@field scope? string `"editor"` (default), `"filetree"`, a core pane's scope (`"log"`, `"plugins"`) or a `qed.ui.open{scope}`: the command runs on its chord while a pane of that scope has focus and is listed in that pane's Ctrl+P
+---@field scope? string `"editor"` (default), a core pane's scope (`"log"`, `"plugins"`) or a `qed.ui.open{scope}` (the file tree's is `"filetree"`): the command runs on its chord while a pane of that scope has focus and is listed in that pane's Ctrl+P
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
 ---@field keybind? string the key in `plugins.<id>.keybinds`, default `name`; commands sharing it share the bind and the first `key` among them
 
@@ -95,10 +95,11 @@ function qed.open(path) end
 ---@return string|nil err "no file name" or "changed on disk"
 function qed.save(b) end
 
----Close a buffer. Returns false and keeps it open if it has unsaved changes.
+---Close a buffer. Returns false and keeps it open if it has unsaved changes, unless `discard`.
 ---@param b qed.Buf
+---@param opts? {discard?: boolean}
 ---@return boolean
-function qed.close(b) end
+function qed.close(b, opts) end
 
 ---Switch to buffer `target` or open the path `target` (relative to `qed.root()`), move the cursor to `pos` (clamped, a col inside a UTF-8 sequence snaps back), and record the jump from where you were. Closes the file tree if it is open.
 ---@param target qed.Buf|string
@@ -263,8 +264,8 @@ local List = {}
 ---@return integer|nil
 ---@return "pending"|nil err
 function List:count() end
----Walk handles: replaces the ignore set of every walk of this root (paths hidden unless `ignored`); a change reruns them.
----@param paths string[]
+---Walk handles: replaces the ignore set of every walk of this root (paths hidden unless `ignored`); a change reruns them. `false` marks it not known yet: no background walk runs and `View:expand(true)` refuses until a list arrives.
+---@param paths string[]|false
 function List:ignore(paths) end
 ---Walk handles: false while the walk (or its background prewarm) is still running.
 ---@return boolean
@@ -299,7 +300,7 @@ function List:union(paths) end
 ---@field submit? fun(v: qed.View, text: string|nil) the footer input (`View:footer{input}`) was submitted, or cancelled with Esc (`nil`)
 
 ---@class qed.UiSpec
----@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads)
+---@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads); a field given a non-empty `text` skips restoring the selection
 ---@field modal? boolean exclusive opens are refused as busy while it is open (`qed.pick/prompt/confirm` set it); a non-modal pane is replaced and its waiters get `nil`
 ---@field place? "center"|"full"|"split" center (default) is a centered box, full fills the screen, split puts a full-height preview column beside the fields and list
 ---@field size? "palette"|"dialog"|"split:code"|"split:tree" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default) or split:tree (the `filetree_list_*` widths)
@@ -314,7 +315,8 @@ function List:union(paths) end
 ---@field preview? "auto"|false split: previews the selected item's `path` at `pos.row`
 ---@field text? qed.PaneLine[] lines above the list (center) or the scrollable body (full or split without a list)
 ---@field markdown? string full only, without list or text: the body is this markdown, rendered by core at the pane width (the LSP hover renderer); arrows, PgUp/PgDn, Home/End and the wheel scroll it
----@field toggle? string visible name of the command whose chord closes the pane (default: the command that opened it); needed when opening from a handler
+---@field toggle? string|false visible name of the command whose chord closes the pane (default: the command that opened it); needed when opening from a handler; `false`: no chord closes it (tabs' chords still do)
+---@field jump_closes? boolean `qed.jump` closes the pane (a hub like the file tree, left once a child picker jumps)
 ---@field backdrop? "none"|"dim"|"blank" what happens to everything drawn under the pane (the editor and panes below, never the status rows): left alone (default), faded (theme tint `pane_backdrop`) or cleared to the background
 ---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
 ---@field footer? {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[]} bottom row; a hint or chip with `cmd` (visible command name) is prefixed with that command's live shortcut; chips are right-aligned, lit when `on`, and a click runs `cmd`
@@ -373,8 +375,8 @@ function View:tab(i) end
 ---@param spec false|"auto"|{path: string, base?: string, diff_only?: boolean}
 ---@return boolean
 function View:preview(spec) end
----Tree lists: `true`/`false` expands or collapses every dir (false while the walk's ignore set is still loading); a path and a boolean (default true) sets one dir. Returns false once closed.
----@param what boolean|string
+---Tree lists: `true`/`false` expands or collapses every dir (false while the walk's ignore set is still loading); no argument collapses every dir when a shown one is expanded, else expands all; a path and a boolean (default true) sets one dir. Returns false once closed.
+---@param what? boolean|string
 ---@param open? boolean
 ---@return boolean
 function View:expand(what, open) end
@@ -382,6 +384,14 @@ function View:expand(what, open) end
 ---@param path string
 ---@return boolean
 function View:reveal(path) end
+---The highlighted item, its row, the range's other end (`multi`) and the row count (rows are 1-based visible positions; a tree's rows follow its expanded dirs). With `row`, selects it first (clamped; `anchor` makes a range). Returns nothing once closed.
+---@param row? integer
+---@param anchor? integer
+---@return qed.UiItem|string|nil item
+---@return integer|nil row
+---@return integer|nil anchor
+---@return integer count
+function View:select(row, anchor) end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.
 ---@return (string|qed.UiItem)[]|nil items
 ---@return integer|nil index
@@ -505,10 +515,26 @@ function qed.filetree.provide(spec) end
 ---@param ignored? string[]
 function qed.filetree.set_status(files, ignored) end
 
----Answers the `preview(path)` callback: the Changed tab previews `path` diffed against `text` (raw bytes; binary shows a hexdump); `nil` shows it plainly.
+---Answers the `preview(path)` callback: the Changed tab previews `path` diffed against `text` (raw bytes; binary shows a hexdump); `nil` shows it plainly. A path not asked for last is ignored.
 ---@param path string
 ---@param text string|nil
 function qed.filetree.set_base(path, text) end
+
+---TEMPORARY until the plugin communication step: the `filetree` plugin's side of the provider. `fn(kind)` runs queued when the provider comes or goes (`"provider"`), pushes status (`"status"`) or answers a preview (`"base"`). One listener; `nil, "taken by <plugin>"` while another holds it.
+---@param fn fun(kind: "provider"|"status"|"base")
+---@return true|nil ok
+---@return string? err
+function qed.filetree.listen(fn) end
+
+---TEMPORARY: the provider's last push, paths absolute. `files`/`ignored` are nil until the first push; `base_path`/`base` are set once the last asked preview is answered (`base` nil: show the file plainly).
+---@return {provider: boolean, files?: table<string, qed.FileStatus>, ignored?: string[], base_path?: string, base?: string}
+function qed.filetree.state() end
+
+---TEMPORARY: asks the provider to `refresh`, to `preview` `path` (a new ask drops the last answer) or to `open_deleted` with the current ctx. False when it has no such callback.
+---@param kind "refresh"|"preview"|"open_deleted"
+---@param path? string
+---@return boolean
+function qed.filetree.request(kind, path) end
 
 qed.term = {}
 

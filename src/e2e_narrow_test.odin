@@ -41,7 +41,6 @@ e2e_narrow_filetree_hides_preview :: proc(t: ^testing.T) {
 
 	e2e_resize(&e, 140, E2E_H)
 	nav_alt(&e, 'f')
-	tr := &e.ed.filetree
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "main.txt" {
 			ft_pane(&e.ed).list.sel = i
@@ -99,7 +98,6 @@ e2e_narrow_filetree_centers_wide :: proc(t: ^testing.T) {
 	e2e_resize(&e, 300, E2E_H)
 	nav_alt(&e, 'f')
 	nav_scan(&e)
-	tr := &e.ed.filetree
 	lay := ft_layout(&e.ed)
 	testing.expect(t, lay.preview)
 	testing.expect_value(t, lay.left_w, FILETREE_LIST_MAX_WIDTH)

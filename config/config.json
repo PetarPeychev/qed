@@ -49,6 +49,9 @@
     }
   },
   "plugins": {
+    "filetree": {
+      "enabled": true
+    },
     "format": {
       "enabled": true
     },
@@ -74,10 +77,6 @@
   "theme": "default",
   "keybinds": {
     "Command Palette": "Ctrl+p",
-    "File Tree": "Alt+f",
-    "File Tree: Open": "Alt+o",
-    "File Tree: Changed": "Alt+g",
-    "File Tree: Unsaved": "Alt+u",
     "Terminal: Toggle": "Alt+t",
     "Find": "Ctrl+f",
     "Replace": "Ctrl+h",
@@ -113,13 +112,6 @@
     "Debug: Inspect Tokens": "",
     "Debug: Message Log": "Alt+l",
     "Debug: Plugins": "",
-    "File Tree: Delete": "Ctrl+d",
-    "File Tree: Rename": "Ctrl+r",
-    "File Tree: New": "Ctrl+n",
-    "File Tree: Toggle Dotfiles": "Alt+.",
-    "File Tree: Toggle Ignored": "Alt+i",
-    "File Tree: Toggle Diff": "Alt+d",
-    "File Tree: Expand/Collapse All": "Alt+e",
     "Message Log: Toggle Debug": "d",
     "Message Log: Toggle Info": "i",
     "Message Log: Toggle Warn": "w",

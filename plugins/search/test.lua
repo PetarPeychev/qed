@@ -20,7 +20,7 @@ end
 
 local function open(t)
 	t.key("Alt+F")
-	t.wait(function() return t.ui() ~= nil end)
+	t.wait(function() local ui = t.ui(); return ui ~= nil and ui.id == "search" end)
 end
 
 local function on_screen(t, needle)
@@ -190,8 +190,7 @@ function T.tree_dir_scope(t)
 		t.ok(label:sub(1, 4) == "sub/", "confined to the selected dir: " .. label)
 	end
 	t.key("Esc")
-	t.eq(t.ui(), nil, "Esc closes the search")
-	t.ok(t.editor().tree, "the tree resumes")
+	t.eq(t.ui().id, "filetree", "Esc closes the search, the tree resumes")
 	t.key("Esc")
 end
 

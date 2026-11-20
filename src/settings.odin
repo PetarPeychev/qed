@@ -838,6 +838,17 @@ CONFIG_KEYBINDS_MOVED :: [?]struct {
 	{"File Tree: Restore File", "git", "Restore File"},
 	{"Change Working Directory", "workspace", "Open Directory"},
 	{"Find Line", "goto", "Line"},
+	{"File Tree", "filetree", "All"},
+	{"File Tree: Open", "filetree", "Open"},
+	{"File Tree: Changed", "filetree", "Changed"},
+	{"File Tree: Unsaved", "filetree", "Unsaved"},
+	{"File Tree: Delete", "filetree", "Delete"},
+	{"File Tree: Rename", "filetree", "Rename"},
+	{"File Tree: New", "filetree", "New"},
+	{"File Tree: Toggle Dotfiles", "filetree", "Toggle Dotfiles"},
+	{"File Tree: Toggle Ignored", "filetree", "Toggle Ignored"},
+	{"File Tree: Toggle Diff", "filetree", "Toggle Diff"},
+	{"File Tree: Expand/Collapse All", "filetree", "Expand/Collapse All"},
 }
 
 config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {

@@ -343,7 +343,6 @@ e2e_walk_lua_tree_view :: proc(t: ^testing.T) {
 
 	walk_run_cmd(t, &e, "W: Tab")
 	testing.expect(t, walk_logged(&e, "tab now 1 2"), "v:tab gets and sets")
-	e.ed.filetree.scanned = true
 	walk_run_cmd(t, &e, "W: Expand")
 	testing.expect(t, walk_logged(&e, "expand all true"), "expand all")
 	walk_run_cmd(t, &e, "W: Diff")
@@ -425,8 +424,8 @@ e2e_walk_tree_filter_after_write :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	root := e.ed.working_root
 	walk_tree_fixture(root)
-	e.ed.filetree.scanned = true
 	filetree_open_all(&e.ed)
+	e2e_git_settle(&e)
 	for walk_busy(&e.ed) {
 		walk_pump(&e.ed)
 	}

@@ -86,6 +86,7 @@ qed_view_methods := [?]lua.L_Reg {
 	{"preview", qed_view_preview},
 	{"expand", qed_view_expand},
 	{"reveal", qed_view_reveal},
+	{"select", qed_view_select},
 }
 
 @(private = "file")
@@ -553,6 +554,12 @@ qed_walk_ignore :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	src := api_walk_handle(L, editor)
 	set := make(map[string]bool, context.temp_allocator)
+	if lua.type(L, 2) == .BOOLEAN && !lua.toboolean(L, 2) {
+		// not known yet: a walk run now would descend into everything the set will hide
+		walk_ignore_set(editor, src.walk.root, set, false)
+		walk_stale(src.walk)
+		return 0
+	}
 	for path in api_paths(L, editor, 2) {
 		set[path] = true
 	}
@@ -1119,7 +1126,12 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	if t := plugin_task_of(p, L); t != nil {
 		spec.toggle = t.command
 	}
-	if toggle, ok := api_field_string(L, 1, "toggle"); ok {
+	if lua.getfield(L, 1, "toggle") == .BOOLEAN {
+		if lua.toboolean(L, -1) {
+			plugin_raise(L, "toggle must be a command name or false")
+		}
+		spec.toggle = 0
+	} else if toggle, ok := api_field_string(L, 1, "toggle"); ok {
 		spec.toggle = 0
 		for cmd in p.commands {
 			if cmd.name == toggle {
@@ -1130,6 +1142,8 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 			plugin_raise(L, fmt.tprintf("toggle: no command %q", toggle))
 		}
 	}
+	lua.pop(L, 1)
+	spec.jump_closes = api_opt_bool(L, 1, "jump_closes")
 	pn := pane_open(editor, spec)
 	if pn == nil {
 		return api_fail(L, "busy")
@@ -1140,7 +1154,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	for &f, i in pn.fields {
 		text := texts[i]
 		if given[i] {
-			restored = false
+			restored = restored && text == ""
 		} else if saved != nil && i < len(saved.texts) {
 			text = saved.texts[i]
 		}
@@ -1198,7 +1212,10 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.settop(L, 2)
 	append(&p.views, v)
-	editor_clear_message(editor)
+	// a timer or event opening a pane must not wipe a message the user has not read
+	if t := plugin_task_of(p, L); t == nil || t.user {
+		editor_clear_message(editor)
+	}
 	if i := pane_index(editor, handle); i >= 0 {
 		pane_preview_sync(editor, &editor.panes[i])
 	}
@@ -1642,7 +1659,8 @@ qed_view_expand :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	all := lua.type(L, 2) == .BOOLEAN
+	toggle := lua.type(L, 2) <= .NIL
+	all := toggle || lua.type(L, 2) == .BOOLEAN
 	path := ""
 	on := bool(lua.toboolean(L, 2))
 	if !all {
@@ -1658,6 +1676,9 @@ qed_view_expand :: proc "c" (L: ^lua.State) -> c.int {
 		plugin_raise(L, "expand needs a list.tree view")
 	}
 	ok := true
+	if toggle {
+		on = !pane_tree_any_expanded(pn)
+	}
 	if all {
 		ok = pane_tree_expand_all(editor, pn, on)
 	} else {
@@ -1686,6 +1707,49 @@ qed_view_reveal :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushboolean(L, b32(pane_tree_reveal(editor, pn, path)))
 	return 1
+}
+
+qed_view_select :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	set := lua.type(L, 2) > .NIL
+	row := api_int(L, 2, "row must be an integer") if set else 0
+	anchor, ranged := 0, lua.type(L, 3) > .NIL
+	if ranged {
+		anchor = api_int(L, 3, "anchor must be an integer")
+	}
+	pn, _ := api_view_live(L, editor)
+	if pn == nil || !pn.has_list {
+		return 0
+	}
+	n := pane_count(editor, pn)
+	if set && n > 0 {
+		pn.list.sel = clamp(row - 1, 0, n - 1)
+		pn.list.anchor = nil
+		if ranged && pn.list.multi {
+			pn.list.anchor = clamp(anchor - 1, 0, n - 1)
+		}
+		pn.list.moved = true
+		delete(pn.list.restore)
+		pn.list.restore = ""
+		pane_scroll_fit(pn, pane_geom(editor, pn).list.h)
+	}
+	if n == 0 {
+		lua.pushnil(L)
+		lua.pushnil(L)
+		lua.pushnil(L)
+	} else {
+		api_pane_item_push(L, list_item(editor, pn, pane_item_index(pn, pn.list.sel)))
+		lua.pushinteger(L, lua.Integer(pn.list.sel + 1))
+		if a, ok := pn.list.anchor.?; ok {
+			lua.pushinteger(L, lua.Integer(a + 1))
+		} else {
+			lua.pushnil(L)
+		}
+	}
+	lua.pushinteger(L, lua.Integer(n))
+	return 4
 }
 
 qed_view_append :: proc "c" (L: ^lua.State) -> c.int {

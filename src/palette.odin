@@ -40,7 +40,7 @@ command_config_name :: proc(cmd: Command) -> string {
 	return cmd.config_name if cmd.config_name != "" else cmd.name
 }
 
-// A file-tree command with `bind_from` set has no config key of its own; it derives
+// A pane command with `bind_from` set has no config key of its own; it derives
 // its key/alt/shortcut live from the named global command (one source of truth, so a
 // rebind of the global one moves both). Commands without it use their own fields.
 command_effective_bind :: proc(cmd: Command) -> (key: tb2.Key, alt_ch: rune, shortcut: string) {
@@ -133,10 +133,6 @@ cmd_log_error :: proc(editor: ^Editor) {logview_toggle(editor, .Error)}
 // `keybinds` section, applied by config_seed_defaults before main.
 commands := [?]Command {
 	{name = "Command Palette", run = palette_open},
-	{name = "File Tree", run = filetree_open_all},
-	{name = "File Tree: Open", run = filetree_open_open},
-	{name = "File Tree: Changed", run = filetree_open_changed},
-	{name = "File Tree: Unsaved", run = filetree_open_unsaved},
 	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Find", run = find_open},
 	{name = "Replace", run = find_open_replace},
@@ -175,18 +171,6 @@ commands := [?]Command {
 }
 
 pane_commands := [?]Command {
-	{name = "Copy", scope = "filetree", bind_from = "Copy", run = filetree_cmd_copy},
-	{name = "Cut", scope = "filetree", bind_from = "Cut", run = filetree_cmd_cut},
-	{name = "Paste", scope = "filetree", bind_from = "Paste", run = filetree_clip_paste},
-	{name = "Delete", scope = "filetree", config_name = "File Tree: Delete", run = filetree_cmd_delete},
-	{name = "Close Buffers", scope = "filetree", bind_from = "Close Buffer", run = filetree_cmd_close},
-	{name = "Rename", scope = "filetree", config_name = "File Tree: Rename", run = filetree_cmd_rename},
-	{name = "New", scope = "filetree", config_name = "File Tree: New", run = filetree_cmd_new},
-	{name = "Select All", scope = "filetree", bind_from = "Select All", run = filetree_select_all},
-	{name = "Toggle Dotfiles", scope = "filetree", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
-	{name = "Toggle Ignored", scope = "filetree", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
-	{name = "Toggle Diff", scope = "filetree", config_name = "File Tree: Toggle Diff", run = filetree_toggle_diff},
-	{name = "Expand/Collapse All", scope = "filetree", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
 	{name = "Copy", scope = "log", bind_from = "Copy", run = logview_copy},
 	{name = "Toggle Debug", scope = "log", config_name = "Message Log: Toggle Debug", run = cmd_log_debug},
 	{name = "Toggle Info", scope = "log", config_name = "Message Log: Toggle Info", run = cmd_log_info},
@@ -211,24 +195,19 @@ command_gated :: proc(name: string) -> bool {
 	return false
 }
 
-command_available :: proc(editor: ^Editor, name: string) -> bool {
+command_available :: proc(editor: ^Editor, name: string, scope := "") -> bool {
 	if name == "Command Palette" {
 		return false
+	}
+	if scope != "" {
+		return true
 	}
 	if command_gated(name) {
 		return false
 	}
-	switch name {
-	case "File Tree: Changed", "Toggle Diff":
-		if !filetree_tab_visible(&editor.filetree, .Changed) {
-			return false
-		}
-	}
 	if editor.welcome {
 		switch name {
-		case "File Tree", "File Tree: Open", "File Tree: Changed", "File Tree: Unsaved",
-		     "Terminal: Toggle",
-		     "Debug: Plugins", "Debug: Message Log", "Quit":
+		case "Terminal: Toggle", "Debug: Plugins", "Debug: Message Log", "Quit":
 			return true
 		}
 		return false

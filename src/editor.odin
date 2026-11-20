@@ -55,7 +55,6 @@ Editor :: struct {
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
 	find:            Find,
-	filetree:        FileTree,
 	jumps:           JumpList,
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
@@ -87,7 +86,6 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
 		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
-		filetree       = FileTree{show_dotfiles = FILETREE_SHOW_DOTFILES, show_ignored = FILETREE_SHOW_IGNORED, diff_only = FILETREE_DIFF_ONLY, scanned = true},
 		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
 		headless       = headless,
 	}
@@ -171,7 +169,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
 	find_destroy(&editor.find)
-	filetree_destroy(&editor.filetree)
 	jump_destroy(&editor.jumps)
 	llm_cancel_all(editor)
 	delete(editor.llm.requests)
@@ -224,7 +221,6 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 	editor.working_root = root
 	editor.hover_active = false
 	lsp_restart_all(editor)
-	filetree_root_reset(editor)
 	editor_log(editor, .Info, "", fmt.tprintf("Working directory: %s", root))
 }
 
@@ -315,22 +311,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	if editor.welcome {
 		if ev.type == .Key {
-			if command_matches(ev, "File Tree") {
-				filetree_open_all(editor)
-				return
-			}
-			if command_matches(ev, "File Tree: Open") {
-				filetree_open_open(editor)
-				return
-			}
-			if command_matches(ev, "File Tree: Changed") {
-				filetree_open_changed(editor)
-				return
-			}
-			if command_matches(ev, "File Tree: Unsaved") {
-				filetree_open_unsaved(editor)
-				return
-			}
 			if command_matches(ev, "Terminal: Toggle") {
 				term_toggle(editor)
 				return
@@ -1884,10 +1864,20 @@ editor_render_welcome :: proc(editor: ^Editor) {
 	}
 	hint_specs := [?]struct {
 		cmd, label: string,
-	}{{"File Tree", "File tree"}, {"Command Palette", "Command palette"}, {"Quit", "Quit"}}
-	hints: [len(hint_specs)]string
-	for spec, i in hint_specs {
-		hints[i] = fmt.tprintf("%-9s %s", command_shortcut(spec.cmd), spec.label)
+		plugin:     bool,
+	}{{"File Tree: All", "File tree", true}, {"Command Palette", "Command palette", false}, {"Quit", "Quit", false}}
+	hints := make([dynamic]string, context.temp_allocator)
+	for spec in hint_specs {
+		key, known := command_shortcut(spec.cmd), !spec.plugin
+		for cmd in editor.plugins.commands {
+			if spec.plugin && cmd.name == spec.cmd {
+				key, known = cmd.shortcut, true
+			}
+		}
+		// the file tree is a plugin: without Lua its hint goes away
+		if known {
+			append(&hints, fmt.tprintf("%-9s %s", key, spec.label))
+		}
 	}
 
 	hint_w := 0

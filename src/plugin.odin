@@ -91,6 +91,7 @@ Plugins :: struct {
 	deco_ns:  [dynamic]PluginNs,
 	ns_seq:   u32,
 	status:   [dynamic]PluginStatus,
+	shim:     TreeShim,
 }
 
 PluginEntry :: struct {
@@ -102,6 +103,7 @@ bundled_plugin_files := #load_directory("../plugins")
 
 // Listed file by file so a dir plugin's test.lua stays out of the binary.
 bundled_plugin_dir_files := [?]PluginFile {
+	{"filetree/init.lua", #load("../plugins/filetree/init.lua", string)},
 	{"format/init.lua", #load("../plugins/format/init.lua", string)},
 	{"git/init.lua", #load("../plugins/git/init.lua", string)},
 	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},
@@ -225,6 +227,7 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 
 plugins_shutdown :: proc(p: ^Plugins) {
 	plugin_ui_destroy(p)
+	tree_shim_destroy(&p.shim)
 	delete(p.persist_path)
 	plugin_sched_shutdown(p)
 	for &cmd in p.commands {
@@ -936,7 +939,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	plugin_deco_unload(editor, pl.name)
 	plugin_status_unload(p, pl.name)
 	diffbase_unload(editor, pl.name)
-	filetree_provider_unload(editor, pl.name)
+	tree_shim_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
 			plugin_command_remove(editor, i)

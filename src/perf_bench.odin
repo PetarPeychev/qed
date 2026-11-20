@@ -503,7 +503,6 @@ bench_filetree_walk :: proc(t: ^testing.T) {
 	// parallel walk; with prewarm it pays only the adopt once the background walk lands.
 	editor := Editor{headless = true}
 	editor.working_root = root
-	editor.filetree.scanned = true
 	w := walk_acquire(&editor, root, false, false)
 	walk_prewarm(&editor, w)
 	for !sync.atomic_load(&w.pw.done) {
@@ -731,15 +730,14 @@ bench_filetree_filter :: proc(t: ^testing.T) {
 	for round in 0 ..< 2 {
 		editor := Editor{headless = true}
 		editor.working_root = root
-		editor.filetree.scanned = true
-		w := walk_acquire(&editor, root, false, false)
+			w := walk_acquire(&editor, root, false, false)
 		if round == 1 {
 			walk_prewarm(&editor, w)
 			for !sync.atomic_load(&w.pw.done) {
 				thread.yield()
 			}
 		}
-		p := Pane{fields = make([]PaneField, 1), has_list = true, list = {max = FILETREE_FILTER_MAX_RESULTS, source = {kind = .Walk, walk = w}}}
+		p := Pane{fields = make([]PaneField, 1), has_list = true, list = {max = WALK_FILTER_MAX_RESULTS, source = {kind = .Walk, walk = w}}}
 		p.fields[0].mode = .Filter
 		fmt.eprintfln("=== filter bench (%s) ===", "prewarmed" if round == 1 else "cold")
 		for q in queries {
@@ -762,13 +760,19 @@ bench_filetree_render :: proc(t: ^testing.T) {
 	}
 	e := e2e_start("x")
 	defer e2e_stop(&e)
+	e2e_plugin_config(&e, "git", `{"enabled": false}`)
 	delete(e.ed.working_root)
 	e.ed.working_root = strings.clone(root)
+	plugin_flush(&e.ed)
+	open_at := time.tick_now()
 	filetree_open_all(&e.ed)
+	e2e_render(&e)
+	fmt.eprintfln("tree open + first frame: %.2f ms", ms_since(open_at))
 	for walk_busy(&e.ed) {
 		walk_pump(&e.ed)
 		thread.yield()
 	}
+	fmt.eprintfln("tree open until the walk landed: %.2f ms", ms_since(open_at))
 	FRAMES :: 200
 	start := time.tick_now()
 	for _ in 0 ..< FRAMES {

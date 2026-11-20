@@ -25,7 +25,6 @@ e2e_nav_filetree_nested_ignore :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	nav_scan(&e)
 	pane_tree_expand_all(&e.ed, ft_pane(&e.ed), true)
-	tr := &e.ed.filetree
 
 	testing.expect(t, !entry_named(&e.ed, "dist"), "nested ignored dir hidden by default")
 	testing.expect(t, !entry_named(&e.ed, "bundle.js"), "file in nested ignored dir hidden")
@@ -67,7 +66,6 @@ e2e_nav_filetree_child_repos :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	nav_scan(&e)
 	pane_tree_expand_all(&e.ed, ft_pane(&e.ed), true)
-	tr := &e.ed.filetree
 
 	testing.expect(t, entry_named(&e.ed, "repoA"), "child repo listed")
 	testing.expect(t, entry_named(&e.ed, "app.js"), "child repo file listed")

@@ -166,6 +166,9 @@ qed_filetree_api := [?]lua.L_Reg {
 	{"provide", qed_filetree_provide},
 	{"set_status", qed_filetree_set_status},
 	{"set_base", qed_filetree_set_base},
+	{"listen", qed_filetree_listen},
+	{"state", qed_filetree_state},
+	{"request", qed_filetree_request},
 	{nil, nil},
 }
 
@@ -892,8 +895,9 @@ qed_save_result :: proc(L: ^lua.State, editor: ^Editor, id: u64) -> c.int {
 qed_close :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	discard := lua.type(L, 2) == .TABLE && api_opt_bool(L, 2, "discard")
 	b, idx := api_buf(L, entry.editor, 1)
-	if b.modified {
+	if b.modified && !discard {
 		lua.pushboolean(L, false)
 		return 1
 	}
@@ -927,7 +931,11 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	} else if _, idx := api_buf(L, editor, 1); idx != editor.current {
 		editor_switch_to(editor, idx)
 	}
-	filetree_close(editor)
+	for i := len(editor.panes) - 1; i >= 0; i -= 1 {
+		if i < len(editor.panes) && editor.panes[i].jump_closes {
+			pane_end(editor, editor.panes[i].handle, false)
+		}
+	}
 	b := editor_buffer(editor)
 	r := clamp(row - 1, 0, len(b.lines) - 1)
 	text := b.lines[r].text[:]
@@ -2458,172 +2466,6 @@ qed_buf_set_base :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushboolean(L, b32(diffbase_owner(b) == pl.name))
 	return 1
-}
-
-qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	t := &editor.filetree
-	pl := api_loaded(L, editor)
-	if lua.type(L, 1) <= .NIL {
-		filetree_provider_unload(editor, pl.name)
-		lua.pushboolean(L, true)
-		return 1
-	}
-	if lua.type(L, 1) != .TABLE {
-		lua.L_argerror(L, 1, "table or nil expected")
-	}
-	lua.settop(L, 1)
-	names := [3]cstring{"refresh", "preview", "open_deleted"}
-	for name in names {
-		if tp := lua.getfield(L, 1, name); tp != .FUNCTION && tp != .NIL {
-			plugin_raise(L, fmt.tprintf("%s must be a function", name))
-		}
-	}
-	if t.provider.owner != "" && t.provider.owner != pl.name {
-		lua.pushnil(L)
-		lua.pushodinstring(L, fmt.tprintf("taken by %s", plugin_label(&entry.editor.plugins, t.provider.owner)))
-		return 2
-	}
-	refs: [3]i32
-	for i := 2; i >= 0; i -= 1 {
-		if lua.type(L, -1) == .FUNCTION {
-			refs[i] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
-		} else {
-			lua.pop(L, 1)
-		}
-	}
-	fresh := t.provider.owner != pl.name
-	if !fresh {
-		filetree_provider_unref(editor, &t.provider)
-		t.provider.base_state = .None
-		if p := filetree_pane(editor); p != nil {
-			filetree_preview_touch(p)
-		}
-	} else {
-		filetree_provider_clear(editor)
-		t.provider.owner = plugin_name_intern(&editor.plugins, pl.name)
-		t.scanned = false
-	}
-	t.provider.refresh_ref, t.provider.preview_ref, t.provider.open_ref = refs[0], refs[1], refs[2]
-	if fresh {
-		filetree_provider_set(editor)
-	}
-	if filetree_active(editor) && !t.scanned {
-		filetree_status_request(editor)
-	}
-	lua.pushboolean(L, true)
-	return 1
-}
-
-api_provider :: proc(L: ^lua.State, editor: ^Editor) {
-	pl := api_loaded(L, editor)
-	if editor.filetree.provider.owner != pl.name {
-		plugin_raise(L, "not the file tree status provider (call qed.filetree.provide first)")
-	}
-}
-
-qed_filetree_set_status :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	t := &editor.filetree
-	api_provider(L, editor)
-	if lua.type(L, 1) != .TABLE {
-		lua.L_argerror(L, 1, "files table expected")
-	}
-	ignored_t := lua.type(L, 2)
-	if ignored_t != .TABLE && ignored_t > .NIL {
-		lua.L_argerror(L, 2, "ignored list expected")
-	}
-	lua.settop(L, 2)
-	Entry :: struct {
-		path, from: string,
-		mark:       DiffMark,
-		size:       FileTreeSize,
-	}
-	files := make([dynamic]Entry, context.temp_allocator)
-	lua.pushnil(L)
-	for lua.next(L, 1) != 0 {
-		if lua.type(L, -2) != .STRING || lua.type(L, -1) != .TABLE {
-			plugin_raise(L, "files: path = {mark, from?, added?, removed?} expected")
-		}
-		key, _ := lua.toodinstring(L, -2)
-		e := Entry {
-			path = api_path(editor, key),
-		}
-		v := lua.absindex(L, -1)
-		mark, _ := api_field_string(L, v, "mark")
-		switch mark {
-		case "added":
-			e.mark = .Added
-		case "modified":
-			e.mark = .Modified
-		case "deleted":
-			e.mark = .Deleted
-		case:
-			plugin_raise(L, fmt.tprintf("files[%q].mark must be \"added\", \"modified\" or \"deleted\"", key))
-		}
-		if from, ok := api_field_string(L, v, "from"); ok && from != "" {
-			e.from = api_path(editor, from)
-		}
-		added, aok := api_field_int(L, v, "added")
-		removed, rok := api_field_int(L, v, "removed")
-		if added < 0 || removed < 0 {
-			plugin_raise(L, fmt.tprintf("files[%q]: added and removed must not be negative", key))
-		}
-		if aok || rok {
-			e.size = {added, removed}
-		}
-		append(&files, e)
-		lua.pop(L, 1)
-	}
-	ignored := make([dynamic]string, context.temp_allocator)
-	if ignored_t == .TABLE {
-		n := int(lua.rawlen(L, 2))
-		for i in 1 ..= n {
-			if lua.rawgeti(L, 2, lua.Integer(i)) != .STRING {
-				plugin_raise(L, "ignored must be a list of paths")
-			}
-			sv, _ := lua.toodinstring(L, -1)
-			append(&ignored, api_path(editor, sv))
-			lua.pop(L, 1)
-		}
-	}
-	filetree_clear_status(t)
-	reserve(&t.status, len(files))
-	root := editor.working_root
-	for e in files {
-		filetree_status_add(t, root, e.path, e.mark)
-		if e.from != "" && e.path not_in t.renames {
-			t.renames[strings.clone(e.path)] = strings.clone(e.from)
-		}
-		if (e.size.added > 0 || e.size.removed > 0) && e.path not_in t.diffsize {
-			t.diffsize[strings.clone(e.path)] = e.size
-		}
-	}
-	for path in ignored {
-		if path not_in t.ignored {
-			t.ignored[strings.clone(path)] = true
-		}
-	}
-	filetree_status_pushed(editor)
-	return 0
-}
-
-qed_filetree_set_base :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	api_provider(L, editor)
-	path := api_path(editor, api_string(L, 1))
-	if lua.type(L, 2) <= .NIL {
-		filetree_base_set(editor, path, nil)
-	} else {
-		filetree_base_set(editor, path, api_bytes_arg(L, 2))
-	}
-	return 0
 }
 
 qed_theme_icon :: proc "c" (L: ^lua.State) -> c.int {

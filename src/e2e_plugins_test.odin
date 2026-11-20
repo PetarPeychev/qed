@@ -514,6 +514,8 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.createtable(L, 0, 6)
 	lua.pushodinstring(L, kind)
 	lua.setfield(L, -2, "kind")
+	lua.pushodinstring(L, pn.id)
+	lua.setfield(L, -2, "id")
 	lua.pushodinstring(L, textfield_str(&pn.fields[0].field) if len(pn.fields) > 0 else "")
 	lua.setfield(L, -2, "query")
 	lua.pushinteger(L, lua.Integer(n))

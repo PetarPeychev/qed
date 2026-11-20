@@ -164,7 +164,6 @@ e2e_mouse_open_tab_double_click :: proc(t: ^testing.T) {
 	nav_alt(&e, 'o')
 	testing.expect(t, filetree_active(&e.ed), "Alt+o opens the Open tab")
 
-	tr := &e.ed.filetree
 	lay := ft_layout(&e.ed)
 	target := -1
 	for entry, i in ft_entries(&e.ed) {
