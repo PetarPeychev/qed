@@ -68,8 +68,13 @@ fuzzy_match :: proc(pattern, text: string) -> (score: int, ok: bool) {
 	}
 	pi := 0
 	prev_match := -2
-	for ti := 0; ti < len(text) && pi < len(pattern); ti += 1 {
-		if ascii_lower(text[ti]) != ascii_lower(pattern[pi]) {
+	want := ascii_lower(pattern[0])
+	for ti := 0; ti < len(text); ti += 1 {
+		c := text[ti]
+		if c >= 'A' && c <= 'Z' {
+			c += 32
+		}
+		if c != want {
 			continue
 		}
 		score += 1
@@ -81,6 +86,10 @@ fuzzy_match :: proc(pattern, text: string) -> (score: int, ok: bool) {
 		}
 		prev_match = ti
 		pi += 1
+		if pi == len(pattern) {
+			break
+		}
+		want = ascii_lower(pattern[pi])
 	}
 	return score, pi == len(pattern)
 }
