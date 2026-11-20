@@ -50,7 +50,7 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] Terminal→editor cwd back-channel: handle OSC 7 from the PTY (shell reports cwd) so `Alt+t` can retarget qed's working root — VSCode's shell-integration model; env vars stay uncrossable.
 - [ ] Per-buffer viewport memory across buffer switches — move scroll state into `Buffer`, see [notes/refactors.md](notes/refactors.md).
 - [ ] Permission/ownership-preserving saves.
-- [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified` → save watermark, git gutter → debounce) — see [notes/refactors.md](notes/refactors.md) + [notes/perf.md](notes/perf.md).
+- [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified` → undo-state watermark, git gutter → debounce) — see [notes/refactors.md](notes/refactors.md) + [notes/perf.md](notes/perf.md).
 - [ ] Cheaper cold `git_gutter_update` + `buffer_open` per-line-allocation floor before first paint — see [notes/perf.md](notes/perf.md).
 - [ ] `subprocess_output` can block the main loop up to 1s in `process_wait` after stdout EOF — reap non-blocking.
 - [ ] config.json writer that preserves comments and key order (UI persistence strips them today).
@@ -82,7 +82,6 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Pane model M6: plugin exports (`qed.export/plugin/caller`), namespaced custom events (`qed.emit`), `plugin_loaded`/`plugin_unloaded`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`) through `filetree` exports; the provider shim and `qed.filetree.*` are gone; task errors no longer disable a plugin ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M7: the merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`) and AI becomes the bundled `ai` plugin (`plugins.ai`); `qed.buf.find_lines`, `qed.buf.big`, `qed.text.diff`/`diff_rows`, `qed.deco.mark`/`range`/`inline`, theme tint keys as deco alphas, blended spans, `buf_changed`'s `typed`/`lo`/`hi`, hunk-applied reloads; `conflict.odin`, the core `merge` pane, `aiedit.odin`/`llm.odin`/`fim.odin`, `modules.ai` and `.Ai` are gone ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M8: the module system is gone (`module.odin`, `Module`, `module_enabled`, `Command.module`, `config_module_defs`, the `modules` parsing); the `modules.ai/git/lsp` moved-key hints stay ([notes/panes.md](notes/panes.md) §7).
-- [ ] Wrapped long line: each keystroke re-wraps the cursor line 6-8 times (5 MB line: 200 ms/key on -o:speed, 1.4 s on the default build); memo `line_wrap` per frame or buffer rev, see [notes/perf.md](notes/perf.md).
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred
@@ -139,7 +138,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
 - [ ] Migrate remaining interactive-path blocking spawns (`format_external`, `git show`) to the async subprocess runner.
-- [ ] Decide whether `build.sh` builds `-o:speed`: the default `-o:minimal` is 3-25x slower on long-line and filter paths ([notes/perf.md](notes/perf.md)).
 - [ ] Markdown preview renders the whole document in one slice (100k lines: 1.7 s); render per block for the visible range.
 - [ ] Git tab `view:set` on a 50k-path scope is one ~250 ms core call (`walk_scope_rows` readdirs every expanded dir); build narrowed rows from the scope's path list.
 - [ ] git plugin status/numstat parse slices reach 60-100 ms on 50k changes; parse in core or cut per-line allocations.

@@ -386,7 +386,7 @@ editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
 
 editor_wrap_col :: proc(b: ^Buffer, w, row, sub, gutter, x: int) -> int {
 	text := b.lines[row].text[:]
-	seg_start, seg_end := wrap_segment(text, w, sub)
+	seg_start, seg_end := wrap_segment(buffer_line_wrap(b, row, w), len(text), sub)
 	target := visual_col(text, seg_start) + max(0, x - gutter)
 	return clamp(col_at_visual(text, target), seg_start, seg_end)
 }
@@ -1140,7 +1140,7 @@ editor_scroll_vert :: proc(editor: ^Editor, b: ^Buffer, w, h: int) {
 	cur := b.cursor
 	cur_sub := 0
 	if b.wrap && w > 0 {
-		cur_sub = wrap_subrow(b.lines[cur.row].text[:], w, cur.col)
+		cur_sub = wrap_subrow(buffer_line_wrap(b, cur.row, w), cur.col)
 	}
 
 	top_r := clamp(editor.scroll_row, 0, len(b.lines) - 1)
@@ -1227,8 +1227,9 @@ editor_render :: proc(editor: ^Editor) {
 		above := false
 		cur_sub := 0
 		if b.wrap && w > 0 {
-			seg := wrap_seg_start(text, w, b.cursor.col)
-			cur_sub = wrap_subrow(text, w, b.cursor.col)
+			segs := buffer_line_wrap(b, b.cursor.row, w)
+			cur_sub = wrap_subrow(segs, b.cursor.col)
+			seg := segs[cur_sub]
 			cx = gutter + visual_col(text, b.cursor.col) - visual_col(text, seg)
 			above =
 				b.cursor.row < editor.scroll_row ||
@@ -1567,7 +1568,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				// rows they consume (no separate gap needed).
 				screen_y = editor_render_ghost_line(editor, b, row, gutter, w, h, screen_y, colors, line_bg)
 			} else {
-				segs := line_wrap(text[:], w)
+				segs := buffer_line_wrap(b, row, w)
 				start_sub := editor.scroll_sub if row == editor.scroll_row else 0
 				x_origin := visual_col(text[:], segs[start_sub]) if start_sub < len(segs) else 0
 				for s in start_sub ..< len(segs) {

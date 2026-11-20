@@ -24,14 +24,12 @@ pattern again). Only matters for large files, but the fix is mechanical.
 
 ### Modified flag via save watermark
 
-`buffer_recompute_modified` compares the whole buffer against `saved` on
-**every primitive edit** (a replace = two full scans). Fix: drop the string
-compare; record the undo state at save time (undo-stack depth + whether the
-open group was committed, plus an epoch that bumps when history is cut by
-`redo_clear`) and define `modified` = current state ≠ watermark. O(1), and
-undo-back-to-saved still correctly clears the flag. `saved` then only exists
-for... nothing — it can be deleted along with the snapshot at save/open.
-Covers the `buffer_recompute_modified` half of the existing perf TODO line.
+`buffer_recompute_modified` resumes from a clean-row watermark (rows before
+the first edited row are known equal to `saved`), so typing costs O(edited row
+to first mismatch), but an edit near the top of an unmodified buffer, or one
+that reverts it, still scans to EOF. An undo-state watermark (undo-stack depth
++ open-group state + an epoch bumped by `redo_clear`) would make it O(1) and
+let `saved` and its snapshot at open/save go (part of the 1M-line open floor).
 
 ### Debounce the git gutter recompute
 

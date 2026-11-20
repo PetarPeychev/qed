@@ -193,7 +193,7 @@ e2e_nav_arrow_clamp_wrapped_last_line :: proc(t: ^testing.T) {
 	e2e_render(&e)
 
 	last := b.lines[1].text[:]
-	rows := wrap_rows(last, b.wrap_width)
+	rows := len(line_wrap(last, b.wrap_width))
 	testing.expect(t, rows >= 2, "last line should wrap into multiple visual rows")
 
 	// From the first visual row, Down steps within the logical line first.

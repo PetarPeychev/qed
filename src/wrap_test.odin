@@ -1,6 +1,36 @@
 package main
 
+import "core:slice"
+import "core:strings"
 import "core:testing"
+
+@(test)
+test_buffer_line_wrap_memo_never_stale :: proc(t: ^testing.T) {
+	long := strings.repeat("ab\tcd ", 2000, context.temp_allocator)
+	b := test_buffer(long, long)
+	defer buffer_destroy(&b)
+	same :: proc(t: ^testing.T, b: ^Buffer, row, width: int) {
+		got, want := buffer_line_wrap(b, row, width), line_wrap(b.lines[row].text[:], width)
+		testing.expectf(t, slice.equal(got, want[:]), "row %d width %d: memo %d segs, fresh %d", row, width, len(got), len(want))
+	}
+	same(t, &b, 0, 40)
+	same(t, &b, 0, 40)
+	same(t, &b, 0, 33)
+	same(t, &b, 1, 40)
+	buffer_insert(&b, {0, 0}, "xyz")
+	same(t, &b, 0, 40)
+	delete(buffer_delete(&b, {0, 0}, {0, 7}))
+	same(t, &b, 0, 40)
+	saved := TAB_WIDTH
+	TAB_WIDTH = 8
+	same(t, &b, 0, 40)
+	TAB_WIDTH = saved
+	same(t, &b, 0, 40)
+	c := test_buffer(strings.repeat("x ", 4000, context.temp_allocator))
+	defer buffer_destroy(&c)
+	same(t, &c, 0, 40)
+	same(t, &b, 0, 40)
+}
 
 @(test)
 test_line_wrap_word_boundary :: proc(t: ^testing.T) {
@@ -29,8 +59,9 @@ test_line_wrap_long_word_hard_break :: proc(t: ^testing.T) {
 @(test)
 test_wrap_subrow :: proc(t: ^testing.T) {
 	text := transmute([]u8)string("the quick brown fox")
-	testing.expect_value(t, wrap_subrow(text, 10, 3), 0)
-	testing.expect_value(t, wrap_subrow(text, 10, 12), 1)
+	segs := line_wrap(text, 10)
+	testing.expect_value(t, wrap_subrow(segs[:], 3), 0)
+	testing.expect_value(t, wrap_subrow(segs[:], 12), 1)
 }
 
 @(test)

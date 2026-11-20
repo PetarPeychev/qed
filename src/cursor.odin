@@ -160,7 +160,7 @@ col_at_visual :: proc(text: []u8, target: int) -> int {
 cursor_goal_sync :: proc(b: ^Buffer) {
 	text := b.lines[b.cursor.row].text[:]
 	if b.wrap && b.wrap_width > 0 {
-		seg := wrap_seg_start(text, b.wrap_width, b.cursor.col)
+		seg := wrap_seg_start(buffer_line_wrap(b, b.cursor.row, b.wrap_width), b.cursor.col)
 		b.goal_col = visual_col(text, b.cursor.col) - visual_col(text, seg)
 	} else {
 		b.goal_col = visual_col(text, b.cursor.col)
@@ -315,14 +315,12 @@ cursor_move_down_n :: proc(b: ^Buffer, n: int) {
 cursor_visual_up :: proc(b: ^Buffer) {
 	w := b.wrap_width
 	c := &b.cursor
-	text := b.lines[c.row].text[:]
-	sub := wrap_subrow(text, w, c.col)
+	sub := wrap_subrow(buffer_line_wrap(b, c.row, w), c.col)
 	if sub > 0 {
-		c.col = cursor_place_in_subrow(text, w, sub - 1, b.goal_col)
+		c.col = cursor_place_in_subrow(b, c.row, w, sub - 1, b.goal_col)
 	} else if c.row > 0 {
 		c.row -= 1
-		up := b.lines[c.row].text[:]
-		c.col = cursor_place_in_subrow(up, w, wrap_rows(up, w) - 1, b.goal_col)
+		c.col = cursor_place_in_subrow(b, c.row, w, line_rows(b, w, c.row) - 1, b.goal_col)
 	} else if c.col != 0 {
 		c.col = 0
 		cursor_goal_sync(b)
@@ -333,12 +331,13 @@ cursor_visual_down :: proc(b: ^Buffer) {
 	w := b.wrap_width
 	c := &b.cursor
 	text := b.lines[c.row].text[:]
-	sub := wrap_subrow(text, w, c.col)
-	if sub < wrap_rows(text, w) - 1 {
-		c.col = cursor_place_in_subrow(text, w, sub + 1, b.goal_col)
+	segs := buffer_line_wrap(b, c.row, w)
+	sub := wrap_subrow(segs, c.col)
+	if sub < len(segs) - 1 {
+		c.col = cursor_place_in_subrow(b, c.row, w, sub + 1, b.goal_col)
 	} else if c.row < len(b.lines) - 1 {
 		c.row += 1
-		c.col = cursor_place_in_subrow(b.lines[c.row].text[:], w, 0, b.goal_col)
+		c.col = cursor_place_in_subrow(b, c.row, w, 0, b.goal_col)
 	} else if c.col != len(text) {
 		c.col = len(text)
 		cursor_goal_sync(b)
@@ -353,7 +352,7 @@ cursor_move_home_smart :: proc(b: ^Buffer) {
 		first += 1
 	}
 	if b.wrap && b.wrap_width > 0 {
-		seg := wrap_seg_start(text, b.wrap_width, c.col)
+		seg := wrap_seg_start(buffer_line_wrap(b, c.row, b.wrap_width), c.col)
 		primary := first if seg == 0 else seg
 		if c.col != primary {
 			c.col = primary
@@ -371,7 +370,8 @@ cursor_move_home_smart :: proc(b: ^Buffer) {
 cursor_move_end :: proc(b: ^Buffer) {
 	text := b.lines[b.cursor.row].text[:]
 	if b.wrap && b.wrap_width > 0 {
-		_, end := wrap_segment(text, b.wrap_width, wrap_subrow(text, b.wrap_width, b.cursor.col))
+		segs := buffer_line_wrap(b, b.cursor.row, b.wrap_width)
+		_, end := wrap_segment(segs, len(text), wrap_subrow(segs, b.cursor.col))
 		row_end := max(grapheme_prev(text, end), 0) if end < len(text) else len(text)
 		b.cursor.col = len(text) if b.cursor.col == row_end else row_end
 	} else {

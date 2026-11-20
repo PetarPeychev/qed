@@ -1,6 +1,6 @@
 #!/bin/sh
 # perf-gate.sh [CORPUS_DIR] [default]: generate the stress corpus if needed, then run the
-# headless benchmark gate (bench_gate) on an -o:speed build ("default": build.sh's optimization).
+# headless benchmark gate (bench_gate) on an -o:speed build, as build.sh ("default": odin test's -o:minimal).
 # QED_GATE_ONLY=files,long,longoff,longon,panes,plugins and QED_GATE_FILES=a.c,b.md narrow it.
 # Runs under a 6 GB address-space cap and a 30 min timeout.
 set -eu

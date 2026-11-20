@@ -91,4 +91,4 @@ if [ ! -f "$LUA/liblua.a" ] || [ -n "$(find "$LUA/src" -newer "$LUA/liblua.a" -n
 fi
 
 # Build the editor, exposing vendor/ as a collection
-odin build src -collection:lib=lib -define:QED_VERSION="${QED_VERSION:-dev}" -out:qed
+odin build src -collection:lib=lib -o:speed -define:QED_VERSION="${QED_VERSION:-dev}" -out:qed

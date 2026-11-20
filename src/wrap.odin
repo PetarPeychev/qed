@@ -1,5 +1,8 @@
 package main
 
+import "core:os"
+import "core:slice"
+
 // Byte offsets where each visual row of a soft-wrapped line begins. The first
 // element is always 0; a single element means the line occupies one screen row.
 // Breaks prefer the last whitespace boundary that fits; a word wider than the
@@ -17,11 +20,14 @@ line_wrap :: proc(text: []u8, width: int, allocator := context.temp_allocator) -
 	seg_start_v := 0 // absolute visual column at the current segment start
 	last_break := -1 // byte offset just after the most recent space in this segment
 	last_break_v := 0
+	seg_start := 0
 
 	for cs := 0; cs < len(text); {
-		ce := cluster_end(text, cs)
-		cw := seg_width(text, cs, ce, v)
-		seg_start := segs[len(segs) - 1]
+		ce, cw := cs + 1, 1
+		if c := text[cs]; c < 0x20 || c >= 0x7f || (ce < len(text) && text[ce] >= 0x80) {
+			ce = cluster_end(text, cs)
+			cw = seg_width(text, cs, ce, v)
+		}
 		if v + cw - seg_start_v > width && cs > seg_start {
 			if last_break > seg_start {
 				append(&segs, last_break)
@@ -31,6 +37,7 @@ line_wrap :: proc(text: []u8, width: int, allocator := context.temp_allocator) -
 				seg_start_v = v
 			}
 			last_break = -1
+			seg_start = segs[len(segs) - 1]
 		}
 		v += cw
 		if text[cs] == ' ' || text[cs] == '\t' {
@@ -42,12 +49,43 @@ line_wrap :: proc(text: []u8, width: int, allocator := context.temp_allocator) -
 	return segs
 }
 
-wrap_rows :: proc(text: []u8, width: int) -> int {
-	return len(line_wrap(text, width))
+WRAP_MEMO_MIN_BYTES :: 4096
+
+WrapMemo :: struct {
+	id, rev:          u64,
+	row, width, tab: int,
+	segs:             [dynamic]int,
 }
 
-wrap_subrow :: proc(text: []u8, width, col: int) -> int {
+@(thread_local)
+g_wrap_memo: [4]WrapMemo
+@(thread_local)
+g_wrap_memo_next: int
+
+// Keyed on buffer rev, which every line mutation bumps; id 0 (bare test buffers) is not unique, so never memoized.
+buffer_line_wrap :: proc(b: ^Buffer, row, width: int) -> []int {
+	text := b.lines[row].text[:]
+	if len(text) < WRAP_MEMO_MIN_BYTES || b.id == 0 {
+		return line_wrap(text, width)[:]
+	}
+	for &m in g_wrap_memo {
+		if len(m.segs) > 0 && m.id == b.id && m.rev == b.rev && m.row == row && m.width == width && m.tab == TAB_WIDTH {
+			return slice.clone(m.segs[:], context.temp_allocator)
+		}
+	}
 	segs := line_wrap(text, width)
+	m := &g_wrap_memo[g_wrap_memo_next]
+	g_wrap_memo_next = (g_wrap_memo_next + 1) % len(g_wrap_memo)
+	if m.segs.allocator.procedure == nil {
+		m.segs = make([dynamic]int, os.heap_allocator())
+	}
+	clear(&m.segs)
+	append(&m.segs, ..segs[:])
+	m.id, m.rev, m.row, m.width, m.tab = b.id, b.rev, row, width, TAB_WIDTH
+	return segs[:]
+}
+
+wrap_subrow :: proc(segs: []int, col: int) -> int {
 	sub := 0
 	for i in 1 ..< len(segs) {
 		if col >= segs[i] {
@@ -59,24 +97,14 @@ wrap_subrow :: proc(text: []u8, width, col: int) -> int {
 	return sub
 }
 
-wrap_seg_start :: proc(text: []u8, width, col: int) -> int {
-	segs := line_wrap(text, width)
-	start := 0
-	for i in 1 ..< len(segs) {
-		if col >= segs[i] {
-			start = segs[i]
-		} else {
-			break
-		}
-	}
-	return start
+wrap_seg_start :: proc(segs: []int, col: int) -> int {
+	return segs[wrap_subrow(segs, col)]
 }
 
-wrap_segment :: proc(text: []u8, width, sub: int) -> (start, end: int) {
-	segs := line_wrap(text, width)
+wrap_segment :: proc(segs: []int, text_len, sub: int) -> (start, end: int) {
 	s := clamp(sub, 0, len(segs) - 1)
 	start = segs[s]
-	end = segs[s + 1] if s + 1 < len(segs) else len(text)
+	end = segs[s + 1] if s + 1 < len(segs) else text_len
 	return
 }
 
@@ -84,7 +112,7 @@ wrap_segment :: proc(text: []u8, width, sub: int) -> (start, end: int) {
 // wrapping, else 1. Ghost rows are counted separately (ghost_above/below).
 line_rows :: proc(b: ^Buffer, width, row: int) -> int {
 	if b.wrap && width > 0 {
-		return wrap_rows(b.lines[row].text[:], width)
+		return len(buffer_line_wrap(b, row, width))
 	}
 	return 1
 }
@@ -176,8 +204,9 @@ vpos_cmp :: proc(r0, s0, r1, s1: int) -> int {
 // Byte col for a target visual-x within visual row `sub` of `text`. Keeps the
 // cursor off a soft-wrap boundary (which renders on the next row) so vertical
 // motion and End land on the intended visual row.
-cursor_place_in_subrow :: proc(text: []u8, width, sub, goal_x: int) -> int {
-	start, end := wrap_segment(text, width, sub)
+cursor_place_in_subrow :: proc(b: ^Buffer, row, width, sub, goal_x: int) -> int {
+	text := b.lines[row].text[:]
+	start, end := wrap_segment(buffer_line_wrap(b, row, width), len(text), sub)
 	base := visual_col(text, start)
 	col := clamp(col_at_visual(text, base + goal_x), start, end)
 	if end < len(text) && col == end {

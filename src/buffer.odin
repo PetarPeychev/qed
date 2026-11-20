@@ -15,6 +15,8 @@ Buffer :: struct {
 	goal_col:      int,
 	saved:         string,
 	modified:      bool,
+	clean_rows:    int,
+	clean_pos:     int,
 	indent:        IndentStyle,
 	indent_width:  int,
 	line_ending:   LineEnding,
@@ -182,25 +184,40 @@ buffer_bulk_note :: proc(buffer: ^Buffer, at: Cursor, start: int) {
 	}
 }
 
+// rows below clean_rows match saved up to clean_pos, where row clean_rows starts in saved
 buffer_recompute_modified :: proc(buffer: ^Buffer) {
 	saved := buffer.saved
-	pos := 0
-	for line, i in buffer.lines {
-		if i > 0 {
-			if pos >= len(saved) || saved[pos] != '\n' {
-				buffer.modified = true
-				return
-			}
-			pos += 1
-		}
-		t := line.text[:]
-		if pos + len(t) > len(saved) || saved[pos:pos + len(t)] != string(t) {
+	last := len(buffer.lines) - 1
+	pos := buffer.clean_pos
+	for i in buffer.clean_rows ..= last {
+		buffer.clean_rows, buffer.clean_pos = i, pos
+		t := buffer.lines[i].text[:]
+		end := pos + len(t)
+		if end > len(saved) || saved[pos:end] != string(t) {
 			buffer.modified = true
 			return
 		}
-		pos += len(t)
+		if i == last {
+			buffer.modified = end != len(saved)
+			return
+		}
+		if end >= len(saved) || saved[end] != '\n' {
+			buffer.modified = true
+			return
+		}
+		pos = end + 1
 	}
-	buffer.modified = pos != len(saved)
+}
+
+buffer_clean_lower :: proc(buffer: ^Buffer, row: int) {
+	if row <= 0 {
+		buffer.clean_rows, buffer.clean_pos = 0, 0
+		return
+	}
+	for buffer.clean_rows > row {
+		buffer.clean_rows -= 1
+		buffer.clean_pos = strings.last_index_byte(buffer.saved[:buffer.clean_pos - 1], '\n') + 1
+	}
 }
 
 buffer_disk_stamp :: proc(path: string) -> DiskStamp {
@@ -235,6 +252,7 @@ buffer_set_content :: proc(buffer: ^Buffer, data: []u8) {
 		delete(line.text)
 	}
 	clear(&buffer.lines)
+	buffer.clean_rows, buffer.clean_pos = 0, 0
 
 	reserve(&buffer.lines, strings.count(string(data), "\n") + 1)
 	rest := string(data)
@@ -254,6 +272,7 @@ buffer_set_content :: proc(buffer: ^Buffer, data: []u8) {
 		append(&buffer.lines, Line{})
 	}
 	buffer.plugin_dirty, buffer.plugin_lo, buffer.plugin_hi = true, 0, len(buffer.lines) - 1
+	buffer.rev += 1
 	buffer_set_meta(buffer, data)
 }
 
@@ -264,6 +283,7 @@ buffer_set_meta :: proc(buffer: ^Buffer, data: []u8) {
 	delete(buffer.saved)
 	buffer.saved = buffer_snapshot(buffer)
 	buffer.modified = false
+	buffer.clean_rows, buffer.clean_pos = 0, 0
 }
 
 BufferOpenError :: enum {
@@ -464,6 +484,7 @@ buffer_save :: proc(buffer: ^Buffer) -> BufferSaveError {
 	delete(buffer.saved)
 	buffer.saved = buffer_snapshot(buffer)
 	buffer.modified = false
+	buffer.clean_rows, buffer.clean_pos = 0, 0
 	buffer.disk = buffer_disk_stamp(buffer.path)
 	buffer.disk_conflict = false
 	diffbase_invalidate(buffer)
@@ -488,6 +509,7 @@ buffer_text_range :: proc(buffer: ^Buffer, from, to: Cursor, allocator := contex
 }
 
 buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
+	buffer_clean_lower(buffer, at.row)
 	line := &buffer.lines[at.row]
 	tail := slice.clone(line.text[at.col:])
 	defer delete(tail)
@@ -578,6 +600,7 @@ buffer_dirty_delete :: proc(b: ^Buffer, from, to: Cursor) {
 }
 
 buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
+	buffer_clean_lower(buffer, from.row)
 	start_byte := u32(buffer_byte_offset(buffer, from))
 	buffer_bulk_note(buffer, from, int(start_byte))
 	highlight_record_edit(&buffer.hl, ts.InputEdit {
