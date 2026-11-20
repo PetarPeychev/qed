@@ -76,6 +76,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Pane model M0: Odin `Pane` + stack + kinds; quit/close/conflict/merge dialogs and `qed.confirm`/`qed.prompt` on it ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M1: `qed.ui.open` (center/full/split, filter/query/input fields, set/append/update), queued events, exclusive panes persisted by `id`, `qed.pick/prompt/confirm/pane` as prelude sugar, `search` streams into a query pane ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M2: palette core-built on a commands list source, core list handles (`qed.fs.dirs`), `path` field, `qed.set_root`, the working-root picker becomes the `workspace` plugin ([notes/panes.md](notes/panes.md) §7).
+- [ ] Pane model M3: accessor-backed list sources, pane-scoped commands (bare keys, rebindable, scoped Ctrl+P, `ctx.view`), footer chips, columns, `sel = bg`, follow; Message Log, Plugins pane and LSP rename prompt core-built on the model; line find becomes the `lines` plugin on `qed.buf.line_list`; per-pane backdrop keys ([notes/panes.md](notes/panes.md) §7).
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred
@@ -137,7 +138,7 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Refactors
 
-- [ ] Unify the file-tree and Message Log (`Alt+l`) panes under one generic selectable-list model — fuzzy filter/search, scoped `Ctrl+P` command palette, shared multi-select + filter toggles (the file-tree hub model applied to the log pane).
+- [ ] Unify the file-tree and Message Log (`Alt+l`) panes under one generic selectable-list model: the log is on the pane model with a scoped `Ctrl+P`, multi-select and filter chips (M3); left are the tree (M4/M5) and a fuzzy filter/search field in the log.
 - [ ] `buffer_intel_reset` choke point for the language-change / repath / reload teardown dance.
 
 ### E2E test coverage

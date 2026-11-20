@@ -347,7 +347,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M0 (done) | Odin `Pane`, stack, kinds, generic render/key/mouse/paste. Port the 4 core dialogs and `qed.confirm/prompt` onto it as children. | "Collapse the four dialogs" TODO; layout, stack, children |
 | M1 (done) | `qed.ui.open`, queued events, prelude `qed.pick/prompt/confirm/pane`, exclusive persistence by `id`, one split layout (D3). Port phase 12 search to a `query` field + `append` (D9). | pane swap TODO; events through flush, split + preview |
 | M2 (done) | Palette core-built on `qed.command_list`. Cwd picker becomes a Lua plugin on `qed.fs.dirs` + a `path` field (needs `qed.set_root` and an unsaved-outside-root query). | "Collapse the centered pickers" TODO; handles, `path` field, child confirm |
-| M3 | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
+| M3 (done) | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
 | M4 | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
 | M5 | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
 | M6 | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
@@ -415,6 +415,25 @@ List sources, the `path` field and the palette are in DESIGN.md (Panes). Deviati
 | Palette rows | Keyed by command identity (core label, plugin command id), resolved at activate and draw; a removed command's row goes dead. The palette is `modal`. | Removal need not close it; a timer cannot replace it (the M1 focus rule). |
 | Root change | `qed.set_root(path, {discard?})` returns `nil, "unsaved", {total, unsaved, bufs}` and closes nothing while an unsaved outside buffer is unapproved; the `workspace` plugin asks (child `qed.confirm`) and calls again with `info.bufs`. It closes the picker before switching and reopens it by `id` for the confirm, so cancel leaves it as typed. The tree's `ConfirmRoot` mode is gone. | Core never discards unsaved work unasked; approval by id closes the confirm-yield race. |
 | Names | *Workspace: Open Directory*, the tree's *Workspace: Open Selected Directory*, bind `plugins.workspace.keybinds["Open Directory"]` (the old top-level `Change Working Directory` key warns where it moved). Plugin messages read `Workspace: Not a directory: ...`. | Phase 13 namespacing (Petar's naming). |
+
+### M3 as built
+
+Sources, scoped commands and the ported panes are in DESIGN.md (Panes). Deviations from §3/§4:
+
+| Area | Built | Why |
+|---|---|---|
+| Sources | `list_count` / `list_text` (what a filter matches, borrowed) / `list_item(i)` (built on demand, temp or borrowed strings) per `ListSource.kind`; `PaneList.items` holds only Lua items. An empty filter leaves the list unfiltered (`filtered = false`, no index array). `PaneList.built` counts built items (tests). Small sources keep a cache (commands: names + ids; dirs: names + matching rows; log: ring indices, recomputed on `log_seq` or a filter change). | A 1M-line buffer opens with only the visible rows built; a filter is one pass over borrowed text. |
+| Scope | `Command.scope: string` (`""` editor, `filetree`, `log`, `plugins`, or a plugin pane's) replaces `filetree: bool`; core pane commands live in one `pane_commands` table. `ListSource.scope` replaces `ListSource.filetree`. | One rule for the tree, core panes and Lua panes. |
+| Bare keys | `Command.ch`: a bare printable bind (`"d"`), refused in the editor and tree scopes (`bind_bare_ok`), and fires only in a pane without fields. | D4: single-key defaults stay where no field takes printables. |
+| Dispatch | `pane_key`: toggle chord, then with `scope`: Command Palette chord opens the scoped palette as a child, then core and plugin scoped chords. A core pane's `chord` also closes it from any of its children. | The scoped palette and the source view are children. |
+| Footer | `chips` (`{label, cmd, on}`, right-aligned, live key, lit when on, click runs the command); `on.footer` (core) returns an error line that replaces the footer. Core keeps chip state in sync itself. | Lua chips wait for a user. |
+| Columns | `list_columns` per source (Lines: number + text; Plugins: name, source, state, ms); items carry `cells`. No Lua spec field. | No Lua user. |
+| Rows | Item `color` (theme key), `PaneList.sel_bg` (selection tints bg only), `follow`/`stick` (stick to the end, unstuck by moving up or a wheel up, re-stuck at the end). | Log and Plugins pane. |
+| Body swap | The Plugins pane's source view is a child pane over the same box with a `body_preview` (a `Preview` as the body); Esc and a click outside return. | Reuses the stack instead of a per-pane mode. |
+| Activate | Core panes without `on.activate` ignore Enter; `keep` leaves a core pane open on activate (Plugins pane). | |
+| Line find | `qed.buf.line_list` + bundled `lines` plugin (`Lines: Find Line`, `Ctrl+g`). Core owns the `:N[:M]` spec, buffer-order matches, the initial selection nearest the cursor (a saved key is not restored for a line list) and the buffer preview (`PaneItem.buf`). Enter with no match does nothing (it closed before). | Matches the other panes; Lua sees only the activated line. |
+| Rename | A center `input` pane (`rename`, `modal`). | |
+| Backdrop | `message_log_backdrop`, `plugins_pane_backdrop` (default `"none"`). | Per pane, Petar's call. |
 
 ## 8. Decisions
 

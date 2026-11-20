@@ -85,6 +85,8 @@ still goes ahead, unformatted). A save waits for formatting up to
 |-----|---------|---------|
 | `palette_max_rows` | `8` | Max visible palette rows. |
 | `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Changed tab's diff preview. |
+| `message_log_backdrop` | `"none"` | What shows around *Debug: Message Log*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
+| `plugins_pane_backdrop` | `"none"` | The same for *Debug: Plugins*. |
 
 ## Search & navigation
 
@@ -120,6 +122,20 @@ case-sensitive combinations of `Ctrl+`, `Alt+`, and a key (`Ctrl+f`, `Alt+F`,
 [`config/config.json`](../config/config.json) has the full list of command names
 and their defaults; every command is also listed with its current binding in the
 command palette (`Ctrl+p`).
+
+Some panes have their own scoped commands, listed in that pane's `Ctrl+p` and run
+by their key while it has focus. Panes without a text field (the Message Log and
+Plugins pane) also take a bare key (`"d"`); elsewhere a bare key is invalid.
+
+| Key | Default | Pane |
+|-----|---------|------|
+| `Message Log: Toggle Debug` / `Info` / `Warn` / `Error` | `"d"` / `"i"` / `"w"` / `"e"` | Message Log: show or hide that level (footer chip, clickable) |
+| `Message Log: Toggle History` | `"h"` | Message Log: entries from previous sessions |
+| `Plugins: Enable/Disable` | `"e"` | Plugins pane: writes `plugins.<id>.enabled` |
+| `Plugins: Reload` | `"r"` | Plugins pane |
+| `Plugins: Show Log` | `"l"` | Plugins pane: the Message Log filtered to the plugin |
+
+The log's *Copy* follows the global `Copy` bind.
 
 ## Languages
 
@@ -181,8 +197,8 @@ Configures both AI features (selection edit + inline FIM completion). See
 Lua plugins: bundled ones ship in the binary, your own go in
 `~/.config/qed/plugins/` as `name.lua` or `name/init.lua`. See
 [notes/plugins.md](notes/plugins.md). *Debug: Plugins* lists them with their state
-and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log,
-`Enter` opens its source (bundled ones read-only).
+and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
+(rebindable, see [Keybinds](#keybinds)), `Enter` opens its source (bundled ones read-only).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -221,6 +237,17 @@ with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.workspace.enabled` | `true` | Off removes both commands. |
+
+### Line find
+
+*Lines: Find Line* (`Ctrl+g`) comes from the bundled `lines` plugin: a filter over the
+buffer's lines in file order with a preview, `:N` or `:N:M` jumps to a line (and column).
+Rebind with `plugins.lines.keybinds["Find Line"]`; the old top-level `keybinds."Find Line"`
+warns where it moved.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.lines.enabled` | `true` | Off removes *Find Line*. |
 
 ### Search
 

@@ -137,12 +137,12 @@ draws `Source: text` and colours by level — `.Info` → `COLOR_FG`, `.Warn` �
 is never logged. The disk log lives at `$XDG_STATE_HOME/qed/qed.log` (append, flushed
 per write, rotated to `qed.log.old` past 4 MB, session-start marker with version);
 disk logging is skipped when `headless`. *Debug: Message Log* (`Alt+l`) opens a
-floating pane over the ring — timestamped rows coloured by level (selection tints
-bg only, keeping the level colour), sticks to the newest, arrow/wheel scroll +
-select, `Shift+↑↓` extends a contiguous selection, `Ctrl+C` copies the selection
-(newline-joined), and a file-tree-style footer whose `d`/`i`/`w`/`e` keys toggle
-per-level visibility and `h` past-session history (Debug and history off by
-default, persisted for the session; seeded entries carry `LogEntry.seeded`).
+full core pane (`log`, scope `log`, see Panes) over the ring through the `.Log` source:
+timestamped rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
+arrow/wheel scroll + select, `Shift+↑↓` extends a contiguous selection, *Copy* copies it
+(newline-joined), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
+(`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history off by
+default, persisted for the session in `Editor.logview`; seeded entries carry `LogEntry.seeded`).
 Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
 UTC fallback). At startup the ring seeds from the disk-log tail (parsed back,
 local→UTC via `datetime_to_utc`, never re-written), so the pane can show
@@ -267,8 +267,8 @@ Copy/cut/paste shell out via `clipboard.odin`: `wl-copy`/`wl-paste` or `xclip`
 ## Input
 
 Explicit `switch` on `(key, mod, ch)` → action procs. Rebindable commands live in
-two tables (`palette.odin`): the global `commands` and the file-tree
-`filetree_commands`. A file-tree command that mirrors a global operation borrows its
+two tables (`palette.odin`): the global `commands` and `pane_commands`, each row with the
+`scope` of the pane it runs in (`filetree`, `log`, `plugins`). A pane command that mirrors a global operation borrows its
 bind via `Command.bind_from` (the global command's name) — no config key of its own,
 key/alt/shortcut resolved live from the referenced global command
 (`command_effective_bind`), so one config entry drives both dispatch paths (e.g. tree
@@ -279,8 +279,9 @@ Expand/Collapse All) keep their own `File Tree: …`-namespaced config key
 `keybinds` entry in the embedded config — including *Command Palette* (default
 `Ctrl+P`), whose single bind opens whichever palette is contextual (editor vs file
 tree). Only primitive editing/movement stays fixed. Dispatch resolves through the
-configured bind (`command_for_key`/`command_for_alt`, or `filetree_command_for_event`
-over the file-tree table), and every keybind hint renders the live configured
+configured bind (`command_for_key`/`command_for_alt`, or `pane_command_for_event(scope)`
+over the pane table; `command_bind_matches` is the one matcher, where a bare key (`Command.ch`, refused in
+the editor and tree scopes) fires only in a pane without fields), and every keybind hint renders the live configured
 shortcut string verbatim via `command_shortcut(name)` — so a rebind updates the
 welcome screen and every pane footer. Config keybind strings are kept consistently
 cased (lowercase Ctrl letters) so hints read uniformly. Every pane closes/defocuses on its own command's chord via
@@ -296,7 +297,7 @@ grapheme + word (`Ctrl+←/→`) motion, smart home/end (`Alt+←/→`), shift-s
 returns whether the text changed (fuzzy callers re-filter); `textfield_render` draws it
 scrolled to the caret with the selection inverted (`COLOR_PANE_BG`/`FG`). Word/home
 motion is the same `word_left_col`/`word_right_col`/`home_smart_col` the buffer cursor
-uses. `FuzzyList` (`overlay.odin`, line find only) embeds one; its `> ` prompt draws via `overlay_prompt_render`.
+uses. A `> ` prompt draws via `overlay_prompt_render`.
 Every pane is mouse-driven through `pane_mouse` or an optional `Overlay.mouse` handler (`editor_dispatch`
 routes `.Mouse` to it): wheel scrolls, single-click selects a row, double-click activates,
 a click in the query/prompt field places the caret and a button-held drag selects, and a
@@ -310,10 +311,9 @@ and the box is centered (extra width becomes margin). Below that, the deficit is
 each side down to its min, the other side absorbing the rest. W under both mins hides the preview
 (`lay.preview` false: list takes the full inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
 `editor_previews_sync`). The `PICKER_MARGIN_X` side margin is fixed at every width.
-Most panes reset their query on open; **line-find persists it**:
-reopened with the text fully selected (`textfield_select_all`) so a keystroke replaces it,
-else edit/arrow to refine. Plugin panes opened with an `id` (the `search` plugin) restore their field
-text and selected item the same way; the file tree persists its expanded set + selection.
+Most panes reset their query on open. Plugin panes opened with an `id` (`search`, `lines`) restore
+their field text fully selected (`textfield_select_all`) so a keystroke replaces it, and the selected
+item (not for a line list); the file tree persists its expanded set + selection.
 
 Two terminal workarounds, both
 documented in `lib/tb2/PATCHES.md`:
@@ -329,11 +329,12 @@ documented in `lib/tb2/PATCHES.md`:
 ## Panes
 
 `Pane` (`pane.odin`) is the one UI model of [notes/panes.md](notes/panes.md), built so far to
-M2: placement `center`/`full`/`split` (`pane_geom` computes every rect), size class, title, fields
-(`input`/`filter`/`query`/`path` modes), a styled text body, a list (items with label/detail/path/row/key,
-matches under a filter field, multi range, `max` with `N+`, empty hint, an optional core source), an
-auto file preview, footer hints, a closing chord (`toggle` plugin command id or `chord` core command
-name), and Odin `on.activate`/`on.close` handlers. `Editor.panes` is the stack:
+M3: placement `center`/`full`/`split` (`pane_geom` computes every rect), size class, title, fields
+(`input`/`filter`/`query`/`path` modes), a styled text body or a `Preview` body (`body_preview`), a list
+(items with label/detail/path/row/col/buf/key/color/cells, matches under a filter field, multi range,
+`max` with `N+`, empty hint, `sel_bg`, `follow`, an optional core source with columns), an auto file or
+buffer preview, footer hints and chips, a `scope`, a closing chord (`toggle` plugin command id or `chord`
+core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Editor.panes` is the stack:
 - The topmost non-passive pane takes keys, mouse and paste (`pane_stack_dispatch`). Passive panes
   never do and draw under everything focused.
 - Kinds: Exclusive (default; opening one closes the open non-safety exclusive pane, or returns
@@ -348,24 +349,43 @@ name), and Odin `on.activate`/`on.close` handlers. `Editor.panes` is the stack:
 - Plugin unload only marks its panes `dead`; `pane_stack_sync` closes them later, so no Lua runs
   inside an unload. `pane_stack_sync` (end of `editor_step` and `plugin_pump`) also syncs auto previews.
 - A `query` field arms `query_due`/`query_at` (`PANE_QUERY_DEBOUNCE_MS`); Enter while a query is due
-  or running sets `accept` instead. Plugin panes (`ctx.lua`) stay open on activate; a core pane ignores
-  Enter on an empty list.
-- **List sources** (`listsrc.odin`, D2): `PaneList.source` (`ListSource{kind, filetree, path}`) makes
-  core fill `list.items` (`pane_list_load`: at open and on every `path` field change; a filter field
-  still fuzzy-ranks the result). `.Commands` is the palette's table (core + plugin, `when`/welcome/big
-  gating at open; a row names a core command by label and a plugin command by `PaneItem.id`, resolved at
-  activate and per drawn row (`list_command`, `list_item_detail`), so a removed command's row goes dead
-  instead of closing the palette). `.Dirs` lists `path`'s subdirs, or under a `path` field the dir its
-  text names, prefix-matched smart-case on the last segment; `dotfiles` is the caller's, and the base
-  dir's entries are cached on the source (`cache_dir`) until the base segment changes. A reload resets
-  the selection and `notified`, so `change` fires. A new source is an enum value plus a fill case.
+  or running sets `accept` instead. Plugin panes (`ctx.lua`) and `keep` core panes stay open on activate;
+  a core pane ignores Enter on an empty list or without `on.activate`.
+- **List sources** (`listsrc.odin`, D2): `PaneList.source` (`ListSource{kind, scope, path, buf}`) is read
+  through accessors, never copied into `list.items`: `list_count`, `list_text(i)` (what a filter matches,
+  borrowed) and `list_item(i)` (built on demand with temp or borrowed strings; only drawn, activated and
+  changed items are built, counted in `PaneList.built`). An empty filter leaves the list unfiltered
+  (`filtered` false, no index array), so a 1M-line source opens without an O(n) pass. `pane_list_load`
+  (at open and on every `path` field change) refills the small caches. `.Commands` is the palette's
+  table for one `scope` (`when`/welcome/big gating at open into names + plugin ids; a row resolves its
+  command at activate and draw (`list_command`), so a removed command's row goes dead). `.Dirs` lists
+  `path`'s subdirs, or under a `path` field the dir its text names, prefix-matched smart-case on the last
+  segment (base dir's entries cached until its segment changes). `.Lines` is live over a buffer: matches
+  stay in buffer order, `:N[:M]` (`lines_goto`) selects one row, the view opens on the match nearest the
+  cursor, items carry `buf` so the auto preview shows the buffer. `.Log` holds ring indices passing the
+  filters, recomputed when `Editor.log_seq` or a filter changes. `.Plugins` reads `Plugins.list`.
+  `list_columns` gives a source columns (Lines, Plugins). A reload resets the selection and `notified`,
+  so `change` fires. A new source is an enum value plus accessor cases.
+- **Scoped commands** (D4): a pane with `scope` runs core (`pane_commands`) and plugin commands of that
+  scope on their chord, before field input, and the Command Palette chord opens the palette over just
+  them as a child. A core pane's `chord` closes it from any of its children. Footer `chips` (core) are
+  right-aligned `key label`, lit when `on`; a click runs the command (`pane_run_command`).
+- `follow` lists stick to the end (`stick`): moving off the last row or a wheel up unsticks, reaching the
+  end re-sticks; `pane_list_fit` (each render and before input) clamps selection, anchor and scroll for
+  live sources that shrink.
 - A `path` field drills on Tab, `/` at the end (with matches) and double-click, drops a segment on
   Backspace after `/` (`path_back`), and reports its text resolved (`~`, root-relative, cleaned:
   `pane_field_value`).
 - The **command palette** (`palette_open`, D1: core-built so qed works with Lua broken) is a center
   `palette` pane: filter field over the `.Commands` source, `chord = "Command Palette"`, `modal` (a
   background plugin's exclusive open is `"busy"`, not a replacement), activate runs the command after the
-  pane is gone. Over the file tree it is a Child on the tree overlay (`over`) with the tree's table.
+  pane is gone. Over the file tree it is a Child on the tree overlay (`over`) with the `filetree` scope;
+  over a scoped pane it is that pane's child with its scope.
+- The **Message Log** (`log.odin`), the **Plugins pane** (`plugin.odin`, `keep`, `on.footer` shows the
+  selected plugin's last error, selection saved by name; Enter on a bundled plugin opens a `plugin_source`
+  child with a `body_preview`; `l` opens the log as its child) and the **LSP rename** prompt (`rename.odin`,
+  a center `input` pane, `modal`) are core panes (D1). The log and Plugins pane take
+  `message_log_backdrop` / `plugins_pane_backdrop`.
 
 **Plugin views** (`plugin_ui.odin`): `qed.ui.open` builds a Pane plus a `UiView` in `Plugins.views`
 (registry refs: the view table, the item values, the `on` handlers; change/query task ids), keyed by
@@ -407,8 +427,9 @@ events), so the plugin owns open-file vs `qed.open_url` (`url_opener` in `shell.
 backgrounded shell; headless only logs). `backdrop` (`dim`/`blank`) is applied in `pane_render`
 before the box, to every cell drawn so far except the status rows, so panes below fade too.
 
-Ported: the quit/close/conflict/merge dialogs, the command palette, the working-root picker (`workspace` plugin) and
-every plugin pane.
+Ported: the quit/close/conflict/merge dialogs, the command palette, the Message Log, the Plugins pane, the LSP
+rename prompt, the working-root picker (`workspace` plugin), line find (`lines` plugin) and every plugin pane.
+Still legacy overlays: terminal, AI edit prompt, find bar, file tree.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
 `Overlay` vtable entries (`editor_overlays`). The stack sits above them: an overlay gets input only
 when no pane has focus, and render draws the active overlay, then the stack. A child opened over
@@ -623,7 +644,7 @@ re-opens LSP).
   Formatting (`qed.lsp.format`) carries the buffer `rev` so a stale result (doc
   changed mid-request) is dropped; the response, a server error or a server stop
   resumes the waiting plugin task through `plugin_lsp_done`. *Rename* (`rename.odin`, `Alt+r`)
-  prompts in a small caret-editable box, then applies the server's WorkspaceEdit
+  prompts in a center input pane, then applies the server's WorkspaceEdit
   (`changes`/`documentChanges`) across every file — loading unopened ones as modified
   buffers (`editor_load_buffer`) — as one cross-buffer undo transaction. `initialize`
   advertises `workspaceFolders` + `workspace.configuration` (both needed for
@@ -782,10 +803,10 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 defaults seeded before main, load + write-back) · `module` (ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict dialogs, `dialog_*` adapters) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` · `fuzzy` ·
-`listsrc` (pane list sources, `path` field) · `linefind` · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
+`listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `lines/`: *Find Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -812,7 +833,7 @@ table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
 `poll_disk`, `pump`, `hook_timeout`, `module`, `lsp`, `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
-`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/workspace_test.odin`; scope + assertion surfaces:
+`e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/scope/workspace_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
 
 ## Shipped
@@ -846,12 +867,12 @@ narrow-width fitting), narrow-width panes (preview hides below the list/preview 
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
 level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — per-level
 filters, multi-select copy, cross-session history seeded from the disk log behind
-an `h` footer toggle (off by default), works on welcome), welcome-screen status bar (root + branch + version + message line),
+an `h` chip (off by default); toggles are rebindable scoped commands with clickable chips, works on welcome), welcome-screen status bar (root + branch + version + message line),
 rebind-aware pane self-close chords (`command_matches`), Debug-level internals
 instrumentation (startup context, subprocess/AI/FIM/save/config/clipboard/terminal trails,
 LSP request/response/diagnostics, completion counts, git branch + scan, disk reload/conflict —
 full AI prompt/response bodies logged at Debug, no env-var dumps), welcome screen, quit guard across
-modified buffers, pane model + stack (`qed.ui.open` plugin panes: center/full/split, filter/query/input/path fields, streaming lists, core list handles (`qed.fs.dirs`), queued events, exclusive panes persisted by `id`; pick/prompt/confirm stack over open panes, safety dialogs on top), command palette (a core pane over the commands source; context-filtered via
+modified buffers, pane model + stack (`qed.ui.open` plugin panes: center/full/split, filter/query/input/path fields, streaming lists, accessor-backed core list handles (`qed.fs.dirs`, `qed.buf.line_list`), pane-scoped commands with a scoped Ctrl+P, footer chips, queued events, exclusive panes persisted by `id`; pick/prompt/confirm stack over open panes, safety dialogs on top), command palette (a core pane over the commands source; context-filtered via
 `command_available`: welcome lists only the working whitelist, big-file buffers
 hide the LSP/inspect commands),
 multiple buffers, close buffer (buffer switching folded into the file-tree **Open** tab —
@@ -860,7 +881,7 @@ batch-closes the selection, silent for clean buffers and behind a `Close N buffe
 confirm when any are unsaved; standalone switcher removed), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
-single-line/per-line), fuzzy line jump (`Ctrl+G`,
+single-line/per-line), fuzzy line jump (`lines` plugin, *Lines: Find Line* `Ctrl+G`, filter over the list column,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
@@ -882,7 +903,7 @@ tab doubles as the buffer switcher — in-memory preview, `Enter` switches; `Ctr
 clean buffers, confirm dialog only when any are unsaved), `Alt+F` search-in-selection (scoped
 project search — a selected dir recurses, a scoped-tab dir expands to its in-scope files; runs
 over the still-active tree, so `Esc` returns to it and opening a result closes both) — plus a scoped `Ctrl+P` command palette
-(the palette pane over the `filetree_commands` table plus tree-scoped plugin commands, a child on the tree);
+(the palette pane over the `filetree` scope of `pane_commands` plus tree-scoped plugin commands, a child on the tree);
 keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch delete (one confirm,
 "Delete N items?") and batch open (`Enter`); paste targets the selected dir or a file's parent;
 cut+paste and rename both repath open buffers; the open buffer's row keeps an accent fg even

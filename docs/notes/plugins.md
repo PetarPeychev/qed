@@ -41,7 +41,8 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | highlight/predicate/inspect | KS | core | Threads, FFI, per-edit reparse. |
 | textfield/overlay/fuzzy/pane/preview/confirm widgets | KS | core | Exposed as `qed.ui.open`; `qed.pick`, `prompt`, `confirm`, `pane` are Lua sugar over it. |
 | palette + keybind dispatch | KS | core | Gains a dynamic plugin-command list. |
-| find/replace, linefind, jump | | core | Interactive per keystroke. Porting gains nothing. |
+| find/replace, jump | | core | Interactive per keystroke. Porting gains nothing. |
+| linefind | | **plugin** (M3, `plugins/lines`) | `ui.open` filter field over `qed.buf.line_list`, `qed.jump`. Core keeps filtering, the `:N[:M]` spec and the buffer preview. |
 | cwdpick | | **plugin** (M2, `plugins/workspace`) | `ui.open` `path` field over `qed.fs.dirs`, `confirm`, `set_root`. Core keeps the field (drill, segment drop, resolve) and the dir listing. |
 | quit/close/disk-conflict dialogs | | core | Safety of unsaved work. |
 | log | | core | `qed.log`, `qed.message`. |
@@ -108,7 +109,7 @@ The API is one global, `qed`.
 ### Commands and keybinds
 | Function | Notes |
 |---|---|
-| `qed.command{name, run, when?, key?, welcome?, scope?, keybind?} -> handle` | `name` is bare; the command is shown and run as `<display name>: <name>` (the visible name). `handle:remove()` unregisters. A visible name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and the one keybind binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and `plugins.<id>.keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette. `keybind` is the key in `plugins.<id>.keybinds` when it differs from `name`; commands sharing a key share its bind, and one without `key` takes the first `key` among them. `welcome = true` also offers it on the welcome screen. |
+| `qed.command{name, run, when?, key?, welcome?, scope?, keybind?} -> handle` | `name` is bare; the command is shown and run as `<display name>: <name>` (the visible name). `handle:remove()` unregisters. A visible name is unique per scope: the same name may be one editor and one file-tree command; `qed.run` picks the editor one, and the one keybind binds both. `run(ctx)` runs in a coroutine and `when(ctx)` gates the palette and the chord. `key` is the default, and `plugins.<id>.keybinds[name]` overrides it. `scope = "filetree"` puts the command in the tree palette; any other scope (a core pane's `"log"`/`"plugins"`, or a `qed.ui.open{scope}`) runs it on its chord while such a pane has focus and lists it in that pane's Ctrl+P. A bare `key` (`"x"`) is refused for the editor and tree scopes and fires only in a pane without fields. `keybind` is the key in `plugins.<id>.keybinds` when it differs from `name`; commands sharing a key share its bind, and one without `key` takes the first `key` among them. `welcome = true` also offers it on the welcome screen. |
 | `qed.run(name)` | Run a builtin or plugin command by visible name. A bare name falls back to the caller's own editor command; bare names equal to a core command are refused at registration, so core names stay unambiguous. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
 | `ctx` | `{buf, path, language, root, selection_text}`, plus for `scope = "filetree"`: `file` (entry under the cursor) and `files` (all selected paths, in tree order; on a scoped tab a selected dir stands for its in-scope files). |
@@ -157,7 +158,7 @@ There is deliberately no `key` event.
 | `qed.filetree.set_base(path, text \| nil)` | Answers `preview(path)`: the Changed tab previews `path` diffed against `text`, raw bytes (a NUL on either side shows a hexdump; `nil`: plain file). A stale path is ignored; every `set_status` drops the cached base, keeping the old rows up until the re-ask is answered. |
 
 - `qed.pick`/`prompt`/`confirm` stack as a child over an open pane or overlay; they return `nil, "busy"` only while a core safety dialog (quit, close, conflict) shows. Outside a user's command they stack only on the plugin's own pane, else `"busy"`. An exclusive open (`qed.ui.open` default, `qed.pane`) is also `"busy"` while a `modal` pane (the sugar's) is open, and otherwise closes the open exclusive pane, whose waiters get `nil`.
-- The chord of the command that opened a pane closes it like Esc (the core pane convention). A command of the view's own plugin run while it has focus gets it as `ctx.view`; reachable once panes get scoped commands (M3).
+- The chord of the command that opened a pane closes it like Esc (the core pane convention). A command of the view's own plugin run while it has focus (a `scope` command's chord or the scoped Ctrl+P) gets it as `ctx.view`.
 
 ### Terminals (`qed.term`)
 Core owns PTY and vterm. Each session has a name.
@@ -204,6 +205,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | Function | Notes |
 |---|---|
 | `qed.fs.read`, `.write` (atomic), `.exists`, `.stat`, `.list` | Synchronous. |
+| `qed.buf.line_list(b) -> qed.List` | A live core list handle over the buffer's lines; items reach Lua as `{label, buf, pos}` (`pos.col` the first non-blank). Under a filter field matches stay in buffer order and `:N` / `:N:M` selects that row; a view opens on the match nearest the cursor. |
 | `qed.fs.dirs{path?, dotfiles?} -> qed.List` | A core list handle over `path`'s subdirs (default the root), or under a `path` field over the dir its text names, prefix-matched. Items stay in core; activate/change hand Lua `{label, path}`. Freed when collected or when the creating plugin unloads (also for other plugins holding it). |
 | `qed.json.decode`, `.encode` | `core:encoding/json` |
 | `qed.path.join/dir/base/rel/abs`, `qed.shell_quote` | |
@@ -251,17 +253,18 @@ Hot reload mechanics:
 - Commands registered after the first full bind (`Plugins.bound`) report their own key problems, except inside that window (`binds_deferred`).
 
 ### Plugins pane (core)
-A floating list modeled on *Debug: Message Log*. It is opened by *Debug: Plugins*
-(palette, no default bind). It is core so that it still works when Lua fails to
-load.
+A full pane on the core pane model (scope `plugins`, `plugins_pane_backdrop`). It is opened by
+*Debug: Plugins* (palette, no default bind). It is core so that it still works when Lua fails to
+load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*, *Show Log*
+(rebindable in `keybinds`, listed in the pane's Ctrl+P).
 
 | Column / action | Behavior |
 |---|---|
-| Rows | display name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. Click selects, double click is `Enter`. |
-| `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view inside the pane, with a hint to fork it to the user dir. |
+| Rows | Columns: display name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. Click selects, double click is `Enter`. The selection persists by name. |
+| `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view (a child pane over the same box; Esc returns), with a hint to fork it to the user dir. |
 | `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, atomic; refused when config.json doesn't parse) and loads or unloads the plugin. The config stamp is left alone, so the next poll runs the normal reload and finds the flip already applied. |
 | `r` | Reloads the plugin. |
-| `l` | Opens the Message Log filtered to this plugin's display name. |
+| `l` | Opens the Message Log filtered to this plugin's display name, as a child (Esc returns). |
 
 ## 5. Runtime model
 
@@ -336,6 +339,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | 13 | `qed.meta{display_name}`, display names everywhere a plugin is named, automatic `<display name>: ` command prefix, `qed.message` without `source`, keybinds under `plugins.<id>.keybinds` (plugin binds leave the top-level `keybinds`), the `Lua` LSP settings go out only under the config dir, `modules.lsp` becomes `lsp` and `.Lsp` leaves the `Module` enum, `pickers` becomes `settings` (`plugins.settings`), the `tasks` plugin is dropped (`plugins.tasks`, its picker and `tasks N` segment; `qed.term` stays). | minor |
 | M1 | `qed.ui.open` and views (set/append/update/text/close/wait), queued `activate`/`change`/`query`/`close`, exclusive panes persisted by `id`, `ctx.view`; `qed.pick/prompt/confirm/pane` become prelude sugar (`pick` over an open pane is a child, not `"busy"`); `search` streams parallel `rg --line-buffered` into a key-sorted query pane. | minor |
 | M2 | Palette core-built on a commands list source; core list handles (`qed.fs.dirs`), `path` field mode, `qed.set_root`; the cwd picker becomes the bundled `workspace` plugin (*Workspace: Open Directory*, tree *Workspace: Open Selected Directory*), `cwdpick.odin` and the top-level `Change Working Directory` keybind are gone. | minor |
+| M3 | Accessor-backed list sources, pane-scoped commands (`scope` on `qed.command` and `qed.ui.open`, bare keys, `ctx.view`), `qed.buf.line_list`; line find becomes the bundled `lines` plugin (*Lines: Find Line*, `plugins.lines.keybinds`), `linefind.odin` and the top-level `Find Line` keybind are gone; Message Log, Plugins pane and LSP rename prompt core-built on the model. | minor |
 | later | Conflicts, aiedit, fim and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions
