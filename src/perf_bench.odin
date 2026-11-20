@@ -399,6 +399,13 @@ highlight_error_heavy :: proc(t: ^testing.T) {
 	highlight_settle(&b, 8990, 9050)
 	ms := ms_since(start)
 	testing.expectf(t, ms < 2000, "error-heavy Lua reparse took %.0f ms", ms)
+
+	b.hl.slow = true
+	buffer_insert(&b, Cursor{9002, 0}, "z")
+	highlight_update(&b, 8990, 9050)
+	testing.expect(t, highlight_busy(&b), "a buffer whose inline parse was slow reparses in the background")
+	highlight_settle(&b, 8990, 9050)
+	testing.expect(t, b.hl.valid && b.hl.tree != nil, "the background reparse is adopted")
 }
 
 @(private = "file")

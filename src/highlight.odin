@@ -3,10 +3,12 @@ package main
 import "core:os"
 import "core:strings"
 import "core:thread"
+import "core:time"
 import "lib:tb2"
 import ts "lib:tree_sitter"
 
 HIGHLIGHT_ASYNC_BYTES :: 256 * 1024
+HIGHLIGHT_SLOW_MS :: 16
 
 // The tsx grammar has JSX nodes the shared typescript grammar lacks, so these
 // captures are appended to the typescript query for .tsx only (see the file).
@@ -22,6 +24,7 @@ Highlight :: struct {
 	pending:  [dynamic]ts.InputEdit,
 	colors:   [dynamic][dynamic]tb2.Color,
 	job:      ^HighlightJob,
+	slow:     bool, // an inline parse blew the frame budget: parse off-thread from now on
 }
 
 HighlightJob :: struct {
@@ -239,11 +242,14 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 	// (no thread overhead, no uncolored flash).
 	if b.hl.tree == nil || len(b.hl.pending) > 0 {
 		snapshot := buffer_snapshot(b)
-		if len(snapshot) >= HIGHLIGHT_ASYNC_BYTES {
+		if len(snapshot) >= HIGHLIGHT_ASYNC_BYTES || b.hl.slow {
 			highlight_job_start(b, language, snapshot)
 			return
 		}
-		if !highlight_reparse(b, s, snapshot) {
+		start := time.tick_now()
+		ok := highlight_reparse(b, s, snapshot)
+		b.hl.slow = ms_since(start) > HIGHLIGHT_SLOW_MS
+		if !ok {
 			return
 		}
 		tree_fresh = true
