@@ -297,7 +297,6 @@ term_spawn :: proc(editor: ^Editor, t: ^Terminal) -> bool {
 	nfd := posix.FD(fd)
 	flags := posix.fcntl(nfd, .GETFL)
 	posix.fcntl(nfd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
-	posix.fcntl(nfd, .SETFD, posix.FD_CLOEXEC)
 
 	vt := vterm.new(c.int(rows), c.int(cols))
 	vterm.set_utf8(vt, 1)

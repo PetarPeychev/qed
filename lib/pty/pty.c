@@ -1,4 +1,8 @@
+#ifndef __APPLE__
+#define _GNU_SOURCE
+#endif
 #include <sys/ioctl.h>
+#include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -19,12 +23,36 @@ int qed_pty_spawn(int rows, int cols, char *const argv[], char **envp, const cha
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
 
-    int master = -1;
-    pid_t pid = forkpty(&master, NULL, NULL, &ws);
+    /* not forkpty: its master lacks O_CLOEXEC until the caller sets it, so a concurrent fork could inherit it */
+    int master = open("/dev/ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC);
+    if (master < 0) {
+        return -1;
+    }
+    char name[128];
+    if (grantpt(master) != 0 || unlockpt(master) != 0 || ptsname_r(master, name, sizeof name) != 0) {
+        close(master);
+        return -1;
+    }
+    pid_t pid = fork();
     if (pid < 0) {
+        close(master);
         return -1;
     }
     if (pid == 0) {
+        close(master);
+        setsid();
+        int slave = open(name, O_RDWR);
+        if (slave < 0) {
+            _exit(127);
+        }
+        ioctl(slave, TIOCSCTTY, 0);
+        ioctl(slave, TIOCSWINSZ, &ws);
+        dup2(slave, 0);
+        dup2(slave, 1);
+        dup2(slave, 2);
+        if (slave > 2) {
+            close(slave);
+        }
         if (cwd && cwd[0]) {
             if (chdir(cwd) != 0) {}
         }

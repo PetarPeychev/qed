@@ -140,15 +140,16 @@ subprocess_start_group :: proc(command: []string, env: []string, working_dir: st
 	out_fd := posix.FD(os.fd(stdout))
 	err_fd := posix.FD(os.fd(stderr)) if stderr != nil else out_fd
 	fail_byte := [1]u8{1}
-	report: [2]posix.FD
-	if posix.pipe(&report) != .OK {
+	// os.pipe is pipe2(O_CLOEXEC) on Linux: a concurrent fork never inherits the write end and stalls the read
+	report_r, report_w, perr := os.pipe()
+	if perr != nil {
 		return {}, .Unknown
 	}
-	posix.fcntl(report[1], .SETFD, posix.FD_CLOEXEC)
+	report := [2]posix.FD{posix.FD(os.fd(report_r)), posix.FD(os.fd(report_w))}
 	pid := posix.fork()
 	if pid < 0 {
-		posix.close(report[0])
-		posix.close(report[1])
+		os.close(report_r)
+		os.close(report_w)
 		return {}, .Unknown
 	}
 	if pid == 0 {
@@ -166,10 +167,10 @@ subprocess_start_group :: proc(command: []string, env: []string, working_dir: st
 		posix._exit(126)
 	}
 	posix.setpgid(pid, pid)
-	posix.close(report[1])
+	os.close(report_w)
 	failed: [1]u8
 	n := posix.read(report[0], &failed[0], 1)
-	posix.close(report[0])
+	os.close(report_r)
 	if n > 0 {
 		status: c.int
 		posix.waitpid(pid, &status, {})
