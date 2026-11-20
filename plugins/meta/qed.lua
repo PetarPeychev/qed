@@ -640,13 +640,13 @@ function qed.deco.ns(name) end
 ---@param color string theme color key
 function qed.deco.gutter(b, ns, row, glyph, color) end
 
----Line background tint, stacked over diff/conflict tints and under the AI and current-line tints.
+---Line background tint, stacked over the diff hunk tint and under the AI and current-line tints.
 ---@param b qed.Buf
 ---@param ns integer
 ---@param from_row integer
 ---@param to_row integer inclusive
 ---@param color string theme color key
----@param alpha? number 0..1, default the theme's `decoration` tint
+---@param alpha? number|string 0..1, or a theme tint key (`"conflict"`) resolved per frame; default the theme's `decoration` tint
 function qed.deco.tint(b, ns, from_row, to_row, color, alpha) end
 
 ---Virtual rows below (or above) a row, one clipped screen row each.
@@ -662,7 +662,7 @@ function qed.deco.ghost(b, ns, row, lines, opts) end
 ---@param ns integer
 ---@param from qed.Pos
 ---@param to qed.Pos
----@param style {fg?: string, bg?: string, bold?: boolean, underline?: boolean}
+---@param style {fg?: string, bg?: string, alpha?: number|string, bold?: boolean, underline?: boolean} `alpha` (a number or theme tint key) blends `bg` over the line background instead of painting it solid
 function qed.deco.span(b, ns, from, to, style) end
 
 ---Virtual text after the end of a row, clipped to the window.
@@ -761,6 +761,12 @@ function qed.buf.lines(b, from, to) end
 ---@param row integer
 ---@return string
 function qed.buf.line(b, row) end
+
+---Rows whose text starts with `prefix` (plain bytes), in order. Cheap on big buffers, so a `buf_changed` handler can find marker lines without copying the text.
+---@param b qed.Buf
+---@param prefix string
+---@return integer[]
+function qed.buf.find_lines(b, prefix) end
 
 ---The whole text, lines joined with LF regardless of the file's line endings.
 ---@param b qed.Buf
@@ -979,3 +985,15 @@ qed.text = {}
 ---@param s string
 ---@return integer
 function qed.text.width(s) end
+
+---@class qed.DiffHunk
+---@field a integer first row of the run in `a` (where it would be for an insertion)
+---@field a_count integer rows removed from `a`
+---@field b integer first row of the run in `b`
+---@field b_count integer rows added from `b`
+
+---Line diff of two string lists (the diff engine behind the gutter), as runs of changed rows. `nil` when the lists differ too much for the engine's edit-distance cap.
+---@param a string[]
+---@param b string[]
+---@return qed.DiffHunk[]|nil
+function qed.text.diff(a, b) end

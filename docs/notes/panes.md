@@ -350,7 +350,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M4 (done) | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
 | M5 (done) | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
 | M6 (done) | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
-| M7 | Conflict UI and AI (aiedit, then fim) ported onto the model and decorations. | |
+| M7 | Conflict UI (done: the `conflict` plugin) and AI (aiedit, then fim) ported onto the model and decorations. | range-anchored tints and spans, `confirm` choices |
 | M8 | Remove the module system (`modules.*`, `module_enabled`). | |
 | M9 | Review every bundled plugin's config keys (existing TODO). | |
 | later | Inspect, hover/diag/completion on `cursor`/`corner`; terminal chrome on a `Term` body (core). | shared renderer only |
@@ -502,6 +502,23 @@ Communication is in DESIGN.md (Plugins, File tree, Git tab) and plugins.md (Plug
 | Errors | A task's Lua error no longer disables its plugin (Petar); only load and setup errors do. Errors are rate-limited per plugin (3 per second, the rest summarized), known messages show a count, and only a message's first occurrence logs a traceback; the disk log also rotates mid-session. | A race against an unload must not take a plugin down. |
 | Removed | `treeshim.odin`, `Plugins.shim`, `qed.filetree.*`, the `.Provider` task kind, `PluginQueued.ref`, the M5 status tests (ported to `e2e_filetree_tab_test.odin` on the exports). | |
 | Scale | `bench_filetree_changed` now drives the real git plugin over faked git output (every push moves the sizes) and reports the max slice of both plugins. WSL2, M6 vs M5 on the same bench: 30k changed: git slices <= 49 ms (M5 up to 95), filetree <= 44 ms (M5 54); 50k: git pushes <= 56 ms (M5 up to 194), filetree <= 84 ms (M5 92). The largest remaining slice is the first narrowed fill after an open (~85-90 ms at 50k), in git's task when *Git: Changes* opens the tree. | |
+
+### M7 as built (conflict)
+
+The merge-conflict UI is the bundled `conflict` plugin (DESIGN.md Merge conflicts, plugins.md API rows).
+
+| Area | Built | Why |
+|---|---|---|
+| Home | Its own plugin, not `git`. | Markers are text: a conflicted file copied out of a repo, or git disabled, still gets them. Neither plugin needs the other. |
+| Rescans | `buf_open`, `buf_reload`, `buf_changed` (coalesced), `startup` (hot reload): clear the namespace and push everything again. A buffer with no `<<<<<<<` line costs one `qed.buf.find_lines` and nothing is cleared. | Spans drop on any edited row; a full re-push keeps the result equal to the old per-frame scan. A diff of old and new blocks would miss a paste of identical text over a block (its spans drop, the text compares equal). |
+| API | `qed.buf.find_lines(b, prefix)`; `qed.text.diff(a, b)`; a deco `alpha` may be a theme tint key (`conflict`, `conflict_marker`, `conflict_word`), resolved per frame; span `alpha` blends `bg` over the line background (the old `diff_bg` path). `qed.confirm(question, choices)` already existed. | Exact old colors, live theme changes without a re-push, and no 1 MB text copy per keystroke. The word span is a 15-line Lua port of `diff_word_span`; the line pairing reuses the core Myers engine so pairs match. |
+| Anchors | No new anchor kind: tints shift and shrink with edits in core, spans drop and come back in the same flush (before the frame). | The rescan runs before render, so a stale frame never shows. |
+| Resolve | `qed.confirm("Resolve merge conflict:", {"Keep Ours", "Keep Theirs", "Keep Both"})`, a child dialog instead of the exclusive `merge` pane; one `qed.edit` group; rescan right after. | The edit lands after the flush's change check, so its `buf_changed` would come a frame late. |
+| Name, key | *Conflict: Resolve* (was *Git: Resolve Conflict*), `Alt+m`, `plugins.conflict.keybinds.Resolve`; the old top-level bind warns where it moved. Messages say `Conflict:`, not `Git:`. | Phase 13 naming. |
+| Marker fg | A whole-line `fg` span; it keeps the syntax attributes (bold, italic) the old full color override dropped. | Spans compose with syntax by design. |
+| fim | The ghost line's background takes the cursor row's decoration tints. | It took the conflict tint from `merge_side` before. |
+| Removed | `conflict.odin`, `conflict_test.odin` (ported to `plugins/conflict/test.lua`), `MergeSide` in `editor_line_bg`, the core `merge` pane. Tests that used `merge_dialog_open` as a generic exclusive pane use `test_dialog_open`. | |
+| Scale | `bench_conflict_keystroke` (debug build, WSL2, 20k lines): no markers +0.4 ms per keystroke; 200 blocks (1800 decorations) ~6-7 ms per keystroke, max slice 8-13 ms; frames drop from 1.45 ms to 0.6 ms (no per-frame scan). | Well inside the 50 ms soft budget. |
 
 ## 8. Decisions
 

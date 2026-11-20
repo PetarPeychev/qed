@@ -239,3 +239,10 @@ ft_expanded_count :: proc(ed: ^Editor) -> int {
 	}
 	return 0
 }
+
+test_dialog_open :: proc(editor: ^Editor) {
+	text := []PaneLine{{text = "Pick one:"}}
+	if pane_open(editor, {id = "dialog", text = text, list = {items = pane_labels([]string{"A", "B"})}}) == nil {
+		editor_log(editor, .Warn, "", "busy")
+	}
+}

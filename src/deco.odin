@@ -21,8 +21,9 @@ Deco :: struct {
 	lines:           int,
 	color, bg:       u16,
 	kind:            DecoKind,
+	tint:            u8,
 	bold, underline: bool,
-	above:           bool,
+	above, blend:    bool,
 }
 
 DecoStore :: struct {
@@ -42,6 +43,8 @@ RowSpan :: struct {
 	from, to:       int,
 	fg, bg:         tb2.Color,
 	has_fg, has_bg: bool,
+	blend:          bool,
+	alpha:          f32,
 	attrs:          u64,
 }
 
@@ -245,6 +248,10 @@ deco_palette :: proc(keys: []string) -> []tb2.Color {
 	return pal
 }
 
+deco_alpha :: proc(d: Deco) -> f32 {
+	return config_tints[d.tint - 1].ptr^ if d.tint > 0 else d.alpha
+}
+
 deco_rows :: proc(b: ^Buffer, lo, hi: int, pal: []tb2.Color) -> []DecoRow {
 	rows := make([]DecoRow, max(hi - lo, 0), context.temp_allocator)
 	if len(b.deco.items) == 0 {
@@ -265,7 +272,7 @@ deco_rows :: proc(b: ^Buffer, lo, hi: int, pal: []tb2.Color) -> []DecoRow {
 			rows[d.from.row - lo].glyph_fg = pal[d.color]
 		case .Tint:
 			for r in max(d.from.row, lo) ..= min(d.to.row, hi - 1) {
-				append(&rows[r - lo].tints, RowTint{pal[d.color], d.alpha})
+				append(&rows[r - lo].tints, RowTint{pal[d.color], deco_alpha(d)})
 			}
 		case .Eol:
 			append(&rows[d.from.row - lo].eols, RowEol{d.text, pal[d.color]})
@@ -285,6 +292,8 @@ deco_rows :: proc(b: ^Buffer, lo, hi: int, pal: []tb2.Color) -> []DecoRow {
 					bg     = pal[d.bg],
 					has_fg = d.color != 0,
 					has_bg = d.bg != 0,
+					blend  = d.blend,
+					alpha  = deco_alpha(d),
 					attrs  = attrs,
 				}
 				append(&rows[r - lo].spans, s)

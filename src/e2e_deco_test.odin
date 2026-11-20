@@ -170,15 +170,14 @@ e2e_deco_ghost_scroll :: proc(t: ^testing.T) {
 @(test)
 e2e_deco_line_bg_order :: proc(t: ^testing.T) {
 	tints := []RowTint{{COLOR_GIT_DEL, 0.3}, {COLOR_WARN_FG, 0.2}}
-	got := editor_line_bg(true, true, .Modified, true, .Ours, false, tints)
+	got := editor_line_bg(true, true, .Modified, true, tints)
 	want := color_over(COLOR_BG, COLOR_GIT_MOD, GIT_HUNK_TINT)
-	want = color_over(want, merge_side_color(.Ours), CONFLICT_TINT)
 	want = color_over(want, COLOR_GIT_DEL, 0.3)
 	want = color_over(want, COLOR_WARN_FG, 0.2)
 	want = color_over(want, COLOR_AI_EDIT_BG, AI_EDIT_TINT)
 	want = color_over(want, COLOR_CURRENT_LINE_BG, CURRENT_LINE_TINT)
 	testing.expect_value(t, got, want)
-	testing.expect_value(t, editor_line_bg(false, false, .None, false, .None, false), COLOR_BG)
+	testing.expect_value(t, editor_line_bg(false, false, .None, false), COLOR_BG)
 }
 
 @(test)
@@ -233,7 +232,9 @@ e2e_deco_namespaces_and_unload :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.deco.items[0].glyph, 'z')
 	plugin_unload(&e.ed, two)
 	testing.expect_value(t, len(b.deco.items), 0)
-	testing.expect_value(t, len(e.ed.plugins.deco_ns), 0)
+	for ns in e.ed.plugins.deco_ns {
+		testing.expect(t, ns.owner != "one" && ns.owner != "two", "unload drops the namespaces")
+	}
 }
 
 @(test)
@@ -451,4 +452,30 @@ e2e_deco_set_base_ownership :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	_, h := editor_viewport(&e.ed)
 	testing.expect(t, strings.contains(e2e_row_text(&e, h), fmt.tprintf("%sbase", ICON_STATUS_DIFF_BASE)), "a label-less plugin base shows a generic indicator")
+}
+
+@(test)
+e2e_deco_theme_tint_keys :: proc(t: ^testing.T) {
+	e := e2e_start("alpha\nbravo\n")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.cursor = {1, 0}
+	pl := deco_plugin(&e, "dk", `
+		qed.deco.tint(nil, ns, 1, 1, "git_added", "conflict")
+		qed.deco.span(nil, ns, {row = 1, col = 2}, {row = 1, col = 3}, {bg = "git_deleted", alpha = 0.5})
+		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, "git_added", "nope"), "unknown tint key refused")
+		assert(not pcall(qed.deco.span, nil, ns, {row = 1, col = 1}, {row = 1, col = 2}, {alpha = 0.5}), "alpha needs bg")
+		assert(not pcall(qed.deco.span, nil, ns, {row = 1, col = 1}, {row = 1, col = 2}, {bg = "git_added", alpha = 2}), "alpha out of range refused")`)
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+	gutter := editor_gutter_width(&e.ed)
+	saved := CONFLICT_TINT
+	defer CONFLICT_TINT = saved
+	for alpha in ([2]f32{0.2, 0.6}) {
+		CONFLICT_TINT = alpha
+		e2e_render(&e)
+		line := color_over(COLOR_BG, COLOR_GIT_ADD, alpha)
+		testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, gutter + 4, 0)), e2e_rgb(line))
+		testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, gutter + 1, 0)), e2e_rgb(color_over(line, COLOR_GIT_DEL, 0.5)))
+		testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, gutter + 2, 0)), e2e_rgb(line))
+	}
 }

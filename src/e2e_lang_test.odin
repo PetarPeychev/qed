@@ -43,57 +43,66 @@ CONFLICT_SEED :: "top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\ntail
 
 @(test)
 e2e_conflict_tints :: proc(t: ^testing.T) {
-	e := e2e_start(CONFLICT_SEED)
+	e := e2e_start("top\n<<<<<<< HEAD\nkeep a\n=======\nkeep b\n>>>>>>> branch\ntail")
 	defer e2e_stop(&e)
-
+	plugin_pump(&e.ed)
+	plugin_flush(&e.ed)
+	editor_buffer(&e.ed).cursor = {6, 0}
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)
 
-	// A cell past a line's text keeps the row's line background untinted by any
-	// word-diff / selection, so it reads the pure ours/theirs tint.
-	ours_bg := e2e_cell_bg(&e, gutter+10, 2)
-	theirs_bg := e2e_cell_bg(&e, gutter+10, 4)
-	tail_bg := e2e_cell_bg(&e, gutter+10, 6)
-
-	testing.expect_value(t, ours_bg, color_over(COLOR_BG, COLOR_CONFLICT_OURS, CONFLICT_TINT))
-	testing.expect_value(t, theirs_bg, color_over(COLOR_BG, COLOR_CONFLICT_THEIRS, CONFLICT_TINT))
-	testing.expect_value(t, tail_bg, COLOR_BG)
-	testing.expect(t, ours_bg != COLOR_BG, "ours tint differs from normal bg")
-	testing.expect(t, theirs_bg != COLOR_BG, "theirs tint differs from normal bg")
-	testing.expect(t, ours_bg != theirs_bg, "ours and theirs tints differ")
+	ours_bg := color_over(COLOR_BG, COLOR_CONFLICT_OURS, CONFLICT_TINT)
+	theirs_bg := color_over(COLOR_BG, COLOR_CONFLICT_THEIRS, CONFLICT_TINT)
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 10, 2), ours_bg)
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 10, 4), theirs_bg)
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 10, 0), COLOR_BG)
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 20, 1), color_over(COLOR_BG, COLOR_CONFLICT_OURS, CONFLICT_MARKER_TINT))
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 20, 5), color_over(COLOR_BG, COLOR_CONFLICT_THEIRS, CONFLICT_MARKER_TINT))
+	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, gutter, 1)), e2e_rgb(COLOR_CONFLICT_OURS))
+	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, gutter, 3)), e2e_rgb(COLOR_CONFLICT_THEIRS))
+	testing.expect_value(t, e2e_cell_bg(&e, gutter, 2), ours_bg)
+	testing.expect_value(t, e2e_cell_bg(&e, gutter, 4), theirs_bg)
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 4, 2), ours_bg)
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 5, 2), color_over(ours_bg, COLOR_CONFLICT_OURS, CONFLICT_WORD_TINT))
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 5, 4), color_over(theirs_bg, COLOR_CONFLICT_THEIRS, CONFLICT_WORD_TINT))
+	testing.expect_value(t, e2e_cell_bg(&e, gutter + 6, 4), theirs_bg)
 }
 
 @(test)
 e2e_conflict_resolve_keep_ours :: proc(t: ^testing.T) {
 	e := e2e_start(CONFLICT_SEED)
 	defer e2e_stop(&e)
+	plugin_pump(&e.ed)
+	plugin_flush(&e.ed)
 
 	b := editor_buffer(&e.ed)
 	testing.expect_value(t, len(b.lines), 7)
 
-	// Cursor outside the block: Alt+m jumps to the next block instead of resolving.
 	b.cursor = {0, 0}
 	e2e_key(&e, tb2.Key(0), .Alt, 'm')
-	testing.expect(t, pane_find(&e.ed, "merge") == nil, "Alt+m outside a block should not open the dialog")
+	testing.expect(t, pane_focus(&e.ed) == nil, "Alt+m outside a block should not open the dialog")
 	testing.expect_value(t, b.cursor.row, 1)
 
-	// Now inside the block, Alt+m opens the resolve dialog.
 	e2e_key(&e, tb2.Key(0), .Alt, 'm')
-	testing.expect(t, pane_find(&e.ed, "merge") != nil, "Alt+m inside a block opens the dialog")
+	p := pane_focus(&e.ed)
+	testing.expect(t, p != nil && p.owner == "conflict", "Alt+m inside a block opens the dialog")
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Resolve merge conflict:"), "the dialog asks")
+	testing.expect(t, e2e_grid_has(&e, "Keep Theirs"), "the dialog lists the choices")
 
-	// Keep Ours is the default selection; Enter executes it.
 	e2e_key(&e, .Enter)
-	testing.expect(t, pane_find(&e.ed, "merge") == nil, "executing closes the dialog")
+	testing.expect(t, pane_focus(&e.ed) == nil, "executing closes the dialog")
 	testing.expect_value(t, len(b.lines), 3)
 	testing.expect_value(t, string(b.lines[0].text[:]), "top")
 	testing.expect_value(t, string(b.lines[1].text[:]), "ours")
 	testing.expect_value(t, string(b.lines[2].text[:]), "tail")
+	testing.expect_value(t, len(b.deco.items), 0)
 
-	// The whole resolve is a single undo group.
 	e2e_key(&e, .Ctrl_Z)
 	testing.expect_value(t, len(b.lines), 7)
 	testing.expect_value(t, string(b.lines[1].text[:]), "<<<<<<< HEAD")
 	testing.expect_value(t, string(b.lines[4].text[:]), "theirs")
+	testing.expect(t, len(b.deco.items) > 0, "undo brings the highlight back")
 }
 
 @(test)

@@ -160,7 +160,6 @@ commands := [?]Command {
 	{name = "Diff: Next Change", run = cmd_diff_next},
 	{name = "Diff: Previous Change", run = cmd_diff_prev},
 	{name = "Diff: Revert Hunk", run = cmd_diff_revert},
-	{name = "Git: Resolve Conflict", run = cmd_merge_resolve},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", lsp = true, run = cmd_diag_next},
 	{name = "LSP: Previous Diagnostic", lsp = true, run = cmd_diag_prev},

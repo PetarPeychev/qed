@@ -52,6 +52,7 @@ pt_api := [?]lua.L_Reg {
 	{"click", pt_click},
 	{"sh", pt_sh},
 	{"marks", pt_marks},
+	{"deco", pt_deco},
 	{"settle", pt_settle},
 	{"procs", pt_procs},
 	{nil, nil},
@@ -455,6 +456,36 @@ pt_marks :: proc "c" (L: ^lua.State) -> c.int {
 	for r in 0 ..< len(b.lines) {
 		lua.pushodinstring(L, names[diff_mark_at(b, r)])
 		lua.rawseti(L, -2, lua.Integer(r + 1))
+	}
+	return 1
+}
+
+@(private = "file")
+pt_deco :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	colors := entry.editor.plugins.colors[:]
+	key :: proc(colors: []string, id: u16) -> string {
+		return colors[id - 1] if id > 0 else "-"
+	}
+	lua.createtable(L, c.int(len(b.deco.items)), 0)
+	for d, i in b.deco.items {
+		alpha := config_tints[d.tint - 1].key if d.tint > 0 else fmt.tprintf("%.2f", d.alpha)
+		line: string
+		#partial switch d.kind {
+		case .Tint:
+			line = fmt.tprintf("tint %d-%d %s %s", d.from.row + 1, d.to.row + 1, key(colors, d.color), alpha)
+		case .Span:
+			line = fmt.tprintf("span %d:%d-%d:%d fg=%s bg=%s", d.from.row + 1, d.from.col + 1, d.to.row + 1, d.to.col + 1, key(colors, d.color), key(colors, d.bg))
+			if d.blend {
+				line = fmt.tprintf("%s %s", line, alpha)
+			}
+		case:
+			line = fmt.tprintf("%v %d", d.kind, d.from.row + 1)
+		}
+		lua.pushodinstring(L, line)
+		lua.rawseti(L, -2, lua.Integer(i + 1))
 	}
 	return 1
 }

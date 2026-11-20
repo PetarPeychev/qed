@@ -839,6 +839,7 @@ CONFIG_KEYBINDS_MOVED :: [?]struct {
 	{"Toggle Trim Whitespace on Save", "format", "Toggle Trim Whitespace on Save"},
 	{"Toggle Final Newline on Save", "format", "Toggle Final Newline on Save"},
 	{"Git: Set Diff Base", "git", "Set Diff Base"},
+	{"Git: Resolve Conflict", "conflict", "Resolve"},
 	{"File Tree: Restore File", "git", "Restore File"},
 	{"Change Working Directory", "workspace", "Open Directory"},
 	{"Find Line", "goto", "Line"},

@@ -67,6 +67,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"line_count", qed_buf_line_count},
 	{"lines", qed_buf_lines},
 	{"line", qed_buf_line},
+	{"find_lines", qed_buf_find_lines},
 	{"text", qed_buf_text},
 	{"insert", qed_buf_insert},
 	{"delete", qed_buf_delete},
@@ -181,6 +182,7 @@ qed_ui_api := [?]lua.L_Reg {
 @(private = "file")
 qed_text_api := [?]lua.L_Reg {
 	{"width", qed_text_width},
+	{"diff", qed_text_diff},
 	{nil, nil},
 }
 
@@ -524,6 +526,23 @@ qed_buf_line :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 2, fmt.ctprintf("row %d out of range 1..%d", row, len(b.lines)))
 	}
 	lua.pushodinstring(L, string(b.lines[row - 1].text[:]))
+	return 1
+}
+
+qed_buf_find_lines :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	prefix := api_string(L, 2)
+	lua.newtable(L)
+	n := 0
+	for line, r in b.lines {
+		if strings.has_prefix(string(line.text[:]), prefix) {
+			n += 1
+			lua.pushinteger(L, lua.Integer(r + 1))
+			lua.rawseti(L, -2, lua.Integer(n))
+		}
+	}
 	return 1
 }
 
@@ -1855,6 +1874,74 @@ qed_text_width :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+api_lines_arg :: proc(L: ^lua.State, idx: c.int) -> []u64 {
+	if lua.type(L, idx) != .TABLE {
+		lua.L_argerror(L, idx, "list of strings expected")
+	}
+	n := int(lua.rawlen(L, idx))
+	out := make([]u64, n, context.temp_allocator)
+	for i in 0 ..< n {
+		if lua.rawgeti(L, idx, lua.Integer(i + 1)) != .STRING {
+			lua.L_argerror(L, idx, "list of strings expected")
+		}
+		s, _ := lua.toodinstring(L, -1)
+		out[i] = diff_hash(transmute([]u8)s)
+		lua.pop(L, 1)
+	}
+	return out
+}
+
+qed_text_diff :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	a := api_lines_arg(L, 1)
+	b := api_lines_arg(L, 2)
+	ops: []DiffOp
+	ok := true
+	if len(a) == 0 || len(b) == 0 {
+		// diff_myers indexes past its arrays when either side is empty
+		ops = make([]DiffOp, len(a) + len(b), context.temp_allocator)
+		for &op in ops {
+			op = .Delete if len(a) > 0 else .Insert
+		}
+	} else {
+		ops, ok = diff_myers(a, b)
+	}
+	if !ok {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.newtable(L)
+	n, ai, bi, i := 0, 1, 1, 0
+	for i < len(ops) {
+		if ops[i] == .Equal {
+			ai += 1
+			bi += 1
+			i += 1
+			continue
+		}
+		h := [4]int{ai, 0, bi, 0}
+		for i < len(ops) && ops[i] != .Equal {
+			if ops[i] == .Delete {
+				h[1] += 1
+				ai += 1
+			} else {
+				h[3] += 1
+				bi += 1
+			}
+			i += 1
+		}
+		lua.createtable(L, 0, 4)
+		for k, j in ([4]cstring{"a", "a_count", "b", "b_count"}) {
+			lua.pushinteger(L, lua.Integer(h[j]))
+			lua.setfield(L, -2, k)
+		}
+		n += 1
+		lua.rawseti(L, -2, lua.Integer(n))
+	}
+	return 1
+}
+
 plugin_stub_dir :: proc(allocator := context.temp_allocator) -> string {
 	if data := os.get_env("XDG_DATA_HOME", context.temp_allocator); data != "" {
 		return fmt.aprintf("%s/qed/lua", data, allocator = allocator)
@@ -2495,16 +2582,30 @@ qed_deco_tint :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 4, "to_row is before from_row")
 	}
 	color := api_color(L, &editor.plugins, 5)
-	alpha := DECO_TINT
+	d := Deco{kind = .Tint, ns = ns, from = {lo, 0}, to = {hi, 0}, color = color, alpha = DECO_TINT}
 	if lua.type(L, 6) > .NIL {
-		isnum: b32
-		alpha = f32(lua.tonumberx(L, 6, &isnum))
-		if !isnum || alpha < 0 || alpha > 1 {
-			lua.L_argerror(L, 6, "alpha must be a number in 0..1")
-		}
+		d.alpha, d.tint = api_alpha(L, 6)
 	}
-	deco_add(b, Deco{kind = .Tint, ns = ns, from = {lo, 0}, to = {hi, 0}, color = color, alpha = alpha})
+	deco_add(b, d)
 	return 0
+}
+
+api_alpha :: proc(L: ^lua.State, idx: c.int) -> (alpha: f32, tint: u8) {
+	if lua.type(L, idx) == .STRING {
+		key, _ := lua.toodinstring(L, idx)
+		for t, i in config_tints {
+			if t.key == key {
+				return 0, u8(i + 1)
+			}
+		}
+		lua.L_argerror(L, idx, fmt.ctprintf("unknown theme tint '%s'", key))
+	}
+	isnum: b32
+	alpha = f32(lua.tonumberx(L, idx, &isnum))
+	if !isnum || alpha < 0 || alpha > 1 {
+		lua.L_argerror(L, idx, "alpha must be a number in 0..1 or a theme tint key")
+	}
+	return
 }
 
 qed_deco_ghost :: proc "c" (L: ^lua.State) -> c.int {
@@ -2558,7 +2659,7 @@ qed_deco_span :: proc "c" (L: ^lua.State) -> c.int {
 	ns := api_ns(L, editor, 2)
 	from, to := api_range(L, 3, b)
 	if lua.type(L, 5) != .TABLE {
-		lua.L_argerror(L, 5, "style {fg?, bg?, bold?, underline?} expected")
+		lua.L_argerror(L, 5, "style {fg?, bg?, alpha?, bold?, underline?} expected")
 	}
 	d := Deco{kind = .Span, ns = ns, from = from, to = to}
 	if lua.getfield(L, 5, "fg") != .NIL {
@@ -2567,11 +2668,18 @@ qed_deco_span :: proc "c" (L: ^lua.State) -> c.int {
 	if lua.getfield(L, 5, "bg") != .NIL {
 		d.bg = api_color(L, &editor.plugins, -1)
 	}
+	if lua.getfield(L, 5, "alpha") != .NIL {
+		if d.bg == 0 {
+			plugin_raise(L, "alpha needs bg")
+		}
+		d.alpha, d.tint = api_alpha(L, -1)
+		d.blend = true
+	}
 	lua.getfield(L, 5, "bold")
 	d.bold = bool(lua.toboolean(L, -1))
 	lua.getfield(L, 5, "underline")
 	d.underline = bool(lua.toboolean(L, -1))
-	lua.pop(L, 4)
+	lua.pop(L, 5)
 	if from != to {
 		deco_add(b, d)
 	}
