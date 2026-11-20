@@ -1008,7 +1008,7 @@ editor_retheme :: proc(editor: ^Editor) {
 		b.hl.top = -1 // force a repaint so the per-char color cache picks up the new theme
 	}
 	for &p in editor.panes {
-		p.md_w = -1
+		pane_md_reset(&p)
 	}
 	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	term_reload_colors(editor)

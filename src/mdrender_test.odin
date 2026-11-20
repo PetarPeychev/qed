@@ -6,6 +6,7 @@ import "core:slice"
 import "core:strings"
 import "core:sync"
 import "core:testing"
+import "core:time"
 import "lib:tb2"
 
 md_span_fg :: proc(lines: []MdLine, text: string) -> (tb2.Color, bool) {
@@ -555,4 +556,31 @@ test_md_source_rows :: proc(t: ^testing.T) {
 	testing.expect_value(t, md_line_text(flat[0]), "Key: a")
 	testing.expect_value(t, flat[0].src, 2)
 	testing.expect_value(t, flat[len(flat) - 1].src, 3)
+}
+
+@(test)
+test_md_job_steps_match_one_pass :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	src := "---\ntitle: x\n---\n# Head [a](http://a)\n\ntext with [b](http://b) and [a](http://a) and [r][ref], `code`\n\n- one\n  - nested [c](http://c)\n\n> quote\n\n| a | b |\n|---|--:|\n| 1 | 2 |\n\n```odin\nx := 1\n```\n\n# Head\n\n[ref]: http://r"
+	whole := md_render(src, 30, .Plain)
+	job: MdJob
+	md_job_start(&job, src, 30, .Plain)
+	steps := 0
+	stepped: []MdLine
+	for !job.done {
+		stepped = md_job_step(&job, time.tick_now())
+		steps += 1
+	}
+	testing.expect(t, steps > 5, "an expired deadline stops after each block")
+	testing.expect_value(t, len(stepped), len(whole))
+	for l, i in whole {
+		if i < len(stepped) {
+			testing.expect_value(t, md_line_text(stepped[i]), md_line_text(l))
+			testing.expect_value(t, stepped[i].src, l.src)
+			testing.expect_value(t, stepped[i].slug, l.slug)
+		}
+	}
+	testing.expect(t, strings.contains(md_all_text(stepped), "[3] http://r"), "a reference defined below resolves")
+	testing.expect(t, strings.contains(md_all_text(stepped), "[4] http://c"), "footnotes number in order")
 }

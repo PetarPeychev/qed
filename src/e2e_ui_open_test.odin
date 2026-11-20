@@ -70,6 +70,13 @@ return {setup = function()
 		v = qed.ui.open{place = "full", max_width = 50, markdown = table.concat(lines, "\n")}
 	end)
 	cmd("Md Set", function() note("md " .. tostring(v:markdown("# New"))) end)
+	cmd("Md Big", function()
+		local lines = {}
+		for i = 1, 300 do lines[#lines + 1] = ("## Part %d\n\nbody %d [l](http://x/%d)\n"):format(i, i, i) end
+		v = qed.ui.open{place = "full", markdown = table.concat(lines, "\n")}
+		local s = v:source_scroll(4 * 250 + 1)
+		note(("big %d %d"):format(s, v:scroll()))
+	end)
 	cmd("Narrow", function() v = qed.ui.open{list = {items = {"a"}}, max_width = 20} end)
 	cmd("Bad Md", function() qed.ui.open{markdown = "x"} end)
 	cmd("Dim", function() v = qed.ui.open{list = {items = {"a"}}, backdrop = "dim"} end)
@@ -473,6 +480,36 @@ e2e_ui_open_markdown :: proc(t: ^testing.T) {
 	view_run(t, &e, "V: Bad Md")
 	plugin_flush(&e.ed)
 	testing.expect(t, test_view(&e.ed) == nil, "markdown outside a full pane is refused")
+}
+
+@(test)
+e2e_ui_open_markdown_in_steps :: proc(t: ^testing.T) {
+	e, _ := view_start(t)
+	defer e2e_stop(&e)
+	saved := md_slice_ms
+	md_slice_ms = 0
+	defer md_slice_ms = saved
+	view_run(t, &e, "V: Md Big")
+	v := test_view(&e.ed)
+	testing.expect(t, v.md_job != nil && v.md_lines == nil, "a render past its slice keeps going in steps")
+	testing.expect(t, !view_logged(&e, "big"), "source_scroll waits for the layout")
+	e2e_render(&e)
+	testing.expect(t, !e2e_grid_has(&e, "Part"), "nothing shows before the first render lands")
+	for i := 0; i < 5000 && test_view(&e.ed).md_job != nil; i += 1 {
+		pane_stack_pump(&e.ed, true)
+		plugin_pump(&e.ed)
+	}
+	plugin_pump(&e.ed)
+	v = test_view(&e.ed)
+	testing.expect(t, v.md_job == nil, "the render finishes")
+	testing.expect_value(t, v.md_lines[v.scroll].src, 1000)
+	testing.expect_value(t, md_line_text(v.md_lines[v.scroll]), "Part 251")
+	testing.expect(t, view_logged(&e, fmt.tprintf("big %d %d", v.scroll + 1, v.scroll + 1)), "source_scroll resumes with the scroll")
+	whole := md_render(v.md, v.md_w, .Plain)
+	testing.expect_value(t, len(v.md_lines), len(whole))
+	testing.expect_value(t, md_line_text(v.md_lines[len(whole) - 1]), md_line_text(whole[len(whole) - 1]))
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Part 251"), "the target shows once rendered")
 }
 
 @(test)

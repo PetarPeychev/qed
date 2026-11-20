@@ -57,7 +57,7 @@ main :: proc() {
 		got_event := false
 		for !got_event {
 			if lsp_running() || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) {
-				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, LSP_POLL_MS))) == .Ok {
+				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_md_busy(&editor) else LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
 				redraw := false

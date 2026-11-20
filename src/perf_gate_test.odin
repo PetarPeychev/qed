@@ -325,6 +325,7 @@ gate_plugins :: proc() {
 		gate_frame(&e, char('p', .Alt))
 		gate_record(300, ms_since(start), "markdown preview open (100k lines)")
 		gate_settle(&e)
+		gate_record(300, ms_since(start), "markdown preview rendered (100k lines)", info = true)
 		gate_place(&e, 50_000, 0)
 		gate_record(16, gate_mean(&e, char('x'), undo = true), "keystroke with markdown preview")
 		gate_settle(&e)
@@ -369,7 +370,9 @@ bench_gate :: proc(t: ^testing.T) {
 		}
 		clear(&gate_rows)
 	}
-	only := os.get_env("QED_GATE_ONLY", context.temp_allocator)
+	// the parts run free_all(context.temp_allocator)
+	only := os.get_env("QED_GATE_ONLY", context.allocator)
+	defer delete(only)
 	want :: proc(only, part: string) -> bool {
 		if only == "" {
 			return true

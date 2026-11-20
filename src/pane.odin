@@ -246,6 +246,7 @@ Pane :: struct {
 	md_w:         int,
 	md_lines:     []MdLine,
 	md_arena:     vmem.Arena,
+	md_job:       ^PaneMdJob,
 	scroll:       int,
 	max_width:    int,
 	list:         PaneList,
@@ -345,7 +346,7 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	p.title = strings.clone(spec.title)
 	p.text = pane_lines_clone(spec.text)
 	p.md = strings.clone(spec.md)
-	p.md_w, p.md_lines, p.md_arena = -1, nil, {}
+	p.md_w, p.md_lines, p.md_arena, p.md_job = -1, nil, {}, nil
 	p.has_list = spec.has_list || len(spec.list.items) > 0
 	p.list.items = {}
 	p.list.matches = {}
@@ -445,6 +446,7 @@ pane_free :: proc(p: ^Pane) {
 	delete(p.chord)
 	delete(p.title)
 	pane_lines_free(p.text)
+	pane_md_reset(p)
 	delete(p.md)
 	vmem.arena_destroy(&p.md_arena)
 	pane_items_clear(p)
@@ -1105,7 +1107,7 @@ pane_preview_load :: proc(editor: ^Editor, p: ^Pane) {
 
 pane_stack_pending :: proc(editor: ^Editor) -> bool {
 	for &p in editor.panes {
-		if (p.refill_due || p.preview_due) && pane_live(editor, &p) {
+		if (p.refill_due || p.preview_due || p.md_job != nil) && pane_live(editor, &p) {
 			return true
 		}
 	}
@@ -1128,8 +1130,20 @@ pane_stack_pump :: proc(editor: ^Editor, force := false) -> (redraw: bool) {
 			pane_preview_load(editor, p)
 			redraw = true
 		}
+		if p.md_job != nil && pane_md_step(p, md_slice_ms) {
+			redraw = true
+		}
 	}
 	return
+}
+
+pane_md_busy :: proc(editor: ^Editor) -> bool {
+	for &p in editor.panes {
+		if p.md_job != nil && pane_live(editor, &p) {
+			return true
+		}
+	}
+	return false
 }
 
 PaneGeom :: struct {
@@ -1883,14 +1897,59 @@ pane_md_visible :: proc(editor: ^Editor, p: ^Pane) -> (scroll: int, src: []int) 
 	return
 }
 
+PaneMdJob :: struct {
+	arena: vmem.Arena,
+	job:   MdJob,
+	w:     int,
+}
+
+md_slice_ms := 10
+
+// the last finished render, kept on screen while a newer one runs in md_slice_ms steps from pane_stack_pump
 pane_md_lines :: proc(p: ^Pane, w: int) -> []MdLine {
-	if p.md_w != w {
-		vmem.arena_free_all(&p.md_arena)
-		context.temp_allocator = vmem.arena_allocator(&p.md_arena)
-		p.md_lines = md_render(p.md, w, .Plain)
-		p.md_w = w
+	if p.md_w == w {
+		return p.md_lines
+	}
+	if p.md_job != nil && p.md_job.w != w {
+		pane_md_reset(p)
+	}
+	if p.md_job == nil {
+		j := new(PaneMdJob)
+		j.w = w
+		context.temp_allocator = vmem.arena_allocator(&j.arena)
+		md_job_start(&j.job, strings.clone(p.md, context.temp_allocator), w, .Plain)
+		p.md_job = j
+		pane_md_step(p, md_slice_ms)
 	}
 	return p.md_lines
+}
+
+pane_md_step :: proc(p: ^Pane, ms: int) -> (done: bool) {
+	j := p.md_job
+	if j == nil {
+		return false
+	}
+	deadline := time.tick_add(time.tick_now(), time.Duration(ms) * time.Millisecond) if ms >= 0 else time.Tick{}
+	context.temp_allocator = vmem.arena_allocator(&j.arena)
+	lines := md_job_step(&j.job, deadline)
+	if !j.job.done {
+		return false
+	}
+	vmem.arena_destroy(&p.md_arena)
+	p.md_arena = j.arena
+	p.md_lines, p.md_w = lines, j.w
+	free(j)
+	p.md_job = nil
+	return true
+}
+
+pane_md_reset :: proc(p: ^Pane) {
+	p.md_w = -1
+	if p.md_job != nil {
+		vmem.arena_destroy(&p.md_job.arena)
+		free(p.md_job)
+		p.md_job = nil
+	}
 }
 
 pane_paste :: proc(editor: ^Editor, p: ^Pane, text: string) {
