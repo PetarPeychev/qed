@@ -21,6 +21,7 @@ MdLine :: struct {
 	fill:             rune,
 	fill_fg, fill_bg: tb2.Color,
 	slug:             string,
+	src:              int,
 }
 
 MdCell :: struct {
@@ -62,11 +63,13 @@ MdBlock :: struct {
 	loose:    bool,
 	aligns:   []MdAlign,
 	rows:     [][]string,
+	src:      int,
 }
 
 MdItem :: struct {
 	task:   int,
 	blocks: []MdBlock,
+	src:    int,
 }
 
 MdMarker :: struct {
@@ -102,6 +105,7 @@ MdRender :: struct {
 	inline:      int,
 	depth:       int,
 	em, strong:  int,
+	src:         int,
 }
 
 MD_BULLETS := [?]string{"•", "◦", "▪"}
@@ -167,20 +171,24 @@ md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
 			l = l[n - 4 * MD_MAX_NEST:]
 		}
 	}
+	rows := make([]int, len(raw), context.temp_allocator)
+	for &row, k in rows {
+		row = k
+	}
 	blocks := make([dynamic]MdBlock, context.temp_allocator)
 	if len(raw) > 1 && raw[0] == "---" {
 		for k in 1 ..< len(raw) {
 			if raw[k] == "---" || raw[k] == "..." {
 				append(&blocks, MdBlock{kind = .Code, lines = raw[1:k], info = "yaml"})
-				raw = raw[k + 1:]
+				raw, rows = raw[k + 1:], rows[k + 1:]
 				break
 			}
 		}
 	}
-	append(&blocks, ..md_parse(&r, raw))
+	append(&blocks, ..md_parse(&r, raw, rows))
 	md_blocks(&r, blocks[:])
 	if len(r.links) > 0 {
-		md_gap(&r)
+		md_gap(&r, r.src)
 		for url, i in r.links {
 			mark := fmt.tprintf("[%d] ", i + 1)
 			append(&r.prefix, MdPrefix{mark, strings.repeat(" ", len(mark), context.temp_allocator), r.style.dim, true})
@@ -278,7 +286,7 @@ md_blank :: proc(line: string) -> bool {
 	return md_trim(line) == ""
 }
 
-md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
+md_parse :: proc(r: ^MdRender, lines_in: []string, rows: []int) -> []MdBlock {
 	blocks := make([dynamic]MdBlock, context.temp_allocator)
 	// container bodies can start with a tab once their prefix is stripped
 	lines := make([]string, len(lines_in), context.temp_allocator)
@@ -297,6 +305,7 @@ md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 			i += 1
 			continue
 		}
+		src := rows[i]
 		if ind >= 4 {
 			code := make([dynamic]string, context.temp_allocator)
 			for i < len(lines) && (md_blank(lines[i]) || md_indent(lines[i]) >= 4) {
@@ -306,7 +315,7 @@ md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 			for len(code) > 0 && md_trim(code[len(code) - 1]) == "" {
 				pop(&code)
 			}
-			append(&blocks, MdBlock{kind = .Code, lines = code[:]})
+			append(&blocks, MdBlock{kind = .Code, lines = code[:], src = src})
 			continue
 		}
 		if fence, n, info, ok := md_fence(t); ok {
@@ -321,22 +330,24 @@ md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 				append(&code, lines[i][min(ind, md_indent(lines[i])):])
 				i += 1
 			}
-			append(&blocks, MdBlock{kind = .Code, lines = code[:], info = info})
+			append(&blocks, MdBlock{kind = .Code, lines = code[:], info = info, src = src})
 			continue
 		}
 		if level, text, ok := md_heading(t); ok {
-			append(&blocks, MdBlock{kind = .Heading, level = level, text = text})
+			append(&blocks, MdBlock{kind = .Heading, level = level, text = text, src = src})
 			i += 1
 			continue
 		}
 		if md_is_rule(t) {
-			append(&blocks, MdBlock{kind = .Rule})
+			append(&blocks, MdBlock{kind = .Rule, src = src})
 			i += 1
 			continue
 		}
 		if t[0] == '>' && nest_ok {
 			sub := make([dynamic]string, context.temp_allocator)
+			sub_rows := make([dynamic]int, context.temp_allocator)
 			append(&sub, strings.trim_prefix(t[1:], " "))
+			append(&sub_rows, src)
 			i += 1
 			for i < len(lines) {
 				l := lines[i]
@@ -347,6 +358,7 @@ md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 						rest = rest[1:]
 					}
 					append(&sub, rest)
+					append(&sub_rows, rows[i])
 					i += 1
 					continue
 				}
@@ -354,18 +366,20 @@ md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 					break
 				}
 				append(&sub, l)
+				append(&sub_rows, rows[i])
 				i += 1
 			}
-			append(&blocks, MdBlock{kind = .Quote, children = md_parse(r, sub[:])})
+			append(&blocks, MdBlock{kind = .Quote, children = md_parse(r, sub[:], sub_rows[:]), src = src})
 			continue
 		}
 		if _, ok := md_list_marker(line); ok && nest_ok {
 			b: MdBlock
-			b, i = md_parse_list(r, lines, i)
+			b, i = md_parse_list(r, lines, rows, i)
 			append(&blocks, b)
 			continue
 		}
 		if b, end, ok := md_parse_table(lines, i); ok {
+			b.src = src
 			append(&blocks, b)
 			i = end
 			continue
@@ -380,7 +394,7 @@ md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 					comment = false
 				}
 			}
-			append(&blocks, MdBlock{kind = .Html, text = strings.join(sub[:], " ", context.temp_allocator)})
+			append(&blocks, MdBlock{kind = .Html, text = strings.join(sub[:], " ", context.temp_allocator), src = src})
 			continue
 		}
 		if label, url, ok := md_ref_def(t); ok {
@@ -414,9 +428,9 @@ md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 		}
 		text := md_join_para(para[:])
 		if level > 0 {
-			append(&blocks, MdBlock{kind = .Heading, level = level, text = text})
+			append(&blocks, MdBlock{kind = .Heading, level = level, text = text, src = src})
 		} else {
-			append(&blocks, MdBlock{kind = .Paragraph, text = text})
+			append(&blocks, MdBlock{kind = .Paragraph, text = text, src = src})
 		}
 	}
 	return blocks[:]
@@ -522,13 +536,14 @@ md_list_marker :: proc(line: string) -> (m: MdMarker, ok: bool) {
 	return m, true
 }
 
-md_parse_list :: proc(r: ^MdRender, lines: []string, start: int) -> (MdBlock, int) {
+md_parse_list :: proc(r: ^MdRender, lines: []string, rows: []int, start: int) -> (MdBlock, int) {
 	first, _ := md_list_marker(lines[start])
 	b := MdBlock {
 		kind    = .List,
 		ordered = first.ordered,
 		start   = first.num,
 		delim   = first.ch,
+		src     = rows[start],
 	}
 	items := make([dynamic]MdItem, context.temp_allocator)
 	j := start
@@ -538,7 +553,10 @@ md_parse_list :: proc(r: ^MdRender, lines: []string, start: int) -> (MdBlock, in
 			break
 		}
 		sub := make([dynamic]string, context.temp_allocator)
+		sub_rows := make([dynamic]int, context.temp_allocator)
+		item_src := rows[j]
 		append(&sub, m.content)
+		append(&sub_rows, item_src)
 		j += 1
 		blanks := 0
 		for j < len(lines) {
@@ -552,11 +570,13 @@ md_parse_list :: proc(r: ^MdRender, lines: []string, start: int) -> (MdBlock, in
 				if blanks > 0 {
 					b.loose = true
 				}
-				for _ in 0 ..< blanks {
+				for k in 0 ..< blanks {
 					append(&sub, "")
+					append(&sub_rows, rows[j - blanks + k])
 				}
 				blanks = 0
 				append(&sub, l[m.width:])
+				append(&sub_rows, rows[j])
 				j += 1
 				continue
 			}
@@ -565,6 +585,7 @@ md_parse_list :: proc(r: ^MdRender, lines: []string, start: int) -> (MdBlock, in
 				break
 			}
 			append(&sub, strings.trim_left(l, " "))
+			append(&sub_rows, rows[j])
 			j += 1
 		}
 		task := -1
@@ -578,7 +599,7 @@ md_parse_list :: proc(r: ^MdRender, lines: []string, start: int) -> (MdBlock, in
 		if task >= 0 {
 			sub[0] = c[min(4, len(c)):]
 		}
-		append(&items, MdItem{task, md_parse(r, sub[:])})
+		append(&items, MdItem{task, md_parse(r, sub[:], sub_rows[:]), item_src})
 		if blanks > 0 && j < len(lines) {
 			if next, nok := md_list_marker(lines[j]); nok && next.ordered == first.ordered && next.ch == first.ch {
 				b.loose = true
@@ -810,11 +831,12 @@ md_run :: proc(s: string, i: int, c: u8) -> int {
 	return n
 }
 
-md_gap :: proc(r: ^MdRender) {
+md_gap :: proc(r: ^MdRender, src: int) {
 	if r.gap && !r.tight {
 		md_emit_blank(r)
 	}
 	r.gap = true
+	r.src = src
 }
 
 md_blocks :: proc(r: ^MdRender, blocks: []MdBlock) {
@@ -826,10 +848,10 @@ md_blocks :: proc(r: ^MdRender, blocks: []MdBlock) {
 md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 	switch b.kind {
 	case .Paragraph:
-		md_gap(r)
+		md_gap(r, b.src)
 		md_emit_wrapped(r, md_inline(r, b.text, r.style.fg))
 	case .Heading:
-		md_gap(r)
+		md_gap(r, b.src)
 		spans := md_inline(r, b.text, r.style.heading)
 		at := len(r.out)
 		md_emit_wrapped(r, spans)
@@ -842,13 +864,13 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 			md_emit(r, nil, '─', r.style.border)
 		}
 	case .Code:
-		md_gap(r)
+		md_gap(r, b.src)
 		md_emit_code(r, b.lines, b.info)
 	case .Rule:
-		md_gap(r)
+		md_gap(r, b.src)
 		md_emit(r, nil, '─', r.style.border)
 	case .Quote:
-		md_gap(r)
+		md_gap(r, b.src)
 		append(&r.prefix, MdPrefix{"│ ", "│ ", r.style.quote, true})
 		tight := r.tight
 		r.gap, r.tight = false, false
@@ -856,17 +878,17 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 		r.gap, r.tight = true, tight
 		pop(&r.prefix)
 	case .List:
-		md_gap(r)
+		md_gap(r, b.src)
 		md_emit_list(r, b)
 	case .Table:
-		md_gap(r)
+		md_gap(r, b.src)
 		md_emit_table(r, b)
 	case .Html:
 		rows := md_wrap(md_inline(r, b.text, r.style.fg), md_avail(r))
 		if len(rows) == 0 {
 			return
 		}
-		md_gap(r)
+		md_gap(r, b.src)
 		for row in rows {
 			if len(row) > 0 {
 				md_emit(r, row)
@@ -900,6 +922,7 @@ md_emit_list :: proc(r: ^MdRender, b: ^MdBlock) {
 		}
 		append(&r.prefix, MdPrefix{first, strings.repeat(" ", md_text_width(first), context.temp_allocator), fg, true})
 		r.gap = false
+		r.src = it.src
 		if len(it.blocks) == 0 {
 			md_emit(r, nil)
 		}
@@ -1116,7 +1139,21 @@ md_emit :: proc(r: ^MdRender, content: []MdSpan, fill: rune = 0, fill_fg: tb2.Co
 		}
 		out = md_cells_to_spans(cells[:n])
 	}
-	append(&r.out, MdLine{spans = out, fill = fill, fill_fg = fill_fg, fill_bg = fill_bg})
+	append(&r.out, MdLine{spans = out, fill = fill, fill_fg = fill_fg, fill_bg = fill_bg, src = r.src})
+}
+
+// rendered lines run in source order, so the block holding src starts at the first line of the last src <= it
+md_line_of_src :: proc(lines: []MdLine, src: int) -> int {
+	at, best := 0, -1
+	for line, i in lines {
+		if line.src > src {
+			break
+		}
+		if line.src > best {
+			at, best = i, line.src
+		}
+	}
+	return at
 }
 
 md_emit_blank :: proc(r: ^MdRender) {
@@ -1129,7 +1166,7 @@ md_emit_blank :: proc(r: ^MdRender) {
 		}
 		pop(&spans)
 	}
-	append(&r.out, MdLine{spans = spans[:]})
+	append(&r.out, MdLine{spans = spans[:], src = r.src})
 }
 
 md_emit_wrapped :: proc(r: ^MdRender, spans: []MdSpan) {

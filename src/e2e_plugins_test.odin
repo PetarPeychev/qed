@@ -566,6 +566,10 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "rows")
 	lua.pushinteger(L, lua.Integer(pn.scroll))
 	lua.setfield(L, -2, "scroll")
+	lua.pushinteger(L, lua.Integer(g.text.y))
+	lua.setfield(L, -2, "body_y")
+	lua.pushinteger(L, lua.Integer(g.text.h))
+	lua.setfield(L, -2, "body_h")
 	if n > 0 {
 		lua.pushodinstring(L, test_view_selected(entry.editor))
 		lua.setfield(L, -2, "selected")

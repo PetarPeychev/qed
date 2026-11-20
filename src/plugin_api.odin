@@ -76,6 +76,8 @@ qed_buf_api := [?]lua.L_Reg {
 	{"set_text", qed_buf_set_text},
 	{"cursor", qed_buf_cursor},
 	{"set_cursor", qed_buf_set_cursor},
+	{"screen_row", qed_buf_screen_row},
+	{"set_screen_row", qed_buf_set_screen_row},
 	{"selection", qed_buf_selection},
 	{"set_selection", qed_buf_set_selection},
 	{"set_language", qed_buf_set_language},
@@ -743,6 +745,54 @@ qed_buf_set_cursor :: proc "c" (L: ^lua.State) -> c.int {
 		editor_scroll(editor)
 	}
 	return 0
+}
+
+qed_buf_screen_row :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, idx := api_buf(L, editor, 1)
+	row, sub := b.cursor.row, 0
+	w, h := editor_viewport(editor)
+	if lua.type(L, 2) > .NIL {
+		row = api_int(L, 2, "row must be an integer") - 1
+	} else if b.wrap && w > 0 {
+		sub = wrap_subrow(b.lines[row].text[:], w, b.cursor.col)
+	}
+	if idx != editor.current || row < 0 || row >= len(b.lines) || vpos_cmp(row, sub, editor.scroll_row, editor.scroll_sub) < 0 {
+		lua.pushnil(L)
+		return 1
+	}
+	d := vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, row, sub, h)
+	if d >= h {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.pushinteger(L, lua.Integer(d + 1))
+	return 1
+}
+
+qed_buf_set_screen_row :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, idx := api_buf(L, editor, 1)
+	row := clamp(api_int(L, 2, "row must be an integer") - 1, 0, len(b.lines) - 1)
+	at := api_int(L, 3, "screen row must be an integer")
+	if idx != editor.current {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	w, h := editor_viewport(editor)
+	top_r, top_s := vpos_up(b, w, row, 0, clamp(at, 1, max(1, h)) - 1)
+	last := len(b.lines) - 1
+	max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
+	if vpos_cmp(top_r, top_s, max_r, max_s) > 0 {
+		top_r, top_s = max_r, max_s
+	}
+	editor.scroll_row, editor.scroll_sub = top_r, top_s
+	lua.pushboolean(L, true)
+	return 1
 }
 
 qed_buf_selection :: proc "c" (L: ^lua.State) -> c.int {

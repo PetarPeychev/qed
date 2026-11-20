@@ -1,5 +1,7 @@
 local cfg
 local view, watch, current
+-- the preview's top row right after the last cursor sync; closing syncs back only once it moved
+local synced
 -- {path, buf, scroll} per visited place; anchor jumps and file links push, Back/Forward step
 local history, at = {}, 0
 local follow
@@ -7,7 +9,7 @@ local follow
 local function stop(v)
 	if view == v then
 		watch:off()
-		view, watch, current = nil, nil, nil
+		view, watch, current, synced = nil, nil, nil, nil
 	end
 end
 
@@ -36,10 +38,22 @@ local function heading_row(text, anchor)
 	end
 end
 
+local function sync_back(v)
+	if not current or current.buf ~= qed.buf.current() or v:scroll() == synced then
+		return
+	end
+	local b = current.buf
+	local src, row = v:source_line(qed.buf.screen_row(b) or 1)
+	if not src then
+		return
+	end
+	qed.buf.set_cursor(b, {row = src, col = qed.buf.line(b, src):find("%S") or 1})
+	qed.buf.set_screen_row(b, src, row)
+end
+
 local function preview(b, anchor)
 	local path = qed.buf.path(b)
 	local v = qed.ui.open{
-		id = "markdown:" .. (path ~= "" and path or tostring(b)),
 		place = "full",
 		scope = "markdown",
 		toggle = "Markdown: Preview",
@@ -48,7 +62,15 @@ local function preview(b, anchor)
 		title = path ~= "" and qed.path.base(path) or "untitled",
 		markdown = qed.buf.text(b),
 		footer = {hints = {{label = "↑↓ PgUp PgDn Home End scroll  click a link to open it"}, {label = "close", cmd = "Markdown: Preview"}}},
-		on = {close = stop, link = function(lv, target) follow(lv, target) end},
+		on = {
+			close = function(cv)
+				if view == cv then
+					sync_back(cv)
+				end
+				stop(cv)
+			end,
+			link = function(lv, target) follow(lv, target) end,
+		},
 	}
 	if not v then
 		return
@@ -56,9 +78,11 @@ local function preview(b, anchor)
 	if view then
 		stop(view)
 	end
+	v:source_scroll(qed.buf.cursor(b).row, qed.buf.screen_row(b) or 1)
 	if anchor and anchor ~= "" then
 		v:anchor(anchor)
 	end
+	synced = v:scroll()
 	current = {path = path, buf = b}
 	-- subscribed only while open, so typing elsewhere runs no Lua
 	view, watch = v, qed.on("buf_changed", function(changed)
@@ -151,6 +175,7 @@ follow = function(v, target)
 	end
 	local markdown = path:lower():match("%.md$") or path:lower():match("%.markdown$")
 	if not markdown then
+		stop(v)
 		v:close()
 	end
 	local _, err = qed.jump(path, target_pos(path, anchor))

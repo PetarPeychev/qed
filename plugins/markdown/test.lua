@@ -79,18 +79,95 @@ function T.live_update_keeps_scroll(t)
 	t.key("Esc")
 end
 
-function T.reopen_restores_scroll(t)
-	t.open("re.md", long_doc())
+local function body_y(t, needle)
+	local ui = t.ui()
+	for y = ui.body_y, ui.body_y + ui.body_h - 1 do
+		if t.screen(y):find(needle, 1, true) then
+			return y
+		end
+	end
+end
+
+local function para_row(i)
+	return 2 * i + 1
+end
+
+local function expect_synced(t, b, i, why)
+	local ui = open(t)
+	local y = body_y(t, ("para %d with"):format(i))
+	t.ok(y ~= nil, why .. ": the cursor's block is shown")
+	t.eq(y - ui.body_y + 1, qed.buf.screen_row(b), why .. ": at the editor cursor's screen row")
+	t.key("Esc")
+end
+
+function T.open_syncs_to_cursor(t)
+	local b = t.open("sync.md", long_doc())
+	qed.buf.set_cursor(b, {row = para_row(3), col = 1})
+	expect_synced(t, b, 3, "near the top")
+	qed.buf.set_cursor(b, {row = para_row(40), col = 1})
+	qed.buf.set_screen_row(b, para_row(40), 8)
+	expect_synced(t, b, 40, "middle")
+	qed.buf.set_cursor(b, {row = para_row(40), col = 5})
+	qed.buf.set_screen_row(b, para_row(40), 1)
+	expect_synced(t, b, 40, "editor top")
+	qed.buf.set_cursor(b, {row = para_row(80), col = 1})
+	local ui = open(t)
+	t.eq(ui.scroll, ui.rows - ui.body_h, "near the end the preview stops at the bottom")
+	t.ok(on_screen(t, "para 80 with"), "the last block is shown")
+	t.key("Esc")
+end
+
+function T.open_clamps_at_start(t)
+	local parts = {}
+	for i = 1, 10 do
+		parts[#parts + 1] = ("[r%d]: https://x.y/%d"):format(i, i)
+	end
+	parts[#parts + 1] = ""
+	parts[#parts + 1] = "first para"
+	local b = t.open("refs.md", table.concat(parts, "\n") .. "\n\n" .. long_doc())
+	qed.buf.set_cursor(b, {row = 12, col = 1})
+	t.eq(qed.buf.screen_row(b), 12, "the cursor is low on screen")
+	local ui = open(t)
+	t.eq(ui.scroll, 0, "the preview cannot scroll above the document")
+	t.eq(body_y(t, "first para"), ui.body_y, "the block is at the top")
+	t.key("Esc")
+end
+
+function T.close_without_scroll_keeps_cursor(t)
+	local b = t.open("keep.md", long_doc())
+	qed.buf.set_cursor(b, {row = para_row(30), col = 4})
+	qed.buf.set_screen_row(b, para_row(30), 6)
 	open(t)
-	t.key("PgDn")
-	local scroll = t.ui().scroll
-	t.key("Alt+p")
+	t.key("Esc")
 	t.wait(function() return t.ui() == nil end)
-	t.eq(open(t).scroll, scroll, "same buffer reopens at the same place")
+	t.pump(20)
+	t.eq(qed.buf.cursor(b).row, para_row(30), "the cursor row is untouched")
+	t.eq(qed.buf.cursor(b).col, 4, "the cursor col is untouched")
+	t.eq(qed.buf.screen_row(b), 6, "the editor view is untouched")
+end
+
+function T.close_after_scroll_moves_cursor(t)
+	local b = t.open("move.md", long_doc())
+	qed.buf.set_cursor(b, {row = para_row(10), col = 4})
+	qed.buf.set_screen_row(b, para_row(10), 8)
+	local ui = open(t)
+	local before = ui.scroll
+	t.key("PgDn")
+	t.ok(t.ui().scroll > before, "scrolled")
+	local n
+	for y = ui.body_y + 7, ui.body_y, -1 do
+		n = t.screen(y):match("para (%d+) with")
+		if n then
+			break
+		end
+	end
+	t.ok(n ~= nil, "a block at or above the cursor's screen row")
 	t.key("Esc")
-	t.open("other.md", long_doc())
-	t.eq(open(t).scroll, 0, "another buffer starts at the top")
-	t.key("Esc")
+	t.wait(function() return t.ui() == nil end)
+	t.wait(function() return qed.buf.cursor(b).row ~= para_row(10) end)
+	t.eq(qed.buf.cursor(b).row, para_row(tonumber(n)), "the cursor is on that block's source line")
+	t.eq(qed.buf.cursor(b).col, 1, "at its first non-blank column")
+	t.eq(qed.buf.screen_row(b), 8, "at the same screen row")
 end
 
 function T.max_width(t)
@@ -110,6 +187,28 @@ end
 
 local function pad(body)
 	return "\n\n\n\n\n\n" .. body
+end
+
+function T.close_after_anchor_goes_to_first_non_blank(t)
+	local parts = {"[go-there](#target)", ""}
+	for i = 1, 60 do
+		parts[#parts + 1] = "filler " .. i
+		parts[#parts + 1] = ""
+	end
+	parts[#parts + 1] = "  ## Target"
+	for i = 1, 30 do
+		parts[#parts + 1] = ""
+		parts[#parts + 1] = "body " .. i
+	end
+	local b = t.open("anchor-sync.md", pad(table.concat(parts, "\n")))
+	open(t)
+	t.click("go-there")
+	t.ok(t.ui().scroll > 0, "the anchor scrolls")
+	t.key("Esc")
+	t.wait(function() return qed.buf.cursor(b).row ~= 1 end)
+	t.eq(qed.buf.cursor(b).row, 129, "the cursor is on the heading")
+	t.eq(qed.buf.cursor(b).col, 3, "at its first non-blank column")
+	t.eq(qed.buf.screen_row(b), 1, "at the cursor's old screen row")
 end
 
 function T.anchor_link_scrolls(t)

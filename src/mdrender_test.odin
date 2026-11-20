@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -510,4 +511,36 @@ test_md_fuzz :: proc(t: ^testing.T) {
 			md_lines_fit(t, md_render(string(data), w, .Plain), w, d)
 		}
 	}
+}
+
+md_srcs :: proc(lines: []MdLine) -> []int {
+	out := make([]int, len(lines), context.temp_allocator)
+	for l, i in lines {
+		out[i] = l.src
+	}
+	return out
+}
+
+@(test)
+test_md_source_rows :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	para := md_render("one two three\nfour five six\n\nnext", 8, .Plain)
+	md_expect_texts(t, md_texts(para), {"one two", "three", "four", "five six", "", "next"})
+	testing.expectf(t, slice.equal(md_srcs(para), []int{0, 0, 0, 0, 0, 3}), "%s: %v", "a wrapped paragraph shares its first row; the gap belongs to the block above", md_srcs(para))
+	head := md_render("# Title\n\ntext", 40, .Plain)
+	testing.expectf(t, slice.equal(md_srcs(head), []int{0, 0, 0, 2}), "%s: %v", "heading and its rule", md_srcs(head))
+	code := md_render("intro\n\n```go\nx := 1\ny := 2\n```\n\nafter", 40, .Go)
+	testing.expectf(t, slice.equal(md_srcs(code), []int{0, 0, 2, 2, 2, 7}), "%s: %v", "a code block maps to its fence", md_srcs(code))
+	list := md_render("- a\n- b\n  continued\n  - nested\n\n1. x", 40, .Plain)
+	md_expect_texts(t, md_texts(list), {"• a", "• b continued", "  ◦ nested", "", "1. x"})
+	testing.expectf(t, slice.equal(md_srcs(list), []int{0, 1, 3, 3, 5}), "%s: %v", "list items and nested items", md_srcs(list))
+	table := md_render("| a | b |\n|---|---|\n| 1 | 2 |\n\nend", 40, .Plain)
+	testing.expectf(t, slice.equal(md_srcs(table), []int{0, 0, 0, 0, 0, 0, 4}), "%s: %v", "a table maps to its header row", md_srcs(table))
+	quote := md_render("---\nk: v\n---\n> q1\n> q2\n>\n> q3", 40, .Plain)
+	testing.expectf(t, slice.equal(md_srcs(quote), []int{0, 0, 3, 3, 6}), "%s: %v", "front matter and quote children", md_srcs(quote))
+	testing.expect_value(t, md_line_of_src(para, 2), 0)
+	testing.expect_value(t, md_line_of_src(para, 3), 5)
+	testing.expect_value(t, md_line_of_src(code, 4), 2)
+	testing.expect_value(t, md_line_of_src(code, 99), 5)
 }

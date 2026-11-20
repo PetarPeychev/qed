@@ -41,6 +41,10 @@ UiView :: struct {
 	on:          [ViewEvent]i32,
 	change_task: u64,
 	query_task:  u64,
+	// a markdown body's last visible rows, so the close handler can still map them to source rows
+	md_closed:   bool,
+	md_scroll:   int,
+	md_src:      []int,
 }
 
 UiViewEvent :: struct {
@@ -78,6 +82,8 @@ qed_view_methods := [?]lua.L_Reg {
 	{"markdown", qed_view_markdown},
 	{"anchor", qed_view_anchor},
 	{"scroll", qed_view_scroll},
+	{"source_line", qed_view_source_line},
+	{"source_scroll", qed_view_source_scroll},
 	{"close", qed_view_close},
 	{"wait", qed_view_wait},
 	{"marks", qed_view_marks},
@@ -142,6 +148,7 @@ plugin_view_release :: proc(p: ^Plugins, i: int) {
 			}
 		}
 	}
+	delete(v.md_src)
 	ordered_remove(&p.views, i)
 }
 
@@ -234,6 +241,11 @@ plugin_view_queue :: proc(editor: ^Editor, pn: ^Pane, kind: ViewEvent, sel: []in
 
 plugin_view_closed :: proc(editor: ^Editor, pn: ^Pane) {
 	pane_save(editor, pn)
+	if vi := plugin_view_index(&editor.plugins, pn.handle); vi >= 0 && pn.has_md {
+		v := &editor.plugins.views[vi]
+		scroll, src := pane_md_visible(editor, pn)
+		v.md_closed, v.md_scroll, v.md_src = true, scroll, slice.clone(src)
+	}
 	plugin_view_queue(editor, pn, .Close, nil)
 }
 
@@ -2020,12 +2032,70 @@ qed_view_scroll :: proc "c" (L: ^lua.State) -> c.int {
 	row := api_int(L, 2, "row must be an integer") if set else 0
 	pn, _ := api_view_live(L, entry.editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
+		if v := api_view_closed(L, entry.editor); v != nil && !set {
+			lua.pushinteger(L, lua.Integer(v.md_scroll + 1))
+		} else {
+			lua.pushboolean(L, false)
+		}
 		return 1
 	}
 	if set {
-		pn.scroll = max(0, row - 1)
+		pn.scroll = row - 1
 	}
+	g := pane_geom(entry.editor, pn)
+	pn.scroll = clamp(pn.scroll, 0, max(0, pane_body_rows(pn, g) - g.text.h))
+	lua.pushinteger(L, lua.Integer(pn.scroll + 1))
+	return 1
+}
+
+api_view_closed :: proc(L: ^lua.State, editor: ^Editor) -> ^UiView {
+	vi := plugin_view_index(&editor.plugins, api_handle_id(L))
+	if vi < 0 || !editor.plugins.views[vi].md_closed {
+		return nil
+	}
+	return &editor.plugins.views[vi]
+}
+
+qed_view_source_line :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	at := api_int(L, 2, "row must be an integer") if lua.type(L, 2) > .NIL else 1
+	src: []int
+	if pn, _ := api_view_live(L, entry.editor); pn != nil {
+		if !pn.has_md {
+			plugin_raise(L, "view has no markdown body")
+		}
+		_, src = pane_md_visible(entry.editor, pn)
+	} else if v := api_view_closed(L, entry.editor); v != nil {
+		src = v.md_src
+	}
+	if len(src) == 0 {
+		lua.pushnil(L)
+		return 1
+	}
+	at = clamp(at, 1, len(src))
+	lua.pushinteger(L, lua.Integer(src[at - 1] + 1))
+	lua.pushinteger(L, lua.Integer(at))
+	return 2
+}
+
+qed_view_source_scroll :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	src := api_int(L, 2, "row must be an integer")
+	at := api_int(L, 3, "row must be an integer") if lua.type(L, 3) > .NIL else 1
+	pn, _ := api_view_live(L, entry.editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if !pn.has_md {
+		plugin_raise(L, "view has no markdown body")
+	}
+	g := pane_geom(entry.editor, pn)
+	lines := pane_md_lines(pn, g.text.w)
+	at = clamp(at, 1, max(1, g.text.h))
+	pn.scroll = clamp(md_line_of_src(lines, src - 1) - (at - 1), 0, max(0, len(lines) - g.text.h))
 	lua.pushinteger(L, lua.Integer(pn.scroll + 1))
 	return 1
 }

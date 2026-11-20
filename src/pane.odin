@@ -1872,6 +1872,17 @@ pane_body_rows :: proc(p: ^Pane, g: PaneGeom) -> int {
 	return len(pane_md_lines(p, g.text.w)) if p.has_md else len(p.text)
 }
 
+pane_md_visible :: proc(editor: ^Editor, p: ^Pane) -> (scroll: int, src: []int) {
+	g := pane_geom(editor, p)
+	lines := pane_md_lines(p, g.text.w)
+	scroll = clamp(p.scroll, 0, max(0, len(lines) - g.text.h))
+	src = make([]int, clamp(len(lines) - scroll, 0, g.text.h), context.temp_allocator)
+	for &s, i in src {
+		s = lines[scroll + i].src
+	}
+	return
+}
+
 pane_md_lines :: proc(p: ^Pane, w: int) -> []MdLine {
 	if p.md_w != w {
 		vmem.arena_free_all(&p.md_arena)
