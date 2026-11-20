@@ -210,6 +210,15 @@ e2e_term_master_cloexec :: proc(t: ^testing.T) {
 	if a_index == "" {
 		return
 	}
+	// until the forked child execs it still holds every parent fd, CLOEXEC or not
+	self_exe, _ := os.read_link("/proc/self/exe", context.temp_allocator)
+	for start := time.tick_now(); time.duration_seconds(time.tick_since(start)) < 5; {
+		exe, _ := os.read_link(fmt.tprintf("/proc/%d/exe", b.pid), context.temp_allocator)
+		if exe != self_exe {
+			break
+		}
+		time.sleep(time.Millisecond)
+	}
 	fds, _ := os.read_directory_by_path(fmt.tprintf("/proc/%d/fdinfo", b.pid), -1, context.temp_allocator)
 	testing.expect(t, len(fds) > 0, "the later child's fds are readable")
 	for f in fds {
