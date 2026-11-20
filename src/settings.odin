@@ -150,8 +150,6 @@ config_lsp_bools := [?]Config_Bool {
 
 config_lsp := Config_Section{"lsp", nil, config_lsp_ints[:], config_lsp_bools[:]}
 
-config_module_defs: []Config_Section
-
 Config_Float :: struct {
 	key: string,
 	ptr: ^f32,
@@ -654,28 +652,6 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 		}
 	}
 
-	if mods_val, present := root["modules"]; present {
-		if mods_obj, is_obj := mods_val.(json.Object); is_obj {
-			for def in config_module_defs {
-				mv, has := mods_obj[def.name]
-				if !has {
-					continue
-				}
-				mo, ok := mv.(json.Object)
-				if !ok {
-					append(invalid, fmt.tprintf("modules/%s", def.name))
-					continue
-				}
-				prefix := fmt.tprintf("modules/%s", def.name)
-				config_apply_strs(mo, def.strs, prefix, invalid)
-				config_apply_ints(mo, def.ints, prefix, invalid)
-				config_apply_bools(mo, def.bools, prefix, invalid)
-			}
-		} else {
-			append(invalid, "modules")
-		}
-	}
-
 	if plugins_val, present := root["plugins"]; present {
 		if plugins_obj, is_obj := plugins_val.(json.Object); is_obj {
 			for name, v in plugins_obj {
@@ -770,34 +746,7 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 				}
 				continue
 			}
-			def, def_ok := config_module_def(mod_key)
-			if !def_ok {
-				append(warnings, fmt.tprintf("unknown modules/%q", mod_key))
-				continue
-			}
-			sub, sub_ok := mod_val.(json.Object)
-			if !sub_ok {
-				continue
-			}
-			for key in sub {
-				found := false
-				for it in def.strs {
-					if it.key == key {found = true; break}
-				}
-				if !found {
-					for it in def.ints {
-						if it.key == key {found = true; break}
-					}
-				}
-				if !found {
-					for it in def.bools {
-						if it.key == key {found = true; break}
-					}
-				}
-				if !found {
-					append(warnings, fmt.tprintf("unknown modules/%s/%q", mod_key, key))
-				}
-			}
+			append(warnings, fmt.tprintf("unknown modules/%q", mod_key))
 		}
 	}
 }
@@ -871,15 +820,6 @@ config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -
 		}
 	}
 	return warnings
-}
-
-config_module_def :: proc(name: string) -> (Config_Section, bool) {
-	for def in config_module_defs {
-		if def.name == name {
-			return def, true
-		}
-	}
-	return {}, false
 }
 
 THEME: string

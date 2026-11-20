@@ -461,11 +461,10 @@ overlay.
 
 ## Modules
 
-No gated subsystem is left: `ai` became the bundled `ai` plugin (`plugins.ai`), `git` the `git`
-plugin, LSP the top-level `lsp` section gated on `LSP_ENABLED` (`LSP:` commands carry `Command.lsp`,
-`lsp_enabled_sync` tears servers down after a reload turns it off). Old `modules.ai.*`, `modules.git.*`
-and `modules.lsp.*` keys warn "moved to". `module.odin` (`Module` with only `.None`,
-`module_enabled`, `Command.module`, `config_module_defs`) is dead scaffolding M8 deletes.
+The module system is gone. `ai` and `git` are bundled plugins (`plugins.ai`, `plugins.git`), LSP is the
+top-level `lsp` section gated on `LSP_ENABLED` (`LSP:` commands carry `Command.lsp`, `lsp_enabled_sync`
+tears servers down after a reload turns it off). Old `modules.ai.*`, `modules.git.*` and `modules.lsp.*`
+keys warn "moved to"; any other `modules.*` key warns unknown.
 
 ## Plugins
 
@@ -823,7 +822,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
-defaults seeded before main, load + write-back) · `module` (dead, M8 removes it) · `clipboard` · `shell` ·
+defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.

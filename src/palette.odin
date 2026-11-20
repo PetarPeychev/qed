@@ -14,7 +14,6 @@ Command :: struct {
 	key:         tb2.Key,
 	alt_ch:      rune,
 	ch:          rune,
-	module:      Module,
 	lsp:         bool,
 	run:         proc(editor: ^Editor),
 	owner:       string,
@@ -168,7 +167,7 @@ pane_commands := [?]Command {
 }
 
 command_enabled :: proc(cmd: Command) -> bool {
-	return module_enabled(cmd.module) && (!cmd.lsp || LSP_ENABLED)
+	return !cmd.lsp || LSP_ENABLED
 }
 
 command_gated :: proc(name: string) -> bool {

@@ -1327,15 +1327,7 @@ qed_opt :: proc "c" (L: ^lua.State) -> c.int {
 	bools := config_bools[:]
 	strs: []Config_Str
 	name := key
-	if strings.has_prefix(key, "modules.") {
-		rest := key[len("modules."):]
-		dot := strings.index_byte(rest, '.')
-		def, ok := config_module_def(rest[:max(dot, 0)])
-		if dot < 0 || !ok {
-			return plugin_raise(L, fmt.tprintf("unknown option '%s'", key))
-		}
-		ints, bools, strs, name = def.ints, def.bools, def.strs, rest[dot + 1:]
-	} else if strings.has_prefix(key, "lsp.") {
+	if strings.has_prefix(key, "lsp.") {
 		ints, bools, name = config_lsp.ints, config_lsp.bools, key[len("lsp."):]
 	} else if key == "theme" {
 		lua.pushodinstring(L, THEME)

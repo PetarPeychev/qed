@@ -81,8 +81,8 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Pane model M5: the file tree becomes the bundled `filetree` plugin over walk handles, `walk.odin` keeps only the walk service, the Changed tab through a temporary provider shim ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M6: plugin exports (`qed.export/plugin/caller`), namespaced custom events (`qed.emit`), `plugin_loaded`/`plugin_unloaded`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`) through `filetree` exports; the provider shim and `qed.filetree.*` are gone; task errors no longer disable a plugin ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M7: the merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`) and AI becomes the bundled `ai` plugin (`plugins.ai`); `qed.buf.find_lines`, `qed.buf.big`, `qed.text.diff`/`diff_rows`, `qed.deco.mark`/`range`/`inline`, theme tint keys as deco alphas, blended spans, `buf_changed`'s `typed`/`lo`/`hi`, hunk-applied reloads; `conflict.odin`, the core `merge` pane, `aiedit.odin`/`llm.odin`/`fim.odin`, `modules.ai` and `.Ai` are gone ([notes/panes.md](notes/panes.md) §7).
+- [ ] Pane model M8: the module system is gone (`module.odin`, `Module`, `module_enabled`, `Command.module`, `config_module_defs`, the `modules` parsing); the `modules.ai/git/lsp` moved-key hints stay ([notes/panes.md](notes/panes.md) §7).
 - [ ] A visible 1 MB line costs ~230 ms per frame unwrapped; wrapped, ~8 s per frame and ~0.8 s per keystroke on it (debug build); make long-line render and wrap proportional to the visible part.
-- [ ] Pane model M8: delete the empty module scaffolding (`module.odin`, `Command.module`, `config_module_defs`, the `modules` parsing; keep the moved-key hints).
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred

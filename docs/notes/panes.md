@@ -351,7 +351,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M5 (done) | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
 | M6 (done) | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
 | M7 (done) | Conflict UI (the `conflict` plugin) and AI (the `ai` plugin: aiedit, then fim) ported onto the model and decorations. | range-anchored tints and spans, `confirm` choices, inline ghost with no Lua on the keystroke path (D8) |
-| M8 | Remove the module system (`modules.*`, `module_enabled`). | |
+| M8 | Remove the module system (`modules.*`, `module_enabled`). | Done: `module.odin`, `Module`, `module_enabled`, `Command.module`, `config_module_defs` and the `modules` parsing are gone; the moved-key hints stay. |
 | M9 | Review every bundled plugin's config keys (existing TODO). | |
 | later | Inspect, hover/diag/completion on `cursor`/`corner`; terminal chrome on a `Term` body (core). | shared renderer only |
 
@@ -524,7 +524,7 @@ conflicts and AI plugin; the primitives in plugins.md). Deviations from §7:
 | HTTP | `curl` through `qed.spawn_bg`, the `Authorization` header from a here-doc on fd 3 (`-H @/dev/fd/3`), never in argv; `completion_api_key_env` must be a variable name. | No `qed.http`; the key never shows in `/proc/<pid>/cmdline`. |
 | Idle cost | The AI plugin subscribes to `buf_changed` only while a request runs or completion is on, `buf_reload`/`buf_close` only while a request runs. | No task per keystroke for an idle plugin. |
 | Prompt, messages | `qed.prompt{prompt = "AI edit:"}` replaces the `aiedit` overlay. Messages drop the `AI edit` prefix (`AI: Edit applied`); a non-zero exit says `Command failed (exit N)`. The `AI:N` count is a right-side plugin segment. | Plugin messages carry the display name. |
-| Removed | `conflict.odin`, `conflict_test.odin` (ported to `plugins/conflict/test.lua`), `MergeSide`, the core `merge` pane, `aiedit.odin`, `llm.odin`, `fim.odin`, `llm_test.odin`, `subprocess_start`, `modules.ai`, `.Ai`, `AI_ENABLED`, the `LLM_*` globals, `editor_modules_sync`, `deco_after_reload`. `module.odin` is empty scaffolding for M8. | |
+| Removed | `conflict.odin`, `conflict_test.odin` (ported to `plugins/conflict/test.lua`), `MergeSide`, the core `merge` pane, `aiedit.odin`, `llm.odin`, `fim.odin`, `llm_test.odin`, `subprocess_start`, `modules.ai`, `.Ai`, `AI_ENABLED`, the `LLM_*` globals, `editor_modules_sync`, `deco_after_reload`. `module.odin` went in M8. | |
 | Scale | `bench_conflict_keystroke` (debug, WSL2, 20k lines): no markers +0.5 ms per keystroke (no Lua); 200 blocks ~1.8-2.2 ms; 2000 blocks (18k decorations) ~4-4.5 ms, max slice ~5.5 ms (M6 full re-push: ~2.7 ms at 200); a 1 MB line inside a block (wrap off): typing outside ~1.6 ms, inside its block ~3.7 ms. Rendering a visible 1 MB line costs ~230 ms per frame in core regardless (TODO). `e2e_conflict_keystroke_cost` guards the 2000-block and 1 MB cases with loose bounds. | Well inside the 50 ms soft budget. |
 
 ## 8. Decisions
