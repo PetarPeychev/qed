@@ -236,18 +236,20 @@ on `PATH`. Rebind both with `plugins.search.keybinds["Find in Files"]`.
 ### Markdown
 
 *Markdown: Preview* (`Alt+p`, only in a markdown buffer) opens the buffer rendered in a
-centered pane: markers hidden, headings colored with a rule under H1/H2, code blocks on a
-tinted band with syntax colors, lists, task boxes, quotes, box-drawn tables, link URLs as
-numbered footnotes. It follows edits to the buffer and keeps its scroll; the same chord
-closes it, and reopening restores the scroll for that buffer. Clicking a link follows it: `#anchor`
-scrolls to the heading, a relative path opens that file (from the previewed file's dir, at the
-heading for `file.md#anchor`) and closes the preview, a URL opens in the platform browser (macOS
-`open`; WSL `wslview`, else `explorer.exe`; Linux `xdg-open`). LSP hover uses the same renderer.
+full pane capped at `max_width`: markers hidden, headings colored with a rule under H1/H2, code
+blocks on a tinted band with syntax colors, lists, task boxes, quotes, box-drawn tables, link URLs
+as numbered footnotes. The pane has focus, so it follows changes made outside it (disk reload,
+formatters, plugins) and keeps its scroll; the same chord closes it, and reopening restores the
+scroll for that file. Clicking a link follows it: `#anchor` scrolls to the heading; a link to
+another markdown file switches the preview to it (and the editor underneath, at the heading for
+`file.md#anchor`, recorded in the jump list); a link to any other file closes the preview and opens
+it; a URL opens in the platform browser (macOS `open`; WSL `wslview`, else `explorer.exe`; Linux
+`xdg-open`). LSP hover uses the same renderer (plaintext hovers render verbatim).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.markdown.enabled` | `true` | Off removes *Markdown: Preview*. |
-| `plugins.markdown.max_width` | `100` | Widest the preview pane gets, borders included. |
+| `plugins.markdown.max_width` | `120` | Widest the preview pane gets, borders included (at least 20). Applies to an open preview. |
 | `plugins.markdown.backdrop` | `"dim"` | What shows around the preview: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
 
 ### Git

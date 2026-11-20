@@ -666,7 +666,13 @@ on the run color (`text.strong` is `foreground bold`, so bold never reads as a h
 via `MdLine.fill`; blocks are highlighted by `highlight_lines` and char-wrapped. Links show their
 text underlined plus `[n]` (both carry the target), each URL listed once as a footnote at the end (anchors and autolinks
 get none). Images and `<img>` show `[image: alt]`; other HTML tags drop (`br` and block closers
-break lines). Tables fit columns to content, keep whole words when every column's longest word
+break lines; only real tag names count, so `Vec<T>` stays text). Plaintext hovers go through
+`md_escape_plain` (punctuation escaped, hard breaks, indent as no-break spaces); a MarkedString
+`{language, value}` becomes a fenced block. Front matter renders as a yaml code block. Containers
+nest at most `MD_MAX_NEST` deep (deeper markers are text), inline scans stop after `MD_SCAN_MAX`
+bytes, prefixes beyond half the width are hidden and every line is cut to the width, so hostile
+input stays linear and in bounds. Inline code falls back to the pane foreground when the theme's
+code color has under 3:1 contrast on the band. Tables fit columns to content, keep whole words when every column's longest word
 fits, share the rest evenly and wrap cells; below 3 columns per cell, rows become `header: value`
 lines.
 
