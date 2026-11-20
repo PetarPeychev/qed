@@ -158,6 +158,15 @@ gate_file :: proc(name: string, highlight := false) {
 	gate_record(16, gate_mean(&e, wheel(true)), fmt.tprintf("scroll step %s", tag))
 	gate_place(&e, len(b.lines) / 2, 0)
 	gate_record(16, gate_mean(&e, key(.Arrow_Down)), fmt.tprintf("arrow down %s", tag))
+	gate_frame(&e, key(.Ctrl_F))
+	total := 0.0
+	for r in "zqx" {
+		start := time.tick_now()
+		gate_frame(&e, char(r))
+		total += ms_since(start)
+	}
+	gate_record(50, total / 3, fmt.tprintf("search keystroke, no match %s", tag))
+	gate_frame(&e, key(.Esc))
 }
 
 @(private = "file")
