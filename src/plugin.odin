@@ -102,6 +102,7 @@ Plugins :: struct {
 	colors:   [dynamic]string,
 	deco_ns:  [dynamic]PluginNs,
 	ns_seq:   u32,
+	mark_seq: u64,
 	status:   [dynamic]PluginStatus,
 	calls:    [dynamic]PluginCall,
 }
@@ -120,6 +121,7 @@ bundled_plugin_files := #load_directory("../plugins")
 
 // Listed file by file so a dir plugin's test.lua stays out of the binary.
 bundled_plugin_dir_files := [?]PluginFile {
+	{"ai/init.lua", #load("../plugins/ai/init.lua", string)},
 	{"filetree/init.lua", #load("../plugins/filetree/init.lua", string)},
 	{"format/init.lua", #load("../plugins/format/init.lua", string)},
 	{"git/init.lua", #load("../plugins/git/init.lua", string)},

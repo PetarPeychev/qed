@@ -171,7 +171,7 @@ local Handle = {}
 ---Unregisters the handler. A no-op if it is already gone.
 function Handle:off() end
 
----Handlers run as coroutines in plugin load order. `buf_changed(b, rev)` and
+---Handlers run as coroutines in plugin load order. `buf_changed(b, rev, typed)` (`typed`: the latest change was the user typing a character, Enter, Backspace or Delete) and
 ---`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
@@ -640,13 +640,13 @@ function qed.deco.ns(name) end
 ---@param color string theme color key
 function qed.deco.gutter(b, ns, row, glyph, color) end
 
----Line background tint, stacked over diff/conflict tints and under the AI and current-line tints.
+---Line background tint, stacked over diff/conflict tints and under the current-line tint.
 ---@param b qed.Buf
 ---@param ns integer
 ---@param from_row integer
 ---@param to_row integer inclusive
 ---@param color string theme color key
----@param alpha? number 0..1, default the theme's `decoration` tint
+---@param alpha? number|string 0..1, or a theme tint name such as `"ai_edit"` (follows the theme); default the theme's `decoration` tint
 function qed.deco.tint(b, ns, from_row, to_row, color, alpha) end
 
 ---Virtual rows below (or above) a row, one clipped screen row each.
@@ -673,7 +673,33 @@ function qed.deco.span(b, ns, from, to, style) end
 ---@param color string theme color key
 function qed.deco.eol(b, ns, row, text, color) end
 
----Removes the namespace's decorations touching rows from_row..to_row (all when omitted).
+---A range anchor that follows edits: text inserted before it shifts it, an edit touching its inside (or a reload) removes it. Never drawn.
+---@param b qed.Buf
+---@param ns integer
+---@param from qed.Pos
+---@param to qed.Pos
+---@return integer id
+function qed.deco.mark(b, ns, from, to) end
+
+---Where the mark is now, or nil once an edit touched its inside, a reload dropped it or it was cleared.
+---@param b qed.Buf
+---@param ns integer
+---@param id integer
+---@return qed.Pos|nil from
+---@return qed.Pos|nil to
+function qed.deco.range(b, ns, id) end
+
+---Dimmed inline text at the cursor, not part of the buffer (one per buffer). Shown while the cursor stays at `pos` without a selection; core handles the keys: Tab inserts it, Ctrl+Right its next word, any other key, a click or an edit drops it.
+---Returns false (nothing shown) when `pos` is not the cursor, a selection is active, `text` is empty or `opts.rev` is stale.
+---@param b qed.Buf
+---@param ns integer
+---@param pos qed.Pos
+---@param text string may span lines
+---@param opts? {rev?: integer}
+---@return boolean shown
+function qed.deco.inline(b, ns, pos, text, opts) end
+
+---Removes the namespace's decorations, marks and inline text touching rows from_row..to_row (all when omitted).
 ---@param b qed.Buf
 ---@param ns integer
 ---@param from_row? integer

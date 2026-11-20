@@ -56,7 +56,7 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || llm_running(&editor) || fim_active(&editor) || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) {
+			if lsp_running() || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) {
 				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
@@ -67,20 +67,11 @@ main :: proc() {
 				if term_pump(&editor) {
 					redraw = true
 				}
-				if llm_running(&editor) && llm_pump(&editor) {
-					redraw = true
-				}
-				if fim_pump(&editor) {
-					redraw = true
-				}
 				if walk_pump(&editor) {
 					redraw = true
 				}
 				if pane_stack_pump(&editor) {
 					redraw = true
-				}
-				if fim_due(&editor) {
-					fim_request(&editor)
 				}
 				if completion_due(&editor) {
 					editor.completion.want = false
@@ -172,9 +163,6 @@ editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.
 	}
 	if pending_ok {
 		editor_dispatch(editor, pending)
-	}
-	if llm_running(editor) {
-		llm_prune_edited(editor)
 	}
 	pane_stack_sync(editor)
 	if !editor.pasting {

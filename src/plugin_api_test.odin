@@ -316,8 +316,7 @@ plugin_api_misc :: proc(t: ^testing.T) {
 		assert(qed.config().opt == 1, "config copies are read-only")
 		assert(qed.opt("tab_width") == TAB and qed.opt("line_wrap") ~= nil and type(qed.opt("theme")) == "string", "core knobs")
 		assert(type(qed.opt("lsp.completion_max_rows")) == "number", "lsp knob")
-		assert(type(qed.opt("modules.ai.chat_command")) == "string", "module knob")
-		assert(not pcall(qed.opt, "nope") and not pcall(qed.opt, "modules.x.y") and not pcall(qed.opt, "modules.lsp.enabled") and not pcall(qed.opt, "lsp.nope"), "unknown knob")
+		assert(not pcall(qed.opt, "nope") and not pcall(qed.opt, "modules.ai.chat_command") and not pcall(qed.opt, "modules.x.y") and not pcall(qed.opt, "modules.lsp.enabled") and not pcall(qed.opt, "lsp.nope"), "unknown knob")
 
 		assert(qed.fs.write("sub/f.json", qed.json.encode({b = {1, 2, 3}, a = "x", c = true, d = 1.5})) == true, "write creates parents")
 		assert(qed.fs.read("sub/f.json") == '{"a":"x","b":[1,2,3],"c":true,"d":1.5}', "encode is sorted and compact: " .. qed.fs.read("sub/f.json"))

@@ -170,15 +170,14 @@ e2e_deco_ghost_scroll :: proc(t: ^testing.T) {
 @(test)
 e2e_deco_line_bg_order :: proc(t: ^testing.T) {
 	tints := []RowTint{{COLOR_GIT_DEL, 0.3}, {COLOR_WARN_FG, 0.2}}
-	got := editor_line_bg(true, true, .Modified, true, .Ours, false, tints)
+	got := editor_line_bg(true, .Modified, true, .Ours, false, tints)
 	want := color_over(COLOR_BG, COLOR_GIT_MOD, GIT_HUNK_TINT)
 	want = color_over(want, merge_side_color(.Ours), CONFLICT_TINT)
 	want = color_over(want, COLOR_GIT_DEL, 0.3)
 	want = color_over(want, COLOR_WARN_FG, 0.2)
-	want = color_over(want, COLOR_AI_EDIT_BG, AI_EDIT_TINT)
 	want = color_over(want, COLOR_CURRENT_LINE_BG, CURRENT_LINE_TINT)
 	testing.expect_value(t, got, want)
-	testing.expect_value(t, editor_line_bg(false, false, .None, false, .None, false), COLOR_BG)
+	testing.expect_value(t, editor_line_bg(false, .None, false, .None, false), COLOR_BG)
 }
 
 @(test)
@@ -451,4 +450,150 @@ e2e_deco_set_base_ownership :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	_, h := editor_viewport(&e.ed)
 	testing.expect(t, strings.contains(e2e_row_text(&e, h), fmt.tprintf("%sbase", ICON_STATUS_DIFF_BASE)), "a label-less plugin base shows a generic indicator")
+}
+
+@(test)
+e2e_deco_mark_follows_edits :: proc(t: ^testing.T) {
+	e := e2e_start("alpha\nbravo charlie\ndelta\n")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	pl := deco_plugin(&e, "mk", `
+		local m = qed.deco.mark(nil, ns, {row = 2, col = 7}, {row = 2, col = 14})
+		local from, to = qed.deco.range(nil, ns, m)
+		assert(from.row == 2 and from.col == 7 and to.col == 14, "range reads back")
+		assert(qed.deco.range(nil, ns, m + 1) == nil, "unknown id")`)
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+	testing.expect_value(t, len(b.deco.marks), 1)
+
+	buffer_insert(b, {0, 0}, "new\n")
+	testing.expect_value(t, b.deco.marks[0].from, Cursor{2, 6})
+	buffer_insert(b, {2, 0}, ">> ")
+	testing.expect_value(t, b.deco.marks[0].from, Cursor{2, 9})
+	testing.expect_value(t, b.deco.marks[0].to, Cursor{2, 16})
+	buffer_insert(b, {2, 9}, "x")
+	testing.expect_value(t, b.deco.marks[0].from, Cursor{2, 10})
+	buffer_insert(b, {2, 17}, "y")
+	testing.expect_value(t, b.deco.marks[0].to, Cursor{2, 17})
+	delete(buffer_delete(b, {2, 0}, {2, 3}))
+	testing.expect_value(t, b.deco.marks[0].from, Cursor{2, 7})
+	testing.expect_value(t, b.deco.marks[0].to, Cursor{2, 14})
+	delete(buffer_delete(b, {2, 14}, {2, 15}))
+	testing.expect_value(t, len(b.deco.marks), 1)
+
+	buffer_insert(b, {2, 10}, "!")
+	testing.expect_value(t, len(b.deco.marks), 0)
+}
+
+@(test)
+e2e_deco_mark_dies_on_overlap :: proc(t: ^testing.T) {
+	e := e2e_start("one two three\n")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	deco_plugin(&e, "mk", `
+		qed.deco.mark(nil, ns, {row = 1, col = 5}, {row = 1, col = 8})
+		qed.deco.mark(nil, ns, {row = 1, col = 9}, {row = 1, col = 14})`)
+	testing.expect_value(t, len(b.deco.marks), 2)
+	delete(buffer_delete(b, {0, 2}, {0, 6}))
+	testing.expect_value(t, len(b.deco.marks), 1)
+	testing.expect_value(t, b.deco.marks[0].from, Cursor{0, 4})
+	b.selection = Cursor{0, 3}
+	b.cursor = {0, 6}
+	e2e_type(&e, "Z")
+	testing.expect_value(t, len(b.deco.marks), 0)
+}
+
+@(test)
+e2e_deco_tint_theme_key :: proc(t: ^testing.T) {
+	e := e2e_start("alpha\nbravo\n")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.wrap = false
+	pl := deco_plugin(&e, "tk", `
+		qed.deco.tint(nil, ns, 2, 2, "ai_edit_background", "ai_edit")
+		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, "ai_edit_background", "nope"), "unknown tint")`)
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+	e2e_render(&e)
+	gutter := editor_gutter_width(&e.ed)
+	testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, gutter + 6, 1)), e2e_rgb(color_over(COLOR_BG, COLOR_AI_EDIT_BG, AI_EDIT_TINT)))
+	saved := AI_EDIT_TINT
+	defer AI_EDIT_TINT = saved
+	AI_EDIT_TINT = 0.8
+	e2e_render(&e)
+	testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, gutter + 6, 1)), e2e_rgb(color_over(COLOR_BG, COLOR_AI_EDIT_BG, 0.8)))
+}
+
+@(private = "file")
+inline_start :: proc(t: ^testing.T, e: ^E2E, name := "gh") -> ^Buffer {
+	b := editor_buffer(&e.ed)
+	b.wrap = false
+	b.cursor = {0, 2}
+	pl := deco_plugin(e, name, `
+		assert(not qed.deco.inline(nil, ns, {row = 1, col = 1}, "X"), "not at the cursor")
+		assert(not qed.deco.inline(nil, ns, {row = 1, col = 3}, "X", {rev = qed.buf.rev() + 1}), "stale rev")
+		assert(not qed.deco.inline(nil, ns, {row = 1, col = 3}, ""), "empty text")
+		assert(qed.deco.inline(nil, ns, {row = 1, col = 3}, "AAA\nBBB", {rev = qed.buf.rev()}), "shown")`)
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+	testing.expect(t, inline_active(&e.ed), "ghost active at the cursor")
+	return b
+}
+
+@(test)
+e2e_deco_inline_renders_dimmed :: proc(t: ^testing.T) {
+	e := e2e_start("ab")
+	defer e2e_stop(&e)
+	inline_start(t, &e)
+	e2e_render(&e)
+	gutter := editor_gutter_width(&e.ed)
+	testing.expect_value(t, e2e_cell(&e, gutter + 2, 0), 'A')
+	testing.expect_value(t, e2e_cell_fg(&e, gutter + 2, 0), COLOR_GHOST_FG)
+	testing.expect_value(t, e2e_cell(&e, gutter, 1), 'B')
+	testing.expect_value(t, e2e_cell_fg(&e, gutter, 1), COLOR_GHOST_FG)
+}
+
+@(test)
+e2e_deco_inline_tab_accepts_all :: proc(t: ^testing.T) {
+	e := e2e_start("ab")
+	defer e2e_stop(&e)
+	b := inline_start(t, &e)
+	e2e_key(&e, .Tab)
+	testing.expect_value(t, string(b.lines[0].text[:]), "abAAA")
+	testing.expect_value(t, len(b.lines), 2)
+	testing.expect_value(t, string(b.lines[1].text[:]), "BBB")
+	testing.expect(t, !inline_active(&e.ed), "ghost consumed by accept")
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, string(b.lines[0].text[:]), "ab")
+	testing.expect_value(t, len(b.lines), 1)
+}
+
+@(test)
+e2e_deco_inline_ctrl_right_accepts_word :: proc(t: ^testing.T) {
+	e := e2e_start("ab")
+	defer e2e_stop(&e)
+	b := inline_start(t, &e)
+	e2e_key(&e, .Arrow_Right, .Ctrl)
+	testing.expect_value(t, string(b.lines[0].text[:]), "abAAA")
+	testing.expect_value(t, len(b.lines), 1)
+	testing.expect(t, inline_active(&e.ed), "the rest stays shown")
+	testing.expect_value(t, b.deco.inline.text, "\nBBB")
+}
+
+@(test)
+e2e_deco_inline_dismissed :: proc(t: ^testing.T) {
+	e := e2e_start("ab")
+	defer e2e_stop(&e)
+	b := inline_start(t, &e)
+	e2e_type(&e, "z")
+	testing.expect(t, !inline_active(&e.ed), "an edit drops the ghost")
+	testing.expect_value(t, string(b.lines[0].text[:]), "abz")
+	testing.expect_value(t, len(b.lines), 1)
+
+	b2 := inline_start(t, &e, "gh2")
+	e2e_key(&e, .Esc)
+	testing.expect(t, !inline_active(&e.ed), "Esc drops the ghost")
+	testing.expect_value(t, string(b2.lines[0].text[:]), "abz")
+
+	inline_start(t, &e, "gh3")
+	e2e_key(&e, .Arrow_Left)
+	e2e_key(&e, .Arrow_Right)
+	testing.expect(t, !inline_active(&e.ed), "moving away drops it for good")
 }

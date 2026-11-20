@@ -67,9 +67,6 @@ Editor :: struct {
 	completion:      Completion,
 	save_intent:     SaveIntent,
 	save_intent_path: string,
-	llm:             Llm,
-	aiedit:          AiEdit,
-	fim:             Fim,
 	terminal:        Terminals,
 	inspect:         Inspect,
 	headless:        bool,
@@ -87,7 +84,6 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	clipboard_headless = headless
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
-		fim            = Fim{enabled = LLM_COMPLETION_ENABLED},
 		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
 		headless       = headless,
 	}
@@ -172,10 +168,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	completion_destroy(&editor.completion)
 	find_destroy(&editor.find)
 	jump_destroy(&editor.jumps)
-	llm_cancel_all(editor)
-	delete(editor.llm.requests)
-	fim_dismiss(editor)
-	aiedit_destroy(&editor.aiedit)
 	term_destroy(editor)
 	plugins_shutdown(&editor.plugins)
 	pane_stack_destroy(editor)
@@ -250,10 +242,9 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [3]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [2]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
-		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
 	}
 }
@@ -414,7 +405,7 @@ editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	editor_clear_message(editor)
 	editor.hover_active = false
 	completion_dismiss(editor)
-	fim_dismiss(editor)
+	inline_dismiss(editor)
 	b := editor_buffer(editor)
 
 	#partial switch ev.key {
@@ -555,15 +546,16 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			completion_dismiss(editor)
 		}
 	}
-	if fim_ghost_active(editor) {
-		if fim_ghost_key(editor, ev) {
+	if inline_active(editor) {
+		if inline_key(editor, ev) {
 			return
 		}
-		fim_dismiss(editor)
+		inline_dismiss(editor)
 	}
 	editor_clear_message(editor)
 	editor.hover_active = false
 	b := editor_buffer(editor)
+	rev := b.rev
 	ctrl := ev_ctrl(ev)
 	shift := ev_shift(ev)
 	alt := ev_alt(ev)
@@ -606,7 +598,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	#partial switch ev.key {
 	case .Esc:
-		// Passive inspector close, slotted last: overlays, completion and the FIM
+		// Passive inspector close, slotted last: overlays, completion and the inline
 		// ghost all consume Esc before reaching here, so nothing existing changes.
 		if editor.inspect.active {
 			inspect_close(editor)
@@ -698,7 +690,10 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	editor_scroll(editor)
 	completion_after(editor, ev)
-	fim_after(editor, ev)
+	typed := ev.ch >= 0x20 || ev.key == .Enter || ev.key == .Backspace || ev.key == .Backspace2 || ev.key == .Delete
+	if b.rev != rev && typed && !ctrl && !alt {
+		b.typed_rev = b.rev
+	}
 }
 
 editor_request_quit :: proc(editor: ^Editor) {
@@ -1081,7 +1076,6 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
 	lsp_enabled_sync(editor)
-	editor_modules_sync(editor)
 	plugins_config_apply(editor, theme_changed, !g_config_user_broken)
 	if message == "" {
 		message = "config.json reloaded"
@@ -1248,10 +1242,10 @@ editor_render :: proc(editor: ^Editor) {
 			tb2.hide_cursor()
 		} else {
 			tb2.set_cursor(i32(cx), i32(cy))
-			ghost := fim_ghost_active(editor)
+			ghost := inline_active(editor)
 			// A wrapped buffer draws the ghost inline in editor_render_buffer.
 			if ghost && !(b.wrap && w > 0) {
-				fim_render(editor, cx, cy)
+				inline_render(editor, cx, cy)
 			}
 			if editor.completion.active {
 				completion_render(editor, cx, cy)
@@ -1388,7 +1382,7 @@ wrap_text :: proc(text: string, width: int, allocator := context.temp_allocator)
 editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h, screen_y: int, colors: []tb2.Color, line_bg: tb2.Color) -> int {
 	text := b.lines[row].text[:]
 	cut := b.cursor.col
-	glines := strings.split(editor.fim.ghost, "\n", context.temp_allocator)
+	glines := strings.split(b.deco.inline.text, "\n", context.temp_allocator)
 	mark := diff_mark_at(b, row)
 
 	sy := screen_y
@@ -1486,11 +1480,6 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		bra, brm, br_ok = bracket_match(b)
 	}
 
-	ai_rows: [][2]int
-	if len(editor.llm.requests) > 0 {
-		ai_rows = llm_active_rows(editor, b)
-	}
-
 	conflicts := merge_scan(b)
 	conflict_spans := merge_word_map(b, conflicts)
 
@@ -1499,10 +1488,10 @@ editor_render_buffer :: proc(editor: ^Editor) {
 
 	b.wrap_width = w
 	wrapping := b.wrap && w > 0
-	gap := fim_ghost_gap(editor)
+	gap := inline_gap(editor)
 	// While a ghost shows, the cursor line is drawn only up to the caret; the
-	// suffix is relocated after the ghost by fim_render (else it'd paint over it).
-	ghost_cut := fim_ghost_active(editor)
+	// suffix is relocated after the ghost by inline_render (else it'd paint over it).
+	ghost_cut := inline_active(editor)
 	screen_y := 0
 	for row := editor.scroll_row; row < len(b.lines) && screen_y < h; row += 1 {
 		current := row == b.cursor.row
@@ -1542,13 +1531,6 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				append(&underlines, [2]int{brm.col, brm.col + 1})
 			}
 		}
-		ai_edit := false
-		for r in ai_rows {
-			if row >= r[0] && row <= r[1] {
-				ai_edit = true
-				break
-			}
-		}
 		side, cmark := merge_side(conflicts, row)
 		colors := highlight_colors(b, row)
 		if cmark {
@@ -1559,7 +1541,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			colors = mc
 		}
 		drow := drows[row - editor.scroll_row] if row - editor.scroll_row < len(drows) else DecoRow{}
-		line_bg := editor_line_bg(current, ai_edit, mark, diff_view_on(), side, cmark, drow.tints[:])
+		line_bg := editor_line_bg(current, mark, diff_view_on(), side, cmark, drow.tints[:])
 
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
@@ -1619,7 +1601,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			}
 		} else {
 			// Unwrapped: ghost + suffix stay on one row (clipped), drawn by
-			// fim_render, so cut the real line at the caret and reserve gap rows.
+			// inline_render, so cut the real line at the caret and reserve gap rows.
 			text_end := b.cursor.col if ghost_row else len(text)
 			editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, false, drow.glyph, drow.glyph_fg)
 			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
@@ -1811,9 +1793,6 @@ editor_render_status :: proc(editor: ^Editor) {
 		}
 		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%d/%d", b.cursor.row + 1, len(b.lines)), fg = fg})
 
-		if n := len(editor.llm.requests); n > 0 {
-			append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("AI:%d", n), fg = fg, drop = 5})
-		}
 		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name), fg = fg, drop = 4})
 		if b.big {
 			append(&right, StatusSeg{sep = "  ", text = "big", fg = fg, drop = 3})
@@ -1957,7 +1936,7 @@ color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {
 	return tb2.Color(chan(b, t, 16, alpha) | chan(b, t, 8, alpha) | chan(b, t, 0, alpha))
 }
 
-editor_line_bg :: proc(current, ai_edit: bool, mark: DiffMark, hunk: bool, side: MergeSide, marker: bool, tints: []RowTint = nil) -> tb2.Color {
+editor_line_bg :: proc(current: bool, mark: DiffMark, hunk: bool, side: MergeSide, marker: bool, tints: []RowTint = nil) -> tb2.Color {
 	bg := COLOR_BG
 	if hunk {
 		#partial switch mark {
@@ -1972,9 +1951,6 @@ editor_line_bg :: proc(current, ai_edit: bool, mark: DiffMark, hunk: bool, side:
 	}
 	for t in tints {
 		bg = color_over(bg, t.color, t.alpha)
-	}
-	if ai_edit {
-		bg = color_over(bg, COLOR_AI_EDIT_BG, AI_EDIT_TINT)
 	}
 	if current {
 		bg = color_over(bg, COLOR_CURRENT_LINE_BG, CURRENT_LINE_TINT)

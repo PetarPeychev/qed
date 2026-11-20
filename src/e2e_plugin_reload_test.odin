@@ -182,6 +182,12 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	testing.expect(t, test_pane_open(&e.ed, "plugins") && !test_pane_open(&e.ed, "plugin_source"), "Esc leaves the source view")
 
+	for pl, i in e.ed.plugins.list {
+		if pl.name == "alpha" {
+			pane_find(&e.ed, "plugins").list.sel = i - 1
+		}
+	}
+	e2e_key(&e, .Arrow_Down)
 	y := e2e_reload_row_y(&e, "alpha")
 	e2e_mouse(&e, g.inner.x + 2, y)
 	testing.expect_value(t, e2e_reload_selected(&e), "alpha")

@@ -44,7 +44,6 @@ pt_api := [?]lua.L_Reg {
 	{"poll_disk", pt_poll_disk},
 	{"pump", pt_pump},
 	{"hook_timeout", pt_hook_timeout},
-	{"module", pt_module},
 	{"lsp", pt_lsp},
 	{"ui", pt_ui},
 	{"config_path", pt_config_path},
@@ -54,6 +53,7 @@ pt_api := [?]lua.L_Reg {
 	{"marks", pt_marks},
 	{"settle", pt_settle},
 	{"procs", pt_procs},
+	{"bg", pt_bg},
 	{nil, nil},
 }
 
@@ -85,6 +85,9 @@ pt_key :: proc "c" (L: ^lua.State) -> c.int {
 		ev.key = .Arrow_Left
 	case "Right":
 		ev.key = .Arrow_Right
+	case "Ctrl+Right":
+		ev.key = .Arrow_Right
+		ev.mod = .Ctrl
 	case "PgUp":
 		ev.key = .Pgup
 	case "PgDn":
@@ -271,17 +274,6 @@ pt_hook_timeout :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 @(private = "file")
-pt_module :: proc "c" (L: ^lua.State) -> c.int {
-	context = api_enter(L).ctx
-	on := bool(lua.toboolean(L, 2))
-	if api_string(L, 1) != "ai" {
-		return plugin_raise(L, "t.module: ai expected")
-	}
-	AI_ENABLED = on
-	return 0
-}
-
-@(private = "file")
 pt_lsp :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
 	LSP_ENABLED = bool(lua.toboolean(L, 1))
@@ -456,6 +448,14 @@ pt_marks :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushodinstring(L, names[diff_mark_at(b, r)])
 		lua.rawseti(L, -2, lua.Integer(r + 1))
 	}
+	return 1
+}
+
+@(private = "file")
+pt_bg :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	e2e_render(g_pt)
+	lua.pushinteger(L, lua.Integer(e2e_rgb(e2e_cell_bg(g_pt, api_int(L, 1, "x expected"), api_int(L, 2, "y expected")))))
 	return 1
 }
 
@@ -667,7 +667,7 @@ pt_run :: proc(t: ^testing.T, name: string, f: PluginFile) {
 			e2e_stop(&e)
 			break
 		}
-		saved_timeout, saved_lsp, saved_ai := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED
+		saved_timeout, saved_lsp := PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED
 		saved_theme := strings.clone(THEME, context.temp_allocator)
 		saved_reg := clipboard_register
 		clipboard_register = ""
@@ -680,7 +680,7 @@ pt_run :: proc(t: ^testing.T, name: string, f: PluginFile) {
 		} else if pl := plugin_find(&e.ed.plugins, name); pl != nil && pl.last_error != "" {
 			testing.expectf(t, false, "plugins/%s %s: plugin error: %s", f.path, names[i], pl.last_error)
 		}
-		PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED, AI_ENABLED = saved_timeout, saved_lsp, saved_ai
+		PLUGIN_HOOK_TIMEOUT_MS, LSP_ENABLED = saved_timeout, saved_lsp
 		delete(clipboard_register)
 		clipboard_register = saved_reg
 		if THEME != saved_theme || e.ed.theme_shown != "" {

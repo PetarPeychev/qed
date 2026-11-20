@@ -482,7 +482,7 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 	// A multi-line ghost occupies the rows below the caret; float above it so both
 	// the ghost and the popup stay fully visible.
 	y: int
-	if fim_ghost_gap(editor) > 0 {
+	if inline_gap(editor) > 0 {
 		y = above_y if above_fits else below_y
 	} else {
 		y = below_y if below_fits else above_y

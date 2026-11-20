@@ -47,7 +47,7 @@ e2e_plugin_events :: proc(t: ^testing.T) {
 
 	e2e_key(&e, tb2.Key(0), {}, 'x')
 	rev := editor_buffer(&e.ed).rev
-	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_changed %d %d;cursor_moved %d;", first, rev, first))
+	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_changed %d %d true;cursor_moved %d;", first, rev, first))
 
 	e2e_key(&e, .Ctrl_S)
 	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_pre_save %d;buf_save %d;", first, first))
@@ -72,7 +72,7 @@ e2e_plugin_events :: proc(t: ^testing.T) {
 	editor_reload_buffer(&e.ed, editor_buffer(&e.ed))
 	plugin_flush(&e.ed)
 	rev = editor_buffer(&e.ed).rev
-	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_reload %d;buf_changed %d %d;", first, first, rev))
+	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_reload %d;buf_changed %d %d false;", first, first, rev))
 
 	old := strings.clone(e.ed.working_root, context.temp_allocator)
 	root := filepath.dir(e.path)
