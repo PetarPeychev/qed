@@ -693,7 +693,7 @@ e2e_plugin_term_shell :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
 	tmp, _ := os.temp_dir(context.temp_allocator)
-	dir := fmt.tprintf("%s/qed_term_run_%d", tmp, e2e_seq)
+	dir := fmt.tprintf("%s/qed_term_run_%d_%d", tmp, posix.getpid(), e2e_seq)
 	os.make_directory(dir)
 	defer os.remove(dir)
 	pl := e2e_plugin(&e, "termrun", fmt.tprintf(`

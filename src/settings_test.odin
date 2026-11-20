@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:sync"
+import "core:sys/posix"
 import "core:testing"
 import "lib:tb2"
 
@@ -375,8 +376,10 @@ test_config_files :: proc(t: ^testing.T) {
 		theme_reset_defaults()
 	}
 
-	dir := "/tmp/qed-cfg-test"
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	dir := fmt.tprintf("%s/qed-cfg-test-%d", tmp, posix.getpid())
 	os.make_directory_all(dir)
+	defer os.remove_all(dir)
 	themes_dir := fmt.tprintf("%s/themes", dir)
 	os.make_directory_all(themes_dir)
 
