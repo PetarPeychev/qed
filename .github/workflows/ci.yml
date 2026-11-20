@@ -16,8 +16,20 @@ jobs:
           release: dev-2026-05
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install ripgrep (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Install ripgrep (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ripgrep
+
       - name: Build
         run: ./build.sh
 
       - name: Test
-        run: odin test src -collection:lib=lib
+        env:
+          QED_REQUIRE_RG: '1'
+        run: |
+          rg --version
+          odin test src -collection:lib=lib

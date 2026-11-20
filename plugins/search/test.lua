@@ -1,7 +1,10 @@
 local T = {}
 
 local function rg(t)
-	return t.sh("command -v rg")
+	local ok = t.sh("command -v rg")
+	-- CI sets QED_REQUIRE_RG so a runner without rg fails instead of skipping these tests
+	t.ok(ok or not t.sh('[ -n "$QED_REQUIRE_RG" ]'), "QED_REQUIRE_RG is set but rg is not on PATH")
+	return ok
 end
 
 local function write(name, body)
