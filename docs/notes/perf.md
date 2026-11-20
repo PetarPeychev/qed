@@ -21,9 +21,13 @@ Large and odd files and repos must not break the editor. Budgets:
 missing and runs `bench_gate` (`src/perf_gate_test.odin`) on an `-o:speed`
 build (`default`: the optimization `./build.sh` uses). It opens each corpus file
 through `editor_init`, drives keys through `editor_step` and renders with
-`editor_render`, plugins loaded, at 160×48, on the heap allocator. Each row is
-checked against a limit of 3× the budget under 50 ms, 2× otherwise; `info` rows
-are not gated. Without `rg` the Find in Files rows skip.
+`editor_render`, plugins loaded, at 160×48, on the heap allocator. Rows report
+mean/p95/max; p95 is checked against a limit of 3× the budget under 50 ms, 2×
+otherwise. `.Info` rows and `.Open` rows (known over budget, in TODO.md; flip the
+row's mode to `.Gate` once fixed) are not enforced. Keystroke rows count dispatch +
+render only: a reparse running off-thread is not in them. The gate refuses to run
+when the load average exceeds the core count (`QED_GATE_ANY_LOAD=1` overrides).
+Without `rg` the Find in Files rows skip.
 `QED_GATE_ONLY=files,long,longoff,longon,panes,plugins` and
 `QED_GATE_FILES=a.c,b.md` narrow a run. Always under `ulimit -v` and `timeout`
 (the script sets 6 GB / 30 min).
