@@ -24,16 +24,18 @@ Highlight :: struct {
 	pending:  [dynamic]ts.InputEdit,
 	colors:   [dynamic][dynamic]tb2.Color,
 	job:      ^HighlightJob,
-	slow:     bool, // an inline parse blew the frame budget: parse off-thread from now on
+	slow:     bool, // an incremental inline parse blew the frame budget: parse off-thread until one comes in under it
 }
 
 HighlightJob :: struct {
-	language: Language,
-	snapshot: string,
-	edits:    [dynamic]ts.InputEdit,
-	old_tree: ^ts.Tree,
-	thread:   ^thread.Thread,
-	tree:     ^ts.Tree,
+	language:    Language,
+	snapshot:    string,
+	edits:       [dynamic]ts.InputEdit,
+	old_tree:    ^ts.Tree,
+	thread:      ^thread.Thread,
+	tree:        ^ts.Tree,
+	parse_ms:    f64,
+	incremental: bool,
 }
 
 highlight_record_edit :: proc(hl: ^Highlight, edit: ts.InputEdit) {
@@ -246,9 +248,12 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 			highlight_job_start(b, language, snapshot)
 			return
 		}
+		incremental := b.hl.tree != nil
 		start := time.tick_now()
 		ok := highlight_reparse(b, s, snapshot)
-		b.hl.slow = ms_since(start) > HIGHLIGHT_SLOW_MS
+		if incremental {
+			b.hl.slow = ms_since(start) > HIGHLIGHT_SLOW_MS
+		}
 		if !ok {
 			return
 		}
@@ -483,6 +488,7 @@ highlight_job_start :: proc(b: ^Buffer, language: Language, snapshot: string) {
 	job.language = language
 	job.snapshot = snapshot
 	if b.hl.tree != nil {
+		job.incremental = true
 		job.old_tree = ts.tree_copy(b.hl.tree)
 		for edit in b.hl.pending {
 			append(&job.edits, edit)
@@ -511,7 +517,9 @@ highlight_job_run :: proc(t: ^thread.Thread) {
 			ts.tree_edit(job.old_tree, &edit)
 		}
 	}
+	start := time.tick_now()
 	job.tree = ts.parser_parse_string(parser, job.old_tree, raw_data(job.snapshot), u32(len(job.snapshot)))
+	job.parse_ms = ms_since(start)
 	if job.old_tree != nil {
 		ts.tree_delete(job.old_tree)
 		job.old_tree = nil
@@ -524,6 +532,9 @@ highlight_job_adopt :: proc(b: ^Buffer) -> bool {
 	job := b.hl.job
 	thread.destroy(job.thread)
 	tree := job.tree
+	if job.incremental {
+		b.hl.slow = job.parse_ms > HIGHLIGHT_SLOW_MS
+	}
 	delete(job.snapshot)
 	delete(job.edits)
 	if job.old_tree != nil {

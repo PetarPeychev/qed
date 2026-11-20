@@ -369,6 +369,7 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	clear(&buffer.hl.pending)
 	buffer.hl.computed = false
 	buffer.hl.valid = false
+	buffer.hl.slow = false
 
 	buffer_lsp_changes_clear(buffer)
 	buffer.rev += 1

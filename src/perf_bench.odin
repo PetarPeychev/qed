@@ -39,6 +39,7 @@ test_highlight_incremental :: proc(t: ^testing.T) {
 	preview_highlight(t)
 	highlight_perf(t)
 	highlight_error_heavy(t)
+	highlight_slow_flag(t)
 }
 
 // End-to-end proof that the query predicate evaluator is live and the capture
@@ -406,6 +407,35 @@ highlight_error_heavy :: proc(t: ^testing.T) {
 	testing.expect(t, highlight_busy(&b), "a buffer whose inline parse was slow reparses in the background")
 	highlight_settle(&b, 8990, 9050)
 	testing.expect(t, b.hl.valid && b.hl.tree != nil, "the background reparse is adopted")
+}
+
+highlight_slow_flag :: proc(t: ^testing.T) {
+	sb := strings.builder_make(context.temp_allocator)
+	for i := 0; strings.builder_len(sb) < 150 * 1024; i += 1 {
+		fmt.sbprintf(&sb, "static int helper_%d(struct state *s) {{\n    return s->table[%d]; // c\n}}\n\n", i, i % 251)
+	}
+	path := "/tmp/qed-test-slow-flag.c"
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)strings.to_string(sb)) == nil)
+	defer os.remove(path)
+	b: Buffer
+	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
+	defer buffer_destroy(&b)
+	b.language = .C
+	mid := len(b.lines) / 2
+	highlight_update(&b, mid, mid + 60)
+	highlight_settle(&b, mid, mid + 60)
+	testing.expect(t, !b.hl.slow, "a cold parse does not mark the buffer slow")
+
+	b.hl.slow = true
+	buffer_insert(&b, Cursor{mid, 0}, "x")
+	highlight_update(&b, mid, mid + 60)
+	testing.expect(t, highlight_busy(&b), "a slow buffer reparses in the background")
+	highlight_settle(&b, mid, mid + 60)
+	testing.expect(t, !b.hl.slow, "an adopted incremental parse under budget clears slow")
+
+	b.hl.slow = true
+	testing.expect_value(t, buffer_reload(&b), BufferOpenError.None)
+	testing.expect(t, !b.hl.slow, "a reload drops the tree and the slow mark")
 }
 
 @(private = "file")
