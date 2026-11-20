@@ -961,10 +961,10 @@ bench_text_hunks :: proc(t: ^testing.T) {
 	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
 		return
 	}
-	text :: proc(n, every: int, changed, grow: bool) -> string {
+	text :: proc(n, every: int, changed, grow: bool, from := 0) -> string {
 		sb := strings.builder_make(context.temp_allocator)
 		for i in 0 ..< n {
-			if changed && i % every == 50 {
+			if changed && i >= from && i % every == 50 {
 				fmt.sbprintf(&sb, "changed line %d\n", i)
 				if grow {
 					fmt.sbprintf(&sb, "added line %d\n", i)
@@ -975,15 +975,25 @@ bench_text_hunks :: proc(t: ^testing.T) {
 		}
 		return strings.to_string(sb)
 	}
-	run :: proc(label: string, every: int, grow: bool) {
+	run :: proc(label: string, every: int, grow: bool, from := 0) {
+		saved_big := BIG_FILE_BYTES
+		BIG_FILE_BYTES = max(int)
+		defer BIG_FILE_BYTES = saved_big
 		e := e2e_start(text(100_000, every, false, false))
 		defer e2e_stop(&e)
 		b := editor_buffer(&e.ed)
-		next := text(100_000, every, true, grow)
+		next := text(100_000, every, true, grow, from)
 		_ = os.write_entire_file(e.path, transmute([]u8)next)
 		start := time.tick_now()
 		buffer_reload(b)
 		reload := ms_since(start)
+		start = time.tick_now()
+		buffer_undo(b)
+		undo := ms_since(start)
+		start = time.tick_now()
+		buffer_redo(b)
+		redo := ms_since(start)
+		fmt.eprintfln("%-28s %6d lines  undo reload %8.2f ms  redo %8.2f ms", label, len(b.lines), undo, redo)
 		orig := text(100_000, every, false, false)
 		start = time.tick_now()
 		hn := len(text_hunks(b, strings.split(orig, "\n", context.temp_allocator)))
@@ -998,4 +1008,5 @@ bench_text_hunks :: proc(t: ^testing.T) {
 	run("1000 modified + inserted lines", 100, true)
 	run("200 modified lines", 500, false)
 	run("200 modified + inserted lines", 500, true)
+	run("200 modified in last 20k", 100, false, 80_000)
 }

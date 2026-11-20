@@ -18,6 +18,7 @@ EditGroup :: struct {
 	edits:  [dynamic]Edit,
 	cursor: Cursor,
 	tx:     int,
+	reload: bool,
 }
 
 g_tx_seq: int
@@ -152,11 +153,7 @@ buffer_pos_clamp :: proc(b: ^Buffer, p: Cursor) -> Cursor {
 
 // Bottom-up, so a hunk's rows and everything above it still have their old byte offsets.
 text_hunks_apply :: proc(b: ^Buffer, lines: []string, hunks: []TextHunk) {
-	offsets := make([]int, len(b.lines), context.temp_allocator)
-	for i in 1 ..< len(b.lines) {
-		offsets[i] = offsets[i - 1] + len(b.lines[i - 1].text) + 1
-	}
-	b.bulk_offsets = offsets
+	buffer_bulk_begin(b)
 	defer b.bulk_offsets = nil
 	#reverse for h in hunks {
 		body := strings.join(lines[h.new_lo:h.new_lo + h.new_n], "\n", context.temp_allocator)
@@ -723,7 +720,9 @@ buffer_apply_inverse :: proc(b: ^Buffer, group: EditGroup) -> EditGroup {
 	result := EditGroup {
 		cursor = b.cursor,
 		tx     = group.tx,
+		reload = group.reload,
 	}
+	buffer_bulk_begin(b)
 	#reverse for edit in group.edits {
 		switch edit.kind {
 		case .Insert:
@@ -735,6 +734,8 @@ buffer_apply_inverse :: proc(b: ^Buffer, group: EditGroup) -> EditGroup {
 			append(&result.edits, Edit{.Insert, edit.at, edit.text})
 		}
 	}
+	b.bulk_offsets = nil
+	buffer_recompute_modified(b)
 	b.cursor = group.cursor
 	cursor_goal_sync(b)
 	delete(group.edits)

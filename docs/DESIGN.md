@@ -251,7 +251,8 @@ member group is no longer on top).
   apply the changed hunks through the primitives like `buffer_set_text` so decorations and marks on
   untouched lines stay (`text_hunks_apply`: bottom-up with precomputed byte offsets, `modified` computed
   once; past a Myers work budget of ~(n+m)·d = 1e8 it is one replace hunk) as one undo step (Ctrl+Z brings the
-  pre-reload text back, modified against disk; above `big_file_bytes`, old or new, undo/redo are cleared instead), drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
+  pre-reload text back, modified against disk; only the latest reload stays undoable, so a new one drops the log
+  up to the previous one; when the old file, the buffer or the new file reaches `big_file_bytes`, undo/redo are cleared instead), drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
   map the cursor through the hunks); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
   onto it opens the conflict dialog (Cancel / Overwrite / Reload) instead of
   clobbering; Reload is the same undoable step, so the discarded edits come back with Ctrl+Z. Reload skips a buffer while its highlight parse thread is busy

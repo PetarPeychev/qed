@@ -45,6 +45,9 @@ Buffer :: struct {
 	plugin_hi:     int,
 	typed_rev:     u64,
 	bulk_offsets:  []int,
+	bulk_min:      int,
+	bulk_row:      int,
+	bulk_off:      int,
 }
 
 DiskStamp :: struct {
@@ -144,15 +147,35 @@ buffer_snapshot :: proc(buffer: ^Buffer) -> string {
 	return strings.to_string(sb)
 }
 
+// In bulk mode a row at or above every edit so far keeps its table offset, and the last edit's row start stays valid below it.
 buffer_byte_offset :: proc(buffer: ^Buffer, at: Cursor) -> int {
-	if at.row < len(buffer.bulk_offsets) {
-		return buffer.bulk_offsets[at.row] + at.col
+	row, off := 0, 0
+	if n := len(buffer.bulk_offsets); n > 0 {
+		row = min(at.row, buffer.bulk_min, n - 1)
+		off = buffer.bulk_offsets[row]
+		if buffer.bulk_row > row && buffer.bulk_row <= at.row {
+			row, off = buffer.bulk_row, buffer.bulk_off
+		}
 	}
-	off := 0
-	for i in 0 ..< at.row {
+	for i in row ..< at.row {
 		off += len(buffer.lines[i].text) + 1
 	}
 	return off + at.col
+}
+
+buffer_bulk_begin :: proc(buffer: ^Buffer) {
+	offsets := make([]int, len(buffer.lines), context.temp_allocator)
+	for i in 1 ..< len(buffer.lines) {
+		offsets[i] = offsets[i - 1] + len(buffer.lines[i - 1].text) + 1
+	}
+	buffer.bulk_offsets, buffer.bulk_min, buffer.bulk_row = offsets, max(int), -1
+}
+
+buffer_bulk_note :: proc(buffer: ^Buffer, at: Cursor, start: int) {
+	if buffer.bulk_offsets != nil {
+		buffer.bulk_min = min(buffer.bulk_min, at.row)
+		buffer.bulk_row, buffer.bulk_off = at.row, start - at.col
+	}
 }
 
 buffer_recompute_modified :: proc(buffer: ^Buffer) {
@@ -291,15 +314,29 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	}
 	hunks := text_hunks(buffer, lines)
 	cur := text_hunks_map(hunks, buffer.cursor)
-	was_big := buffer.big
+	size := len(buffer.lines) - 1
+	for line in buffer.lines {
+		size += len(line.text)
+	}
+	was_big := buffer.big || size >= BIG_FILE_BYTES
 	if len(hunks) > 0 {
 		edit_open(buffer, .Atomic)
+		// Only the latest reload stays undoable: older ones and everything below them would pile up whole files.
+		#reverse for g, i in buffer.undo {
+			if g.reload {
+				for &old in buffer.undo[:i + 1] {
+					group_destroy(&old)
+				}
+				remove_range(&buffer.undo, 0, i + 1)
+				break
+			}
+		}
 		text_hunks_apply(buffer, lines, hunks)
+		buffer.open.reload = true
 		buffer_undo_commit(buffer)
 	}
 	buffer_set_meta(buffer, data)
 
-	// One undo step undoes the reload, except where a big file's old text would sit in the log.
 	if was_big || buffer.big {
 		for &group in buffer.undo {
 			group_destroy(&group)
@@ -476,6 +513,7 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	append(&buffer.lines[end.row].text, ..tail)
 
 	start_byte := u32(buffer_byte_offset(buffer, at))
+	buffer_bulk_note(buffer, at, int(start_byte))
 	highlight_record_edit(&buffer.hl, ts.InputEdit {
 		start_byte    = start_byte,
 		old_end_byte  = start_byte,
@@ -530,6 +568,7 @@ buffer_dirty_delete :: proc(b: ^Buffer, from, to: Cursor) {
 
 buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 	start_byte := u32(buffer_byte_offset(buffer, from))
+	buffer_bulk_note(buffer, from, int(start_byte))
 	highlight_record_edit(&buffer.hl, ts.InputEdit {
 		start_byte    = start_byte,
 		old_end_byte  = u32(buffer_byte_offset(buffer, to)),

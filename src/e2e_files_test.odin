@@ -282,6 +282,47 @@ e2e_files_conflict_reload_undo :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_files_reload_keeps_latest_step :: proc(t: ^testing.T) {
+	e := e2e_start("base\n")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	e2e_type(&e, "X")
+	e2e_key(&e, .Ctrl_S)
+	_ = os.write_entire_file_from_string(e.path, "first reload\n")
+	editor_poll_disk(&e.ed)
+	e2e_type(&e, "Y")
+	e2e_key(&e, .Ctrl_S)
+	_ = os.write_entire_file_from_string(e.path, "second reload, longer\n")
+	editor_poll_disk(&e.ed)
+	testing.expect_value(t, len(b.undo), 2)
+
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "fYirst reload\n")
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "first reload\n")
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "first reload\n")
+	testing.expect(t, b.modified, "the first reload's content differs from disk")
+}
+
+@(test)
+e2e_files_grown_buffer_reload_clears_undo :: proc(t: ^testing.T) {
+	e := e2e_start("small\n")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	big := strings.repeat("qed big file test line\n", 100000)
+	buffer_paste(b, big)
+	delete(big)
+	_ = os.write_entire_file_from_string(e.path, "small, changed\n")
+	b.modified = false
+	editor_poll_disk(&e.ed)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "small, changed\n")
+	testing.expect_value(t, len(b.undo), 0)
+}
+
+@(test)
 e2e_files_big_reload_clears_undo :: proc(t: ^testing.T) {
 	e := e2e_start("small\n")
 	defer e2e_stop(&e)
