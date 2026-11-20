@@ -1,5 +1,6 @@
 package main
 
+import "core:math/rand"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -286,6 +287,49 @@ test_modified_clears_when_content_reverts :: proc(t: ^testing.T) {
 
 	delete(buffer_delete(&b, {0, 0}, b.cursor))
 	testing.expect(t, !b.modified)
+}
+
+@(test)
+test_modified_watermark_matches_full_compare :: proc(t: ^testing.T) {
+	b := buffer_new()
+	defer buffer_destroy(&b)
+	buffer_set_content(&b, transmute([]u8)string("alpha\nbeta\n\ngamma\ndelta\nepsilon\nzeta"))
+	rng := rand.create(7)
+	context.random_generator = rand.default_random_generator(&rng)
+	pieces := []string{"x", "\n", "q\nr", "\n\n", "beta", ""}
+	for step in 0 ..< 3000 {
+		row := rand.int_max(len(b.lines))
+		col := rand.int_max(len(b.lines[row].text) + 1)
+		at := Cursor{row, col}
+		switch rand.int_max(5) {
+		case 0, 1:
+			buffer_insert(&b, at, rand.choice(pieces))
+		case 2:
+			to := at
+			for _ in 0 ..< rand.int_max(4) {
+				if to.col < len(b.lines[to.row].text) {
+					to.col += 1
+				} else if to.row < len(b.lines) - 1 {
+					to = {to.row + 1, 0}
+				}
+			}
+			delete(buffer_delete(&b, at, to))
+		case 3:
+			end := Cursor{len(b.lines) - 1, len(b.lines[len(b.lines) - 1].text)}
+			delete(buffer_delete(&b, {0, 0}, end))
+			buffer_insert(&b, {0, 0}, b.saved)
+		case 4:
+			if rand.int_max(10) == 0 {
+				buffer_set_content(&b, transmute([]u8)buffer_string(&b))
+			}
+		}
+		want := buffer_string(&b) != b.saved
+		if b.modified != want {
+			testing.expectf(t, false, "step %d: modified %v, full compare %v", step, b.modified, want)
+			return
+		}
+		free_all(context.temp_allocator)
+	}
 }
 
 @(test)
