@@ -1066,12 +1066,62 @@ qed_set_root :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	editor := entry.editor
 	path := api_path(editor, api_string(L, 1))
+	discard := make([dynamic]u64, context.temp_allocator)
+	#partial switch lua.type(L, 2) {
+	case .NIL, .NONE:
+	case .TABLE:
+		#partial switch lua.getfield(L, 2, "discard") {
+		case .TABLE:
+			for i in 1 ..= int(lua.rawlen(L, -1)) {
+				lua.rawgeti(L, -1, lua.Integer(i))
+				append(&discard, u64(api_int(L, -1, "discard must be a list of buffer ids")))
+				lua.pop(L, 1)
+			}
+		case .NIL:
+		case:
+			plugin_raise(L, "discard must be a list of buffer ids")
+		}
+		lua.pop(L, 1)
+	case:
+		lua.L_argerror(L, 2, "options table expected")
+	}
 	if !os.is_dir(path) {
 		return api_fail(L, fmt.tprintf("not a directory: %s", path))
 	}
-	if path != editor.working_root {
-		editor_change_root(editor, path)
+	if path == editor.working_root {
+		lua.pushboolean(L, true)
+		return 1
 	}
+	total := 0
+	unsaved := make([dynamic]u64, context.temp_allocator)
+	refused := false
+	for b in editor.buffers {
+		if b.path == "" || path_under(b.path, path) {
+			continue
+		}
+		total += 1
+		if b.modified {
+			append(&unsaved, b.id)
+			refused ||= !slice.contains(discard[:], b.id)
+		}
+	}
+	if refused {
+		lua.pushnil(L)
+		lua.pushstring(L, "unsaved")
+		lua.createtable(L, 0, 3)
+		lua.pushinteger(L, lua.Integer(total))
+		lua.setfield(L, -2, "total")
+		lua.pushinteger(L, lua.Integer(len(unsaved)))
+		lua.setfield(L, -2, "unsaved")
+		lua.createtable(L, c.int(len(unsaved)), 0)
+		for id, i in unsaved {
+			lua.pushinteger(L, lua.Integer(id))
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+		lua.setfield(L, -2, "bufs")
+		return 3
+	}
+	editor_change_root(editor, path)
 	lua.pushboolean(L, true)
 	return 1
 }

@@ -17,7 +17,7 @@ cwd_fixture :: proc(e: ^E2E) {
 
 cwd_pane :: proc(e: ^E2E) -> ^Pane {
 	p := pane_focus(&e.ed)
-	if p == nil || p.owner != "cwd" || pane_path(p) == nil {
+	if p == nil || p.owner != "workspace" || pane_path(p) == nil {
 		return nil
 	}
 	return p
@@ -67,7 +67,7 @@ cwd_query :: proc(e: ^E2E) -> string {
 
 cwd_confirm :: proc(e: ^E2E) -> string {
 	p := pane_focus(&e.ed)
-	if p == nil || p.owner != "cwd" || len(p.text) == 0 {
+	if p == nil || p.owner != "workspace" || len(p.text) == 0 {
 		return ""
 	}
 	return p.text[0].text
@@ -145,10 +145,10 @@ e2e_cwd_filters :: proc(t: ^testing.T) {
 
 	cwd_reopen(&e)
 	e2e_key(&e, .Esc)
-	e.ed.filetree.show_dotfiles = true
+	FILETREE_SHOW_DOTFILES = true
 	e2e_key(&e, .Ctrl_O)
+	FILETREE_SHOW_DOTFILES = false
 	testing.expect_value(t, cwd_names(&e), ".hid,Beta,alpha,apple,link")
-	e.ed.filetree.show_dotfiles = false
 	e2e_key(&e, .Esc)
 	testing.expect(t, cwd_pane(&e) == nil, "Esc closes")
 }
@@ -375,18 +375,18 @@ e2e_cwd_unsaved_confirm :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Ctrl_O)
 	e2e_type(&e, "alpha")
-	picker := cwd_pane(&e).handle
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, cwd_confirm(&e), "Close 1 buffer? (1 unsaved)")
-	testing.expect_value(t, pane_focus(&e.ed).parent, picker)
-	testing.expect_value(t, e.ed.working_root, root)
-	e2e_render(&e)
-
-	p := pane_find_handle(&e, picker)
+	p := cwd_pane(&e)
 	f := pane_path(p)
 	query := strings.clone(textfield_str(&f.field), context.temp_allocator)
 	caret := f.caret
 	selected := p.list.sel
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, cwd_confirm(&e), "Close 1 buffer? (1 unsaved)")
+	picker := pane_focus(&e.ed).parent
+	testing.expect(t, pane_find_handle(&e, picker).owner == "workspace", "the confirm sits on the picker")
+	testing.expect_value(t, e.ed.working_root, root)
+	e2e_render(&e)
+
 	e2e_key(&e, .Enter)
 	testing.expect(t, cwd_pane(&e) != nil, "Cancel returns to the picker")
 	testing.expect_value(t, cwd_query(&e), query)
@@ -426,7 +426,7 @@ e2e_cwd_palette_and_welcome :: proc(t: ^testing.T) {
 	e := e2e_welcome_start()
 	defer e2e_stop(&e)
 	e2e_key(&e, .Ctrl_P)
-	testing.expect(t, strings.contains(palette_labels(&e), "|Cwd: Change Working Directory|"), "listed on the welcome palette")
+	testing.expect(t, strings.contains(palette_labels(&e), "|Workspace: Open Directory|"), "listed on the welcome palette")
 	e2e_key(&e, .Esc)
 	e2e_key(&e, .Ctrl_O)
 	testing.expect(t, cwd_pane(&e) != nil, "Ctrl+O opens on the welcome screen")

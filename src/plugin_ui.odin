@@ -361,28 +361,43 @@ plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
 	}
 }
 
+QED_LIST_META :: "qed.List"
+
 qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
 	p := &editor.plugins
 	path := editor.working_root
-	if lua.type(L, 1) > .NIL {
-		path = api_path(editor, api_string(L, 1))
+	dotfiles := false
+	#partial switch lua.type(L, 1) {
+	case .NIL, .NONE:
+	case .TABLE:
+		if s, ok := api_field_string(L, 1, "path"); ok {
+			path = api_path(editor, s)
+		}
+		dotfiles = api_opt_bool(L, 1, "dotfiles")
+	case:
+		lua.L_argerror(L, 1, "options table expected")
 	}
 	pl := api_loaded(L, editor)
 	lua.settop(L, 0)
 	id := plugin_next_id(p)
-	api_handle_push(L, id, {})
-	lua.createtable(L, 0, 2)
-	lua.pushodinstring(L, "qed.List")
-	lua.setfield(L, -2, "__name")
-	lua.pushvalue(L, lua.upvalueindex(1))
+	lua.createtable(L, 0, 1)
 	lua.pushinteger(L, lua.Integer(id))
-	lua.pushcclosure(L, qed_list_gc, 2)
-	lua.setfield(L, -2, "__gc")
+	lua.setfield(L, -2, "id")
+	if lua.getfield(L, lua.REGISTRYINDEX, QED_LIST_META) != .TABLE {
+		lua.pop(L, 1)
+		lua.createtable(L, 0, 2)
+		lua.pushcfunction(L, qed_list_gc)
+		lua.setfield(L, -2, "__gc")
+		lua.pushboolean(L, false)
+		lua.setfield(L, -2, "__metatable")
+		lua.pushvalue(L, -1)
+		lua.setfield(L, lua.REGISTRYINDEX, QED_LIST_META)
+	}
 	lua.setmetatable(L, -2)
-	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = {kind = .Dirs, path = strings.clone(path)}})
+	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = {kind = .Dirs, path = strings.clone(path), dotfiles = dotfiles}})
 	return 1
 }
 
@@ -393,7 +408,9 @@ qed_list_gc :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	context = entry.ctx
 	p := &entry.editor.plugins
-	if i := plugin_list_index(p, api_handle_id(L)); i >= 0 {
+	lua.getfield(L, 1, "id")
+	id := lua.tointeger(L, -1)
+	if i := plugin_list_index(p, u64(id)); i >= 0 {
 		plugin_list_free(p, i)
 	}
 	return 0
@@ -404,9 +421,8 @@ api_list_handle :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> int {
 	if lua.getmetatable(L, idx) == 0 {
 		return -1
 	}
-	lua.getfield(L, -1, "__name")
-	name, _ := lua.toodinstring(L, -1)
-	is_list := name == "qed.List"
+	lua.getfield(L, lua.REGISTRYINDEX, QED_LIST_META)
+	is_list := lua.rawequal(L, -1, -2) != 0
 	lua.pop(L, 2)
 	if !is_list {
 		return -1
@@ -417,6 +433,12 @@ api_list_handle :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> int {
 		plugin_raise(L, "list handle is gone")
 	}
 	return i
+}
+
+api_view_handle_check :: proc(L: ^lua.State, pn: ^Pane) {
+	if pn != nil && pn.list.source.kind != .None {
+		plugin_raise(L, "the list is backed by a list handle; replace it with View:set")
+	}
 }
 
 api_pane_item_push :: proc(L: ^lua.State, it: PaneItem) {
@@ -951,8 +973,9 @@ qed_view_append :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 2, "items table expected")
 	}
 	lua.settop(L, 2)
-	items := api_view_items(L, editor, 2)
 	pn, vi := api_view_live(L, editor)
+	api_view_handle_check(L, pn)
+	items := api_view_items(L, editor, 2)
 	if pn == nil {
 		lua.pushboolean(L, false)
 		return 1
@@ -1021,8 +1044,9 @@ qed_view_update :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 3, "fields table expected")
 	}
 	lua.settop(L, 3)
-	api_view_item(L, editor, 3)
 	pn, vi := api_view_live(L, editor)
+	api_view_handle_check(L, pn)
+	api_view_item(L, editor, 3)
 	idx := -1
 	if pn != nil {
 		for it, i in pn.list.items {

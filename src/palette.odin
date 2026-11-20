@@ -314,6 +314,7 @@ palette_open :: proc(editor: ^Editor) {
 		size = .Palette,
 		chord = "Command Palette",
 		fields = []PaneField{{mode = .Filter}},
+		modal = true,
 		has_list = true,
 		list = {source = {kind = .Commands, filetree = editor.filetree.active}},
 		on = {activate = palette_activate},
@@ -327,5 +328,7 @@ palette_open :: proc(editor: ^Editor) {
 }
 
 palette_activate :: proc(editor: ^Editor, p: ^Pane) {
-	command_run(editor, list_command(editor, &p.list.source, p.list.items[pane_item_index(p, p.list.sel)].src))
+	if cmd, ok := list_command(editor, &p.list.source, p.list.items[pane_item_index(p, p.list.sel)]); ok {
+		command_run(editor, cmd)
+	}
 }

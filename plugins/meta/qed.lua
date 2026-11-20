@@ -105,11 +105,18 @@ function qed.jump(target, pos) end
 ---@return string
 function qed.root() end
 
----Switches the working root to the directory `path` (relative to `qed.root()`): closes every buffer outside it, unsaved ones included (confirm first), restarts the language servers, resets the file tree and fires `root_changed`. A no-op on the current root.
+---@class qed.Unsaved
+---@field total integer buffers outside the new root
+---@field unsaved integer of them unsaved
+---@field bufs integer[] the unsaved ones' ids
+
+---Switches the working root to the directory `path` (relative to `qed.root()`): closes every buffer outside it, restarts the language servers, resets the file tree and fires `root_changed`. A no-op on the current root. While an unsaved buffer outside it is not in `discard`, closes nothing and returns `nil, "unsaved", info`; ask, then call again with `{discard = info.bufs}`.
 ---@param path string
+---@param opts? {discard?: integer[]} unsaved buffer ids that may be closed
 ---@return true|nil ok
----@return string|nil err "not a directory: <path>"
-function qed.set_root(path) end
+---@return "unsaved"|string|nil err `"unsaved"`, or "not a directory: <path>"
+---@return qed.Unsaved|nil info with `"unsaved"`
+function qed.set_root(path, opts) end
 
 ---Declares this plugin's config keys and defaults; returns the merged config (`plugins.<id>` over `defaults`; `enabled` and `keybinds` are reserved). Setup only, once per load.
 ---@generic T: table
@@ -231,7 +238,7 @@ function qed.every(ms, fn) end
 ---@field mode? "filter"|"query"|"input"|"path" filter (default) fuzzy-filters the list per key; query fires `on.query` at open and 120 ms after typing stops; input submits its text on Enter; path drives a `qed.fs.dirs` list (Tab or `/` at the end drills into the highlighted dir, Backspace after `/` drops a segment) and submits on Enter, its text reported as an absolute path (`~` and relative to `qed.root()` resolved)
 ---@field count? boolean shows the match count (`N+` past `list.max` or after `set{more}`) at the end of the row
 
----A core-owned item source (`qed.fs.dirs`). Items live in core; only activated or changed ones reach Lua, as `{label, path?, detail?}` tables. Freed when collected; an open view keeps its own copy.
+---A core-owned item source (`qed.fs.dirs`). Items live in core; only activated or changed ones reach Lua, as `{label, path?, detail?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
 ---@class qed.List
 ---@field id integer
 
@@ -273,11 +280,11 @@ local View = {}
 ---@param opts? {selected?: integer, more?: boolean, hint?: string}
 ---@return boolean
 function View:set(items, opts) end
----Adds items at the end and keeps the selection. Returns false once closed.
+---Adds items at the end and keeps the selection. Returns false once closed. Raises on a list backed by a `qed.List` (replace it with `View:set`).
 ---@param items (string|qed.UiItem)[]
 ---@return boolean
 function View:append(items) end
----Merges `fields` into the item whose key is `key` (a string item becomes `{label = s}` first). Returns false if closed or not found.
+---Merges `fields` into the item whose key is `key` (a string item becomes `{label = s}` first). Returns false if closed or not found. Raises on a list backed by a `qed.List`.
 ---@param key string
 ---@param fields qed.UiItem
 ---@return boolean
@@ -736,10 +743,10 @@ function qed.fs.stat(path) end
 ---@return string|nil err
 function qed.fs.list(dir) end
 
----A list handle over the subdirectories of `path` (default `qed.root()`; symlinks to dirs included, dotfiles only while the file tree shows them), items `{label = name, path}` sorted by name. Under a `path` field it follows the field instead: the dir its text names, prefix-matched (smart case) against the last segment.
----@param path? string
+---A list handle over the subdirectories of `path` (default `qed.root()`; symlinks to dirs included, dotfiles only with `dotfiles`), items `{label = name, path}` sorted by name. Under a `path` field it follows the field instead: the dir its text names, prefix-matched (smart case) against the last segment; a dir is read once while its segment stays the same.
+---@param opts? {path?: string, dotfiles?: boolean}
 ---@return qed.List
-function qed.fs.dirs(path) end
+function qed.fs.dirs(opts) end
 
 qed.json = {}
 

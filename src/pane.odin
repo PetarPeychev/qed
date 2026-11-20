@@ -149,7 +149,8 @@ PaneField :: struct {
 
 PaneItem :: struct {
 	label, detail, path, key: string,
-	row, src:                 int,
+	row:                      int,
+	id:                       u64,
 }
 
 PaneLine :: struct {
@@ -320,7 +321,7 @@ pane_item_free :: proc(it: PaneItem) {
 }
 
 pane_item_clone :: proc(it: PaneItem) -> PaneItem {
-	return {strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), strings.clone(it.key), it.row, it.src}
+	return {strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), strings.clone(it.key), it.row, it.id}
 }
 
 pane_items_add :: proc(p: ^Pane, items: []PaneItem) {

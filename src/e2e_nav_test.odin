@@ -1252,7 +1252,7 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	pal := pane_find(&e.ed, "palette")
 	testing.expect(t, pal.list.source.filetree, "palette sources the file-command table")
 	testing.expect(t, pal.over == &tr.active, "the palette sits on the tree")
-	testing.expect(t, strings.contains(palette_labels(&e), "|Cwd: Set as Working Directory|"), "tree-scoped plugin commands are listed")
+	testing.expect(t, strings.contains(palette_labels(&e), "|Workspace: Open Selected Directory|"), "tree-scoped plugin commands are listed")
 	testing.expect(t, !strings.contains(palette_labels(&e), "|Save|"), "editor commands are not")
 	e2e_render(&e)
 	box := pane_geom(&e.ed, pal).box

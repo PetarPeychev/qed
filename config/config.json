@@ -59,7 +59,7 @@
     "search": {
       "enabled": true
     },
-    "cwd": {
+    "workspace": {
       "enabled": true
     }
   },

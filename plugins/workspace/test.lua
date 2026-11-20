@@ -1,6 +1,6 @@
 local T = {}
 
-local CHANGE = "Cwd: Change Working Directory"
+local CHANGE = "Workspace: Open Directory"
 
 function T.enter_switches_to_the_typed_dir(t)
 	t.sh("mkdir -p sub/inner")
@@ -27,7 +27,7 @@ function T.not_a_directory_keeps_the_picker(t)
 	local msg, level, source = t.message()
 	t.eq(msg, "Not a directory: " .. root .. "/nope")
 	t.eq(level, "error")
-	t.eq(source, "Cwd")
+	t.eq(source, "Workspace")
 	t.eq(t.ui().query, root .. "/nope", "the typed path stays")
 	t.key("Esc")
 	t.eq(qed.root(), root)

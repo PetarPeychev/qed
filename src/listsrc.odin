@@ -14,20 +14,32 @@ ListSourceKind :: enum {
 }
 
 ListSource :: struct {
-	kind:     ListSourceKind,
-	filetree: bool,
-	path:     string,
+	kind:      ListSourceKind,
+	filetree:  bool,
+	path:      string,
+	dotfiles:  bool,
+	cache_dir: string,
+	cache:     [dynamic]string,
 }
 
 list_source_clone :: proc(s: ListSource) -> ListSource {
-	out := s
-	out.path = strings.clone(s.path)
-	return out
+	return {kind = s.kind, filetree = s.filetree, path = strings.clone(s.path), dotfiles = s.dotfiles}
 }
 
 list_source_free :: proc(s: ^ListSource) {
 	delete(s.path)
+	list_source_uncache(s)
+	delete(s.cache)
 	s^ = {}
+}
+
+list_source_uncache :: proc(s: ^ListSource) {
+	for n in s.cache {
+		delete(n)
+	}
+	clear(&s.cache)
+	delete(s.cache_dir)
+	s.cache_dir = ""
 }
 
 pane_list_load :: proc(editor: ^Editor, p: ^Pane) {
@@ -39,6 +51,7 @@ pane_list_load :: proc(editor: ^Editor, p: ^Pane) {
 		list_dirs_fill(editor, p)
 	}
 	p.list.sel, p.list.scroll, p.list.anchor = 0, 0, nil
+	p.notified = -1
 	pane_refilter(p)
 }
 
@@ -46,69 +59,84 @@ list_commands_fill :: proc(editor: ^Editor, p: ^Pane) {
 	pane_items_clear(p)
 	ft := p.list.source.filetree
 	if ft {
-		for cmd, i in filetree_commands {
-			append(&p.list.items, PaneItem{label = strings.clone(cmd.name), src = i})
+		for cmd in filetree_commands {
+			append(&p.list.items, PaneItem{label = strings.clone(cmd.name)})
 		}
 	} else {
-		for cmd, i in commands {
+		for cmd in commands {
 			if command_available(editor, cmd.name) {
-				append(&p.list.items, PaneItem{label = strings.clone(cmd.name), src = i})
+				append(&p.list.items, PaneItem{label = strings.clone(cmd.name)})
 			}
 		}
 	}
-	base := len(filetree_commands) if ft else len(commands)
-	for cmd, i in editor.plugins.commands {
+	for cmd in editor.plugins.commands {
 		if cmd.filetree != ft || (editor.welcome && !ft && !cmd.welcome) || !plugin_command_when(editor, cmd) {
 			continue
 		}
-		append(&p.list.items, PaneItem{label = strings.clone(cmd.name), src = base + i})
+		append(&p.list.items, PaneItem{label = strings.clone(cmd.name), id = cmd.id})
 	}
 }
 
-list_command :: proc(editor: ^Editor, s: ^ListSource, src: int) -> Command {
-	base := len(filetree_commands) if s.filetree else len(commands)
-	if src >= base {
-		return editor.plugins.commands[src - base]
+// rows name a core command by label and a plugin command by id, so a removed command just goes dead
+list_command :: proc(editor: ^Editor, s: ^ListSource, it: PaneItem) -> (Command, bool) {
+	if it.id != 0 {
+		for cmd in editor.plugins.commands {
+			if cmd.id == it.id {
+				return cmd, true
+			}
+		}
+		return {}, false
 	}
-	return filetree_commands[src] if s.filetree else commands[src]
+	for cmd in (filetree_commands[:] if s.filetree else commands[:]) {
+		if cmd.name == it.label {
+			return cmd, true
+		}
+	}
+	return {}, false
 }
 
 list_item_detail :: proc(editor: ^Editor, p: ^Pane, it: PaneItem) -> string {
 	if p.list.source.kind == .Commands {
-		_, _, shortcut := command_effective_bind(list_command(editor, &p.list.source, it.src))
+		cmd, ok := list_command(editor, &p.list.source, it)
+		if !ok {
+			return ""
+		}
+		_, _, shortcut := command_effective_bind(cmd)
 		return shortcut
 	}
 	return it.detail
 }
 
 list_dirs_fill :: proc(editor: ^Editor, p: ^Pane) {
+	src := &p.list.source
 	pane_items_clear(p)
-	base, term := p.list.source.path, ""
+	base, term := src.path, ""
 	if f := pane_path(p); f != nil {
 		typed: string
 		typed, term = path_split(textfield_str(&f.field))
 		base = path_resolve(editor.working_root, os.get_env("HOME", context.temp_allocator), typed)
 	}
-	infos, err := os.read_directory_by_path(base, -1, context.temp_allocator)
-	if err != nil {
-		return
+	if base != src.cache_dir || src.cache_dir == "" {
+		list_source_uncache(src)
+		src.cache_dir = strings.clone(base)
+		infos, err := os.read_directory_by_path(base, -1, context.temp_allocator)
+		if err == nil {
+			for info in infos {
+				if !(info.type == .Directory || (info.type == .Symlink && os.is_dir(info.fullpath))) {
+					continue
+				}
+				if src.dotfiles || !strings.has_prefix(info.name, ".") {
+					append(&src.cache, strings.clone(info.name))
+				}
+			}
+			slice.sort(src.cache[:])
+		}
 	}
-	names := make([dynamic]string, context.temp_allocator)
-	for info in infos {
-		if !(info.type == .Directory || (info.type == .Symlink && os.is_dir(info.fullpath))) {
-			continue
+	for n in src.cache {
+		if path_prefix_match(n, term) {
+			full, _ := filepath.join({base, n}, context.temp_allocator)
+			append(&p.list.items, PaneItem{label = strings.clone(n), path = strings.clone(full)})
 		}
-		if !editor.filetree.show_dotfiles && strings.has_prefix(info.name, ".") {
-			continue
-		}
-		if path_prefix_match(info.name, term) {
-			append(&names, info.name)
-		}
-	}
-	slice.sort(names[:])
-	for n in names {
-		full, _ := filepath.join({base, n}, context.temp_allocator)
-		append(&p.list.items, PaneItem{label = strings.clone(n), path = strings.clone(full)})
 	}
 }
 

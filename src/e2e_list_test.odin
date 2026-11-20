@@ -22,18 +22,35 @@ return {setup = function()
 		v:close()
 	end}
 	qed.command{name = "Path", run = function()
-		local v = qed.ui.open{fields = {{mode = "path", text = "al"}}, list = {items = qed.fs.dirs()}}
+		local v = qed.ui.open{fields = {{mode = "path", text = "al"}}, list = {items = qed.fs.dirs()},
+			on = {change = function(_, it) note("pchg " .. it.label) end}}
 		local items, i, text = v:wait()
 		v:close()
 		note(("path %d %s %s"):format(#items, tostring(i), text))
 	end}
-	qed.command{name = "Make", run = function() h = qed.fs.dirs("alpha") end}
+	qed.command{name = "Make", run = function() h = qed.fs.dirs{path = "alpha", dotfiles = true} end}
+	qed.command{name = "Forge", run = function()
+		local ok, err = pcall(setmetatable, {id = h.id}, getmetatable(h))
+		note("forge " .. tostring(ok) .. " " .. tostring(getmetatable(h)))
+		local v = qed.ui.open{list = {items = {id = h.id}}}
+		note("plain " .. tostring(v ~= nil))
+		v:close()
+		local ok2, err2 = pcall(function() local w = qed.ui.open{list = {items = h}} w:append({"x"}) end)
+		note("append " .. tostring(ok2) .. " " .. tostring(err2):match("backed by a list handle") )
+	end}
 	qed.command{name = "Drop", run = function() h = nil collectgarbage() collectgarbage() end}
 	qed.command{name = "Root", run = function()
 		local ok, err = qed.set_root("nope")
 		note(("bad %s %s"):format(tostring(ok), tostring(err)))
 		note(("same %s"):format(tostring(qed.set_root(qed.root()))))
-		note(("rel %s %s"):format(tostring(qed.set_root("alpha")), qed.root()))
+		local b = qed.buf.current()
+		qed.buf.insert(b, {row = 1, col = 1}, "x")
+		local ok2, err2, info = qed.set_root("alpha")
+		note(("unsaved %s %s %d %d %s"):format(tostring(ok2), err2, info.total, info.unsaved, tostring(info.bufs[1] == b)))
+		note(("still %s"):format(tostring(qed.buf.valid(b))))
+		local ok3, err3 = qed.set_root("alpha", {discard = {}})
+		note(("empty %s %s"):format(tostring(ok3), err3))
+		note(("rel %s %s"):format(tostring(qed.set_root("alpha", {discard = info.bufs})), qed.root()))
 	end}
 end}`
 
@@ -122,6 +139,12 @@ e2e_list_handle_lifetime :: proc(t: ^testing.T) {
 	list_run(t, &e, "L: Make")
 	testing.expect_value(t, len(lists), 1)
 	testing.expect_value(t, lists[0].src.path, fmt.tprintf("%s/alpha", e.ed.working_root))
+	testing.expect(t, lists[0].src.dotfiles, "dotfiles is a caller option")
+	list_run(t, &e, "L: Forge")
+	testing.expect(t, list_logged(&e, "forge false false"), "the metatable is locked")
+	testing.expect(t, list_logged(&e, "plain true"), "a table with an id is plain items")
+	testing.expect(t, list_logged(&e, "append false backed by a list handle"), "append on a handle view raises")
+	pane_stack_sync(&e.ed)
 	list_run(t, &e, "L: Drop")
 	testing.expect_value(t, len(lists), 0)
 
@@ -157,9 +180,12 @@ e2e_list_path_field :: proc(t: ^testing.T) {
 	testing.expect(t, list_logged(&e, fmt.tprintf("path 0 nil %s/al", root)), "Enter submits the written path, resolved")
 
 	list_run(t, &e, "L: Path")
+	plugin_flush(&e.ed)
+	testing.expect(t, !list_logged(&e, "pchg alpha"), "no change at open")
 	e2e_key(&e, .Tab)
 	testing.expect_value(t, textfield_str(&pane_path(pane_focus(&e.ed)).field), "alpha/")
 	testing.expect_value(t, list_labels(pane_focus(&e.ed)), "Zed,inner")
+	testing.expect(t, list_logged(&e, "pchg Zed"), "a path reload fires change")
 	e2e_key(&e, .Enter)
 	testing.expect(t, list_logged(&e, fmt.tprintf("path 0 nil %s/alpha", root)), "a relative path resolves against the root")
 }
@@ -172,7 +198,10 @@ e2e_list_set_root :: proc(t: ^testing.T) {
 	list_run(t, &e, "L: Root")
 	testing.expect(t, list_logged(&e, fmt.tprintf("bad nil not a directory: %s/nope", root)), "a missing dir fails")
 	testing.expect(t, list_logged(&e, "same true"), "the current root is a no-op")
+	testing.expect(t, list_logged(&e, "unsaved nil unsaved 1 1 true"), "unsaved outside buffers refuse with info")
+	testing.expect(t, list_logged(&e, "still true"), "a refusal closes nothing")
+	testing.expect(t, list_logged(&e, "empty nil unsaved"), "an approval must name the buffer")
 	testing.expect(t, list_logged(&e, fmt.tprintf("rel true %s/alpha", root)), "relative to the root")
 	testing.expect_value(t, e.ed.working_root, fmt.tprintf("%s/alpha", root))
-	testing.expect(t, e.ed.welcome, "the clean outside buffer closed")
+	testing.expect(t, e.ed.welcome, "the approved unsaved buffer closed")
 }
