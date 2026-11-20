@@ -444,7 +444,8 @@ own plugin. `pane_unload` saves state before marking dead.
 A `markdown` body (`qed.ui.open{markdown}`, full only) is rendered by core at the text width into
 `Pane.md_lines`, a per-pane `virtual.Arena` swapped in as `context.temp_allocator` for `md_render`;
 the cache is keyed on width and dropped by `v:markdown` and `editor_retheme`. Rendered lines stay in
-source order, so `md_line_of_src` (a source row to its block's first line) is a forward scan; `plugin_view_closed` snapshots the visible rows' `src` and the scroll into the
+source order, so `md_line_of_src` (a source row to the first line of its block from the closest row at or
+above it; an opening fence maps to the first code line) is a forward scan; `plugin_view_closed` snapshots the visible rows' `src` and the scroll into the
 `UiView`, so a `close` handler can still map them (the markdown plugin's cursor sync). `max_width` caps a
 center/full box. A text body's scroll is saved by `id` with the field texts. A left click on a
 markdown body hit-tests `MdSpan.link`: `#anchor` scrolls to the line whose `MdLine.slug` matches
@@ -725,8 +726,10 @@ content inside quotes and lists is discontiguous (included-range reparses per pa
 line-based container parser handles nesting directly. `md_parse` builds blocks (paragraph with
 soft/hard breaks, ATX/setext heading, fenced/indented code, rule, quote, list with loose/task
 items, GFM table, HTML block, link reference definitions), recursing into quote and item bodies
-with their prefix stripped; a parallel row array keeps each block's first source row (`MdBlock.src`),
-which every line it emits carries (`MdLine.src`; a separating blank belongs to the block above). `md_blocks` emits through a prefix stack (quote bar, bullet or number
+with their prefix stripped; a parallel row array keeps each block's first source row (`MdBlock.src`)
+and, for code and tables, each line's (`line_src`). Every emitted line carries its block's row
+(`MdLine.block`) and its source row (`MdLine.src`: exact for code and table rows, the block's first row
+for reflowed text; a separating blank belongs to the block above). `md_blocks` emits through a prefix stack (quote bar, bullet or number
 then hanging indent), so text wraps at the remaining width. Every marker is hidden. Colors come
 from the markdown `captures` (`text.title`, `text.literal`, `text.reference`,
 `punctuation.special`), so the preview matches the editor; strong/emphasis/strike are attributes

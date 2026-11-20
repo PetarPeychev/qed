@@ -382,7 +382,7 @@ function View:anchor(slug) end
 ---@param row? integer
 ---@return integer|false
 function View:scroll(row) end
----Source line (1-based buffer row) of the markdown line shown at body row `row` (default 1, clamped to the shown rows), and the body row used. A block's lines all map to its first source line. Works in the `close` handler on the last shown rows; nil when nothing is shown.
+---Source line (1-based buffer row) of the markdown line shown at body row `row` (default 1, clamped to the shown rows), and the body row used. Code and table rows map to their own line, other blocks (reflowed text) to their first. Works in the `close` handler on the last shown rows; nil when nothing is shown.
 ---@param row? integer
 ---@return integer|nil source
 ---@return integer|nil row

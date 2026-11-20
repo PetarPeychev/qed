@@ -133,6 +133,29 @@ function T.open_clamps_at_start(t)
 	t.key("Esc")
 end
 
+function T.code_block_lines_sync_exactly(t)
+	local parts = {"# Code", "", "```"}
+	for i = 1, 60 do
+		parts[#parts + 1] = ("  code line %d;"):format(i)
+	end
+	parts[#parts + 1] = "```"
+	parts[#parts + 1] = ""
+	parts[#parts + 1] = "tail"
+	local b = t.open("code.md", table.concat(parts, "\n"))
+	qed.buf.set_cursor(b, {row = 33, col = 1})
+	qed.buf.set_screen_row(b, 33, 10)
+	local ui = open(t)
+	t.eq(body_y(t, "code line 30;"), ui.body_y + 9, "the cursor's code line, not the block start, is on the cursor's row")
+	t.key("PgDn")
+	local n = t.screen(ui.body_y + 9):match("code line (%d+);")
+	t.ok(n ~= nil, "a code line on the cursor's row")
+	t.key("Esc")
+	t.wait(function() return qed.buf.cursor(b).row ~= 33 end)
+	t.eq(qed.buf.cursor(b).row, 3 + tonumber(n), "the cursor is on that code line")
+	t.eq(qed.buf.cursor(b).col, 3, "at its first non-blank column")
+	t.eq(qed.buf.screen_row(b), 10, "at the same screen row")
+end
+
 function T.close_without_scroll_keeps_cursor(t)
 	local b = t.open("keep.md", long_doc())
 	qed.buf.set_cursor(b, {row = para_row(30), col = 4})

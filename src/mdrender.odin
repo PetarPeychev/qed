@@ -21,7 +21,7 @@ MdLine :: struct {
 	fill:             rune,
 	fill_fg, fill_bg: tb2.Color,
 	slug:             string,
-	src:              int,
+	src, block:       int,
 }
 
 MdCell :: struct {
@@ -64,6 +64,7 @@ MdBlock :: struct {
 	aligns:   []MdAlign,
 	rows:     [][]string,
 	src:      int,
+	line_src: []int,
 }
 
 MdItem :: struct {
@@ -105,7 +106,7 @@ MdRender :: struct {
 	inline:      int,
 	depth:       int,
 	em, strong:  int,
-	src:         int,
+	src, block:  int,
 }
 
 MD_BULLETS := [?]string{"•", "◦", "▪"}
@@ -179,7 +180,7 @@ md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
 	if len(raw) > 1 && raw[0] == "---" {
 		for k in 1 ..< len(raw) {
 			if raw[k] == "---" || raw[k] == "..." {
-				append(&blocks, MdBlock{kind = .Code, lines = raw[1:k], info = "yaml"})
+				append(&blocks, MdBlock{kind = .Code, lines = raw[1:k], info = "yaml", line_src = rows[1:k]})
 				raw, rows = raw[k + 1:], rows[k + 1:]
 				break
 			}
@@ -308,18 +309,22 @@ md_parse :: proc(r: ^MdRender, lines_in: []string, rows: []int) -> []MdBlock {
 		src := rows[i]
 		if ind >= 4 {
 			code := make([dynamic]string, context.temp_allocator)
+			code_rows := make([dynamic]int, context.temp_allocator)
 			for i < len(lines) && (md_blank(lines[i]) || md_indent(lines[i]) >= 4) {
 				append(&code, lines[i][4:] if len(lines[i]) >= 4 else "")
+				append(&code_rows, rows[i])
 				i += 1
 			}
 			for len(code) > 0 && md_trim(code[len(code) - 1]) == "" {
 				pop(&code)
+				pop(&code_rows)
 			}
-			append(&blocks, MdBlock{kind = .Code, lines = code[:], src = src})
+			append(&blocks, MdBlock{kind = .Code, lines = code[:], src = src, line_src = code_rows[:]})
 			continue
 		}
 		if fence, n, info, ok := md_fence(t); ok {
 			code := make([dynamic]string, context.temp_allocator)
+			code_rows := make([dynamic]int, context.temp_allocator)
 			i += 1
 			for i < len(lines) {
 				ct := md_trim(lines[i])
@@ -328,9 +333,10 @@ md_parse :: proc(r: ^MdRender, lines_in: []string, rows: []int) -> []MdBlock {
 					break
 				}
 				append(&code, lines[i][min(ind, md_indent(lines[i])):])
+				append(&code_rows, rows[i])
 				i += 1
 			}
-			append(&blocks, MdBlock{kind = .Code, lines = code[:], info = info, src = src})
+			append(&blocks, MdBlock{kind = .Code, lines = code[:], info = info, src = src, line_src = code_rows[:]})
 			continue
 		}
 		if level, text, ok := md_heading(t); ok {
@@ -379,7 +385,7 @@ md_parse :: proc(r: ^MdRender, lines_in: []string, rows: []int) -> []MdBlock {
 			continue
 		}
 		if b, end, ok := md_parse_table(lines, i); ok {
-			b.src = src
+			b.src, b.line_src = src, rows[i:end]
 			append(&blocks, b)
 			i = end
 			continue
@@ -836,7 +842,7 @@ md_gap :: proc(r: ^MdRender, src: int) {
 		md_emit_blank(r)
 	}
 	r.gap = true
-	r.src = src
+	r.src, r.block = src, src
 }
 
 md_blocks :: proc(r: ^MdRender, blocks: []MdBlock) {
@@ -865,7 +871,7 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 		}
 	case .Code:
 		md_gap(r, b.src)
-		md_emit_code(r, b.lines, b.info)
+		md_emit_code(r, b.lines, b.info, b.line_src)
 	case .Rule:
 		md_gap(r, b.src)
 		md_emit(r, nil, '─', r.style.border)
@@ -922,7 +928,7 @@ md_emit_list :: proc(r: ^MdRender, b: ^MdBlock) {
 		}
 		append(&r.prefix, MdPrefix{first, strings.repeat(" ", md_text_width(first), context.temp_allocator), fg, true})
 		r.gap = false
-		r.src = it.src
+		r.src, r.block = it.src, it.src
 		if len(it.blocks) == 0 {
 			md_emit(r, nil)
 		}
@@ -934,7 +940,7 @@ md_emit_list :: proc(r: ^MdRender, b: ^MdBlock) {
 	r.gap = true
 }
 
-md_emit_code :: proc(r: ^MdRender, code: []string, info: string) {
+md_emit_code :: proc(r: ^MdRender, code: []string, info: string, line_src: []int) {
 	lang := md_fence_language(info, r.lang)
 	colors: [dynamic][dynamic]tb2.Color
 	highlight_lines(lang, code, &colors)
@@ -942,6 +948,7 @@ md_emit_code :: proc(r: ^MdRender, code: []string, info: string) {
 	bg := r.style.code_bg
 	w := max(1, md_avail(r) - 1)
 	for line, idx in code {
+		r.src = line_src[idx]
 		spans := md_colors_to_spans(line, colors[idx][:] if idx < len(colors) else nil)
 		for &s in spans {
 			s.bg = bg
@@ -982,7 +989,7 @@ md_emit_table :: proc(r: ^MdRender, b: ^MdBlock) {
 	}
 	if total > budget {
 		if budget < 3 * n {
-			md_emit_table_flat(r, cells)
+			md_emit_table_flat(r, cells, b.line_src)
 			return
 		}
 		base := make([]int, n, context.temp_allocator)
@@ -1023,9 +1030,12 @@ md_emit_table :: proc(r: ^MdRender, b: ^MdBlock) {
 	}
 	md_emit(r, md_table_rule(r, widths, "┌", "┬", "┐"))
 	for row, ri in wrapped {
+		// line_src is header, delimiter, body rows; the header rule maps to the delimiter row
+		r.src = b.line_src[0 if ri == 0 else 1 if ri == 1 else ri + 1]
 		if ri == 1 || (ri > 1 && tall) {
 			md_emit(r, md_table_rule(r, widths, "├", "┼", "┤"))
 		}
+		r.src = b.line_src[0 if ri == 0 else ri + 1]
 		for l in 0 ..< heights[ri] {
 			spans := make([dynamic]MdSpan, context.temp_allocator)
 			append(&spans, MdSpan{text = "│", fg = r.style.border})
@@ -1068,7 +1078,7 @@ md_table_rule :: proc(r: ^MdRender, widths: []int, left, mid, right: string) -> 
 	return spans
 }
 
-md_emit_table_flat :: proc(r: ^MdRender, cells: [][][]MdSpan) {
+md_emit_table_flat :: proc(r: ^MdRender, cells: [][][]MdSpan, line_src: []int) {
 	head := cells[0]
 	if len(cells) == 1 {
 		for h in head {
@@ -1077,6 +1087,7 @@ md_emit_table_flat :: proc(r: ^MdRender, cells: [][][]MdSpan) {
 		return
 	}
 	for row, ri in cells[1:] {
+		r.src = line_src[ri + 2]
 		if ri > 0 {
 			md_emit(r, nil, '─', r.style.border)
 		}
@@ -1139,21 +1150,34 @@ md_emit :: proc(r: ^MdRender, content: []MdSpan, fill: rune = 0, fill_fg: tb2.Co
 		}
 		out = md_cells_to_spans(cells[:n])
 	}
-	append(&r.out, MdLine{spans = out, fill = fill, fill_fg = fill_fg, fill_bg = fill_bg, src = r.src})
+	append(&r.out, MdLine{spans = out, fill = fill, fill_fg = fill_fg, fill_bg = fill_bg, src = r.src, block = r.block})
 }
 
-// rendered lines run in source order, so the block holding src starts at the first line of the last src <= it
+// rendered lines run in source order: find the block holding src, then its first line from the closest row at or above src
 md_line_of_src :: proc(lines: []MdLine, src: int) -> int {
-	at, best := 0, -1
-	for line, i in lines {
-		if line.src > src {
+	block := -1
+	for line in lines {
+		if line.block > src {
 			break
 		}
-		if line.src > best {
+		block = line.block
+	}
+	first, at, best := -1, 0, -1
+	for line, i in lines {
+		if line.block > block {
+			break
+		}
+		if line.block != block {
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		if line.src <= src && line.src > best {
 			at, best = i, line.src
 		}
 	}
-	return at
+	return at if best >= 0 else max(first, 0)
 }
 
 md_emit_blank :: proc(r: ^MdRender) {
@@ -1166,7 +1190,7 @@ md_emit_blank :: proc(r: ^MdRender) {
 		}
 		pop(&spans)
 	}
-	append(&r.out, MdLine{spans = spans[:], src = r.src})
+	append(&r.out, MdLine{spans = spans[:], src = r.src, block = r.block})
 }
 
 md_emit_wrapped :: proc(r: ^MdRender, spans: []MdSpan) {
