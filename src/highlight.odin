@@ -119,6 +119,7 @@ syntax_ensure :: proc(language: Language) -> bool {
 		if s.inj_query != nil {
 			s.inj_cursor = ts.query_cursor_new()
 			s.inj_preds = query_predicates_build(s.inj_query)
+			s.inj_names = make([dynamic]string, os.heap_allocator())
 			m := ts.query_capture_count(s.inj_query)
 			for id in 0 ..< m {
 				length: u32
