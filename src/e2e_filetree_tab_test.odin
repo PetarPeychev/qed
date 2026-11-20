@@ -135,7 +135,7 @@ e2e_filetree_added_tab :: proc(t: ^testing.T) {
 	testing.expect(t, renamed, "suffix on a detail tab")
 	_, _, sized = nav_screen_find(&e, "+3  -1")
 	testing.expect(t, sized, "sizes on a detail tab")
-	testing.expect(t, ft_chip(ed, "diff") == bool(FILETREE_DIFF_ONLY), "the diff chip")
+	testing.expect(t, ft_chip(ed, "diff"), "the diff chip starts from diff_only")
 	testing.expect(t, nav_select(ed, "sub"), "a vanished dir is listed virtually")
 	testing.expect(t, nav_select(ed, "gone.txt"), "the virtual file is listed")
 	sel, _ := ft_selected(ed)

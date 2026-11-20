@@ -77,7 +77,7 @@ SplitList :: enum {
 
 overlay_split :: proc(inner_w, lmin, lmax: int) -> (left_w, right_w: int, preview: bool) {
 	w := inner_w - 1
-	pmin, pmax := PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH
+	pmin, pmax := SPLIT_PREVIEW_MIN_WIDTH, SPLIT_PREVIEW_MAX_WIDTH
 	if w >= lmax + pmax {
 		return lmax, pmax, true
 	}
@@ -105,9 +105,9 @@ overlay_layout :: proc(editor: ^Editor, list := SplitList.None) -> OverlayLayout
 	switch list {
 	case .None:
 	case .FileTree:
-		left_w, right_w, preview = overlay_split(inner_w, FILETREE_LIST_MIN_WIDTH, FILETREE_LIST_MAX_WIDTH)
+		left_w, right_w, preview = overlay_split(inner_w, SPLIT_TREE_MIN_WIDTH, SPLIT_TREE_MAX_WIDTH)
 	case .Code:
-		left_w, right_w, preview = overlay_split(inner_w, CODE_LIST_MIN_WIDTH, CODE_LIST_MAX_WIDTH)
+		left_w, right_w, preview = overlay_split(inner_w, SPLIT_CODE_MIN_WIDTH, SPLIT_CODE_MAX_WIDTH)
 	}
 	if preview && left_w + 1 + right_w < inner_w {
 		w := left_w + 1 + right_w + 2

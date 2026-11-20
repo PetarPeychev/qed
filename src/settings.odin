@@ -44,12 +44,12 @@ COMPLETION_MAX_ROWS: int
 COMPLETION_MIN_CHARS: int
 JUMP_THRESHOLD: int
 BIG_FILE_BYTES: int
-FILETREE_LIST_MIN_WIDTH: int
-FILETREE_LIST_MAX_WIDTH: int
-CODE_LIST_MIN_WIDTH: int
-CODE_LIST_MAX_WIDTH: int
-PREVIEW_MIN_WIDTH: int
-PREVIEW_MAX_WIDTH: int
+SPLIT_TREE_MIN_WIDTH: int
+SPLIT_TREE_MAX_WIDTH: int
+SPLIT_CODE_MIN_WIDTH: int
+SPLIT_CODE_MAX_WIDTH: int
+SPLIT_PREVIEW_MIN_WIDTH: int
+SPLIT_PREVIEW_MAX_WIDTH: int
 PLUGIN_MEMORY_MB: int
 PLUGIN_SLICE_MAX_MS: int
 PLUGIN_COMMAND_MAX_MS: int
@@ -68,12 +68,12 @@ config_ints := [?]Config_Int {
 	{"alt_esc_timeout_ms", &ALT_ESC_TIMEOUT_MS},
 	{"jump_threshold", &JUMP_THRESHOLD},
 	{"big_file_bytes", &BIG_FILE_BYTES},
-	{"filetree_list_min_width", &FILETREE_LIST_MIN_WIDTH},
-	{"filetree_list_max_width", &FILETREE_LIST_MAX_WIDTH},
-	{"code_list_min_width", &CODE_LIST_MIN_WIDTH},
-	{"code_list_max_width", &CODE_LIST_MAX_WIDTH},
-	{"preview_min_width", &PREVIEW_MIN_WIDTH},
-	{"preview_max_width", &PREVIEW_MAX_WIDTH},
+	{"split_tree_min_width", &SPLIT_TREE_MIN_WIDTH},
+	{"split_tree_max_width", &SPLIT_TREE_MAX_WIDTH},
+	{"split_code_min_width", &SPLIT_CODE_MIN_WIDTH},
+	{"split_code_max_width", &SPLIT_CODE_MAX_WIDTH},
+	{"split_preview_min_width", &SPLIT_PREVIEW_MIN_WIDTH},
+	{"split_preview_max_width", &SPLIT_PREVIEW_MAX_WIDTH},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
 	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
 	{"plugin_slice_max_ms", &PLUGIN_SLICE_MAX_MS},
@@ -84,9 +84,6 @@ CURSOR_ACCEL: bool
 AUTO_CLOSE_PAIRS: bool
 DIFF_VIEW: bool
 LINE_WRAP: bool
-FILETREE_SHOW_DOTFILES: bool
-FILETREE_SHOW_IGNORED: bool
-FILETREE_DIFF_ONLY: bool
 TERMINAL_ESCAPE_CLOSES: bool
 LSP_ENABLED: bool
 
@@ -94,11 +91,8 @@ config_bools := [?]Config_Bool {
 	{"cursor_accel", &CURSOR_ACCEL},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 	{"line_wrap", &LINE_WRAP},
-	{"filetree_show_dotfiles", &FILETREE_SHOW_DOTFILES},
-	{"filetree_show_ignored", &FILETREE_SHOW_IGNORED},
 	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
 	{"diff_view", &DIFF_VIEW},
-	{"filetree_diff_only", &FILETREE_DIFF_ONLY},
 }
 
 Config_Str :: struct {
@@ -673,28 +667,16 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 		}
 		known := false
 		for it in config_ints {
-			if it.key == key {
-				known = true
-				break
-			}
+			known ||= it.key == key
 		}
-		if !known {
-			for it in config_bools {
-				if it.key == key {
-					known = true
-					break
-				}
-			}
+		for it in config_bools {
+			known ||= it.key == key
 		}
 		for it in config_backdrops {
 			known ||= it.key == key
 		}
-		switch {
-		case known:
-		case key == "format_on_save" || key == "trim_trailing_whitespace_on_save" || key == "ensure_final_newline_on_save":
-			append(warnings, fmt.tprintf("%q (moved to plugins/format/%s)", key, key))
-		case:
-			append(warnings, fmt.tprintf("unknown key %q", key))
+		if !known {
+			append(warnings, config_unknown_msg(key))
 		}
 	}
 
@@ -708,79 +690,111 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 				known ||= it.key == key
 			}
 			if !known {
-				append(warnings, fmt.tprintf("unknown lsp/%q", key))
+				append(warnings, config_unknown_msg(fmt.tprintf("lsp/%s", key)))
 			}
 		}
 	}
 
 	if mods_obj, ok := root["modules"].(json.Object); ok {
 		for mod_key, mod_val in mods_obj {
-			if mod_key == "lsp" {
-				sub, is_obj := mod_val.(json.Object)
-				if !is_obj {
-					append(warnings, "modules/lsp (moved to lsp)")
-				}
-				for key in sub {
-					append(warnings, fmt.tprintf("modules/lsp/%q (moved to lsp/%s)", key, key))
-				}
+			sub, is_obj := mod_val.(json.Object)
+			if !is_obj {
+				append(warnings, config_unknown_msg(fmt.tprintf("modules/%s", mod_key)))
 				continue
 			}
-			if mod_key == "ai" {
-				sub, is_obj := mod_val.(json.Object)
-				if !is_obj {
-					append(warnings, "modules/ai (moved to plugins/ai)")
-				}
-				for key in sub {
-					append(warnings, fmt.tprintf("modules/ai/%q (moved to plugins/ai/%s)", key, key))
-				}
-				continue
+			for key in sub {
+				append(warnings, config_unknown_msg(fmt.tprintf("modules/%s/%s", mod_key, key)))
 			}
-			if mod_key == "git" {
-				sub, is_obj := mod_val.(json.Object)
-				if !is_obj {
-					append(warnings, "modules/git (moved to plugins/git)")
-				}
-				for key in sub {
-					dest := key if key == "diff_view" || key == "filetree_diff_only" else fmt.tprintf("plugins/git/%s", key)
-					append(warnings, fmt.tprintf("modules/git/%q (moved to %s)", key, dest))
-				}
-				continue
-			}
-			append(warnings, fmt.tprintf("unknown modules/%q", mod_key))
 		}
 	}
 }
 
-CONFIG_KEYBINDS_MOVED :: [?]struct {
-	old, plugin, bare: string,
-} {
-	{"Find in Files", "search", "Find in Files"},
-	{"Set Theme", "settings", "Theme"},
-	{"Set Language", "settings", "Language"},
-	{"Change Indentation", "settings", "Indentation"},
-	{"Format Document", "format", "Document"},
-	{"Toggle Format on Save", "format", "Toggle on Save"},
-	{"Toggle Trim Whitespace on Save", "format", "Toggle Trim Whitespace on Save"},
-	{"Toggle Final Newline on Save", "format", "Toggle Final Newline on Save"},
-	{"Git: Set Diff Base", "git", "Set Diff Base"},
-	{"Git: Resolve Conflict", "conflict", "Resolve"},
-	{"File Tree: Restore File", "git", "Restore File"},
-	{"Change Working Directory", "workspace", "Open Directory"},
-	{"Find Line", "goto", "Line"},
-	{"File Tree", "filetree", "All"},
-	{"File Tree: Open", "filetree", "Open"},
-	{"File Tree: Changed", "git", "Changes"},
-	{"File Tree: Unsaved", "filetree", "Unsaved"},
-	{"File Tree: Delete", "filetree", "Delete"},
-	{"File Tree: Rename", "filetree", "Rename"},
-	{"File Tree: New", "filetree", "New"},
-	{"File Tree: Toggle Dotfiles", "filetree", "Toggle Dotfiles"},
-	{"File Tree: Toggle Ignored", "filetree", "Toggle Ignored"},
-	{"File Tree: Toggle Diff", "filetree", "Toggle Diff"},
-	{"File Tree: Expand/Collapse All", "filetree", "Expand/Collapse All"},
-	{"AI: Edit Selection", "ai", "Edit Selection"},
-	{"AI: Cancel Edits", "ai", "Cancel Edits"},
-	{"AI: Toggle Inline Completion", "ai", "Toggle Inline Completion"},
+// Entries point at final names, so a lookup never chains. The longest entry naming the path or a parent wins; `*` is one segment.
+CONFIG_MOVED :: [?][2]string {
+	{"format_on_save", "plugins/format/on_save"},
+	{"trim_trailing_whitespace_on_save", "plugins/format/trim_whitespace_on_save"},
+	{"ensure_final_newline_on_save", "plugins/format/final_newline_on_save"},
+	{"filetree_show_dotfiles", "plugins/filetree/show_dotfiles"},
+	{"filetree_show_ignored", "plugins/filetree/show_ignored"},
+	{"filetree_diff_only", "plugins/filetree/diff_only"},
+	{"filetree_list_min_width", "split_tree_min_width"},
+	{"filetree_list_max_width", "split_tree_max_width"},
+	{"code_list_min_width", "split_code_min_width"},
+	{"code_list_max_width", "split_code_max_width"},
+	{"preview_min_width", "split_preview_min_width"},
+	{"preview_max_width", "split_preview_max_width"},
+	{"modules/lsp", "lsp"},
+	{"modules/ai", "plugins/ai"},
+	{"modules/ai/chat_command", "plugins/ai/edit_command"},
+	{"modules/git", "plugins/git"},
+	{"modules/git/diff_view", "diff_view"},
+	{"modules/git/filetree_diff_only", "plugins/filetree/diff_only"},
+	{"languages/*/formatter", "plugins/format/commands/*"},
+	{"plugins/lines", "plugins/goto"},
+	{"plugins/ai/chat_command", "plugins/ai/edit_command"},
+	{"plugins/format/format_on_save", "plugins/format/on_save"},
+	{"plugins/format/trim_trailing_whitespace_on_save", "plugins/format/trim_whitespace_on_save"},
+	{"plugins/format/ensure_final_newline_on_save", "plugins/format/final_newline_on_save"},
+	{"keybinds/Diff: Toggle Diff View", "keybinds/Diff: Toggle View"},
+	{"keybinds/Debug: Message Log", "keybinds/Message Log: Open"},
+	{"keybinds/Debug: Plugins", "keybinds/Plugins: Open"},
+	{"keybinds/Find in Files", "plugins/search/keybinds/Find in Files"},
+	{"keybinds/Set Theme", "plugins/settings/keybinds/Theme"},
+	{"keybinds/Set Language", "plugins/settings/keybinds/Language"},
+	{"keybinds/Change Indentation", "plugins/settings/keybinds/Indentation"},
+	{"keybinds/Format Document", "plugins/format/keybinds/Document"},
+	{"keybinds/Toggle Format on Save", "plugins/format/keybinds/Toggle on Save"},
+	{"keybinds/Toggle Trim Whitespace on Save", "plugins/format/keybinds/Toggle Trim Whitespace on Save"},
+	{"keybinds/Toggle Final Newline on Save", "plugins/format/keybinds/Toggle Final Newline on Save"},
+	{"keybinds/Git: Set Diff Base", "plugins/git/keybinds/Set Diff Base"},
+	{"keybinds/Git: Resolve Conflict", "plugins/conflict/keybinds/Resolve"},
+	{"keybinds/File Tree: Restore File", "plugins/git/keybinds/Restore File"},
+	{"keybinds/Change Working Directory", "plugins/workspace/keybinds/Open Directory"},
+	{"keybinds/Find Line", "plugins/goto/keybinds/Line"},
+	{"keybinds/File Tree", "plugins/filetree/keybinds/All"},
+	{"keybinds/File Tree: Open", "plugins/filetree/keybinds/Open"},
+	{"keybinds/File Tree: Changed", "plugins/git/keybinds/Changes"},
+	{"keybinds/File Tree: Unsaved", "plugins/filetree/keybinds/Unsaved"},
+	{"keybinds/File Tree: Delete", "plugins/filetree/keybinds/Delete"},
+	{"keybinds/File Tree: Rename", "plugins/filetree/keybinds/Rename"},
+	{"keybinds/File Tree: New", "plugins/filetree/keybinds/New"},
+	{"keybinds/File Tree: Toggle Dotfiles", "plugins/filetree/keybinds/Toggle Dotfiles"},
+	{"keybinds/File Tree: Toggle Ignored", "plugins/filetree/keybinds/Toggle Ignored"},
+	{"keybinds/File Tree: Toggle Diff", "plugins/filetree/keybinds/Toggle Diff"},
+	{"keybinds/File Tree: Expand/Collapse All", "plugins/filetree/keybinds/Expand/Collapse All"},
+	{"keybinds/AI: Edit Selection", "plugins/ai/keybinds/Edit Selection"},
+	{"keybinds/AI: Cancel Edits", "plugins/ai/keybinds/Cancel Edits"},
+	{"keybinds/AI: Toggle Inline Completion", "plugins/ai/keybinds/Toggle Inline Completion"},
+}
+
+config_moved :: proc(path: string) -> (string, bool) {
+	segs := strings.split(path, "/", context.temp_allocator)
+	best, best_n := "", 0
+	entries: for m in CONFIG_MOVED {
+		old := strings.split(m[0], "/", context.temp_allocator)
+		if len(old) > len(segs) || len(old) <= best_n {
+			continue
+		}
+		star := ""
+		for o, i in old {
+			if o == "*" {
+				star = segs[i]
+			} else if o != segs[i] {
+				continue entries
+			}
+		}
+		dest, _ := strings.replace_all(m[1], "*", star, context.temp_allocator)
+		rest := strings.join(segs[len(old):], "/", context.temp_allocator)
+		best, best_n = dest if rest == "" else fmt.tprintf("%s/%s", dest, rest), len(old)
+	}
+	return best, best_n > 0
+}
+
+config_unknown_msg :: proc(path: string) -> string {
+	if dest, ok := config_moved(path); ok {
+		return fmt.tprintf("%q moved to %q", path, dest)
+	}
+	return fmt.tprintf("unknown %q", path)
 }
 
 config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {
@@ -805,18 +819,16 @@ config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -
 			if found {
 				continue
 			}
-			moved := ""
-			for m in CONFIG_KEYBINDS_MOVED {
-				if m.old == key {
-					moved = fmt.tprintf(" (moved to plugins/%s/keybinds/%q)", m.plugin, m.bare)
+			path := fmt.tprintf("keybinds/%s", key)
+			msg := config_unknown_msg(path)
+			if _, moved := config_moved(path); !moved {
+				for cmd in plugin_commands {
+					if cmd.name == key || cmd.bare == key {
+						msg = fmt.tprintf("%q moved to %q", path, fmt.tprintf("plugins/%s/keybinds/%s", cmd.owner, cmd.config_name))
+					}
 				}
 			}
-			for cmd in plugin_commands {
-				if cmd.name == key || cmd.bare == key {
-					moved = fmt.tprintf(" (moved to plugins/%s/keybinds/%q)", cmd.owner, cmd.bare)
-				}
-			}
-			append(&warnings, fmt.tprintf("unknown keybinds/%q%s", key, moved))
+			append(&warnings, msg)
 		}
 	}
 	return warnings
@@ -1362,10 +1374,8 @@ languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) {
 			}
 		}
 		for key in sub {
-			if key == "formatter" {
-				append(invalid, fmt.tprintf("languages/%s/formatter (moved to plugins/format/commands/%s)", name, name))
-			} else if key != "patterns" && key != "lsp" {
-				append(invalid, fmt.tprintf("languages/%s/%s", name, key))
+			if key != "patterns" && key != "lsp" {
+				append(invalid, config_unknown_msg(fmt.tprintf("languages/%s/%s", name, key)))
 			}
 		}
 	}

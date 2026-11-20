@@ -48,7 +48,7 @@ end
 
 function T.on_save_external(t)
 	local b = t.open("a.txt", "hello\nworld")
-	t.config{format_on_save = true, commands = {text = t.stub("tr 'a-z' 'A-Z'")}}
+	t.config{on_save = true, commands = {text = t.stub("tr 'a-z' 'A-Z'")}}
 	t.type("x")
 	t.key("Ctrl+s")
 	t.wait(saved(b))
@@ -95,7 +95,7 @@ end
 
 function T.missing_tool(t)
 	local b = t.open("a.txt", "keep\nthis")
-	t.config{format_on_save = true, commands = {text = "qed_no_such_formatter_zzz --stdin"}}
+	t.config{on_save = true, commands = {text = "qed_no_such_formatter_zzz --stdin"}}
 	qed.run("Format: Document")
 	t.wait(function() return t.message() ~= "" end)
 	local text, level = t.message()
@@ -144,7 +144,7 @@ end
 function T.rev_guard_on_save(t)
 	local b = t.open("a.txt", "messy")
 	t.fake_spawn("fakefmt", {stdout = "TIDY\n", delay_ms = 50})
-	t.config{format_on_save = true, commands = {text = "fakefmt"}}
+	t.config{on_save = true, commands = {text = "fakefmt"}}
 	t.key("Ctrl+s")
 	t.type("!")
 	t.wait(function() return disk(b) == "!messy" end)
@@ -184,7 +184,7 @@ end
 function T.trailing_newline(t)
 	local b = t.open("a.py", "x=1")
 	t.fake_spawn("fakefmt", {stdout = "x = 1\n"})
-	t.config{format_on_save = true, commands = {python = "fakefmt"}}
+	t.config{on_save = true, commands = {python = "fakefmt"}}
 	t.type(" ")
 	t.key("Ctrl+s")
 	t.wait(saved(b))
@@ -207,7 +207,7 @@ end
 
 function T.trim_whitespace(t)
 	local b = t.open("a.txt", "foo   \n\tbar\t\n   \nbaz")
-	t.config{trim_trailing_whitespace_on_save = true}
+	t.config{trim_whitespace_on_save = true}
 	t.key("Ctrl+s")
 	t.expect_line(1, "foo")
 	t.expect_line(2, "\tbar")
@@ -222,7 +222,7 @@ end
 
 function T.trim_cursor_clamped(t)
 	local b = t.open("a.txt", "word    \nnext")
-	t.config{trim_trailing_whitespace_on_save = true}
+	t.config{trim_whitespace_on_save = true}
 	qed.buf.set_cursor(b, {row = 1, col = 8})
 	t.key("Ctrl+s")
 	t.expect_line(1, "word")
@@ -231,7 +231,7 @@ end
 
 function T.final_newline(t)
 	local b = t.open("a.txt", "alpha\nbeta")
-	t.config{ensure_final_newline_on_save = true}
+	t.config{final_newline_on_save = true}
 	qed.buf.set_cursor(b, {row = 2, col = 5})
 	t.key("Ctrl+s")
 	t.eq(qed.buf.line_count(b), 3)
@@ -245,7 +245,7 @@ end
 function T.markdown_fixups(t)
 	local b = t.open("notes.md", "break2  \nbreak3   \none \ntab \t\n   \nlast")
 	t.eq(qed.buf.language(b), "markdown")
-	t.config{trim_trailing_whitespace_on_save = true, ensure_final_newline_on_save = true}
+	t.config{trim_whitespace_on_save = true, final_newline_on_save = true}
 	t.key("Ctrl+s")
 	t.expect_line(1, "break2  ")
 	t.expect_line(2, "break3   ")
@@ -258,7 +258,7 @@ end
 
 function T.trim_newline_no_double(t)
 	local b = t.open("a.txt", "end\n   ")
-	t.config{trim_trailing_whitespace_on_save = true, ensure_final_newline_on_save = true}
+	t.config{trim_whitespace_on_save = true, final_newline_on_save = true}
 	t.key("Ctrl+s")
 	t.eq(qed.buf.line_count(b), 2)
 	t.expect_line(2, "")
@@ -278,8 +278,8 @@ function T.trim_before_format(t)
 	local b = t.open("a.txt", "foo   \nbar\t")
 	local seen = qed.path.join(qed.path.dir(qed.buf.path(b)), "seen.out")
 	t.config{
-		trim_trailing_whitespace_on_save = true,
-		format_on_save = true,
+		trim_whitespace_on_save = true,
+		on_save = true,
 		commands = {text = t.stub("tee " .. qed.shell_quote(seen))},
 	}
 	t.key("Ctrl+s")
@@ -290,9 +290,9 @@ end
 function T.quit_save_all(t)
 	local b = t.open("a.txt", "foo  \nbar")
 	t.config{
-		format_on_save = true,
-		trim_trailing_whitespace_on_save = true,
-		ensure_final_newline_on_save = true,
+		on_save = true,
+		trim_whitespace_on_save = true,
+		final_newline_on_save = true,
 		commands = {text = t.stub("tr 'a-z' 'A-Z'")},
 	}
 	t.type("z")
@@ -307,7 +307,7 @@ function T.close_save(t)
 	qed.close(qed.buf.current())
 	local b = t.open("a.txt", "baz  ")
 	local path = qed.buf.path(b)
-	t.config{trim_trailing_whitespace_on_save = true}
+	t.config{trim_whitespace_on_save = true}
 	t.type("!")
 	t.key("Ctrl+w")
 	t.eq(t.editor().dialog, "close")
@@ -320,8 +320,8 @@ end
 function T.conflict_overwrite(t)
 	local b = t.open("a.txt", "first  \nsecond")
 	t.config{
-		format_on_save = true,
-		trim_trailing_whitespace_on_save = true,
+		on_save = true,
+		trim_whitespace_on_save = true,
 		commands = {text = t.stub("tr 'a-z' 'A-Z'")},
 	}
 	t.type("X")
@@ -340,7 +340,7 @@ function T.late_result_after_timeout(t)
 	local b = t.open("a.txt", "messy")
 	t.hook_timeout(50)
 	t.fake_spawn("fakefmt", {stdout = "TIDY\n", delay_ms = 300})
-	t.config{format_on_save = true, commands = {text = "fakefmt"}}
+	t.config{on_save = true, commands = {text = "fakefmt"}}
 	t.type("!")
 	t.key("Ctrl+s")
 	t.wait(saved(b))
@@ -356,7 +356,7 @@ function T.late_result_after_close(t)
 	local path = qed.buf.path(b)
 	t.hook_timeout(50)
 	t.fake_spawn("fakefmt", {stdout = "TIDY\n", delay_ms = 300})
-	t.config{format_on_save = true, commands = {text = "fakefmt"}}
+	t.config{on_save = true, commands = {text = "fakefmt"}}
 	t.type("!")
 	t.key("Ctrl+w")
 	t.key("Enter")
@@ -390,7 +390,7 @@ function T.save_all_formats_every_buffer(t)
 	t.type("x")
 	local b = t.open("b.txt", "second")
 	t.type("y")
-	t.config{format_on_save = true, commands = {text = stub}}
+	t.config{on_save = true, commands = {text = stub}}
 	t.key("Ctrl+q")
 	t.key("Enter")
 	t.wait(function() return t.editor().quit end)
@@ -401,11 +401,11 @@ end
 function T.toggle_survives_reload(t)
 	local b = t.open("a.txt", "pad  ")
 	qed.run("Format: Toggle Trim Whitespace on Save")
-	t.config({ensure_final_newline_on_save = true}, {hot = true})
+	t.config({final_newline_on_save = true}, {hot = true})
 	t.key("Ctrl+s")
 	t.eq(disk(b), "pad\n", "the runtime toggle survives an unrelated reload, the changed knob applies")
-	t.config({ensure_final_newline_on_save = true, trim_trailing_whitespace_on_save = true}, {hot = true})
-	t.config({ensure_final_newline_on_save = true, trim_trailing_whitespace_on_save = false}, {hot = true})
+	t.config({final_newline_on_save = true, trim_whitespace_on_save = true}, {hot = true})
+	t.config({final_newline_on_save = true, trim_whitespace_on_save = false}, {hot = true})
 	qed.buf.set_cursor(b, {row = 1, col = 4})
 	t.type("  ")
 	t.key("Ctrl+s")

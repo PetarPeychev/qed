@@ -362,7 +362,7 @@ e2e_lsp_format_on_save_quit :: proc(t: ^testing.T) {
 	defer e2e_lsp_stop(&e)
 
 	testing.expect(t, e2e_lsp_wait(&e, pred_diags), "server should be ready")
-	e2e_plugin_config(&e, "format", `{"format_on_save": true, "trim_trailing_whitespace_on_save": true}`)
+	e2e_plugin_config(&e, "format", `{"on_save": true, "trim_whitespace_on_save": true}`)
 
 	e2e_type(&e, "Z")
 	e2e_key(&e, .Ctrl_Q)

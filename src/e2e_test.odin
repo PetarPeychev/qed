@@ -231,7 +231,7 @@ e2e_plugin_yielding :: proc(e: ^E2E) -> bool {
 }
 
 // Writes an executable `#!/bin/sh` stub with `body` (canned output or a
-// stdin→stdout filter) to a temp path, for wiring into config `llm.chat_command`,
+// stdin→stdout filter) to a temp path, for wiring into config `plugins.ai.edit_command`,
 // a format command, or the FIM curl command. Caller frees the returned path.
 e2e_stub_script :: proc(body: string) -> string {
 	e2e_seq += 1

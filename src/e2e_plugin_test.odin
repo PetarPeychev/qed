@@ -84,9 +84,9 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_plugin(&e, "broken", `return {setup = function() error("setup exploded") end}`)
 
 	e2e_key(&e, .Ctrl_P)
-	e2e_type(&e, "debug: plugins")
+	e2e_type(&e, "plugins: open")
 	e2e_key(&e, .Enter)
-	testing.expect(t, test_pane_open(&e.ed, "plugins"), "Debug: Plugins opens the pane")
+	testing.expect(t, test_pane_open(&e.ed, "plugins"), "Plugins: Open opens the pane")
 	e2e_reload_select(&e, "fine")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Fine       user     enabled"), "a healthy plugin row")

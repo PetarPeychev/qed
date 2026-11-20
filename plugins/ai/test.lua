@@ -19,7 +19,7 @@ local function send(t, instruction)
 end
 
 function T.edit_applies_fenced_block(t)
-	t.config{chat_command = t.stub(REPLY)}
+	t.config{edit_command = t.stub(REPLY)}
 	local b = t.open("a.odin", "alpha\n    target line\ngamma")
 	select_line(b, 2)
 	send(t, "rewrite")
@@ -40,7 +40,7 @@ end
 function T.edit_prompt_carries_file_and_instruction(t)
 	local dir = qed.root()
 	local out = qed.path.join(dir, "prompt.out")
-	t.config{chat_command = t.stub(("cat > %s\n%s"):format(qed.shell_quote(out), REPLY))}
+	t.config{edit_command = t.stub(("cat > %s\n%s"):format(qed.shell_quote(out), REPLY))}
 	local b = t.open("a.odin", "alpha\n    target line\ngamma")
 	select_line(b, 2)
 	send(t, "make it 42")
@@ -54,7 +54,7 @@ function T.edit_prompt_carries_file_and_instruction(t)
 end
 
 function T.edit_lands_on_its_range_among_duplicates(t)
-	t.config{chat_command = t.stub(REPLY)}
+	t.config{edit_command = t.stub(REPLY)}
 	local b = t.open("a.odin", "    target line\nmiddle\n    target line\nend")
 	select_line(b, 3)
 	send(t, "rewrite")
@@ -64,7 +64,7 @@ function T.edit_lands_on_its_range_among_duplicates(t)
 end
 
 function T.edit_follows_edits_elsewhere(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 200})
 	local b = t.open("a.txt", "one\ntwo\nthree")
 	select_line(b, 2)
@@ -80,7 +80,7 @@ function T.edit_follows_edits_elsewhere(t)
 end
 
 function T.editing_the_range_cancels(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 5000})
 	local b = t.open("a.txt", "    target line\ngamma")
 	select_line(b, 1)
@@ -94,7 +94,7 @@ function T.editing_the_range_cancels(t)
 end
 
 function T.second_edit_survives_the_first_landing(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 300})
 	local b = t.open("a.txt", "one\ntwo\nthree")
 	select_line(b, 1)
@@ -112,7 +112,7 @@ function T.second_edit_survives_the_first_landing(t)
 end
 
 function T.prompt_cancel_and_changed_block(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```"})
 	local b = t.open("a.txt", "one\ntwo")
 	select_line(b, 1)
@@ -133,7 +133,7 @@ function T.prompt_cancel_and_changed_block(t)
 end
 
 function T.failed_command_discards(t)
-	t.config{chat_command = t.stub("printf '```\\nnew\\n```\\n'; exit 3")}
+	t.config{edit_command = t.stub("printf '```\\nnew\\n```\\n'; exit 3")}
 	local b = t.open("a.txt", "hello")
 	select_line(b, 1)
 	send(t, "rewrite")
@@ -142,7 +142,7 @@ function T.failed_command_discards(t)
 end
 
 function T.closing_the_buffer_kills_its_edits(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 5000})
 	local b = t.open("a.txt", "one")
 	select_line(b, 1)
@@ -156,7 +156,7 @@ function T.closing_the_buffer_kills_its_edits(t)
 end
 
 function T.reload_keeps_untouched_edits(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 400})
 	local b = t.open("a.txt", "one\ntwo\nthree")
 	select_line(b, 3)
@@ -181,7 +181,7 @@ function T.reload_keeps_untouched_edits(t)
 end
 
 function T.tint_marks_the_range_while_running(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 5000})
 	local b = t.open("a.txt", "one\ntwo\nthree")
 	qed.buf.set_selection(b, {row = 2, col = 1}, {row = 3, col = 1})
@@ -197,7 +197,7 @@ function T.tint_marks_the_range_while_running(t)
 end
 
 function T.edit_takes_the_last_fence_and_keeps_framing(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "Thinking, e.g.\n```lua\nexample()\n```\nSo:\n```lua\n  final()  \n```\n"})
 	local b = t.open("a.lua", "a\n    old()\nb")
 	qed.buf.set_selection(b, {row = 2, col = 1}, {row = 3, col = 1})
@@ -208,7 +208,7 @@ function T.edit_takes_the_last_fence_and_keeps_framing(t)
 end
 
 function T.edit_without_a_fence_takes_the_reply(t)
-	t.config{chat_command = "fakechat"}
+	t.config{edit_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "  bare  \n"})
 	local b = t.open("a.txt", "x old y")
 	qed.buf.set_selection(b, {row = 1, col = 3}, {row = 1, col = 6})
@@ -218,7 +218,7 @@ function T.edit_without_a_fence_takes_the_reply(t)
 end
 
 function T.edit_empty_result_discarded(t)
-	t.config{chat_command = t.stub("printf '   \\n'")}
+	t.config{edit_command = t.stub("printf '   \\n'")}
 	local b = t.open("a.txt", "hello\nworld")
 	select_line(b, 1)
 	send(t, "rewrite")

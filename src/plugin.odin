@@ -531,20 +531,12 @@ plugin_cfg_enabled :: proc(name: string, cfg_user: json.Object) -> bool {
 	return true
 }
 
-PLUGINS_RENAMED :: [?][2]string{{"lines", "goto"}}
-
 plugins_config_warn :: proc(editor: ^Editor) {
 	plugins, _ := editor_config_user(editor)["plugins"].(json.Object)
 	problems := make([dynamic]string, context.temp_allocator)
 	for name in plugins {
 		if plugin_find(&editor.plugins, name) == nil {
-			moved := ""
-			for r in PLUGINS_RENAMED {
-				if r[0] == name {
-					moved = fmt.tprintf(" (renamed to plugins/%s)", r[1])
-				}
-			}
-			append(&problems, fmt.tprintf("unknown plugins/%q%s", name, moved))
+			append(&problems, config_unknown_msg(fmt.tprintf("plugins/%s", name)))
 		}
 	}
 	if len(problems) > 0 {
@@ -555,7 +547,7 @@ plugins_config_warn :: proc(editor: ^Editor) {
 
 plugin_keys_warn :: proc(editor: ^Editor, pl: ^Plugin) {
 	if pl.state == .Enabled && pl.unknown != "" {
-		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring unknown %s", pl.unknown))
+		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", pl.unknown))
 	}
 }
 
@@ -589,12 +581,12 @@ plugin_keybinds_warn :: proc(editor: ^Editor, pl: ^Plugin) {
 			found ||= cmd.owner == pl.name && cmd.config_name == key
 		}
 		if !found {
-			append(&unknown, fmt.tprintf("plugins/%s/keybinds/%q", pl.name, key))
+			append(&unknown, config_unknown_msg(fmt.tprintf("plugins/%s/keybinds/%s", pl.name, key)))
 		}
 	}
 	if len(unknown) > 0 {
 		slice.sort(unknown[:])
-		append(&problems, fmt.tprintf("unknown %s", strings.join(unknown[:], ", ", context.temp_allocator)))
+		append(&problems, strings.join(unknown[:], ", ", context.temp_allocator))
 	}
 	if len(problems) > 0 {
 		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
@@ -1902,7 +1894,7 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 		if known {
 			user[k] = v
 		} else {
-			append(&unknown, fmt.tprintf("plugins/%s/%q", pl.name, k))
+			append(&unknown, config_unknown_msg(fmt.tprintf("plugins/%s/%s", pl.name, k)))
 		}
 	}
 	plugin_table_merge(L, cfg, user)
@@ -1925,7 +1917,7 @@ pluginview_open :: proc(editor: ^Editor) {
 	pn := pane_open(editor, Pane {
 		id = "plugins",
 		place = .Full,
-		chord = "Debug: Plugins",
+		chord = "Plugins: Open",
 		scope = "plugins",
 		keep = true,
 		title = "Plugins (Lua failed to start)" if p.L == nil else fmt.tprintf("Plugins  ·  Lua init %.2f ms", p.init_ms),

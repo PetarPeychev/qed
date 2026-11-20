@@ -711,19 +711,50 @@ local function prompt(ctx, m)
 	say("")
 end
 
-local function toggle(key)
-	show[key] = not show[key]
+local function walk_changed()
 	if v then
 		walk_new()
 		sync(false)
 	end
 end
 
-local function toggle_diff()
-	show.diff = not show.diff
+local function diff_changed()
 	if v then
 		v:footer{chips = chips()}
 		preview_changed(v:selection(), false, true)
+	end
+end
+
+local function toggle(key)
+	show[key] = not show[key]
+	walk_changed()
+end
+
+local function toggle_diff()
+	show.diff = not show.diff
+	diff_changed()
+end
+
+local KNOBS = {show_dotfiles = "dotfiles", show_ignored = "ignored", diff_only = "diff"}
+local seen = {}
+
+-- only knobs whose config value moved: a reload must not undo a live toggle
+local function apply(cfg)
+	local moved = {}
+	for key, knob in pairs(KNOBS) do
+		if cfg[key] ~= seen[key] then
+			seen[key] = cfg[key]
+			if show[knob] ~= cfg[key] then
+				show[knob] = cfg[key]
+				moved[knob] = true
+			end
+		end
+	end
+	if moved.dotfiles or moved.ignored then
+		walk_changed()
+	end
+	if moved.diff then
+		diff_changed()
 	end
 end
 
@@ -844,12 +875,15 @@ local exports = {
 		end
 		open(label)
 	end,
+	dotfiles = function()
+		return show.dotfiles
+	end,
 }
 
 return {
 	setup = function()
 		qed.meta{display_name = "File Tree"}
-		show = {dotfiles = qed.opt("filetree_show_dotfiles"), ignored = qed.opt("filetree_show_ignored"), diff = qed.opt("filetree_diff_only")}
+		apply(qed.options{show_dotfiles = false, show_ignored = false, diff_only = true})
 		for _, t in ipairs({{"All", "Alt+f"}, {"Open", "Alt+o"}, {"Unsaved", "Alt+u"}}) do
 			qed.command{name = t[1], key = t[2], welcome = true, run = function()
 				open(t[1])
@@ -882,6 +916,7 @@ return {
 		end}
 		qed.export(exports)
 		qed.on("plugin_unloaded", drop)
+		qed.on("config_changed", function() apply(qed.config()) end)
 		qed.on("root_changed", function()
 			if v then
 				reopen()

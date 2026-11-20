@@ -122,8 +122,8 @@ layout DSL, no nesting beyond this stack.
 | Class | Width | Height | Keys |
 |---|---|---|---|
 | `palette` | `PALETTE_WIDTH` | content, max `palette_max_rows` | `palette_max_rows` |
-| `split:tree` | `filetree_list_*` + `preview_*` | full | 4 |
-| `split:code` | `code_list_*` + `preview_*` | full | 4 |
+| `split:tree` | `split_tree_*` + `split_preview_*` | full | 4 |
+| `split:code` | `split_code_*` + `split_preview_*` | full | 4 |
 | `dialog` | content, `<= screen - 4` | content | none |
 | `corner:find` / `corner:inspect` | `FIND_BOX_WIDTH` / `INSPECT_BOX_WIDTH` | content | consts |
 
@@ -407,7 +407,7 @@ List sources, the `path` field and the palette are in DESIGN.md (Panes). Deviati
 | Methods | None (`count`, `ready`, `get`, `index`, `wait`, `within`, `union`), no `view:set(h)`; `v:set(items)` unbinds the source, `v:append`/`v:update` raise on it. | No user until M3/M4. |
 | Identity | One locked registry metatable, compared by identity; `__gc` reads the table's `id`. A handle dies with the plugin that made it. | No forging by `__name`. |
 | Materialization | Activate and change hand Lua `{label, path?, detail?}` built from the core items; the view's Lua item table stays empty. | Only touched items cross. |
-| `qed.fs.dirs{path?, dotfiles?}` | `path` defaults to the root; under a `path` field the field's text decides. `dotfiles` is the caller's (the picker passes `filetree_show_dotfiles`, not the tree's runtime toggle). The base dir's entries are cached until its segment changes. | Core stays out of the tree's state (M5); a 50k-entry dir is read once, not per key. |
+| `qed.fs.dirs{path?, dotfiles?}` | `path` defaults to the root; under a `path` field the field's text decides. `dotfiles` is the caller's (the picker passes the `filetree` plugin's live state from its `dotfiles` export, false without the plugin). The base dir's entries are cached until its segment changes. | Core stays out of the tree's state (M5); a 50k-entry dir is read once, not per key. |
 | `path` field | Reports its text resolved to an absolute path (`~`, root-relative, cleaned) in activate, `wait` and close. Double-click drills in instead of activating. | Lua needs no `~` expansion; same UX as before. |
 | Palette over the tree | A Child with `over = &filetree.active` until the tree is a pane (M4). | Smallest step; the render special case is gone. |
 | Core chord | `Pane.chord` (a core command name) beside the plugin `toggle` id. Enter on an empty core list does nothing. | The palette's own chord closes it; Enter with no match kept it open before. |
@@ -430,12 +430,12 @@ Sources, scoped commands and the ported panes are in DESIGN.md (Panes). Deviatio
 | Rows | Item `color` (theme key), `PaneList.sel_bg` (selection tints bg only), `follow`/`stick` (stick to the end, unstuck by moving up or a wheel up, re-stuck at the end). | Log and Plugins pane. |
 | Body swap | The Plugins pane's source view is a child pane over the same box with a `body_preview` (a `Preview` as the body); Esc and a click outside return. | Reuses the stack instead of a per-pane mode. |
 | Activate | Core panes without `on.activate` ignore Enter; `keep` leaves a core pane open on activate (Plugins pane). | |
-| Line find | `qed.buf.line_list` + bundled `goto` plugin (`Go To: Line`, `Ctrl+g`). Core owns the `:N[:M]` spec, buffer-order matches, the initial selection nearest the cursor (a saved key is not restored for a line list) and the buffer preview (`PaneItem.buf`). Enter with no match does nothing (it closed before). | Matches the other panes; Lua sees only the activated line. |
+| Line find | `qed.buf.line_list` + bundled `goto` plugin (`Go to: Line`, `Ctrl+g`). Core owns the `:N[:M]` spec, buffer-order matches, the initial selection nearest the cursor (a saved key is not restored for a line list) and the buffer preview (`PaneItem.buf`). Enter with no match does nothing (it closed before). | Matches the other panes; Lua sees only the activated line. |
 | Rename | A center `input` pane (`rename`, `modal`). | |
 | Live sources | `list_stamp` per source (buffer `rev`, `log_seq` + filters, plugin count; 0 = gone or static). `pane_list_fit` (each render and before input) refilters keeping the selected item when it changes or the source is gone; `list_text`/`list_item` read a stale index as empty. Log rows hold entry seqs: eviction shifts positions so the selection and range stay on their entries, and a range never sticks to the end. | Edits, reloads and a closed buffer used to index out of range. |
 | Bind clashes | Core pane command binds that collide in one scope (chord, bare key, a borrowed bind) are reported and dropped, checked after every bind is set so swaps work. | Same rule as plugin binds. |
 | `ctx.items` | Any plugin's command run while a pane with a list has focus gets its selection (`ctx.items`; Lua values for a Lua list, built items for a source) and `ctx.files` (their paths); `ctx.view` stays owner-only. | M6: tree commands from other plugins. |
-| Markdown history | The preview opens with `scope = "markdown"`; anchor clicks reach `on.link` when set, `v:scroll` reads and sets the body scroll, *Markdown: Back*/*Forward* (keys of *Jump Back*/*Jump Forward* via `qed.shortcut` at load) step a `{path, buf, scroll}` history; file switches go through `qed.jump`. | |
+| Markdown history | The preview opens with `scope = "markdown"`; anchor clicks reach `on.link` when set, `v:scroll` reads and sets the body scroll, *Markdown: Back*/*Forward* (`bind_from` *Jump Back*/*Jump Forward*) step a `{path, buf, scroll}` history; file switches go through `qed.jump`. | |
 | Backdrop | `message_log_backdrop`, `plugins_pane_backdrop` (default `"none"`). | Per pane, Petar's call. |
 
 ### M4 as built
@@ -468,7 +468,7 @@ Deviations from §3/§5/§6:
 |---|---|---|
 | Core | `filetree.odin` is `walk.odin`: walks, scopes, tree rows/expand/reveal, `fs_*`. Gone: `FileTree`, the tab/toggle/clipboard/prompt/confirm code, the 12 `filetree` pane commands, the 4 *File Tree* core commands, `Pane.on.preview`, `close_question`. Constants are `WALK_*`. | D7. |
 | Names | Display name "File Tree": *All* (was *File Tree*), *Open*, *Changed*, *Unsaved*; tree commands gain the prefix (*File Tree: Copy*, ...). Binds move to `plugins.filetree.keybinds` (`"All"` for the old `"File Tree"`), old top-level keys warn where. Messages read `File Tree: ...` (were `Files: ...`). | Phase 13 naming. |
-| Knobs | `filetree_show_dotfiles`/`_ignored`/`_diff_only` stay top-level, read with `qed.opt` at load; `filetree_list_*` stay the `split:tree` class. | The workspace picker shares the dotfiles knob; M9 reviews plugin keys. |
+| Knobs | `filetree_show_dotfiles`/`_ignored`/`_diff_only` stay top-level, read with `qed.opt` at load; `filetree_list_*` stay the `split:tree` class. M9 moved them to `plugins.filetree.show_dotfiles`/`show_ignored`/`diff_only` (live through `config_changed`) and `split_tree_*`. | The workspace picker shares the dotfiles knob; M9 reviews plugin keys. |
 | Borrowed binds | *Copy*, *Cut*, *Paste*, *Close Buffers*, *Select All* use `qed.command{bind_from = "<core command>"}`: the bind is read from the core command at every rebind. | One config entry drives both, as for core pane commands. |
 | Shim | `treeshim.odin`: the git side unchanged; the tree side is `qed.filetree.listen(fn)`, `state()`, `request(kind, path?)`. Status crosses as a normalized Lua table in the registry; propagation, marks, scopes and preview are Lua. | One file to delete in M6, no Odin status model left. |
 | API | `toggle = false`; `jump_closes` (`qed.jump` closes the tree, which core used to do by name); `v:selection() -> item, row, anchor, count` and `v:select(row, anchor?)` (Select All, the row above a delete, the item to preview on the Changed tab); `v:on(event, fn\|false)` (`change` only on the Changed tab); `v:expand()` toggles all; `v:marks{detail, total}`; `h:ignore(false)` (status not pushed yet); `h:release()`; `qed.close(b, {discard = ids})`; `qed.fs.exists(p, {follow = false})`; `qed.fs.write(p, data, {exclusive = true})`. | The tree needed each; no other user yet. |
@@ -496,7 +496,7 @@ Communication is in DESIGN.md (Plugins, File tree, Git tab) and plugins.md (Plug
 | Refresh | The tree emits `filetree:refresh` (custom event) on open and after its file operations; git scans on it. | The provider's `refresh` callback, as an event. |
 | Marks, propagation | Git computes the marks (bars propagated up dirs, deleted fg, rename suffix, sizes, dim ignored) and the path lists, chunked every 2000 paths; the tree only merges callers' marks and pushes them. `detail` per tab shows suffix and sizes. | Status semantics are git's; the tree stays generic. |
 | Chord | *Git: Changes* (`Alt+g`, `plugins.git.keybinds.Changes`, `welcome`), hidden while `filetree` is not loaded; it is the Git tab's `cmd`, so over the tree it switches or closes like any tab chord. *File Tree: Changed* is gone; the old top-level `File Tree: Changed` bind warns it moved to `plugins/git/keybinds/"Changes"`. | The tab is git's. |
-| Toggle Diff | Stays *File Tree: Toggle Diff* (`Alt+d`, `filetree_diff_only`): the diff chip shows on any tab with `preview`, the command is offered while one exists. | Diff-only is a property of the tree's diff preview, not of git. |
+| Toggle Diff | Stays *File Tree: Toggle Diff* (`Alt+d`, `plugins.filetree.diff_only`): the diff chip shows on any tab with `preview`, the command is offered while one exists. | Diff-only is a property of the tree's diff preview, not of git. |
 | Restore | Enter on a missing path calls the tab's `missing` in the tree's activate task; an activate task may open a child on its own view or its children, so git's confirm may stack over the tree. *Git: Restore File* stays a tree-scoped command. | The provider ran `open_deleted` as a git command task. |
 | Startup | The Git tab exists only after git's `startup` (it used to exist from git's setup). Tests that open the tree before the first pump settle first. | Two-step lifecycle. |
 | Errors | A task's Lua error no longer disables its plugin (Petar); only load and setup errors do. Errors are rate-limited per plugin (3 per second, the rest summarized), known messages show a count, and only a message's first occurrence logs a traceback; the disk log also rotates mid-session. | A race against an unload must not take a plugin down. |

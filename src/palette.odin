@@ -141,7 +141,7 @@ commands := [?]Command {
 	{name = "LSP: Go to Definition", lsp = true, run = cmd_lsp_definition},
 	{name = "LSP: Hover", lsp = true, run = cmd_lsp_hover},
 	{name = "LSP: Rename Symbol", lsp = true, run = cmd_lsp_rename},
-	{name = "Diff: Toggle Diff View", run = cmd_toggle_diff_view},
+	{name = "Diff: Toggle View", run = cmd_toggle_diff_view},
 	{name = "Diff: Next Change", run = cmd_diff_next},
 	{name = "Diff: Previous Change", run = cmd_diff_prev},
 	{name = "Diff: Revert Hunk", run = cmd_diff_revert},
@@ -150,8 +150,8 @@ commands := [?]Command {
 	{name = "LSP: Previous Diagnostic", lsp = true, run = cmd_diag_prev},
 	{name = "LSP: Restart", lsp = true, run = cmd_lsp_restart},
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
-	{name = "Debug: Message Log", run = cmd_message_log},
-	{name = "Debug: Plugins", run = cmd_plugins},
+	{name = "Message Log: Open", run = cmd_message_log},
+	{name = "Plugins: Open", run = cmd_plugins},
 }
 
 pane_commands := [?]Command {
@@ -191,7 +191,7 @@ command_available :: proc(editor: ^Editor, name: string, scope := "") -> bool {
 	}
 	if editor.welcome {
 		switch name {
-		case "Terminal: Toggle", "Debug: Plugins", "Debug: Message Log", "Quit":
+		case "Terminal: Toggle", "Plugins: Open", "Message Log: Open", "Quit":
 			return true
 		}
 		return false

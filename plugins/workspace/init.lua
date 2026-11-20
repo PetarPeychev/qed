@@ -1,10 +1,11 @@
 local ACTIONS = {"Cancel", "Close all"}
 
 local function picker(text)
+	local tree = qed.plugin("filetree")
 	return qed.ui.open{
 		id = "workspace",
 		fields = {{mode = "path", text = text}},
-		list = {items = qed.fs.dirs{dotfiles = qed.opt("filetree_show_dotfiles")}},
+		list = {items = qed.fs.dirs{dotfiles = tree ~= nil and tree.dotfiles()}},
 	}
 end
 

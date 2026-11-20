@@ -32,7 +32,7 @@ e2e_scope_line_list_large_stays_cheap :: proc(t: ^testing.T) {
 	test_list_built = 0
 	e2e_key(&e, .Ctrl_G)
 	p := test_view(&e.ed)
-	testing.expect(t, p != nil && p.list.source.kind == .Lines, "Go To: Line opens over a line list")
+	testing.expect(t, p != nil && p.list.source.kind == .Lines, "Go to: Line opens over a line list")
 	e2e_render(&e)
 	rows := pane_geom(&e.ed, p).list.h
 	testing.expect_value(t, pane_count(&e.ed, p), N + 1)

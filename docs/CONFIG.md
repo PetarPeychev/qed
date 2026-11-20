@@ -19,7 +19,7 @@ persists the single `theme` key when you press Enter on it, via `qed.theme.set`)
 
 - **Hot-reloaded.** Save the file and the change applies live: colors, keybinds,
   and knobs take effect without a restart.
-- **Forgiving.** An unknown key warns once and is ignored; malformed JSON falls
+- **Forgiving.** An unknown key warns once and is ignored (a moved or renamed key names its new home); malformed JSON falls
   back to defaults without crashing.
 - **Nested keys merge per-key**, so overriding one language's `lsp` leaves
   its `patterns` intact.
@@ -29,7 +29,7 @@ A minimal override looks like:
 ```json
 {
   "line_wrap": false,
-  "plugins": { "format": { "format_on_save": true } },
+  "plugins": { "format": { "on_save": true } },
   "theme": "gruvbox-dark",
   "keybinds": { "Find": "Ctrl+e" }
 }
@@ -56,9 +56,9 @@ formats on demand.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.format.format_on_save` | `false` | Format on every save (after the fixups below). |
-| `plugins.format.trim_trailing_whitespace_on_save` | `false` | Strip trailing whitespace (markdown two-space hard breaks are kept). |
-| `plugins.format.ensure_final_newline_on_save` | `false` | Guarantee exactly one trailing newline. |
+| `plugins.format.on_save` | `false` | Format on every save (after the fixups below). |
+| `plugins.format.trim_whitespace_on_save` | `false` | Strip trailing whitespace (markdown two-space hard breaks are kept). |
+| `plugins.format.final_newline_on_save` | `false` | Guarantee exactly one trailing newline. |
 | `plugins.format.commands.<language>` | see `plugins/format/init.lua` | External stdin-to-stdout formatter for that language, e.g. `"python": "ruff format --stdin-filename {file} -"`. Absent or `""` falls back to LSP formatting. |
 
 A formatter command runs under `sh -c` in the file's directory; `{file}` is replaced
@@ -68,7 +68,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 `plugin_hook_timeout_ms`.
 
 ```json
-{ "plugins": { "format": { "format_on_save": true, "commands": { "lua": "stylua -" } } } }
+{ "plugins": { "format": { "on_save": true, "commands": { "lua": "stylua -" } } } }
 ```
 
 ## Scrolling & mouse
@@ -85,8 +85,11 @@ still goes ahead, unformatted). A save waits for formatting up to
 |-----|---------|---------|
 | `palette_max_rows` | `8` | Max visible palette rows. |
 | `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Git tab's diff preview. |
-| `message_log_backdrop` | `"none"` | What shows around *Debug: Message Log*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
-| `plugins_pane_backdrop` | `"none"` | The same for *Debug: Plugins*. |
+| `split_tree_min_width` / `split_tree_max_width` | `30` / `60` | List column of a `split:tree` pane (the file tree). |
+| `split_code_min_width` / `split_code_max_width` | `50` / `100` | List column of a `split:code` pane (the default split: line find, search). |
+| `split_preview_min_width` / `split_preview_max_width` | `70` / `130` | Preview column of any split pane. |
+| `message_log_backdrop` | `"none"` | What shows around *Message Log: Open*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
+| `plugins_pane_backdrop` | `"none"` | The same for *Plugins: Open*. |
 
 ## Search & navigation
 
@@ -105,11 +108,8 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `filetree_show_dotfiles` | `false` | Show dotfiles in the file tree (and the working-root picker). *File Tree: Toggle Dotfiles* (`Alt+.`). |
-| `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *File Tree: Toggle Ignored* (`Alt+i`). |
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
-| `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle Diff View*. |
-| `filetree_diff_only` | `true` | The file-tree Git tab's preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
+| `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle View*. |
 
 ## Keybinds
 
@@ -167,7 +167,7 @@ old `modules.lsp` keys warn and are ignored.
 
 Lua plugins: bundled ones ship in the binary, your own go in
 `~/.config/qed/plugins/` as `name.lua` or `name/init.lua`. See
-[notes/plugins.md](notes/plugins.md). *Debug: Plugins* lists them with their state
+[notes/plugins.md](notes/plugins.md). *Plugins: Open* lists them with their state
 and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
 (rebindable, see [Keybinds](#keybinds)), `Enter` opens its source (bundled ones read-only).
 
@@ -177,7 +177,7 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
 | `plugin_slice_max_ms` | `1000` | Longest a plugin event handler, timer or background task may run without yielding; past it the task is stopped with a warning (the plugin stays loaded, as it does after any Lua error outside setup). |
 | `plugin_command_max_ms` | `5000` | The same limit for a plugin command. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
-| `plugins.<id>.enabled` | `true` | Off unloads that plugin (live) and drops its commands and binds. `e` in *Debug: Plugins* writes this key. |
+| `plugins.<id>.enabled` | `true` | Off unloads that plugin (live) and drops its commands and binds. `e` in *Plugins: Open* writes this key. |
 | `plugins.<id>.keybinds` | each command's `key` | Binds for that plugin's commands, keyed by the bare command name (`"Set Diff Base"`, not `"Git: Set Diff Base"`). `""` unbinds. A name no command of the loaded plugin has warns; a disabled plugin's binds are not checked. |
 | `plugins.<id>.<key>` | plugin's `qed.options` | Per-key override of the plugin's own config; objects merge per key, arrays replace. Unknown keys warn once the plugin has loaded; a disabled plugin's keys are not checked. |
 
@@ -186,7 +186,7 @@ what the plugin sets with `qed.meta`) prefixes its commands in the palette
 (`Git: Set Diff Base`) and labels its messages. A key already taken by a builtin is
 ignored with a warning. Keybinds and `plugin_memory_mb` hot-reload. Changes under
 `plugins.<id>` reach the plugin through its `config_changed` handler (`format`,
-`search` apply them live, keeping runtime state); a plugin without one
+`filetree`, `search` apply them live, keeping runtime state); a plugin without one
 is reloaded. Adding, removing or editing a file under `plugins/` reloads just that
 plugin. *Settings: Theme*, *Settings: Language* and *Settings: Indentation*
 come from the bundled `settings` plugin (no config of its own;
@@ -211,19 +211,25 @@ closes it. Its commands run while it has focus and are listed in its `Ctrl+p`: *
 (`Alt+d`) and *Expand/Collapse All* (`Alt+e`). Rebind them with `plugins.filetree.keybinds.<name>`
 (`"All"`, `"Delete"`, ...); the Git tab's chord is `plugins.git.keybinds.Changes` (the old
 `plugins.filetree.keybinds.Changed` is gone). The old top-level `keybinds."File Tree"` and `keybinds."File Tree: ..."`
-warn where they moved. The toggles start from `filetree_show_dotfiles`, `filetree_show_ignored` and
-`filetree_diff_only`; the list width from `filetree_list_min_width`/`filetree_list_max_width`.
+warn where they moved. The list width comes from `split_tree_min_width`/`split_tree_max_width`.
 Without Lua (or with the plugin disabled) there is no file tree.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.filetree.enabled` | `true` | Off removes the file tree and its commands. |
+| `plugins.filetree.show_dotfiles` | `false` | Show dotfiles (also in the working-directory picker). *File Tree: Toggle Dotfiles* (`Alt+.`) flips it for the session. |
+| `plugins.filetree.show_ignored` | `false` | Show gitignored files. *File Tree: Toggle Ignored* (`Alt+i`). |
+| `plugins.filetree.diff_only` | `true` | A diff preview (the Git tab's) shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
+
+The three apply live; a config edit changes only the knobs whose value changed, so a toggle on another
+knob survives it.
 
 ### Working directory
 
 *Workspace: Open Directory* (`Ctrl+o`, also on the welcome screen) and the file tree's
 *Workspace: Open Selected Directory* (same chord, the selected dir or a file's parent) come from the
-bundled `workspace` plugin. The picker lists dotfiles when `filetree_show_dotfiles` is on. Rebind both
+bundled `workspace` plugin. The picker lists dotfiles while the file tree shows them (`plugins.filetree.show_dotfiles` or
+*File Tree: Toggle Dotfiles*); without the `filetree` plugin it hides them. Rebind both
 with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
 `keybinds."Change Working Directory"` warns where it moved.
 
@@ -233,14 +239,14 @@ with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
 
 ### Go to line
 
-*Go To: Line* (`Ctrl+g`) comes from the bundled `goto` plugin: a filter over the
+*Go to: Line* (`Ctrl+g`) comes from the bundled `goto` plugin: a filter over the
 buffer's lines in file order with a preview, `:N` or `:N:M` jumps to a line (and column).
 Rebind with `plugins.goto.keybinds["Line"]`; the old top-level `keybinds."Find Line"`
 warns where it moved, and a `plugins.lines` section warns that it was renamed.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.goto.enabled` | `true` | Off removes *Go To: Line*. |
+| `plugins.goto.enabled` | `true` | Off removes *Go to: Line*. |
 
 ### Search
 
@@ -265,8 +271,8 @@ another markdown file switches the preview to it (and the editor underneath, at 
 `file.md#anchor`, recorded in the jump list); a link to any other file closes the preview and opens
 it; a URL opens in the platform browser (macOS `open`; WSL `wslview`, else `explorer.exe`; Linux
 `xdg-open`). Anchor jumps and markdown file links are remembered: *Markdown: Back* and *Forward* step
-through them while the preview has focus (default: the keys of *Jump Back* / *Jump Forward* at load,
-`Alt+,` / `Alt+.`; rebind with `plugins.markdown.keybinds.Back` / `Forward`); file switches land in the
+through them while the preview has focus (default: the keys of *Jump Back* / *Jump Forward*, followed across a config reload;
+rebind with `plugins.markdown.keybinds.Back` / `Forward`); file switches land in the
 jump list too. LSP hover uses the same renderer (plaintext hovers render verbatim).
 
 | Key | Default | Meaning |
@@ -283,7 +289,7 @@ and repo diff size into the status bar every 2 s, adds the file tree's **Git** t
 (*Git: Changes*, `Alt+g`, shown only while the `filetree` plugin is loaded), and owns *Git: Set Diff Base* and the tree's
 *Git: Restore File* (also `Enter` on a deleted file). A moved branch or HEAD is followed within a poll. It
 does nothing when the `git` binary isn't on `PATH`. The old `modules.git` keys warn
-and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to the top level.
+and are ignored: `enabled` moved here, `diff_view` to the top level, `filetree_diff_only` to `plugins.filetree.diff_only`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -308,12 +314,12 @@ The bundled `ai` plugin: *AI: Edit Selection* (`Ctrl+k`, `plugins.ai.keybinds."E
 selection plus an instruction to a chat command, *AI: Cancel Edits* kills the running ones, and inline
 completion shows FIM ghost-text while you type (`Tab` accepts, `Ctrl+Right` one word). See
 [notes/ai.md](notes/ai.md). The old `modules.ai` keys warn and are ignored; each moved here under the same
-name, and the old `keybinds` entries (`AI: Edit Selection`, ...) moved to `plugins.ai.keybinds`.
+name (`chat_command` is now `edit_command`), and the old `keybinds` entries (`AI: Edit Selection`, ...) moved to `plugins.ai.keybinds`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.ai.enabled` | `true` | Off removes the AI commands and inline completion and kills anything in flight. |
-| `plugins.ai.chat_command` | `claude -p` | Shell command for the AI edit; the prompt goes in on stdin. |
+| `plugins.ai.edit_command` | `claude -p` | Shell command for the AI edit; the prompt goes in on stdin. |
 | `plugins.ai.edit_prompt` | *(template)* | The instruction template; `{path}`, `{instruction}`, `{file}`, `{selection}` are substituted. |
 | `plugins.ai.completion_enabled` | `false` | Inline FIM completion. *AI: Toggle Inline Completion* flips it for the session. |
 | `plugins.ai.completion_endpoint` | Codestral FIM URL | FIM HTTP endpoint. |

@@ -157,7 +157,7 @@ Per [panes.md](panes.md) §6 (D10). Setup registers only; cross-plugin calls hap
 Exports of the bundled `filetree` plugin (all per caller): `set_tab{label, paths, virtual?, cmd?, detail?, preview?,
 missing?}` (adds or replaces the caller's tab; `preview(path)` returns a base string or nil and runs in the tree's
 task; `missing(path)` runs on Enter over a listed path missing on disk), `remove_tab(label)`, `set_marks(marks)`,
-`set_ignored(paths|false)`, `open(label)`. It emits `filetree:refresh` when it opens and after its file operations.
+`set_ignored(paths|false)`, `open(label)`, `dotfiles()` (the live show-dotfiles state, toggles included). It emits `filetree:refresh` when it opens and after its file operations.
 
 ### UI
 | Function | Notes |
@@ -279,7 +279,7 @@ Hot reload mechanics:
 
 ### Plugins pane (core)
 A full pane on the core pane model (scope `plugins`, `plugins_pane_backdrop`). It is opened by
-*Debug: Plugins* (palette, no default bind). It is core so that it still works when Lua fails to
+*Plugins: Open* (palette, no default bind). It is core so that it still works when Lua fails to
 load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*, *Show Log*
 (rebindable in `keybinds`, listed in the pane's Ctrl+P).
 
@@ -371,6 +371,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | M6 | `qed.export`/`qed.plugin`/`qed.caller`, `qed.emit` + `qed.on("<plugin>:<event>")`, `plugin_loaded`/`plugin_unloaded`; `filetree` exports `set_tab`/`remove_tab`/`set_marks`/`set_ignored`/`open`, `v:tab(i, tabs)`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`, `plugins.git.keybinds.Changes`; *File Tree: Changed* is gone); `treeshim.odin`, `qed.filetree.*` and the `.Provider` task kind are gone; task errors no longer disable a plugin. | minor |
 | M7 | The merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`, `plugins.conflict.keybinds.Resolve`; the top-level `Git: Resolve Conflict` bind warns where it moved); the bundled `ai` plugin (*AI: Edit Selection*, *Cancel Edits*, *Toggle Inline Completion*, `plugins.ai.*`, binds under `plugins.ai.keybinds`); `qed.buf.find_lines` (lists, `word`), `qed.buf.big`, `qed.text.diff`/`diff_rows`, `qed.deco.mark`/`range`/`inline`, theme tint keys as deco alphas, blended spans, `buf_changed`'s `typed`/`lo`/`hi`, change detection every flush round, hunk-applied reloads; `conflict.odin`, the core `merge` pane, `aiedit.odin`, `llm.odin`, `fim.odin`, `modules.ai` and `.Ai` are gone. | minor |
 | M8 | The module system is removed (`module.odin`, `Module`, `module_enabled`, `Command.module`, `config_module_defs`, the `modules` parsing); old `modules.ai/git/lsp` keys still warn "moved to". | minor |
+| M9 | Config key review: one `CONFIG_MOVED` table drives every "moved to" warning; `filetree_show_dotfiles`/`_ignored`/`_diff_only` become `plugins.filetree.show_dotfiles`/`show_ignored`/`diff_only` (live), `filetree_list_*`/`code_list_*`/`preview_*_width` become `split_tree_*`/`split_code_*`/`split_preview_*`, `plugins.ai.chat_command` becomes `edit_command`, the `format` knobs become `on_save`/`trim_whitespace_on_save`/`final_newline_on_save`; *Diff: Toggle View*, *Message Log: Open*, *Plugins: Open*, *Go to: Line*; the workspace picker follows the tree's dotfiles (`filetree` export `dotfiles`); markdown Back/Forward use `bind_from`; a disk reload is one undo step (cleared above `big_file_bytes`). | minor |
 | later | The remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions

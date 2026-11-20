@@ -118,7 +118,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	editor_log(&e.ed, .Info, "other", "not alpha")
 
 	e2e_key(&e, .Ctrl_P)
-	e2e_type(&e, "debug: plugins")
+	e2e_type(&e, "plugins: open")
 	e2e_key(&e, .Enter)
 	testing.expect(t, test_pane_open(&e.ed, "plugins"), "the pane opens")
 	e2e_reload_select(&e, "alpha")

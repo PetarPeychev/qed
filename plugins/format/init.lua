@@ -3,9 +3,9 @@ local seen = {}
 local commands = {}
 
 local KNOBS = {
-	format_on_save = "format",
-	trim_trailing_whitespace_on_save = "trim",
-	ensure_final_newline_on_save = "newline",
+	on_save = "format",
+	trim_whitespace_on_save = "trim",
+	final_newline_on_save = "newline",
 }
 
 local LSP_ERRORS = {
@@ -146,9 +146,9 @@ end
 return {
 	setup = function()
 		apply(qed.options{
-			format_on_save = false,
-			trim_trailing_whitespace_on_save = false,
-			ensure_final_newline_on_save = false,
+			on_save = false,
+			trim_whitespace_on_save = false,
+			final_newline_on_save = false,
 			commands = {
 				python = "ruff format --stdin-filename {file} -",
 				go = "gofmt",

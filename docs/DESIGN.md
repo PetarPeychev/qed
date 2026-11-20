@@ -79,7 +79,7 @@ Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`
 stacked bottom→top: optional git-hunk row tint → plugin decoration tints (push order;
 the `conflict` and `ai` plugins' included) → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
 (`*_TINT`) and tint colors are both theme-overridable. The
-row tint is part of **diff view** (*Diff: Toggle Diff View*, config
+row tint is part of **diff view** (*Diff: Toggle View*, config
 `diff_view`, off by default), separate from the always-on gutter mark — see
 Diff view below.
 
@@ -142,7 +142,7 @@ draws `Source: text` and colours by level — `.Info` → `COLOR_FG`, `.Warn` �
 is never logged. The disk log lives at `$XDG_STATE_HOME/qed/qed.log` (append, flushed
 per write, rotated to `qed.log.old` past `LOG_ROTATE_BYTES` (4 MB) at session start and again mid-session,
 session-start marker with version);
-disk logging is skipped when `headless`. *Debug: Message Log* (`Alt+l`) opens a
+disk logging is skipped when `headless`. *Message Log: Open* (`Alt+l`) opens a
 full core pane (`log`, scope `log`, see Panes) over the ring through the `.Log` source:
 timestamped rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
 arrow/wheel scroll + select, `Shift+↑↓` extends a contiguous selection, *Copy* copies it
@@ -312,8 +312,8 @@ click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). S
 field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
 `overlay_prompt_mouse`; `textfield_mouse` maps a click to a caret).
 List | preview panes (`split` panes: `split:tree` for the file tree, `split:code` for line jump and search) split
-via `overlay_split` with per-list min/max (`filetree_list_*_width`, `code_list_*_width`) and a global
-`preview_min_width`/`preview_max_width`. Inner width W (minus the divider) >= both maxes: both at max
+via `overlay_split` with per-list min/max (`split_tree_*_width`, `split_code_*_width`) and a global
+`split_preview_min_width`/`split_preview_max_width`. Inner width W (minus the divider) >= both maxes: both at max
 and the box is centered (extra width becomes margin). Below that, the deficit is taken equally from
 each side down to its min, the other side absorbing the rest. W under both mins hides the preview
 (`lay.preview` false: list takes the full inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
@@ -466,6 +466,11 @@ The module system is gone. `ai` and `git` are bundled plugins (`plugins.ai`, `pl
 top-level `lsp` section gated on `LSP_ENABLED` (`LSP:` commands carry `Command.lsp`, `lsp_enabled_sync`
 tears servers down after a reload turns it off). Old `modules.ai.*`, `modules.git.*` and `modules.lsp.*`
 keys warn "moved to"; any other `modules.*` key warns unknown.
+
+**Moved keys:** one `CONFIG_MOVED` table (`settings.odin`) of `{old, new}` slash paths serves every
+unknown-key warning (top level, `lsp/`, `languages/`, `modules/`, `plugins/<id>/`, plugin names, core and plugin
+keybinds): `"old" moved to "new"`. The longest entry naming the path or a parent wins, `*` is one segment,
+and entries point at final names, so a rename re-points older entries instead of chaining.
 
 ## Plugins
 
@@ -704,8 +709,8 @@ re-opens LSP).
   line hashes) as one undo step, cursor and selection mapped onto their lines. A
   missing tool (exit 127) / non-zero exit / empty output messages and leaves the
   buffer untouched; on save it saves unformatted. A format-on-save that waits parks
-  the save, bounded by `plugin_hook_timeout_ms`. The `format_on_save` /
-  `trim_trailing_whitespace_on_save` / `ensure_final_newline_on_save` knobs seed
+  the save, bounded by `plugin_hook_timeout_ms`. The `on_save` /
+  `trim_whitespace_on_save` / `final_newline_on_save` knobs seed
   the plugin's toggles; on `config_changed` only knobs whose config value changed
   are re-applied, so runtime toggles survive unrelated edits.
 
@@ -741,7 +746,7 @@ lines.
 
 `plugins/ai` (`plugins.ai`). *AI: Edit Selection* (`Ctrl+k`): with a selection, `qed.prompt` takes an
 instruction; the whole buffer, the selection wrapped in `<<<SELECT…SELECT>>>`, goes through the
-`edit_prompt` template to `chat_command` (default `claude -p`) on stdin via `qed.spawn_bg`. Requests run
+`edit_prompt` template to `edit_command` (default `claude -p`) on stdin via `qed.spawn_bg`. Requests run
 concurrently, each tracked by a `qed.deco.mark` over its range and tinted (`ai_edit_background`, theme tint
 `ai_edit`) while in flight, with an `AI:N` status segment. The mark is set before the prompt and re-read
 after it, so a buffer change elsewhere under the prompt (another edit landing) keeps the request. An edit
@@ -824,9 +829,9 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
-`confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
+`confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Message Log: Open* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
+`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -865,8 +870,8 @@ tmux session with an isolated HOME; run `tools/tmux-qed.sh` bare for usage.
 
 Core editing: buffer open/save (atomic, permission-preserving, LF/CRLF +
 final-newline preserving; external-change auto-reload + dirty-buffer save clobber guard;
-optional save fixups in the `format` plugin — `plugins.format.trim_trailing_whitespace_on_save` /
-`ensure_final_newline_on_save` knobs + runtime *Toggle …* commands, markdown two-space hard breaks survive trimming,
+optional save fixups in the `format` plugin — `plugins.format.trim_whitespace_on_save` /
+`final_newline_on_save` knobs + runtime *Toggle …* commands, markdown two-space hard breaks survive trimming,
 one undo group, run before format-on-save; quit/close/conflict saves run the same
 full fixups+format pipeline, quit deferring until a parked save lands),
 insert/delete primitives + grouped undo/redo, bracket/colon-aware auto-indent
@@ -890,7 +895,7 @@ line-number + git gutter, mouse (position/drag/wheel/multi-click,
 drag auto-scroll), status + message line (relative path, git branch + ahead/behind + diff size, segment icons;
 narrow-width fitting), narrow-width panes (preview hides below the list/preview minimums),
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,
-level-coloured line, local-time stamps, *Debug: Message Log* pane `Alt+l` — per-level
+level-coloured line, local-time stamps, *Message Log: Open* pane `Alt+l` — per-level
 filters, multi-select copy, cross-session history seeded from the disk log behind
 an `h` chip (off by default); toggles are rebindable scoped commands with clickable chips, works on welcome), welcome-screen status bar (root + branch + version + message line),
 rebind-aware pane self-close chords (`command_matches`), Debug-level internals
@@ -906,7 +911,7 @@ batch-closes the selection, silent for clean buffers and behind a `Close N buffe
 confirm when any are unsaved; standalone switcher removed), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
-single-line/per-line), fuzzy line jump (`goto` plugin, *Go To: Line* `Ctrl+G`, filter over the list column,
+single-line/per-line), fuzzy line jump (`goto` plugin, *Go to: Line* `Ctrl+G`, filter over the list column,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
@@ -961,8 +966,8 @@ previews a diff instead: changed hunks + `preview_diff_context` lines of context
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `preview_diff_file` (the callback's base text vs the file on disk, reusing the gutter's
 line-hash diff; a deleted file previews entirely as ghost rows; a `nil` base previews the file plainly).
-*File Tree: Toggle Diff* (`Alt+d`, a session flag of the `filetree` plugin seeded from config
-`filetree_diff_only`, default on) switches between this collapsed view and the
+*File Tree: Toggle Diff* (`Alt+d`, a session flag of the `filetree` plugin seeded from
+`plugins.filetree.diff_only`, default on) switches between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
 gap-collapsing never fires).
 Preview loading is **debounced** (`WALK_PREVIEW_DEBOUNCE_MS`) for walk lists: a selection change arms
@@ -997,7 +1002,7 @@ active tab's closes. Other plugins reach the tree only through its exports (`qed
 paths, virtual?, cmd?, detail?, preview?, missing?}` adds or replaces the caller's tab (between Open and Unsaved; the
 same `paths`/`virtual` tables keep the cached narrowed handle), `remove_tab(label)`, `set_marks(marks)` (shown on every
 tab; several callers merge, later id wins per path), `set_ignored(paths|false)` (fed to the walks' ignore set; `false`
-holds the prewarm) and `open(label)` (the whole open, narrowed fill included, runs in the caller's task). All of it is keyed by `qed.caller()` and dropped on `plugin_unloaded`; an export
+holds the prewarm), `open(label)` (the whole open, narrowed fill included, runs in the caller's task) and `dotfiles()` (the live dotfiles state the workspace picker follows). All of it is keyed by `qed.caller()` and dropped on `plugin_unloaded`; an export
 stores and defers one `sync` (`qed.defer(0)`), which updates the tab row in place (`v:tab(i, tabs)`), source, marks
 and preview. Marks go out with `v:marks` (suffix and sizes only on a `detail` tab), chips with `v:footer`, New:/Rename:
 as the footer input, delete and close confirms as `qed.confirm` children with their targets taken before the
@@ -1043,10 +1048,10 @@ workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buf
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (`format` plugin: external command e.g. `ruff format -`, else LSP) + format-on-save
-(config `plugins.format.format_on_save`, toggleable), `LSP: Restart`, state-colored status segment
+(config `plugins.format.on_save`, toggleable), `LSP: Restart`, state-colored status segment
 (dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
 `.Debug` message log; diff gutter against any diff base (the `git` plugin's: live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
-+ optional inline diff view (`Diff: Toggle Diff View`, config `diff_view`): row
++ optional inline diff view (`Diff: Toggle View`, config `diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 hunk navigation (`Diff: Next/Previous Change`, `Alt+'`/`Alt+;`, `diffbase_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
@@ -1068,7 +1073,7 @@ compiler/grep output into `qed.pick` items for a list + preview picker.
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
 rows, spans, end-of-line text, range marks, the inline ghost), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed.emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
-and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
+and `enabled` flips; *Plugins: Open* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only); `qed.meta` display names prefixing
 commands and labeling messages; per-plugin keybinds (`plugins.<id>.keybinds`); Lua
 completion settings when the root is under the config dir.

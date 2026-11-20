@@ -101,12 +101,12 @@ split_expect :: proc(t: ^testing.T, inner_w, lmin, lmax, want_l, want_r: int, wa
 
 @(test)
 test_overlay_split_defaults :: proc(t: ^testing.T) {
-	testing.expect_value(t, FILETREE_LIST_MIN_WIDTH, 30)
-	testing.expect_value(t, FILETREE_LIST_MAX_WIDTH, 60)
-	testing.expect_value(t, CODE_LIST_MIN_WIDTH, 50)
-	testing.expect_value(t, CODE_LIST_MAX_WIDTH, 100)
-	testing.expect_value(t, PREVIEW_MIN_WIDTH, 70)
-	testing.expect_value(t, PREVIEW_MAX_WIDTH, 130)
+	testing.expect_value(t, SPLIT_TREE_MIN_WIDTH, 30)
+	testing.expect_value(t, SPLIT_TREE_MAX_WIDTH, 60)
+	testing.expect_value(t, SPLIT_CODE_MIN_WIDTH, 50)
+	testing.expect_value(t, SPLIT_CODE_MAX_WIDTH, 100)
+	testing.expect_value(t, SPLIT_PREVIEW_MIN_WIDTH, 70)
+	testing.expect_value(t, SPLIT_PREVIEW_MAX_WIDTH, 130)
 }
 
 @(test)

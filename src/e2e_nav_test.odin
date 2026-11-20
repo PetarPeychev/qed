@@ -796,6 +796,29 @@ e2e_nav_filetree_scope_and_dotfiles :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_filetree_options_hot_reload :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+	nav_write(fmt.tprintf("%s/.hidden.txt", e.ed.working_root), "secret")
+
+	nav_alt(&e, 'f')
+	walk_dotfiles :: proc(ed: ^Editor) -> bool {return ft_pane(ed).list.source.walk.dotfiles}
+	testing.expect(t, !walk_dotfiles(&e.ed) && !ft_chip(&e.ed, "dotfiles"), "dotfiles off by default")
+	e2e_plugin_config(&e, "filetree", `{"show_dotfiles": true}`, hot = true)
+	plugin_flush(&e.ed)
+	testing.expect(t, walk_dotfiles(&e.ed) && ft_chip(&e.ed, "dotfiles"), "a config edit applies to the open tree")
+
+	filetree_toggle_dotfiles(&e.ed)
+	testing.expect(t, !walk_dotfiles(&e.ed), "the live toggle wins")
+	e2e_plugin_config(&e, "filetree", `{"show_dotfiles": true, "show_ignored": true}`, hot = true)
+	plugin_flush(&e.ed)
+	testing.expect(t, !walk_dotfiles(&e.ed), "an unchanged knob keeps the live toggle")
+	testing.expect(t, ft_pane(&e.ed).list.source.walk.ignored && ft_chip(&e.ed, "ignored"), "a changed knob applies")
+	testing.expect(t, !plugin_test_logged(&e.ed, .Info, "File Tree", "reloaded"), "the tree is not reloaded")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_nav_filetree_filter_dotfile_toggle :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)

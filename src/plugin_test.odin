@@ -271,7 +271,9 @@ plugin_config_merge :: proc(t: ^testing.T) {
 		"bare": {"stray": 1},
 		"off": {"enabled": false, "typo": 1},
 		"broken": {"typo": 1},
-		"ghost": {}
+		"ghost": {},
+		"lines": {},
+		"ai": {"chat_command": "x"}
 	}}`)
 	ed := plugin_test_editor({
 		{"merge.lua", `
@@ -294,6 +296,7 @@ plugin_config_merge :: proc(t: ^testing.T) {
 		{"bare.lua", `return {setup = function() assert(next(qed.config()) == nil) end}`},
 		{"off.lua", `return {setup = function() qed.options{a = 1} end}`},
 		{"broken.lua", `return {setup = function() qed.options{} error("setup failed") end}`},
+		{"ai.lua", `return {setup = function() assert(qed.options{edit_command = "y"}.edit_command == "y") end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
@@ -305,18 +308,20 @@ plugin_config_merge :: proc(t: ^testing.T) {
 	testing.expect_value(t, off.state, PluginState.Disabled)
 	testing.expect_value(t, off.last_error, "")
 	testing.expect_value(t, plugin_find(&ed.plugins, "broken").state, PluginState.Errored)
-	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `plugins/merge/"bogus"`), 1)
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/bare/"stray"`), "a plugin without qed.options has no keys")
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `"plugins/merge/bogus"`), 1)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/bare/stray"`), "a plugin without qed.options has no keys")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/off/`), "a disabled plugin's keys are not checked")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/broken/`), "an errored plugin's keys are not checked")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/"ghost"`), "unknown plugin name warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/ghost"`), "unknown plugin name warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/lines" moved to "plugins/goto"`), "a renamed plugin says where")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/ai/chat_command" moved to "plugins/ai/edit_command"`), "a moved plugin key says where")
 
 	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1}, "off": {"typo": 1}}}`)
 	plugins_config_apply(ed, false)
 	testing.expect_value(t, off.state, PluginState.Enabled)
 	testing.expect_value(t, merge.state, PluginState.Enabled)
-	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `plugins/off/"typo"`), 1)
-	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `plugins/merge/"bogus"`), 2)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `"plugins/off/typo"`), 1)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `"plugins/merge/bogus"`), 2)
 }
 
 @(test)
@@ -483,7 +488,7 @@ plugin_keybind_warnings :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Warn, "Clash", `plugins/clash/keybinds/Default (Ctrl+q is "Quit")`), "a plugin key taken by a builtin warns under the plugin")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/clash/keybinds/User (Ctrl+s is "Save")`), "a user bind taken by a builtin warns as config")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", "plugins/clash/keybinds/Bad"), "an invalid user bind warns")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"No Such Command"`), "an unknown keybind name warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "keybinds/No Such Command"`), "an unknown keybind name warns")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"User"`), "plugin command names are known plugin keybinds")
 }
 
@@ -650,7 +655,7 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	plugin_pump(ed)
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"Later"`), "a command registered by a startup handler is known")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "D", `plugins/d/keybinds/Clash (Alt+2 is "B: Run")`), "a key taken by another plugin's command warns")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"File Tree: Restore File" (moved to plugins/git/keybinds/"Restore File")`), "old bundled bind names say where they moved")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds/File Tree: Restore File" moved to "plugins/git/keybinds/Restore File"`), "old bundled bind names say where they moved")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
 	a, aok := plugin_command_for_event(ed, alt('k'), "")
@@ -663,10 +668,10 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	testing.expect(t, tok && tree.name == "A: Search Tree", "keybind shares the bind key within the plugin")
 	ed_search, sok := plugin_command_for_event(ed, alt('n'), "")
 	testing.expect(t, sok && ed_search.name == "A: Search", "both sharing commands move together")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown plugins/a/keybinds/"Nope"`), "an unknown command in a loaded plugin's keybinds warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "plugins/a/keybinds/Nope"`), "an unknown command in a loaded plugin's keybinds warns")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/a/keybinds/"Run"`), "known commands do not warn")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "Whatever"), "a disabled plugin's keybinds do not warn")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"Run" (moved to plugins/`), "a plugin command in the top-level keybinds warns where it moved")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds/Run" moved to "plugins/`), "a plugin command in the top-level keybinds warns where it moved")
 
 	plugin_enabled_set(ed, plugin_find(&ed.plugins, "b"), false)
 	_, gone := plugin_command_for_event(ed, alt('2'), "")

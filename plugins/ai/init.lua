@@ -245,14 +245,14 @@ local function edit_selection(ctx)
 	if not from then
 		return abandon("Edit discarded: block changed")
 	end
-	if trim(cfg.chat_command) == "" then
-		return abandon("plugins.ai.chat_command is empty")
+	if trim(cfg.edit_command) == "" then
+		return abandon("plugins.ai.edit_command is empty")
 	end
 	local prompt, selection = build_prompt(b, instruction, from, to)
 	qed.log("debug", ("prompt (%dB):\n%s"):format(#prompt, prompt))
-	local ok, proc = pcall(qed.spawn_bg, {cmd = cfg.chat_command, stdin = prompt})
+	local ok, proc = pcall(qed.spawn_bg, {cmd = cfg.edit_command, stdin = prompt})
 	if not ok then
-		qed.log("debug", ("spawn failed: %s (%s)"):format(cfg.chat_command, proc))
+		qed.log("debug", ("spawn failed: %s (%s)"):format(cfg.edit_command, proc))
 		return abandon("Could not start command")
 	end
 	local e = {proc = proc, buf = b, original = selection, mark = mark}
@@ -260,7 +260,7 @@ local function edit_selection(ctx)
 	retint(b)
 	status()
 	sync_hook()
-	qed.log("debug", ("request sent: %s (%dB prompt)"):format(cfg.chat_command, #prompt))
+	qed.log("debug", ("request sent: %s (%dB prompt)"):format(cfg.edit_command, #prompt))
 	qed.message(("Edit sent (%d running)"):format(#edits))
 	local r = proc:wait()
 	if e.done or not r then
@@ -467,7 +467,7 @@ return {
 	setup = function()
 		qed.meta{display_name = "AI"}
 		configure(qed.options{
-			chat_command = "claude -p",
+			edit_command = "claude -p",
 			edit_prompt = "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region, and nothing else, inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}",
 			completion_enabled = false,
 			completion_endpoint = "https://codestral.mistral.ai/v1/fim/completions",

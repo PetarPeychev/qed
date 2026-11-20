@@ -186,9 +186,8 @@ return {
 				end
 			end,
 		}
-		local back, forward = qed.shortcut("Jump Back"), qed.shortcut("Jump Forward")
-		qed.command{name = "Back", scope = "markdown", key = back or "Alt+,", run = function() step(-1) end}
-		qed.command{name = "Forward", scope = "markdown", key = forward or "Alt+.", run = function() step(1) end}
+		qed.command{name = "Back", scope = "markdown", bind_from = "Jump Back", run = function() step(-1) end}
+		qed.command{name = "Forward", scope = "markdown", bind_from = "Jump Forward", run = function() step(1) end}
 		qed.on("config_changed", function()
 			cfg = qed.config()
 			reopen()

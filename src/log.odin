@@ -361,7 +361,7 @@ logview_open :: proc(editor: ^Editor, source := "", parent: u64 = 0) {
 	spec := Pane {
 		id = "log",
 		place = .Full,
-		chord = "Debug: Message Log",
+		chord = "Message Log: Open",
 		scope = "log",
 		title = fmt.tprintf("Message Log  ·  %s", source) if source != "" else "Message Log",
 		has_list = true,

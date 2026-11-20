@@ -413,16 +413,18 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, jt_ok && jt == 99, "present value preserved in file")
 
 	bool_path := fmt.tprintf("%s/bool.json", dir)
-	_ = os.write_entire_file(bool_path, transmute([]byte)string(`{"filetree_show_dotfiles": true}`))
-	FILETREE_SHOW_DOTFILES = false
+	_ = os.write_entire_file(bool_path, transmute([]byte)string(`{"line_wrap": false}`))
+	LINE_WRAP = true
 	_, is_err = config_load_from(bool_path)
 	testing.expect(t, !is_err, "bool value load is not an error")
-	testing.expect(t, FILETREE_SHOW_DOTFILES, "bool value applied")
+	testing.expect(t, !LINE_WRAP, "bool value applied")
 
 	moved_path := fmt.tprintf("%s/moved.json", dir)
-	_ = os.write_entire_file(moved_path, transmute([]byte)string(`{"format_on_save": true}`))
+	_ = os.write_entire_file(moved_path, transmute([]byte)string(`{"format_on_save": true, "filetree_show_dotfiles": true, "preview_max_width": 90}`))
 	msg, _ = config_load_from(moved_path)
-	testing.expect(t, strings.contains(msg, "moved to plugins/format/format_on_save"), "a moved knob names its new home")
+	testing.expectf(t, strings.contains(msg, `"format_on_save" moved to "plugins/format/on_save"`), "an old entry points at the final name: %s", msg)
+	testing.expect(t, strings.contains(msg, `"filetree_show_dotfiles" moved to "plugins/filetree/show_dotfiles"`), "a core knob moved to a plugin")
+	testing.expectf(t, strings.contains(msg, `"preview_max_width" moved to "split_preview_max_width"`), "a renamed core knob: %s", msg)
 
 	// A rebind drives both dispatch and hints. The configured shortcut string renders
 	// verbatim. A pane command that borrows a global bind (log Copy) follows its rebind.
@@ -435,17 +437,20 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !is_err, "rebind load is not an error")
 	kb_json, _ := json.parse_string(`{"keybinds": {"File Tree: New": "Ctrl+t"}}`, allocator = context.temp_allocator)
 	moved := config_keybinds_unknown(kb_json.(json.Object), nil)
-	testing.expect(t, len(moved) == 1 && moved[0] == `unknown keybinds/"File Tree: New" (moved to plugins/filetree/keybinds/"New")`, "a moved tree bind says where")
+	testing.expect(t, len(moved) == 1 && moved[0] == `"keybinds/File Tree: New" moved to "plugins/filetree/keybinds/New"`, "a moved tree bind says where")
 	kb_json, _ = json.parse_string(`{"keybinds": {"Git: Resolve Conflict": "Alt+m"}}`, allocator = context.temp_allocator)
 	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
-	testing.expect(t, len(moved) == 1 && moved[0] == `unknown keybinds/"Git: Resolve Conflict" (moved to plugins/conflict/keybinds/"Resolve")`, "the resolve bind moved to the conflict plugin")
+	testing.expect(t, len(moved) == 1 && moved[0] == `"keybinds/Git: Resolve Conflict" moved to "plugins/conflict/keybinds/Resolve"`, "the resolve bind moved to the conflict plugin")
 	kb_json, _ = json.parse_string(`{"keybinds": {"AI: Edit Selection": "Ctrl+k"}}`, allocator = context.temp_allocator)
-	ai_cmd := []Command{{name = "AI: Edit Selection", bare = "Edit Selection", owner = "ai"}}
-	want := `unknown keybinds/"AI: Edit Selection" (moved to plugins/ai/keybinds/"Edit Selection")`
+	ai_cmd := []Command{{name = "AI: Edit Selection", bare = "Edit Selection", owner = "ai", config_name = "Edit Selection"}}
+	want := `"keybinds/AI: Edit Selection" moved to "plugins/ai/keybinds/Edit Selection"`
 	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
 	testing.expect(t, len(moved) == 1 && moved[0] == want, "a disabled plugin's moved bind falls back to the table")
 	moved = config_keybinds_unknown(kb_json.(json.Object), ai_cmd)
 	testing.expect(t, len(moved) == 1 && moved[0] == want, "a loaded plugin's command gives the same exact hint")
+	kb_json, _ = json.parse_string(`{"keybinds": {"Debug: Message Log": "Alt+m"}}`, allocator = context.temp_allocator)
+	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
+	testing.expect(t, len(moved) == 1 && moved[0] == `"keybinds/Debug: Message Log" moved to "keybinds/Message Log: Open"`, "a renamed core bind says where")
 	testing.expect(t, command_shortcut("Command Palette") == "Ctrl+g", "palette hint renders the configured string verbatim")
 	pcmd, pok := command_for_key(.Ctrl_G)
 	testing.expect(t, pok && pcmd.name == "Command Palette", "rebound palette bind dispatches")
@@ -484,7 +489,7 @@ test_config_files :: proc(t: ^testing.T) {
 	msg, is_err = config_load_from(lang_path)
 	testing.expect(t, is_err, "invalid lsp type reports an error")
 	testing.expect(t, strings.contains(msg, "languages/lua/lsp"), "names the invalid subkey")
-	testing.expect(t, strings.contains(msg, "languages/python/formatter (moved to plugins/format/commands/python)"), "the moved formatter key is reported")
+	testing.expect(t, strings.contains(msg, `"languages/python/formatter" moved to "plugins/format/commands/python"`), "the moved formatter key is reported")
 	testing.expect(t, LANGUAGES[.Python].lsp_server == saved_py_lsp, "omitted lsp keeps default")
 	testing.expect(t, language_of("x.myext") == .Python, "custom pattern drives detection")
 	testing.expect(t, language_of("x.py") == .Python, "listed pattern still detected")
@@ -498,16 +503,14 @@ test_config_files :: proc(t: ^testing.T) {
 	mod_path := fmt.tprintf("%s/modules.json", dir)
 	_ = os.write_entire_file(
 		mod_path,
-		transmute([]byte)string(`{"modules": {"ai": {"enabled": false, "chat_command": "echo hi"}}, "filetree_diff_only": false}`),
+		transmute([]byte)string(`{"modules": {"ai": {"enabled": false, "chat_command": "echo hi"}}}`),
 	)
-	FILETREE_DIFF_ONLY = true
 	LSP_ENABLED = true
 	msg, is_err = config_load_from(mod_path)
 	testing.expect(t, is_err, "a moved key warns")
-	testing.expect(t, strings.contains(msg, `modules/ai/"enabled" (moved to plugins/ai/enabled)`), "modules.ai.enabled moved")
-	testing.expect(t, strings.contains(msg, `modules/ai/"chat_command" (moved to plugins/ai/chat_command)`), "modules.ai.chat_command moved")
+	testing.expect(t, strings.contains(msg, `"modules/ai/enabled" moved to "plugins/ai/enabled"`), "modules.ai.enabled moved")
+	testing.expect(t, strings.contains(msg, `"modules/ai/chat_command" moved to "plugins/ai/edit_command"`), "modules.ai.chat_command points at its final name")
 	testing.expect(t, LSP_ENABLED, "omitted lsp keeps default enabled")
-	testing.expect(t, !FILETREE_DIFF_ONLY, "top-level filetree_diff_only applies")
 
 	mod_bad := fmt.tprintf("%s/modbad.json", dir)
 	_ = os.write_entire_file(
@@ -519,18 +522,18 @@ test_config_files :: proc(t: ^testing.T) {
 	msg, is_err = config_load_from(mod_bad)
 	testing.expect(t, is_err, "invalid lsp value reports an error")
 	testing.expect(t, strings.contains(msg, "lsp/enabled"), "names the invalid lsp subkey")
-	testing.expect(t, strings.contains(msg, `unknown lsp/"bogus"`), "warns the unknown lsp subkey")
-	testing.expect(t, strings.contains(msg, `modules/ai/"nope" (moved to plugins/ai/nope)`), "modules.ai moved")
-	testing.expect(t, strings.contains(msg, `modules/lsp/"completion_max_rows" (moved to lsp/completion_max_rows)`), "modules.lsp moved")
+	testing.expect(t, strings.contains(msg, `unknown "lsp/bogus"`), "warns the unknown lsp subkey")
+	testing.expect(t, strings.contains(msg, `"modules/ai/nope" moved to "plugins/ai/nope"`), "modules.ai moved")
+	testing.expect(t, strings.contains(msg, `"modules/lsp/completion_max_rows" moved to "lsp/completion_max_rows"`), "modules.lsp moved")
 	testing.expect_value(t, COMPLETION_MAX_ROWS, rows)
-	testing.expect(t, strings.contains(msg, `modules/git/"enabled" (moved to plugins/git/enabled)`), "modules.git.enabled moved")
-	testing.expect(t, strings.contains(msg, `modules/git/"diff_view" (moved to diff_view)`), "diff_view moved to core")
-	testing.expect(t, strings.contains(msg, `modules/git/"filetree_diff_only" (moved to filetree_diff_only)`), "filetree_diff_only moved")
+	testing.expect(t, strings.contains(msg, `"modules/git/enabled" moved to "plugins/git/enabled"`), "modules.git.enabled moved")
+	testing.expect(t, strings.contains(msg, `"modules/git/diff_view" moved to "diff_view"`), "diff_view moved to core")
+	testing.expect(t, strings.contains(msg, `"modules/git/filetree_diff_only" moved to "plugins/filetree/diff_only"`), "filetree_diff_only moved")
 	testing.expect(t, !DIFF_VIEW, "a moved key is not applied")
 	mod_scalar := fmt.tprintf("%s/modscalar.json", dir)
 	_ = os.write_entire_file(mod_scalar, transmute([]byte)string(`{"modules": {"git": false}}`))
 	msg, is_err = config_load_from(mod_scalar)
-	testing.expect(t, strings.contains(msg, "modules/git (moved to plugins/git)"), "a non-object modules.git warns too")
+	testing.expect(t, strings.contains(msg, `"modules/git" moved to "plugins/git"`), "a non-object modules.git warns too")
 
 	// Unknown top-level key: warned, file untouched.
 	unknown_path := fmt.tprintf("%s/unknown.json", dir)

@@ -329,7 +329,7 @@ function List:release() end
 ---@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads); a field given a non-empty `text` skips restoring the selection
 ---@field modal? boolean exclusive opens are refused as busy while it is open (`qed.pick/prompt/confirm` set it); a non-modal pane is replaced and its waiters get `nil`
 ---@field place? "center"|"full"|"split" center (default) is a centered box, full fills the screen, split puts a full-height preview column beside the fields and list
----@field size? "palette"|"dialog"|"split:code"|"split:tree" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default) or split:tree (the `filetree_list_*` widths)
+---@field size? "palette"|"dialog"|"split:code"|"split:tree" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default, the `split_code_*` widths) or split:tree (the `split_tree_*` widths)
 ---@field tabs? (string|{label: string, cmd?: string})[] a tab row over both columns; Left/Right and clicks switch, a tab's `cmd` (visible command name) chord switches to it and on the active tab closes the pane
 ---@field tab? integer the tab to start on
 ---@field kind? "exclusive"|"child" exclusive (default) closes the open exclusive pane; child stacks on what has focus (a pane or a core overlay), else opens exclusive; outside a user's command it stacks only on the plugin's own pane (from a view's `activate`, also on that view and its children), else returns busy

@@ -106,7 +106,7 @@ e2e_log_rebound_bind_toggles :: proc(t: ^testing.T) {
 
 	idx := -1
 	for cmd, i in commands {
-		if cmd.name == "Debug: Message Log" {
+		if cmd.name == "Message Log: Open" {
 			idx = i
 			break
 		}

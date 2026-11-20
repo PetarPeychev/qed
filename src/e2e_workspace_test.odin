@@ -145,12 +145,37 @@ e2e_cwd_filters :: proc(t: ^testing.T) {
 
 	cwd_reopen(&e)
 	e2e_key(&e, .Esc)
-	FILETREE_SHOW_DOTFILES = true
+	filetree_toggle_dotfiles(&e.ed)
 	e2e_key(&e, .Ctrl_O)
-	FILETREE_SHOW_DOTFILES = false
 	testing.expect_value(t, cwd_names(&e), ".hid,Beta,alpha,apple,link")
 	e2e_key(&e, .Esc)
 	testing.expect(t, cwd_pane(&e) == nil, "Esc closes")
+}
+
+@(test)
+e2e_cwd_dotfiles_follow_tree :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+	cwd_fixture(&e)
+
+	e2e_key(&e, .Ctrl_O)
+	testing.expect_value(t, cwd_names(&e), "Beta,alpha,apple,link")
+	e2e_key(&e, .Esc)
+	e2e_plugin_config(&e, "filetree", `{"show_dotfiles": true}`, hot = true)
+	plugin_flush(&e.ed)
+	e2e_key(&e, .Ctrl_O)
+	testing.expect_value(t, cwd_names(&e), ".hid,Beta,alpha,apple,link")
+	e2e_key(&e, .Esc)
+	filetree_toggle_dotfiles(&e.ed)
+	e2e_key(&e, .Ctrl_O)
+	testing.expect_value(t, cwd_names(&e), "Beta,alpha,apple,link")
+	e2e_key(&e, .Esc)
+	filetree_toggle_dotfiles(&e.ed)
+	e2e_plugin_config(&e, "filetree", `{"enabled": false, "show_dotfiles": true}`, hot = true)
+	plugin_flush(&e.ed)
+	testing.expect(t, plugin_find(&e.ed.plugins, "filetree").state == .Disabled, "the tree is off")
+	e2e_key(&e, .Ctrl_O)
+	testing.expect_value(t, cwd_names(&e), "Beta,alpha,apple,link")
 }
 
 @(test)
