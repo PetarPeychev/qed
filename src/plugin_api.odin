@@ -757,7 +757,7 @@ qed_buf_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 	if lua.type(L, 2) > .NIL {
 		row = api_int(L, 2, "row must be an integer") - 1
 	} else if b.wrap && w > 0 {
-		sub = wrap_subrow(b.lines[row].text[:], w, b.cursor.col)
+		sub = wrap_subrow(buffer_line_wrap(b, row, w), b.cursor.col)
 	}
 	if idx != editor.current || row < 0 || row >= len(b.lines) || vpos_cmp(row, sub, editor.scroll_row, editor.scroll_sub) < 0 {
 		lua.pushnil(L)

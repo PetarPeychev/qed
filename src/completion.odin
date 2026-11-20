@@ -471,7 +471,7 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 	atext := b.lines[c.anchor_row].text[:]
 	ax: int
 	if b.wrap && b.wrap_width > 0 {
-		seg := wrap_seg_start(atext, b.wrap_width, c.anchor_col)
+		seg := wrap_seg_start(buffer_line_wrap(b, c.anchor_row, b.wrap_width), c.anchor_col)
 		ax = gutter + visual_col(atext, c.anchor_col) - visual_col(atext, seg)
 	} else {
 		ax = gutter + visual_col(atext, c.anchor_col) - editor.scroll_col

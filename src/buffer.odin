@@ -254,6 +254,7 @@ buffer_set_content :: proc(buffer: ^Buffer, data: []u8) {
 		append(&buffer.lines, Line{})
 	}
 	buffer.plugin_dirty, buffer.plugin_lo, buffer.plugin_hi = true, 0, len(buffer.lines) - 1
+	buffer.rev += 1
 	buffer_set_meta(buffer, data)
 }
 
