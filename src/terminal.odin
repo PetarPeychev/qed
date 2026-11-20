@@ -348,6 +348,8 @@ term_stop :: proc(editor: ^Editor, t: ^Terminal) -> bool {
 	if fg := posix.tcgetpgrp(posix.FD(t.pty_fd)); fg > 0 && int(fg) != t.pid {
 		posix.kill(-fg, .SIGKILL)
 	}
+	// a child killed before its setsid has no group yet, so signal it directly too (first: dead, it forks nothing)
+	posix.kill(posix.pid_t(t.pid), .SIGKILL)
 	posix.kill(-posix.pid_t(t.pid), .SIGKILL)
 	t.code = 128 + int(posix.Signal.SIGKILL)
 	status: c.int
