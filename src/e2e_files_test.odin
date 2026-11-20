@@ -167,8 +167,8 @@ e2e_files_external_clean_reload :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.modified, false)
 	testing.expect_value(t, len(b.lines), 2)
 	testing.expect_value(t, string(b.lines[0].text[:]), "xy")
-	testing.expect_value(t, b.cursor.row, 1) // clamped from row 3
-	testing.expect_value(t, b.cursor.col, 0) // clamped from col 3
+	testing.expect_value(t, b.cursor.row, 0) // row 3 maps into the replaced hunk
+	testing.expect_value(t, b.cursor.col, 2) // clamped from col 3
 }
 
 @(test)

@@ -40,6 +40,9 @@ Buffer :: struct {
 	plugin_seen:   bool,
 	plugin_rev:    u64,
 	plugin_cursor: Cursor,
+	plugin_dirty:  bool,
+	plugin_lo:     int,
+	plugin_hi:     int,
 	typed_rev:     u64,
 }
 
@@ -202,11 +205,7 @@ buffer_set_content :: proc(buffer: ^Buffer, data: []u8) {
 	}
 	clear(&buffer.lines)
 
-	text := string(data)
-	buffer.big = len(data) >= BIG_FILE_BYTES
-	buffer.line_ending = .CRLF if strings.contains(text, "\r\n") else .LF
-
-	segments := strings.split(text, "\n", context.temp_allocator)
+	segments := strings.split(string(data), "\n", context.temp_allocator)
 	for segment in segments {
 		s := segment
 		if len(s) > 0 && s[len(s) - 1] == '\r' {
@@ -217,9 +216,14 @@ buffer_set_content :: proc(buffer: ^Buffer, data: []u8) {
 	if len(buffer.lines) == 0 {
 		append(&buffer.lines, Line{})
 	}
+	buffer.plugin_dirty, buffer.plugin_lo, buffer.plugin_hi = true, 0, len(buffer.lines) - 1
+	buffer_set_meta(buffer, data)
+}
 
+buffer_set_meta :: proc(buffer: ^Buffer, data: []u8) {
+	buffer.big = len(data) >= BIG_FILE_BYTES
+	buffer.line_ending = .CRLF if strings.contains(string(data), "\r\n") else .LF
 	buffer_detect_indent(buffer)
-
 	delete(buffer.saved)
 	buffer.saved = buffer_snapshot(buffer)
 	buffer.modified = false
@@ -276,8 +280,16 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	}
 	defer delete(data)
 
-	cur := buffer.cursor
-	buffer_set_content(buffer, data)
+	// Applied as hunks so decorations and marks on untouched lines stay put.
+	lines := strings.split(string(data), "\n", context.temp_allocator)
+	for &l in lines {
+		l = strings.trim_suffix(l, "\r")
+	}
+	hunks := text_hunks(buffer, lines)
+	cur := text_hunks_map(hunks, buffer.cursor)
+	edit_open(buffer, .Atomic)
+	text_hunks_apply(buffer, lines, hunks)
+	buffer_set_meta(buffer, data)
 
 	// The prior edit log describes content that no longer exists on disk.
 	for &group in buffer.undo {
@@ -292,12 +304,10 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	buffer.open = {}
 	buffer.has_open = false
 
-	buffer.cursor.row = clamp(cur.row, 0, len(buffer.lines) - 1)
-	buffer.cursor.col = clamp(cur.col, 0, len(buffer.lines[buffer.cursor.row].text))
+	buffer.cursor = buffer_pos_clamp(buffer, cur)
 	buffer.selection = nil
 	buffer.goal_col = 0
 
-	// Full content swap invalidates the retained parse tree and any queued edits.
 	if buffer.hl.tree != nil {
 		ts.tree_delete(buffer.hl.tree)
 		buffer.hl.tree = nil
@@ -307,7 +317,6 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	buffer.hl.valid = false
 
 	buffer_lsp_changes_clear(buffer)
-	deco_after_reload(buffer)
 	buffer.rev += 1
 	buffer.disk = buffer_disk_stamp(buffer.path)
 	buffer.disk_conflict = false
@@ -470,10 +479,44 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	})
 	lsp_change_record(buffer, at, at, text)
 	deco_after_insert(buffer, at, end)
+	buffer_dirty_insert(buffer, at, end)
 
 	buffer_recompute_modified(buffer)
 	buffer.rev += 1
 	return end
+}
+
+// rows outside [plugin_lo, plugin_hi] are untouched since the last buf_changed, the ones below shifted uniformly
+buffer_dirty_insert :: proc(b: ^Buffer, at, end: Cursor) {
+	k := end.row - at.row
+	if !b.plugin_dirty {
+		b.plugin_dirty, b.plugin_lo, b.plugin_hi = true, at.row, end.row
+		return
+	}
+	if b.plugin_lo > at.row {
+		b.plugin_lo += k
+	}
+	if b.plugin_hi >= at.row {
+		b.plugin_hi += k
+	}
+	b.plugin_lo = min(b.plugin_lo, at.row)
+	b.plugin_hi = max(b.plugin_hi, end.row)
+}
+
+buffer_dirty_delete :: proc(b: ^Buffer, from, to: Cursor) {
+	if !b.plugin_dirty {
+		b.plugin_dirty, b.plugin_lo, b.plugin_hi = true, from.row, from.row
+		return
+	}
+	k := to.row - from.row
+	shift :: proc(r: int, from, to: Cursor, k: int) -> int {
+		if r > to.row {
+			return r - k
+		}
+		return min(r, from.row)
+	}
+	b.plugin_lo = min(shift(b.plugin_lo, from, to, k), from.row)
+	b.plugin_hi = max(shift(b.plugin_hi, from, to, k), from.row)
 }
 
 buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
@@ -488,6 +531,7 @@ buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 	})
 	lsp_change_record(buffer, from, to, "")
 	deco_after_delete(buffer, from, to)
+	buffer_dirty_delete(buffer, from, to)
 
 	sb := strings.builder_make()
 

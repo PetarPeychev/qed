@@ -174,23 +174,6 @@ deco_clear_by_rows :: proc(t: ^testing.T) {
 }
 
 @(test)
-deco_reload_drops_spans_and_clamps :: proc(t: ^testing.T) {
-	b := deco_test_buffer()
-	defer buffer_destroy(&b)
-	deco_add(&b, Deco{kind = .Span, ns = 1, from = {0, 0}, to = {0, 1}})
-	deco_add(&b, Deco{kind = .Tint, ns = 1, from = {1, 0}, to = {4, 0}})
-	buffer_set_content(&b, transmute([]u8)string("a\nb\nc"))
-	deco_after_reload(&b)
-	testing.expect_value(t, len(deco_test_rows(&b, .Span)), 0)
-	testing.expect_value(t, len(deco_test_rows(&b, .Gutter)), 3)
-	for d in b.deco.items {
-		if d.kind == .Tint {
-			testing.expect_value(t, d.to.row, 2)
-		}
-	}
-}
-
-@(test)
 deco_set_text_keeps_first_row_of_hunk :: proc(t: ^testing.T) {
 	b := test_buffer("a", "b", "c", "d")
 	defer buffer_destroy(&b)

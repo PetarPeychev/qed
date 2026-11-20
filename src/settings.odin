@@ -864,7 +864,7 @@ config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -
 			}
 			for cmd in plugin_commands {
 				if cmd.name == key || cmd.bare == key {
-					moved = fmt.tprintf(" (moved to plugins/%s/keybinds)", cmd.owner)
+					moved = fmt.tprintf(" (moved to plugins/%s/keybinds/%q)", cmd.owner, cmd.bare)
 				}
 			}
 			append(&warnings, fmt.tprintf("unknown keybinds/%q%s", key, moved))

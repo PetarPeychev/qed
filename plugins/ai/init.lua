@@ -1,8 +1,11 @@
-local cfg, hook
+local cfg, hook, hooks
 local ranges, tints, ghosts
 local edits = {}
+local waiting = {}
 local fim = {enabled = false, warned = false, gen = 0}
 local seen = {}
+
+local CONTEXT_BYTES = 64 * 1024
 
 local function trim(s)
 	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
@@ -20,8 +23,7 @@ local function last_find(s, needle)
 	end
 end
 
--- The model may reason first; the last fenced block wins so example snippets in the
--- reasoning don't. No fence: the whole reply. The "```lang" line is dropped.
+-- the last fence wins: a model that reasons first may quote example snippets
 local function extract(s)
 	local close = last_find(s, "```")
 	if not close then
@@ -36,8 +38,7 @@ local function extract(s)
 	return trim(inner)
 end
 
--- Reattach the selection's leading/trailing whitespace, so an over-selected newline or
--- an indent survives whatever framing the model returned.
+-- models drop or invent surrounding whitespace, so the selection's own framing is kept
 local function reframe(core, original)
 	local lead = original:match("^%s*")
 	if #lead == #original then
@@ -99,7 +100,7 @@ local function spaces()
 	ghosts = qed.deco.ns("ghosts")
 end
 
-local changed
+local changed, reloaded, closed
 
 -- Subscribed only while something listens, so an idle plugin costs no task per keystroke.
 local function sync_hook()
@@ -109,6 +110,13 @@ local function sync_hook()
 	elseif not want and hook then
 		hook:off()
 		hook = nil
+	end
+	if #edits > 0 and not hooks then
+		hooks = {qed.on("buf_reload", reloaded), qed.on("buf_close", closed)}
+	elseif #edits == 0 and hooks then
+		hooks[1]:off()
+		hooks[2]:off()
+		hooks = nil
 	end
 end
 
@@ -126,6 +134,9 @@ local function retint(b)
 	end
 	qed.deco.clear(b, tints)
 	local live = false
+	for _, wb in pairs(waiting) do
+		live = live or wb == b
+	end
 	for _, e in ipairs(edits) do
 		if e.buf == b then
 			live = true
@@ -162,6 +173,8 @@ local function apply(e, r)
 	qed.log("debug", ("response (%dB):\n%s"):format(#raw, raw))
 	if r.code ~= 0 then
 		qed.log("debug", ("command exited %d (%dB reply)"):format(r.code, #raw))
+		qed.message(("Command failed (exit %d)"):format(r.code), "error")
+		return
 	end
 	local core = extract(raw)
 	if core == "" then
@@ -206,33 +219,43 @@ local function edit_selection(ctx)
 		qed.message("Select a block first", "error")
 		return
 	end
-	local rev = qed.buf.rev(b)
+	spaces()
+	local mark = qed.deco.mark(b, ranges, from, to)
+	waiting[mark] = b
 	local instruction = qed.prompt{prompt = "AI edit:"}
+	waiting[mark] = nil
+	local function abandon(msg)
+		if qed.buf.valid(b) then
+			retint(b)
+		end
+		if msg then
+			qed.message(msg, "error")
+		end
+	end
 	if instruction == nil then
-		return
+		return abandon()
 	end
 	if instruction == "" then
-		qed.message("Empty instruction", "error")
-		return
+		return abandon("Empty instruction")
 	end
-	if not qed.buf.valid(b) or qed.buf.rev(b) ~= rev then
-		qed.message("Edit discarded: block changed", "error")
-		return
+	from, to = nil, nil
+	if qed.buf.valid(b) then
+		from, to = qed.deco.range(b, ranges, mark)
+	end
+	if not from then
+		return abandon("Edit discarded: block changed")
 	end
 	if trim(cfg.chat_command) == "" then
-		qed.message("plugins.ai.chat_command is empty", "error")
-		return
+		return abandon("plugins.ai.chat_command is empty")
 	end
 	local prompt, selection = build_prompt(b, instruction, from, to)
 	qed.log("debug", ("prompt (%dB):\n%s"):format(#prompt, prompt))
 	local ok, proc = pcall(qed.spawn_bg, {cmd = cfg.chat_command, stdin = prompt})
 	if not ok then
-		qed.message("Could not start command", "error")
 		qed.log("debug", ("spawn failed: %s (%s)"):format(cfg.chat_command, proc))
-		return
+		return abandon("Could not start command")
 	end
-	spaces()
-	local e = {proc = proc, buf = b, original = selection, mark = qed.deco.mark(b, ranges, from, to)}
+	local e = {proc = proc, buf = b, original = selection, mark = mark}
 	edits[#edits + 1] = e
 	retint(b)
 	status()
@@ -266,23 +289,37 @@ local function cancel_all()
 	end
 end
 
-local function prune(b)
-	local cancelled = false
+local function prune(b, why, all)
+	local cancelled = 0
 	for i = #edits, 1, -1 do
 		local e = edits[i]
-		if e.buf == b and not qed.deco.range(b, ranges, e.mark) then
+		if e.buf == b and (all or not qed.deco.range(b, ranges, e.mark)) then
 			e.done = true
 			e.proc:kill()
 			table.remove(edits, i)
-			cancelled = true
+			cancelled = cancelled + 1
 		end
 	end
-	if cancelled then
-		qed.message("Edit cancelled: block edited")
+	if cancelled > 0 then
+		if why then
+			qed.message("Edit cancelled: " .. why)
+		end
 		status()
 		sync_hook()
 	end
-	retint(b)
+	if not all then
+		retint(b)
+	end
+end
+
+reloaded = function(b)
+	if qed.buf.valid(b) then
+		prune(b, "file reloaded")
+	end
+end
+
+closed = function(b)
+	prune(b, nil, true)
 end
 
 local function fim_stop()
@@ -316,11 +353,22 @@ local function fim_parse(raw)
 	return type(c0.text) == "string" and c0.text or ""
 end
 
-local function fim_request(b, gen)
+local function fim_request(b, gen, typed_at, typed_rev)
 	if gen ~= fim.gen or not qed.buf.valid(b) or qed.buf.current() ~= b or qed.buf.selection(b) then
 		return
 	end
+	local pos, rev = qed.buf.cursor(b), qed.buf.rev(b)
+	if rev ~= typed_rev or pos.row ~= typed_at.row or pos.col ~= typed_at.col then
+		return
+	end
 	local env = cfg.completion_api_key_env
+	if not env:match("^[%a_][%w_]*$") then
+		if not fim.warned then
+			fim.warned = true
+			qed.message(("Inline completion: completion_api_key_env %q is not a variable name"):format(env), "warn")
+		end
+		return
+	end
 	if (os.getenv(env) or "") == "" then
 		if not fim.warned then
 			fim.warned = true
@@ -328,7 +376,6 @@ local function fim_request(b, gen)
 		end
 		return
 	end
-	local pos, rev = qed.buf.cursor(b), qed.buf.rev(b)
 	local lo = math.max(1, pos.row - cfg.completion_context_lines)
 	local hi = math.min(qed.buf.line_count(b), pos.row + cfg.completion_context_lines)
 	local lines = qed.buf.lines(b, lo, hi)
@@ -336,6 +383,12 @@ local function fim_request(b, gen)
 	local cur = lines[at]
 	local prefix = table.concat(lines, "\n", 1, at - 1) .. (at > 1 and "\n" or "") .. cur:sub(1, pos.col - 1)
 	local suffix = cur:sub(pos.col) .. (at < #lines and "\n" or "") .. table.concat(lines, "\n", at + 1)
+	if #prefix > CONTEXT_BYTES then
+		prefix = prefix:sub(-CONTEXT_BYTES):gsub("^[\128-\191]+", "")
+	end
+	if #suffix > CONTEXT_BYTES then
+		suffix = suffix:sub(1, CONTEXT_BYTES):gsub("[\192-\255][\128-\191]*$", "")
+	end
 	local body = qed.json.encode{
 		model = cfg.completion_model,
 		prompt = prefix,
@@ -344,7 +397,8 @@ local function fim_request(b, gen)
 		temperature = 0,
 	}
 	-- The body goes on stdin: the spawn unlinks its temp at once, so a lazily opened `@file` would race to empty.
-	local cmd = ("curl -s --max-time 10 -X POST %s -H 'Content-Type: application/json' -H \"Authorization: Bearer $%s\" --data-binary @-")
+	-- The key reaches curl through a here-doc on fd 3, never through argv (visible in /proc).
+	local cmd = ("curl -s --max-time 10 -X POST %s -H 'Content-Type: application/json' -H @/dev/fd/3 --data-binary @- 3<<EOF\nAuthorization: Bearer $%s\nEOF")
 		:format(qed.shell_quote(cfg.completion_endpoint), env)
 	local ok, proc = pcall(qed.spawn_bg, {cmd = cmd, stdin = body})
 	if not ok then
@@ -375,13 +429,13 @@ end
 
 local function fim_typed(b)
 	fim_stop()
-	if not fim.enabled or qed.buf.selection(b) then
+	if not fim.enabled or qed.buf.selection(b) or qed.buf.big(b) then
 		return
 	end
-	local gen = fim.gen
+	local gen, at, rev = fim.gen, qed.buf.cursor(b), qed.buf.rev(b)
 	fim.timer = qed.defer(cfg.completion_debounce_ms, function()
 		fim.timer = nil
-		fim_request(b, gen)
+		fim_request(b, gen, at, rev)
 	end)
 end
 
@@ -402,7 +456,7 @@ changed = function(b, _, typed)
 		return
 	end
 	if #edits > 0 then
-		prune(b)
+		prune(b, "block edited")
 	end
 	if typed then
 		fim_typed(b)

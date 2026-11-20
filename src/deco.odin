@@ -239,28 +239,6 @@ deco_after_delete :: proc(b: ^Buffer, from, to: Cursor) {
 	resize(&b.deco.marks, w)
 }
 
-deco_after_reload :: proc(b: ^Buffer) {
-	b.deco.ghost_dirty = true
-	last := len(b.lines) - 1
-	for list in ([2]^[dynamic]Deco{&b.deco.items, &b.deco.ghosts}) {
-		w := 0
-		for &d, i in list {
-			if d.kind == .Span || d.from.row > last {
-				delete(d.text)
-				continue
-			}
-			d.to.row = min(d.to.row, last)
-			if w != i {
-				list[w] = d
-			}
-			w += 1
-		}
-		resize(list, w)
-	}
-	clear(&b.deco.marks)
-	inline_clear(b)
-}
-
 deco_ghost_count :: proc(b: ^Buffer, row: int, above: bool) -> int {
 	s := &b.deco
 	if len(s.ghosts) == 0 {

@@ -115,15 +115,19 @@ each repo's `diff --name-status <base>` replaces its tracked `status` lines. A w
 resets the base. The plugin's 2 s stat poll also resolves the base sha; when it changes (a moved
 branch, or HEAD under the default base) it refetches every buffer's base and rescans the tree.
 
-**Merge conflicts** (`plugins/conflict`): content-driven, no git dependency. On `buf_open`,
-`buf_reload`, `buf_changed` (coalesced) and `startup` it finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>`
-blocks (`qed.buf.find_lines`, so a buffer without markers costs one core pass and no text copy) and
-re-pushes its decorations: ours/theirs/diff3-base tints (`conflict` tint, markers `conflict_marker`)
-with marker lines fg-colored, and ours↔theirs word spans (`qed.text.diff` pairs lines,
-a Lua port of `diff_word_span` trims them) blended at `conflict_word`. Tint strengths are theme tint
-keys resolved per frame. *Conflict: Resolve* (`Alt+m`): cursor in a block asks `Keep Ours/Theirs/Both`
-(`qed.confirm`); cursor outside jumps to the next block (wraps). Resolve deletes the marker/side rows
-bottom-up as one undo group and rescans at once (its edit lands after the flush's change check).
+**Merge conflicts** (`plugins/conflict`): content-driven, no git dependency. `buf_open`, `buf_reload`,
+`buf_save` and `startup` scan the buffer (`qed.buf.find_lines` with the marker list and `word`, one core
+pass returning sorted rows and kinds) for `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks and push
+decorations: ours/theirs/diff3-base tints (`conflict` tint, markers `conflict_marker`) with marker lines
+fg-colored, and ours↔theirs word spans (`qed.text.diff_rows` with `words`, the core Myers pairing and
+`diff_word_span`, no text copied into Lua) blended at `conflict_word`. Tint strengths are theme tint keys
+resolved per frame. A buffer that has had blocks since open/reload is **armed**; only while some buffer is
+armed does the plugin hold `buf_changed`, so a plain session runs no Lua per keystroke (a conflict typed or
+pasted into a never-armed buffer highlights on save or reload). On `buf_changed` it rescans the markers and
+redecorates only blocks touching the dirty rows `lo..hi` or whose structure changed; blocks elsewhere keep
+their (core-shifted) decorations. *Conflict: Resolve* (`Alt+m`): cursor in a block asks
+`Keep Ours/Theirs/Both` (`qed.confirm`); cursor outside jumps to the next block (wraps). Resolve deletes
+the marker/side rows bottom-up as one undo group; its `buf_changed` fires in the same flush.
 
 Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All user-facing messages go through
@@ -244,8 +248,9 @@ member group is no longer on top).
   external). The main loop polls `os.stat` for every open buffer, throttled by
   `DISK_POLL_MS` (idle branch uses a timed `peek_event`, so it fires even with no
   input). A changed file that is **clean** auto-reloads (`buffer_reload`: re-read,
-  clear undo/redo, drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
-  clamp the cursor); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
+  apply the changed hunks through the primitives like `buffer_set_text` so decorations and marks on
+  untouched lines stay, clear undo/redo, drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
+  map the cursor through the hunks); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
   onto it opens the conflict dialog (Cancel / Overwrite / Reload) instead of
   clobbering. Reload skips a buffer while its highlight parse thread is busy
   (retries next poll). Deletion on disk is ignored (buffer stays; save recreates).
@@ -513,7 +518,10 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Events never run Lua inside core code: call sites `plugin_queue` (a no-op without
   subscribers) and `plugin_flush` drains after `editor_step` (skipped mid-paste) and
   in the pump. `buf_changed`/`cursor_moved` come from comparing `Buffer.plugin_rev`/
-  `plugin_cursor` once per flush; `buf_changed`'s `typed` is `Buffer.typed_rev == rev`, which
+  `plugin_cursor` at the top of every flush round (`plugin_buffers_check`, after `plugin_views_flush`), so
+  an edit made by a handler or after an awaited dialog fires in the same flush. `buf_changed`'s `lo..hi`
+  is the union of rows the primitives touched since the last delivery (`Buffer.plugin_lo/hi`, shifted by
+  later edits: rows above are untouched, rows below only shifted); its `typed` is `Buffer.typed_rev == rev`, which
   `editor_dispatch_key` sets when a character, Enter, Backspace or Delete without Ctrl/Alt changed the buffer. Exceptions: `buf_pre_save` runs inside
   `editor_save_full`; a handler that waits parks the save in `Plugins.saves` until
   its tasks end or `plugin_hook_timeout_ms` passes (`editor_save_id` finishes it).
@@ -593,7 +601,7 @@ started at the end of `editor_init`. Invariants the code can't show:
   per-row above/below counts rebuilt lazily after a ghost or line change, so the walkers stay O(1) per row). `buffer_insert`/`buffer_delete` shift row anchors and drop spans on
   edited rows (rules in plugins.md §3), so a keystroke runs no Lua. Marks (`DecoStore.marks`, `qed.deco.mark`)
   shift by byte position and are removed when an edit overlaps their inside. The inline ghost
-  (`DecoStore.inline`, one per buffer) is cleared by any edit or reload; core renders it while the cursor
+  (`DecoStore.inline`, one per buffer) is cleared by any edit (a reload is hunk edits); core renders it while the cursor
   sits on it (`inline_gap` reserves the rows below for its continuation lines) and handles its keys in
   `editor_dispatch_key` before anything else: `Tab` inserts it, `Ctrl+Right` one word (`inline_word_len`),
   any other key or a click drops it, all synchronously. Colors are interned theme keys
@@ -734,16 +742,22 @@ lines.
 instruction; the whole buffer, the selection wrapped in `<<<SELECT…SELECT>>>`, goes through the
 `edit_prompt` template to `chat_command` (default `claude -p`) on stdin via `qed.spawn_bg`. Requests run
 concurrently, each tracked by a `qed.deco.mark` over its range and tinted (`ai_edit_background`, theme tint
-`ai_edit`) while in flight, with an `AI:N` status segment. An edit inside the range cancels the request
-(`buf_changed`, kills the process); edits elsewhere move the mark. The reply's last fenced block replaces
+`ai_edit`) while in flight, with an `AI:N` status segment. The mark is set before the prompt and re-read
+after it, so a buffer change elsewhere under the prompt (another edit landing) keeps the request. An edit
+inside the range cancels the request (`buf_changed`, kills the process), as does a reload that touches it
+(`file reloaded`) or closing the buffer; edits elsewhere move the mark. A non-zero exit is discarded
+(`Command failed (exit N)`). The reply's last fenced block replaces
 the marked range as one `qed.edit` step with the selection's whitespace framing reattached and the cursor
 and selection kept on the new text. *AI: Cancel Edits* kills them all. Prompt and response are logged at
 Debug.
 
 Inline completion (`completion_enabled`, *AI: Toggle Inline Completion*): a `buf_changed` with `typed`
 arms a `qed.defer(completion_debounce_ms)` timer (each typed change kills the pending timer and request);
-the request is `curl` through `qed.spawn_bg` to a FIM endpoint (default Codestral), prefix and suffix
-clamped to `completion_context_lines`, the key read by the curl child from `$completion_api_key_env`.
+it is dropped when the cursor or rev moved by the time it fires (a click during the debounce), and never
+armed on a big buffer (`qed.buf.big`). The request is `curl` through `qed.spawn_bg` to a FIM endpoint
+(default Codestral), prefix and suffix clamped to `completion_context_lines` and 64 KB each; the
+`Authorization` header reaches curl as `-H @/dev/fd/3` from a here-doc expanding
+`$completion_api_key_env` (validated as a variable name), never through argv.
 **External quirk:** the body goes on curl's stdin (`--data-binary @-`); the spawn unlinks its temp at once,
 so a lazily opened `@file` would race to an empty body. A
 reply for the same buffer, rev and cursor becomes `qed.deco.inline` text; Lua never sees the keys that

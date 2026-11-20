@@ -1766,7 +1766,7 @@ editor_render_status :: proc(editor: ^Editor) {
 	if editor.welcome {
 		append(&left, StatusSeg{text = " ", fg = fg})
 		append(&left, StatusSeg{text = editor.working_root, fg = fg, kind = .Path})
-		append(&right, StatusSeg{text = fmt.tprintf("qed %s", VERSION), fg = fg, drop = 5})
+		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("qed %s", VERSION), fg = fg, drop = 5})
 	} else {
 		b := editor_buffer(editor)
 		name := editor_display_path(editor, b.path) if b.path != "" else "[No Name]"

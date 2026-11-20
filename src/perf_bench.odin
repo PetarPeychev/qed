@@ -898,28 +898,36 @@ bench_conflict_keystroke :: proc(t: ^testing.T) {
 	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
 		return
 	}
-	run :: proc(label: string, blocks: int, row: int) {
+	run :: proc(label: string, sections, blocks, filler, row: int, huge := -1, plugin := true) {
 		sb := strings.builder_make(context.temp_allocator)
-		for i in 0 ..< 200 {
+		for i in 0 ..< sections {
 			if i < blocks {
-				fmt.sbprintf(&sb, "<<<<<<< HEAD\nlocal v%d = %d\nshared\n=======\nlocal v%d = %d + 1\nshared\n>>>>>>> branch\n", i, i, i, i)
+				ours := fmt.tprintf("local v%d = %d", i, i)
+				if i == huge {
+					ours = strings.concatenate({ours, strings.repeat("x", 1 << 20, context.temp_allocator)}, context.temp_allocator)
+				}
+				fmt.sbprintf(&sb, "<<<<<<< HEAD\n%s\nshared\n=======\nlocal v%d = %d + 1\nshared\n>>>>>>> branch\n", ours, i, i)
 			} else {
 				for k in 0 ..< 7 {
 					fmt.sbprintf(&sb, "plain %d of %d\n", k, i)
 				}
 			}
-			for k in 0 ..< 93 {
+			for k in 0 ..< filler {
 				fmt.sbprintf(&sb, "line %d of %d\n", k, i)
 			}
 		}
 		e := e2e_start(strings.to_string(sb))
 		defer e2e_stop(&e)
+		if !plugin {
+			plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "conflict"))
+		}
 		plugin_pump(&e.ed)
 		plugin_flush(&e.ed)
 		b := editor_buffer(&e.ed)
+		b.wrap = huge < 0
 		b.cursor = {row, 0}
 		editor_scroll(&e.ed)
-		KEYS :: 50
+		KEYS := 50 if huge < 0 else 10
 		test_slice_on = true
 		clear(&test_slice_max)
 		start := time.tick_now()
@@ -927,18 +935,23 @@ bench_conflict_keystroke :: proc(t: ^testing.T) {
 			e2e_type(&e, "z")
 			plugin_flush(&e.ed)
 		}
-		per := ms_since(start) / KEYS
+		per := ms_since(start) / f64(KEYS)
 		start = time.tick_now()
 		for _ in 0 ..< KEYS {
 			e2e_render(&e)
 		}
-		frame := ms_since(start) / KEYS
-		fmt.eprintfln("%-30s %6d lines %5d decos  keystroke %6.2f ms  max slice %6.2f ms  frame %6.2f ms", label, len(b.lines), len(b.deco.items), per, test_slice_max["conflict"], frame)
+		frame := ms_since(start) / f64(KEYS)
+		fmt.eprintfln("%-34s %6d lines %5d decos  keystroke %6.2f ms  max slice %6.2f ms  frame %6.2f ms", label, len(b.lines), len(b.deco.items), per, test_slice_max["conflict"], frame)
 		test_slice_on = false
 	}
 	fmt.eprintln("=== conflict plugin per-keystroke bench ===")
-	run("no conflicts", 0, 10000)
-	run("200 blocks, typing outside", 200, 10050)
-	run("200 blocks, typing in a block", 200, 10001)
+	run("no conflicts", 200, 0, 93, 10000)
+	run("200 blocks, typing outside", 200, 200, 93, 10050)
+	run("200 blocks, typing in a block", 200, 200, 93, 10001)
+	run("2000 blocks, typing outside", 2000, 2000, 3, 10008)
+	run("2000 blocks, typing in a block", 2000, 2000, 3, 10001)
+	run("1 MB line, typing outside", 200, 200, 93, 10050, 100)
+	run("1 MB line, in its block, no plugin", 200, 200, 93, 10004, 100, false)
+	run("1 MB line, typing in its block", 200, 200, 93, 10004, 100)
 	delete(test_slice_max)
 }

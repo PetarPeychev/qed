@@ -1,8 +1,10 @@
 package main
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:time"
 import "lib:tb2"
 
 @(private = "file")
@@ -623,4 +625,94 @@ e2e_deco_inline_dismissed :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Left)
 	e2e_key(&e, .Arrow_Right)
 	testing.expect(t, !inline_active(&e.ed), "moving away drops it for good")
+}
+
+@(test)
+e2e_deco_reload_follows_hunks :: proc(t: ^testing.T) {
+	e := e2e_start("a\nb\nc\nd\ne")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	deco_add(b, Deco{kind = .Span, ns = 1, from = {0, 0}, to = {0, 1}})
+	deco_add(b, Deco{kind = .Span, ns = 1, from = {2, 0}, to = {2, 1}})
+	deco_add(b, Deco{kind = .Tint, ns = 1, from = {3, 0}, to = {4, 0}})
+	append(&b.deco.marks, DecoMark{1, 1, {4, 0}, {4, 1}})
+	b.plugin_dirty = false
+	_ = os.write_entire_file(e.path, transmute([]u8)string("a\nnew\nb\nX\nd\ne"))
+	editor_reload_buffer(&e.ed, b)
+	testing.expect_value(t, len(b.lines), 6)
+	spans := 0
+	for d in b.deco.items {
+		#partial switch d.kind {
+		case .Span:
+			spans += 1
+			testing.expect_value(t, d.from.row, 0)
+		case .Tint:
+			testing.expect_value(t, d.from.row, 4)
+			testing.expect_value(t, d.to.row, 5)
+		}
+	}
+	testing.expect_value(t, spans, 1)
+	testing.expect_value(t, len(b.deco.marks), 1)
+	testing.expect_value(t, b.deco.marks[0].from, Cursor{5, 0})
+	testing.expect_value(t, b.plugin_dirty, true)
+	testing.expect_value(t, b.plugin_lo, 1)
+	testing.expect_value(t, b.plugin_hi, 3)
+}
+
+@(test)
+e2e_text_diff_rows_and_markers :: proc(t: ^testing.T) {
+	e := e2e_start("<<<<<<< a\nsame\nold one\n<<<<<<<<\n=======x\n=======\nsame\nnew one\nextra\n>>>>>>>\n>>>>>>> b")
+	defer e2e_stop(&e)
+	pl := deco_plugin(&e, "dr", `
+		local rows, kinds = qed.buf.find_lines(nil, {"<<<<<<<", "=======", ">>>>>>>"}, {word = true})
+		assert(table.concat(rows, ",") == "1,6,10,11", "word markers in order: " .. table.concat(rows, ","))
+		assert(table.concat(kinds, ",") == "1,2,3,3", "kinds")
+		assert(#qed.buf.find_lines(nil, "<<<<<<<") == 2 and select(2, qed.buf.find_lines(nil, "=")) == nil, "plain prefix")
+		local h = qed.text.diff_rows(nil, 2, 3, 7, 9, {words = true})
+		assert(#h == 1 and h[1].a == 3 and h[1].a_count == 1 and h[1].b == 8 and h[1].b_count == 2, "rows are buffer rows")
+		local s = h[1].spans[1]
+		assert(#h[1].spans == 1 and s[1] == 1 and s[2] == 4 and s[3] == 1 and s[4] == 4, "old|new word span")
+		assert(qed.text.diff_rows(nil, 2, 3, 2, 3)[1] == nil and qed.text.diff_rows(nil, 4, 3, 7, 7)[1].b_count == 1, "equal and empty sides")
+		assert(not pcall(qed.text.diff_rows, nil, 0, 1, 1, 1) and not pcall(qed.text.diff_rows, nil, 1, 99, 1, 1), "out of range")`)
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+}
+
+@(private = "file")
+conflict_keystroke_ms :: proc(blocks, filler, row: int, huge := false) -> f64 {
+	sb := strings.builder_make(context.temp_allocator)
+	for i in 0 ..< blocks {
+		ours := fmt.tprintf("local v%d = %d", i, i)
+		if huge && i == blocks / 2 {
+			ours = strings.concatenate({ours, strings.repeat("x", 1 << 20, context.temp_allocator)}, context.temp_allocator)
+		}
+		fmt.sbprintf(&sb, "<<<<<<< HEAD\n%s\nshared\n=======\nlocal v%d = %d + 1\nshared\n>>>>>>> branch\n", ours, i, i)
+		for k in 0 ..< filler {
+			fmt.sbprintf(&sb, "line %d\n", k)
+		}
+	}
+	e := e2e_start(strings.to_string(sb))
+	defer e2e_stop(&e)
+	plugin_pump(&e.ed)
+	plugin_flush(&e.ed)
+	b := editor_buffer(&e.ed)
+	b.wrap = false
+	b.cursor = {row, 0}
+	KEYS :: 10
+	start := time.tick_now()
+	for _ in 0 ..< KEYS {
+		e2e_type(&e, "z")
+		plugin_flush(&e.ed)
+	}
+	return ms_since(start) / KEYS
+}
+
+// The targets are ~10 ms and ~20 ms; the bounds leave room for a loaded debug test run.
+@(test)
+e2e_conflict_keystroke_cost :: proc(t: ^testing.T) {
+	ms := conflict_keystroke_ms(2000, 3, 10008)
+	testing.expectf(t, ms < 50, "2000 blocks, typing outside: %.2f ms per keystroke", ms)
+	ms = conflict_keystroke_ms(2000, 3, 10001)
+	testing.expectf(t, ms < 50, "2000 blocks, typing in a block: %.2f ms per keystroke", ms)
+	ms = conflict_keystroke_ms(200, 93, 10004, true)
+	testing.expectf(t, ms < 80, "a 1 MB line in the block: %.2f ms per keystroke", ms)
 }

@@ -294,7 +294,8 @@ and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to t
 The bundled `conflict` plugin highlights `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks (theme colors
 `conflict_ours`/`conflict_theirs`/`conflict_base`, tints `conflict`/`conflict_marker`/`conflict_word`)
 with or without git. *Conflict: Resolve* (`Alt+m`) asks Keep Ours / Theirs / Both inside a block and
-jumps to the next block outside one. Rebind with `plugins.conflict.keybinds.Resolve`; the old top-level
+jumps to the next block outside one. Edits rehighlight live in a buffer that had conflicts when opened,
+reloaded or saved; a conflict typed or pasted into another buffer highlights on its next save. Rebind with `plugins.conflict.keybinds.Resolve`; the old top-level
 `keybinds."Git: Resolve Conflict"` warns where it moved.
 
 | Key | Default | Meaning |
@@ -317,10 +318,10 @@ name, and the old `keybinds` entries (`AI: Edit Selection`, ...) moved to `plugi
 | `plugins.ai.completion_enabled` | `false` | Inline FIM completion. *AI: Toggle Inline Completion* flips it for the session. |
 | `plugins.ai.completion_endpoint` | Codestral FIM URL | FIM HTTP endpoint. |
 | `plugins.ai.completion_model` | `codestral-latest` | FIM model name. |
-| `plugins.ai.completion_api_key_env` | `CODESTRAL_API_KEY` | Env var the `curl` child reads the API key from (qed never holds it). |
+| `plugins.ai.completion_api_key_env` | `CODESTRAL_API_KEY` | Env var holding the API key; it must be a variable name. The shell expands it into a here-doc that `curl` reads its header from, so it never appears in a process's argv. |
 | `plugins.ai.completion_max_tokens` | `256` | Max tokens per FIM suggestion. |
 | `plugins.ai.completion_debounce_ms` | `350` | Idle delay after typing before a FIM request. |
-| `plugins.ai.completion_context_lines` | `200` | Lines of prefix/suffix context sent with each FIM request. |
+| `plugins.ai.completion_context_lines` | `200` | Lines of prefix/suffix context sent with each FIM request (each side capped at 64 KB; none on big files). |
 
 ## Writing your own commands
 

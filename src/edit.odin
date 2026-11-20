@@ -165,18 +165,7 @@ buffer_pos_clamp :: proc(b: ^Buffer, p: Cursor) -> Cursor {
 	return {row, col}
 }
 
-buffer_set_text :: proc(b: ^Buffer, text: string) -> bool {
-	lines := strings.split(text, "\n", context.temp_allocator)
-	hunks := text_hunks(b, lines)
-	if len(hunks) == 0 {
-		return false
-	}
-	cursor := text_hunks_map(hunks, b.cursor)
-	anchor, has_anchor := b.selection.?
-	if has_anchor {
-		anchor = text_hunks_map(hunks, anchor)
-	}
-	edit_open(b, .Atomic)
+text_hunks_apply :: proc(b: ^Buffer, lines: []string, hunks: []TextHunk) {
 	#reverse for h in hunks {
 		body := strings.join(lines[h.new_lo:h.new_lo + h.new_n], "\n", context.temp_allocator)
 		last := len(b.lines) - 1
@@ -197,6 +186,21 @@ buffer_set_text :: proc(b: ^Buffer, text: string) -> bool {
 			edit_delete(b, {h.old_lo - 1, len(b.lines[h.old_lo - 1].text)}, {last, len(b.lines[last].text)})
 		}
 	}
+}
+
+buffer_set_text :: proc(b: ^Buffer, text: string) -> bool {
+	lines := strings.split(text, "\n", context.temp_allocator)
+	hunks := text_hunks(b, lines)
+	if len(hunks) == 0 {
+		return false
+	}
+	cursor := text_hunks_map(hunks, b.cursor)
+	anchor, has_anchor := b.selection.?
+	if has_anchor {
+		anchor = text_hunks_map(hunks, anchor)
+	}
+	edit_open(b, .Atomic)
+	text_hunks_apply(b, lines, hunks)
 	buffer_undo_commit(b)
 	b.cursor = buffer_pos_clamp(b, cursor)
 	b.selection = nil

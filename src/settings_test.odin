@@ -439,6 +439,13 @@ test_config_files :: proc(t: ^testing.T) {
 	kb_json, _ = json.parse_string(`{"keybinds": {"Git: Resolve Conflict": "Alt+m"}}`, allocator = context.temp_allocator)
 	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
 	testing.expect(t, len(moved) == 1 && moved[0] == `unknown keybinds/"Git: Resolve Conflict" (moved to plugins/conflict/keybinds/"Resolve")`, "the resolve bind moved to the conflict plugin")
+	kb_json, _ = json.parse_string(`{"keybinds": {"AI: Edit Selection": "Ctrl+k"}}`, allocator = context.temp_allocator)
+	ai_cmd := []Command{{name = "AI: Edit Selection", bare = "Edit Selection", owner = "ai"}}
+	want := `unknown keybinds/"AI: Edit Selection" (moved to plugins/ai/keybinds/"Edit Selection")`
+	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
+	testing.expect(t, len(moved) == 1 && moved[0] == want, "a disabled plugin's moved bind falls back to the table")
+	moved = config_keybinds_unknown(kb_json.(json.Object), ai_cmd)
+	testing.expect(t, len(moved) == 1 && moved[0] == want, "a loaded plugin's command gives the same exact hint")
 	testing.expect(t, command_shortcut("Command Palette") == "Ctrl+g", "palette hint renders the configured string verbatim")
 	pcmd, pok := command_for_key(.Ctrl_G)
 	testing.expect(t, pok && pcmd.name == "Command Palette", "rebound palette bind dispatches")

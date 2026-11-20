@@ -171,8 +171,9 @@ local Handle = {}
 ---Unregisters the handler. A no-op if it is already gone.
 function Handle:off() end
 
----Handlers run as coroutines in plugin load order. `buf_changed(b, rev, typed)` (`typed`: the latest change was the user typing a character, Enter, Backspace or Delete) and
----`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
+---Handlers run as coroutines in plugin load order. `buf_changed(b, rev, typed, lo, hi)` (`typed`: the latest change was the user typing a character, Enter, Backspace or Delete;
+---`lo..hi`: the rows touched since the last delivery, in current rows; rows above `lo` are unchanged, rows below `hi` only shifted) and
+---`cursor_moved(b)` fire at most once per main-loop iteration, and again within the same flush for changes a handler made. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
 ---`plugin_loaded(id)` and `plugin_unloaded(id)` fire for other plugins after startup (hot reload, enable, disable, an error).
@@ -765,6 +766,11 @@ function qed.buf.language(b) end
 ---@return boolean
 function qed.buf.modified(b) end
 
+---True for a buffer opened from a big file (highlighting, bracket matching and LSP are off).
+---@param b qed.Buf
+---@return boolean
+function qed.buf.big(b) end
+
 ---Edit counter; changes on every edit, so equal values mean unchanged text. Pass it as `opts.rev` to guard stale writes.
 ---@param b qed.Buf
 ---@return integer
@@ -789,10 +795,13 @@ function qed.buf.lines(b, from, to) end
 function qed.buf.line(b, row) end
 
 ---Rows whose text starts with `prefix` (plain bytes), in order. Cheap on big buffers, so a `buf_changed` handler can find marker lines without copying the text.
+---With a list of prefixes, also returns each row's prefix index (the first that matches). `word`: the prefix must be followed by the line end or a space.
 ---@param b qed.Buf
----@param prefix string
----@return integer[]
-function qed.buf.find_lines(b, prefix) end
+---@param prefix string|string[]
+---@param opts? {word?: boolean}
+---@return integer[] rows
+---@return integer[]? kinds
+function qed.buf.find_lines(b, prefix, opts) end
 
 ---The whole text, lines joined with LF regardless of the file's line endings.
 ---@param b qed.Buf
@@ -1023,3 +1032,16 @@ function qed.text.width(s) end
 ---@param b string[]
 ---@return qed.DiffHunk[]|nil
 function qed.text.diff(a, b) end
+
+---@class qed.DiffRowsHunk: qed.DiffHunk
+---@field spans? integer[][] with `words`: per paired row (`a + k - 1` with `b + k - 1`), `{a_from, a_to, b_from, b_to}`, the differing columns (`to` exclusive; equal when a side has no change)
+
+---`qed.text.diff` of two row ranges of one buffer, read in core (no text copied into Lua). Hunk rows are buffer rows; `lo > hi` (by one) is an empty side.
+---@param b qed.Buf
+---@param a_lo integer
+---@param a_hi integer
+---@param b_lo integer
+---@param b_hi integer
+---@param opts? {words?: boolean}
+---@return qed.DiffRowsHunk[]|nil
+function qed.text.diff_rows(b, a_lo, a_hi, b_lo, b_hi, opts) end

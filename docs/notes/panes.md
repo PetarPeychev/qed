@@ -503,38 +503,29 @@ Communication is in DESIGN.md (Plugins, File tree, Git tab) and plugins.md (Plug
 | Removed | `treeshim.odin`, `Plugins.shim`, `qed.filetree.*`, the `.Provider` task kind, `PluginQueued.ref`, the M5 status tests (ported to `e2e_filetree_tab_test.odin` on the exports). | |
 | Scale | `bench_filetree_changed` now drives the real git plugin over faked git output (every push moves the sizes) and reports the max slice of both plugins. WSL2, M6 vs M5 on the same bench: 30k changed: git slices <= 49 ms (M5 up to 95), filetree <= 44 ms (M5 54); 50k: git pushes <= 56 ms (M5 up to 194), filetree <= 84 ms (M5 92). The largest remaining slice is the first narrowed fill after an open (~85-90 ms at 50k), in git's task when *Git: Changes* opens the tree. | |
 
-### M7 as built (conflict)
+### M7 as built
 
-The merge-conflict UI is the bundled `conflict` plugin (DESIGN.md Merge conflicts, plugins.md API rows).
+The merge-conflict UI is the bundled `conflict` plugin, AI the bundled `ai` plugin (DESIGN.md Merge
+conflicts and AI plugin; the primitives in plugins.md). Deviations from §7:
 
 | Area | Built | Why |
 |---|---|---|
-| Home | Its own plugin, not `git`. | Markers are text: a conflicted file copied out of a repo, or git disabled, still gets them. Neither plugin needs the other. |
-| Rescans | `buf_open`, `buf_reload`, `buf_changed` (coalesced), `startup` (hot reload): clear the namespace and push everything again. A buffer with no `<<<<<<<` line costs one `qed.buf.find_lines` and nothing is cleared. | Spans drop on any edited row; a full re-push keeps the result equal to the old per-frame scan. A diff of old and new blocks would miss a paste of identical text over a block (its spans drop, the text compares equal). |
-| API | `qed.buf.find_lines(b, prefix)`; `qed.text.diff(a, b)`; a deco `alpha` may be a theme tint key (`conflict`, `conflict_marker`, `conflict_word`), resolved per frame; span `alpha` blends `bg` over the line background (the old `diff_bg` path). `qed.confirm(question, choices)` already existed. | Exact old colors, live theme changes without a re-push, and no 1 MB text copy per keystroke. The word span is a 15-line Lua port of `diff_word_span`; the line pairing reuses the core Myers engine so pairs match. |
-| Anchors | No new anchor kind: tints shift and shrink with edits in core, spans drop and come back in the same flush (before the frame). | The rescan runs before render, so a stale frame never shows. |
-| Resolve | `qed.confirm("Resolve merge conflict:", {"Keep Ours", "Keep Theirs", "Keep Both"})`, a child dialog instead of the exclusive `merge` pane; one `qed.edit` group; rescan right after. | The edit lands after the flush's change check, so its `buf_changed` would come a frame late. |
-| Name, key | *Conflict: Resolve* (was *Git: Resolve Conflict*), `Alt+m`, `plugins.conflict.keybinds.Resolve`; the old top-level bind warns where it moved. Messages say `Conflict:`, not `Git:`. | Phase 13 naming. |
+| Conflict home | Its own plugin, not `git`. | Markers are text: a conflicted file copied out of a repo, or git disabled, still gets them. Neither plugin needs the other. |
+| Conflict scans | `buf_open`, `buf_reload`, `buf_save`, `startup` (hot reload) scan in full; one core `qed.buf.find_lines` pass with the marker list and `word` returns sorted rows and kinds. `buf_changed` (`lo`, `hi`) rescans the markers and redecorates only blocks touching the dirty rows or whose structure changed; blocks elsewhere keep their core-shifted decorations. | Spans drop on edited rows only, so untouched blocks stay correct; the dirty range also catches a paste of identical text over a block, which a content diff of old and new blocks would miss. |
+| Arming | `buf_changed` is held only while some buffer has had blocks since open/reload; dropped on close and on a reload with no blocks. A conflict typed or pasted into a never-conflicted buffer highlights on save or reload. | Keeps the zero-Lua keystroke for plain editing. Resolve then undo still highlights (the buffer stays armed). |
+| Conflict API | `qed.text.diff_rows(..., {words = true})` (core Myers pairing + `diff_word_span`, no block text copied into Lua); a deco `alpha` may be a theme tint key (`conflict`, `conflict_marker`, `conflict_word`, `ai_edit`), resolved per frame; span `alpha` blends `bg` over the line background (the old `diff_bg` path). | Exact old colors, live theme changes without a re-push, no 1 MB text copy per keystroke. |
+| Resolve | `qed.confirm("Resolve merge conflict:", {"Keep Ours", "Keep Theirs", "Keep Both"})`, a child dialog instead of the exclusive `merge` pane; one `qed.edit` group. Core now checks for changes at the top of every flush round, so the edit's `buf_changed` fires in the same flush. | The edit lands after the flush's first change check. |
+| Name, key | *Conflict: Resolve* (was *Git: Resolve Conflict*), `Alt+m`, `plugins.conflict.keybinds.Resolve`; the old top-level bind warns where it moved. | Phase 13 naming. |
 | Marker fg | A whole-line `fg` span; it keeps the syntax attributes (bold, italic) the old full color override dropped. | Spans compose with syntax by design. |
-| fim | The ghost line's background takes the cursor row's decoration tints. | It took the conflict tint from `merge_side` before. |
-| Removed | `conflict.odin`, `conflict_test.odin` (ported to `plugins/conflict/test.lua`), `MergeSide` in `editor_line_bg`, the core `merge` pane. Tests that used `merge_dialog_open` as a generic exclusive pane use `test_dialog_open`. | |
-| Scale | `bench_conflict_keystroke` (debug build, WSL2, 20k lines): no markers +0.4 ms per keystroke; 200 blocks (1800 decorations) ~6-7 ms per keystroke, max slice 8-13 ms; frames drop from 1.45 ms to 0.6 ms (no per-frame scan). | Well inside the 50 ms soft budget. |
-
-### M7 as built: AI
-
-The plugin is in DESIGN.md (AI plugin); the primitives in plugins.md (Decorations, Events). Deviations from §7:
-
-| Area | Built | Why |
-|---|---|---|
-| Range tracking | `qed.deco.mark`/`range`: a byte-position anchor shifted by the primitives and removed when an edit overlaps its inside. The plugin cancels on `buf_changed` when its mark is gone and re-tints from the mark. | The old content search (`llm_locate`, per render and per edit) could relocate onto a duplicate of the block; an anchor is exact and costs nothing per frame. |
-| Tint | A plain decoration tint with the theme tint name `"ai_edit"` (`qed.deco.tint` takes a tint name, resolved per frame). The fixed AI layer in `editor_line_bg` is gone, so the AI tint now sits with the other decoration tints under the current line. | Themes keep their `ai_edit` strength without a plugin-readable tint API. |
-| Inline ghost | Core (`DecoStore.inline`, `qed.deco.inline`): render, row reservation, `Tab` / `Ctrl+Right` / any-key dismiss, all in `editor_dispatch_key`. Any edit clears it. | D8: no raw-key interception by plugins. |
-| Trigger | `buf_changed` gets `typed` (the latest change was typing); the plugin debounces with `qed.defer` and kills the pending timer and `curl` on the next typed change. Paste, undo, accepts and plugin edits do not ask. | The old trigger list (printable, Enter, Backspace, Delete; no Ctrl/Alt) without a raw key event. |
-| HTTP | Still `curl` through `qed.spawn_bg`; no `qed.http`. | Reuses what exists. |
-| Idle cost | The plugin subscribes to `buf_changed` only while a request runs or completion is on. | No task per keystroke for an idle plugin. |
-| Prompt | `qed.prompt{prompt = "AI edit:"}`, a modal child pane, replaces the `aiedit` overlay. | Last overlay besides terminal and find. |
-| Messages | Same texts minus the redundant `AI edit` prefix, now attributed `AI: ...` (e.g. `AI: Edit applied`, `AI: Edit cancelled: block edited`). The `AI:N` count is a right-side plugin segment. | Plugin messages always carry the display name. |
-| Removed | `aiedit.odin`, `llm.odin`, `fim.odin`, `llm_test.odin`, `subprocess_start`, `modules.ai`, `.Ai`, `AI_ENABLED`, the `LLM_*` globals, `editor_modules_sync`, `t.module`; `AI`/`FIM` leave the reserved log labels. `module.odin` is left as empty scaffolding for M8. | |
+| AI ranges | `qed.deco.mark`/`range`: a byte-position anchor shifted by the primitives and removed when an edit overlaps its inside. Set before the prompt and re-read after it. The plugin cancels on `buf_changed` when its mark is gone (`block edited`), on a reload that removed it (`file reloaded`) and on `buf_close`. Reloads apply hunks through the primitives, so a mark on untouched lines survives. | The old content search (`llm_locate`) could relocate onto a duplicate; an anchor is exact and free per frame. |
+| AI tint | A plain decoration tint with the theme tint `"ai_edit"`; the fixed AI layer in `editor_line_bg` is gone, so it stacks with the other decoration tints under the current line. | Themes keep their `ai_edit` strength. |
+| Inline ghost | Core (`DecoStore.inline`, `qed.deco.inline`): render, row reservation, `Tab` / `Ctrl+Right` / any-key dismiss, all in `editor_dispatch_key`. Any edit clears it. The ghost line's background takes the cursor row's decoration tints. | D8: no raw-key interception by plugins. |
+| FIM trigger | `buf_changed`'s `typed`; `qed.defer` debounce, dropped if the cursor or rev moved meanwhile; never on a big buffer (`qed.buf.big`); prefix/suffix capped at 64 KB. | The old trigger list without a raw key event; a click during the debounce cancels. |
+| HTTP | `curl` through `qed.spawn_bg`, the `Authorization` header from a here-doc on fd 3 (`-H @/dev/fd/3`), never in argv; `completion_api_key_env` must be a variable name. | No `qed.http`; the key never shows in `/proc/<pid>/cmdline`. |
+| Idle cost | The AI plugin subscribes to `buf_changed` only while a request runs or completion is on, `buf_reload`/`buf_close` only while a request runs. | No task per keystroke for an idle plugin. |
+| Prompt, messages | `qed.prompt{prompt = "AI edit:"}` replaces the `aiedit` overlay. Messages drop the `AI edit` prefix (`AI: Edit applied`); a non-zero exit says `Command failed (exit N)`. The `AI:N` count is a right-side plugin segment. | Plugin messages carry the display name. |
+| Removed | `conflict.odin`, `conflict_test.odin` (ported to `plugins/conflict/test.lua`), `MergeSide`, the core `merge` pane, `aiedit.odin`, `llm.odin`, `fim.odin`, `llm_test.odin`, `subprocess_start`, `modules.ai`, `.Ai`, `AI_ENABLED`, the `LLM_*` globals, `editor_modules_sync`, `deco_after_reload`. `module.odin` is empty scaffolding for M8. | |
+| Scale | `bench_conflict_keystroke` (debug, WSL2, 20k lines): no markers +0.5 ms per keystroke (no Lua); 200 blocks ~1.8-2.2 ms; 2000 blocks (18k decorations) ~4-4.5 ms, max slice ~5.5 ms (M6 full re-push: ~2.7 ms at 200); a 1 MB line inside a block (wrap off): typing outside ~1.6 ms, inside its block ~3.7 ms. Rendering a visible 1 MB line costs ~230 ms per frame in core regardless (TODO). `e2e_conflict_keystroke_cost` guards the 2000-block and 1 MB cases with loose bounds. | Well inside the 50 ms soft budget. |
 
 ## 8. Decisions
 

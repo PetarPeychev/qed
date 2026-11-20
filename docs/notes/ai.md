@@ -65,7 +65,10 @@ redesign:
 ## Inline completion (ghost-text)
 
 - A typed change (`buf_changed` with `typed`) arms a debounce timer; the next typed change kills the
-  timer and the running request. `prefix`/`suffix` are clamped to `completion_context_lines`.
+  timer and the running request. When the timer fires, a moved cursor or rev (a click) drops it; big
+  buffers never arm it. `prefix`/`suffix` are clamped to `completion_context_lines` and 64 KB each.
+- The key goes in an `Authorization` header that `curl` reads from a here-doc on fd 3 (`-H @/dev/fd/3`),
+  so it never shows in argv; `completion_api_key_env` must be a plain variable name.
 - A reply counts only for the same buffer, rev and cursor; it becomes `qed.deco.inline` text.
 - Core owns everything on the keystroke path: `Tab` accepts all (one undo step), `Ctrl+Right` a
   word, `Esc` / any other key / a click / an edit dismisses.
@@ -73,8 +76,9 @@ redesign:
 ## Prompt modes (chat backend)
 
 - **Selection + prompt (`Ctrl+k`):** with a selection, a `qed.prompt` takes the instruction; the
-  plugin sends the whole file with the selection marked, tracks the range with a mark (an edit
-  inside cancels), and replaces it with the reply's last fenced block as one undo step.
+  plugin sends the whole file with the selection marked, tracks the range with a mark set before the
+  prompt (an edit inside, a reload touching it, or closing the buffer cancels), and replaces it with
+  the reply's last fenced block as one undo step. A non-zero exit discards the reply.
 - **Context + prompt:** no selection; floating prompt pane; send `instruction + cursor context`;
   insert at cursor or replace a range. Streaming optional (`spawn_bg{on_line}`), later.
 

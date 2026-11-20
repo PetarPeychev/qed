@@ -63,6 +63,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"path", qed_buf_path},
 	{"language", qed_buf_language},
 	{"modified", qed_buf_modified},
+	{"big", qed_buf_big},
 	{"rev", qed_buf_rev},
 	{"line_count", qed_buf_line_count},
 	{"lines", qed_buf_lines},
@@ -186,6 +187,7 @@ qed_ui_api := [?]lua.L_Reg {
 qed_text_api := [?]lua.L_Reg {
 	{"width", qed_text_width},
 	{"diff", qed_text_diff},
+	{"diff_rows", qed_text_diff_rows},
 	{nil, nil},
 }
 
@@ -483,6 +485,14 @@ qed_buf_modified :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+qed_buf_big :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	lua.pushboolean(L, b32(b.big))
+	return 1
+}
+
 qed_buf_rev :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
@@ -536,17 +546,36 @@ qed_buf_find_lines :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	b, _ := api_buf(L, entry.editor, 1)
-	prefix := api_string(L, 2)
+	prefixes: []string
+	listed := lua.type(L, 2) == .TABLE
+	if listed {
+		prefixes = api_lines_arg(L, 2)
+	} else {
+		prefixes = {api_string(L, 2)}
+	}
+	word := lua.type(L, 3) == .TABLE && api_opt_bool(L, 3, "word")
 	lua.newtable(L)
+	if listed {
+		lua.newtable(L)
+	}
 	n := 0
 	for line, r in b.lines {
-		if strings.has_prefix(string(line.text[:]), prefix) {
+		text := string(line.text[:])
+		for p, k in prefixes {
+			if !strings.has_prefix(text, p) || (word && len(text) > len(p) && text[len(p)] != ' ') {
+				continue
+			}
 			n += 1
 			lua.pushinteger(L, lua.Integer(r + 1))
-			lua.rawseti(L, -2, lua.Integer(n))
+			lua.rawseti(L, -2 - c.int(listed), lua.Integer(n))
+			if listed {
+				lua.pushinteger(L, lua.Integer(k + 1))
+				lua.rawseti(L, -2, lua.Integer(n))
+			}
+			break
 		}
 	}
-	return 1
+	return 1 + c.int(listed)
 }
 
 qed_buf_text :: proc "c" (L: ^lua.State) -> c.int {
@@ -1877,70 +1906,108 @@ qed_text_width :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-api_lines_arg :: proc(L: ^lua.State, idx: c.int) -> []u64 {
+api_lines_arg :: proc(L: ^lua.State, idx: c.int) -> []string {
 	if lua.type(L, idx) != .TABLE {
 		lua.L_argerror(L, idx, "list of strings expected")
 	}
 	n := int(lua.rawlen(L, idx))
-	out := make([]u64, n, context.temp_allocator)
+	out := make([]string, n, context.temp_allocator)
 	for i in 0 ..< n {
 		if lua.rawgeti(L, idx, lua.Integer(i + 1)) != .STRING {
 			lua.L_argerror(L, idx, "list of strings expected")
 		}
-		s, _ := lua.toodinstring(L, -1)
-		out[i] = diff_hash(transmute([]u8)s)
+		// the table keeps the string alive, so the view outlives the pop
+		out[i], _ = lua.toodinstring(L, -1)
 		lua.pop(L, 1)
 	}
 	return out
 }
 
+api_diff :: proc(a, b: []string) -> ([][4]int, bool) {
+	ha := make([]u64, len(a), context.temp_allocator)
+	for s, i in a {
+		ha[i] = diff_hash(transmute([]u8)s)
+	}
+	hb := make([]u64, len(b), context.temp_allocator)
+	for s, i in b {
+		hb[i] = diff_hash(transmute([]u8)s)
+	}
+	ops, ok := diff_myers(ha, hb)
+	if !ok {
+		return nil, false
+	}
+	return diff_runs(ops, a, b), true
+}
+
+api_hunk_push :: proc(L: ^lua.State, h: [4]int, a0, b0: int) {
+	lua.createtable(L, 0, 5)
+	vals := [4]int{h[0] + a0, h[1], h[2] + b0, h[3]}
+	for k, j in ([4]cstring{"a", "a_count", "b", "b_count"}) {
+		lua.pushinteger(L, lua.Integer(vals[j]))
+		lua.setfield(L, -2, k)
+	}
+}
+
 qed_text_diff :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	a := api_lines_arg(L, 1)
-	b := api_lines_arg(L, 2)
-	ops: []DiffOp
-	ok := true
-	if len(a) == 0 || len(b) == 0 {
-		// diff_myers indexes past its arrays when either side is empty
-		ops = make([]DiffOp, len(a) + len(b), context.temp_allocator)
-		for &op in ops {
-			op = .Delete if len(a) > 0 else .Insert
-		}
-	} else {
-		ops, ok = diff_myers(a, b)
-	}
+	hunks, ok := api_diff(api_lines_arg(L, 1), api_lines_arg(L, 2))
 	if !ok {
 		lua.pushnil(L)
 		return 1
 	}
-	lua.newtable(L)
-	n, ai, bi, i := 0, 1, 1, 0
-	for i < len(ops) {
-		if ops[i] == .Equal {
-			ai += 1
-			bi += 1
-			i += 1
-			continue
+	lua.createtable(L, c.int(len(hunks)), 0)
+	for h, i in hunks {
+		api_hunk_push(L, h, 1, 1)
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	return 1
+}
+
+qed_text_diff_rows :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	n := len(b.lines)
+	rows :: proc(L: ^lua.State, b: ^Buffer, idx: c.int, n: int) -> []string {
+		lo := api_int(L, idx, "row expected")
+		hi := api_int(L, idx + 1, "row expected")
+		if lo < 1 || hi > n || hi < lo - 1 {
+			lua.L_argerror(L, idx, "row range out of bounds")
 		}
-		h := [4]int{ai, 0, bi, 0}
-		for i < len(ops) && ops[i] != .Equal {
-			if ops[i] == .Delete {
-				h[1] += 1
-				ai += 1
-			} else {
-				h[3] += 1
-				bi += 1
+		out := make([]string, hi - lo + 1, context.temp_allocator)
+		for &s, i in out {
+			s = string(b.lines[lo - 1 + i].text[:])
+		}
+		return out
+	}
+	ra := rows(L, b, 2, n)
+	rb := rows(L, b, 4, n)
+	a0, b0 := api_int(L, 2, "row expected"), api_int(L, 4, "row expected")
+	words := lua.type(L, 6) == .TABLE && api_opt_bool(L, 6, "words")
+	hunks, ok := api_diff(ra, rb)
+	if !ok {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.createtable(L, c.int(len(hunks)), 0)
+	for h, i in hunks {
+		api_hunk_push(L, h, a0, b0)
+		if words {
+			pairs := min(h[1], h[3])
+			lua.createtable(L, c.int(pairs), 0)
+			for k in 0 ..< pairs {
+				osp, tsp := diff_word_span(ra[h[0] + k], rb[h[2] + k])
+				lua.createtable(L, 4, 0)
+				for v, j in ([4]int{osp[0], osp[1], tsp[0], tsp[1]}) {
+					lua.pushinteger(L, lua.Integer(v + 1))
+					lua.rawseti(L, -2, lua.Integer(j + 1))
+				}
+				lua.rawseti(L, -2, lua.Integer(k + 1))
 			}
-			i += 1
+			lua.setfield(L, -2, "spans")
 		}
-		lua.createtable(L, 0, 4)
-		for k, j in ([4]cstring{"a", "a_count", "b", "b_count"}) {
-			lua.pushinteger(L, lua.Integer(h[j]))
-			lua.setfield(L, -2, k)
-		}
-		n += 1
-		lua.rawseti(L, -2, lua.Integer(n))
+		lua.rawseti(L, -2, lua.Integer(i + 1))
 	}
 	return 1
 }

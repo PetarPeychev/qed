@@ -313,6 +313,9 @@ DiffOp :: enum u8 {
 
 diff_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]DiffOp, bool) {
 	n, m := len(a), len(b)
+	if n == 0 && m == 0 {
+		return {}, true
+	}
 	maxd := n + m
 	// k stays within ±d ≤ ±cap_d, so the arrays only need the capped span — sizing
 	// by maxd would make each of the up-to-cap_d trace snapshots O(n+m).
@@ -385,6 +388,37 @@ diff_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]DiffO
 		ops[l], ops[r] = ops[r], ops[l]
 	}
 	return ops[:], true
+}
+
+// 0-based {a, a_count, b, b_count} runs; an Equal op on differing text (a hash collision) counts as a change
+diff_runs :: proc(ops: []DiffOp, a, b: []string) -> [][4]int {
+	out := make([dynamic][4]int, context.temp_allocator)
+	ai, bi, i := 0, 0, 0
+	same :: proc(op: DiffOp, a, b: []string, ai, bi: int) -> bool {
+		return op == .Equal && a[ai] == b[bi]
+	}
+	for i < len(ops) {
+		if same(ops[i], a, b, ai, bi) {
+			ai += 1
+			bi += 1
+			i += 1
+			continue
+		}
+		h := [4]int{ai, 0, bi, 0}
+		for i < len(ops) && !same(ops[i], a, b, ai, bi) {
+			if ops[i] != .Insert {
+				h[1] += 1
+				ai += 1
+			}
+			if ops[i] != .Delete {
+				h[3] += 1
+				bi += 1
+			}
+			i += 1
+		}
+		append(&out, h)
+	}
+	return out[:]
 }
 
 diffbase_goto :: proc(editor: ^Editor, dir: int) {

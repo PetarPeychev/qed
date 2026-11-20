@@ -93,6 +93,93 @@ function T.editing_the_range_cancels(t)
 	t.expect_line(1, "Z")
 end
 
+function T.second_edit_survives_the_first_landing(t)
+	t.config{chat_command = "fakechat"}
+	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 300})
+	local b = t.open("a.txt", "one\ntwo\nthree")
+	select_line(b, 1)
+	send(t, "first")
+	t.wait(message_is(t, "Edit sent (1 running)"))
+	select_line(b, 3)
+	t.key("Ctrl+k")
+	t.wait(function() local ui = t.ui(); return ui ~= nil and ui.kind == "prompt" end)
+	t.wait(function() return qed.buf.line(b, 1) == "new" end)
+	t.type("second")
+	t.key("Enter")
+	t.wait(message_is(t, "Edit sent (1 running)"))
+	t.wait(function() return qed.buf.line(b, 3) == "new" end)
+	t.expect_line(2, "two")
+end
+
+function T.prompt_cancel_and_changed_block(t)
+	t.config{chat_command = "fakechat"}
+	t.fake_spawn("fakechat", {stdout = "```\nnew\n```"})
+	local b = t.open("a.txt", "one\ntwo")
+	select_line(b, 1)
+	t.key("Ctrl+k")
+	t.wait(function() return t.ui() ~= nil end)
+	t.key("Esc")
+	t.eq(t.ui(), nil)
+	t.eq(t.procs(), 0)
+	select_line(b, 2)
+	t.key("Ctrl+k")
+	t.wait(function() return t.ui() ~= nil end)
+	qed.buf.insert(b, {row = 2, col = 2}, "X")
+	t.type("go")
+	t.key("Enter")
+	t.wait(message_is(t, "Edit discarded: block changed"))
+	t.eq(t.procs(), 0)
+	t.expect_line(1, "one")
+end
+
+function T.failed_command_discards(t)
+	t.config{chat_command = t.stub("printf '```\\nnew\\n```\\n'; exit 3")}
+	local b = t.open("a.txt", "hello")
+	select_line(b, 1)
+	send(t, "rewrite")
+	t.wait(message_is(t, "Command failed (exit 3)"))
+	t.expect_line(1, "hello")
+end
+
+function T.closing_the_buffer_kills_its_edits(t)
+	t.config{chat_command = "fakechat"}
+	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 5000})
+	local b = t.open("a.txt", "one")
+	select_line(b, 1)
+	send(t, "rewrite")
+	t.wait(message_is(t, "Edit sent (1 running)"))
+	t.eq(t.procs(), 1)
+	t.ok(qed.close(b), "an unmodified buffer closes")
+	t.step()
+	t.eq(t.procs(), 0, "the command is killed")
+	t.ok(not t.screen(22):find("AI:", 1, true), "the count goes")
+end
+
+function T.reload_keeps_untouched_edits(t)
+	t.config{chat_command = "fakechat"}
+	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 400})
+	local b = t.open("a.txt", "one\ntwo\nthree")
+	select_line(b, 3)
+	send(t, "rewrite")
+	t.wait(message_is(t, "Edit sent (1 running)"))
+	qed.fs.write(qed.buf.path(b), "zero\none\ntwo\nthree")
+	t.poll_disk()
+	t.step()
+	t.eq(t.procs(), 1, "a reload elsewhere keeps the request")
+	t.wait(message_is(t, "Edit applied"))
+	t.expect_line(4, "new")
+	qed.save(b)
+	t.wait(function() return not qed.buf.modified(b) end)
+	select_line(b, 4)
+	send(t, "again")
+	t.wait(message_is(t, "Edit sent (1 running)"))
+	qed.fs.write(qed.buf.path(b), "zero\none\nTWO\nchanged")
+	t.poll_disk()
+	t.step()
+	t.eq(t.message(), "Edit cancelled: file reloaded")
+	t.eq(t.procs(), 0)
+end
+
 function T.tint_marks_the_range_while_running(t)
 	t.config{chat_command = "fakechat"}
 	t.fake_spawn("fakechat", {stdout = "```\nnew\n```", delay_ms = 5000})
@@ -250,15 +337,69 @@ function T.fim_only_on_typing(t)
 end
 
 function T.fim_off_by_default_and_toggle(t)
+	t.config{completion_debounce_ms = 0, completion_api_key_env = "HOME"}
 	t.fake_spawn("curl", {stdout = GHOST})
 	fim_open(t)
-	t.type("ab")
+	t.type("a")
 	t.step()
-	t.eq(t.procs(), 0, "off by default")
+	t.ok(not t.log_has("debug", "AI", "request fired"), "off by default")
 	qed.run("AI: Toggle Inline Completion")
 	t.eq(t.message(), "Inline completion: on")
-	t.config{completion_debounce_ms = 0, completion_api_key_env = "HOME"}
-	t.eq(t.procs(), 0, "a config reload resets to the configured default")
+	t.type("b")
+	t.wait(ghost_shown(t))
+	t.key("Esc")
+	t.config{completion_debounce_ms = 0, completion_api_key_env = "HOME", completion_max_tokens = 64}
+	t.type("z")
+	t.step()
+	t.step()
+	t.ok(not t.screen(0):find("AAA", 1, true), "a config change keeps the toggled state only until completion_enabled changes")
+end
+
+function T.fim_click_during_debounce_cancels(t)
+	fim_on(t, {completion_debounce_ms = 100})
+	t.fake_spawn("curl", {stdout = GHOST})
+	local b = fim_open(t)
+	t.type("ab")
+	qed.buf.set_cursor(b, {row = 1, col = 1})
+	pcall(t.wait, function() return t.log_has("debug", "AI", "request fired") end, 300)
+	t.ok(not t.log_has("debug", "AI", "request fired"), "a moved cursor drops the pending request")
+end
+
+function T.fim_skips_big_buffers_and_caps_context(t)
+	fim_on(t)
+	t.fake_spawn("curl", {stdout = "{}"})
+	local b = fim_open(t)
+	qed.buf.insert(b, {row = 1, col = 1}, string.rep("x", 200 * 1024))
+	t.step()
+	t.type("a")
+	t.wait(function() return t.log_has("debug", "AI", "request fired") end)
+	t.ok(t.log_has("debug", "AI", "request fired: prefix=65536B suffix=0B"), "the prefix is capped")
+	local big = t.open("big.txt", string.rep("abcdefghij\n", 220000))
+	t.step()
+	t.ok(qed.buf.big(big), "opened as big")
+	t.type("a")
+	t.step()
+	t.step()
+	t.eq(t.procs(), 0, "no request on a big buffer")
+end
+
+function T.fim_header_not_in_argv(t)
+	fim_on(t)
+	t.fake_spawn("-H @/dev/fd/3 --data-binary @- 3<<EOF\nAuthorization: Bearer $HOME\nEOF", {stdout = GHOST})
+	fim_open(t)
+	t.type("ab")
+	t.wait(ghost_shown(t))
+end
+
+function T.fim_bad_key_env_refused(t)
+	fim_on(t, {completion_api_key_env = "HOME; rm -rf x"})
+	t.fake_spawn("curl", {stdout = GHOST})
+	fim_open(t)
+	t.type("a")
+	t.step()
+	t.step()
+	t.eq(t.message(), 'Inline completion: completion_api_key_env "HOME; rm -rf x" is not a variable name')
+	t.eq(t.procs(), 0)
 end
 
 function T.fim_missing_key_warns_once(t)

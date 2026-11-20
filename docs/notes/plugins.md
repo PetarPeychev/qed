@@ -57,7 +57,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
 | file tree Git tab + status bars: status scan, numstat sizes, renames, deleted files, ignored set, preview base, restore | | **plugin** (phase 11, `plugins/git/tree.lua`) | Since M6 through the `filetree` plugin's exports (`set_tab`, `set_marks`, `set_ignored`, `open`), reached with `qed.plugin("filetree")` at `startup` and on `plugin_loaded`. |
 | file tree | | **plugin** (M5, `plugins/filetree`) | `qed.fs.walk` handles, `ui.open` (tabs, tree list, marks, footer input, chips), `v:select`, `qed.fs.*` writes, `qed.confirm`. Core keeps the walk, tree rows, render, filter and preview. |
-| conflict.odin | KS (per render) | **plugin** (M7, `plugins/conflict`) | `buf_changed`/`buf_open`/`buf_reload`/`startup` rescans over `qed.buf.find_lines`, `qed.deco` tints and spans with theme tint keys, `qed.text.diff`, `qed.confirm`, `qed.edit`. Core keeps the render and the anchor shifts. |
+| conflict.odin | KS (per render) | **plugin** (M7, `plugins/conflict`) | `buf_open`/`buf_reload`/`buf_save`/`startup` scans, `buf_changed` (`lo`, `hi`) incremental rescans only while a buffer is armed, over `qed.buf.find_lines` (marker list, `word`), `qed.deco` tints and spans with theme tint keys, `qed.text.diff_rows` word spans, `qed.confirm`, `qed.edit`. Core keeps the render and the anchor shifts. |
 | projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`; on `qed.ui.open` since M1) | `ui.open{id, query field}`, `view:set/append`, `spawn_bg{on_line}`, `jump`, `ctx.files`. Core keeps the split layout, the preview, the count and hint, the query debounce (keystroke path) and the query/selection memory (`id`). |
 | llm / aiedit | KS (relocate per render) | **plugin** (M7, `plugins/ai`) | `prompt`, `spawn_bg`, `deco.mark`/`range` (range anchors), tints by theme tint name, `edit`, `status.set`. |
 | fim | KS (debounce) | **plugin** (M7, `plugins/ai`); core keeps the ghost | `buf_changed` `typed` + `defer` for the debounce, `spawn_bg` curl, `deco.inline`. Core renders the ghost and handles Tab / Ctrl+Right / dismiss on the keystroke path; Lua only supplies the text. |
@@ -88,7 +88,8 @@ The API is one global, `qed`.
 - Ranges are half-open: `{from, to}`, with `to` after the last byte, so `line:sub(from.col, to.col - 1)` is the text.
 - Positions are `{row, col}` (`qed.Pos` in the stub).
 - `qed.text.width(s)` gives display width.
-- `qed.text.diff(a, b) -> hunks | nil` diffs two string lists with the gutter's engine: `{a, a_count, b, b_count}` runs, `nil` past its edit-distance cap.
+- `qed.text.diff(a, b) -> hunks | nil` diffs two string lists with the gutter's engine: `{a, a_count, b, b_count}` runs, `nil` past its edit-distance cap. Equal lines are checked by content (a hash collision counts as a change).
+- `qed.text.diff_rows(b, a_lo, a_hi, b_lo, b_hi, {words?}) -> hunks | nil` does the same over two row ranges of a buffer, read in core; rows are buffer rows. `words` adds `spans`, per paired row `{a_from, a_to, b_from, b_to}` (`diff_word_span`).
 - The binding is the only place that converts to core's 0-based coordinates.
 
 ### Buffers, cursor, edits
@@ -96,9 +97,9 @@ The API is one global, `qed`.
 |---|---|
 | `qed.buf.current() -> b`, `qed.buf.list() -> b[]` | |
 | `qed.buf.valid(b) -> bool` | Any other call on a closed buffer raises `buffer closed`. |
-| `qed.buf.path(b)`, `.language(b)`, `.modified(b)`, `.rev(b)`, `.line_count(b)` | `rev` is the version used for await safety. |
+| `qed.buf.path(b)`, `.language(b)`, `.modified(b)`, `.big(b)`, `.rev(b)`, `.line_count(b)` | `rev` is the version used for await safety. `big`: opened from a file over `BIG_FILE_BYTES`. |
 | `qed.buf.lines(b, from?, to?) -> string[]`, `.line(b, row)`, `.text(b)` | Bulk copies. No per-line FFI loops. |
-| `qed.buf.find_lines(b, prefix) -> rows` | Rows starting with `prefix` (plain bytes). One core pass, no text copy: a `buf_changed` handler's cheap check. |
+| `qed.buf.find_lines(b, prefix \| prefixes, {word?}) -> rows, kinds?` | Rows starting with `prefix` (plain bytes), in order. With a list, `kinds` holds each row's prefix index. `word`: the prefix is followed by the line end or a space. One core pass, no text copy: a `buf_changed` handler's cheap check. |
 | `qed.buf.insert(b, pos, text) -> pos`, `.delete(b, from, to) -> string`, `.replace(b, from, to, text)` | Wrappers over the primitives. |
 | `qed.buf.set_text(b, text, {rev?}) -> bool` | Minimal-diff whole replace. Returns false if `rev` is stale. |
 | `qed.edit(b, fn, {rev?}) -> bool` | Everything inside `fn` is one undo group. `fn` must not yield. |
@@ -121,7 +122,7 @@ The API is one global, `qed`.
 ### Events
 `qed.on(event, fn) -> handle`, removed with `handle:off()`.
 - Handlers run as coroutines, in plugin load order.
-- A coalesced event fires at most once per main-loop iteration, after dispatch.
+- A coalesced event fires at most once per main-loop iteration, after dispatch, and again within the same flush for a change a handler (or a task resumed by a dialog) made.
 
 | Event | Args | Core waits |
 |---|---|---|
@@ -129,7 +130,7 @@ The API is one global, `qed`.
 | `buf_open`, `buf_close`, `buf_enter` | `b` | |
 | `buf_pre_save` | `b` | **yes**, bounded by `plugin_hook_timeout_ms`. On timeout the save proceeds, logging `.Warn` with the slow plugin's name. |
 | `buf_save`, `buf_reload` | `b` | |
-| `buf_changed` | `b`, `rev`, `typed` | coalesced. `typed`: the latest change was the user typing a character, Enter, Backspace or Delete (no Ctrl/Alt), not a paste, undo, command or plugin edit. |
+| `buf_changed` | `b`, `rev`, `typed`, `lo`, `hi` | coalesced. `lo..hi`: the rows touched since the last delivery (a coalesced union, current rows); rows above `lo` are unchanged, rows below `hi` only shifted. `typed`: the latest change was the user typing a character, Enter, Backspace or Delete (no Ctrl/Alt), not a paste, undo, command or plugin edit. |
 | `cursor_moved` | `b` | coalesced |
 | `language_changed` | `b` | |
 | `root_changed` | `old`, `new` | |
@@ -200,7 +201,7 @@ unless they were created with `{detach = true}`.
 ### Decorations
 - Push only, namespaced per plugin: `ns = qed.deco.ns(name)` (same name, same id). A namespace is usable only by its plugin; unload clears all of them.
 - Colors are theme keys, never hex; an unknown key raises. They resolve per frame, so a theme change recolors.
-- Row anchors shift inside `buffer_insert`/`buffer_delete` (no Lua). An insert at col 0 pushes that row's decorations down with its text, unless the row was empty (a replaced hunk keeps them on its first row). A whole-line delete (col 0 to col 0) drops the deleted rows; a joining delete drops the rows joined into the first. Tints shrink instead of dropping. Spans on any edited row drop. Undo shifts anchors back but never restores dropped decorations. A reload drops spans and clamps the rest.
+- Row anchors shift inside `buffer_insert`/`buffer_delete` (no Lua). An insert at col 0 pushes that row's decorations down with its text, unless the row was empty (a replaced hunk keeps them on its first row). A whole-line delete (col 0 to col 0) drops the deleted rows; a joining delete drops the rows joined into the first. Tints shrink instead of dropping. Spans on any edited row drop. Undo shifts anchors back but never restores dropped decorations. A reload applies its changed hunks through the same primitives, so decorations on untouched lines stay.
 
 | Function | Notes |
 |---|---|
@@ -209,7 +210,7 @@ unless they were created with `{detach = true}`.
 | `qed.deco.ghost(b, ns, row, lines, {above?, color?})` | Virtual rows, one clipped row each, folded into the screen-mapping walkers like the diff ghosts. Order: decoration ghosts above, diff ghosts above, the row, decoration ghosts below, diff ghosts below. Like the diff ghosts, ghosts above the top screen row are hidden. `color` defaults to `ghost_foreground`. |
 | `qed.deco.span(b, ns, from, to, style)` | `{fg?, bg?, alpha?, bold?, underline?}`, over syntax and diff word colors, under find matches and the selection. `alpha` (number or theme tint key, needs `bg`) blends `bg` over the line background. |
 | `qed.deco.eol(b, ns, row, text, color)` | Virtual text one cell after the line end (last wrapped row), clipped at the window edge (a wide char never splits). Several on a row join with a space. |
-| `qed.deco.mark(b, ns, from, to) -> id`, `qed.deco.range(b, ns, id) -> from, to \| nil` | A range anchor, never drawn. Text inserted at or before `from` shifts it, at or after `to` leaves it; an edit overlapping its inside, a reload or a clear removes it (`range` then returns nil). |
+| `qed.deco.mark(b, ns, from, to) -> id`, `qed.deco.range(b, ns, id) -> from, to \| nil` | A range anchor, never drawn. Text inserted at or before `from` shifts it, at or after `to` leaves it; an edit overlapping its inside (a reload touching it included) or a clear removes it (`range` then returns nil). |
 | `qed.deco.inline(b, ns, pos, text, {rev?}) -> shown` | One per buffer: dimmed text at the cursor, not in the buffer, continuation lines on reserved rows. Shown while the cursor stays at `pos` without a selection. Core handles its keys before anything else: `Tab` inserts it, `Ctrl+Right` its next word (the rest stays), any other key, a click or an edit drops it. `false` (nothing set) when `pos` is not the cursor, a selection is active, `text` is empty or `rev` is stale. |
 | `qed.deco.clear(b, ns, from_row?, to_row?)` | Decorations, marks and the inline ghost touching the rows; all when omitted. |
 
@@ -368,8 +369,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | M4 | `qed.fs.walk` handles (`count`, `ready`, `within`, `union`), `qed.fs.copy/rename/remove/mkdir`; the file tree core-built on the pane model; `qed.ui.open` tabs, marks, footer chips and input, tree lists, `v:preview`, `v:expand`; `search` stacks as a child over the tree. | minor |
 | M5 | The file tree becomes the bundled `filetree` plugin (*File Tree: All* replaces *File Tree*, binds under `plugins.filetree.keybinds`); `filetree.odin` becomes `walk.odin`; temporary `qed.filetree.listen/state/request` shim; `toggle = false`, `jump_closes`, `v:select`, `v:expand()`, `h:ignore(false)`, `qed.close{discard}`. | minor |
 | M6 | `qed.export`/`qed.plugin`/`qed.caller`, `qed.emit` + `qed.on("<plugin>:<event>")`, `plugin_loaded`/`plugin_unloaded`; `filetree` exports `set_tab`/`remove_tab`/`set_marks`/`set_ignored`/`open`, `v:tab(i, tabs)`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`, `plugins.git.keybinds.Changes`; *File Tree: Changed* is gone); `treeshim.odin`, `qed.filetree.*` and the `.Provider` task kind are gone; task errors no longer disable a plugin. | minor |
-| M7 (conflict) | The merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`, `plugins.conflict.keybinds.Resolve`; the top-level `Git: Resolve Conflict` bind warns where it moved); `conflict.odin` and the core `merge` pane are gone; `qed.buf.find_lines`, `qed.text.diff`, theme tint keys as deco alphas, blended spans. | minor |
-| M7 (AI) | The bundled `ai` plugin (*AI: Edit Selection*, *Cancel Edits*, *Toggle Inline Completion*, `plugins.ai.*`, binds under `plugins.ai.keybinds`); `qed.deco.mark`/`range`/`inline`, theme tint names in `qed.deco.tint`, `buf_changed`'s `typed`; `aiedit.odin`, `llm.odin`, `fim.odin`, `modules.ai` and `.Ai` are gone. | minor |
+| M7 | The merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`, `plugins.conflict.keybinds.Resolve`; the top-level `Git: Resolve Conflict` bind warns where it moved); the bundled `ai` plugin (*AI: Edit Selection*, *Cancel Edits*, *Toggle Inline Completion*, `plugins.ai.*`, binds under `plugins.ai.keybinds`); `qed.buf.find_lines` (lists, `word`), `qed.buf.big`, `qed.text.diff`/`diff_rows`, `qed.deco.mark`/`range`/`inline`, theme tint keys as deco alphas, blended spans, `buf_changed`'s `typed`/`lo`/`hi`, change detection every flush round, hunk-applied reloads; `conflict.odin`, the core `merge` pane, `aiedit.odin`, `llm.odin`, `fim.odin`, `modules.ai` and `.Ai` are gone. | minor |
 | later | The remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions

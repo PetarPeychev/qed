@@ -174,3 +174,16 @@ test_word_span_grow :: proc(t: ^testing.T) {
 	testing.expect_value(t, n[0], 2)
 	testing.expect_value(t, n[1], 4)
 }
+
+@(test)
+test_diff_myers_both_empty :: proc(t: ^testing.T) {
+	ops, ok := diff_myers({}, {})
+	testing.expect(t, ok && len(ops) == 0, "two empty sides diff to nothing")
+}
+
+@(test)
+test_diff_runs_collision_is_a_change :: proc(t: ^testing.T) {
+	hunks := diff_runs({.Equal, .Equal, .Equal}, {"a", "b", "c"}, {"a", "X", "c"})
+	testing.expect_value(t, len(hunks), 1)
+	testing.expect_value(t, hunks[0], [4]int{1, 1, 1, 1})
+}

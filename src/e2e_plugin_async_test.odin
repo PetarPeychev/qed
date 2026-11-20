@@ -47,7 +47,7 @@ e2e_plugin_events :: proc(t: ^testing.T) {
 
 	e2e_key(&e, tb2.Key(0), {}, 'x')
 	rev := editor_buffer(&e.ed).rev
-	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_changed %d %d true;cursor_moved %d;", first, rev, first))
+	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_changed %d %d true 1 1;cursor_moved %d;", first, rev, first))
 
 	e2e_key(&e, .Ctrl_S)
 	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_pre_save %d;buf_save %d;", first, first))
@@ -72,7 +72,7 @@ e2e_plugin_events :: proc(t: ^testing.T) {
 	editor_reload_buffer(&e.ed, editor_buffer(&e.ed))
 	plugin_flush(&e.ed)
 	rev = editor_buffer(&e.ed).rev
-	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_reload %d;buf_changed %d %d false;", first, first, rev))
+	testing.expect_value(t, e2e_trace(&e), fmt.tprintf("buf_reload %d;buf_changed %d %d false 1 1;", first, first, rev))
 
 	old := strings.clone(e.ed.working_root, context.temp_allocator)
 	root := filepath.dir(e.path)
@@ -82,10 +82,36 @@ e2e_plugin_events :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_plugin_changed_range :: proc(t: ^testing.T) {
+	e := e2e_start("0\n1\n2\n3\n4\n5\n6\n7\n8\n9")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "rng", `
+		got = ""
+		return {setup = function()
+			qed.on("buf_changed", function(_, _, _, lo, hi) got = got .. lo .. "-" .. hi .. ";" end)
+		end}`)
+	plugin_flush(&e.ed)
+	b := editor_buffer(&e.ed)
+	buffer_insert(b, {2, 0}, "x")
+	buffer_insert(b, {6, 1}, "\nnew")
+	plugin_flush(&e.ed)
+	testing.expect_value(t, sched_var(&e.ed, "got"), "3-8;")
+
+	buffer_insert(b, {8, 0}, "y")
+	delete(buffer_delete(b, {1, 0}, {4, 0}))
+	plugin_flush(&e.ed)
+	testing.expect_value(t, sched_var(&e.ed, "got"), "3-8;2-6;")
+
+	delete(buffer_delete(b, {3, 0}, {5, 1}))
+	buffer_insert(b, {0, 0}, "a\nb\n")
+	plugin_flush(&e.ed)
+	testing.expect_value(t, sched_var(&e.ed, "got"), "3-8;2-6;1-6;")
+}
+
+@(test)
 e2e_plugin_coalesce :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
-	plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "conflict"))
 	e2e_plugin(&e, "quiet", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`)
 	plugin_pump(&e.ed)
 	before := e.ed.plugins.resumes

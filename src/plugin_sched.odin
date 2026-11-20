@@ -162,13 +162,14 @@ PluginSave :: struct {
 }
 
 PluginQueued :: struct {
-	event: PluginEvent,
-	data:  i32,
-	buf:   u64,
-	n:     i64,
-	a, b:  string,
-	only:  string,
-	typed: bool,
+	event:  PluginEvent,
+	data:   i32,
+	buf:    u64,
+	n:      i64,
+	a, b:   string,
+	only:   string,
+	typed:  bool,
+	lo, hi: int,
 }
 
 PluginLspResult :: struct {
@@ -466,7 +467,9 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 		lua.pushinteger(L, lua.Integer(q.buf))
 		lua.pushinteger(L, lua.Integer(q.n))
 		lua.pushboolean(L, b32(q.typed))
-		return 3
+		lua.pushinteger(L, lua.Integer(q.lo))
+		lua.pushinteger(L, lua.Integer(q.hi))
+		return 5
 	case .Buf_Close:
 		lua.pushinteger(L, lua.Integer(q.buf))
 		lua.pushodinstring(L, q.a)
@@ -675,31 +678,43 @@ plugin_queue :: proc(editor: ^Editor, q: PluginQueued) {
 	append(&p.queue, q)
 }
 
+plugin_buffers_check :: proc(editor: ^Editor) {
+	if editor.welcome {
+		return
+	}
+	for &b in editor.buffers {
+		if !b.plugin_seen {
+			b.plugin_seen = true
+			b.plugin_rev = b.rev
+			b.plugin_cursor = b.cursor
+			b.plugin_dirty = false
+			continue
+		}
+		if b.rev != b.plugin_rev {
+			b.plugin_rev = b.rev
+			last := len(b.lines)
+			lo, hi := 1, last
+			if b.plugin_dirty {
+				lo, hi = clamp(b.plugin_lo + 1, 1, last), clamp(b.plugin_hi + 1, 1, last)
+			}
+			b.plugin_dirty = false
+			plugin_queue(editor, {event = .Buf_Changed, buf = b.id, n = i64(b.rev), typed = b.typed_rev == b.rev, lo = lo, hi = hi})
+		}
+		if b.cursor != b.plugin_cursor {
+			b.plugin_cursor = b.cursor
+			plugin_queue(editor, {event = .Cursor_Moved, buf = b.id})
+		}
+	}
+}
+
 plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 	p := &editor.plugins
 	if p.L == nil {
 		return false
 	}
-	if !editor.welcome {
-		for &b in editor.buffers {
-			if !b.plugin_seen {
-				b.plugin_seen = true
-				b.plugin_rev = b.rev
-				b.plugin_cursor = b.cursor
-				continue
-			}
-			if b.rev != b.plugin_rev {
-				b.plugin_rev = b.rev
-				plugin_queue(editor, {event = .Buf_Changed, buf = b.id, n = i64(b.rev), typed = b.typed_rev == b.rev})
-			}
-			if b.cursor != b.plugin_cursor {
-				b.plugin_cursor = b.cursor
-				plugin_queue(editor, {event = .Cursor_Moved, buf = b.id})
-			}
-		}
-	}
 	plugin_views_flush(editor)
 	for _ in 0 ..< PLUGIN_FLUSH_ROUNDS {
+		plugin_buffers_check(editor)
 		if len(p.queue) == 0 {
 			break
 		}
