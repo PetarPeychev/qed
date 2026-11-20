@@ -361,3 +361,24 @@ e2e_files_big :: proc(t: ^testing.T) {
 	gutter := editor_gutter_width(&e.ed)
 	testing.expect_value(t, e2e_cell(&e, gutter + 0, 0), 'X')
 }
+
+@(private = "file")
+format_save :: proc(content: string, markdown: bool) -> string {
+	e := e2e_start(content)
+	defer e2e_stop(&e)
+	if markdown {
+		editor_set_language(&e.ed, editor_buffer(&e.ed), .Markdown)
+	}
+	e2e_plugin_config(&e, "format", `{"trim_whitespace_on_save": true, "final_newline_on_save": true}`)
+	e2e_type(&e, "z")
+	e2e_key(&e, .Ctrl_S)
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return editor_buffer(&e.ed).modified})
+	return strings.clone(e2e_read_disk(e.path), context.temp_allocator)
+}
+
+@(test)
+e2e_files_format_trim_on_save :: proc(t: ^testing.T) {
+	testing.expect_value(t, format_save("a  \nb\t\nkeep\nhard break  \n   \nx \t\nlast  ", false), "za\nb\nkeep\nhard break\n\nx\nlast\n")
+	testing.expect_value(t, format_save("a  \n  \nhard break  \nx \t\nlast  ", true), "za  \n\nhard break  \nx\nlast  \n")
+	testing.expect_value(t, format_save("clean", false), "zclean\n")
+}

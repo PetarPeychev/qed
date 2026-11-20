@@ -669,6 +669,18 @@ e2e_text_diff_rows_and_markers :: proc(t: ^testing.T) {
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 }
 
+@(test)
+e2e_buf_find_trailing :: proc(t: ^testing.T) {
+	e := e2e_start("a  \nclean\n\t\n\nb \t é  \nend")
+	defer e2e_stop(&e)
+	pl := deco_plugin(&e, "ft", `
+		local rows, from, to = qed.buf.find_trailing(nil)
+		assert(table.concat(rows, ",") == "1,3,5", "rows: " .. table.concat(rows, ","))
+		assert(table.concat(from, ",") == "2,1,7", "from: " .. table.concat(from, ","))
+		assert(table.concat(to, ",") == "4,2,9", "to: " .. table.concat(to, ","))`)
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+}
+
 @(private = "file")
 conflict_keystroke_ms :: proc(blocks, filler, row: int, huge := false) -> f64 {
 	sb := strings.builder_make(context.temp_allocator)
