@@ -1102,9 +1102,17 @@ lsp_hover_contents :: proc(v: json.Value) -> string {
 	case json.String:
 		return string(c)
 	case json.Object:
-		if val, ok := c["value"].(string); ok {
-			return val
+		val, ok := c["value"].(string)
+		if !ok {
+			return ""
 		}
+		if lang, has := c["language"].(string); has {
+			return fmt.tprintf("```%s\n%s\n```", lang, val)
+		}
+		if kind, _ := c["kind"].(string); kind == "plaintext" {
+			return md_escape_plain(val)
+		}
+		return val
 	case json.Array:
 		sb := strings.builder_make(context.temp_allocator)
 		for e in c {
@@ -1113,7 +1121,7 @@ lsp_hover_contents :: proc(v: json.Value) -> string {
 				continue
 			}
 			if strings.builder_len(sb) > 0 {
-				strings.write_byte(&sb, '\n')
+				strings.write_string(&sb, "\n\n")
 			}
 			strings.write_string(&sb, part)
 		}

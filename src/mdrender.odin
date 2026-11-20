@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:math"
 import "core:strconv"
 import "core:strings"
 import "core:unicode"
@@ -97,18 +98,22 @@ MdRender :: struct {
 	slugs:       map[string]int,
 	prefix:      [dynamic]MdPrefix,
 	gap, tight:  bool,
+	nest:        int,
+	inline:      int,
 	depth:       int,
 	em, strong:  int,
 }
 
 MD_BULLETS := [?]string{"•", "◦", "▪"}
+MD_MAX_NEST :: 64
+MD_SCAN_MAX :: 4096
 
 md_style :: proc() -> MdStyle {
 	capture :: proc(name: string, fallback: tb2.Color) -> tb2.Color {
 		c, ok := syntax_capture_color("markdown", name)
 		return c if ok else fallback
 	}
-	return {
+	st := MdStyle {
 		fg = COLOR_PANE_FG,
 		heading = capture("text.title", color_attr(COLOR_PANE_PROMPT_FG, .Bold)),
 		code = capture("text.literal", COLOR_SYN_CODE),
@@ -120,6 +125,24 @@ md_style :: proc() -> MdStyle {
 		border = COLOR_PANE_BORDER,
 		dim = COLOR_PANE_SHORTCUT_FG,
 	}
+	// light themes pick a faint code color; on the band it must stay readable
+	if md_contrast(st.code, st.code_bg) < 3 {
+		st.code = tb2.Color(u64(COLOR_PANE_FG) | color_attrs(st.code))
+	}
+	return st
+}
+
+md_contrast :: proc(a, b: tb2.Color) -> f32 {
+	lum :: proc(c: tb2.Color) -> f32 {
+		ch :: proc(v: u64) -> f32 {
+			f := f32(v & 0xff) / 255
+			return f / 12.92 if f <= 0.03928 else math.pow((f + 0.055) / 1.055, 2.4)
+		}
+		v := u64(c)
+		return 0.2126 * ch(v >> 16) + 0.7152 * ch(v >> 8) + 0.0722 * ch(v)
+	}
+	la, lb := lum(a), lum(b)
+	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 }
 
 md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
@@ -138,9 +161,24 @@ md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
 	r.prefix = make([dynamic]MdPrefix, context.temp_allocator)
 	raw := strings.split(src, "\n", context.temp_allocator)
 	for &l in raw {
-		l = md_expand_indent(strings.trim_right(l, "\r"))
+		l = md_expand_indent(md_sanitize(strings.trim_right(l, "\r")))
+		// indent past the nesting cap means nothing, and every level rescans it
+		if n := md_indent(l); n > 4 * MD_MAX_NEST {
+			l = l[n - 4 * MD_MAX_NEST:]
+		}
 	}
-	md_blocks(&r, md_parse(&r, raw))
+	blocks := make([dynamic]MdBlock, context.temp_allocator)
+	if len(raw) > 1 && raw[0] == "---" {
+		for k in 1 ..< len(raw) {
+			if raw[k] == "---" || raw[k] == "..." {
+				append(&blocks, MdBlock{kind = .Code, lines = raw[1:k], info = "yaml"})
+				raw = raw[k + 1:]
+				break
+			}
+		}
+	}
+	append(&blocks, ..md_parse(&r, raw))
+	md_blocks(&r, blocks[:])
 	if len(r.links) > 0 {
 		md_gap(&r)
 		for url, i in r.links {
@@ -160,6 +198,23 @@ md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
 		pop(&r.out)
 	}
 	return r.out[:]
+}
+
+md_sanitize :: proc(line: string) -> string {
+	bad := false
+	for c in transmute([]u8)line {
+		bad ||= (c < 0x20 && c != '\t') || c == 0x7f
+	}
+	if !bad {
+		return line
+	}
+	out := transmute([]u8)strings.clone(line, context.temp_allocator)
+	for &c in out {
+		if (c < 0x20 && c != '\t') || c == 0x7f {
+			c = ' '
+		}
+	}
+	return string(out)
 }
 
 md_expand_indent :: proc(line: string) -> string {
@@ -191,17 +246,53 @@ md_indent :: proc(line: string) -> int {
 	return n
 }
 
-md_blank :: proc(line: string) -> bool {
-	return strings.trim_space(line) == ""
+// plaintext as markdown that renders verbatim: punctuation escaped, indent kept as no-break spaces, every line break hard
+md_escape_plain :: proc(text: string) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	lines := strings.split(text, "\n", context.temp_allocator)
+	for line, k in lines {
+		l := strings.trim_right(line, "\r")
+		n := md_indent(l)
+		for _ in 0 ..< n {
+			strings.write_string(&sb, "\u00a0")
+		}
+		for c in transmute([]u8)l[n:] {
+			if md_is_punct(c) {
+				strings.write_byte(&sb, '\\')
+			}
+			strings.write_byte(&sb, c)
+		}
+		if k < len(lines) - 1 {
+			blank := md_blank(l) || (k + 1 < len(lines) && md_blank(lines[k + 1]))
+			strings.write_string(&sb, "\n" if blank else "\\\n")
+		}
+	}
+	return strings.to_string(sb)
 }
 
-md_parse :: proc(r: ^MdRender, lines: []string) -> []MdBlock {
+md_trim :: proc(s: string) -> string {
+	return strings.trim(s, " \t")
+}
+
+md_blank :: proc(line: string) -> bool {
+	return md_trim(line) == ""
+}
+
+md_parse :: proc(r: ^MdRender, lines_in: []string) -> []MdBlock {
 	blocks := make([dynamic]MdBlock, context.temp_allocator)
+	// container bodies can start with a tab once their prefix is stripped
+	lines := make([]string, len(lines_in), context.temp_allocator)
+	for l, k in lines_in {
+		lines[k] = md_expand_indent(l)
+	}
+	r.nest += 1
+	defer r.nest -= 1
+	nest_ok := r.nest < MD_MAX_NEST
 	i := 0
 	for i < len(lines) {
 		line := lines[i]
 		ind := md_indent(line)
-		t := strings.trim_space(line)
+		t := md_trim(line)
 		if t == "" {
 			i += 1
 			continue
@@ -212,7 +303,7 @@ md_parse :: proc(r: ^MdRender, lines: []string) -> []MdBlock {
 				append(&code, lines[i][4:] if len(lines[i]) >= 4 else "")
 				i += 1
 			}
-			for len(code) > 0 && strings.trim_space(code[len(code) - 1]) == "" {
+			for len(code) > 0 && md_trim(code[len(code) - 1]) == "" {
 				pop(&code)
 			}
 			append(&blocks, MdBlock{kind = .Code, lines = code[:]})
@@ -222,7 +313,7 @@ md_parse :: proc(r: ^MdRender, lines: []string) -> []MdBlock {
 			code := make([dynamic]string, context.temp_allocator)
 			i += 1
 			for i < len(lines) {
-				ct := strings.trim_space(lines[i])
+				ct := md_trim(lines[i])
 				if cf, cn, cinfo, cok := md_fence(ct); cok && cf == fence && cn >= n && cinfo == "" && md_indent(lines[i]) < 4 {
 					i += 1
 					break
@@ -243,8 +334,10 @@ md_parse :: proc(r: ^MdRender, lines: []string) -> []MdBlock {
 			i += 1
 			continue
 		}
-		if t[0] == '>' {
+		if t[0] == '>' && nest_ok {
 			sub := make([dynamic]string, context.temp_allocator)
+			append(&sub, strings.trim_prefix(t[1:], " "))
+			i += 1
 			for i < len(lines) {
 				l := lines[i]
 				lt := strings.trim_left(l, " ")
@@ -266,7 +359,7 @@ md_parse :: proc(r: ^MdRender, lines: []string) -> []MdBlock {
 			append(&blocks, MdBlock{kind = .Quote, children = md_parse(r, sub[:])})
 			continue
 		}
-		if _, ok := md_list_marker(line); ok {
+		if _, ok := md_list_marker(line); ok && nest_ok {
 			b: MdBlock
 			b, i = md_parse_list(r, lines, i)
 			append(&blocks, b)
@@ -279,9 +372,13 @@ md_parse :: proc(r: ^MdRender, lines: []string) -> []MdBlock {
 		}
 		if md_html_start(t) {
 			sub := make([dynamic]string, context.temp_allocator)
-			for i < len(lines) && !md_blank(lines[i]) {
-				append(&sub, strings.trim_space(lines[i]))
+			comment := strings.has_prefix(t, "<!--")
+			for i < len(lines) && (comment || !md_blank(lines[i])) {
+				append(&sub, md_trim(lines[i]))
 				i += 1
+				if comment && strings.contains(sub[len(sub) - 1], "-->") {
+					comment = false
+				}
 			}
 			append(&blocks, MdBlock{kind = .Html, text = strings.join(sub[:], " ", context.temp_allocator)})
 			continue
@@ -294,23 +391,23 @@ md_parse :: proc(r: ^MdRender, lines: []string) -> []MdBlock {
 			continue
 		}
 		para := make([dynamic]string, context.temp_allocator)
+		append(&para, line)
+		i += 1
 		level := 0
 		for i < len(lines) {
 			l := lines[i]
 			if md_blank(l) {
 				break
 			}
-			if len(para) > 0 {
-				if level = md_setext(l); level > 0 {
-					i += 1
-					break
-				}
-				if md_interrupts(l) {
-					break
-				}
-				if _, _, ok := md_parse_table(lines, i); ok {
-					break
-				}
+			if level = md_setext(l); level > 0 {
+				i += 1
+				break
+			}
+			if md_interrupts(l) {
+				break
+			}
+			if _, _, ok := md_parse_table(lines, i); ok {
+				break
 			}
 			append(&para, l)
 			i += 1
@@ -349,7 +446,7 @@ md_setext :: proc(line: string) -> int {
 	if md_indent(line) >= 4 {
 		return 0
 	}
-	t := strings.trim_space(line)
+	t := md_trim(line)
 	if t == "" || (t[0] != '=' && t[0] != '-') {
 		return 0
 	}
@@ -365,7 +462,7 @@ md_interrupts :: proc(line: string) -> bool {
 	if md_indent(line) >= 4 {
 		return false
 	}
-	t := strings.trim_space(line)
+	t := md_trim(line)
 	if t == "" {
 		return false
 	}
@@ -493,7 +590,7 @@ md_parse_list :: proc(r: ^MdRender, lines: []string, start: int) -> (MdBlock, in
 }
 
 md_table_cells :: proc(line: string) -> []string {
-	t := strings.trim_space(line)
+	t := md_trim(line)
 	if strings.has_prefix(t, "|") {
 		t = t[1:]
 	}
@@ -522,7 +619,7 @@ md_table_cells :: proc(line: string) -> []string {
 			i += n
 			continue
 		case c == '|' && tick == 0:
-			append(&cells, strings.trim_space(strings.clone(strings.to_string(sb), context.temp_allocator)))
+			append(&cells, md_trim(strings.clone(strings.to_string(sb), context.temp_allocator)))
 			strings.builder_reset(&sb)
 			i += 1
 			continue
@@ -530,7 +627,7 @@ md_table_cells :: proc(line: string) -> []string {
 		strings.write_byte(&sb, c)
 		i += 1
 	}
-	append(&cells, strings.trim_space(strings.to_string(sb)))
+	append(&cells, md_trim(strings.to_string(sb)))
 	return cells[:]
 }
 
@@ -583,13 +680,23 @@ md_html_start :: proc(t: string) -> bool {
 		return true
 	}
 	j := 2 if t[1] == '/' else 1
-	if j >= len(t) || !md_is_alpha(t[j]) {
-		return false
-	}
+	start := j
 	for j < len(t) && (md_is_alnum(t[j]) || t[j] == '-') {
 		j += 1
 	}
+	if !md_html_known(t[start:j]) {
+		return false
+	}
 	return j == len(t) || t[j] == ' ' || t[j] == '>' || t[j] == '/'
+}
+
+// only real tag names, so hover types like Vec<T> or Promise<Response> stay text
+md_html_known :: proc(name: string) -> bool {
+	switch strings.to_lower(name, context.temp_allocator) {
+	case "br", "p", "div", "img", "b", "strong", "i", "em", "code", "a", "span", "sup", "sub", "kbd", "details", "summary", "table", "thead", "tbody", "tr", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "hr", "pre", "picture", "source", "center":
+		return true
+	}
+	return false
 }
 
 md_ref_def :: proc(t: string) -> (label, url: string, ok: bool) {
@@ -600,16 +707,26 @@ md_ref_def :: proc(t: string) -> (label, url: string, ok: bool) {
 	if close <= 1 {
 		return
 	}
-	rest := strings.trim_space(t[close + 2:])
+	rest := md_trim(t[close + 2:])
 	if rest == "" {
 		return
 	}
+	tail := ""
 	if strings.has_prefix(rest, "<") {
-		if e := strings.index_byte(rest, '>'); e > 0 {
-			rest = rest[1:e]
+		e := strings.index_byte(rest, '>')
+		if e <= 0 {
+			return
 		}
+		rest, tail = rest[1:e], rest[e + 1:]
 	} else if sp := strings.index_any(rest, " \t"); sp >= 0 {
-		rest = rest[:sp]
+		rest, tail = rest[:sp], rest[sp:]
+	}
+	tail = md_trim(tail)
+	if tail != "" {
+		close_ch := u8(')') if tail[0] == '(' else tail[0]
+		if (tail[0] != '"' && tail[0] != '\'' && tail[0] != '(') || len(tail) < 2 || tail[len(tail) - 1] != close_ch {
+			return
+		}
 	}
 	return md_ref_key(t[1:close]), rest, true
 }
@@ -630,7 +747,7 @@ md_fence :: proc(trimmed: string) -> (fence: u8, n: int, info: string, ok: bool)
 	if n < 3 {
 		return
 	}
-	info = strings.trim_space(trimmed[n:])
+	info = md_trim(trimmed[n:])
 	if c == '`' && strings.index_byte(info, '`') >= 0 {
 		return
 	}
@@ -677,10 +794,10 @@ md_heading :: proc(trimmed: string) -> (level: int, text: string, ok: bool) {
 	if n == 0 || n > 6 || (n < len(trimmed) && trimmed[n] != ' ') {
 		return
 	}
-	rest := strings.trim_space(trimmed[n:])
+	rest := md_trim(trimmed[n:])
 	closing := strings.trim_right(rest, "#")
 	if closing == "" || strings.has_suffix(closing, " ") {
-		rest = strings.trim_space(closing)
+		rest = md_trim(closing)
 	}
 	return n, rest, true
 }
@@ -952,20 +1069,35 @@ md_emit_table_flat :: proc(r: ^MdRender, cells: [][][]MdSpan) {
 
 md_prefix_spans :: proc(r: ^MdRender, consume: bool) -> [dynamic]MdSpan {
 	spans := make([dynamic]MdSpan, 0, len(r.prefix) + 4, context.temp_allocator)
-	for &p in r.prefix {
+	shown := md_prefix_shown(r)
+	for &p, k in r.prefix {
 		s := p.rest
 		if p.pending && consume {
 			s = p.first
 			p.pending = false
 		}
-		append(&spans, MdSpan{text = s, fg = p.fg})
+		if k < shown {
+			append(&spans, MdSpan{text = s, fg = p.fg})
+		}
 	}
 	return spans
 }
 
+// deep nesting keeps only the outer prefixes that fit in half the width, so text never starves
+md_prefix_shown :: proc(r: ^MdRender) -> int {
+	w := 0
+	for p, k in r.prefix {
+		w += md_text_width(p.rest)
+		if w > r.width / 2 {
+			return k
+		}
+	}
+	return len(r.prefix)
+}
+
 md_avail :: proc(r: ^MdRender) -> int {
 	w := 0
-	for p in r.prefix {
+	for p in r.prefix[:md_prefix_shown(r)] {
 		w += md_text_width(p.rest)
 	}
 	return max(1, r.width - w)
@@ -974,7 +1106,17 @@ md_avail :: proc(r: ^MdRender) -> int {
 md_emit :: proc(r: ^MdRender, content: []MdSpan, fill: rune = 0, fill_fg: tb2.Color = {}, fill_bg: tb2.Color = {}) {
 	spans := md_prefix_spans(r, true)
 	append(&spans, ..content)
-	append(&r.out, MdLine{spans = spans[:], fill = fill, fill_fg = fill_fg, fill_bg = fill_bg})
+	out := spans[:]
+	if md_spans_width(out) > r.width {
+		cells := md_cells(out)
+		w, n := 0, 0
+		for n < len(cells) && w + cells[n].w <= r.width {
+			w += cells[n].w
+			n += 1
+		}
+		out = md_cells_to_spans(cells[:n])
+	}
+	append(&r.out, MdLine{spans = out, fill = fill, fill_fg = fill_fg, fill_bg = fill_bg})
 }
 
 md_emit_blank :: proc(r: ^MdRender) {
@@ -1023,6 +1165,12 @@ md_inline_flush :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, sb: ^strings.Buil
 }
 
 md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: tb2.Color) {
+	r.inline += 1
+	defer r.inline -= 1
+	if r.inline > MD_MAX_NEST {
+		append(spans, MdSpan{text = text, fg = fg, link = r.link})
+		return
+	}
 	sb := strings.builder_make(context.temp_allocator)
 	i := 0
 	for i < len(text) {
@@ -1039,7 +1187,7 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 			if close := md_find_run(text, i + n, '`', n); close >= 0 {
 				md_inline_flush(r, spans, &sb, fg)
 				code, _ := strings.replace_all(text[i + n:close], "\n", " ", context.temp_allocator)
-				if len(code) >= 2 && code[0] == ' ' && code[len(code) - 1] == ' ' && strings.trim_space(code) != "" {
+				if len(code) >= 2 && code[0] == ' ' && code[len(code) - 1] == ' ' && md_trim(code) != "" {
 					code = code[1:len(code) - 1]
 				}
 				append(spans, MdSpan{text = code, fg = md_fg(r.style.code, fg), bg = r.style.code_bg, link = r.link})
@@ -1175,6 +1323,7 @@ md_plain :: proc(s: string) -> string {
 }
 
 md_find_run :: proc(text: string, from: int, c: u8, n: int) -> int {
+	text := text[:min(len(text), from + MD_SCAN_MAX)]
 	j := from
 	for j < len(text) {
 		if text[j] != c {
@@ -1199,6 +1348,7 @@ md_can_open :: proc(text: string, i, n: int, c: u8) -> bool {
 }
 
 md_find_closer :: proc(text: string, from: int, c: u8, n: int) -> int {
+	text := text[:min(len(text), from + MD_SCAN_MAX)]
 	j := from
 	for j < len(text) {
 		ch := text[j]
@@ -1232,6 +1382,7 @@ md_find_closer :: proc(text: string, from: int, c: u8, n: int) -> int {
 }
 
 md_link_at :: proc(r: ^MdRender, text: string, i: int) -> (label_end: int, dest: string, end: int, ok: bool) {
+	text := text[:min(len(text), i + MD_SCAN_MAX)]
 	depth := 0
 	j := i
 	label_end = -1
@@ -1291,10 +1442,21 @@ md_link_at :: proc(r: ^MdRender, text: string, i: int) -> (label_end: int, dest:
 			}
 			dest = text[start:k]
 		}
-		for k < len(text) && text[k] != ')' {
+		for k < len(text) && md_is_space(text[k]) {
 			k += 1
 		}
-		if k >= len(text) {
+		if k < len(text) && (text[k] == '"' || text[k] == '\'' || text[k] == '(') {
+			close := u8(')') if text[k] == '(' else text[k]
+			e := strings.index_byte(text[k + 1:], close)
+			if e < 0 {
+				return
+			}
+			k += e + 2
+			for k < len(text) && md_is_space(text[k]) {
+				k += 1
+			}
+		}
+		if k >= len(text) || text[k] != ')' {
 			return
 		}
 		return label_end, dest, k + 1, true
@@ -1356,7 +1518,10 @@ md_html_tag :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, sb: ^strings.Builder,
 		j += 1
 	}
 	name := strings.to_lower(text[name_start:j], context.temp_allocator)
-	e := strings.index_byte(text[j:], '>')
+	if !md_html_known(name) {
+		return
+	}
+	e := strings.index_byte(text[j:min(len(text), j + MD_SCAN_MAX)], '>')
 	if e < 0 || strings.index_byte(text[j:j + e], '\n') >= 0 || strings.index_byte(text[j:j + e], '<') >= 0 {
 		return
 	}
@@ -1508,10 +1673,44 @@ md_rune_width :: proc(r: rune) -> int {
 	return w if w >= 0 else 1
 }
 
+// grapheme_next rescans from the start, so long lines walk the iterator once here
+md_clusters :: proc(s: string) -> []string {
+	ascii := true
+	for c in transmute([]u8)s {
+		ascii &&= c < 0x80
+	}
+	out := make([dynamic]string, 0, len(s), context.temp_allocator)
+	if ascii {
+		for i in 0 ..< len(s) {
+			append(&out, s[i:i + 1])
+		}
+		return out[:]
+	}
+	it := utf8.decode_grapheme_iterator_make(s)
+	prev := 0
+	for _, g in utf8.decode_grapheme_iterate(&it) {
+		if g.byte_index > prev {
+			append(&out, s[prev:g.byte_index])
+			prev = g.byte_index
+		}
+	}
+	if prev < len(s) {
+		append(&out, s[prev:])
+	}
+	return out[:]
+}
+
 md_text_width :: proc(s: string) -> int {
+	ascii := true
+	for c in transmute([]u8)s {
+		ascii &&= c >= 0x20 && c < 0x7f
+	}
+	if ascii {
+		return len(s)
+	}
 	w := 0
-	for r in s {
-		w += md_rune_width(r)
+	for c in md_clusters(s) {
+		w += cluster_width(transmute([]u8)c)
 	}
 	return w
 }
@@ -1528,23 +1727,20 @@ md_cells :: proc(spans: []MdSpan) -> [dynamic]MdCell {
 	cells := make([dynamic]MdCell, context.temp_allocator)
 	col := 0
 	for sp in spans {
-		i := 0
-		for i < len(sp.text) {
-			r, sz := utf8.decode_rune(sp.text[i:])
-			switch r {
-			case '\n':
+		for cluster in md_clusters(sp.text) {
+			switch cluster {
+			case "\n":
 				append(&cells, MdCell{brk = true})
 				col = 0
-			case '\t':
-				for next := (col / TAB_WIDTH + 1) * TAB_WIDTH; col < next; col += 1 {
+			case "\t":
+				for stop := (col / TAB_WIDTH + 1) * TAB_WIDTH; col < stop; col += 1 {
 					append(&cells, MdCell{" ", sp.fg, sp.bg, 1, true, false, sp.link})
 				}
 			case:
-				cw := md_rune_width(r)
-				append(&cells, MdCell{sp.text[i:i + sz], sp.fg, sp.bg, cw, r == ' ', false, sp.link})
+				cw := cluster_width(transmute([]u8)cluster)
+				append(&cells, MdCell{cluster, sp.fg, sp.bg, cw, cluster == " ", false, sp.link})
 				col += cw
 			}
-			i += sz
 		}
 	}
 	return cells
@@ -1697,12 +1893,19 @@ md_draw_line :: proc(x, y, w: int, line: MdLine, bg: tb2.Color) {
 	col := 0
 	for sp in line.spans {
 		sbg := sp.bg if u64(sp.bg) != 0 else bg
-		for r in sp.text {
-			cw := md_rune_width(r)
+		for c in md_clusters(sp.text) {
+			cluster := transmute([]u8)c
+			cw := cluster_width(cluster)
 			if col + cw > w {
 				return
 			}
+			r, n := utf8.decode_rune(cluster)
 			tb2.set_cell(i32(x + col), i32(y), r, sp.fg, sbg)
+			for rest := cluster[n:]; len(rest) > 0; {
+				rr, m := utf8.decode_rune(rest)
+				tb2.extend_cell(i32(x + col), i32(y), rr)
+				rest = rest[m:]
+			}
 			col += cw
 		}
 	}

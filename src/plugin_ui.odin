@@ -68,6 +68,7 @@ qed_view_methods := [?]lua.L_Reg {
 	{"update", qed_view_update},
 	{"text", qed_view_text},
 	{"markdown", qed_view_markdown},
+	{"anchor", qed_view_anchor},
 	{"close", qed_view_close},
 	{"wait", qed_view_wait},
 }
@@ -772,6 +773,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		if spec.max_width < 1 || spec.place == .Split {
 			plugin_raise(L, `max_width must be positive, for place "center" or "full"`)
 		}
+		spec.max_width = max(spec.max_width, PANE_MIN_WIDTH)
 	}
 	lua.pop(L, 1)
 
@@ -853,6 +855,17 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	spec.on = {activate = plugin_view_activate, close = plugin_view_closed, link = plugin_view_link}
 	if t := plugin_task_of(p, L); t != nil {
 		spec.toggle = t.command
+	}
+	if toggle, ok := api_field_string(L, 1, "toggle"); ok {
+		spec.toggle = 0
+		for cmd in p.commands {
+			if cmd.name == toggle {
+				spec.toggle = cmd.id
+			}
+		}
+		if spec.toggle == 0 {
+			plugin_raise(L, fmt.tprintf("toggle: no command %q", toggle))
+		}
 	}
 	pn := pane_open(editor, spec)
 	if pn == nil {
@@ -1156,6 +1169,25 @@ qed_view_markdown :: proc "c" (L: ^lua.State) -> c.int {
 		pn.md_w = -1
 	}
 	lua.pushboolean(L, b32(pn != nil))
+	return 1
+}
+
+qed_view_anchor :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	slug := strings.clone(api_string(L, 2), context.temp_allocator)
+	pn, _ := api_view_live(L, entry.editor)
+	found := false
+	if pn != nil && pn.has_md {
+		pane_md_lines(pn, pane_geom(entry.editor, pn).text.w)
+		for line, i in pn.md_lines {
+			if line.slug != "" && line.slug == slug {
+				pn.scroll, found = i, true
+				break
+			}
+		}
+	}
+	lua.pushboolean(L, b32(found))
 	return 1
 }
 

@@ -277,6 +277,7 @@ function qed.every(ms, fn) end
 ---@field preview? "auto"|false split: previews the selected item's `path` at `pos.row`
 ---@field text? qed.PaneLine[] lines above the list (center) or the scrollable body (full or split without a list)
 ---@field markdown? string full only, without list or text: the body is this markdown, rendered by core at the pane width (the LSP hover renderer); arrows, PgUp/PgDn, Home/End and the wheel scroll it
+---@field toggle? string visible name of the command whose chord closes the pane (default: the command that opened it); needed when opening from a handler
 ---@field backdrop? "none"|"dim"|"blank" what happens to everything drawn under the pane (the editor and panes below, never the status rows): left alone (default), faded (theme tint `pane_backdrop`) or cleared to the background
 ---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
 ---@field footer? {hints: {label: string, cmd?: string}[]} bottom row; a hint with `cmd` is prefixed with that command's live shortcut
@@ -307,6 +308,10 @@ function View:text(lines) end
 ---@param text string
 ---@return boolean
 function View:markdown(text) end
+---Scrolls a markdown body to the heading with this GitHub slug. Returns whether it found one.
+---@param slug string
+---@return boolean
+function View:anchor(slug) end
 ---Closes the pane and its children; a no-op once closed.
 function View:close() end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.

@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -414,4 +415,99 @@ test_md_slugs :: proc(t: ^testing.T) {
 		}
 	}
 	md_expect_texts(t, slugs[:], {"the-qed-table", "deep-dive", "deep-dive-1"})
+}
+
+@(test)
+test_md_container_tabs_progress :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	for src in ([]string{"> \t> x", "- \t> x", "\f> x", ">\t>\t>\tx", "- \t- \t- x", "\v- x", "1.\t> x"}) {
+		lines := md_render(src, 40, .Plain)
+		testing.expectf(t, len(lines) < 10, "%q renders in a few lines", src)
+		testing.expectf(t, strings.contains(md_all_text(lines), "x"), "%q keeps its text", src)
+	}
+}
+
+@(test)
+test_md_deep_nesting :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	deep := strings.concatenate({strings.repeat("> ", 8000, context.temp_allocator), "x"}, context.temp_allocator)
+	lines := md_render(deep, 80, .Plain)
+	md_lines_fit(t, lines, 80, "deep quotes")
+	testing.expect(t, len(lines) > 0, "renders")
+	list := strings.builder_make(context.temp_allocator)
+	for i in 0 ..< 300 {
+		strings.write_string(&list, strings.repeat(" ", 2 * i, context.temp_allocator))
+		strings.write_string(&list, "- x\n")
+	}
+	md_lines_fit(t, md_render(strings.to_string(list), 80, .Plain), 80, "deep list")
+	emph := strings.concatenate({strings.repeat("*a ", 5000, context.temp_allocator), strings.repeat("[", 5000, context.temp_allocator)}, context.temp_allocator)
+	md_lines_fit(t, md_render(emph, 80, .Plain), 80, "deep inline")
+}
+
+@(test)
+test_md_unknown_tags_literal :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	testing.expect_value(t, md_all_text(md_render("fn f() -> Promise<Response>, Vec<T>, x<y>z, a<br>b", 80, .Plain)), "fn f() -> Promise<Response>, Vec<T>, x<y>z, a\nb")
+	testing.expect_value(t, md_all_text(md_render("<Foo bar>\n\nnext", 80, .Plain)), "<Foo bar>\n\nnext")
+}
+
+@(test)
+test_md_escape_plain :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	src := "def f(x: *int) -> List[int]\n  indented # not a heading\n- not a list\n\nnext para &amp; <b>"
+	md_expect_texts(t, md_texts(md_render(md_escape_plain(src), 80, .Plain)), {"def f(x: *int) -> List[int]", "  indented # not a heading", "- not a list", "", "next para &amp; <b>"})
+}
+
+@(test)
+test_md_front_matter_comments_refs :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	fm := md_render("---\ntitle: x\n---\n# Doc", 40, .Plain)
+	testing.expect_value(t, md_line_text(fm[0]), " title: x")
+	testing.expect_value(t, md_line_text(fm[2]), "Doc")
+	testing.expect_value(t, md_all_text(md_render("a\n\n<!-- one\n\ntwo -->\n\nb", 40, .Plain)), "a\n\nb")
+	testing.expect_value(t, md_all_text(md_render("[x]: https://u junk\n\n[x]", 40, .Plain)), "[x]: https://u junk\n\n[x]")
+	titled := md_render("[t](https://u.v \"a (b)\") end", 40, .Plain)
+	testing.expect_value(t, md_line_text(titled[0]), "t[1] end")
+}
+
+@(test)
+test_md_narrow_never_overflows :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	src := "> - [x] **nested** quote with `code` and a [link](https://a.b)\n>   1. deeper\n>      > even deeper 日本語 text\n\n| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\n\n```\nlong code line here\n```"
+	for w in 1 ..= 16 {
+		md_lines_fit(t, md_render(src, w, .Plain), w, fmt.tprintf("width %d", w))
+	}
+}
+
+@(test)
+test_md_fuzz :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	alphabet := "> -*_`~[]()<>#|!&;:\\\t\n 1.xyz\f"
+	state := u64(0x9e3779b97f4a7c15)
+	for _ in 0 ..< 300 {
+		buf := make([]u8, 200, context.temp_allocator)
+		for &b in buf {
+			state = state * 6364136223846793005 + 1442695040888963407
+			b = alphabet[(state >> 33) % u64(len(alphabet))]
+		}
+		for w in ([]int{1, 7, 30, 80}) {
+			md_lines_fit(t, md_render(string(buf), w, .Plain), w, "fuzz")
+		}
+		free_all(context.temp_allocator)
+	}
+	docs := []string{"README.md", "docs/DESIGN.md", "docs/CONFIG.md", "docs/TODO.md", "docs/notes/panes.md", "docs/notes/plugins.md"}
+	for d in docs {
+		data, err := os.read_entire_file(fmt.tprintf("%s/../%s", #directory, d), context.temp_allocator)
+		testing.expectf(t, err == nil, "read %s", d)
+		for w in ([]int{12, 40, 100}) {
+			md_lines_fit(t, md_render(string(data), w, .Plain), w, d)
+		}
+	}
 }

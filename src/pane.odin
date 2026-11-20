@@ -109,6 +109,7 @@ pane_text :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
 }
 
 PANE_QUERY_DEBOUNCE_MS :: 120
+PANE_MIN_WIDTH :: 20
 
 PaneKind :: enum {
 	Exclusive,
@@ -1158,7 +1159,7 @@ pane_md_follow :: proc(editor: ^Editor, p: ^Pane, target: string) {
 		for line, i in p.md_lines {
 			if line.slug != "" && line.slug == target[1:] {
 				p.scroll = i
-				return
+				break
 			}
 		}
 	case p.on.link != nil:
