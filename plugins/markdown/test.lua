@@ -96,7 +96,7 @@ local function expect_synced(t, b, i, why)
 	local ui = open(t)
 	local y = body_y(t, ("para %d with"):format(i))
 	t.ok(y ~= nil, why .. ": the cursor's block is shown")
-	t.eq(y - ui.body_y + 1, qed.buf.screen_row(b), why .. ": at the editor cursor's screen row")
+	t.eq(y + 1, math.max(qed.buf.screen_row(b), ui.body_y + 1), why .. ": on the cursor line's terminal row, or the body top")
 	t.key("Esc")
 end
 
@@ -115,6 +115,22 @@ function T.open_syncs_to_cursor(t)
 	t.eq(ui.scroll, ui.rows - ui.body_h, "near the end the preview stops at the bottom")
 	t.ok(on_screen(t, "para 80 with"), "the last block is shown")
 	t.key("Esc")
+end
+
+function T.sync_keeps_the_terminal_row(t)
+	local b = t.open("rows.md", long_doc())
+	qed.buf.set_cursor(b, {row = para_row(40), col = 1})
+	qed.buf.set_screen_row(b, para_row(40), 12)
+	local ui = open(t)
+	t.ok(ui.body_y > 0, "the body starts below the box top")
+	t.eq(body_y(t, "para 40 with"), 11, "the block is on the cursor line's terminal row")
+	t.key("Down")
+	t.key("Down")
+	t.eq(body_y(t, "para 41 with"), 11, "two rows down, the next block is there")
+	t.key("Esc")
+	t.wait(function() return qed.buf.cursor(b).row ~= para_row(40) end)
+	t.eq(qed.buf.cursor(b).row, para_row(41), "the cursor is on the line now under that terminal row")
+	t.eq(qed.buf.screen_row(b), 12, "on the same terminal row")
 end
 
 function T.open_clamps_at_start(t)
@@ -145,9 +161,9 @@ function T.code_block_lines_sync_exactly(t)
 	qed.buf.set_cursor(b, {row = 33, col = 1})
 	qed.buf.set_screen_row(b, 33, 10)
 	local ui = open(t)
-	t.eq(body_y(t, "code line 30;"), ui.body_y + 9, "the cursor's code line, not the block start, is on the cursor's row")
+	t.eq(body_y(t, "code line 30;"), 9, "the cursor's code line, not the block start, is on the cursor's terminal row")
 	t.key("PgDn")
-	local n = t.screen(ui.body_y + 9):match("code line (%d+);")
+	local n = t.screen(9):match("code line (%d+);")
 	t.ok(n ~= nil, "a code line on the cursor's row")
 	t.key("Esc")
 	t.wait(function() return qed.buf.cursor(b).row ~= 33 end)
@@ -178,7 +194,7 @@ function T.close_after_scroll_moves_cursor(t)
 	t.key("PgDn")
 	t.ok(t.ui().scroll > before, "scrolled")
 	local n
-	for y = ui.body_y + 7, ui.body_y, -1 do
+	for y = 7, ui.body_y, -1 do
 		n = t.screen(y):match("para (%d+) with")
 		if n then
 			break
@@ -224,14 +240,14 @@ function T.close_after_anchor_goes_to_first_non_blank(t)
 		parts[#parts + 1] = "body " .. i
 	end
 	local b = t.open("anchor-sync.md", pad(table.concat(parts, "\n")))
-	open(t)
+	local top = open(t).body_y
 	t.click("go-there")
 	t.ok(t.ui().scroll > 0, "the anchor scrolls")
 	t.key("Esc")
 	t.wait(function() return qed.buf.cursor(b).row ~= 1 end)
 	t.eq(qed.buf.cursor(b).row, 129, "the cursor is on the heading")
 	t.eq(qed.buf.cursor(b).col, 3, "at its first non-blank column")
-	t.eq(qed.buf.screen_row(b), 1, "at the cursor's old screen row")
+	t.eq(qed.buf.screen_row(b), top + 1, "on the terminal row it showed on, the body top")
 end
 
 function T.anchor_link_scrolls(t)

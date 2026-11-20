@@ -44,6 +44,7 @@ UiView :: struct {
 	// a markdown body's last visible rows, so the close handler can still map them to source rows
 	md_closed:   bool,
 	md_scroll:   int,
+	md_top:      int,
 	md_src:      []int,
 }
 
@@ -245,6 +246,7 @@ plugin_view_closed :: proc(editor: ^Editor, pn: ^Pane) {
 		v := &editor.plugins.views[vi]
 		scroll, src := pane_md_visible(editor, pn)
 		v.md_closed, v.md_scroll, v.md_src = true, scroll, slice.clone(src)
+		v.md_top = pane_geom(editor, pn).text.y
 	}
 	plugin_view_queue(editor, pn, .Close, nil)
 }
@@ -2059,23 +2061,25 @@ api_view_closed :: proc(L: ^lua.State, editor: ^Editor) -> ^UiView {
 qed_view_source_line :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	at := api_int(L, 2, "row must be an integer") if lua.type(L, 2) > .NIL else 1
 	src: []int
+	top := 0
 	if pn, _ := api_view_live(L, entry.editor); pn != nil {
 		if !pn.has_md {
 			plugin_raise(L, "view has no markdown body")
 		}
 		_, src = pane_md_visible(entry.editor, pn)
+		top = pane_geom(entry.editor, pn).text.y
 	} else if v := api_view_closed(L, entry.editor); v != nil {
-		src = v.md_src
+		src, top = v.md_src, v.md_top
 	}
 	if len(src) == 0 {
 		lua.pushnil(L)
 		return 1
 	}
-	at = clamp(at, 1, len(src))
-	lua.pushinteger(L, lua.Integer(src[at - 1] + 1))
-	lua.pushinteger(L, lua.Integer(at))
+	at := api_int(L, 2, "row must be an integer") - 1 - top if lua.type(L, 2) > .NIL else 0
+	at = clamp(at, 0, len(src) - 1)
+	lua.pushinteger(L, lua.Integer(src[at] + 1))
+	lua.pushinteger(L, lua.Integer(top + at + 1))
 	return 2
 }
 
@@ -2083,7 +2087,8 @@ qed_view_source_scroll :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	src := api_int(L, 2, "row must be an integer")
-	at := api_int(L, 3, "row must be an integer") if lua.type(L, 3) > .NIL else 1
+	set_at := lua.type(L, 3) > .NIL
+	at := api_int(L, 3, "row must be an integer") if set_at else 0
 	pn, _ := api_view_live(L, entry.editor)
 	if pn == nil {
 		lua.pushboolean(L, false)
@@ -2094,8 +2099,8 @@ qed_view_source_scroll :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	g := pane_geom(entry.editor, pn)
 	lines := pane_md_lines(pn, g.text.w)
-	at = clamp(at, 1, max(1, g.text.h))
-	pn.scroll = clamp(md_line_of_src(lines, src - 1) - (at - 1), 0, max(0, len(lines) - g.text.h))
+	at = clamp(at - 1 - g.text.y if set_at else 0, 0, max(0, g.text.h - 1))
+	pn.scroll = clamp(md_line_of_src(lines, src - 1) - at, 0, max(0, len(lines) - g.text.h))
 	lua.pushinteger(L, lua.Integer(pn.scroll + 1))
 	return 1
 }

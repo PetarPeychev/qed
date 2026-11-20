@@ -43,7 +43,7 @@ local function sync_back(v)
 		return
 	end
 	local b = current.buf
-	local src, row = v:source_line(qed.buf.screen_row(b) or 1)
+	local src, row = v:source_line(qed.buf.screen_row(b))
 	if not src then
 		return
 	end
@@ -78,7 +78,7 @@ local function preview(b, anchor)
 	if view then
 		stop(view)
 	end
-	v:source_scroll(qed.buf.cursor(b).row, qed.buf.screen_row(b) or 1)
+	v:source_scroll(qed.buf.cursor(b).row, qed.buf.screen_row(b))
 	if anchor and anchor ~= "" then
 		v:anchor(anchor)
 	end

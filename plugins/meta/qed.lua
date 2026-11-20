@@ -382,12 +382,12 @@ function View:anchor(slug) end
 ---@param row? integer
 ---@return integer|false
 function View:scroll(row) end
----Source line (1-based buffer row) of the markdown line shown at body row `row` (default 1, clamped to the shown rows), and the body row used. Code and table rows map to their own line, other blocks (reflowed text) to their first. Works in the `close` handler on the last shown rows; nil when nothing is shown.
+---Source line (1-based buffer row) of the markdown line shown on terminal row `row` (1-based; default the body's top, clamped to the shown rows), and the terminal row used. Code and table rows map to their own line, other blocks (reflowed text) to their first. Works in the `close` handler on the last shown rows; nil when nothing is shown.
 ---@param row? integer
 ---@return integer|nil source
 ---@return integer|nil row
 function View:source_line(row) end
----Scrolls a markdown body so the block holding source line `source` starts at body row `row` (default 1), clamped at the document ends. Returns the new top row, or false once closed.
+---Scrolls a markdown body so the block holding source line `source` starts on terminal row `row` (1-based; default and clamp: the body's rows), clamped at the document ends. Returns the new top row, or false once closed.
 ---@param source integer
 ---@param row? integer
 ---@return integer|false
@@ -858,13 +858,13 @@ function qed.buf.cursor(b) end
 ---@param pos qed.Pos
 function qed.buf.set_cursor(b, pos) end
 
----Text-area row (1-based) showing buffer row `row` (default the caret's visual row), or nil when off screen or `b` is not current.
+---Terminal row (1-based) showing buffer row `row` (default the caret's visual row), or nil when off screen or `b` is not current.
 ---@param b qed.Buf
 ---@param row? integer
 ---@return integer|nil
 function qed.buf.screen_row(b, row) end
 
----Scrolls the editor so buffer row `row` sits on text-area row `screen_row`, clamped at the buffer ends. False if `b` is not current.
+---Scrolls the editor so buffer row `row` sits on terminal row `screen_row` (clamped to the text area), clamped at the buffer ends. False if `b` is not current.
 ---@param b qed.Buf
 ---@param row integer
 ---@param screen_row integer
