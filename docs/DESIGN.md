@@ -522,10 +522,12 @@ started at the end of `editor_init`. Invariants the code can't show:
   its tasks end or `plugin_hook_timeout_ms` passes (`editor_save_id` finishes it).
   `quit` runs after the main loop, pumping until done or the same timeout.
 - Budgets: one count hook (100k instructions) on the main state, inherited by every
-  thread, checks the slice in `Plugins.slice` against `plugin_budgets`. Past the
+  thread, checks the slice in `Plugins.slice` against `plugin_budget(kind)` (`plugin_command_max_ms` for
+  commands, `plugin_slice_max_ms` for events, timers and provider tasks). Past the
   hard limit it yields from the hook when it can (pcall cannot catch that), else
-  raises and drops the hook count to 1 until the slice ends; the soft limit is a
-  Debug line measured after the resume. A nested entry's time is credited back to
+  raises and drops the hook count to 1 until the slice ends; the task is stopped with a warning and the plugin
+  stays loaded (so does a task's out-of-memory error); a handler's own errors still disable it. The soft limit
+  (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry's time is credited back to
   the outer slice. `__close` handlers run by `closethread` get the event budget.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
   (`.Lsp`, bounded by `plugin_hook_timeout_ms` → `"timeout"`); `plugin_lsp_done`
@@ -900,46 +902,15 @@ single-line/per-line), fuzzy line jump (`goto` plugin, *Go To: Line* `Ctrl+G`, f
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
-file-tree browser (`Alt+f`: modal hub — the sole file-open entry now (standalone
-fuzzy picker / `Ctrl+O` retired), `Enter` opens a file / toggles a directory,
-lazy per-dir expand, full-height right-side preview; **type-to-filter** (`> ` prompt, in-process
-fuzzy, debounced `FILETREE_FILTER_DEBOUNCE_MS`) into a flat, relevance-ranked list of files *and* directories (empty query = the
-browsable tree; `Enter` on a matched dir clears the query and reveals it in the tree); the candidate list is a
-**parallel `readdir` walk** (`d_type`, no per-entry stat, single-clone, `FILETREE_WALK_THREADS`) **prewarmed on a background thread**
-from open/scan-completion (`FILETREE_PREWARM`, ignore-set snapshot, adopted only while the walk was not invalidated meanwhile) so the first keystroke hits a warm cache;
-extending the query re-ranks only the prior match set (a longer subsequence matches a subset), and the visible list is capped at
-`FILETREE_FILTER_MAX_RESULTS` (the full ranked set is retained for narrowing) with the match count (`FILETREE_FILTER_MAX_RESULTS`+ when capped) on the filter line;
-selection commands run via Ctrl-chords — `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copy/cut/paste (internal
-clipboard, recursive mode-preserving copy, cut = move, collision `(copy N)` suffix), `Ctrl+D`
-delete (child confirm dialog on the tree), `Ctrl+R` rename, `Ctrl+N`
-new (unified: trailing `/` = directory, else file; nested names create missing parents via
-`path_ensure_parent_dir`), `Ctrl+A` select-all-scope, `Ctrl+W` close open buffers (the **Open**
-tab doubles as the buffer switcher — in-memory preview, `Enter` switches; `Ctrl+W` silent for
-clean buffers, confirm dialog only when any are unsaved), `Alt+F` search-in-selection (scoped
-project search — a selected dir recurses, a scoped-tab dir expands to its in-scope files; runs
-over the still-active tree, so `Esc` returns to it and opening a result closes both) — plus a scoped `Ctrl+P` command palette
-(the palette pane over the tree's `filetree`-scoped plugin commands, a child on the tree);
-keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch delete (one confirm,
-"Delete N items?") and batch open (`Enter`); paste targets the selected dir or a file's parent;
-cut+paste and rename both repath open buffers; the open buffer's row keeps an accent fg even
-selected; hint-row footer with tab-aware right-aligned toggle-state chips (log-pane style, lit
-when on, shortcuts config-driven via `command_shortcut` — `Alt+i ignored`/`Alt+. dotfiles` on
-`All`, `Alt+d diff` on the Changed tab); view toggles `Alt+e` expand/collapse-all (skips gitignored +
-hidden dotdirs), `Alt+.`/`Alt+i` show dotfiles / gitignored (both hidden by default, config
-`filetree_show_dotfiles`/`filetree_show_ignored`), also listed in the command palette;
-header scope tab bar (`All`/`Open`/`Changed`/`Unsaved`; per-tab chords `Alt+f`/`Alt+o`/`Alt+g` (*File Tree: Changed*)/`Alt+u`
-open the pane on that tab from the editor and switch/toggle-close it while open — same chord
-again on its own tab closes — or `←`/`→`/click; also on the welcome screen) restricting the
-tree to a pruned, auto-expanded view of matching files + ancestors; status bars from the
-**file tree status provider** (below): a green/yellow `▌` per added/modified file propagated up
-its ancestor directories, ignored files dimmed (hidden unless *Toggle Ignored*), a colored `+N -N`
-per file on the Changed tab (right-aligned, `+`/`-` columns padded over the visible rows, label
-clipped with `…`, numbers dropped when even a short label cannot fit); deleted files listed on the
-Changed tab under their old dir (missing ancestors injected virtually), red bar + name, `Enter`
-runs the provider's `open_deleted` (the `git` plugin's *Git: Restore File*: confirm, then
-`git restore --source=<base>`, worktree only plus index when the deletion is staged), other file
-commands refuse them; renames listed once at the new path labeled `new  ← old`; unsaved
-open buffers marked with a trailing `●`, propagated to directories),
+file tree (`filetree` plugin, see File tree: `Alt+f`/`Alt+o`/`Alt+g`/`Alt+u` open it on the All/Open/Changed/
+Unsaved tab, also on welcome; Enter opens a file or toggles a dir; type-to-filter over the walk (debounced
+`WALK_FILTER_DEBOUNCE_MS`, ranked, capped at `WALK_FILTER_MAX_RESULTS` with `N+`, narrowing the previous hits);
+New/Rename/Delete/Copy/Cut/Paste/Close Buffers/Select All over a `Shift+↑↓` range (a dir stands for its selected
+rows; `(copy N)` names; dangling symlinks count as taken; failures name the reason), batch open, scoped `Ctrl+P`,
+`Alt+F` search in the selection as a child; chips for ignored/dotfiles (All) and diff (Changed), `Alt+e`
+expand/collapse all; provider bars propagated to dirs, ignored rows dimmed, deleted files listed virtually with
+Enter restoring them through the provider, renames as `new  ← old`, `+N -N` on Changed; open buffers accented,
+unsaved `●`),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
 guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
@@ -987,7 +958,7 @@ line-hash diff; a deleted file previews entirely as ghost rows; a `nil` base pre
 `filetree_diff_only`, default on) switches between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
 gap-collapsing never fires).
-Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`) for walk lists: a selection change arms
+Preview loading is **debounced** (`WALK_PREVIEW_DEBOUNCE_MS`) for walk lists: a selection change arms
 `Pane.preview_due` and `pane_stack_pump` loads once it settles, so a held arrow can't back up the input queue
 or flood the provider with base requests.
 
@@ -1001,7 +972,10 @@ write (`fs_*`, `qed.fs.write`) restales only the walks whose root can contain th
 it; only a first walk with nothing to serve runs on the main thread. Restaling and adopting bump `Walk.gen`, the list
 stamp, so open walk lists refill keeping the selected and anchor paths. `within(paths)`/`union(paths)` narrow
 through a refcounted `WalkScope` (listed paths keep their descendants and skip the dotfiles/ignored rules; virtual
-paths and their missing parents are injected when absent). `list_walk_fill` builds the rows: lazy per-dir `readdir`
+paths and their missing parents are injected when absent). A scope copies its paths into one buffer and keys its
+listed and ancestor sets by slices of it; `union` points at its base scope instead of copying it. A narrowed tree's
+dir rows (`posix` readdir, sorted, filtered) are cached on the scope until the walk restales, so a refill is a
+copy; entry paths and pane mark keys live in arenas. `h:release()` frees a handle before collection. `list_walk_fill` builds the rows: lazy per-dir `readdir`
 for the browsable tree, or under a filter a ranked, capped (`list.max`, 500) path list that narrows the previous
 hits as the query grows. `qed.fs.copy/rename/remove/mkdir` (`fs_*`) refuse an existing target, a target inside the
 source (`into itself`), special files (fifos, sockets, devices; skipped inside a copied dir) and removing the root or
@@ -1016,8 +990,11 @@ closes. The plugin propagates provider marks up the ancestor dirs (deleted shows
 them with `v:marks` (dim ignored, deleted fg, rename suffix and sizes on Changed), chips with `v:footer`, New:/Rename:
 as the footer input, delete and close confirms as `qed.confirm` children with their targets taken before the
 dialog; the Changed tab turns the auto preview off and answers per item with `v:preview{path, base}` after an 80 ms
-sleep in `change` (a newer change kills it, so a held arrow asks once). Tree commands borrow the keys of the core
-*Copy*/*Cut*/*Paste*/*Close Buffer*/*Select All* and re-register on `config_changed` when those move. A root change
+sleep in `change` (a newer change kills it, so a held arrow asks once; `change` is set only on that tab). Tree
+commands take the binds of the core *Copy*/*Cut*/*Paste*/*Close Buffer*/*Select All* through `bind_from`
+(`plugin_command_bind` reads the core command at every rebind). A status push is compared with the last one and
+processed in chunks with `qed.sleep(0)` between; marks are built once per status and pushed in chunks, narrowed
+handles are cached per tab and released when replaced, and a tab switch only flips `v:marks{detail}`. A root change
 reopens the view, back to each tab's default expansion.
 
 **File tree status provider** (`treeshim.odin`, temporary until M6): `qed.filetree.provide{refresh?, preview?,
@@ -1027,7 +1004,7 @@ paths, `mark`, `from`, `added`/`removed`) and `set_base(path, bytes|nil)` (ignor
 tree side is one listener (`qed.filetree.listen(fn)`, queued with `"provider"`, `"status"` or `"base"`), `state()`
 (pull) and `request("refresh"|"preview"|"open_deleted")`; every callback runs as a queued `.Provider` task (event
 budget) or, for `open_deleted`, a user command task with the tree's ctx. Lua never runs on render or per keystroke.
-The `git` plugin's scan (`tree.lua`) sleeps every 2000 parsed lines (`repo.each`) so no slice nears the 200 ms
+The `git` plugin's scan (`tree.lua`) sleeps every 2000 parsed lines (`repo.each`) so no slice nears the
 budget, parses and drops each command's output before the next, caps the list at `tree.MAX` (50000) paths with a
 warning, and a new request kills the running scan's spawn and reruns once.
 
