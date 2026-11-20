@@ -450,6 +450,22 @@ test_config_files :: proc(t: ^testing.T) {
 	ncmd, nok := pane_command_for_event("filetree", tb2.Event{type = .Key, key = .Ctrl_T}, false)
 	testing.expect(t, nok && ncmd.name == "New", "unique tree command keeps its own independent bind")
 
+	// Pane-scoped binds: a collision in one scope is reported and dropped, a swap is fine.
+	clash_path := fmt.tprintf("%s/clash.json", dir)
+	_ = os.write_entire_file(clash_path, transmute([]byte)string(`{"keybinds": {"Message Log: Toggle Debug": "i", "Plugins: Reload": "Ctrl+c"}}`))
+	msg, is_err = config_load_from(clash_path)
+	testing.expect(t, is_err, "a clash is reported")
+	testing.expectf(t, strings.contains(msg, `keybinds/Message Log: Toggle Debug (i is "Toggle Info")`), "names the clash: %s", msg)
+	testing.expect_value(t, command_shortcut("Message Log: Toggle Debug"), "")
+	testing.expect_value(t, command_shortcut("Message Log: Toggle Info"), "i")
+	testing.expect_value(t, command_shortcut("Plugins: Reload"), "Ctrl+c")
+	swap_path := fmt.tprintf("%s/swap.json", dir)
+	_ = os.write_entire_file(swap_path, transmute([]byte)string(`{"keybinds": {"Message Log: Toggle Debug": "i", "Message Log: Toggle Info": "d", "Message Log: Toggle Warn": "Ctrl+c"}}`))
+	msg, is_err = config_load_from(swap_path)
+	testing.expectf(t, strings.contains(msg, `keybinds/Message Log: Toggle Warn (Ctrl+c is "Copy")`) && !strings.contains(msg, "Toggle Debug"), "a swap is fine, a borrowed bind counts: %s", msg)
+	testing.expect_value(t, command_shortcut("Message Log: Toggle Debug"), "i")
+	testing.expect_value(t, command_shortcut("Message Log: Toggle Info"), "d")
+
 	// Language overrides: per-key merge, patterns drive detection, invalid subkey
 	// reported, unknown key untouched in file.
 	saved_py_lsp := LANGUAGES[.Python].lsp_server

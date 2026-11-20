@@ -178,4 +178,56 @@ function T.backdrop(t)
 	t.key("Esc")
 end
 
+function T.back_forward_anchor(t)
+	local parts = {"intro [jump-to-second](#second-part)", ""}
+	for i = 1, 60 do
+		parts[#parts + 1] = "filler " .. i
+		parts[#parts + 1] = ""
+	end
+	parts[#parts + 1] = "## Second part"
+	t.open("hist.md", pad(table.concat(parts, "\n")))
+	open(t)
+	t.click("jump-to-second")
+	local deep = t.ui().scroll
+	t.ok(deep > 0, "the anchor scrolls")
+	t.key("Alt+,")
+	t.eq(t.ui().scroll, 0, "Back returns to where the jump started")
+	t.key("Alt+.")
+	t.eq(t.ui().scroll, deep, "Forward goes to the anchor again")
+	t.key("Alt+.")
+	t.eq(t.ui().scroll, deep, "Forward past the end does nothing")
+	t.key("Esc")
+end
+
+function T.back_forward_files(t)
+	local other = qed.path.join(qed.root(), "other.md")
+	qed.fs.write(other, "# Other doc\n\nbody")
+	local from = t.open("first.md", pad("see [the-other-doc](other.md) here"))
+	open(t)
+	t.click("the-other-doc")
+	t.wait(function() return qed.buf.path() == other end)
+	t.ok(on_screen(t, "Other doc"), "the linked doc shows")
+	t.key("Alt+,")
+	t.wait(function() return qed.buf.current() == from end)
+	t.ok(t.ui() ~= nil and on_screen(t, "first.md"), "Back shows the first doc again")
+	t.key("Alt+.")
+	t.wait(function() return qed.buf.path() == other end)
+	t.ok(on_screen(t, "Other doc"), "Forward shows the linked doc")
+	t.key("Esc")
+	t.key("Alt+,")
+	t.eq(qed.buf.current(), from, "the file switches are in the editor jump list")
+end
+
+function T.back_forward_scoped(t)
+	t.open("sc.md", "# Doc")
+	local ui = open(t)
+	t.eq(ui.kind, "pane")
+	t.key("Ctrl+p")
+	t.eq(t.ui(), nil, "Ctrl+P opens the core scoped palette over the preview")
+	t.type("markdown: back")
+	t.key("Enter")
+	t.ok(t.ui() ~= nil, "running Back from it returns to the preview")
+	t.key("Esc")
+end
+
 return T

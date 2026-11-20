@@ -69,6 +69,7 @@ qed_view_methods := [?]lua.L_Reg {
 	{"text", qed_view_text},
 	{"markdown", qed_view_markdown},
 	{"anchor", qed_view_anchor},
+	{"scroll", qed_view_scroll},
 	{"close", qed_view_close},
 	{"wait", qed_view_wait},
 }
@@ -205,8 +206,13 @@ plugin_view_closed :: proc(editor: ^Editor, pn: ^Pane) {
 	plugin_view_queue(editor, pn, .Close, nil)
 }
 
-plugin_view_link :: proc(editor: ^Editor, pn: ^Pane, target: string) {
+plugin_view_link :: proc(editor: ^Editor, pn: ^Pane, target: string) -> bool {
+	vi := plugin_view_index(&editor.plugins, pn.handle)
+	if target[0] == '#' && (vi < 0 || editor.plugins.views[vi].on[.Link] == 0) {
+		return false
+	}
 	append(&editor.plugins.view_events, UiViewEvent{handle = pn.handle, kind = .Link, text = strings.clone(target), has_text = true})
+	return true
 }
 
 plugin_view_activate :: proc(editor: ^Editor, pn: ^Pane) {
@@ -229,15 +235,22 @@ plugin_view_activate_now :: proc(editor: ^Editor, pn: ^Pane) {
 	if !pn.has_list || pane_count(editor, pn) == 0 {
 		return
 	}
+	plugin_view_queue(editor, pn, .Activate, pane_selection(editor, pn, context.allocator))
+}
+
+pane_selection :: proc(editor: ^Editor, pn: ^Pane, allocator := context.temp_allocator) -> []int {
+	if pane_count(editor, pn) == 0 {
+		return nil
+	}
 	lo, hi := pn.list.sel, pn.list.sel
 	if a, ok := pn.list.anchor.?; ok && pn.list.multi {
 		lo, hi = min(a, pn.list.sel), max(a, pn.list.sel)
 	}
-	sel := make([]int, hi - lo + 1)
+	sel := make([]int, hi - lo + 1, allocator)
 	for pos in lo ..= hi {
 		sel[pos - lo] = pane_item_index(pn, pos)
 	}
-	plugin_view_queue(editor, pn, .Activate, sel)
+	return sel
 }
 
 plugin_views_due :: proc(editor: ^Editor) -> bool {
@@ -920,7 +933,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	if selected > 0 {
 		pane_select(editor, pn, selected - 1, rows)
 		pn.list.moved = true
-	} else if restored && saved.key != "" && pn.list.source.kind != .Lines {
+	} else if restored && saved.key != "" && list_restores(pn.list.source.kind) {
 		pn.list.restore = strings.clone(saved.key)
 		pane_restore(editor, pn, rows)
 	}
@@ -1214,6 +1227,23 @@ qed_view_anchor :: proc "c" (L: ^lua.State) -> c.int {
 		}
 	}
 	lua.pushboolean(L, b32(found))
+	return 1
+}
+
+qed_view_scroll :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	set := lua.type(L, 2) > .NIL
+	row := api_int(L, 2, "row must be an integer") if set else 0
+	pn, _ := api_view_live(L, entry.editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if set {
+		pn.scroll = max(0, row - 1)
+	}
+	lua.pushinteger(L, lua.Integer(pn.scroll + 1))
 	return 1
 }
 

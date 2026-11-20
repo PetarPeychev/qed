@@ -164,5 +164,5 @@ e2e_narrow_linefind_code_split :: proc(t: ^testing.T) {
 	testing.expect_value(t, lay.left_w, lay.inner.w)
 
 	e2e_mouse(&e, lay.box.x - 2, lay.body_top)
-	testing.expect(t, !test_pane_open(&e.ed, "lines"), "a click outside the box closes line jump")
+	testing.expect(t, !test_pane_open(&e.ed, "goto"), "a click outside the box closes line jump")
 }

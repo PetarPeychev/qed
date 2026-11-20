@@ -1,6 +1,7 @@
 local cfg
--- the shown document; a back/forward history would be a list of these plus a scroll each
 local view, watch, current
+-- {path, buf, scroll} per visited place; anchor jumps and file links push, Back/Forward step
+local history, at = {}, 0
 local follow
 
 local function stop(v)
@@ -40,6 +41,7 @@ local function preview(b, anchor)
 	local v = qed.ui.open{
 		id = "markdown:" .. (path ~= "" and path or tostring(b)),
 		place = "full",
+		scope = "markdown",
 		toggle = "Markdown: Preview",
 		max_width = cfg.max_width,
 		backdrop = cfg.backdrop,
@@ -66,6 +68,49 @@ local function preview(b, anchor)
 	end)
 end
 
+local function remember()
+	if view and history[at] then
+		history[at].scroll = view:scroll() or history[at].scroll
+	end
+end
+
+local function push()
+	for i = #history, at + 1, -1 do
+		history[i] = nil
+	end
+	at = at + 1
+	history[at] = {path = current.path, buf = current.buf, scroll = view:scroll()}
+end
+
+local function show(entry)
+	if not current or entry.buf ~= current.buf then
+		if not qed.buf.valid(entry.buf) then
+			if entry.path == "" or not qed.fs.exists(entry.path) then
+				return
+			end
+			entry.buf = qed.open(entry.path)
+		end
+		local _, err = qed.jump(entry.buf, qed.buf.cursor(entry.buf))
+		if err then
+			qed.message(err, "error")
+			return
+		end
+		preview(entry.buf)
+	end
+	if view then
+		view:scroll(entry.scroll)
+	end
+end
+
+local function step(d)
+	if not history[at + d] then
+		return
+	end
+	remember()
+	at = at + d
+	show(history[at])
+end
+
 local function target_pos(path, anchor)
 	for _, b in ipairs(qed.buf.list()) do
 		if qed.buf.path(b) == path then
@@ -78,6 +123,16 @@ local function target_pos(path, anchor)
 end
 
 follow = function(v, target)
+	if target:sub(1, 1) == "#" then
+		local before = v:scroll()
+		if v:anchor(target:sub(2)) then
+			if history[at] then
+				history[at].scroll = before
+			end
+			push()
+		end
+		return
+	end
 	if target:match("^%a[%w+.-]*:") then
 		local ok, err = qed.open_url(target)
 		if not ok then
@@ -104,7 +159,9 @@ follow = function(v, target)
 		return
 	end
 	if markdown then
+		remember()
 		preview(qed.buf.current(), anchor)
+		push()
 	end
 end
 
@@ -121,8 +178,17 @@ return {
 			name = "Preview",
 			key = "Alt+p",
 			when = function(ctx) return ctx.language == "markdown" end,
-			run = function(ctx) preview(ctx.buf) end,
+			run = function(ctx)
+				preview(ctx.buf)
+				if view then
+					history, at = {}, 0
+					push()
+				end
+			end,
 		}
+		local back, forward = qed.shortcut("Jump Back"), qed.shortcut("Jump Forward")
+		qed.command{name = "Back", scope = "markdown", key = back or "Alt+,", run = function() step(-1) end}
+		qed.command{name = "Forward", scope = "markdown", key = forward or "Alt+.", run = function() step(1) end}
 		qed.on("config_changed", function()
 			cfg = qed.config()
 			reopen()

@@ -28,6 +28,7 @@ ListSource :: struct {
 	ids:       [dynamic]u64,
 	rows:      [dynamic]int,
 	stamp:     u64,
+	evicted:   int,
 }
 
 PaneColumn :: struct {
@@ -75,6 +76,42 @@ pane_list_load :: proc(editor: ^Editor, p: ^Pane) {
 	}
 }
 
+list_ranked :: proc(kind: ListSourceKind) -> bool {
+	return kind != .Lines
+}
+
+list_restores :: proc(kind: ListSourceKind) -> bool {
+	return kind != .Lines
+}
+
+// 0: the source is gone or never changes
+list_stamp :: proc(editor: ^Editor, p: ^Pane) -> u64 {
+	src := &p.list.source
+	#partial switch src.kind {
+	case .Lines:
+		if b, _ := api_buf_find(editor, src.buf); b != nil {
+			return b.rev + 1
+		}
+	case .Log:
+		v := &editor.logview
+		stamp := editor.log_seq << 8 | u64(v.history)
+		for on, level in v.filter {
+			stamp |= u64(on) << (1 + uint(level))
+		}
+		return stamp
+	case .Plugins:
+		return u64(len(editor.plugins.list))
+	}
+	return 0
+}
+
+list_exact :: proc(editor: ^Editor, p: ^Pane) -> (row: int, ok: bool) {
+	if p.list.source.kind == .Lines {
+		row, _, ok = lines_goto(editor, p)
+	}
+	return
+}
+
 list_count :: proc(editor: ^Editor, p: ^Pane) -> int {
 	src := &p.list.source
 	switch src.kind {
@@ -95,8 +132,11 @@ list_count :: proc(editor: ^Editor, p: ^Pane) -> int {
 	return 0
 }
 
-// borrowed: valid until the source changes
+// borrowed: valid until the source changes; a stale index (the source shrank or went away) reads as ""
 list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
+	if i < 0 || i >= list_count(editor, p) {
+		return ""
+	}
 	src := &p.list.source
 	switch src.kind {
 	case .None:
@@ -109,20 +149,25 @@ list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
 		b, _ := api_buf_find(editor, src.buf)
 		return string(b.lines[i].text[:])
 	case .Log:
-		return editor.log[list_log_rows(editor, src)[i]].text
+		return list_log_entry(editor, src, i).text
 	case .Plugins:
 		return editor.plugins.list[i].display
 	}
 	return ""
 }
 
-// strings are temp or borrowed; only drawn, activated and changed items are ever built
+// strings are temp or borrowed; a stale index reads as an empty item
 list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
+	if i < 0 || i >= list_count(editor, p) {
+		return
+	}
 	src := &p.list.source
 	if src.kind == .None {
 		return p.list.items[i]
 	}
-	p.list.built += 1
+	when ODIN_TEST {
+		test_list_built += 1
+	}
 	switch src.kind {
 	case .None:
 	case .Commands:
@@ -144,7 +189,7 @@ list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
 		it.cells = make([]string, 2, context.temp_allocator)
 		it.cells[0], it.cells[1] = fmt.tprintf("%d", i + 1), it.label
 	case .Log:
-		e := editor.log[list_log_rows(editor, src)[i]]
+		e := list_log_entry(editor, src, i)
 		if e.source != "" {
 			it.label = fmt.tprintf("%s  %s: %s", log_clock(e.time), e.source, e.text)
 		} else {
@@ -254,6 +299,7 @@ list_dirs_fill :: proc(editor: ^Editor, p: ^Pane) {
 	}
 }
 
+// rows hold entry seqs, so eviction from the ring front is counted (`evicted`) and the pane shifts its positions
 list_log_rows :: proc(editor: ^Editor, src: ^ListSource) -> []int {
 	v := &editor.logview
 	stamp := editor.log_seq << 8 | u64(v.history)
@@ -264,17 +310,31 @@ list_log_rows :: proc(editor: ^Editor, src: ^ListSource) -> []int {
 		src.stamp = stamp
 		delete(src.path)
 		src.path = strings.clone(v.source)
+		first := editor.log[0].seq if len(editor.log) > 0 else editor.log_seq + 1
+		for seq in src.rows {
+			if u64(seq) < first {
+				src.evicted += 1
+			}
+		}
 		clear(&src.rows)
-		for e, i in editor.log {
+		for e in editor.log {
 			if v.filter[e.level] && (!e.seeded || v.history) && (v.source == "" || e.source == v.source) {
-				append(&src.rows, i)
+				append(&src.rows, int(e.seq))
 			}
 		}
 	}
 	return src.rows[:]
 }
 
-// An all-digit `:N` or `:N:M` is an exact jump, not a content match; col -1 means the first non-blank
+list_log_entry :: proc(editor: ^Editor, src: ^ListSource, i: int) -> LogEntry {
+	seq := u64(list_log_rows(editor, src)[i])
+	if len(editor.log) == 0 || seq < editor.log[0].seq || seq - editor.log[0].seq >= u64(len(editor.log)) {
+		return {}
+	}
+	return editor.log[seq - editor.log[0].seq]
+}
+
+// col -1 means the first non-blank
 lines_goto :: proc(editor: ^Editor, p: ^Pane) -> (row, col: int, ok: bool) {
 	f := pane_filter(p)
 	if f == nil {

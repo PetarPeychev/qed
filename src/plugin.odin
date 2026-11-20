@@ -107,7 +107,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
-	{"lines/init.lua", #load("../plugins/lines/init.lua", string)},
+	{"goto/init.lua", #load("../plugins/goto/init.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
@@ -505,12 +505,20 @@ plugin_cfg_enabled :: proc(name: string, cfg_user: json.Object) -> bool {
 	return true
 }
 
+PLUGINS_RENAMED :: [?][2]string{{"lines", "goto"}}
+
 plugins_config_warn :: proc(editor: ^Editor) {
 	plugins, _ := editor_config_user(editor)["plugins"].(json.Object)
 	problems := make([dynamic]string, context.temp_allocator)
 	for name in plugins {
 		if plugin_find(&editor.plugins, name) == nil {
-			append(&problems, fmt.tprintf("unknown plugins/%q", name))
+			moved := ""
+			for r in PLUGINS_RENAMED {
+				if r[0] == name {
+					moved = fmt.tprintf(" (renamed to plugins/%s)", r[1])
+				}
+			}
+			append(&problems, fmt.tprintf("unknown plugins/%q%s", name, moved))
 		}
 	}
 	if len(problems) > 0 {
@@ -1317,6 +1325,25 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+qed_shortcut :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	name := api_string(L, 1)
+	for cmd in commands {
+		if cmd.name == name {
+			lua.pushodinstring(L, cmd.shortcut)
+			return 1
+		}
+	}
+	for cmd in entry.editor.plugins.commands {
+		if cmd.name == name && cmd.scope == "" {
+			lua.pushodinstring(L, cmd.shortcut)
+			return 1
+		}
+	}
+	return 0
+}
+
 plugin_command_core :: proc(name: string, scope: string) -> bool {
 	if scope == "" {
 		for cmd in commands {
@@ -1527,7 +1554,42 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 			return 0
 		}
 		lua.pushodinstring(L, e.path)
+	case "items":
+		f := pane_focus(editor)
+		if f == nil || !f.has_list {
+			return 0
+		}
+		sel := pane_selection(editor, f)
+		lua.createtable(L, c.int(len(sel)), 0)
+		vi := plugin_view_index(&editor.plugins, f.handle) if f.list.source.kind == .None else -1
+		if vi >= 0 {
+			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].items_ref))
+		}
+		for idx, i in sel {
+			if vi >= 0 {
+				lua.rawgeti(L, -1, lua.Integer(idx + 1))
+				lua.rawseti(L, -3, lua.Integer(i + 1))
+			} else {
+				api_pane_item_push(L, list_item(editor, f, idx))
+				lua.rawseti(L, -2, lua.Integer(i + 1))
+			}
+		}
+		if vi >= 0 {
+			lua.pop(L, 1)
+		}
 	case "files":
+		if f := pane_focus(editor); f != nil && f.has_list {
+			lua.createtable(L, 0, 0)
+			n := 0
+			for idx in pane_selection(editor, f) {
+				if it := list_item(editor, f, idx); it.path != "" {
+					n += 1
+					lua.pushodinstring(L, it.path)
+					lua.rawseti(L, -2, lua.Integer(n))
+				}
+			}
+			break
+		}
 		if !t.active || len(t.entries) == 0 {
 			return 0
 		}

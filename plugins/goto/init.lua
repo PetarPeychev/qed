@@ -11,7 +11,7 @@ local function find_line(ctx)
 		return
 	end
 	qed.ui.open{
-		id = "lines",
+		id = "goto",
 		place = "split",
 		fields = {{text = selection_query(ctx)}},
 		list = {items = qed.buf.line_list(buf)},
@@ -29,6 +29,7 @@ end
 
 return {
 	setup = function()
-		qed.command{name = "Find Line", key = "Ctrl+g", run = find_line}
+		qed.meta{display_name = "Go To"}
+		qed.command{name = "Line", key = "Ctrl+g", run = find_line}
 	end,
 }

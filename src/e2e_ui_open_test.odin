@@ -77,6 +77,9 @@ return {setup = function()
 	cmd("Linked", function()
 		v = qed.ui.open{place = "full", markdown = "[out](https://x.y/z) and [up](#top)\n\n# Top", on = {link = function(_, target) note("link " .. target) end}}
 	end)
+	cmd("Plain", function()
+		v = qed.ui.open{place = "full", markdown = "[out](https://x.y/z) and [up](#top)\n\n# Top"}
+	end)
 	cmd("Busy", function()
 		local r, err = qed.ui.open{list = {items = {"b"}}}
 		note(("busy %s %s"):format(tostring(r), tostring(err)))
@@ -520,7 +523,13 @@ e2e_ui_open_links :: proc(t: ^testing.T) {
 	e2e_mouse(&e, g.text.x + up, g.text.y)
 	plugin_flush(&e.ed)
 	e2e_render(&e)
+	testing.expect(t, view_logged(&e, "link #top"), "with a link handler anchors reach it")
+	testing.expect_value(t, test_view(&e.ed).scroll, 0)
+	e2e_key(&e, .Esc)
+	view_run(t, &e, "V: Plain")
+	e2e_render(&e)
+	e2e_mouse(&e, g.text.x + up, g.text.y)
+	e2e_render(&e)
 	testing.expect_value(t, test_view(&e.ed).scroll, min(top, max(0, len(lines) - g.text.h)))
-	testing.expect(t, !view_logged(&e, "link #top"), "anchors stay in core")
 	e2e_key(&e, .Esc)
 }

@@ -29,9 +29,10 @@ e2e_scope_line_list_large_stays_cheap :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(b.lines), N + 1)
 	b.cursor = {N / 2, 0}
 
+	test_list_built = 0
 	e2e_key(&e, .Ctrl_G)
 	p := test_view(&e.ed)
-	testing.expect(t, p != nil && p.list.source.kind == .Lines, "Find Line opens over a line list")
+	testing.expect(t, p != nil && p.list.source.kind == .Lines, "Go To: Line opens over a line list")
 	e2e_render(&e)
 	rows := pane_geom(&e.ed, p).list.h
 	testing.expect_value(t, pane_count(&e.ed, p), N + 1)
@@ -39,15 +40,15 @@ e2e_scope_line_list_large_stays_cheap :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(p.list.matches), 0)
 	testing.expect(t, !p.list.filtered, "an empty query builds no index")
 	testing.expect_value(t, p.list.sel, N / 2)
-	testing.expectf(t, p.list.built <= 3 * rows, "open + render build only visible rows, built %d", p.list.built)
+	testing.expectf(t, test_list_built <= 3 * rows, "open + render build only visible rows, built %d", test_list_built)
 
-	built := p.list.built
+	built := test_list_built
 	e2e_type(&e, ":900000:3")
 	p = test_view(&e.ed)
 	testing.expect_value(t, pane_count(&e.ed, p), 1)
 	testing.expect_value(t, pane_item_index(p, 0), 900000 - 1)
 	e2e_render(&e)
-	testing.expectf(t, p.list.built - built <= 2 * rows, "a jump spec builds a handful, built %d", p.list.built - built)
+	testing.expectf(t, test_list_built - built <= 2 * rows, "a jump spec builds a handful, built %d", test_list_built - built)
 	testing.expect_value(t, len(p.list.items), 0)
 
 	e2e_key(&e, .Enter)
@@ -196,4 +197,138 @@ e2e_scope_plugin_pane_command :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	scope_bare(&e, 'x')
 	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "xabc")
+}
+
+@(test)
+e2e_scope_line_list_filtered_shrink :: proc(t: ^testing.T) {
+	e := e2e_start("a1\na2\na3\nb\na4")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	e2e_key(&e, .Ctrl_G)
+	e2e_type(&e, "a")
+	p := test_view(&e.ed)
+	testing.expect_value(t, pane_count(&e.ed, p), 4)
+	for _ in 0 ..< 3 {
+		e2e_key(&e, .Arrow_Down)
+	}
+	delete(buffer_delete(b, {1, 0}, {4, 2}))
+	e2e_render(&e)
+	p = test_view(&e.ed)
+	testing.expect_value(t, pane_count(&e.ed, p), 1)
+	testing.expect_value(t, pane_item_index(p, 0), 0)
+	testing.expect_value(t, p.list.sel, 0)
+	e2e_key(&e, .Enter)
+	testing.expect(t, test_view(&e.ed) == nil, "Enter still works after the shrink")
+	testing.expect_value(t, b.cursor.row, 0)
+}
+
+@(test)
+e2e_scope_line_list_stale_jump :: proc(t: ^testing.T) {
+	e := e2e_start(strings.repeat("x\n", 9, context.temp_allocator))
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	e2e_key(&e, .Ctrl_G)
+	e2e_type(&e, ":9")
+	p := test_view(&e.ed)
+	testing.expect_value(t, pane_item_index(p, 0), 8)
+	delete(buffer_delete(b, {3, 0}, {9, 0}))
+	e2e_render(&e)
+	p = test_view(&e.ed)
+	testing.expect_value(t, pane_item_index(p, 0), 3)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, b.cursor.row, 3)
+}
+
+@(test)
+e2e_scope_line_list_closed_buffer :: proc(t: ^testing.T) {
+	e := e2e_start("one\ntwo")
+	defer e2e_stop(&e)
+	e2e_key(&e, .Ctrl_G)
+	e2e_type(&e, "o")
+	p := test_view(&e.ed)
+	testing.expect_value(t, pane_count(&e.ed, p), 2)
+	editor_close_index(&e.ed, e.ed.current)
+	e2e_render(&e)
+	p = test_view(&e.ed)
+	testing.expect(t, p != nil, "the view stays")
+	testing.expect_value(t, pane_count(&e.ed, p), 0)
+	testing.expect_value(t, list_text(&e.ed, p, 0), "")
+	testing.expect_value(t, list_item(&e.ed, p, 1).label, "")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	e2e_key(&e, .Esc)
+	testing.expect(t, test_view(&e.ed) == nil, "Esc closes")
+}
+
+@(test)
+e2e_scope_log_eviction_keeps_selection :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+	saved_reg := clipboard_register
+	clipboard_register = ""
+	defer {
+		delete(clipboard_register)
+		clipboard_register = saved_reg
+	}
+	for i in 0 ..< LOG_MAX {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %04d", i), show = false)
+	}
+	cmd_message_log(&e.ed)
+	e2e_render(&e)
+	for _ in 0 ..< 5 {
+		e2e_key(&e, .Arrow_Up)
+	}
+	e2e_key(&e, .Arrow_Up, mod = .Shift)
+	p := pane_find(&e.ed, "log")
+	testing.expect(t, strings.has_suffix(test_pane_label(&e.ed, p, p.list.sel), "entry 0993"), "the selection starts on entry 0993")
+	for i in 0 ..< 3 {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("late %d", i), show = false)
+	}
+	e2e_render(&e)
+	testing.expect(t, strings.has_suffix(test_pane_label(&e.ed, p, p.list.sel), "entry 0993"), "eviction keeps the selected entry")
+	e2e_key(&e, .Ctrl_C)
+	testing.expect_value(t, clipboard_register, "entry 0993\nentry 0994")
+}
+
+@(test)
+e2e_scope_log_stuck_range_stays :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+	for i in 0 ..< 10 {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %d", i), show = false)
+	}
+	cmd_message_log(&e.ed)
+	e2e_render(&e)
+	e2e_key(&e, .Arrow_Up, mod = .Shift)
+	e2e_key(&e, .Arrow_Down, mod = .Shift)
+	p := pane_find(&e.ed, "log")
+	sel, anchor := p.list.sel, p.list.anchor
+	editor_log(&e.ed, .Info, "", "late", show = false)
+	e2e_render(&e)
+	testing.expect_value(t, p.list.sel, sel)
+	testing.expect(t, p.list.anchor == anchor, "a range does not follow new entries")
+}
+
+@(test)
+e2e_scope_ctx_items :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "own", `return {setup = function()
+		qed.command{name = "Open", key = "Alt+k", run = function()
+			qed.ui.open{scope = "shared", list = {items = {{label = "a", path = "/x/a"}, {label = "b"}, {label = "c", path = "/x/c"}}, multi = true}}
+		end}
+	end}`)
+	e2e_plugin(&e, "other", `return {setup = function()
+		qed.command{name = "Peek", scope = "shared", key = "p", run = function(ctx)
+			local labels = {}
+			for _, it in ipairs(ctx.items) do labels[#labels + 1] = it.label end
+			qed.message(("%s|%s|%s"):format(table.concat(labels, ","), table.concat(ctx.files, ","), tostring(ctx.view)))
+		end}
+	end}`)
+	e2e_alt(&e, 'k')
+	e2e_key(&e, .Arrow_Down, mod = .Shift)
+	e2e_key(&e, .Arrow_Down, mod = .Shift)
+	scope_bare(&e, 'p')
+	testing.expect_value(t, e.ed.message, "a,b,c|/x/a,/x/c|nil")
+	e2e_key(&e, .Esc)
 }

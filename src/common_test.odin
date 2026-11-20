@@ -48,3 +48,6 @@ test_pane_open :: proc(ed: ^Editor, id: string) -> bool {
 	p := pane_find(ed, id)
 	return p != nil && pane_live(ed, p)
 }
+
+@(thread_local)
+test_list_built: int

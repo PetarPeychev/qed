@@ -662,7 +662,7 @@ e2e_nav_line_jump_selection_prefill :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Ctrl_G)
 	p := test_view(&e.ed)
-	testing.expect(t, p != nil && p.owner == "lines", "Ctrl+G opens the lines plugin's view")
+	testing.expect(t, p != nil && p.owner == "goto", "Ctrl+G opens the goto plugin's view")
 	testing.expect_value(t, textfield_str(&p.fields[0].field), "alpha")
 	testing.expect_value(t, pane_count(&e.ed, p), 3) // filter ran on the pre-fill
 	testing.expect_value(t, p.fields[0].anchor, 0) // fully selected

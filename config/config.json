@@ -55,7 +55,7 @@
     "git": {
       "enabled": true
     },
-    "lines": {
+    "goto": {
       "enabled": true
     },
     "markdown": {

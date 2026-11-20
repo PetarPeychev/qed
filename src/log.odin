@@ -27,6 +27,7 @@ LogEntry :: struct {
 	source: string,
 	text:   string,
 	seeded: bool,
+	seq:    u64,
 }
 
 log_level_tag :: proc(level: LogLevel) -> string {
@@ -78,8 +79,9 @@ editor_log :: proc(editor: ^Editor, level: LogLevel, source, msg: string, show :
 		source = strings.clone(source),
 		text   = strings.clone(msg),
 	}
-	append(&editor.log, entry)
 	editor.log_seq += 1
+	entry.seq = editor.log_seq
+	append(&editor.log, entry)
 	for len(editor.log) > LOG_MAX {
 		delete(editor.log[0].text)
 		delete(editor.log[0].source)
@@ -299,8 +301,9 @@ editor_log_seed_text :: proc(editor: ^Editor, data: string) {
 		}
 		entry := log_seed_entry(line, last)
 		last = entry.time
-		append(&editor.log, entry)
 		editor.log_seq += 1
+		entry.seq = editor.log_seq
+		append(&editor.log, entry)
 	}
 }
 
@@ -402,7 +405,7 @@ logview_copy :: proc(editor: ^Editor) {
 		if pos > lo {
 			strings.write_byte(&sb, '\n')
 		}
-		e := editor.log[rows[pos]]
+		e := list_log_entry(editor, &p.list.source, pos)
 		if e.source != "" {
 			fmt.sbprintf(&sb, "%s: %s", e.source, e.text)
 		} else {

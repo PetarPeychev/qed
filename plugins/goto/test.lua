@@ -1,6 +1,6 @@
 local T = {}
 
-local FIND = "Lines: Find Line"
+local FIND = "Go To: Line"
 
 local function rows(ui)
 	return table.concat(ui.labels, ",")

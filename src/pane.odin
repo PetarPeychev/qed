@@ -174,7 +174,7 @@ PaneList :: struct {
 	items:    [dynamic]PaneItem,
 	matches:  [dynamic]int,
 	filtered: bool,
-	built:    int,
+	stamp:    u64,
 	follow:   bool,
 	stick:    bool,
 	sel_bg:   bool,
@@ -249,7 +249,7 @@ Pane :: struct {
 	backdrop:     PaneBackdrop,
 	on:           struct {
 		activate, close: PaneHandler,
-		link:            proc(editor: ^Editor, p: ^Pane, target: string),
+		link:            proc(editor: ^Editor, p: ^Pane, target: string) -> bool,
 		footer:          proc(editor: ^Editor, p: ^Pane) -> string,
 	},
 }
@@ -730,17 +730,16 @@ pane_prompt :: proc(f: ^PaneField) -> string {
 	return f.prompt if f.prompt != "" else "> "
 }
 
-// an empty query leaves the list unfiltered, so a huge source never builds an index array
 pane_refilter :: proc(editor: ^Editor, p: ^Pane) {
 	clear(&p.list.matches)
 	p.list.filtered = false
 	p.list.sel, p.list.scroll, p.list.anchor, p.list.moved = 0, 0, nil, false
+	p.list.stamp = list_stamp(editor, p)
 	f := pane_filter(p)
 	if f == nil {
 		return
 	}
-	lines := p.list.source.kind == .Lines
-	if row, _, ok := lines_goto(editor, p); ok && lines {
+	if row, ok := list_exact(editor, p); ok {
 		append(&p.list.matches, row)
 		p.list.filtered = true
 		return
@@ -755,7 +754,7 @@ pane_refilter :: proc(editor: ^Editor, p: ^Pane) {
 			append(&entries, ScoreIdx{score, i})
 		}
 	}
-	if !lines {
+	if list_ranked(p.list.source.kind) {
 		fuzzy_sort(entries[:])
 	}
 	for e in entries {
@@ -806,8 +805,25 @@ pane_scroll_fit :: proc(p: ^Pane, rows: int) {
 	}
 }
 
-// live sources shrink under the selection (log filters, unloaded plugins)
+// live sources change between frames: edits, disk reloads, a closed buffer, ring eviction
 pane_list_fit :: proc(editor: ^Editor, p: ^Pane, rows: int) {
+	if stamp := list_stamp(editor, p); stamp != p.list.stamp {
+		src := &p.list.source
+		sel, anchor := pane_marks(editor, p)
+		if p.list.filtered || stamp == 0 {
+			pane_refilter_keep(editor, p, rows, sel, anchor)
+		}
+		p.list.stamp = stamp
+		if src.kind == .Log {
+			list_log_rows(editor, src)
+			d := src.evicted
+			src.evicted = 0
+			p.list.sel, p.list.scroll = max(0, p.list.sel - d), max(0, p.list.scroll - d)
+			if a, ok := p.list.anchor.?; ok {
+				p.list.anchor = max(0, a - d)
+			}
+		}
+	}
 	n := pane_count(editor, p)
 	if a, ok := p.list.anchor.?; ok {
 		p.list.anchor = clamp(a, 0, n - 1) if n > 0 else nil
@@ -827,7 +843,7 @@ pane_select :: proc(editor: ^Editor, p: ^Pane, i, rows: int) {
 		return
 	}
 	p.list.sel = clamp(i, 0, n - 1)
-	p.list.stick = p.list.sel == n - 1
+	p.list.stick = p.list.sel == n - 1 && p.list.anchor == nil
 	pane_scroll_fit(p, rows)
 }
 
@@ -1396,17 +1412,16 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 }
 
 pane_md_follow :: proc(editor: ^Editor, p: ^Pane, target: string) {
-	switch {
-	case target == "":
-	case target[0] == '#':
+	if target == "" || (p.on.link != nil && p.on.link(editor, p, target)) {
+		return
+	}
+	if target[0] == '#' {
 		for line, i in p.md_lines {
 			if line.slug != "" && line.slug == target[1:] {
 				p.scroll = i
 				break
 			}
 		}
-	case p.on.link != nil:
-		p.on.link(editor, p, target)
 	}
 }
 

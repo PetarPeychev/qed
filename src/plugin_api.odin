@@ -26,6 +26,7 @@ qed_api := [?]lua.L_Reg {
 	{"message", qed_message},
 	{"command", qed_command},
 	{"run", qed_run},
+	{"shortcut", qed_shortcut},
 	{"edit", qed_edit},
 	{"open", qed_open},
 	{"save", qed_save},

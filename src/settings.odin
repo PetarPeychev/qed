@@ -525,7 +525,8 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 }
 
 config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[dynamic]string) {
-	for &cmd in table {
+	set := make([]bool, len(table), context.temp_allocator)
+	for &cmd, i in table {
 		if cmd.bind_from != "" {
 			continue
 		}
@@ -560,6 +561,26 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 		cmd.ch = ch
 		delete(cmd.shortcut, os.heap_allocator())
 		cmd.shortcut = strings.clone(string(s), os.heap_allocator())
+		set[i] = true
+	}
+	// checked after every bind is set, so swapping two binds works
+	for &cmd, i in table {
+		if !set[i] || cmd.scope == "" || cmd.shortcut == "" {
+			continue
+		}
+		for other, j in table {
+			if j == i || other.scope != cmd.scope || (set[j] && j > i) {
+				continue
+			}
+			k, a, sc := command_effective_bind(other)
+			if sc == "" || k != cmd.key || a != cmd.alt_ch || other.ch != cmd.ch {
+				continue
+			}
+			append(invalid, fmt.tprintf("keybinds/%s (%s is %q)", command_config_name(cmd), cmd.shortcut, other.name))
+			delete(cmd.shortcut, os.heap_allocator())
+			cmd.key, cmd.alt_ch, cmd.ch, cmd.shortcut = {}, 0, 0, ""
+			break
+		}
 	}
 }
 
@@ -816,7 +837,7 @@ CONFIG_KEYBINDS_MOVED :: [?]struct {
 	{"Git: Set Diff Base", "git", "Set Diff Base"},
 	{"File Tree: Restore File", "git", "Restore File"},
 	{"Change Working Directory", "workspace", "Open Directory"},
-	{"Find Line", "lines", "Find Line"},
+	{"Find Line", "goto", "Line"},
 }
 
 config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {

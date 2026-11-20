@@ -14,8 +14,9 @@
 ---@field language string|nil
 ---@field root string
 ---@field selection_text string|nil
+---@field items (string|qed.UiItem)[]|nil while a pane with a list has focus (any plugin's command, e.g. a scoped one): its selection, the range with `multi`
 ---@field file string|nil file tree only: the entry under the cursor (absolute)
----@field files string[]|nil file tree only: every selected path, in tree order; on a scoped tab (Open, Changed, Unsaved) a selected dir stands for its in-scope files
+---@field files string[]|nil the focused pane's selected items' paths, else in the file tree every selected path, in tree order; on a scoped tab (Open, Changed, Unsaved) a selected dir stands for its in-scope files
 
 ---@class qed.CommandSpec
 ---@field name string bare name; the palette shows `<display name>: <name>`
@@ -67,6 +68,11 @@ function qed.command(spec) end
 ---@param name string
 ---@return boolean ran
 function qed.run(name) end
+
+---The live shortcut of a core or plugin editor command by visible name (`""` when unbound), `nil` for an unknown name.
+---@param name string
+---@return string|nil
+function qed.shortcut(name) end
 
 ---Every change to `b` while `fn` runs is one undo step; an error inside `fn` rolls it back.
 ---Returns false without calling `fn` if `opts.rev` is stale.
@@ -261,7 +267,7 @@ function qed.every(ms, fn) end
 ---@field change? fun(v: qed.View, item: string|qed.UiItem) the highlighted item changed (not at open, also after `View:set`); a newer change kills the previous run
 ---@field query? fun(v: qed.View, text: string) the query field settled; a newer query and the close kill the previous run and the `qed.spawn` it waits on (`qed.spawn_bg` processes stay the plugin's to kill)
 ---@field close? fun(v: qed.View) any close: Esc, click outside, the opening command's chord, `View:close`, a parent closing, an exclusive pane replacing it
----@field link? fun(v: qed.View, target: string) a click on a link in a `markdown` body: the raw destination (URL, relative path, `path#anchor`); `#anchor` links scroll the body in core and never reach here
+---@field link? fun(v: qed.View, target: string) a click on a link in a `markdown` body: the raw destination (URL, relative path, `path#anchor`); `#anchor` links come here too when this handler is set (call `View:anchor`), else core scrolls them
 
 ---@class qed.UiSpec
 ---@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads)
@@ -313,6 +319,10 @@ function View:markdown(text) end
 ---@param slug string
 ---@return boolean
 function View:anchor(slug) end
+---Top row (1-based) of a text or markdown body; scrolls there first when `row` is given. Returns false once closed.
+---@param row? integer
+---@return integer|false
+function View:scroll(row) end
 ---Closes the pane and its children; a no-op once closed.
 function View:close() end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.
@@ -731,7 +741,7 @@ function qed.buf.indent(b) end
 ---@return boolean active true when this plugin's base is the one shown
 function qed.buf.set_base(b, text, opts) end
 
----A list handle over the buffer's lines, live (edits show at once). Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching. A view over it opens on the match nearest the cursor.
+---A list handle over the buffer's lines. An edit, a disk reload or the buffer closing shows on the next frame: a filter is recomputed keeping the selected line (a `:N` past the end clamps), a closed buffer empties the list. Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching. A view over it opens on the match nearest the cursor.
 ---@param b qed.Buf
 ---@return qed.List
 function qed.buf.line_list(b) end
