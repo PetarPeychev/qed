@@ -846,6 +846,9 @@ table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/scope/workspace/walk_test.odin`; scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
+The headless e2e suite stays the main net. To smoke-test a visible change on the real binary,
+`tools/tmux-qed.sh` (`start` / `keys` / `capture [--color]` / `stop`) runs `./qed` in a detached
+tmux session with an isolated HOME; run `tools/tmux-qed.sh` bare for usage.
 
 ## Shipped
 
