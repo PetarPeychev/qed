@@ -1491,9 +1491,6 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		ai_rows = llm_active_rows(editor, b)
 	}
 
-	conflicts := merge_scan(b)
-	conflict_spans := merge_word_map(b, conflicts)
-
 	pal := deco_palette(editor.plugins.colors[:])
 	drows := deco_rows(b, editor.scroll_row, editor.scroll_row + h, pal)
 
@@ -1549,17 +1546,9 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				break
 			}
 		}
-		side, cmark := merge_side(conflicts, row)
 		colors := highlight_colors(b, row)
-		if cmark {
-			mc := make([]tb2.Color, len(text), context.temp_allocator)
-			for i in 0 ..< len(text) {
-				mc[i] = merge_side_color(side)
-			}
-			colors = mc
-		}
 		drow := drows[row - editor.scroll_row] if row - editor.scroll_row < len(drows) else DecoRow{}
-		line_bg := editor_line_bg(current, ai_edit, mark, diff_view_on(), side, cmark, drow.tints[:])
+		line_bg := editor_line_bg(current, ai_edit, mark, diff_view_on(), drow.tints[:])
 
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
@@ -1569,12 +1558,6 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				_, nspan := diff_word_span(old, string(text[:]))
 				diff_from, diff_to = nspan[0], nspan[1]
 				diff_bg = color_over(line_bg, COLOR_GIT_MOD, GIT_DIFF_WORD_TINT)
-			}
-		}
-		if (side == .Ours || side == .Theirs) && !cmark {
-			if sp, ok := conflict_spans[row]; ok {
-				diff_from, diff_to = sp[0], sp[1]
-				diff_bg = color_over(line_bg, merge_side_color(side), CONFLICT_WORD_TINT)
 			}
 		}
 
@@ -1957,7 +1940,7 @@ color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {
 	return tb2.Color(chan(b, t, 16, alpha) | chan(b, t, 8, alpha) | chan(b, t, 0, alpha))
 }
 
-editor_line_bg :: proc(current, ai_edit: bool, mark: DiffMark, hunk: bool, side: MergeSide, marker: bool, tints: []RowTint = nil) -> tb2.Color {
+editor_line_bg :: proc(current, ai_edit: bool, mark: DiffMark, hunk: bool, tints: []RowTint = nil) -> tb2.Color {
 	bg := COLOR_BG
 	if hunk {
 		#partial switch mark {
@@ -1966,9 +1949,6 @@ editor_line_bg :: proc(current, ai_edit: bool, mark: DiffMark, hunk: bool, side:
 		case .Modified:
 			bg = color_over(bg, COLOR_GIT_MOD, GIT_HUNK_TINT)
 		}
-	}
-	if side != .None {
-		bg = color_over(bg, merge_side_color(side), CONFLICT_MARKER_TINT if marker else CONFLICT_TINT)
 	}
 	for t in tints {
 		bg = color_over(bg, t.color, t.alpha)
@@ -2084,7 +2064,7 @@ editor_render_text_row :: proc(
 					pfg = tb2.Color(u64(sp.fg) | color_attrs(pfg))
 				}
 				if sp.has_bg {
-					pbg = sp.bg
+					pbg = color_over(bg_normal, sp.bg, sp.alpha) if sp.blend else sp.bg
 				}
 				pfg = tb2.Color(u64(pfg) | sp.attrs)
 			}

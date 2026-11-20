@@ -892,3 +892,53 @@ bench_filetree_changed :: proc(t: ^testing.T) {
 	}
 	delete(test_slice_max)
 }
+
+@(test)
+bench_conflict_keystroke :: proc(t: ^testing.T) {
+	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
+		return
+	}
+	run :: proc(label: string, blocks: int, row: int) {
+		sb := strings.builder_make(context.temp_allocator)
+		for i in 0 ..< 200 {
+			if i < blocks {
+				fmt.sbprintf(&sb, "<<<<<<< HEAD\nlocal v%d = %d\nshared\n=======\nlocal v%d = %d + 1\nshared\n>>>>>>> branch\n", i, i, i, i)
+			} else {
+				for k in 0 ..< 7 {
+					fmt.sbprintf(&sb, "plain %d of %d\n", k, i)
+				}
+			}
+			for k in 0 ..< 93 {
+				fmt.sbprintf(&sb, "line %d of %d\n", k, i)
+			}
+		}
+		e := e2e_start(strings.to_string(sb))
+		defer e2e_stop(&e)
+		plugin_pump(&e.ed)
+		plugin_flush(&e.ed)
+		b := editor_buffer(&e.ed)
+		b.cursor = {row, 0}
+		editor_scroll(&e.ed)
+		KEYS :: 50
+		test_slice_on = true
+		clear(&test_slice_max)
+		start := time.tick_now()
+		for _ in 0 ..< KEYS {
+			e2e_type(&e, "z")
+			plugin_flush(&e.ed)
+		}
+		per := ms_since(start) / KEYS
+		start = time.tick_now()
+		for _ in 0 ..< KEYS {
+			e2e_render(&e)
+		}
+		frame := ms_since(start) / KEYS
+		fmt.eprintfln("%-30s %6d lines %5d decos  keystroke %6.2f ms  max slice %6.2f ms  frame %6.2f ms", label, len(b.lines), len(b.deco.items), per, test_slice_max["conflict"], frame)
+		test_slice_on = false
+	}
+	fmt.eprintln("=== conflict plugin per-keystroke bench ===")
+	run("no conflicts", 0, 10000)
+	run("200 blocks, typing outside", 200, 10050)
+	run("200 blocks, typing in a block", 200, 10001)
+	delete(test_slice_max)
+}

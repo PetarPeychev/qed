@@ -496,20 +496,20 @@ ui_ask_wait :: proc(e: ^E2E) -> ^Pane {
 e2e_plugin_ui_confirm_over_exclusive :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
-	merge_dialog_open(&e.ed)
-	merge := pane_find(&e.ed, "merge").handle
+	test_dialog_open(&e.ed)
+	dialog := pane_find(&e.ed, "dialog").handle
 	ui_run(t, &e, "UI: Confirm")
 	p := pane_focus(&e.ed)
-	testing.expect(t, p != nil && p.kind == .Child && p.parent == merge, "a confirm over a pane is its child")
+	testing.expect(t, p != nil && p.kind == .Child && p.parent == dialog, "a confirm over a pane is its child")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Sure?"), "the child renders over its parent")
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "nil")
 	p = pane_focus(&e.ed)
-	testing.expect(t, p != nil && p.id == "merge", "Esc returns to the parent")
+	testing.expect(t, p != nil && p.id == "dialog", "Esc returns to the parent")
 
 	ui_run(t, &e, "UI: Prompt")
-	pane_end(&e.ed, merge, false)
+	pane_end(&e.ed, dialog, false)
 	plugin_flush(&e.ed)
 	testing.expect_value(t, e.ed.message, "nil")
 	testing.expect_value(t, len(e.ed.panes), 0)
@@ -577,8 +577,8 @@ e2e_plugin_ui_exclusive_refused_over_ask :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Confirm")
-	merge_dialog_open(&e.ed)
-	testing.expect(t, pane_find(&e.ed, "merge") == nil, "an exclusive open is refused over a plugin ask")
+	test_dialog_open(&e.ed)
+	testing.expect(t, pane_find(&e.ed, "dialog") == nil, "an exclusive open is refused over a plugin ask")
 	testing.expect_value(t, e.ed.message, "busy")
 	testing.expect_value(t, pane_focus(&e.ed).owner, "ui")
 	editor_buffer(&e.ed).modified = true

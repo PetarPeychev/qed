@@ -310,6 +310,10 @@ plugin_api_misc :: proc(t: ^testing.T) {
 		assert(type(qed.version) == "string", "version")
 		assert(qed.shell_quote("it's") == "'it'\\''s'", "shell_quote")
 		assert(qed.text.width("héllo") == 5 and qed.text.width("日本") == 4, "display width")
+		local h = qed.text.diff({"a", "b", "c", "d"}, {"a", "x", "c", "d", "e"})
+		assert(#h == 2 and h[1].a == 2 and h[1].a_count == 1 and h[1].b == 2 and h[1].b_count == 1, "a changed row")
+		assert(h[2].a == 5 and h[2].a_count == 0 and h[2].b == 5 and h[2].b_count == 1, "an appended row")
+		assert(#qed.text.diff({}, {}) == 0 and qed.text.diff({}, {"a", "b"})[1].b_count == 2 and not pcall(qed.text.diff, {"a"}, {1}), "empty and non-string lists")
 		local c = qed.config()
 		assert(c.opt == 1 and c.nested.x == "z", "merged config")
 		c.opt = 99

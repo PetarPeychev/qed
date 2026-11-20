@@ -51,6 +51,9 @@
     }
   },
   "plugins": {
+    "conflict": {
+      "enabled": true
+    },
     "filetree": {
       "enabled": true
     },
@@ -106,7 +109,6 @@
     "Diff: Next Change": "Alt+'",
     "Diff: Previous Change": "Alt+;",
     "Diff: Revert Hunk": "Alt+z",
-    "Git: Resolve Conflict": "Alt+m",
     "Toggle Line Wrap": "",
     "LSP: Next Diagnostic": "Alt+>",
     "LSP: Previous Diagnostic": "Alt+<",
