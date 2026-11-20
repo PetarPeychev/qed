@@ -844,7 +844,7 @@ CONFIG_KEYBINDS_MOVED :: [?]struct {
 	{"Find Line", "goto", "Line"},
 	{"File Tree", "filetree", "All"},
 	{"File Tree: Open", "filetree", "Open"},
-	{"File Tree: Changed", "filetree", "Changed"},
+	{"File Tree: Changed", "git", "Changes"},
 	{"File Tree: Unsaved", "filetree", "Unsaved"},
 	{"File Tree: Delete", "filetree", "Delete"},
 	{"File Tree: Rename", "filetree", "Rename"},

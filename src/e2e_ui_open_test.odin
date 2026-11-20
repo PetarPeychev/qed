@@ -369,6 +369,9 @@ e2e_ui_open_unload :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(p.tasks), 0)
 	pane_stack_sync(&e.ed)
 	testing.expect_value(t, len(e.ed.panes), 0)
+	testing.expect_value(t, len(p.queue), 1)
+	testing.expect_value(t, p.queue[0].event, PluginEvent.Plugin_Unloaded)
+	plugin_flush(&e.ed)
 	testing.expect(t, !plugin_busy(&e.ed), "nothing left to pump")
 }
 

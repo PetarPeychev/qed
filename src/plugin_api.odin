@@ -42,6 +42,10 @@ qed_api := [?]lua.L_Reg {
 	{"shell_quote", qed_shell_quote},
 	{"parse_locations", qed_parse_locations},
 	{"on", qed_on},
+	{"emit", qed_emit},
+	{"export", qed_export},
+	{"plugin", qed_plugin},
+	{"caller", qed_caller},
 	{"spawn", qed_spawn},
 	{"spawn_bg", qed_spawn_bg},
 	{"sleep", qed_sleep},
@@ -162,17 +166,6 @@ qed_status_api := [?]lua.L_Reg {
 }
 
 @(private = "file")
-qed_filetree_api := [?]lua.L_Reg {
-	{"provide", qed_filetree_provide},
-	{"set_status", qed_filetree_set_status},
-	{"set_base", qed_filetree_set_base},
-	{"listen", qed_filetree_listen},
-	{"state", qed_filetree_state},
-	{"request", qed_filetree_request},
-	{nil, nil},
-}
-
-@(private = "file")
 qed_clipboard_api := [?]lua.L_Reg {
 	{"get", qed_clipboard_get},
 	{"set", qed_clipboard_set},
@@ -200,7 +193,7 @@ plugin_qed_push :: proc(L: ^lua.State, name: string) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"filetree", qed_filetree_api[:]}, {"ui", qed_ui_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"ui", qed_ui_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		lua.pushodinstring(L, name)
@@ -1917,8 +1910,12 @@ qed_on :: proc "c" (L: ^lua.State) -> c.int {
 	name := api_string(L, 1)
 	event: PluginEvent
 	found := false
+	custom := ""
+	if i := strings.index_byte(name, ':'); i > 0 && i < len(name) - 1 {
+		event, found, custom = .Custom, true, name
+	}
 	for n, e in plugin_event_names {
-		if n == name {
+		if !found && e != .Custom && n == name {
 			event, found = e, true
 		}
 	}
@@ -1934,8 +1931,142 @@ qed_on :: proc "c" (L: ^lua.State) -> c.int {
 	api_handle_push(L, id, {{"off", qed_hook_off}})
 	lua.pushvalue(L, 2)
 	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
-	append(&p.hooks, PluginHook{id = id, event = event, owner = pl.name, ref = ref})
+	append(&p.hooks, PluginHook{id = id, event = event, name = plugin_name_intern(p, custom) if custom != "" else "", owner = pl.name, ref = ref})
 	p.subs[event] += 1
+	return 1
+}
+
+qed_emit :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	p := &editor.plugins
+	name := api_string(L, 1)
+	pl := api_loaded(L, editor)
+	if i := strings.index_byte(name, ':'); i < 0 || name[:i] != pl.name || i == len(name) - 1 {
+		return plugin_raise(L, fmt.tprintf("event name must be '%s:<event>'", pl.name))
+	}
+	subscribed := false
+	for h in p.hooks {
+		subscribed ||= h.event == .Custom && h.name == name
+	}
+	if !subscribed {
+		return 0
+	}
+	lua.settop(L, 2)
+	plugin_queue(editor, {event = .Custom, a = name, data = i32(lua.L_ref(L, lua.REGISTRYINDEX))})
+	return 0
+}
+
+qed_export :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	pl := plugin_owner(L, entry.editor)
+	if pl == nil || entry.editor.plugins.setup != pl {
+		return plugin_raise(L, "qed.export() is only callable during setup")
+	}
+	if pl.exports != lua.NOREF {
+		return plugin_raise(L, "qed.export() is callable once per load")
+	}
+	if lua.type(L, 1) != .TABLE {
+		return lua.L_argerror(L, 1, "table of functions expected")
+	}
+	lua.settop(L, 1)
+	lua.newtable(L)
+	lua.pushnil(L)
+	for lua.next(L, 1) != 0 {
+		if lua.type(L, -2) != .STRING || lua.type(L, -1) != .FUNCTION {
+			return plugin_raise(L, "qed.export: name = function expected")
+		}
+		lua.pushvalue(L, -2)
+		lua.insert(L, -2)
+		lua.rawset(L, 2)
+	}
+	pl.exports = lua.L_ref(L, lua.REGISTRYINDEX)
+	return 0
+}
+
+qed_plugin :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	name := api_string(L, 1)
+	if p.setup != nil {
+		return plugin_raise(L, "qed.plugin() is unavailable during setup (call it from startup or plugin_loaded)")
+	}
+	pl := plugin_find(p, name)
+	if pl == nil || pl.state != .Enabled {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.createtable(L, 0, 4)
+	if pl.exports == lua.NOREF {
+		return 1
+	}
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.exports))
+	lua.pushnil(L)
+	for lua.next(L, -2) != 0 {
+		lua.pop(L, 1)
+		lua.pushvalue(L, -1)
+		lua.pushodinstring(L, pl.name)
+		lua.pushinteger(L, lua.Integer(pl.gen))
+		lua.pushvalue(L, lua.upvalueindex(1))
+		lua.pushvalue(L, -4)
+		lua.pushcclosure(L, plugin_export_call, 4)
+		lua.rawset(L, -5)
+	}
+	lua.pop(L, 1)
+	return 1
+}
+
+plugin_export_call :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	owner, _ := lua.toodinstring(L, lua.upvalueindex(1))
+	pl := plugin_find(p, owner)
+	if pl == nil || pl.state != .Enabled || pl.gen != u64(lua.tointeger(L, lua.upvalueindex(2))) || pl.exports == lua.NOREF {
+		return plugin_raise(L, fmt.tprintf("plugin '%s' was unloaded", owner))
+	}
+	n := lua.gettop(L)
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.exports))
+	lua.pushvalue(L, lua.upvalueindex(4))
+	lua.rawget(L, -2)
+	lua.remove(L, -2)
+	lua.insert(L, 1)
+	caller, _ := lua.toodinstring(L, lua.upvalueindex(3))
+	append(&p.calls, PluginCall{co = L, owner = pl.name, caller = plugin_name_intern(p, caller)})
+	status := lua.pcall(L, n, lua.MULTRET, 0, 0, plugin_export_k)
+	return plugin_export_k(L, c.int(status), 0)
+}
+
+plugin_export_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	context = plugin_entry(L).ctx
+	p := &plugin_entry(L).editor.plugins
+	for i := len(p.calls) - 1; i >= 0; i -= 1 {
+		if p.calls[i].co == L {
+			ordered_remove(&p.calls, i)
+			break
+		}
+	}
+	if lua.Status(status) != .OK && lua.Status(status) != .YIELD {
+		return lua.error(L)
+	}
+	return lua.gettop(L)
+}
+
+qed_caller :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	me, _ := lua.toodinstring(L, lua.upvalueindex(1))
+	for i := len(p.calls) - 1; i >= 0; i -= 1 {
+		if c := p.calls[i]; c.co == L && c.owner == me {
+			lua.pushodinstring(L, c.caller)
+			return 1
+		}
+	}
+	lua.pushnil(L)
 	return 1
 }
 

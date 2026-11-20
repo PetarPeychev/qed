@@ -11,7 +11,7 @@ local gen = {}
 local stat = {branch = "", ahead = 0, behind = 0, added = 0, deleted = 0, gen = 0, known = false, sha = ""}
 local scanning, dirty, job = false, false, nil
 local renames = {}
-local provided = false
+local published, ft
 
 local function say(text, level)
 	qed.message(text, level)
@@ -40,7 +40,64 @@ local function fetch_all()
 	end
 end
 
--- a request while a scan runs kills its spawn and reruns once, so only the latest result is pushed
+local function preview(path)
+	return repo.blob(renames[path] or path, base)
+end
+
+local restore_path
+
+-- the file tree may unload between its plugin_unloaded event and a scan landing; its exports raise then
+local function push()
+	if not ft then
+		return
+	end
+	local pub = published or {paths = {}, marks = {}}
+	local ok, err = pcall(function()
+		ft.set_tab{label = "Git", cmd = "Git: Changes", paths = pub.paths, virtual = pub.virtual, detail = true, preview = preview, missing = restore_path}
+		ft.set_marks(pub.marks)
+		ft.set_ignored(pub.ignored or false)
+	end)
+	if not ok then
+		qed.log("debug", "file tree: " .. tostring(err))
+		ft = nil
+	end
+end
+
+local function attach()
+	ft = qed.plugin("filetree")
+	push()
+end
+
+local function stopped()
+	return dirty
+end
+
+-- a scan that only moved sizes or marks keeps the path lists, so the tree keeps its narrowed Git tab
+local function publish(files, ignored, full)
+	if full then
+		say(("Over %d changed files: the Git tab lists the first %d"):format(tree.MAX, tree.MAX), "warn")
+	end
+	local how = published and tree.compare({files = files, ignored = ignored}, published, stopped) or "paths"
+	if how == nil or how == "same" then
+		return
+	end
+	local view = tree.view(files, ignored, stopped)
+	if not view then
+		return
+	end
+	renames = {}
+	for path, e in pairs(files) do
+		renames[path] = e.from
+	end
+	local paths, virtual = view.changed, view.deleted
+	if how == "fields" then
+		paths, virtual = published.paths, published.virtual
+	end
+	published = {files = files, ignored = ignored, paths = paths, virtual = virtual, marks = view.marks}
+	push()
+end
+
+-- a request while a scan runs kills its spawn and reruns once, so only the latest result is published
 local function scan()
 	if scanning then
 		dirty = true
@@ -53,31 +110,15 @@ local function scan()
 		return
 	end
 	scanning = true
-	local files, ignored, full
 	repeat
 		dirty = false
 		job = {}
-		files, ignored, full = tree.scan(qed.root(), base, job)
+		local files, ignored, full = tree.scan(qed.root(), base, job)
+		if files and not dirty then
+			publish(files, ignored, full)
+		end
 	until not dirty
 	scanning, job = false, nil
-	if not files or not provided then
-		return
-	end
-	renames = {}
-	for path, e in pairs(files) do
-		renames[path] = e.from
-	end
-	qed.filetree.set_status(files, ignored)
-	if full then
-		say(("Over %d changed files: the Changed tab lists the first %d"):format(tree.MAX, tree.MAX), "warn")
-	end
-end
-
-local function preview(path)
-	local text = repo.blob(renames[path] or path, base)
-	if provided then
-		qed.filetree.set_base(path, text)
-	end
 end
 
 local function show()
@@ -165,8 +206,7 @@ local function set_base()
 	scan()
 end
 
-local function restore(ctx)
-	local path = ctx.file
+restore_path = function(path)
 	if not path or qed.fs.exists(path) then
 		say("Not a deleted file")
 		return
@@ -193,7 +233,7 @@ local function restore(ctx)
 		return
 	end
 	say("Restored " .. name)
-	scan()
+	qed.defer(0, scan)
 end
 
 local function when()
@@ -204,14 +244,16 @@ return {
 	setup = function()
 		show()
 		qed.command{name = "Set Diff Base", run = set_base, when = when}
-		qed.command{name = "Restore File", scope = "filetree", run = restore, when = when}
+		qed.command{name = "Restore File", scope = "filetree", run = function(ctx) restore_path(ctx.file) end, when = when}
+		qed.command{name = "Changes", key = "Alt+g", welcome = true, when = function() return ready and ft ~= nil end, run = function()
+			ft.open("Git")
+		end}
 		qed.on("startup", function()
 			ready = repo.git(qed.root(), {"--version"}).code == 0
 			if not ready then
-				provided = false
-				qed.filetree.provide(nil)
 				return
 			end
+			attach()
 			fetch_all()
 			poll()
 			qed.every(POLL_MS, tick)
@@ -229,10 +271,27 @@ return {
 		end)
 		qed.on("root_changed", function()
 			if ready then
+				published, renames = nil, {}
+				push()
 				restart({})
+				scan()
 			end
 		end)
 		qed.on("theme_changed", show)
-		provided = qed.filetree.provide{refresh = scan, preview = preview, open_deleted = restore} == true
+		qed.on("filetree:refresh", function()
+			if ready then
+				scan()
+			end
+		end)
+		qed.on("plugin_loaded", function(id)
+			if id == "filetree" and ready then
+				attach()
+			end
+		end)
+		qed.on("plugin_unloaded", function(id)
+			if id == "filetree" then
+				ft = nil
+			end
+		end)
 	end,
 }

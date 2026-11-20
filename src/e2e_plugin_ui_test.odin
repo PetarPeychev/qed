@@ -856,6 +856,9 @@ e2e_plugin_ui_query_unload :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(p.views), 0)
 	testing.expect_value(t, len(p.procs), 0)
 	testing.expect_value(t, len(p.tasks), 0)
+	testing.expect_value(t, len(p.queue), 1)
+	testing.expect_value(t, p.queue[0].event, PluginEvent.Plugin_Unloaded)
+	plugin_flush(&e.ed)
 	testing.expect(t, !plugin_busy(&e.ed), "nothing left to pump")
 }
 

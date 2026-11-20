@@ -163,7 +163,7 @@ function qed.shell_quote(s) end
 ---@return {label: string, path: string, pos: qed.Pos}[]
 function qed.parse_locations(text, opts) end
 
----@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"
+---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"|"plugin_loaded"|"plugin_unloaded"|string
 
 ---@class qed.Handle
 ---@field id integer
@@ -175,10 +175,31 @@ function Handle:off() end
 ---`cursor_moved(b)` fire at most once per main-loop iteration. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
+---`plugin_loaded(id)` and `plugin_unloaded(id)` fire for other plugins after startup (hot reload, enable, disable, an error).
+---A `"<plugin>:<event>"` name subscribes to that plugin's `qed.emit` and gets its `data`.
 ---@param event qed.Event
 ---@param fn function
 ---@return qed.Handle
 function qed.on(event, fn) end
+
+---Queues a custom event for `qed.on(name)` handlers. `name` must be `"<this plugin's id>:<event>"`; every handler gets the same `data` (read-only by convention).
+---@param name string
+---@param data? any
+function qed.emit(name, data) end
+
+---Publishes functions other plugins reach through `qed.plugin(id)`. Setup only, once per load. They run in the caller's task against this plugin's state.
+---@param fns table<string, function>
+function qed.export(fns) end
+
+---Another plugin's exports, or nil when it is not loaded (the installed check). Raises during setup: call it from `startup` or `plugin_loaded`.
+---Each call raises once that plugin unloads or reloads; fetch again on `plugin_loaded`. Tables passed either way are read-only by convention.
+---@param id string
+---@return table|nil
+function qed.plugin(id) end
+
+---Inside an exported function: the id of the plugin that called it (nil elsewhere), to key per-caller state dropped on `plugin_unloaded`.
+---@return string|nil
+function qed.caller() end
 
 ---@class qed.SpawnSpec
 ---@field cmd? string run under `sh -c`
@@ -371,10 +392,11 @@ function View:marks(marks, opts) end
 ---@param spec {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[], input?: {prompt?: string, text?: string}|false}
 ---@return boolean
 function View:footer(spec) end
----The active tab; with `i`, switches to it first (no `on.tab`). Returns false once closed.
+---The active tab; with `i`, switches to it first (no `on.tab`); with `tabs`, replaces the tab row first. Returns false once closed.
 ---@param i? integer
+---@param tabs? (string|{label: string, cmd?: string})[]
 ---@return integer|false
-function View:tab(i) end
+function View:tab(i, tabs) end
 ---`false` stops the auto preview (the plugin shows its own), `"auto"` resumes it; a table shows `path` now, diffed against `base` (raw bytes) when given, only the changed hunks unless `diff_only = false`. Returns false once closed.
 ---@param spec false|"auto"|{path: string, base?: string, diff_only?: boolean}
 ---@return boolean
@@ -503,50 +525,37 @@ function qed.theme.current() end
 ---@return string
 function qed.theme.icon(name) end
 
-qed.filetree = {}
+---The bundled `filetree` plugin's exports (`qed.plugin("filetree")`). Everything is kept per calling plugin and dropped when it unloads.
+---@class filetree.Exports
+local FileTree = {}
 
----@class qed.ProviderSpec
----@field refresh? fun() the tree wants fresh status (opened, root changed, a tree file operation); answer with `set_status`
----@field preview? fun(path: string) the Changed tab wants a base for `path`; answer with `set_base`
----@field open_deleted? fun(ctx: qed.Ctx) runs as a file tree command on `Enter` over a listed deleted file that is missing on disk
+---@class filetree.Tab
+---@field label string unique; added tabs sit between Open and Unsaved
+---@field paths string[] listed paths (absolute) and their descendants; pass the same table again to keep the tree's narrowed list
+---@field virtual? string[] paths not on disk to list too (deleted files)
+---@field cmd? string a command whose chord selects the tab (shown in the tab row)
+---@field detail? boolean show mark suffixes and `+N -N` sizes on this tab
+---@field preview? fun(path: string): string|nil runs in the tree's task after the preview debounce; a string is the base the file is diffed against, nil previews it plainly
+---@field missing? fun(path: string) Enter on a listed path missing on disk
 
----@class qed.FileStatus
----@field mark "added"|"modified"|"deleted"
----@field from? string the old path of a rename (shown as `new  ← old`)
----@field added? integer lines added (shown as `+N -N` on the Changed tab)
----@field removed? integer lines removed
+---Adds the caller's tab, or replaces the one with this label.
+---@param tab filetree.Tab
+function FileTree.set_tab(tab) end
 
----Claims the file tree's Changed tab. Callbacks run as queued coroutines. Calling again replaces the callbacks and keeps the status. `nil` drops it.
----@param spec qed.ProviderSpec|nil
----@return true|nil ok `nil, "taken by <plugin>"` while another plugin holds the tab
----@return string? err
-function qed.filetree.provide(spec) end
+---@param label string
+function FileTree.remove_tab(label) end
 
----Replaces the tree's status: bars, the Changed tab, sizes, rename labels and deleted ghost rows. `ignored` paths hide unless *Toggle Ignored*.
----@param files table<string, qed.FileStatus> keyed by path (relative paths resolve against the root)
----@param ignored? string[]
-function qed.filetree.set_status(files, ignored) end
+---Row marks by absolute path, shown on every tab; replaces the caller's last marks.
+---@param marks table<string, {bar?: string, fg?: string, suffix?: string, added?: integer, removed?: integer, dim?: boolean}>
+function FileTree.set_marks(marks) end
 
----Answers the `preview(path)` callback: the Changed tab previews `path` diffed against `text` (raw bytes; binary shows a hexdump); `nil` shows it plainly. A path not asked for last is ignored.
----@param path string
----@param text string|nil
-function qed.filetree.set_base(path, text) end
+---Paths the tree hides unless *Toggle Ignored*; false holds the background walk until the set is known.
+---@param paths string[]|false
+function FileTree.set_ignored(paths) end
 
----TEMPORARY until the plugin communication step: the `filetree` plugin's side of the provider. `fn(kind)` runs queued when the provider comes or goes (`"provider"`), pushes status (`"status"`) or answers a preview (`"base"`). One listener; `nil, "taken by <plugin>"` while another holds it.
----@param fn fun(kind: "provider"|"status"|"base")
----@return true|nil ok
----@return string? err
-function qed.filetree.listen(fn) end
-
----TEMPORARY: the provider's last push, paths absolute. `files`/`ignored` are nil until the first push; `base_path`/`base` are set once the last asked preview is answered (`base` nil: show the file plainly).
----@return {provider: boolean, files?: table<string, qed.FileStatus>, ignored?: string[], base_path?: string, base?: string}
-function qed.filetree.state() end
-
----TEMPORARY: asks the provider to `refresh`, to `preview` `path` (a new ask drops the last answer) or to `open_deleted` with the current ctx. False when it has no such callback.
----@param kind "refresh"|"preview"|"open_deleted"
----@param path? string
----@return boolean
-function qed.filetree.request(kind, path) end
+---Opens the tree on a tab (a built-in label or an added one).
+---@param label string
+function FileTree.open(label) end
 
 qed.term = {}
 
@@ -880,7 +889,7 @@ function qed.fs.list(dir) end
 ---@return qed.List
 function qed.fs.dirs(opts) end
 
----A list handle over every file and dir under `root` (default `qed.root()`): a threaded parallel walk, prewarmed in the background when a view opens over it, shared by handles with the same options, rerun after `qed.fs` writes under its root (serving the old items until the rerun lands). Dotfiles and the root's ignore set (`List:ignore`, or the file tree status provider's) are left out unless `dotfiles`/`ignored`. Items `{label, path, dir?, depth?}`. A filter field ranks paths (capped at `list.max`, default 500, narrowing the previous hits as the query grows), debounced.
+---A list handle over every file and dir under `root` (default `qed.root()`): a threaded parallel walk, prewarmed in the background when a view opens over it, shared by handles with the same options, rerun after `qed.fs` writes under its root (serving the old items until the rerun lands). Dotfiles and the root's ignore set (`List:ignore`) are left out unless `dotfiles`/`ignored`. Items `{label, path, dir?, depth?}`. A filter field ranks paths (capped at `list.max`, default 500, narrowing the previous hits as the query grows), debounced.
 ---@param opts? {root?: string, dotfiles?: boolean, ignored?: boolean}
 ---@return qed.List
 function qed.fs.walk(opts) end

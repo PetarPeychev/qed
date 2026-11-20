@@ -1,14 +1,12 @@
 local TABS = {
 	{label = "All", cmd = "File Tree: All"},
 	{label = "Open", cmd = "File Tree: Open"},
-	{label = "Changed", cmd = "File Tree: Changed"},
 	{label = "Unsaved", cmd = "File Tree: Unsaved"},
 }
 local HINTS = {{label = "←→ tabs"}, {label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "commands", cmd = "Command Palette"}}
-local RANK = {added = 1, modified = 2, deleted = 3}
--- core's walk preview debounce: a held arrow on the Changed tab asks the provider once
+-- core's walk preview debounce: a held arrow on a previewing tab asks its plugin once
 local PREVIEW_DEBOUNCE_MS = 80
--- paths handled between yields while a status push is processed, so no slice nears the task budget
+-- marks pushed between yields, so no slice nears the task budget
 local CHUNK = 4000
 
 local v, walk, auto
@@ -16,11 +14,15 @@ local scope = "All"
 local show = {}
 local clip, clip_cut = {}, false
 local mode, target, wanted
-local st = {provider = false, ignored = {}, status = {}, changed = {}, deleted = {}, gen = 0, paths = 0}
+local added = {}
+local marks_of, ignored_of = {}, {}
+local marks_gen, stamps = 0, 0
 local built = {}
 local scopes = {}
 local shown = {}
-local load_job, sync_job = 0, 0
+local based = {}
+local sync_job, ask = 0, 0
+local due, ignore_moved = false, false
 
 local function say(text, level)
 	qed.message(text, level)
@@ -34,139 +36,58 @@ local function exists(path)
 	return qed.fs.exists(path, {follow = false})
 end
 
-local function deleted(path)
-	local f = st.files and st.files[path]
-	return f ~= nil and f.mark == "deleted" and not exists(path)
-end
-
-local function tick(i)
-	if i % CHUNK == 0 then
-		qed.sleep(0)
-	end
-end
-
--- "same", "fields" (same paths and deleted set, other fields moved) or "paths"; nil when a newer push took over
-local function compare(a, b, my)
-	local n, fields = 0, false
-	for path, f in pairs(a.files) do
-		local g = b.files[path]
-		if not g or (g.mark == "deleted") ~= (f.mark == "deleted") then
-			return "paths"
-		end
-		fields = fields or g.mark ~= f.mark or g.from ~= f.from or g.added ~= f.added or g.removed ~= f.removed
-		n = n + 1
-		tick(n)
-		if my ~= load_job then
-			return nil
-		end
-	end
-	for _ in pairs(b.files) do
-		n = n - 1
-	end
-	if n ~= 0 then
-		return "paths"
-	end
-	fields = fields or #a.ignored ~= #b.ignored
-	for i, p in ipairs(a.ignored) do
-		fields = fields or b.ignored[i] ~= p
-	end
-	return fields and "fields" or "same"
-end
-
--- a deleted file shows as modified on its ancestors
-local function propagate(files, my)
-	local status, changed, gone = {}, {}, {}
-	local under = qed.root() .. "/"
-	local function set(path, mark)
-		local cur = status[path]
-		if cur and RANK[cur] >= RANK[mark] then
+local function builtin(label)
+	for _, t in ipairs(TABS) do
+		if t.label == label then
 			return true
 		end
-		status[path] = mark
-		return false
 	end
-	local n = 0
-	for path, f in pairs(files) do
-		set(path, f.mark)
-		changed[#changed + 1] = path
-		if f.mark == "deleted" then
-			gone[#gone + 1] = path
-		end
-		local up, p = f.mark == "deleted" and "modified" or f.mark, path
-		while p:sub(1, #under) == under do
-			local np = parent(p)
-			if np == p or set(np, up) then
-				break
-			end
-			p = np
-		end
-		n = n + 1
-		tick(n)
-		if my ~= load_job then
-			return nil
-		end
-	end
-	return status, changed, gone
+	return false
 end
 
--- true when the state changed, false when the push repeated it, nil when a newer push took over
-local function load_state(my)
-	local s = qed.filetree.state()
-	local files, ignored = s.files, s.ignored or {}
-	local how = "paths"
-	if s.provider == st.provider and files and st.files then
-		how = compare({files = files, ignored = ignored}, st, my)
-		if how == nil then
-			return nil
-		elseif how == "same" then
-			return false
+local function tab_of(label)
+	for _, t in ipairs(added) do
+		if t.label == label then
+			return t
 		end
 	end
-	local status, changed, gone = propagate(files or {}, my)
-	if not status then
-		return nil
-	end
-	-- the narrowed Changed handle keys on paths: a push that only moved sizes keeps it
-	local paths = st.paths + (how == "paths" and 1 or 0)
-	st = {provider = s.provider, files = files, ignored = ignored, status = status, changed = changed, deleted = gone, gen = st.gen + 1, paths = paths}
-	built = {}
-	return true
 end
 
+local function owners(map)
+	local out = {}
+	for owner in pairs(map) do
+		out[#out + 1] = owner
+	end
+	table.sort(out)
+	return out
+end
+
+-- one plugin's marks go to the view as they are; several are merged, the later id winning per path
 local function marks(my)
 	if built.marks then
 		return built.marks
 	end
-	local m, n = {}, 0
-	local icon = qed.theme.icon("tree_renamed")
-	for path, mark in pairs(st.status) do
-		local e = {bar = "git_" .. mark}
-		if mark == "deleted" and not exists(path) then
-			e.fg = "git_deleted"
-		end
-		local f = st.files and st.files[path]
-		if f then
-			if f.from then
-				e.suffix = icon .. " " .. (qed.path.rel(f.from) or f.from)
-			end
-			if (f.added or 0) > 0 or (f.removed or 0) > 0 then
-				e.added, e.removed = f.added or 0, f.removed or 0
-			end
-		end
-		m[path] = e
-		n = n + 1
-		tick(n)
-		if my ~= sync_job then
-			return nil
-		end
-	end
-	for _, path in ipairs(st.ignored) do
-		if not m[path] then
+	local ids, m, n = owners(marks_of), {}, 0
+	if #ids == 1 then
+		m = marks_of[ids[1]]
+		for _ in pairs(m) do
 			n = n + 1
 		end
-		local e = m[path] or {}
-		e.dim = true
-		m[path] = e
+	else
+		for _, id in ipairs(ids) do
+			for path, e in pairs(marks_of[id]) do
+				if not m[path] then
+					n = n + 1
+				end
+				m[path] = e
+				if n % CHUNK == 0 then
+					qed.sleep(0)
+					if my ~= sync_job then
+						return nil
+					end
+				end
+			end
+		end
 	end
 	built.marks, built.count = m, n
 	return m
@@ -176,10 +97,11 @@ local function alive(my, view)
 	return my == sync_job and v ~= nil and v == view
 end
 
--- the Changed tab's suffix and sizes come and go with the detail flag, so a tab switch pushes nothing
+-- suffixes and sizes come and go with the tab's detail flag, so a tab switch pushes nothing
 local function push_marks(my)
-	local view, gen = v, st.gen
-	local detail = scope == "Changed"
+	local view, gen = v, marks_gen
+	local t = tab_of(scope)
+	local detail = t ~= nil and t.detail == true
 	if shown.marks == gen then
 		view:marks({}, {detail = detail})
 		return true
@@ -196,7 +118,7 @@ local function push_marks(my)
 			view:marks(chunk, {replace = first, detail = detail, total = built.count})
 			chunk, n, first = {}, 0, false
 			qed.sleep(0)
-			if not alive(my, view) or st.gen ~= gen then
+			if not alive(my, view) or marks_gen ~= gen then
 				return false
 			end
 		end
@@ -206,35 +128,50 @@ local function push_marks(my)
 	return true
 end
 
+-- tabs other plugins add sit between Open and Unsaved
 local function tabs()
-	local out, at = {}, 1
-	for _, t in ipairs(TABS) do
-		if t.label ~= "Changed" or st.provider then
-			out[#out + 1] = t
-			if t.label == scope then
-				at = #out
-			end
+	local out, at = {TABS[1], TABS[2]}, 1
+	for _, t in ipairs(added) do
+		out[#out + 1] = {label = t.label, cmd = t.cmd}
+	end
+	out[#out + 1] = TABS[3]
+	for i, t in ipairs(out) do
+		if t.label == scope then
+			at = i
 		end
 	end
 	return out, at
 end
 
 local function chips()
+	local t = tab_of(scope)
 	if scope == "All" then
 		return {{label = "ignored", cmd = "File Tree: Toggle Ignored", on = show.ignored}, {label = "dotfiles", cmd = "File Tree: Toggle Dotfiles", on = show.dotfiles}}
-	elseif scope == "Changed" then
+	elseif t and t.preview then
 		return {{label = "diff", cmd = "File Tree: Toggle Diff", on = show.diff}}
 	end
 	return {}
 end
 
+-- a plugin that has not sent its ignore set yet holds the walk back: it would descend into ignored dirs
 local function ignore_push()
-	-- a provider that has not pushed yet holds the walk back: it would descend into ignored dirs
-	if st.provider and not st.files then
-		walk:ignore(false)
-	else
-		walk:ignore(st.ignored)
+	local ids = owners(ignored_of)
+	local all = {}
+	for _, id in ipairs(ids) do
+		local paths = ignored_of[id]
+		if paths == false then
+			walk:ignore(false)
+			return
+		end
+		if #ids == 1 then
+			all = paths
+		else
+			for _, p in ipairs(paths) do
+				all[#all + 1] = p
+			end
+		end
 	end
+	walk:ignore(all)
 end
 
 -- handles with equal options share one core walk, so narrowed handles over it survive a new handle
@@ -271,8 +208,9 @@ local function source()
 	if scope == "All" then
 		return walk, false
 	end
-	local paths = scope ~= "Changed" and buffer_paths()
-	local stamp = paths and table.concat(paths, "\0") or st.paths
+	local t = tab_of(scope)
+	local paths = not t and buffer_paths()
+	local stamp = paths and table.concat(paths, "\0") or t.stamp
 	local c = scopes[scope]
 	if c and c.stamp == stamp then
 		return c.h, false
@@ -284,15 +222,15 @@ local function source()
 	if paths then
 		h = walk:within(paths)
 	else
-		h = walk:within(st.changed)
-		if #st.deleted > 0 then
-			local u = h:union(st.deleted)
+		h = walk:within(t.paths)
+		if t.virtual and #t.virtual > 0 then
+			local u = h:union(t.virtual)
 			h:release()
 			h = u
 		end
 	end
 	scopes[scope] = {h = h, stamp = stamp}
-	return h, #(paths or st.changed) > CHUNK
+	return h, #(paths or t.paths) > CHUNK
 end
 
 -- narrowing and refilling are each one core call: a yield between keeps them in separate slices
@@ -312,21 +250,18 @@ local function show_source(my, view)
 	return true
 end
 
-local function preview_show(path)
-	local s = qed.filetree.state()
-	if s.base_path ~= path then
-		return false
-	end
-	if s.base then
-		v:preview{path = path, base = s.base, diff_only = show.diff}
+local function preview_show(path, base)
+	if base then
+		v:preview{path = path, base = base, diff_only = show.diff}
 	else
 		v:preview{path = path}
 	end
-	return true
 end
 
-local function preview_changed(item, blank)
-	if not v or scope ~= "Changed" then
+-- reuse: the base asked last for this path still holds (a diff toggle, not new tab data)
+local function preview_changed(item, blank, reuse)
+	local t = v and tab_of(scope)
+	if not t or not t.preview then
 		return
 	end
 	if not item or item.dir or not item.path then
@@ -335,15 +270,25 @@ local function preview_changed(item, blank)
 		return
 	end
 	wanted = item.path
-	if preview_show(item.path) then
+	if reuse and based.path == item.path then
+		preview_show(item.path, based.base)
 		return
 	end
 	if blank then
 		v:preview(false)
 	end
-	if not qed.filetree.request("preview", item.path) then
-		v:preview{path = item.path}
+	ask = ask + 1
+	local my, view = ask, v
+	local ok, base = pcall(t.preview, item.path)
+	if my ~= ask or v ~= view or wanted ~= item.path then
+		return
 	end
+	if not ok then
+		qed.log("debug", "preview: " .. tostring(base))
+	end
+	base = ok and type(base) == "string" and base or nil
+	based = {path = item.path, base = base}
+	preview_show(item.path, base)
 end
 
 local function on_change(_, item)
@@ -351,9 +296,10 @@ local function on_change(_, item)
 	preview_changed(item, true)
 end
 
--- only the Changed tab does work per highlighted item
+-- only a tab with a preview callback does work per highlighted item
 local function preview_mode()
-	if scope ~= "Changed" then
+	local t = tab_of(scope)
+	if not t or not t.preview then
 		v:on("change", false)
 		if not auto then
 			auto = true
@@ -371,11 +317,11 @@ end
 local function sync(blank)
 	sync_job = sync_job + 1
 	local my, view = sync_job, v
-	if scope == "Changed" and not st.provider then
+	if not builtin(scope) and not tab_of(scope) then
 		scope = "All"
 	end
-	local _, at = tabs()
-	view:tab(at)
+	local row, at = tabs()
+	view:tab(at, row)
 	view:footer{chips = chips()}
 	if not show_source(my, view) then
 		return
@@ -384,13 +330,11 @@ local function sync(blank)
 	if not push_marks(my) or not alive(my, view) then
 		return
 	end
-	if scope == "Changed" then
-		preview_changed(view:selection(), blank)
-	end
+	preview_changed(view:selection(), blank)
 end
 
 local function refresh()
-	qed.filetree.request("refresh")
+	qed.emit("filetree:refresh")
 end
 
 local function reveal(path)
@@ -407,7 +351,7 @@ local handlers = {
 		if #items > 1 then
 			local paths = {}
 			for _, it in ipairs(items) do
-				if not it.dir and not deleted(it.path) then
+				if not it.dir and exists(it.path) then
 					paths[#paths + 1] = it.path
 				end
 			end
@@ -424,8 +368,11 @@ local handlers = {
 		if not it or it.dir then
 			return
 		end
-		if deleted(it.path) then
-			if not qed.filetree.request("open_deleted") then
+		if not exists(it.path) then
+			local t = tab_of(scope)
+			if t and t.missing then
+				t.missing(it.path)
+			else
 				say("Deleted file")
 			end
 			return
@@ -436,7 +383,7 @@ local handlers = {
 	tab = function(view, i)
 		local t = tabs()[i]
 		if not t then
-			-- the tab row and the provider disagree (it came or went meanwhile): rebuild the view
+			-- the tab row and the added tabs disagree (one came or went meanwhile): rebuild the view
 			view:close()
 			open(scope)
 			return
@@ -498,17 +445,8 @@ local handlers = {
 	end,
 }
 
-local function provider_check()
-	local s = qed.filetree.state()
-	if s.provider ~= st.provider then
-		load_job = load_job + 1
-		load_state(load_job)
-	end
-end
-
 open = function(tab)
-	provider_check()
-	scope = tab == "Changed" and not st.provider and "All" or tab
+	scope = (builtin(tab) or tab_of(tab)) and tab or "All"
 	mode, target, wanted = nil, nil, nil
 	auto = true
 	walk_new()
@@ -787,20 +725,135 @@ local function toggle_diff()
 	show.diff = not show.diff
 	if v then
 		v:footer{chips = chips()}
-		preview_changed(v:selection(), false)
+		preview_changed(v:selection(), false, true)
 	end
 end
 
-local function has_provider()
-	return qed.filetree.state().provider
+local function has_preview()
+	for _, t in ipairs(added) do
+		if t.preview then
+			return true
+		end
+	end
+	return false
 end
+
+local function schedule()
+	if due then
+		return
+	end
+	due = true
+	qed.defer(0, function()
+		due = false
+		local ignore = ignore_moved
+		ignore_moved = false
+		if not v then
+			return
+		end
+		if ignore then
+			ignore_push()
+		end
+		sync(false)
+	end)
+end
+
+local function release(label)
+	if scopes[label] then
+		scopes[label].h:release()
+		scopes[label] = nil
+	end
+end
+
+local function drop(id)
+	for i = #added, 1, -1 do
+		if added[i].owner == id then
+			release(added[i].label)
+			table.remove(added, i)
+		end
+	end
+	if marks_of[id] then
+		marks_of[id] = nil
+		marks_gen, built = marks_gen + 1, {}
+	end
+	if ignored_of[id] ~= nil then
+		ignored_of[id] = nil
+		ignore_moved = true
+	end
+	schedule()
+end
+
+local function caller()
+	return qed.caller() or error("call it through qed.plugin(\"filetree\")", 3)
+end
+
+local exports = {
+	set_tab = function(spec)
+		local id = caller()
+		if type(spec) ~= "table" or type(spec.label) ~= "string" or spec.label == "" or type(spec.paths) ~= "table" then
+			error("set_tab: {label, paths, ...} expected", 2)
+		end
+		if builtin(spec.label) then
+			error(("set_tab: %q is a built-in tab"):format(spec.label), 2)
+		end
+		local t = tab_of(spec.label)
+		if t and t.owner ~= id then
+			error(("set_tab: %q belongs to %s"):format(spec.label, t.owner), 2)
+		end
+		if not t then
+			t = {owner = id, label = spec.label}
+			added[#added + 1] = t
+		end
+		if t.paths ~= spec.paths or t.virtual ~= spec.virtual then
+			stamps = stamps + 1
+			t.stamp = stamps
+		end
+		t.cmd, t.paths, t.virtual, t.detail, t.preview, t.missing = spec.cmd, spec.paths, spec.virtual, spec.detail, spec.preview, spec.missing
+		based = {}
+		schedule()
+	end,
+	remove_tab = function(label)
+		local id = caller()
+		for i, t in ipairs(added) do
+			if t.label == label and t.owner == id then
+				release(label)
+				table.remove(added, i)
+				schedule()
+				return
+			end
+		end
+	end,
+	set_marks = function(m)
+		local id = caller()
+		if type(m) ~= "table" then
+			error("set_marks: table expected", 2)
+		end
+		marks_of[id] = m
+		marks_gen, built = marks_gen + 1, {}
+		schedule()
+	end,
+	set_ignored = function(paths)
+		local id = caller()
+		if paths ~= false and type(paths) ~= "table" then
+			error("set_ignored: list or false expected", 2)
+		end
+		ignored_of[id] = paths
+		ignore_moved = true
+		schedule()
+	end,
+	open = function(label)
+		if not builtin(label) and not tab_of(label) then
+			error(("open: no tab %q"):format(tostring(label)), 2)
+		end
+		open(label)
+	end,
+}
 
 return {
 	setup = function()
 		qed.meta{display_name = "File Tree"}
 		show = {dotfiles = qed.opt("filetree_show_dotfiles"), ignored = qed.opt("filetree_show_ignored"), diff = qed.opt("filetree_diff_only")}
-		for _, t in ipairs({{"All", "Alt+f"}, {"Open", "Alt+o"}, {"Changed", "Alt+g"}, {"Unsaved", "Alt+u"}}) do
-			qed.command{name = t[1], key = t[2], welcome = true, when = t[1] == "Changed" and has_provider or nil, run = function()
+		for _, t in ipairs({{"All", "Alt+f"}, {"Open", "Alt+o"}, {"Unsaved", "Alt+u"}}) do
+			qed.command{name = t[1], key = t[2], welcome = true, run = function()
 				open(t[1])
 			end}
 		end
@@ -823,38 +876,15 @@ return {
 		cmd{name = "New", key = "Ctrl+n", run = function(ctx) prompt(ctx, "new") end}
 		cmd{name = "Toggle Dotfiles", key = "Alt+.", run = function() toggle("dotfiles") end}
 		cmd{name = "Toggle Ignored", key = "Alt+i", run = function() toggle("ignored") end}
-		cmd{name = "Toggle Diff", key = "Alt+d", run = toggle_diff, when = has_provider}
+		cmd{name = "Toggle Diff", key = "Alt+d", run = toggle_diff, when = has_preview}
 		cmd{name = "Expand/Collapse All", key = "Alt+e", run = function(ctx)
 			if not ctx.view:expand() then
 				say("File status is still loading")
 			end
 		end}
-		st.provider = qed.filetree.state().provider
-		qed.filetree.listen(function(kind)
-			if kind == "base" then
-				if v and scope == "Changed" and wanted then
-					preview_show(wanted)
-				end
-				return
-			end
-			load_job = load_job + 1
-			local had = st.provider
-			local changed = load_state(load_job)
-			if changed == nil or not v then
-				return
-			end
-			if had ~= st.provider then
-				reopen()
-			elseif changed then
-				ignore_push()
-				sync(false)
-			end
-		end)
+		qed.export(exports)
+		qed.on("plugin_unloaded", drop)
 		qed.on("root_changed", function()
-			load_job = load_job + 1
-			st = {provider = st.provider, ignored = {}, status = {}, changed = {}, deleted = {}, gen = st.gen + 1, paths = st.paths + 1}
-			built = {}
-			refresh()
 			if v then
 				reopen()
 				-- dirs expanded under the old root mean nothing now: back to the tab's default

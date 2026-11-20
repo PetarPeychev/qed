@@ -39,6 +39,9 @@ Plugin :: struct {
 	cfg_sig:    string,
 	unknown:    string,
 	keys_due:   bool,
+	exports:    c.int,
+	gen:        u64,
+	repeats:    int,
 }
 
 PluginFile :: struct {
@@ -91,7 +94,12 @@ Plugins :: struct {
 	deco_ns:  [dynamic]PluginNs,
 	ns_seq:   u32,
 	status:   [dynamic]PluginStatus,
-	shim:     TreeShim,
+	calls:    [dynamic]PluginCall,
+}
+
+PluginCall :: struct {
+	co:            ^lua.State,
+	owner, caller: string,
 }
 
 PluginEntry :: struct {
@@ -227,7 +235,7 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 
 plugins_shutdown :: proc(p: ^Plugins) {
 	plugin_ui_destroy(p)
-	tree_shim_destroy(&p.shim)
+	delete(p.calls)
 	delete(p.persist_path)
 	plugin_sched_shutdown(p)
 	for &cmd in p.commands {
@@ -424,6 +432,7 @@ plugins_add :: proc(p: ^Plugins, pl: Plugin, bundled: bool) -> ^Plugin {
 		env      = lua.NOREF,
 		cfg      = lua.NOREF,
 		defaults = lua.NOREF,
+		exports  = lua.NOREF,
 	})
 	pl := &p.list[len(p.list) - 1]
 	plugin_display_reset(pl)
@@ -627,9 +636,18 @@ plugin_call :: proc(editor: ^Editor, nargs, nresults: c.int) -> (ok: bool, messa
 	return false, full, ""
 }
 
+// a handler failing the same way on every tick logs at the 2nd, 4th, 8th, ... repeat
 plugin_error :: proc(editor: ^Editor, pl: ^Plugin, message, traceback: string, disable: bool) {
+	if !disable && message == pl.last_error {
+		pl.repeats += 1
+		if pl.repeats & (pl.repeats - 1) == 0 {
+			editor_log(editor, .Error, pl.display, fmt.tprintf("%s (repeated %d times)", message, pl.repeats))
+		}
+		return
+	}
 	delete(pl.last_error)
 	pl.last_error = strings.clone(message)
+	pl.repeats = 1
 	editor_log(editor, .Error, pl.display, message)
 	if traceback != "" {
 		editor_log(editor, .Debug, pl.display, traceback)
@@ -654,9 +672,11 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 		return
 	}
 	pl.state = .Enabled
+	pl.gen = plugin_next_id(p)
 	plugin_display_reset(pl)
 	delete(pl.last_error)
 	pl.last_error = ""
+	pl.repeats = 0
 	start := time.tick_now()
 	defer pl.load_ms = ms_since(start)
 	if p.L == nil {
@@ -692,6 +712,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	pl.keys_due = true
 	if p.bound && !p.startup_due {
 		plugin_queue(editor, {event = .Startup, only = pl.name})
+		plugin_queue(editor, {event = .Plugin_Loaded, a = pl.name})
 	}
 }
 
@@ -783,7 +804,7 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 			}
 		}
 		if found < 0 {
-			append(&next, Plugin{name = plugin_name_intern(p, w.name), bundled = w.bundled, dir = strings.clone(w.dir), main = strings.clone(w.main), stamp = w.stamp, env = lua.NOREF, cfg = lua.NOREF, defaults = lua.NOREF})
+			append(&next, Plugin{name = plugin_name_intern(p, w.name), bundled = w.bundled, dir = strings.clone(w.dir), main = strings.clone(w.main), stamp = w.stamp, env = lua.NOREF, cfg = lua.NOREF, defaults = lua.NOREF, exports = lua.NOREF})
 			plugin_display_reset(&next[len(next) - 1])
 			append(&loads, w.name)
 			append(&reloads, false)
@@ -939,7 +960,6 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	plugin_deco_unload(editor, pl.name)
 	plugin_status_unload(p, pl.name)
 	diffbase_unload(editor, pl.name)
-	tree_shim_unload(editor, pl.name)
 	for i := len(p.commands) - 1; i >= 0; i -= 1 {
 		if p.commands[i].owner == pl.name {
 			plugin_command_remove(editor, i)
@@ -956,6 +976,13 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	if pl.defaults != lua.NOREF {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.defaults)
 		pl.defaults = lua.NOREF
+	}
+	if pl.exports != lua.NOREF {
+		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.exports)
+		pl.exports = lua.NOREF
+	}
+	if p.bound && !p.startup_due {
+		plugin_queue(editor, {event = .Plugin_Unloaded, a = pl.name})
 	}
 	// Twice: a __gc object survives one cycle and its closure keeps the env alive.
 	lua.gc(p.L, .COLLECT)

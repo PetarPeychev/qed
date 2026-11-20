@@ -253,4 +253,108 @@ function M.scan(root, base, job)
 	return files, ignored, full
 end
 
+-- paths handled between yields while a scan becomes the file tree's view
+local CHUNK = 2000
+
+local function tick(i, stop)
+	if i % CHUNK == 0 then
+		qed.sleep(0)
+		return stop()
+	end
+	return false
+end
+
+local function parent(p)
+	return p:match("^(.+)/[^/]*$") or p
+end
+
+-- "same", "fields" (same paths and deleted set, other fields moved) or "paths"; nil once stop() says a newer scan took over
+function M.compare(a, b, stop)
+	local n, fields = 0, false
+	for path, f in pairs(a.files) do
+		local g = b.files[path]
+		if not g or (g.mark == "deleted") ~= (f.mark == "deleted") then
+			return "paths"
+		end
+		fields = fields or g.mark ~= f.mark or g.from ~= f.from or g.added ~= f.added or g.removed ~= f.removed
+		n = n + 1
+		if tick(n, stop) then
+			return nil
+		end
+	end
+	for _ in pairs(b.files) do
+		n = n - 1
+	end
+	if n ~= 0 then
+		return "paths"
+	end
+	fields = fields or #a.ignored ~= #b.ignored
+	for i, p in ipairs(a.ignored) do
+		fields = fields or b.ignored[i] ~= p
+	end
+	return fields and "fields" or "same"
+end
+
+-- marks by path (a deleted file shows as modified on its ancestors), the changed paths and the deleted ones
+function M.view(files, ignored, stop)
+	local status, changed, gone = {}, {}, {}
+	local under = qed.root() .. "/"
+	local function set(path, mark)
+		local cur = status[path]
+		if cur and RANK[cur] >= RANK[mark] then
+			return true
+		end
+		status[path] = mark
+		return false
+	end
+	local n = 0
+	for path, f in pairs(files) do
+		set(path, f.mark)
+		changed[#changed + 1] = path
+		if f.mark == "deleted" then
+			gone[#gone + 1] = path
+		end
+		local up, p = f.mark == "deleted" and "modified" or f.mark, path
+		while p:sub(1, #under) == under do
+			local np = parent(p)
+			if np == p or set(np, up) then
+				break
+			end
+			p = np
+		end
+		n = n + 1
+		if tick(n, stop) then
+			return nil
+		end
+	end
+	local marks = {}
+	local icon = qed.theme.icon("tree_renamed")
+	for path, mark in pairs(status) do
+		local e = {bar = "git_" .. mark}
+		if mark == "deleted" and not qed.fs.exists(path, {follow = false}) then
+			e.fg = "git_deleted"
+		end
+		local f = files[path]
+		if f then
+			if f.from then
+				e.suffix = icon .. " " .. (qed.path.rel(f.from) or f.from)
+			end
+			if (f.added or 0) > 0 or (f.removed or 0) > 0 then
+				e.added, e.removed = f.added or 0, f.removed or 0
+			end
+		end
+		marks[path] = e
+		n = n + 1
+		if tick(n, stop) then
+			return nil
+		end
+	end
+	for _, path in ipairs(ignored) do
+		local e = marks[path] or {}
+		e.dim = true
+		marks[path] = e
+	end
+	return {marks = marks, changed = changed, deleted = gone}
+end
+
 return M

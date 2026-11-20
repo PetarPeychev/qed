@@ -13,6 +13,9 @@ RIDX_GLOBALS :: 2
 EXTRASPACE :: size_of(rawptr)
 LOADED_TABLE :: "_LOADED"
 NOREF :: -2
+REFNIL :: -1
+
+MULTRET :: -1
 
 Status :: enum c.int {
 	OK        = 0,

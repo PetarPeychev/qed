@@ -56,10 +56,10 @@ test_pane_open :: proc(ed: ^Editor, id: string) -> bool {
 test_list_built: int
 
 @(thread_local)
-test_slice_owner: string
+test_slice_on: bool
 
 @(thread_local)
-test_slice_max: f64
+test_slice_max: map[string]f64
 
 ft_pane :: proc(ed: ^Editor) -> ^Pane {
 	p := pane_find(ed, "filetree")
@@ -121,9 +121,16 @@ ft_scope :: proc(ed: ^Editor) -> string {
 	return p.tabs[p.tab].label
 }
 
-ft_tab_visible :: proc(ed: ^Editor, label: string) -> bool {
-	cmd, ok := plugin_test_command(ed, fmt.tprintf("File Tree: %s", label))
-	return ok && plugin_command_when(ed, cmd)
+ft_tabs :: proc(ed: ^Editor) -> string {
+	p := ft_pane(ed)
+	if p == nil {
+		return ""
+	}
+	labels := make([dynamic]string, context.temp_allocator)
+	for t in p.tabs {
+		append(&labels, t.label)
+	}
+	return strings.join(labels[:], "|", context.temp_allocator)
 }
 
 // the rows as the next frame shows them: a restaled walk refills at render or input

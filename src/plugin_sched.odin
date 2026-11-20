@@ -19,7 +19,6 @@ PluginKind :: enum {
 	Coalesced,
 	Timer,
 	Setup,
-	Provider,
 }
 
 PLUGIN_SOFT_MS :: 50
@@ -27,19 +26,17 @@ PLUGIN_SETUP_MAX_MS :: 1000
 
 PluginBudget :: struct {
 	soft_ms, hard_ms: f64,
-	disable:          bool,
 }
 
-// disable applies to a handler's own errors; a budget overrun or out-of-memory only ends the task
 plugin_budget :: proc(kind: PluginKind) -> PluginBudget {
 	switch kind {
 	case .Command, .When:
-		return {0, f64(PLUGIN_COMMAND_MAX_MS), false}
+		return {0, f64(PLUGIN_COMMAND_MAX_MS)}
 	case .Setup:
-		return {2, PLUGIN_SETUP_MAX_MS, true}
-	case .Event, .Coalesced, .Timer, .Provider:
+		return {2, PLUGIN_SETUP_MAX_MS}
+	case .Event, .Coalesced, .Timer:
 	}
-	return {PLUGIN_SOFT_MS, f64(PLUGIN_SLICE_MAX_MS), true}
+	return {PLUGIN_SOFT_MS, f64(PLUGIN_SLICE_MAX_MS)}
 }
 
 PluginEvent :: enum {
@@ -60,6 +57,9 @@ PluginEvent :: enum {
 	Term_Exit,
 	Term_Close,
 	Quit,
+	Plugin_Loaded,
+	Plugin_Unloaded,
+	Custom,
 }
 
 plugin_event_names := [PluginEvent]string {
@@ -80,6 +80,9 @@ plugin_event_names := [PluginEvent]string {
 	.Term_Exit        = "term_exit",
 	.Term_Close       = "term_close",
 	.Quit             = "quit",
+	.Plugin_Loaded    = "plugin_loaded",
+	.Plugin_Unloaded  = "plugin_unloaded",
+	.Custom           = "",
 }
 
 PluginWaitKind :: enum {
@@ -123,6 +126,7 @@ PluginTask :: struct {
 PluginHook :: struct {
 	id:    u64,
 	event: PluginEvent,
+	name:  string,
 	owner: string,
 	ref:   i32,
 }
@@ -158,7 +162,7 @@ PluginSave :: struct {
 
 PluginQueued :: struct {
 	event: PluginEvent,
-	ref:   i32,
+	data:  i32,
 	buf:   u64,
 	n:     i64,
 	a, b:  string,
@@ -283,8 +287,8 @@ plugin_slice_end :: proc(editor: ^Editor, prev: PluginSlice, owner: string, kind
 	}
 	soft := plugin_budget(kind).soft_ms
 	when ODIN_TEST {
-		if owner == test_slice_owner {
-			test_slice_max = max(test_slice_max, time.duration_milliseconds(elapsed))
+		if test_slice_on {
+			test_slice_max[owner] = max(test_slice_max[owner], time.duration_milliseconds(elapsed))
 		}
 	}
 	if ms := time.duration_milliseconds(elapsed); soft > 0 && ms > soft {
@@ -300,13 +304,11 @@ plugin_kind_label :: proc(kind: PluginKind, ev: PluginEvent) -> string {
 	case .When:
 		return "command when"
 	case .Event, .Coalesced:
-		return fmt.tprintf("%s handler", plugin_event_names[ev])
+		return fmt.tprintf("%s handler", plugin_event_names[ev] if ev != .Custom else "custom event")
 	case .Timer:
 		return "timer"
 	case .Setup:
 		return "setup"
-	case .Provider:
-		return "file tree provider"
 	}
 	return ""
 }
@@ -366,6 +368,11 @@ plugin_task_free :: proc(editor: ^Editor, i: int) {
 	p := &editor.plugins
 	th, owner := p.tasks[i].thread, p.tasks[i].owner
 	ordered_remove(&p.tasks, i)
+	for j := len(p.calls) - 1; j >= 0; j -= 1 {
+		if p.calls[j].co == th.co {
+			ordered_remove(&p.calls, j)
+		}
+	}
 	plugin_thread_put(editor, th, owner)
 }
 
@@ -468,8 +475,11 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 		lua.pushodinstring(L, q.a)
 		lua.pushinteger(L, lua.Integer(q.n))
 		return 2
-	case .Term_Open, .Term_Close:
+	case .Term_Open, .Term_Close, .Plugin_Loaded, .Plugin_Unloaded:
 		lua.pushodinstring(L, q.a)
+		return 1
+	case .Custom:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(q.data))
 		return 1
 	}
 	lua.pushinteger(L, lua.Integer(q.buf))
@@ -590,7 +600,7 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 			editor_log(editor, .Debug, pl.display, traceback)
 		}
 	} else {
-		plugin_error(editor, pl, message, traceback, plugin_budget(kind).disable && pl.state == .Enabled)
+		plugin_error(editor, pl, message, traceback, false)
 	}
 }
 
@@ -616,22 +626,17 @@ api_await :: proc(L: ^lua.State, p: ^Plugins, what: string) -> ^PluginTask {
 
 plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = nil) {
 	p := &editor.plugins
-	if p.L != nil && q.ref != 0 {
-		if tree_shim_live(editor, q.only, q.ref) {
-			plugin_task_start(editor, q.only, .Provider, {ref = q.ref, args = .Line if q.a != "" else .None, line = q.a})
-		}
-		return
-	}
 	if p.L == nil || p.subs[q.event] == 0 {
 		return
 	}
+	about := q.event == .Plugin_Loaded || q.event == .Plugin_Unloaded
 	ids := make([dynamic]u64, context.temp_allocator)
 	for pl in p.list {
-		if pl.state != .Enabled || (q.only != "" && q.only != pl.name) {
+		if pl.state != .Enabled || (q.only != "" && q.only != pl.name) || (about && pl.name == q.a) {
 			continue
 		}
 		for h in p.hooks {
-			if h.event == q.event && h.owner == pl.name {
+			if h.event == q.event && h.owner == pl.name && (q.event != .Custom || h.name == q.a) {
 				append(&ids, h.id)
 			}
 		}
@@ -657,7 +662,7 @@ plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = n
 
 plugin_queue :: proc(editor: ^Editor, q: PluginQueued) {
 	p := &editor.plugins
-	if p.L == nil || (q.ref == 0 && p.subs[q.event] == 0) {
+	if p.L == nil || p.subs[q.event] == 0 {
 		return
 	}
 	q := q
@@ -700,6 +705,9 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 			plugin_emit(editor, q)
 			delete(q.a)
 			delete(q.b)
+			if q.data != 0 {
+				lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(q.data))
+			}
 		}
 		delete(batch)
 		ran = true

@@ -79,7 +79,7 @@ nav_scan :: proc(e: ^E2E) {
 	e2e_git_settle(e)
 }
 
-// the Changed tab asks the provider for a base from a debounced change task
+// the Git tab asks git for a base from a debounced change task
 nav_preview :: proc(e: ^E2E) {
 	pane_preview_load(&e.ed, ft_pane(&e.ed))
 	plugin_flush(&e.ed)
@@ -914,11 +914,11 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	testing.expect(t, ft_pane(&e.ed).list.source.walk.ignored, "toggle enables ignored")
 	testing.expect(t, entry_named(&e.ed, "debug.log"), "ignored file now visible")
 
-	// Changed scope prunes to changed files; the untracked add shows up.
+	// the Git tab prunes to changed files; the untracked add shows up.
 	e2e_key(&e, .Arrow_Right) // All -> Open
-	e2e_key(&e, .Arrow_Right) // Open -> Changed
-	testing.expect_value(t, ft_scope(&e.ed), "Changed")
-	testing.expect(t, entry_named(&e.ed, "new.txt"), "Changed scope lists the untracked add")
+	e2e_key(&e, .Arrow_Right) // Open -> Git
+	testing.expect_value(t, ft_scope(&e.ed), "Git")
+	testing.expect(t, entry_named(&e.ed, "new.txt"), "the Git tab lists the untracked add")
 	e2e_key(&e, .Esc)
 }
 
@@ -948,7 +948,7 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 
 	nav_alt(&e, 'g')
 	nav_scan(&e)
-	testing.expect_value(t, ft_scope(&e.ed), "Changed")
+	testing.expect_value(t, ft_scope(&e.ed), "Git")
 	m := ft_mark(&e.ed, e.path)
 	testing.expect(t, m.sizes && m.added == 2 && m.removed == 1, "modified file sizes")
 	m = ft_mark(&e.ed, newf)
@@ -969,7 +969,7 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 			continue
 		}
 		off := strings.index(row, want)
-		testing.expectf(t, off >= 0, "Changed tab row shows per-file diff size: %q", row)
+		testing.expectf(t, off >= 0, "Git tab row shows per-file diff size: %q", row)
 		if off >= 0 {
 			x := visual_width(transmute([]u8)row[:off])
 			testing.expect_value(t, x + len(want), lay.div_x)
@@ -1000,8 +1000,8 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	nav_scan(&e)
 
 	e2e_key(&e, .Arrow_Right) // All -> Open
-	e2e_key(&e, .Arrow_Right) // Open -> Changed
-	testing.expect_value(t, ft_scope(&e.ed), "Changed")
+	e2e_key(&e, .Arrow_Right) // Open -> Git
+	testing.expect_value(t, ft_scope(&e.ed), "Git")
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "file.txt" {
 			ft_pane(&e.ed).list.sel = i
@@ -1418,13 +1418,14 @@ e2e_nav_status_and_message :: proc(t: ^testing.T) {
 e2e_nav_filetree_toggle_reopens :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)
+	nav_scan(&e)
 
 	nav_alt(&e, 'f')
 	testing.expect(t, filetree_active(&e.ed), "Alt+f opens the file tree on All")
 	testing.expect_value(t, ft_scope(&e.ed), "All")
 	nav_alt(&e, 'g')
-	testing.expect(t, filetree_active(&e.ed), "Alt+g while open switches to Changed, stays open")
-	testing.expect_value(t, ft_scope(&e.ed), "Changed")
+	testing.expect(t, filetree_active(&e.ed), "Alt+g while open switches to Git, stays open")
+	testing.expect_value(t, ft_scope(&e.ed), "Git")
 	nav_alt(&e, 'g')
 	testing.expect(t, !filetree_active(&e.ed), "Alt+g again (same tab) closes it")
 	nav_alt(&e, 'f')

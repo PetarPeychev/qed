@@ -455,7 +455,7 @@ plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
 	p.answer = prev
 	if ref := v.on[ev.kind]; ref != 0 {
 		args := PluginArgs.View_Items if ev.kind == .Activate else .View
-		plugin_task_start(editor, v.owner, .Command, {ref = ref, args = args, view_ref = v.view_ref, item_ref = v.items_ref, items = ev.sel, pitems = ev.items})
+		plugin_task_start(editor, v.owner, .Command, {ref = ref, args = args, view_ref = v.view_ref, item_ref = v.items_ref, items = ev.sel, pitems = ev.items, user = ev.kind == .Activate})
 	}
 	if ev.kind == .Close {
 		if vi = plugin_view_index(p, ev.handle); vi >= 0 {
@@ -1351,6 +1351,7 @@ api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
 		keep = selected
 	}
 	if keep != "" && list_restores(src.kind) {
+		delete(pn.list.restore)
 		pn.list.restore = strings.clone(keep)
 		pane_restore(editor, pn, pane_geom(editor, pn).list.h)
 		delete(pn.list.restore)
@@ -1413,10 +1414,13 @@ api_tabs :: proc(L: ^lua.State, t: c.int) -> []PaneTab {
 	if tp == .NIL {
 		return nil
 	}
-	if tp != .TABLE {
+	return api_tab_list(L, lua.gettop(L))
+}
+
+api_tab_list :: proc(L: ^lua.State, h: c.int) -> []PaneTab {
+	if lua.type(L, h) != .TABLE {
 		plugin_raise(L, "tabs must be a list of labels or {label, cmd?}")
 	}
-	h := lua.gettop(L)
 	out := make([]PaneTab, int(lua.rawlen(L, h)), context.temp_allocator)
 	for i in 0 ..< len(out) {
 		#partial switch lua.rawgeti(L, h, lua.Integer(i + 1)) {
@@ -1611,10 +1615,14 @@ qed_view_tab :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	set := lua.type(L, 2) > .NIL
 	i := api_int(L, 2, "tab index expected") - 1 if set else 0
+	tabs := api_tab_list(L, 3) if lua.type(L, 3) > .NIL else nil
 	pn, _ := api_view_live(L, entry.editor)
 	if pn == nil {
 		lua.pushboolean(L, false)
 		return 1
+	}
+	if lua.type(L, 3) > .NIL {
+		pane_tabs_set(pn, tabs)
 	}
 	if set {
 		if i < 0 || i >= len(pn.tabs) {
