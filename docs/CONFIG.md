@@ -84,7 +84,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `palette_max_rows` | `8` | Max visible palette rows. |
-| `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Changed tab's diff preview. |
+| `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Git tab's diff preview. |
 | `message_log_backdrop` | `"none"` | What shows around *Debug: Message Log*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
 | `plugins_pane_backdrop` | `"none"` | The same for *Debug: Plugins*. |
 
@@ -109,7 +109,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *File Tree: Toggle Ignored* (`Alt+i`). |
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
 | `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle Diff View*. |
-| `filetree_diff_only` | `true` | The file-tree Changed tab's preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
+| `filetree_diff_only` | `true` | The file-tree Git tab's preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
 
 ## Keybinds
 
@@ -203,7 +203,7 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugin_memory_mb` | `256` | Memory cap for the Lua state; a task that exceeds it fails (logged) instead of growing, and its plugin stays loaded. `0` means no cap. |
-| `plugin_slice_max_ms` | `1000` | Longest a plugin event handler, timer or background task may run without yielding; past it the task is stopped with a warning (the plugin stays loaded). |
+| `plugin_slice_max_ms` | `1000` | Longest a plugin event handler, timer or background task may run without yielding; past it the task is stopped with a warning (the plugin stays loaded, as it does after any Lua error outside setup). |
 | `plugin_command_max_ms` | `5000` | The same limit for a plugin command. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
 | `plugins.<id>.enabled` | `true` | Off unloads that plugin (live) and drops its commands and binds. `e` in *Debug: Plugins* writes this key. |
@@ -230,15 +230,16 @@ come from the bundled `settings` plugin (no config of its own;
 
 ### File tree
 
-The file tree is the bundled `filetree` plugin: *File Tree: All* (`Alt+f`), *Open* (`Alt+o`),
-*Changed* (`Alt+g`, with a status provider such as `git`) and *Unsaved* (`Alt+u`) open it on that tab
+The file tree is the bundled `filetree` plugin: *File Tree: All* (`Alt+f`), *Open* (`Alt+o`) and
+*Unsaved* (`Alt+u`) open it on that tab, and the `git` plugin's *Git: Changes* (`Alt+g`) on its Git tab
 (also on the welcome screen); over an open tree a tab's chord switches to it and on the active tab
 closes it. Its commands run while it has focus and are listed in its `Ctrl+p`: *File Tree: Copy*,
 *Cut*, *Paste*, *Close Buffers* and *Select All* (default: the keys of the core *Copy*, *Cut*, *Paste*,
 *Close Buffer* and *Select All*, followed across a config reload), *Delete* (`Ctrl+d`), *Rename*
 (`Ctrl+r`), *New* (`Ctrl+n`), *Toggle Dotfiles* (`Alt+.`), *Toggle Ignored* (`Alt+i`), *Toggle Diff*
 (`Alt+d`) and *Expand/Collapse All* (`Alt+e`). Rebind them with `plugins.filetree.keybinds.<name>`
-(`"All"`, `"Delete"`, ...); the old top-level `keybinds."File Tree"` and `keybinds."File Tree: ..."`
+(`"All"`, `"Delete"`, ...); the Git tab's chord is `plugins.git.keybinds.Changes` (the old
+`plugins.filetree.keybinds.Changed` is gone). The old top-level `keybinds."File Tree"` and `keybinds."File Tree: ..."`
 warn where they moved. The toggles start from `filetree_show_dotfiles`, `filetree_show_ignored` and
 `filetree_diff_only`; the list width from `filetree_list_min_width`/`filetree_list_max_width`.
 Without Lua (or with the plugin disabled) there is no file tree.
@@ -307,15 +308,15 @@ jump list too. LSP hover uses the same renderer (plaintext hovers render verbati
 
 The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
 *Diff: Next/Previous Change*, *Diff: Revert Hunk*), polls the branch, ahead/behind
-and repo diff size into the status bar every 2 s, feeds the file tree's **Changed** tab
-(*File Tree: Changed*, `Alt+g`), and owns *Git: Set Diff Base* and the tree's
+and repo diff size into the status bar every 2 s, adds the file tree's **Git** tab
+(*Git: Changes*, `Alt+g`, shown only while the `filetree` plugin is loaded), and owns *Git: Set Diff Base* and the tree's
 *Git: Restore File* (also `Enter` on a deleted file). A moved branch or HEAD is followed within a poll. It
 does nothing when the `git` binary isn't on `PATH`. The old `modules.git` keys warn
 and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to the top level.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Changed** tab and its status bars, *Git: Set Diff Base* and *Git: Restore File*. Merge-conflict highlighting stays. |
+| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Git** tab, its status bars and ignored set, *Git: Changes*, *Git: Set Diff Base* and *Git: Restore File*. Merge-conflict highlighting stays. |
 
 ## Writing your own commands
 

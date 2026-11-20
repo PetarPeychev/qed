@@ -110,7 +110,7 @@ no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 *Git: Set Diff Base* (`qed.pick`: HEAD, merge base with the default branch, local + remote refs,
 last 50 commits). Branch and merge-base picks are live refs, re-resolved per fetch (falls back to
 HEAD in a repo where the ref doesn't resolve); commit picks are a fixed sha. The base lives only in
-the plugin, which also feeds the file tree Changed tab (see File tree status provider): with a base,
+the plugin, which also feeds the file tree's Git tab (see Git tab): with a base,
 each repo's `diff --name-status <base>` replaces its tracked `status` lines. A working-root change
 resets the base. The plugin's 2 s stat poll also resolves the base sha; when it changes (a moved
 branch, or HEAD under the default base) it refetches every buffer's base and rescans the tree.
@@ -425,8 +425,8 @@ the close event is flushed. Events (D8), no Lua during dispatch:
 `qed.pick/prompt/confirm/pane` are Lua sugar in `src/prelude.lua`, installed into every plugin's
 `qed` table by `plugin_qed_push`: `ui.open` + `view:wait()` + `view:close()`; pick/prompt/confirm
 open with `kind = "child"` and `modal` (a child of the focused pane or the active overlay, else
-exclusive). A child from a task not started by the user (`PluginTask.user`: commands, the provider's
-open-deleted callback) may only stack on the caller's own pane, else `"busy"`, so a timer cannot steal
+exclusive). A child from a task not started by the user (`PluginTask.user`: commands and view
+`activate`) may only stack on the caller's own pane, else `"busy"`, so a timer cannot steal
 focus; an open from such a task also leaves the message line alone. `ctx.view` is only handed to the view's
 own plugin. `pane_unload` saves state before marking dead.
 
@@ -521,12 +521,22 @@ started at the end of `editor_init`. Invariants the code can't show:
   `editor_save_full`; a handler that waits parks the save in `Plugins.saves` until
   its tasks end or `plugin_hook_timeout_ms` passes (`editor_save_id` finishes it).
   `quit` runs after the main loop, pumping until done or the same timeout.
+- Plugin communication ([notes/panes.md](notes/panes.md) §6): `qed.export` (setup only, once) stores a table of
+  functions on `Plugin.exports`; `qed.plugin(id)` (raises during setup) builds a fresh proxy of C closures holding
+  owner, load generation (`Plugin.gen`), caller and name, so a call after the owner unloads or reloads raises and
+  the proxy keeps nothing alive. A call runs in the caller's task through `lua_pcallk` (yields allowed), with a
+  `PluginCall{co, owner, caller}` pushed for `qed.caller()` and popped by the continuation or `plugin_task_free`.
+  `qed.emit("<own id>:<event>", data)` queues a `.Custom` event (data held as a registry ref) for hooks of that
+  name; `plugin_loaded`/`plugin_unloaded` are queued by `plugin_load`/`plugin_unload` after startup and skip their
+  subject. Hooks of every kind go with their owner.
 - Budgets: one count hook (100k instructions) on the main state, inherited by every
   thread, checks the slice in `Plugins.slice` against `plugin_budget(kind)` (`plugin_command_max_ms` for
-  commands, `plugin_slice_max_ms` for events, timers and provider tasks). Past the
+  commands, `plugin_slice_max_ms` for events and timers). Past the
   hard limit it yields from the hook when it can (pcall cannot catch that), else
   raises and drops the hook count to 1 until the slice ends; the task is stopped with a warning and the plugin
-  stays loaded (so does a task's out-of-memory error); a handler's own errors still disable it. The soft limit
+  stays loaded. A task's own Lua error (or out-of-memory) is logged at Error and the plugin stays loaded too;
+  only load and setup errors mark it errored. `plugin_error` collapses a repeat of the plugin's last error:
+  it logs again at the 2nd, 4th, 8th, ... repeat with `(repeated N times)`. The soft limit
   (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry's time is credited back to
   the outer slice. `__close` handlers run by `closethread` get the event budget.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
@@ -902,14 +912,14 @@ single-line/per-line), fuzzy line jump (`goto` plugin, *Go To: Line* `Ctrl+G`, f
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
-file tree (`filetree` plugin, see File tree: `Alt+f`/`Alt+o`/`Alt+g`/`Alt+u` open it on the All/Open/Changed/
-Unsaved tab, also on welcome; Enter opens a file or toggles a dir; type-to-filter over the walk (debounced
+file tree (`filetree` plugin, see File tree: `Alt+f`/`Alt+o`/`Alt+u` open it on the All/Open/Unsaved tab and
+the `git` plugin's `Alt+g` on its Git tab, also on welcome; Enter opens a file or toggles a dir; type-to-filter over the walk (debounced
 `WALK_FILTER_DEBOUNCE_MS`, ranked, capped at `WALK_FILTER_MAX_RESULTS` with `N+`, narrowing the previous hits);
 New/Rename/Delete/Copy/Cut/Paste/Close Buffers/Select All over a `Shift+↑↓` range (a dir stands for its selected
 rows; `(copy N)` names; dangling symlinks count as taken; failures name the reason), batch open, scoped `Ctrl+P`,
-`Alt+F` search in the selection as a child; chips for ignored/dotfiles (All) and diff (Changed), `Alt+e`
-expand/collapse all; provider bars propagated to dirs, ignored rows dimmed, deleted files listed virtually with
-Enter restoring them through the provider, renames as `new  ← old`, `+N -N` on Changed; open buffers accented,
+`Alt+F` search in the selection as a child; chips for ignored/dotfiles (All) and diff (previewing tabs), `Alt+e`
+expand/collapse all; git bars propagated to dirs, ignored rows dimmed, deleted files listed virtually with
+Enter restoring them, renames as `new  ← old`, `+N -N` on Git; open buffers accented,
 unsaved `●`),
 floating terminal pane (`Alt+t`: persistent embedded shell via
 vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded to the
@@ -949,10 +959,10 @@ read in-process up to the line cap; buffer source (file-tree open buffers / line
 byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrapped
 rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
 both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a
-nil error with 0 bytes.) The file-tree Changed tab
+nil error with 0 bytes.) A file-tree tab with a `preview` callback (the Git tab)
 previews a diff instead: changed hunks + `preview_diff_context` lines of context in the
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
-built by `preview_diff_file` (the provider's base text vs the file on disk, reusing the gutter's
+built by `preview_diff_file` (the callback's base text vs the file on disk, reusing the gutter's
 line-hash diff; a deleted file previews entirely as ghost rows; a `nil` base previews the file plainly).
 *File Tree: Toggle Diff* (`Alt+d`, a session flag of the `filetree` plugin seeded from config
 `filetree_diff_only`, default on) switches between this collapsed view and the
@@ -960,7 +970,7 @@ whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off
 gap-collapsing never fires).
 Preview loading is **debounced** (`WALK_PREVIEW_DEBOUNCE_MS`) for walk lists: a selection change arms
 `Pane.preview_due` and `pane_stack_pump` loads once it settles, so a held arrow can't back up the input queue
-or flood the provider with base requests.
+or flood the tab's plugin with base requests.
 
 **Walk service** (`walk.odin`): `Walk{root, dotfiles, ignored}` records in `Editor.walks`, shared by equal
 options and refcounted by list sources (`walk_gc` frees unreferenced ones once their prewarm landed); the candidate
@@ -984,26 +994,33 @@ copy + remove only on `EXDEV` (keeping mtimes; a failed remove drops the copy an
 
 **File tree** (`plugins/filetree`, D1: not in the works-without-Lua set): a `split:tree` view (`id = "filetree"`,
 scope `filetree`, `toggle = false`, `jump_closes`) over a `qed.fs.walk` handle made at each open and toggle. Tabs are
-`within` handles (Open, Unsaved: buffer paths; Changed: the provider's files plus `union` of deleted ones); each tab's
-`cmd` is its editor command (*File Tree: All/Open/Changed/Unsaved*), so a chord switches tabs and the active tab's
-closes. The plugin propagates provider marks up the ancestor dirs (deleted shows as modified above it) and pushes
-them with `v:marks` (dim ignored, deleted fg, rename suffix and sizes on Changed), chips with `v:footer`, New:/Rename:
+`within` handles (Open, Unsaved: buffer paths; an added tab: its `paths` plus `union` of its `virtual` ones); each
+tab's `cmd` is an editor command (*File Tree: All/Open/Unsaved*, *Git: Changes*), so a chord switches tabs and the
+active tab's closes. Other plugins reach the tree only through its exports (`qed.plugin("filetree")`): `set_tab{label,
+paths, virtual?, cmd?, detail?, preview?, missing?}` adds or replaces the caller's tab (between Open and Unsaved; the
+same `paths`/`virtual` tables keep the cached narrowed handle), `remove_tab(label)`, `set_marks(marks)` (shown on every
+tab; several callers merge, later id wins per path), `set_ignored(paths|false)` (fed to the walks' ignore set; `false`
+holds the prewarm) and `open(label)`. All of it is keyed by `qed.caller()` and dropped on `plugin_unloaded`; an export
+stores and defers one `sync` (`qed.defer(0)`), which updates the tab row in place (`v:tab(i, tabs)`), source, marks
+and preview. Marks go out with `v:marks` (suffix and sizes only on a `detail` tab), chips with `v:footer`, New:/Rename:
 as the footer input, delete and close confirms as `qed.confirm` children with their targets taken before the
-dialog; the Changed tab turns the auto preview off and answers per item with `v:preview{path, base}` after an 80 ms
-sleep in `change` (a newer change kills it, so a held arrow asks once; `change` is set only on that tab). Tree
+dialog; a tab with `preview` turns the auto preview off and calls it (pcall, in the tree's task) per item after an
+80 ms sleep in `change` (a newer change kills it, so a held arrow asks once; `change` is set only on that tab). Enter
+on a listed path missing on disk calls the tab's `missing`. File operations emit `filetree:refresh`. Tree
 commands take the binds of the core *Copy*/*Cut*/*Paste*/*Close Buffer*/*Select All* through `bind_from`
 (`plugin_command_bind` reads the core command at every rebind). A status push is compared with the last one and
-processed in chunks with `qed.sleep(0)` between; marks are built once per status and pushed in chunks, narrowed
-handles are cached per tab and released when replaced, and a tab switch only flips `v:marks{detail}`. A root change
-reopens the view, back to each tab's default expansion.
+marks are pushed in chunks with `qed.sleep(0)` between, narrowed handles are cached per tab and released when
+replaced, and a tab switch only flips `v:marks{detail}`. A root change reopens the view, back to each tab's default
+expansion.
 
-**File tree status provider** (`treeshim.odin`, temporary until M6): `qed.filetree.provide{refresh?, preview?,
-open_deleted?}` (one provider; another plugin gets `nil, "taken by"`; re-providing swaps callbacks and keeps the
-status; unload clears it), `set_status(files, ignored)` (validated, then stored as a normalized Lua table: absolute
-paths, `mark`, `from`, `added`/`removed`) and `set_base(path, bytes|nil)` (ignored unless `path` was asked last). The
-tree side is one listener (`qed.filetree.listen(fn)`, queued with `"provider"`, `"status"` or `"base"`), `state()`
-(pull) and `request("refresh"|"preview"|"open_deleted")`; every callback runs as a queued `.Provider` task (event
-budget) or, for `open_deleted`, a user command task with the tree's ctx. Lua never runs on render or per keystroke.
+**Git tab** (`plugins/git`): at `startup` and on `plugin_loaded("filetree")` git takes the tree's exports and
+publishes its last scan: `set_tab{label = "Git", cmd = "Git: Changes", paths, virtual = deleted, detail, preview =
+blob at the base, missing = restore}`, `set_marks` (bars propagated up the dirs with a deleted file shown as modified
+above it, deleted fg, rename suffix, sizes, dim ignored) and `set_ignored` (`false` until the first scan). A scan
+runs on `filetree:refresh`, a root change, a base move, *Set Diff Base* and a restore; it is compared with the last
+one and a scan that only moved sizes or marks keeps the path tables, so the tree keeps its narrowed handle.
+*Git: Changes* (`Alt+g`) opens the tree on the tab and hides without the tree. Without `filetree` git still does
+gutters, status segments and *Set Diff Base*; without git the tree has no Git tab and no ignore set.
 The `git` plugin's scan (`tree.lua`) sleeps every 2000 parsed lines (`repo.each`) so no slice nears the
 budget, parses and drops each command's output before the next, caps the list at `tree.MAX` (50000) paths with a
 warning, and a new request kills the running scan's spawn and reruns once.
@@ -1056,7 +1073,7 @@ User commands are `qed.command` calls in a user plugin; `qed.parse_locations` tu
 compiler/grep output into `qed.pick` items for a list + preview picker.
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
-rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), the file tree Changed tab (`qed.filetree`, fed by the `git` plugin); hot reload on file add/remove/edit
+rows, spans, end-of-line text), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed.emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
 and `enabled` flips; *Debug: Plugins* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only); `qed.meta` display names prefixing
 commands and labeling messages; per-plugin keybinds (`plugins.<id>.keybinds`); Lua

@@ -55,7 +55,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | basepick | | **plugin** (with git, done) | `pick`, `spawn`. |
 | git: base blob fetch, stat poll (branch, ahead/behind, diff size), base picker, restore file | (poll) | **plugin** (port 3, done: `plugins/git`) | `spawn`, `every`, `status.set` (chunks, `sep`), `buf.set_base`, events, `theme.icon`. |
 | git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
-| file tree Git tab + status bars: status scan, numstat sizes, renames, deleted files, ignored set, preview base, restore | | **plugin** (phase 11, done: `plugins/git/tree.lua`) | `filetree.provide{refresh, preview, open_deleted}`, `filetree.set_status`, `filetree.set_base`, carried to the `filetree` plugin by a temporary shim until M6. |
+| file tree Git tab + status bars: status scan, numstat sizes, renames, deleted files, ignored set, preview base, restore | | **plugin** (phase 11, `plugins/git/tree.lua`) | Since M6 through the `filetree` plugin's exports (`set_tab`, `set_marks`, `set_ignored`, `open`), reached with `qed.plugin("filetree")` at `startup` and on `plugin_loaded`. |
 | file tree | | **plugin** (M5, `plugins/filetree`) | `qed.fs.walk` handles, `ui.open` (tabs, tree list, marks, footer input, chips), `v:select`, `qed.fs.*` writes, `qed.confirm`. Core keeps the walk, tree rows, render, filter and preview. |
 | conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
 | projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`; on `qed.ui.open` since M1) | `ui.open{id, query field}`, `view:set/append`, `spawn_bg{on_line}`, `jump`, `ctx.files`. Core keeps the split layout, the preview, the count and hint, the query debounce (keystroke path) and the query/selection memory (`id`). |
@@ -135,8 +135,26 @@ The API is one global, `qed`.
 | `term_open`, `term_close` | `name` | |
 | `term_exit` | `name`, `code` | |
 | `quit` | | yes, bounded by `plugin_hook_timeout_ms` |
+| `plugin_loaded`, `plugin_unloaded` | `id` | After startup only (hot reload, enable, disable, a setup error); the plugin itself does not get its own. A reload queues `plugin_unloaded`, then its `startup`, then `plugin_loaded`. |
+| `"<plugin>:<event>"` | `data` | A custom event from that plugin's `qed.emit` (below). |
 
 There is deliberately no `key` event.
+
+### Plugin communication
+
+Per [panes.md](panes.md) §6 (D10). Setup registers only; cross-plugin calls happen in `startup` and on `plugin_loaded`.
+
+| Function | Notes |
+|---|---|
+| `qed.export(fns)` | Setup only, once per load; `fns` maps names to functions (anything else raises). They run in the caller's task (they may wait) against the owner's state. |
+| `qed.plugin(id) -> table \| nil` | The owner's exports, or `nil` when it is not loaded (the installed check). Raises during setup. Each call raises `plugin '<id>' was unloaded` once the owner unloads or reloads, so callers drop it on `plugin_unloaded` and fetch again on `plugin_loaded`. Tables passed either way are read-only by convention. |
+| `qed.caller() -> id \| nil` | Inside an exported function, the calling plugin, so owners key per-caller state and drop it on `plugin_unloaded`; `nil` elsewhere. |
+| `qed.emit(name, data?)` | `name` is `"<own id>:<event>"` (anything else raises). Queued like core events, one task per `qed.on(name)` handler, all given the same `data`; a no-op without subscribers. Handlers go with their plugin. |
+
+Exports of the bundled `filetree` plugin (all per caller): `set_tab{label, paths, virtual?, cmd?, detail?, preview?,
+missing?}` (adds or replaces the caller's tab; `preview(path)` returns a base string or nil and runs in the tree's
+task; `missing(path)` runs on Enter over a listed path missing on disk), `remove_tab(label)`, `set_marks(marks)`,
+`set_ignored(paths|false)`, `open(label)`. It emits `filetree:refresh` when it opens and after its file operations.
 
 ### UI
 | Function | Notes |
@@ -155,10 +173,6 @@ There is deliberately no `key` event.
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
-| `qed.filetree.provide{refresh?, preview?, open_deleted?} \| nil -> true \| nil, err` | Removed in [panes.md](panes.md) M6 (the `git` plugin adds its tab through `filetree` exports). Claims the Changed tab: one provider, `nil, "taken by <plugin>"` while another holds it; unload or `nil` drops it, and the tab with it. Calling again replaces the callbacks and keeps the status and tab. Callbacks run as queued coroutines (event budget): `refresh()` when the tree wants status (opened, root changed, a tree file operation, or `provide` over an open tree; the `git` plugin also scans at startup, so the first open is instant), `preview(path)` when the Changed tab wants a base, `open_deleted(ctx)` as a tree command on `Enter` over a listed deleted file missing on disk. |
-| `qed.filetree.set_status(files, ignored?)` | Replaces the tree status (stored normalized; the `filetree` plugin reads it through `state()`, read-only by convention). `files[path] = {mark = "added"\|"modified"\|"deleted", from?, added?, removed?}`; `from` is a rename's old path, `added`/`removed` the `+N -N` sizes. Core propagates marks to ancestor dirs, lists deleted files virtually and hides `ignored` paths unless *Toggle Ignored*. Validated before anything changes. Raises unless the caller is the provider. |
-| `qed.filetree.set_base(path, text \| nil)` | Answers `preview(path)`: the Changed tab previews `path` diffed against `text`, raw bytes (a NUL on either side shows a hexdump; `nil`: plain file). A stale path is ignored; every `set_status` drops the cached base, keeping the old rows up until the re-ask is answered. |
-| `qed.filetree.listen(fn)`, `.state()`, `.request(kind, path?)` | Temporary (M6 removes them): the `filetree` plugin's side. `fn(kind)` runs queued on `"provider"`, `"status"`, `"base"`; `state()` returns `{provider, files?, ignored?, base_path?, base?}` (absolute paths); `request` asks for `"refresh"`, `"preview"` or `"open_deleted"` (false without that callback). |
 
 - `qed.pick`/`prompt`/`confirm` stack as a child over an open pane or overlay; they return `nil, "busy"` only while a core safety dialog (quit, close, conflict) shows. Outside a user's command they stack only on the plugin's own pane, else `"busy"`. An exclusive open (`qed.ui.open` default, `qed.pane`) is also `"busy"` while a `modal` pane (the sugar's) is open, and otherwise closes the open exclusive pane, whose waiters get `nil`.
 - The chord of the command that opened a pane closes it like Esc (the core pane convention). A command of the view's own plugin run while it has focus (a `scope` command's chord or the scoped Ctrl+P) gets it as `ctx.view`.
@@ -245,8 +259,8 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | Hot reload | Triggers: the disk poll sees a user plugin file added, removed or changed (any file inside a dir plugin), `enabled` flips, or `r` in the Plugins pane. Only that plugin unloads and reloads; a same-name user plugin appearing or disappearing swaps it with the bundled one. Load order stays bundled-then-user, alphabetical. A plugin loaded after startup gets its own `startup` event. |
 | Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
 | Isolation | One `lua_State` with a per-plugin `_ENV`. |
-| Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Load, hook and timer errors disable the plugin; command errors only log; a task over its budget or out of memory is stopped with a warning and the plugin stays loaded. All errors are logged as `.Error` under the plugin's display name and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
-| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab follows the file tree status provider, conflicts are ungated. Phase 13 made `modules.lsp` the top-level `lsp` section, gated on `LSP_ENABLED`. `.Ai` stays a module. |
+| Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Only load and setup errors mark the plugin errored (unloaded). A Lua error in a command, handler, timer or any other task is logged and the plugin stays loaded; a repeat of the plugin's last error logs again only at the 2nd, 4th, 8th, ... repeat (`(repeated N times)`). A task over its budget or out of memory is stopped with a warning. All errors are logged as `.Error` under the plugin's display name and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
+| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab is the `git` plugin's (through `filetree` exports since M6), conflicts are ungated. Phase 13 made `modules.lsp` the top-level `lsp` section, gated on `LSP_ENABLED`. `.Ai` stays a module. |
 
 Hot reload mechanics:
 - `plugins_poll` runs in the disk poll, before the config reload. It rescans bundled plugins plus `Plugins.user_dir` (headless sessions have none and never poll).
@@ -290,11 +304,11 @@ load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*,
 
   | Entry | Soft (Debug log) | Hard |
   |---|---|---|
-  | events, timers, provider tasks | 50 ms | `plugin_slice_max_ms` (1 s): the task stops, a warning is logged |
+  | events, timers | 50 ms | `plugin_slice_max_ms` (1 s): the task stops, a warning is logged |
   | commands, `when` | n/a | `plugin_command_max_ms` (5 s): the task stops, a warning is logged |
   | `setup` | 2 ms | 1 s: the plugin is marked errored |
 
-  A stopped task or a task's out-of-memory error leaves the plugin loaded; a handler's or timer's own error still disables it.
+  A stopped task, a task's out-of-memory error and a task's own Lua error leave the plugin loaded. An exported function runs under its caller's task budget.
 
 - **Startup budget.**
   - perf.md has no cold-start target today. Its known pre-paint costs are cold `git_gutter_update` (~45-56 ms) and `buffer_open` on huge files.
@@ -348,13 +362,14 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | M3 | Accessor-backed list sources, pane-scoped commands (`scope` on `qed.command` and `qed.ui.open`, bare keys, `ctx.view`), `qed.buf.line_list`; line find becomes the bundled `goto` plugin (*Go To: Line*, `plugins.goto.keybinds`); `ctx.items`, `qed.shortcut`, `v:scroll`; markdown preview Back/Forward, `linefind.odin` and the top-level `Find Line` keybind are gone; Message Log, Plugins pane and LSP rename prompt core-built on the model. | minor |
 | M4 | `qed.fs.walk` handles (`count`, `ready`, `within`, `union`), `qed.fs.copy/rename/remove/mkdir`; the file tree core-built on the pane model; `qed.ui.open` tabs, marks, footer chips and input, tree lists, `v:preview`, `v:expand`; `search` stacks as a child over the tree. | minor |
 | M5 | The file tree becomes the bundled `filetree` plugin (*File Tree: All* replaces *File Tree*, binds under `plugins.filetree.keybinds`); `filetree.odin` becomes `walk.odin`; temporary `qed.filetree.listen/state/request` shim; `toggle = false`, `jump_closes`, `v:select`, `v:expand()`, `h:ignore(false)`, `qed.close{discard}`. | minor |
+| M6 | `qed.export`/`qed.plugin`/`qed.caller`, `qed.emit` + `qed.on("<plugin>:<event>")`, `plugin_loaded`/`plugin_unloaded`; `filetree` exports `set_tab`/`remove_tab`/`set_marks`/`set_ignored`/`open`, `v:tab(i, tabs)`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`, `plugins.git.keybinds.Changes`; *File Tree: Changed* is gone); `treeshim.odin`, `qed.filetree.*` and the `.Provider` task kind are gone; task errors no longer disable a plugin. | minor |
 | later | Conflicts, aiedit, fim and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions
 
 1. 1-based rows and byte columns, half-open ranges.
 2. Vendor the Lua source in `lib/lua` and build it static, since `vendor:lua` uses the system library on macOS and Linux arm64.
-3. Load, hook and timer errors disable the plugin; command errors only log.
+3. Load and setup errors disable the plugin; any other Lua error only logs (collapsed when it repeats).
 4. Default keys are declared via `key=` in `qed.command`, overridable by `plugins.<id>.keybinds[name]`.
 5. Git: diff engine and tree rendering core, plumbing (including the Git tab's data) in Lua.
 6. One `format` plugin orders save fixups before formatting. No hook priorities.

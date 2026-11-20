@@ -331,12 +331,11 @@ commands, handlers) and must not call other plugins. Cross-plugin calls happen i
 plugins load) and on `plugin_loaded`. No dependency declarations and no third init step: micro's `preinit` is covered
 by `qed.options`, `postinit` is `startup`.
 
-Git and the file tree do not depend on each other. The file tree exports `add_tab{label, list, marks?, preview?,
-open_missing?} -> tab` (`tab:set{...}`, `tab:remove()`) and `set_marks(marks)` for the All tab. Git, when
-`qed.plugin("filetree")` is non-nil at `startup` or on `plugin_loaded("filetree")`, adds a tab labeled "Git" (the
-label is git-specific now, so it may say Git) whose `list` narrows the walk to changed paths plus deleted ones (`within` + `union`), pushes
-status marks, and answers `preview(path)` with the base text. `qed.filetree.provide/set_status/set_base` is removed in
-M6.
+Git and the file tree do not depend on each other. The file tree exports `set_tab{label, paths, virtual?, cmd?,
+detail?, preview?, missing?}`, `remove_tab(label)`, `set_marks(marks)`, `set_ignored(paths|false)` and `open(label)`,
+all kept per caller. Git, when `qed.plugin("filetree")` is non-nil at `startup` or on `plugin_loaded("filetree")`,
+sets a tab labeled "Git" whose `paths` are its changed files and `virtual` its deleted ones, pushes status marks and
+its ignored set, and answers `preview(path)` with the base text (M6 as built).
 
 ## 7. Migration
 
@@ -350,7 +349,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M3 (done) | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
 | M4 (done) | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
 | M5 (done) | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
-| M6 | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
+| M6 (done) | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
 | M7 | Conflict UI and AI (aiedit, then fim) ported onto the model and decorations. | |
 | M8 | Remove the module system (`modules.*`, `module_enabled`). | |
 | M9 | Review every bundled plugin's config keys (existing TODO). | |
@@ -462,7 +461,7 @@ The walk service, the tree pane and the new Lua pieces are in DESIGN.md (Panes, 
 
 ### M5 as built
 
-The plugin, the walk service and the shim are in DESIGN.md (Walk service, File tree, File tree status provider).
+The plugin and the walk service are in DESIGN.md (Walk service, File tree); the shim went in M6.
 Deviations from §3/§5/§6:
 
 | Area | Built | Why |
@@ -480,6 +479,29 @@ Deviations from §3/§5/§6:
 | UX changes | New/Rename/Paste under an active filter clear the filter to reveal the result (`v:reveal`). | `v:reveal` clears the filter. |
 | Tests | `t.ui()` reports the pane `id` (search's tests wait for `"search"`, the tree is a view too); `e2e_mouse` and `nav_alt` flush like the main loop. | The tree activates through queued events. |
 | Scale | A status push is diffed against the last one and processed in 4000-path chunks with `qed.sleep(0)` between; marks are built once per status and pushed in chunks (`total` sizes the store), tab switches flip `detail` instead of resending; narrowed handles are cached per tab and status and released when replaced; a large rebuild yields between `within` and the refill. Core: scope paths in one buffer, `union` shares its base, readdir with `d_type`, a per-scope row cache, arenas for entry paths and mark keys. A push that only moved sizes keeps the Changed handle. Measured on WSL2 (`bench_filetree_changed`, every push changes the sizes): no filetree slice over ~50 ms at 30k changed files (push 14 ms, tab switch 39, open Changed 46); at 50k pushes stay under 25 ms and only the first narrowed fill after an open or a path change, one core call reading every listed dir, reaches ~70-80 ms. | The 200 ms provider budget disabled the plugin at ~30k files. |
+
+### M6 as built
+
+Communication is in DESIGN.md (Plugins, File tree, Git tab) and plugins.md (Plugin communication). Deviations from §6:
+
+| Area | Built | Why |
+|---|---|---|
+| Tab API | `set_tab(spec)` adds or replaces the caller's tab by label; `remove_tab(label)`; no `tab` object. `paths`/`virtual` are lists; passing the same tables keeps the narrowed handle. | A returned `tab:set` would run the owner's code outside the export proxy, so it would not raise after an unload. |
+| Exports | `qed.plugin` builds a fresh proxy per call (C closures with owner, load generation, caller, name); the functions are looked up at call time, so a held proxy keeps no unloaded env alive. A call is a `pcallk` in the caller's task: it may wait, its time counts to the caller, and `qed.caller()` reads a per-coroutine call stack. | "Exported calls run in the caller's task"; no new task kind. |
+| Setup | `qed.plugin` raises during any plugin's setup (not `nil`). | A silent `nil` would read as "not installed". |
+| Callbacks | `preview` and `missing` are plain functions in the spec, called by the tree (`preview` under pcall, falling back to a plain preview). The tree drops them on `plugin_unloaded`. | Fewer moving parts than an event round trip; the window between an unload and that event is covered by the pcall and by task errors no longer disabling a plugin. |
+| Sync | Exports only store state and defer one `sync` (`qed.defer(0)`), so the 50k-mark push runs in the tree's own task, chunked as in M5. | Keeps the tree's work out of the caller's slices. |
+| Tabs at runtime | `v:tab(i, tabs)` replaces the tab row in place; added tabs sit between Open and Unsaved. A tab coming or going no longer reopens the view. | Git attaches at `startup`, possibly after the tree opened; a reopen dropped the typed filter. |
+| Ignore set | `set_ignored(paths\|false)` export; the tree feeds its walks. Without a caller the set is `{}`. | The tree owns its walks; the set dies with them (walks are freed when unreferenced). |
+| Refresh | The tree emits `filetree:refresh` (custom event) on open and after its file operations; git scans on it. | The provider's `refresh` callback, as an event. |
+| Marks, propagation | Git computes the marks (bars propagated up dirs, deleted fg, rename suffix, sizes, dim ignored) and the path lists, chunked every 2000 paths; the tree only merges callers' marks and pushes them. `detail` per tab shows suffix and sizes. | Status semantics are git's; the tree stays generic. |
+| Chord | *Git: Changes* (`Alt+g`, `plugins.git.keybinds.Changes`, `welcome`), hidden while `filetree` is not loaded; it is the Git tab's `cmd`, so over the tree it switches or closes like any tab chord. *File Tree: Changed* is gone; the old top-level `File Tree: Changed` bind warns it moved to `plugins/git/keybinds/"Changes"`. | The tab is git's. |
+| Toggle Diff | Stays *File Tree: Toggle Diff* (`Alt+d`, `filetree_diff_only`): the diff chip shows on any tab with `preview`, the command is offered while one exists. | Diff-only is a property of the tree's diff preview, not of git. |
+| Restore | Enter on a missing path calls the tab's `missing` in the tree's activate task; activate tasks now count as user-started, so git's confirm may stack over the tree. *Git: Restore File* stays a tree-scoped command. | The provider ran `open_deleted` as a git command task. |
+| Startup | The Git tab exists only after git's `startup` (it used to exist from git's setup). Tests that open the tree before the first pump settle first. | Two-step lifecycle. |
+| Errors | A task's Lua error no longer disables its plugin (Petar); only load and setup errors do. Repeats of a plugin's last error log at the 2nd, 4th, 8th, ... repeat. | A race against an unload must not take a plugin down. |
+| Removed | `treeshim.odin`, `Plugins.shim`, `qed.filetree.*`, the `.Provider` task kind, `PluginQueued.ref`, the M5 status tests (ported to `e2e_filetree_tab_test.odin` on the exports). | |
+| Scale | `bench_filetree_changed` now drives the real git plugin over faked git output (every push moves the sizes) and reports the max slice of both plugins. WSL2, M6 vs M5 on the same bench: 30k changed: git slices <= 49 ms (M5 up to 95), filetree <= 44 ms (M5 54); 50k: git pushes <= 56 ms (M5 up to 194), filetree <= 84 ms (M5 92). The largest remaining slice is the first narrowed fill after an open (~85-90 ms at 50k), in git's task when *Git: Changes* opens the tree. | |
 
 ## 8. Decisions
 
