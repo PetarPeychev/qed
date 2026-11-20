@@ -872,6 +872,8 @@ table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e
 The headless e2e suite stays the main net. To smoke-test a visible change on the real binary,
 `tools/tmux-qed.sh` (`start` / `keys` / `capture [--color]` / `stop`) runs `./qed` in a detached
 tmux session with an isolated HOME; run `tools/tmux-qed.sh` bare for usage.
+Performance budgets are gated headlessly by `bench_gate` (`perf_gate_test.odin`) over a generated
+stress corpus: `tools/perf-gate.sh`, standard and corpus in [notes/perf.md](notes/perf.md).
 
 ## Shipped
 
