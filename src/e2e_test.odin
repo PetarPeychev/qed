@@ -1,5 +1,6 @@
 package main
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
@@ -38,6 +39,25 @@ E2E :: struct {
 	dir:     string, // scratch dir (git fixture); removed recursively on stop
 	resized: bool,   // restore the shared 80×24 backend on stop
 	cfg:     json.Value,
+}
+
+// the shell session runs $SHELL -i; the developer's rc files must not run (they touch real state, e.g. pyenv's shim lock)
+@(init)
+e2e_shell_hermetic :: proc "contextless" () {
+	context = runtime.default_context()
+	defer free_all(context.temp_allocator)
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	// shared by every run (the test runner exits without @(fini)), so the script lands via rename
+	dir := fmt.tprintf("%s/qed_test_shell", tmp)
+	home := fmt.tprintf("%s/home", dir)
+	os.make_directory_all(home)
+	shell := fmt.tprintf("%s/shell", dir)
+	staged := fmt.tprintf("%s.%d", shell, posix.getpid())
+	script := fmt.tprintf("#!/bin/sh\nHOME=%s HISTFILE=/dev/null exec bash --norc --noprofile \"$@\"\n", shell_quote(home))
+	_ = os.write_entire_file(staged, transmute([]u8)script)
+	posix.chmod(strings.clone_to_cstring(staged, context.temp_allocator), {.IRUSR, .IWUSR, .IXUSR})
+	os.rename(staged, shell)
+	posix.setenv("SHELL", strings.clone_to_cstring(shell, context.temp_allocator), true)
 }
 
 e2e_backend_init :: proc() {
