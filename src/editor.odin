@@ -2023,6 +2023,7 @@ editor_render_text_row :: proc(
 	psel := false
 	pfg := COLOR_FG
 	pbg := bg_normal
+	next_match := 0
 	it := utf8.decode_grapheme_iterator_make(string(text))
 	for _, g in utf8.decode_grapheme_iterate(&it) {
 		if pstart >= 0 {
@@ -2046,11 +2047,11 @@ editor_render_text_row :: proc(
 				pfg = tb2.Color(u64(pfg) | sp.attrs)
 			}
 		}
-		for sp in match_spans {
-			if pstart >= sp[0] && pstart < sp[1] {
-				pbg = match_bg
-				break
-			}
+		for next_match < len(match_spans) && match_spans[next_match][1] <= pstart {
+			next_match += 1
+		}
+		if next_match < len(match_spans) && pstart >= match_spans[next_match][0] {
+			pbg = match_bg
 		}
 	}
 	if pstart >= 0 {
