@@ -90,7 +90,7 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
 	testing.expect(t, test_view(&e.ed) == nil, "the modal closes")
 	testing.expect_value(t, owned_procs(p), 0)
-	testing.expect(t, posix.kill(-pgid, posix.Signal(0)) != .OK, "the process group is gone")
+	testing.expect(t, e2e_group_gone(pgid), "the process group is gone")
 	testing.expect_value(t, reload_owned(p, "t"), 1)
 	testing.expect(t, p.mem.used < before - 1024 * 1024, "the old incarnation's heap is reclaimed")
 	plugin_pump(&e.ed)

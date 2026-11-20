@@ -111,6 +111,18 @@ e2e_stop :: proc(e: ^E2E) {
 	sync.mutex_unlock(&e2e_lock)
 }
 
+// SIGKILL lands asynchronously and init reaps orphaned members, so a killed group lingers briefly
+e2e_group_gone :: proc(pgid: posix.pid_t) -> bool {
+	start := time.tick_now()
+	for posix.kill(-pgid, posix.Signal(0)) == .OK {
+		if time.duration_seconds(time.tick_since(start)) > 5 {
+			return false
+		}
+		time.sleep(time.Millisecond)
+	}
+	return true
+}
+
 e2e_key :: proc(e: ^E2E, key: tb2.Key, mod: tb2.Mod = {}, ch: rune = 0) {
 	e2e_step(e, tb2.Event{type = .Key, key = key, mod = mod, ch = ch})
 }
