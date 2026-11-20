@@ -55,6 +55,12 @@ test_pane_open :: proc(ed: ^Editor, id: string) -> bool {
 @(thread_local)
 test_list_built: int
 
+@(thread_local)
+test_slice_owner: string
+
+@(thread_local)
+test_slice_max: f64
+
 ft_pane :: proc(ed: ^Editor) -> ^Pane {
 	p := pane_find(ed, "filetree")
 	if p == nil || !pane_live(ed, p) {
@@ -120,8 +126,10 @@ ft_tab_visible :: proc(ed: ^Editor, label: string) -> bool {
 	return ok && plugin_command_when(ed, cmd)
 }
 
+// the rows as the next frame shows them: a restaled walk refills at render or input
 ft_entries :: proc(ed: ^Editor) -> []FileEntry {
 	if p := ft_pane(ed); p != nil {
+		pane_list_fit(ed, p, pane_geom(ed, p).list.h)
 		return p.list.source.entries[:]
 	}
 	return nil

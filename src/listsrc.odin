@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import vmem "core:mem/virtual"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
@@ -33,6 +34,7 @@ ListSource :: struct {
 	walk:      ^Walk,
 	wscope:    ^WalkScope,
 	entries:   [dynamic]FileEntry,
+	names:     vmem.Arena,
 	filtering: bool,
 	narrow_q:  string,
 	narrow_idx: [dynamic]int,
@@ -65,8 +67,8 @@ list_source_free :: proc(s: ^ListSource) {
 		s.walk.refs -= 1
 	}
 	walk_scope_release(s.wscope)
-	walk_entries_free(&s.entries)
 	delete(s.entries)
+	vmem.arena_destroy(&s.names)
 	delete(s.narrow_q)
 	delete(s.narrow_idx)
 	s^ = {}

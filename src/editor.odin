@@ -220,6 +220,12 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 	delete(editor.working_root)
 	editor.working_root = root
 	editor.hover_active = false
+	// saved selections and expanded dirs name paths under the old root
+	for &s in editor.pane_saved {
+		delete(s.key)
+		s.key = ""
+		walk_set_clear(&s.expanded)
+	}
 	lsp_restart_all(editor)
 	editor_log(editor, .Info, "", fmt.tprintf("Working directory: %s", root))
 }

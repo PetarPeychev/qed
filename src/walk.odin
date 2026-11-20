@@ -2,6 +2,7 @@ package main
 
 import "base:runtime"
 import "core:fmt"
+import vmem "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
@@ -39,6 +40,7 @@ Walk :: struct {
 	cands:             [dynamic]FileEntry,
 	built, stale:      bool,
 	gen:               u64,
+	stales:            u64,
 	builds:            u64,
 	walk_ms:           f64,
 	pw:                WalkPrewarm,
@@ -57,16 +59,23 @@ WalkPrewarm :: struct {
 	done:    bool,
 }
 
+// keys of listed/closure slice into text (paths and their prefixes), so a 50k-path scope is one buffer
 WalkScope :: struct {
 	refs:    int,
 	all:     bool,
+	base:    ^WalkScope,
+	text:    []u8,
+	paths:   []string,
+	virtual: []string,
 	listed:  map[string]bool,
 	closure: map[string]bool,
-	virtual: [dynamic]string,
 	cands:   [dynamic]FileEntry,
 	valid:   bool,
 	seen:    u64,
 	builds:  u64,
+	rows:       map[string][]WalkRow,
+	rows_arena: vmem.Arena,
+	rows_gen:   u64,
 }
 
 walk_entries_free :: proc(entries: ^[dynamic]FileEntry) {
@@ -274,6 +283,7 @@ walk_valid :: proc(w: ^Walk) -> bool {
 walk_stale :: proc(w: ^Walk) {
 	w.stale = true
 	w.gen += 1
+	w.stales += 1
 }
 
 walk_invalidate :: proc(editor: ^Editor, path: string) {
@@ -478,19 +488,36 @@ walk_scope_new :: proc(root: string, base: ^WalkScope, within, virtual: []string
 	s := new(WalkScope)
 	s.refs = 1
 	if base != nil {
-		walk_set_copy(&s.listed, base.listed)
-		walk_set_copy(&s.closure, base.closure)
-		for v in base.virtual {
-			append(&s.virtual, strings.clone(v))
-		}
+		base.refs += 1
+		s.base = base
 	}
+	n := 0
 	for p in within {
-		walk_set_add(&s.listed, p)
-		walk_closure_add(&s.closure, root, p)
+		n += len(p)
 	}
 	for p in virtual {
-		append(&s.virtual, strings.clone(p))
-		walk_closure_add(&s.closure, root, p)
+		n += len(p)
+	}
+	s.text = make([]u8, n)
+	s.paths = make([]string, len(within))
+	s.virtual = make([]string, len(virtual))
+	reserve(&s.listed, len(within))
+	reserve(&s.closure, len(virtual) + 64)
+	at := 0
+	keep :: proc(s: ^WalkScope, at: ^int, p: string) -> string {
+		copy(s.text[at^:], p)
+		k := string(s.text[at^:at^ + len(p)])
+		at^ += len(p)
+		return k
+	}
+	for p, i in within {
+		s.paths[i] = keep(s, &at, p)
+		s.listed[s.paths[i]] = true
+		walk_closure_add(&s.closure, root, path_parent(s.paths[i]))
+	}
+	for p, i in virtual {
+		s.virtual[i] = keep(s, &at, p)
+		walk_closure_add(&s.closure, root, s.virtual[i])
 	}
 	return s
 }
@@ -503,16 +530,16 @@ walk_scope_release :: proc(s: ^WalkScope) {
 	if s.refs > 0 {
 		return
 	}
-	walk_set_clear(&s.listed)
+	walk_scope_release(s.base)
 	delete(s.listed)
-	walk_set_clear(&s.closure)
 	delete(s.closure)
-	for v in s.virtual {
-		delete(v)
-	}
+	delete(s.paths)
 	delete(s.virtual)
+	delete(s.text)
 	walk_entries_free(&s.cands)
 	delete(s.cands)
+	delete(s.rows)
+	vmem.arena_destroy(&s.rows_arena)
 	free(s)
 }
 
@@ -529,21 +556,31 @@ walk_set_clear :: proc(set: ^map[string]bool) {
 	clear(set)
 }
 
+// ancestors are prefixes of path, so they share its storage
 walk_closure_add :: proc(set: ^map[string]bool, root, path: string) {
-	walk_set_add(set, path)
+	set[path] = true
 	p := path
 	for strings.has_prefix(p, root) && p != root {
 		np := path_parent(p)
-		if np == p {
+		if np == p || np in set {
 			break
 		}
 		p = np
-		walk_set_add(set, p)
+		set[p] = true
 	}
 }
 
+walk_scope_in_closure :: proc(s: ^WalkScope, p: string) -> bool {
+	for sc := s; sc != nil; sc = sc.base {
+		if p in sc.closure || p in sc.listed {
+			return true
+		}
+	}
+	return false
+}
+
 walk_scope_has :: proc(s: ^WalkScope, p: string) -> bool {
-	if p in s.closure {
+	if walk_scope_in_closure(s, p) {
 		return true
 	}
 	for q := p; true; {
@@ -552,8 +589,10 @@ walk_scope_has :: proc(s: ^WalkScope, p: string) -> bool {
 			return false
 		}
 		q = np
-		if q in s.listed {
-			return true
+		for sc := s; sc != nil; sc = sc.base {
+			if q in sc.listed {
+				return true
+			}
 		}
 	}
 	return false
@@ -584,10 +623,12 @@ walk_scope_cands :: proc(editor: ^Editor, w: ^Walk, s: ^WalkScope) -> []FileEntr
 	}
 	under := strings.concatenate({w.root, "/"}, context.temp_allocator)
 	seen := make(map[string]bool, context.temp_allocator)
-	for d in s.virtual {
-		for p := d; strings.has_prefix(p, under) && !(p in seen) && !os.exists(p); p = path_parent(p) {
-			seen[p] = true
-			append(&s.cands, FileEntry{strings.clone(p), "", 0, p != d})
+	for sc := s; sc != nil; sc = sc.base {
+		for d in sc.virtual {
+			for p := d; strings.has_prefix(p, under) && !(p in seen) && !os.exists(p); p = path_parent(p) {
+				seen[p] = true
+				append(&s.cands, FileEntry{strings.clone(p), "", 0, p != d})
+			}
 		}
 	}
 	s.valid, s.seen = true, w.gen
@@ -641,7 +682,8 @@ list_walk_fill :: proc(editor: ^Editor, p: ^Pane) {
 	if a, ok := p.list.anchor.?; ok && a >= 0 && a < len(src.entries) {
 		keep_anchor = strings.clone(src.entries[a].path, context.temp_allocator)
 	}
-	walk_entries_free(&src.entries)
+	clear(&src.entries)
+	vmem.arena_free_all(&src.names)
 	p.list.anchor, p.list.more, p.list.filtered = nil, false, false
 	clear(&p.list.matches)
 	query := ""
@@ -653,7 +695,8 @@ list_walk_fill :: proc(editor: ^Editor, p: ^Pane) {
 		list_walk_filter(editor, p, query)
 	} else {
 		walk_narrow_reset(src)
-		list_walk_dir(editor, p, src.walk.root, 0)
+		kids := walk_virtual_kids(src.wscope, src.walk.root)
+		list_walk_dir(editor, p, src.walk.root, 0, &kids)
 	}
 	p.list.sel = 0
 	for e, i in src.entries {
@@ -706,7 +749,7 @@ list_walk_filter :: proc(editor: ^Editor, p: ^Pane, query: string) {
 		if i >= limit {
 			continue
 		}
-		path := strings.clone(cands[ci].path)
+		path := strings.clone(cands[ci].path, vmem.arena_allocator(&src.names))
 		append(&src.entries, FileEntry{path, walk_rel(path, root), 0, cands[ci].is_dir})
 	}
 	fuzzy_end(&f)
@@ -723,57 +766,131 @@ walk_rel :: proc(path, root: string) -> string {
 	return path
 }
 
-list_walk_dir :: proc(editor: ^Editor, p: ^Pane, dir: string, depth: int) {
-	src := &p.list.source
-	w := src.walk
-	infos, _ := os.read_directory_by_path(dir, -1, context.temp_allocator)
-	Row :: struct {
-		path:   string,
-		is_dir: bool,
-	}
-	rows := make([dynamic]Row, context.temp_allocator)
-	for info in infos {
-		append(&rows, Row{info.fullpath, info.type == .Directory})
-	}
-	if s := src.wscope; s != nil && len(s.virtual) > 0 {
-		prefix := strings.concatenate({dir, "/"}, context.temp_allocator)
-		virtual: for d in s.virtual {
-			if !strings.has_prefix(d, prefix) {
-				continue
-			}
-			slash := strings.index_byte(d[len(prefix):], '/')
-			child := d if slash < 0 else d[:len(prefix) + slash]
-			for r in rows {
-				if r.path == child {
-					continue virtual
+WalkRow :: struct {
+	path:   string,
+	name:   int,
+	is_dir: bool,
+}
+
+// virtual children by parent dir, built once per fill so each dir finds its own in O(1)
+walk_virtual_kids :: proc(s: ^WalkScope, root: string) -> map[string][dynamic]WalkRow {
+	kids := make(map[string][dynamic]WalkRow, context.temp_allocator)
+	seen := make(map[string]bool, context.temp_allocator)
+	for sc := s; sc != nil; sc = sc.base {
+		for d in sc.virtual {
+			p := d
+			for strings.has_prefix(p, root) && p != root && !(p in seen) {
+				seen[p] = true
+				dir := path_parent(p)
+				if dir not_in kids {
+					kids[dir] = make([dynamic]WalkRow, context.temp_allocator)
 				}
+				append(&kids[dir], WalkRow{p, len(dir) + 1, p != d})
+				p = dir
 			}
-			append(&rows, Row{child, slash >= 0})
 		}
 	}
-	slice.sort_by(rows[:], proc(a, b: Row) -> bool {
+	return kids
+}
+
+walk_readdir :: proc(dir: string, rows: ^[dynamic]WalkRow) {
+	dirp := posix.opendir(strings.clone_to_cstring(dir, context.temp_allocator))
+	if dirp == nil {
+		return
+	}
+	defer posix.closedir(dirp)
+	for {
+		entry := posix.readdir(dirp)
+		if entry == nil {
+			break
+		}
+		cname := cstring(raw_data(entry.d_name[:]))
+		name := string(cname)
+		if name == "." || name == ".." {
+			continue
+		}
+		kind := entry.d_type
+		if kind == .UNKNOWN {
+			st: posix.stat_t
+			if posix.fstatat(posix.dirfd(dirp), cname, &st, {.SYMLINK_NOFOLLOW}) != .OK {
+				continue
+			}
+			kind = .DIR if posix.S_ISDIR(st.st_mode) else .REG
+		}
+		append(rows, WalkRow{strings.concatenate({dir, "/", name}, context.temp_allocator), len(dir) + 1, kind == .DIR})
+	}
+}
+
+list_walk_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynamic]WalkRow) -> []WalkRow {
+	w := src.walk
+	rows := make([dynamic]WalkRow, context.temp_allocator)
+	walk_readdir(dir, &rows)
+	if v, ok := kids[dir]; ok {
+		have := make(map[string]bool, len(rows), context.temp_allocator)
+		for r in rows {
+			have[r.path] = true
+		}
+		for r in v {
+			if r.path not_in have {
+				append(&rows, r)
+			}
+		}
+	}
+	// siblings share the dir prefix, so compare names
+	slice.sort_by(rows[:], proc(a, b: WalkRow) -> bool {
 		if a.is_dir != b.is_dir {
 			return a.is_dir
 		}
-		return a.path < b.path
+		return a.path[a.name:] < b.path[b.name:]
 	})
+	out := make([dynamic]WalkRow, 0, len(rows), context.temp_allocator)
 	for r in rows {
-		if s := src.wscope; s != nil && (!s.all || r.path in s.closure) {
+		if s := src.wscope; s != nil && (!s.all || walk_scope_in_closure(s, r.path)) {
 			if !walk_scope_has(s, r.path) {
 				continue
 			}
 		} else {
-			if !w.dotfiles && strings.has_prefix(filepath.base(r.path), ".") {
+			if !w.dotfiles && strings.has_prefix(r.path[r.name:], ".") {
 				continue
 			}
 			if walk_ignored(w, r.path) {
 				continue
 			}
 		}
-		path := strings.clone(r.path)
-		append(&src.entries, FileEntry{path, path[strings.last_index_byte(path, '/') + 1:], depth, r.is_dir})
+		append(&out, r)
+	}
+	return out[:]
+}
+
+// a narrowed tree refills on every view switch: its dirs are read and sorted once per restale
+walk_scope_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynamic]WalkRow) -> []WalkRow {
+	s := src.wscope
+	// a prewarm landing bumps gen without the disk changing; only a restale drops the rows
+	if s.rows_gen != src.walk.stales + 1 {
+		clear(&s.rows)
+		vmem.arena_free_all(&s.rows_arena)
+		s.rows_gen = src.walk.stales + 1
+	}
+	if r, ok := s.rows[dir]; ok {
+		return r
+	}
+	a := vmem.arena_allocator(&s.rows_arena)
+	rows := slice.clone(list_walk_rows(src, dir, kids), a)
+	for &r in rows {
+		r.path = strings.clone(r.path, a)
+	}
+	s.rows[strings.clone(dir, a)] = rows
+	return rows
+}
+
+list_walk_dir :: proc(editor: ^Editor, p: ^Pane, dir: string, depth: int, kids: ^map[string][dynamic]WalkRow) {
+	src := &p.list.source
+	rows := walk_scope_rows(src, dir, kids) if src.wscope != nil else list_walk_rows(src, dir, kids)
+	for r in rows {
+		path := strings.clone(r.path, vmem.arena_allocator(&src.names))
+		append(&src.entries, FileEntry{path, path[r.name:], depth, r.is_dir})
 		if r.is_dir && pane_tree_expanded(p, path) {
-			list_walk_dir(editor, p, path, depth + 1)
+			list_walk_dir(editor, p, path, depth + 1, kids)
 		}
 	}
 }
@@ -798,14 +915,16 @@ list_walk_files :: proc(editor: ^Editor, p: ^Pane, sel: []int) -> []string {
 			continue
 		}
 		prefix := strings.concatenate({e.path, "/"}, context.temp_allocator)
-		for path in src.wscope.listed {
-			if strings.has_prefix(path, prefix) {
-				add(&out, &seen, path)
+		for sc := src.wscope; sc != nil; sc = sc.base {
+			for path in sc.paths {
+				if strings.has_prefix(path, prefix) {
+					add(&out, &seen, path)
+				}
 			}
-		}
-		for path in src.wscope.virtual {
-			if strings.has_prefix(path, prefix) {
-				add(&out, &seen, path)
+			for path in sc.virtual {
+				if strings.has_prefix(path, prefix) {
+					add(&out, &seen, path)
+				}
 			}
 		}
 	}
@@ -1124,6 +1243,29 @@ fs_remove :: proc(editor: ^Editor, path: string) -> FsError {
 	ok := fs_remove_tree(path)
 	walk_invalidate(editor, path)
 	return .None if ok else .Failed
+}
+
+// O_EXCL also refuses a dangling symlink, which a rename over the name would replace
+fs_create :: proc(editor: ^Editor, path, data: string) -> FsError {
+	if fs_lexists(path) {
+		return .Exists
+	}
+	path_ensure_parent_dir(path)
+	fd := posix.open(strings.clone_to_cstring(path, context.temp_allocator), {.WRONLY, .CREAT, .EXCL}, {.IRUSR, .IWUSR, .IRGRP, .IROTH})
+	if fd < 0 {
+		return .Exists if posix.errno() == .EEXIST else .Failed
+	}
+	defer posix.close(fd)
+	for off := 0; off < len(data); {
+		rest: int = len(data) - off
+		n := posix.write(fd, raw_data(data[off:]), uint(rest))
+		if n <= 0 {
+			return .Failed
+		}
+		off += n
+	}
+	walk_invalidate(editor, path)
+	return .None
 }
 
 fs_mkdir :: proc(editor: ^Editor, path: string) -> FsError {

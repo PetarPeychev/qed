@@ -52,7 +52,7 @@
     "conflict_ours": "#a3be8c",
     "conflict_theirs": "#81a1c1",
     "conflict_base": "#4c566a",
-    "filetree_ignored": "#4c566a"
+    "pane_dim_foreground": "#4c566a"
   },
   "tints": {
     "current_line": 0.05

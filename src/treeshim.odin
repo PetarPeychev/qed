@@ -128,6 +128,8 @@ qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 	if fresh {
 		s.owner = plugin_name_intern(&editor.plugins, pl.name)
 		tree_shim_notify(editor, "provider")
+	} else {
+		tree_shim_base_reset(editor, "")
 	}
 	lua.pushboolean(L, true)
 	return 1
@@ -210,7 +212,7 @@ qed_filetree_set_status :: proc "c" (L: ^lua.State) -> c.int {
 	s.status = i32(lua.L_ref(L, lua.REGISTRYINDEX))
 	tree_shim_unref(editor, &s.base)
 	tree_shim_notify(editor, "status")
-	editor_log(editor, .Debug, "Files", fmt.tprintf("file tree status from %s", s.owner))
+	editor_log(editor, .Debug, plugin_label(&editor.plugins, s.owner), "file tree status pushed")
 	return 0
 }
 

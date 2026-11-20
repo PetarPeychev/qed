@@ -1473,6 +1473,24 @@ e2e_nav_filetree_borrowed_bind_follows :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_nav_filetree_root_change_closed_resets :: proc(t: ^testing.T) {
+	e := e2e_root_start("main body")
+	defer e2e_stop(&e)
+	sub := fmt.tprintf("%s/sub", e.dir)
+	os.make_directory(sub)
+	nav_write(fmt.tprintf("%s/x.txt", sub), "x")
+	nav_alt(&e, 'f')
+	testing.expect(t, nav_select(&e.ed, "sub"))
+	e2e_key(&e, .Enter)
+	e2e_key(&e, .Esc)
+	testing.expect(t, ft_expanded_count(&e.ed) > 0, "the closed tree saved its expanded dirs")
+	editor_change_root(&e.ed, sub)
+	plugin_flush(&e.ed)
+	testing.expect_value(t, ft_expanded_count(&e.ed), 0)
+	testing.expect_value(t, pane_saved_find(&e.ed, "filetree").key, "")
+}
+
+@(test)
 e2e_nav_filetree_marks_current_buffer :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)

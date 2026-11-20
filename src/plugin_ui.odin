@@ -87,6 +87,8 @@ qed_view_methods := [?]lua.L_Reg {
 	{"expand", qed_view_expand},
 	{"reveal", qed_view_reveal},
 	{"select", qed_view_select},
+	{"selection", qed_view_selection},
+	{"on", qed_view_on},
 }
 
 @(private = "file")
@@ -96,6 +98,7 @@ qed_walk_methods := [?]lua.L_Reg {
 	{"ignore", qed_walk_ignore},
 	{"within", qed_walk_within},
 	{"union", qed_walk_union},
+	{"release", qed_list_release},
 }
 
 plugin_prelude_c :: proc "c" (L: ^lua.State) -> c.int {
@@ -644,6 +647,17 @@ api_list_push :: proc(L: ^lua.State, editor: ^Editor, src: ListSource) {
 		}
 	}
 	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = src})
+}
+
+qed_list_release :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	id, _ := api_field_int(L, 1, "id")
+	if i := plugin_list_index(p, u64(id)); i >= 0 {
+		plugin_list_free(p, i)
+	}
+	return 0
 }
 
 qed_list_gc :: proc "c" (L: ^lua.State) -> c.int {
@@ -1457,6 +1471,15 @@ qed_view_marks :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.settop(L, 3)
 	replace := lua.type(L, 3) == .TABLE && api_opt_bool(L, 3, "replace")
+	detail: Maybe(bool)
+	if lua.type(L, 3) == .TABLE && lua.getfield(L, 3, "detail") != .NIL {
+		detail = bool(lua.toboolean(L, -1))
+	}
+	total := 0
+	if lua.type(L, 3) == .TABLE {
+		lua.settop(L, 3)
+		total, _ = api_field_int(L, 3, "total")
+	}
 	pn, _ := api_view_live(L, editor)
 	walk := pn != nil && pn.list.source.kind == .Walk
 	Parsed :: struct {
@@ -1484,9 +1507,11 @@ qed_view_marks :: proc "c" (L: ^lua.State) -> c.int {
 			m.bar, _ = api_field_string(L, v, "bar")
 			m.fg, _ = api_field_string(L, v, "fg")
 			m.suffix, _ = api_field_string(L, v, "suffix")
-			for c in ([2]string{m.bar, m.fg}) {
-				if c != "" {
-					api_theme_color(L, c)
+			for c in ([2]^string{&m.bar, &m.fg}) {
+				if c^ != "" {
+					api_theme_color(L, c^)
+					id := plugin_color_id(&editor.plugins, c^)
+					c^ = editor.plugins.colors[id - 1]
 				}
 			}
 			added, aok := api_field_int(L, v, "added")
@@ -1506,8 +1531,13 @@ qed_view_marks :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushboolean(L, false)
 		return 1
 	}
+	if d, ok := detail.?; ok {
+		pn.marks_plain = !d
+	}
 	if replace {
 		pane_marks_clear(pn)
+		// a map rehash at 50k marks is the slowest step of a push; size it once
+		reserve(&pn.marks, total)
 	}
 	for m in marks {
 		if m.drop {
@@ -1709,32 +1739,15 @@ qed_view_reveal :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-qed_view_select :: proc "c" (L: ^lua.State) -> c.int {
+qed_view_selection :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	set := lua.type(L, 2) > .NIL
-	row := api_int(L, 2, "row must be an integer") if set else 0
-	anchor, ranged := 0, lua.type(L, 3) > .NIL
-	if ranged {
-		anchor = api_int(L, 3, "anchor must be an integer")
-	}
 	pn, _ := api_view_live(L, editor)
 	if pn == nil || !pn.has_list {
 		return 0
 	}
 	n := pane_count(editor, pn)
-	if set && n > 0 {
-		pn.list.sel = clamp(row - 1, 0, n - 1)
-		pn.list.anchor = nil
-		if ranged && pn.list.multi {
-			pn.list.anchor = clamp(anchor - 1, 0, n - 1)
-		}
-		pn.list.moved = true
-		delete(pn.list.restore)
-		pn.list.restore = ""
-		pane_scroll_fit(pn, pane_geom(editor, pn).list.h)
-	}
 	if n == 0 {
 		lua.pushnil(L)
 		lua.pushnil(L)
@@ -1750,6 +1763,71 @@ qed_view_select :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushinteger(L, lua.Integer(n))
 	return 4
+}
+
+qed_view_select :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	row := api_int(L, 2, "row must be an integer")
+	anchor, ranged := 0, lua.type(L, 3) > .NIL
+	if ranged {
+		anchor = api_int(L, 3, "anchor must be an integer")
+	}
+	pn, _ := api_view_live(L, editor)
+	if pn == nil || !pn.has_list {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if n := pane_count(editor, pn); n > 0 {
+		pn.list.sel = clamp(row - 1, 0, n - 1)
+		pn.list.anchor = nil
+		if ranged && pn.list.multi {
+			pn.list.anchor = clamp(anchor - 1, 0, n - 1)
+		}
+		pn.list.moved = true
+		delete(pn.list.restore)
+		pn.list.restore = ""
+		pane_scroll_fit(pn, pane_geom(editor, pn).list.h)
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_on :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	name := api_string(L, 2)
+	ev: Maybe(ViewEvent)
+	for n, e in view_event_names {
+		if string(n) == name {
+			ev = e
+		}
+	}
+	e, ok := ev.?
+	if !ok {
+		lua.L_argerror(L, 2, "view event name expected")
+	}
+	tp := lua.type(L, 3)
+	if tp != .FUNCTION && !(tp == .BOOLEAN && !lua.toboolean(L, 3)) && tp > .NIL {
+		lua.L_argerror(L, 3, "function or false expected")
+	}
+	_, vi := api_view_live(L, entry.editor)
+	if vi < 0 {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if old := p.views[vi].on[e]; old != 0 {
+		lua.L_unref(L, lua.REGISTRYINDEX, c.int(old))
+		p.views[vi].on[e] = 0
+	}
+	if tp == .FUNCTION {
+		lua.pushvalue(L, 3)
+		p.views[vi].on[e] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	}
+	lua.pushboolean(L, true)
+	return 1
 }
 
 qed_view_append :: proc "c" (L: ^lua.State) -> c.int {

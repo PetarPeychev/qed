@@ -22,19 +22,24 @@ PluginKind :: enum {
 	Provider,
 }
 
+PLUGIN_SOFT_MS :: 50
+PLUGIN_SETUP_MAX_MS :: 1000
+
 PluginBudget :: struct {
 	soft_ms, hard_ms: f64,
 	disable:          bool,
 }
 
-plugin_budgets := [PluginKind]PluginBudget {
-	.Command   = {0, 2000, false},
-	.When      = {0, 2000, false},
-	.Event     = {5, 200, true},
-	.Coalesced = {1, 20, true},
-	.Timer     = {5, 200, true},
-	.Setup     = {2, 1000, true},
-	.Provider  = {5, 200, true},
+// disable applies to a handler's own errors; a budget overrun or out-of-memory only ends the task
+plugin_budget :: proc(kind: PluginKind) -> PluginBudget {
+	switch kind {
+	case .Command, .When:
+		return {0, f64(PLUGIN_COMMAND_MAX_MS), false}
+	case .Setup:
+		return {2, PLUGIN_SETUP_MAX_MS, true}
+	case .Event, .Coalesced, .Timer, .Provider:
+	}
+	return {PLUGIN_SOFT_MS, f64(PLUGIN_SLICE_MAX_MS), true}
 }
 
 PluginEvent :: enum {
@@ -261,7 +266,7 @@ plugin_thread_anchored :: proc(p: ^Plugins, L: ^lua.State) -> bool {
 
 plugin_slice_begin :: proc(p: ^Plugins, kind: PluginKind) -> PluginSlice {
 	prev := p.slice
-	p.slice = {start = time.tick_now(), hard_ms = plugin_budgets[kind].hard_ms}
+	p.slice = {start = time.tick_now(), hard_ms = plugin_budget(kind).hard_ms}
 	return prev
 }
 
@@ -276,7 +281,12 @@ plugin_slice_end :: proc(editor: ^Editor, prev: PluginSlice, owner: string, kind
 	if prev.hard_ms > 0 {
 		p.slice.start = time.tick_add(prev.start, elapsed)
 	}
-	soft := plugin_budgets[kind].soft_ms
+	soft := plugin_budget(kind).soft_ms
+	when ODIN_TEST {
+		if owner == test_slice_owner {
+			test_slice_max = max(test_slice_max, time.duration_milliseconds(elapsed))
+		}
+	}
 	if ms := time.duration_milliseconds(elapsed); soft > 0 && ms > soft {
 		editor_log(editor, .Debug, plugin_label(&editor.plugins, owner), fmt.tprintf("%s took %.2f ms (budget %.0f ms)", what, ms, soft))
 	}
@@ -553,9 +563,10 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 		return
 	}
 	message, traceback: string
+	ended := killed || status == .ERRMEM
 	switch {
 	case killed:
-		message = fmt.tprintf("%s exceeded its %.0f ms budget", label, plugin_budgets[kind].hard_ms)
+		message = fmt.tprintf("%s exceeded its %.0f ms budget and was stopped", label, plugin_budget(kind).hard_ms)
 	case status == .YIELD && t.wait.kind == .None:
 		message = "coroutine.yield is not allowed in a plugin entry (use qed.sleep, qed.spawn, ...)"
 	case status == .YIELD:
@@ -570,8 +581,16 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	if i >= 0 {
 		plugin_task_free(editor, i)
 	}
-	if pl := plugin_find(p, owner); pl != nil {
-		plugin_error(editor, pl, message, traceback, plugin_budgets[kind].disable && pl.state == .Enabled)
+	if pl := plugin_find(p, owner); pl == nil {
+	} else if ended {
+		delete(pl.last_error)
+		pl.last_error = strings.clone(message)
+		editor_log(editor, .Warn, pl.display, message)
+		if traceback != "" {
+			editor_log(editor, .Debug, pl.display, traceback)
+		}
+	} else {
+		plugin_error(editor, pl, message, traceback, plugin_budget(kind).disable && pl.state == .Enabled)
 	}
 }
 

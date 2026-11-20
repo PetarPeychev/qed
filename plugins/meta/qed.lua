@@ -22,7 +22,8 @@
 ---@field name string bare name; the palette shows `<display name>: <name>`
 ---@field run fun(ctx: qed.Ctx)
 ---@field when? fun(ctx: qed.Ctx): boolean
----@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`; a bare key (`"x"`) is allowed outside the editor and file tree scopes and fires only in a pane without fields
+---@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`; a bare key (`"x"`) is allowed outside the editor scope and fires only in a pane without fields
+---@field bind_from? string without `key`: take the bind of this core command (e.g. `"Copy"`), re-read at every rebind so it follows that command's config
 ---@field scope? string `"editor"` (default), a core pane's scope (`"log"`, `"plugins"`) or a `qed.ui.open{scope}` (the file tree's is `"filetree"`): the command runs on its chord while a pane of that scope has focus and is listed in that pane's Ctrl+P
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
 ---@field keybind? string the key in `plugins.<id>.keybinds`, default `name`; commands sharing it share the bind and the first `key` among them
@@ -95,9 +96,9 @@ function qed.open(path) end
 ---@return string|nil err "no file name" or "changed on disk"
 function qed.save(b) end
 
----Close a buffer. Returns false and keeps it open if it has unsaved changes, unless `discard`.
+---Close a buffer. Returns false and keeps it open if it has unsaved changes, unless its id is in `discard` (approved, e.g. by a confirm).
 ---@param b qed.Buf
----@param opts? {discard?: boolean}
+---@param opts? {discard?: integer[]}
 ---@return boolean
 function qed.close(b, opts) end
 
@@ -123,7 +124,7 @@ function qed.open_url(url) end
 ---@field unsaved integer of them unsaved
 ---@field bufs integer[] the unsaved ones' ids
 
----Switches the working root to the directory `path` (relative to `qed.root()`): closes every buffer outside it, restarts the language servers, resets the file tree and fires `root_changed`. A no-op on the current root. While an unsaved buffer outside it is not in `discard`, closes nothing and returns `nil, "unsaved", info`; ask, then call again with `{discard = info.bufs}`.
+---Switches the working root to the directory `path` (relative to `qed.root()`): closes every buffer outside it, restarts the language servers, drops saved pane selections and expanded dirs and fires `root_changed`. A no-op on the current root. While an unsaved buffer outside it is not in `discard`, closes nothing and returns `nil, "unsaved", info`; ask, then call again with `{discard = info.bufs}`.
 ---@param path string
 ---@param opts? {discard?: integer[]} unsaved buffer ids that may be closed
 ---@return true|nil ok
@@ -274,10 +275,12 @@ function List:ready() end
 ---@param paths string[]
 ---@return qed.List
 function List:within(paths) end
----Walk handles: a new handle that also lists `paths` (and their missing parent dirs) when they are not on disk, e.g. deleted files.
+---Walk handles: a new handle that also lists `paths` (and their missing parent dirs) when they are not on disk, e.g. deleted files. It shares the narrowed handle's paths instead of copying them.
 ---@param paths string[]
 ---@return qed.List
 function List:union(paths) end
+---Walk handles: frees the handle now instead of at collection; a view keeps its own copy.
+function List:release() end
 
 ---@class qed.UiList
 ---@field items? (string|qed.UiItem)[]|qed.List
@@ -360,7 +363,8 @@ function View:scroll(row) end
 function View:close() end
 ---Per-row styling by item key (a walk list's keys are paths, relative ones resolved against the root): `bar` (theme color of a `▌` in the left column), `fg` (theme color), `suffix` (drawn after the label), `added`/`removed` (a right-aligned `+N -N`), `dim` (dims the row and, in a tree, everything under it unless selected). `false` drops a key; `replace` clears the rest first. Validated before anything changes. Returns false once closed.
 ---@param marks table<string, {bar?: string, fg?: string, suffix?: string, added?: integer, removed?: integer, dim?: boolean}|false>
----@param opts? {replace?: boolean}
+---`detail = false` hides every `suffix` and `added`/`removed` until `detail = true` (no marks resent); `total` sizes the store for a push split into chunks.
+---@param opts? {replace?: boolean, detail?: boolean, total?: integer}
 ---@return boolean
 function View:marks(marks, opts) end
 ---Replaces the footer `hints` and/or `chips` (e.g. a chip's `on`), or turns the footer into an input field (`input = {prompt?, text?}`; Enter or Esc fires `on.submit`; `input = false` drops it). Returns false once closed.
@@ -384,14 +388,22 @@ function View:expand(what, open) end
 ---@param path string
 ---@return boolean
 function View:reveal(path) end
----The highlighted item, its row, the range's other end (`multi`) and the row count (rows are 1-based visible positions; a tree's rows follow its expanded dirs). With `row`, selects it first (clamped; `anchor` makes a range). Returns nothing once closed.
----@param row? integer
----@param anchor? integer
+---The highlighted item, its row, the range's other end (`multi`) and the row count (rows are 1-based visible positions; a tree's rows follow its expanded dirs). Returns nothing once closed.
 ---@return qed.UiItem|string|nil item
 ---@return integer|nil row
 ---@return integer|nil anchor
 ---@return integer count
+function View:selection() end
+---Selects `row` (clamped); `anchor` makes a range (`multi`). Returns false once closed.
+---@param row integer
+---@param anchor? integer
+---@return boolean
 function View:select(row, anchor) end
+---Sets (`fn`) or drops (`false`) a handler after open, e.g. `change` only while it has work to do.
+---@param event "activate"|"change"|"query"|"close"|"link"|"tab"|"expand"|"submit"
+---@param fn function|false
+---@return boolean
+function View:on(event, fn) end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.
 ---@return (string|qed.UiItem)[]|nil items
 ---@return integer|nil index
@@ -837,17 +849,19 @@ qed.fs = {}
 ---@return string|nil err
 function qed.fs.read(path) end
 
----Atomic: writes a temp file in the same dir, then renames.
+---Atomic: writes a temp file in the same dir, then renames. `exclusive` creates the file instead and fails with `nil, "exists"` if the name is taken (also by a dangling symlink); missing parent dirs are created either way.
 ---@param path string
 ---@param data string
+---@param opts? {exclusive?: boolean}
 ---@return boolean|nil ok
 ---@return string|nil err
-function qed.fs.write(path, data) end
+function qed.fs.write(path, data, opts) end
 
----True if the path exists (file, dir or other). Relative paths resolve against `qed.root()`.
+---True if the path exists (file, dir or other). Relative paths resolve against `qed.root()`. `follow = false` checks the name itself, so a dangling symlink exists.
 ---@param path string
+---@param opts? {follow?: boolean}
 ---@return boolean
-function qed.fs.exists(path) end
+function qed.fs.exists(path, opts) end
 
 ---Size, mtime and type of `path`, or `nil, err` if it does not exist. Relative paths resolve against `qed.root()`.
 ---@param path string

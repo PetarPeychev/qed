@@ -278,7 +278,7 @@ e2e_walk_lua_tree_view :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(e2e_row_text(&e, y), "a.txt  <- old"), "suffix renders")
 	testing.expect(t, strings.contains(e2e_row_text(&e, y), "+12  -3"), "sizes render")
 	ox, oy, _ := nav_screen_find(&e, "other/")
-	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, ox, oy)), e2e_rgb(COLOR_FILETREE_IGNORED))
+	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, ox, oy)), e2e_rgb(COLOR_PANE_DIM_FG))
 	walk_run_cmd(t, &e, "W: Unmark")
 	e2e_render(&e)
 	testing.expect(t, e2e_cell(&e, g.list.x, y) != '▌', "false drops a mark")

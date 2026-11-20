@@ -51,6 +51,8 @@ CODE_LIST_MAX_WIDTH: int
 PREVIEW_MIN_WIDTH: int
 PREVIEW_MAX_WIDTH: int
 PLUGIN_MEMORY_MB: int
+PLUGIN_SLICE_MAX_MS: int
+PLUGIN_COMMAND_MAX_MS: int
 PLUGIN_HOOK_TIMEOUT_MS: int
 
 config_ints := [?]Config_Int {
@@ -74,6 +76,8 @@ config_ints := [?]Config_Int {
 	{"preview_max_width", &PREVIEW_MAX_WIDTH},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
 	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
+	{"plugin_slice_max_ms", &PLUGIN_SLICE_MAX_MS},
+	{"plugin_command_max_ms", &PLUGIN_COMMAND_MAX_MS},
 }
 
 CURSOR_ACCEL: bool
@@ -205,7 +209,7 @@ COLOR_PANE_PROMPT_FG: tb2.Color
 COLOR_PANE_SHORTCUT_FG: tb2.Color
 COLOR_PANE_SEL_FG: tb2.Color
 COLOR_PANE_SEL_BG: tb2.Color
-COLOR_FILETREE_IGNORED: tb2.Color
+COLOR_PANE_DIM_FG: tb2.Color
 COLOR_TERM_FG: tb2.Color
 COLOR_TERM_BG: tb2.Color
 COLOR_TERM_ANSI: [16]tb2.Color
@@ -277,7 +281,7 @@ config_colors := [?]Config_Color {
 	{"conflict_ours", &COLOR_CONFLICT_OURS},
 	{"conflict_theirs", &COLOR_CONFLICT_THEIRS},
 	{"conflict_base", &COLOR_CONFLICT_BASE},
-	{"filetree_ignored", &COLOR_FILETREE_IGNORED},
+	{"pane_dim_foreground", &COLOR_PANE_DIM_FG},
 }
 
 ICON_STATUS_FILE: string
@@ -405,9 +409,9 @@ parse_bind :: proc(s: string) -> (key: tb2.Key, alt_ch, ch: rune, ok: bool) {
 	return
 }
 
-// a bare key would swallow typing in the editor and in the tree's filter field
+// a bare key would swallow typing in the editor; in a pane it fires only without a field
 bind_bare_ok :: proc(scope: string) -> bool {
-	return scope != "" && scope != "filetree"
+	return scope != ""
 }
 
 embedded_config_data := #load("../config/config.json")

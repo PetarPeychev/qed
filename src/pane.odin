@@ -1,5 +1,6 @@
 package main
 
+
 import "core:fmt"
 import vmem "core:mem/virtual"
 import "core:slice"
@@ -258,6 +259,8 @@ Pane :: struct {
 	tabs:         []PaneTab,
 	tab:          int,
 	marks:        map[string]PaneMark,
+	marks_plain:  bool,
+	marks_arena:  vmem.Arena,
 	footer_field: PaneField,
 	footer_input: bool,
 	refill_due:   bool,
@@ -458,8 +461,8 @@ pane_free :: proc(p: ^Pane) {
 	delete(p.footer)
 	pane_chips_set(p, nil)
 	pane_tabs_set(p, nil)
-	pane_marks_clear(p)
 	delete(p.marks)
+	vmem.arena_destroy(&p.marks_arena)
 	walk_set_clear(&p.list.expanded)
 	delete(p.list.expanded)
 	delete(p.list.columns)
@@ -502,35 +505,25 @@ pane_tabs_set :: proc(p: ^Pane, tabs: []PaneTab) {
 	p.tab = clamp(p.tab, 0, max(0, len(tabs) - 1))
 }
 
-pane_mark_free :: proc(m: PaneMark) {
-	delete(m.bar)
-	delete(m.fg)
-	delete(m.suffix)
-}
-
+// keys and suffixes live in the pane's arena: a 50k-mark push is a few block allocations, not 50k;
+// bar and fg are interned theme keys (Plugins.colors) that outlive every pane
 pane_marks_clear :: proc(p: ^Pane) {
-	for key, m in p.marks {
-		delete(key)
-		pane_mark_free(m)
-	}
 	clear(&p.marks)
+	vmem.arena_free_all(&p.marks_arena)
 }
 
 pane_mark_set :: proc(p: ^Pane, key: string, m: PaneMark) {
-	c := PaneMark{strings.clone(m.bar), strings.clone(m.fg), strings.clone(m.suffix), m.added, m.removed, m.sizes, m.dim}
-	if old, ok := p.marks[key]; ok {
-		pane_mark_free(old)
+	a := vmem.arena_allocator(&p.marks_arena)
+	c := PaneMark{m.bar, m.fg, strings.clone(m.suffix, a), m.added, m.removed, m.sizes, m.dim}
+	if _, ok := p.marks[key]; ok {
 		p.marks[key] = c
 	} else {
-		p.marks[strings.clone(key)] = c
+		p.marks[strings.clone(key, a)] = c
 	}
 }
 
 pane_mark_drop :: proc(p: ^Pane, key: string) {
-	if k, m := delete_key(&p.marks, key); k != "" {
-		delete(k)
-		pane_mark_free(m)
-	}
+	delete_key(&p.marks, key)
 }
 
 pane_footer_input :: proc(p: ^Pane, prompt, text: string) {
@@ -1381,7 +1374,7 @@ pane_render_field :: proc(p: ^Pane, g: PaneGeom, i: int, count: string) {
 	overlay_prompt_render(g.field_x, y, w, &f.field, pane_prompt(f))
 	if f.hint != "" && len(f.text) == 0 {
 		pw := visual_width(transmute([]u8)pane_prompt(f))
-		pane_text(g.field_x + pw, y, w - pw, f.hint, COLOR_FILETREE_IGNORED, COLOR_PANE_BG)
+		pane_text(g.field_x + pw, y, w - pw, f.hint, COLOR_PANE_DIM_FG, COLOR_PANE_BG)
 	}
 }
 
@@ -1534,7 +1527,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	for r in 0 ..< g.list.h {
 		if i := p.list.scroll + r; i < n && len(p.marks) > 0 {
 			it := list_item(editor, p, pane_item_index(p, i))
-			if m, ok := p.marks[pane_item_key(it)]; ok && m.sizes && !it.dir {
+			if m, ok := p.marks[pane_item_key(it)]; ok && m.sizes && !it.dir && !p.marks_plain {
 				addw, delw = max(addw, digit_count(m.added)), max(delw, digit_count(m.removed))
 			}
 		}
@@ -1574,17 +1567,17 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		case tree && !it.dir && it.path != "" && it.path == current:
 			fg = COLOR_PANE_PROMPT_FG
 		case !selected && len(p.marks) > 0 && (m.dim || (tree && pane_mark_dim(p, it.path))):
-			fg = COLOR_FILETREE_IGNORED
+			fg = COLOR_PANE_DIM_FG
 		}
 		label := pane_tree_label(p, it) if tree else it.label
-		if marked && m.suffix != "" && !it.dir {
+		if marked && m.suffix != "" && !it.dir && !p.marks_plain {
 			label = fmt.tprintf("%s  %s", label, m.suffix)
 		}
 		if tree && pane_tree_unsaved(editor, it) {
 			label = strings.concatenate({label, " ", ICON_MODIFIED}, context.temp_allocator)
 		}
 		label_w, sizes := lw, ""
-		if marked && m.sizes && !it.dir {
+		if marked && m.sizes && !it.dir && !p.marks_plain {
 			sizes = fmt.tprintf("%*s  %*s", addw + 1, fmt.tprintf("+%d", m.added), delw + 1, fmt.tprintf("-%d", m.removed))
 			room := label_w - len(sizes) - 1
 			if room >= min(visual_width(transmute([]u8)label), PANE_SIZES_MIN_LABEL) {

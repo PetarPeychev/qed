@@ -272,12 +272,13 @@ plugin_sched_budgets :: proc(t: ^testing.T) {
 	buffer_insert_rune(b, 'x')
 	start := time.tick_now()
 	plugin_flush(ed)
-	testing.expect(t, ms_since(start) < 500, "runaway handlers are cut off quickly")
+	testing.expect(t, ms_since(start) < 3000, "runaway handlers are cut off at the slice limit")
 	busy := plugin_find(&ed.plugins, "busy")
-	testing.expect_value(t, busy.state, PluginState.Errored)
-	testing.expect(t, strings.contains(busy.last_error, "buf_changed handler exceeded its 20 ms budget"), busy.last_error)
+	testing.expect_value(t, busy.state, PluginState.Enabled)
+	testing.expect(t, strings.contains(busy.last_error, "buf_changed handler exceeded its 1000 ms budget and was stopped"), busy.last_error)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "Busy", "exceeded its 1000 ms budget"), "a stopped task is a warning")
 	sneaky := plugin_find(&ed.plugins, "sneaky")
-	testing.expect_value(t, sneaky.state, PluginState.Errored)
+	testing.expect_value(t, sneaky.state, PluginState.Enabled)
 	testing.expect(t, strings.contains(sneaky.last_error, "budget"), "pcall cannot swallow the budget")
 	testing.expect_value(t, len(ed.plugins.tasks), 0)
 
@@ -288,8 +289,8 @@ plugin_sched_budgets :: proc(t: ^testing.T) {
 	start = time.tick_now()
 	sched_run(t, ed, "Cmd: Forever")
 	elapsed := ms_since(start)
-	testing.expect(t, elapsed >= 1900 && elapsed < 4000, "commands get 2 s")
-	testing.expect(t, strings.contains(cmd.last_error, "command exceeded its 2000 ms budget"), cmd.last_error)
+	testing.expect(t, elapsed >= 4900 && elapsed < 8000, "commands get 5 s")
+	testing.expect(t, strings.contains(cmd.last_error, "command exceeded its 5000 ms budget"), cmd.last_error)
 	testing.expect_value(t, cmd.state, PluginState.Enabled)
 }
 
@@ -557,13 +558,13 @@ plugin_sched_paste_and_nesting :: proc(t: ^testing.T) {
 	ed.pasting = false
 	start := time.tick_now()
 	plugin_pump(ed)
-	testing.expect(t, ms_since(start) < 1000, "a runaway handler inside qed.edit is cut off")
+	testing.expect(t, ms_since(start) < 2000, "a runaway handler inside qed.edit is cut off")
 	testing.expect_value(t, sched_var(ed, "changed"), "1")
 	p := plugin_find(&ed.plugins, "p")
 	testing.expect_value(t, p.state, PluginState.Enabled)
 	testing.expect_value(t, p.last_error, "")
 	e := plugin_find(&ed.plugins, "edit")
-	testing.expect_value(t, e.state, PluginState.Errored)
+	testing.expect_value(t, e.state, PluginState.Enabled)
 	testing.expect(t, strings.contains(e.last_error, "budget"), e.last_error)
 }
 

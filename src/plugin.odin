@@ -679,7 +679,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	p.loading = false
 	p.setup = nil
 	if killed {
-		ok, msg, tb = false, fmt.tprintf("setup exceeded its %.0f ms budget", plugin_budgets[.Setup].hard_ms), ""
+		ok, msg, tb = false, fmt.tprintf("setup exceeded its %.0f ms budget", plugin_budget(.Setup).hard_ms), ""
 	}
 	if !ok {
 		plugin_error(editor, pl, msg, tb, true)
@@ -1206,6 +1206,20 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if keybind_t == .STRING && keybind_s == "" {
 		return lua.L_argerror(L, 1, "keybind must not be empty")
 	}
+	from_t := lua.getfield(L, 1, "bind_from")
+	from_s, _ := lua.toodinstring(L, 9)
+	if from_t != .STRING && from_t != .NIL {
+		return lua.L_argerror(L, 1, "bind_from must be a string")
+	}
+	if from_t == .STRING {
+		found := false
+		for c in commands {
+			found ||= c.name == from_s
+		}
+		if !found {
+			return plugin_raise(L, fmt.tprintf("bind_from: no core command '%s'", from_s))
+		}
+	}
 	if pl == nil || pl.state != .Enabled {
 		return plugin_raise(L, "plugin is not loaded")
 	}
@@ -1233,6 +1247,7 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		welcome     = welcome,
 		key_default = strings.clone(key_s) if key_t == .STRING else "",
 		config_name = strings.clone(keybind_s if keybind_t == .STRING else name),
+		bind_from   = strings.clone(from_s) if from_t == .STRING else "",
 		ref         = ref,
 		when_ref    = when_ref,
 	}
@@ -1388,6 +1403,7 @@ plugin_command_free :: proc(cmd: ^Command) {
 	delete(cmd.shortcut)
 	delete(cmd.key_default)
 	delete(cmd.config_name)
+	delete(cmd.bind_from)
 	delete(cmd.scope)
 }
 
@@ -1417,6 +1433,14 @@ plugin_bind_taken :: proc(key: tb2.Key, alt_ch, ch: rune, scope: string) -> stri
 plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -> (problem: string, from_user: bool) {
 	label := fmt.tprintf("plugins/%s/keybinds/%s", cmd.owner, cmd.config_name)
 	bind := cmd.key_default
+	// a borrowed bind is read from the core command at every rebind, so it follows that command's config
+	if bind == "" && cmd.bind_from != "" {
+		for c in commands {
+			if c.name == cmd.bind_from {
+				bind = c.shortcut
+			}
+		}
+	}
 	for other in p.commands {
 		if bind != "" {
 			break
@@ -1637,7 +1661,7 @@ plugin_invoke :: proc(editor: ^Editor, owner: string, ref: i32, nresults: c.int)
 	ok, msg, tb := plugin_call(editor, 2, nresults)
 	if plugin_slice_end(editor, prev_slice, owner, .When, "command when") && ok {
 		lua.pop(p.L, nresults)
-		ok, msg, tb = false, fmt.tprintf("command when exceeded its %.0f ms budget", plugin_budgets[.When].hard_ms), ""
+		ok, msg, tb = false, fmt.tprintf("command when exceeded its %.0f ms budget", plugin_budget(.When).hard_ms), ""
 	}
 	if !ok {
 		if pl := plugin_find(p, owner); pl != nil {

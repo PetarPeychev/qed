@@ -794,3 +794,81 @@ bench_filetree_render :: proc(t: ^testing.T) {
 	}
 	fmt.eprintfln("tree arrow + render: %.3f ms/step", ms_since(start) / FRAMES)
 }
+
+@(private = "file")
+BENCH_PROVIDER :: `
+return {setup = function()
+	qed.command{name = "Provide", run = function()
+		qed.filetree.provide{refresh = function()
+			local n = tonumber(qed.fs.read(qed.path.join(qed.root(), "n")))
+			pushes = (pushes or 0) + 1
+			local files = {}
+			local root = qed.root()
+			for i = 0, n - 1 do
+				files[("%s/d%03d/f%03d.txt"):format(root, i // 300, i % 300)] = {mark = "modified", added = pushes, removed = 1}
+			end
+			qed.filetree.set_status(files, {})
+		end}
+	end}
+end}`
+
+@(private = "file")
+bench_refresh :: proc(e: ^E2E) {
+	s := &e.ed.plugins.shim
+	plugin_queue(&e.ed, {ref = s.refs[0], only = s.owner})
+	plugin_flush(&e.ed)
+}
+
+@(private = "file")
+bench_step :: proc(e: ^E2E, label: string, n: int, run: proc(e: ^E2E)) {
+	test_slice_owner = "filetree"
+	test_slice_max = 0
+	at := time.tick_now()
+	run(e)
+	for i := 0; i < 20000 && (plugin_busy(&e.ed) || e2e_plugin_yielding(e) || pane_stack_pending(&e.ed)); i += 1 {
+		pane_stack_pump(&e.ed, true)
+		plugin_pump(&e.ed)
+		free_all(context.temp_allocator)
+		time.sleep(time.Millisecond)
+	}
+	e2e_render(e)
+	fmt.eprintfln("changed %d %-18s wall %8.1f ms  max filetree slice %6.1f ms  %v", n, label, ms_since(at), test_slice_max, plugin_find(&e.ed.plugins, "filetree").state)
+}
+
+@(test)
+bench_filetree_changed :: proc(t: ^testing.T) {
+	ns := os.get_env("QED_BENCH_CHANGED", context.allocator)
+	if ns == "" {
+		return
+	}
+	for part in strings.split(strings.clone(ns), ",") {
+		n := 0
+		for ch in part {
+			n = n * 10 + int(ch - '0')
+		}
+		e := e2e_root_start("x")
+		e2e_plugin_config(&e, "git", `{"enabled": false}`)
+		for d in 0 ..< (n + 299) / 300 {
+			os.make_directory(fmt.tprintf("%s/d%03d", e.dir, d))
+			for f in 0 ..< 300 {
+				if d * 300 + f < n {
+					nav_write(fmt.tprintf("%s/d%03d/f%03d.txt", e.dir, d, f), "x\n")
+				}
+			}
+		}
+		nav_write(fmt.tprintf("%s/n", e.dir), part)
+		e2e_plugin(&e, "prov", BENCH_PROVIDER)
+		plugin_flush(&e.ed)
+		bench_step(&e, "provide", n, proc(e: ^E2E) {ft_run(&e.ed, "Prov: Provide"); bench_refresh(e)})
+		bench_step(&e, "open All", n, proc(e: ^E2E) {filetree_open_all(&e.ed)})
+		bench_step(&e, "push on All", n, bench_refresh)
+		bench_step(&e, "tab Changed", n, proc(e: ^E2E) {nav_alt(e, 'g')})
+		bench_step(&e, "push on Changed", n, bench_refresh)
+		bench_step(&e, "arrow on Changed", n, proc(e: ^E2E) {e2e_key(e, .Arrow_Down)})
+		bench_step(&e, "tab All", n, proc(e: ^E2E) {nav_alt(e, 'f')})
+		bench_step(&e, "close", n, proc(e: ^E2E) {e2e_key(e, .Esc)})
+		bench_step(&e, "open Changed", n, proc(e: ^E2E) {nav_alt(e, 'g')})
+		test_slice_owner = ""
+		e2e_stop(&e)
+	}
+}

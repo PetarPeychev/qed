@@ -52,7 +52,7 @@
     "conflict_ours": "#73c936",
     "conflict_theirs": "#2d93ec",
     "conflict_base": "#868686",
-    "filetree_ignored": "#686868"
+    "pane_dim_foreground": "#686868"
   },
   "captures": {
     "keyword": "syntax_keyword",

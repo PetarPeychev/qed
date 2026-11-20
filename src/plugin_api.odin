@@ -895,8 +895,20 @@ qed_save_result :: proc(L: ^lua.State, editor: ^Editor, id: u64) -> c.int {
 qed_close :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	discard := lua.type(L, 2) == .TABLE && api_opt_bool(L, 2, "discard")
 	b, idx := api_buf(L, entry.editor, 1)
+	discard := false
+	if lua.type(L, 2) == .TABLE {
+		if lua.getfield(L, 2, "discard") == .TABLE {
+			for i in 1 ..= int(lua.rawlen(L, -1)) {
+				lua.rawgeti(L, -1, lua.Integer(i))
+				discard ||= u64(lua.tointeger(L, -1)) == b.id
+				lua.pop(L, 1)
+			}
+		} else if lua.type(L, -1) != .NIL {
+			plugin_raise(L, "discard must be a list of buffer ids")
+		}
+		lua.pop(L, 1)
+	}
 	if b.modified && !discard {
 		lua.pushboolean(L, false)
 		return 1
@@ -1552,6 +1564,17 @@ qed_fs_write :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	path := api_path(entry.editor, api_string(L, 1))
 	data := api_string(L, 2)
+	if lua.type(L, 3) == .TABLE && api_opt_bool(L, 3, "exclusive") {
+		switch fs_create(entry.editor, path, data) {
+		case .None:
+			lua.pushboolean(L, true)
+			return 1
+		case .Exists:
+			return api_fail(L, "exists")
+		case .Missing, .Into, .Special, .Root, .Failed:
+		}
+		return api_fail(L, fmt.tprintf("cannot write %s", path))
+	}
 	mode := os.perm(0o644)
 	if fi, err := os.stat(path, context.temp_allocator); err == nil {
 		mode = fi.mode
@@ -1604,7 +1627,12 @@ qed_fs_mkdir :: proc "c" (L: ^lua.State) -> c.int {
 qed_fs_exists :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	lua.pushboolean(L, b32(os.exists(api_path(entry.editor, api_string(L, 1)))))
+	path := api_path(entry.editor, api_string(L, 1))
+	follow := true
+	if lua.type(L, 2) == .TABLE && lua.getfield(L, 2, "follow") != .NIL {
+		follow = bool(lua.toboolean(L, -1))
+	}
+	lua.pushboolean(L, b32(os.exists(path) if follow else fs_lexists(path)))
 	return 1
 }
 

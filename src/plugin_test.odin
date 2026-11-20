@@ -240,6 +240,9 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 			for i = 1, 1e7 do t[i] = string.rep("x", 64) .. i end
 			return {}`},
 		{"small.lua", `return {setup = function() qed.command{name = "Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
+		{"evhog.lua", `return {setup = function()
+			qed.on("buf_changed", function() local t = {} for i = 1, 1e7 do t[i] = string.rep("z", 64) .. i end end)
+		end}`},
 	}, mem_cap = 4 * 1024 * 1024)
 	defer plugin_test_destroy(ed)
 
@@ -251,6 +254,14 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "the state survives OOM")
 	command_run(ed, cmd)
 	testing.expect_value(t, ed.message, "yyy")
+
+	plugin_flush(ed)
+	buffer_insert_rune(editor_buffer(ed), 'x')
+	plugin_flush(ed)
+	evhog := plugin_find(&ed.plugins, "evhog")
+	testing.expect_value(t, evhog.state, PluginState.Enabled)
+	testing.expect(t, strings.contains(evhog.last_error, "not enough memory"), evhog.last_error)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "Evhog", "not enough memory"), "a task out of memory is a warning")
 }
 
 @(test)
