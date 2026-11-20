@@ -76,7 +76,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Pane model M0: Odin `Pane` + stack + kinds; quit/close/conflict/merge dialogs and `qed.confirm`/`qed.prompt` on it ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M1: `qed.ui.open` (center/full/split, filter/query/input fields, set/append/update), queued events, exclusive panes persisted by `id`, `qed.pick/prompt/confirm/pane` as prelude sugar, `search` streams into a query pane ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M2: palette core-built on a commands list source, core list handles (`qed.fs.dirs`), `path` field, `qed.set_root`, the working-root picker becomes the `workspace` plugin ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M3: accessor-backed list sources, pane-scoped commands (bare keys, rebindable, scoped Ctrl+P, `ctx.view`), footer chips, columns, `sel = bg`, follow; Message Log, Plugins pane and LSP rename prompt core-built on the model; line find becomes the `lines` plugin on `qed.buf.line_list`; per-pane backdrop keys ([notes/panes.md](notes/panes.md) §7).
+- [ ] Pane model M3: accessor-backed list sources, pane-scoped commands (bare keys, rebindable, scoped Ctrl+P, `ctx.view`), footer chips, columns, `sel = bg`, follow; Message Log, Plugins pane and LSP rename prompt core-built on the model; line find becomes the `goto` plugin on `qed.buf.line_list`; markdown preview Back/Forward; per-pane backdrop keys ([notes/panes.md](notes/panes.md) §7).
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred

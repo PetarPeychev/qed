@@ -238,16 +238,16 @@ with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
 |-----|---------|---------|
 | `plugins.workspace.enabled` | `true` | Off removes both commands. |
 
-### Line find
+### Go to line
 
-*Lines: Find Line* (`Ctrl+g`) comes from the bundled `lines` plugin: a filter over the
+*Go To: Line* (`Ctrl+g`) comes from the bundled `goto` plugin: a filter over the
 buffer's lines in file order with a preview, `:N` or `:N:M` jumps to a line (and column).
-Rebind with `plugins.lines.keybinds["Find Line"]`; the old top-level `keybinds."Find Line"`
-warns where it moved.
+Rebind with `plugins.goto.keybinds["Line"]`; the old top-level `keybinds."Find Line"`
+warns where it moved, and a `plugins.lines` section warns that it was renamed.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.lines.enabled` | `true` | Off removes *Find Line*. |
+| `plugins.goto.enabled` | `true` | Off removes *Go To: Line*. |
 
 ### Search
 
@@ -271,7 +271,10 @@ scroll for that file. Clicking a link follows it: `#anchor` scrolls to the headi
 another markdown file switches the preview to it (and the editor underneath, at the heading for
 `file.md#anchor`, recorded in the jump list); a link to any other file closes the preview and opens
 it; a URL opens in the platform browser (macOS `open`; WSL `wslview`, else `explorer.exe`; Linux
-`xdg-open`). LSP hover uses the same renderer (plaintext hovers render verbatim).
+`xdg-open`). Anchor jumps and markdown file links are remembered: *Markdown: Back* and *Forward* step
+through them while the preview has focus (default: the keys of *Jump Back* / *Jump Forward* at load,
+`Alt+,` / `Alt+.`; rebind with `plugins.markdown.keybinds.Back` / `Forward`); file switches land in the
+jump list too. LSP hover uses the same renderer (plaintext hovers render verbatim).
 
 | Key | Default | Meaning |
 |-----|---------|---------|

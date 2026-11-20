@@ -311,7 +311,7 @@ and the box is centered (extra width becomes margin). Below that, the deficit is
 each side down to its min, the other side absorbing the rest. W under both mins hides the preview
 (`lay.preview` false: list takes the full inner width, no divider, preview neither loaded nor hit-tested; a resize reloads it when it reappears,
 `editor_previews_sync`). The `PICKER_MARGIN_X` side margin is fixed at every width.
-Most panes reset their query on open. Plugin panes opened with an `id` (`search`, `lines`) restore
+Most panes reset their query on open. Plugin panes opened with an `id` (`search`, `goto`) restore
 their field text fully selected (`textfield_select_all`) so a keystroke replaces it, and the selected
 item (not for a line list); the file tree persists its expanded set + selection.
 
@@ -354,7 +354,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - **List sources** (`listsrc.odin`, D2): `PaneList.source` (`ListSource{kind, scope, path, buf}`) is read
   through accessors, never copied into `list.items`: `list_count`, `list_text(i)` (what a filter matches,
   borrowed) and `list_item(i)` (built on demand with temp or borrowed strings; only drawn, activated and
-  changed items are built, counted in `PaneList.built`). An empty filter leaves the list unfiltered
+  changed items are built; tests count them behind `when ODIN_TEST`). An empty filter leaves the list unfiltered
   (`filtered` false, no index array), so a 1M-line source opens without an O(n) pass. `pane_list_load`
   (at open and on every `path` field change) refills the small caches. `.Commands` is the palette's
   table for one `scope` (`when`/welcome/big gating at open into names + plugin ids; a row resolves its
@@ -362,10 +362,15 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
   `path`'s subdirs, or under a `path` field the dir its text names, prefix-matched smart-case on the last
   segment (base dir's entries cached until its segment changes). `.Lines` is live over a buffer: matches
   stay in buffer order, `:N[:M]` (`lines_goto`) selects one row, the view opens on the match nearest the
-  cursor, items carry `buf` so the auto preview shows the buffer. `.Log` holds ring indices passing the
+  cursor, items carry `buf` so the auto preview shows the buffer. `.Log` holds entry seqs passing the
   filters, recomputed when `Editor.log_seq` or a filter changes. `.Plugins` reads `Plugins.list`.
   `list_columns` gives a source columns (Lines, Plugins). A reload resets the selection and `notified`,
-  so `change` fires. A new source is an enum value plus accessor cases.
+  so `change` fires. A new source is an enum value plus accessor cases. Each source has a `list_stamp`
+  (buffer `rev`, `log_seq` + filters, plugin count; 0 = gone or static); `pane_list_fit` (each render and
+  before input) refilters keeping the selected item when it changes, and the accessors read a stale index
+  as empty. Log eviction shifts positions so the selection and range stay on their entries.
+- Any plugin's command run while a pane with a list has focus gets `ctx.items` (the selection) and
+  `ctx.files` (their paths); `ctx.view` stays owner-only.
 - **Scoped commands** (D4): a pane with `scope` runs core (`pane_commands`) and plugin commands of that
   scope on their chord, before field input, and the Command Palette chord opens the palette over just
   them as a child. A core pane's `chord` closes it from any of its children. Footer `chips` (core) are
@@ -422,13 +427,13 @@ A `markdown` body (`qed.ui.open{markdown}`, full only) is rendered by core at th
 the cache is keyed on width and dropped by `v:markdown` and `editor_retheme`. `max_width` caps a
 center/full box. A text body's scroll is saved by `id` with the field texts. A left click on a
 markdown body hit-tests `MdSpan.link`: `#anchor` scrolls to the line whose `MdLine.slug` matches
-(GitHub slugs, repeats `-1`, `-2`), anything else goes to `on.link` (queued like the other view
+(GitHub slugs, repeats `-1`, `-2`) unless the view has a `link` handler; anything else goes to `on.link` (queued like the other view
 events), so the plugin owns open-file vs `qed.open_url` (`url_opener` in `shell.odin`, detached via a
 backgrounded shell; headless only logs). `backdrop` (`dim`/`blank`) is applied in `pane_render`
 before the box, to every cell drawn so far except the status rows, so panes below fade too.
 
 Ported: the quit/close/conflict/merge dialogs, the command palette, the Message Log, the Plugins pane, the LSP
-rename prompt, the working-root picker (`workspace` plugin), line find (`lines` plugin) and every plugin pane.
+rename prompt, the working-root picker (`workspace` plugin), line find (`goto` plugin) and every plugin pane.
 Still legacy overlays: terminal, AI edit prompt, find bar, file tree.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
 `Overlay` vtable entries (`editor_overlays`). The stack sits above them: an overlay gets input only
@@ -806,7 +811,7 @@ hot-reload teardown) · `clipboard` · `shell` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `lines/`: *Find Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview*).
+Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -881,7 +886,7 @@ batch-closes the selection, silent for clean buffers and behind a `Close N buffe
 confirm when any are unsaved; standalone switcher removed), find/replace in buffer (`Ctrl+F` find, `Ctrl+H` replace — floating top-right bar,
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
-single-line/per-line), fuzzy line jump (`lines` plugin, *Lines: Find Line* `Ctrl+G`, filter over the list column,
+single-line/per-line), fuzzy line jump (`goto` plugin, *Go To: Line* `Ctrl+G`, filter over the list column,
 matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
@@ -1010,7 +1015,7 @@ underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 rendered-markdown hover (`mdrender.odin`, see Markdown rendering; popup wheel-scrolls while
 hovered, `contentFormat` advertises markdown first), markdown preview (`markdown` plugin,
 *Markdown: Preview* `Alt+p` in markdown buffers: a `full` pane capped at
-`plugins.markdown.max_width`, live on `buf_changed`, scroll kept and restored per buffer),
+`plugins.markdown.max_width`, live on `buf_changed`, scroll kept and restored per buffer, *Markdown: Back*/*Forward* over anchor and file-link history),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
