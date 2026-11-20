@@ -2022,55 +2022,46 @@ editor_render_text_row :: proc(
 	}
 
 	// A wrap segment (col_start > 0) starts at screen x 0, so its visual column is x_origin.
-	base := col_start if col_start > 0 else 0
-	vcol := x_origin if base > 0 else 0
-	pstart := -1
-	psel := false
-	pfg := COLOR_FG
-	pbg := bg_normal
+	i := col_start if col_start > 0 else 0
+	vcol := x_origin if i > 0 else 0
 	next_match := 0
 	clipped := false
-	it := utf8.decode_grapheme_iterator_make(string(text[base:]))
-	for _, g in utf8.decode_grapheme_iterate(&it) {
-		gi := base + g.byte_index
-		if pstart >= 0 {
-			vcol = emit(gutter, y, w, text, pstart, gi, vcol, x_origin, col_start, col_end, psel, pfg, pbg)
-		}
-		if gi >= col_end || vcol - x_origin >= w {
+	for i < len(text) {
+		if i >= col_end || vcol - x_origin >= w {
 			clipped = true
-			pstart = -1
 			break
 		}
-		pstart = gi
+		e := cluster_end(text, i)
 		if vcol + max(TAB_WIDTH, 2) <= x_origin {
+			vcol += seg_width(text, i, e, vcol)
+			i = e
 			continue
 		}
-		psel = sel_from >= 0 && pstart >= sel_from && pstart < sel_to
-		pfg = colors[pstart] if colors != nil && pstart < len(colors) else COLOR_FG
-		if underlined(underlines, pstart) {
-			pfg = tb2.Color(u64(pfg) | u64(tb2.Color.Underline))
+		sel := sel_from >= 0 && i >= sel_from && i < sel_to
+		fg := colors[i] if colors != nil && i < len(colors) else COLOR_FG
+		if underlined(underlines, i) {
+			fg = tb2.Color(u64(fg) | u64(tb2.Color.Underline))
 		}
-		pbg = diff_bg if diff_from >= 0 && pstart >= diff_from && pstart < diff_to else bg_normal
+		bg := diff_bg if diff_from >= 0 && i >= diff_from && i < diff_to else bg_normal
 		for sp in spans {
-			if pstart >= sp.from && pstart < sp.to {
+			if i >= sp.from && i < sp.to {
 				if sp.has_fg {
-					pfg = tb2.Color(u64(sp.fg) | color_attrs(pfg))
+					fg = tb2.Color(u64(sp.fg) | color_attrs(fg))
 				}
 				if sp.has_bg {
-					pbg = color_over(bg_normal, sp.bg, sp.alpha) if sp.blend else sp.bg
+					bg = color_over(bg_normal, sp.bg, sp.alpha) if sp.blend else sp.bg
 				}
-				pfg = tb2.Color(u64(pfg) | sp.attrs)
+				fg = tb2.Color(u64(fg) | sp.attrs)
 			}
 		}
-		for next_match < len(match_spans) && match_spans[next_match][1] <= pstart {
+		for next_match < len(match_spans) && match_spans[next_match][1] <= i {
 			next_match += 1
 		}
-		if next_match < len(match_spans) && pstart >= match_spans[next_match][0] {
-			pbg = match_bg
+		if next_match < len(match_spans) && i >= match_spans[next_match][0] {
+			bg = match_bg
 		}
-	}
-	if pstart >= 0 {
-		vcol = emit(gutter, y, w, text, pstart, len(text), vcol, x_origin, col_start, col_end, psel, pfg, pbg)
+		vcol = emit(gutter, y, w, text, i, e, vcol, x_origin, col_start, col_end, sel, fg, bg)
+		i = e
 	}
 	if !clipped && col_end >= len(text) && sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
 		draw(gutter, y, vcol - x_origin, w, ' ', true, COLOR_FG, bg_normal)

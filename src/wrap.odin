@@ -1,7 +1,5 @@
 package main
 
-import "core:unicode/utf8"
-
 // Byte offsets where each visual row of a soft-wrapped line begins. The first
 // element is always 0; a single element means the line occupies one screen row.
 // Breaks prefer the last whitespace boundary that fits; a word wider than the
@@ -15,21 +13,13 @@ line_wrap :: proc(text: []u8, width: int, allocator := context.temp_allocator) -
 		return segs
 	}
 
-	starts := make([dynamic]int, context.temp_allocator)
-	it := utf8.decode_grapheme_iterator_make(string(text))
-	for _, g in utf8.decode_grapheme_iterate(&it) {
-		append(&starts, g.byte_index)
-	}
-	append(&starts, len(text))
-
 	v := 0 // running absolute visual column
 	seg_start_v := 0 // absolute visual column at the current segment start
 	last_break := -1 // byte offset just after the most recent space in this segment
 	last_break_v := 0
 
-	for i in 0 ..< len(starts) - 1 {
-		cs := starts[i]
-		ce := starts[i + 1]
+	for cs := 0; cs < len(text); {
+		ce := cluster_end(text, cs)
 		cw := seg_width(text, cs, ce, v)
 		seg_start := segs[len(segs) - 1]
 		if v + cw - seg_start_v > width && cs > seg_start {
@@ -47,6 +37,7 @@ line_wrap :: proc(text: []u8, width: int, allocator := context.temp_allocator) -
 			last_break = ce
 			last_break_v = v
 		}
+		cs = ce
 	}
 	return segs
 }

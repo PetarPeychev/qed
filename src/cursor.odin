@@ -26,25 +26,48 @@ grapheme_class :: proc(text: []u8, at: int) -> CharClass {
 }
 
 grapheme_next :: proc(text: []u8, col: int) -> int {
-	it := utf8.decode_grapheme_iterator_make(string(text))
-	for _, g in utf8.decode_grapheme_iterate(&it) {
-		if g.byte_index > col {
-			return g.byte_index
-		}
+	if col >= len(text) {
+		return len(text)
 	}
-	return len(text)
+	i := grapheme_sync(text, col)
+	for i <= col && i < len(text) {
+		i = cluster_end(text, i)
+	}
+	return i
 }
 
 grapheme_prev :: proc(text: []u8, col: int) -> int {
-	prev := 0
-	it := utf8.decode_grapheme_iterator_make(string(text))
-	for _, g in utf8.decode_grapheme_iterate(&it) {
-		if g.byte_index >= col {
-			break
-		}
-		prev = g.byte_index
+	if col <= 0 || len(text) == 0 {
+		return 0
 	}
-	return prev
+	i := grapheme_sync(text, col - 1)
+	for {
+		e := cluster_end(text, i)
+		if e >= col || e >= len(text) {
+			return i
+		}
+		i = e
+	}
+}
+
+// An ASCII byte after an ASCII non-CR byte always starts a grapheme cluster (UAX #29 GB3-GB9b).
+grapheme_sync :: proc(text: []u8, i: int) -> int {
+	j := min(i, len(text) - 1)
+	for j > 0 && !(text[j] < 0x80 && text[j - 1] < 0x80 && text[j - 1] != '\r') {
+		j -= 1
+	}
+	return max(j, 0)
+}
+
+// `i` must start a cluster.
+cluster_end :: proc(text: []u8, i: int) -> int {
+	if text[i] < 0x80 && text[i] != '\r' && (i + 1 == len(text) || text[i + 1] < 0x80) {
+		return i + 1
+	}
+	it := utf8.decode_grapheme_iterator_make(string(text[i:]))
+	_, _, _ = utf8.decode_grapheme_iterate(&it)
+	_, g, ok := utf8.decode_grapheme_iterate(&it)
+	return i + g.byte_index if ok else len(text)
 }
 
 cluster_width :: proc(cluster: []u8) -> int {
@@ -85,6 +108,9 @@ seg_width :: proc(text: []u8, start, end, v: int) -> int {
 	if text[start] == '\t' {
 		return (v / TAB_WIDTH + 1) * TAB_WIDTH - v
 	}
+	if end == start + 1 && text[start] < 0x80 {
+		return 1
+	}
 	return cluster_width(text[start:end])
 }
 
@@ -95,20 +121,17 @@ visual_col :: proc(text: []u8, col: int) -> int {
 // `from` must be a grapheme boundary whose visual column is `v`.
 visual_col_from :: proc(text: []u8, from, v, col: int) -> int {
 	v := v
-	start := -1
-	it := utf8.decode_grapheme_iterator_make(string(text[from:]))
-	for _, g in utf8.decode_grapheme_iterate(&it) {
-		gi := from + g.byte_index
-		if start >= 0 {
-			v += seg_width(text, start, gi, v)
+	i := from
+	for i < len(text) && i < col {
+		c := text[i]
+		if c >= 0x20 && c < 0x7f && (i + 1 == len(text) || text[i + 1] < 0x80) {
+			v += 1
+			i += 1
+			continue
 		}
-		if gi >= col {
-			return v
-		}
-		start = gi
-	}
-	if start >= 0 && start < col {
-		v += seg_width(text, start, len(text), v)
+		e := cluster_end(text, i)
+		v += seg_width(text, i, e, v)
+		i = e
 	}
 	return v
 }
@@ -121,24 +144,15 @@ col_at_visual :: proc(text: []u8, target: int) -> int {
 	if target <= 0 {
 		return 0
 	}
-	v := 0
-	start := -1
-	it := utf8.decode_grapheme_iterator_make(string(text))
-	for _, g in utf8.decode_grapheme_iterate(&it) {
-		if start >= 0 {
-			w := seg_width(text, start, g.byte_index, v)
-			if target < v + w {
-				return start if target - v <= v + w - target else g.byte_index
-			}
-			v += w
-		}
-		start = g.byte_index
-	}
-	if start >= 0 {
-		w := seg_width(text, start, len(text), v)
+	v, i := 0, 0
+	for i < len(text) {
+		e := cluster_end(text, i)
+		w := seg_width(text, i, e, v)
 		if target < v + w {
-			return start if target - v <= v + w - target else len(text)
+			return i if target - v <= v + w - target else e
 		}
+		v += w
+		i = e
 	}
 	return len(text)
 }
