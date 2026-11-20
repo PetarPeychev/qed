@@ -239,12 +239,16 @@ on `PATH`. Rebind both with `plugins.search.keybinds["Find in Files"]`.
 centered pane: markers hidden, headings colored with a rule under H1/H2, code blocks on a
 tinted band with syntax colors, lists, task boxes, quotes, box-drawn tables, link URLs as
 numbered footnotes. It follows edits to the buffer and keeps its scroll; the same chord
-closes it, and reopening restores the scroll for that buffer. LSP hover uses the same renderer.
+closes it, and reopening restores the scroll for that buffer. Clicking a link follows it: `#anchor`
+scrolls to the heading, a relative path opens that file (from the previewed file's dir, at the
+heading for `file.md#anchor`) and closes the preview, a URL opens in the platform browser (macOS
+`open`; WSL `wslview`, else `explorer.exe`; Linux `xdg-open`). LSP hover uses the same renderer.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.markdown.enabled` | `true` | Off removes *Markdown: Preview*. |
 | `plugins.markdown.max_width` | `100` | Widest the preview pane gets, borders included. |
+| `plugins.markdown.backdrop` | `"dim"` | What shows around the preview: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
 
 ### Git
 
@@ -304,7 +308,7 @@ Bundled themes: `default`, `atom-one-dark`, `catppuccin-mocha`,
 To customize colors, create `~/.config/qed/themes/<name>.json`, a sparse per-key
 diff over the bundled theme of the same name (or over `default` for a new name).
 The four sections are `colors`, `captures` (tree-sitter capture to color),
-`icons`, and `tints` (line-background strengths; `markdown_code` is the code band in
+`icons`, and `tints` (line-background strengths; `pane_backdrop` is how far a `"dim"` backdrop fades text; `markdown_code` is the code band in
 rendered markdown, the pane selection color over the pane background). The complete key list is
 [`config/themes/default.json`](../config/themes/default.json); qed never writes
 theme files.

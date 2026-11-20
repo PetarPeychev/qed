@@ -400,7 +400,12 @@ focus. `ctx.view` is only handed to the view's own plugin. `pane_unload` saves s
 A `markdown` body (`qed.ui.open{markdown}`, full only) is rendered by core at the text width into
 `Pane.md_lines`, a per-pane `virtual.Arena` swapped in as `context.temp_allocator` for `md_render`;
 the cache is keyed on width and dropped by `v:markdown` and `editor_retheme`. `max_width` caps a
-center/full box. A text body's scroll is saved by `id` with the field texts.
+center/full box. A text body's scroll is saved by `id` with the field texts. A left click on a
+markdown body hit-tests `MdSpan.link`: `#anchor` scrolls to the line whose `MdLine.slug` matches
+(GitHub slugs, repeats `-1`, `-2`), anything else goes to `on.link` (queued like the other view
+events), so the plugin owns open-file vs `qed.open_url` (`url_opener` in `shell.odin`, detached via a
+backgrounded shell; headless only logs). `backdrop` (`dim`/`blank`) is applied in `pane_render`
+before the box, to every cell drawn so far except the status rows, so panes below fade too.
 
 Ported: the quit/close/conflict/merge dialogs, the command palette, the working-root picker (`workspace` plugin) and
 every plugin pane.
@@ -659,7 +664,7 @@ on the run color (`text.strong` is `foreground bold`, so bold never reads as a h
 `━` rule in the heading color, H2 a `─` rule. Code (blocks and inline) sits on a band: tint
 `markdown_code` of the pane selection color over the pane background, filled to the right edge
 via `MdLine.fill`; blocks are highlighted by `highlight_lines` and char-wrapped. Links show their
-text underlined plus `[n]`, each URL listed once as a footnote at the end (anchors and autolinks
+text underlined plus `[n]` (both carry the target), each URL listed once as a footnote at the end (anchors and autolinks
 get none). Images and `<img>` show `[image: alt]`; other HTML tags drop (`br` and block closers
 break lines). Tables fit columns to content, keep whole words when every column's longest word
 fits, share the rest evenly and wrap cells; below 3 columns per cell, rows become `header: value`
