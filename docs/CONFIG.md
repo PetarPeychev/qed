@@ -265,8 +265,10 @@ on `PATH`. Rebind both with `plugins.search.keybinds["Find in Files"]`.
 full pane capped at `max_width`: markers hidden, headings colored with a rule under H1/H2, code
 blocks on a tinted band with syntax colors, lists, task boxes, quotes, box-drawn tables, link URLs
 as numbered footnotes. The pane has focus, so it follows changes made outside it (disk reload,
-formatters, plugins) and keeps its scroll; the same chord closes it, and reopening restores the
-scroll for that file. Clicking a link follows it: `#anchor` scrolls to the heading; a link to
+formatters, plugins) and keeps its scroll; the same chord closes it. The preview follows the cursor:
+it opens with the block holding the cursor's line on the cursor's screen row (as far as the document
+ends allow), and closing it after scrolling moves the cursor to the line shown on that row (first
+non-blank column) and scrolls the editor to match; closing without scrolling leaves the cursor. Clicking a link follows it: `#anchor` scrolls to the heading; a link to
 another markdown file switches the preview to it (and the editor underneath, at the heading for
 `file.md#anchor`, recorded in the jump list); a link to any other file closes the preview and opens
 it; a URL opens in the platform browser (macOS `open`; WSL `wslview`, else `explorer.exe`; Linux
