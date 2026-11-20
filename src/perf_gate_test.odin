@@ -351,11 +351,17 @@ bench_gate :: proc(t: ^testing.T) {
 	has_rg := e2e_run("command -v rg >/dev/null 2>&1") || rg_err == nil
 
 	if want(only, "files") {
-		for name in ([]string{"lines100k.c", "lines100k.py", "lines100k.js", "lines100k.odin", "mixed10mb.c", "huge.md", "odd.txt", "lines1m.txt"}) {
+		names := []string{"lines100k.c", "lines100k.py", "lines100k.js", "lines100k.odin", "mixed10mb.c", "huge.md", "odd.txt", "lines1m.txt"}
+		if pick := os.get_env("QED_GATE_FILES", context.allocator); pick != "" {
+			names = strings.split(pick, ",", context.allocator)
+		}
+		for name in names {
 			gate_file(name)
 		}
-		gate_file("lines100k.c", highlight = true)
-		gate_file("mixed10mb.c", highlight = true)
+		if len(names) > 2 {
+			gate_file("lines100k.c", highlight = true)
+			gate_file("mixed10mb.c", highlight = true)
+		}
 	}
 	if want(only, "long") || want(only, "longoff") {
 		gate_long("minified5mb.js", 0, false)
