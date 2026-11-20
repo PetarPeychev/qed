@@ -105,8 +105,8 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `filetree_show_dotfiles` | `false` | Show dotfiles in the file tree. *Alt+.* |
-| `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *Alt+i* |
+| `filetree_show_dotfiles` | `false` | Show dotfiles in the file tree (and the working-root picker). *File Tree: Toggle Dotfiles* (`Alt+.`). |
+| `filetree_show_ignored` | `false` | Show gitignored files in the file tree. *File Tree: Toggle Ignored* (`Alt+i`). |
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
 | `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle Diff View*. |
 | `filetree_diff_only` | `true` | The file-tree Changed tab's preview shows only changed hunks, not the whole file. *File Tree: Toggle Diff* (`Alt+d`). |
@@ -225,6 +225,25 @@ come from the bundled `settings` plugin (no config of its own;
   "git": { "keybinds": { "Set Diff Base": "Alt+b" } }
 } }
 ```
+
+### File tree
+
+The file tree is the bundled `filetree` plugin: *File Tree: All* (`Alt+f`), *Open* (`Alt+o`),
+*Changed* (`Alt+g`, with a status provider such as `git`) and *Unsaved* (`Alt+u`) open it on that tab
+(also on the welcome screen); over an open tree a tab's chord switches to it and on the active tab
+closes it. Its commands run while it has focus and are listed in its `Ctrl+p`: *File Tree: Copy*,
+*Cut*, *Paste*, *Close Buffers* and *Select All* (default: the keys of the core *Copy*, *Cut*, *Paste*,
+*Close Buffer* and *Select All*, followed across a config reload), *Delete* (`Ctrl+d`), *Rename*
+(`Ctrl+r`), *New* (`Ctrl+n`), *Toggle Dotfiles* (`Alt+.`), *Toggle Ignored* (`Alt+i`), *Toggle Diff*
+(`Alt+d`) and *Expand/Collapse All* (`Alt+e`). Rebind them with `plugins.filetree.keybinds.<name>`
+(`"All"`, `"Delete"`, ...); the old top-level `keybinds."File Tree"` and `keybinds."File Tree: ..."`
+warn where they moved. The toggles start from `filetree_show_dotfiles`, `filetree_show_ignored` and
+`filetree_diff_only`; the list width from `filetree_list_min_width`/`filetree_list_max_width`.
+Without Lua (or with the plugin disabled) there is no file tree.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.filetree.enabled` | `true` | Off removes the file tree and its commands. |
 
 ### Working directory
 

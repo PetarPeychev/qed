@@ -256,8 +256,8 @@ member group is no longer on top).
   ids, so nothing unsaved closes unapproved (a buffer edited during the confirm is refused again). The
   plugin closes the picker before switching (restarting servers can outlast the command slice) and on
   `"unsaved"` reopens it by `id` (text and selection restored) under the child `qed.confirm`.
-  `editor_change_root` closes buffers outside the new root, restarts every LSP server, resets the file
-  tree and queues `root_changed`. The process cwd never changes; subprocesses get the root explicitly.
+  `editor_change_root` closes buffers outside the new root, restarts every LSP server and queues
+  `root_changed` (the file tree plugin reopens an open tree on the new root). The process cwd never changes; subprocesses get the root explicitly.
 
 ## Clipboard
 
@@ -268,17 +268,15 @@ Copy/cut/paste shell out via `clipboard.odin`: `wl-copy`/`wl-paste` or `xclip`
 
 Explicit `switch` on `(key, mod, ch)` → action procs. Rebindable commands live in
 two tables (`palette.odin`): the global `commands` and `pane_commands`, each row with the
-`scope` of the pane it runs in (`filetree`, `log`, `plugins`). A pane command that mirrors a global operation borrows its
+`scope` of the pane it runs in (`log`, `plugins`). A pane command that mirrors a global operation borrows its
 bind via `Command.bind_from` (the global command's name) — no config key of its own,
 key/alt/shortcut resolved live from the referenced global command
-(`command_effective_bind`), so one config entry drives both dispatch paths (e.g. tree
-Copy follows global *Copy*); plugin commands bind under `plugins.<id>.keybinds` (see Plugins). The
-file-tree-unique commands (Delete, Rename, New, Toggle Dotfiles/Ignored,
-Expand/Collapse All) keep their own `File Tree: …`-namespaced config key
-(`config_name` vs the short display `name`). Every core command's default bind is a
-`keybinds` entry in the embedded config — including *Command Palette* (default
-`Ctrl+P`), whose single bind opens whichever palette is contextual (editor vs file
-tree). Only primitive editing/movement stays fixed. Dispatch resolves through the
+(`command_effective_bind`), so one config entry drives both dispatch paths (log *Copy* follows
+global *Copy*); the others keep their own `Message Log: …`/`Plugins: …` config key (`config_name`
+vs the short display `name`). Plugin commands bind under `plugins.<id>.keybinds` (see Plugins). Every
+core command's default bind is a `keybinds` entry in the embedded config — including *Command
+Palette* (default `Ctrl+P`), whose single bind opens whichever palette is contextual (editor or a
+scoped pane's). Only primitive editing/movement stays fixed. Dispatch resolves through the
 configured bind (`command_for_key`/`command_for_alt`, or `pane_command_for_event(scope)`
 over the pane table; `command_bind_matches` is the one matcher, where a bare key (`Command.ch`, refused in
 the editor and tree scopes) fires only in a pane without fields), and every keybind hint renders the live configured
@@ -290,7 +288,7 @@ keybind, so rebinds keep the toggle; the terminal's extra `Alt+T` tolerance stay
 hardcoded); the welcome-screen key whitelist resolves the same way.
 
 Every editable text box (palette/picker/line-find
-queries, find/replace, rename, AI-edit, file-tree name prompts) is one shared single-line widget,
+queries, find/replace, rename, AI-edit, footer inputs) is one shared single-line widget,
 `TextField` (`textfield.odin`): `{text, caret, anchor}` with buffer-parity binds —
 grapheme + word (`Ctrl+←/→`) motion, smart home/end (`Alt+←/→`), shift-select,
 `Ctrl+A`, `Ctrl+X/C/V` (paste flattens newlines), delete-selection. `textfield_key`
@@ -304,8 +302,8 @@ a click in the query/prompt field places the caret and a button-held drag select
 click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). Shared row/
 field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
 `overlay_prompt_mouse`; `textfield_mouse` maps a click to a caret).
-List | preview panes (file tree, line jump, `split` plugin panes) split via `overlay_split` with per-list
-min/max (`filetree_list_*_width`; `code_list_*_width` for `split` panes + line jump) and a global
+List | preview panes (`split` panes: `split:tree` for the file tree, `split:code` for line jump and search) split
+via `overlay_split` with per-list min/max (`filetree_list_*_width`, `code_list_*_width`) and a global
 `preview_min_width`/`preview_max_width`. Inner width W (minus the divider) >= both maxes: both at max
 and the box is centered (extra width becomes margin). Below that, the deficit is taken equally from
 each side down to its min, the other side absorbing the rest. W under both mins hides the preview
@@ -313,7 +311,8 @@ each side down to its min, the other side absorbing the rest. W under both mins 
 `editor_previews_sync`). The `PICKER_MARGIN_X` side margin is fixed at every width.
 Most panes reset their query on open. Plugin panes opened with an `id` (`search`, `goto`) restore
 their field text fully selected (`textfield_select_all`) so a keystroke replaces it, and the selected
-item (not for a line list); the file tree persists its expanded set + selection.
+item (not for a line list); a tree list also restores its expanded set. A field given an empty `text`
+(the file tree's filter) starts empty and keeps the restore.
 
 Two terminal workarounds, both
 documented in `lib/tb2/PATCHES.md`:
@@ -364,7 +363,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
   stay in buffer order, `:N[:M]` (`lines_goto`) selects one row, the view opens on the match nearest the
   cursor, items carry `buf` so the auto preview shows the buffer. `.Log` holds entry seqs passing the
   filters, recomputed when `Editor.log_seq` or a filter changes. `.Plugins` reads `Plugins.list`.
-  `.Walk` is a walk handle (see File tree), self-filtering with a debounced refill.
+  `.Walk` is a walk handle (see Walk service), self-filtering with a debounced refill.
   `list_columns` gives a source columns (Lines, Plugins, Lua `list.columns`). A reload resets the selection and `notified`,
   so `change` fires. A new source is an enum value plus accessor cases. Each source has a `list_stamp`
   (buffer `rev`, `log_seq` + filters, plugin count; 0 = gone or static); `pane_list_fit` (each render and
@@ -385,7 +384,8 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - The **command palette** (`palette_open`, D1: core-built so qed works with Lua broken) is a center
   `palette` pane: filter field over the `.Commands` source, `chord = "Command Palette"`, `modal` (a
   background plugin's exclusive open is `"busy"`, not a replacement), activate runs the command after the
-  pane is gone. Over a scoped pane (the file tree too) it is that pane's child with its scope.
+  pane is gone. Over a scoped pane it is that pane's child with its scope. On the welcome screen the
+  welcome gate applies to the editor palette only, so a scoped pane's palette lists all its commands.
 - **Tabs** (`Pane.tabs`) fill the title row: Left/Right, a click, or a tab's `cmd` chord switch (the active
   tab's chord closes), then `on.tab`. **Marks** (`Pane.marks`, by item key) draw a `▌` bar, an fg, a suffix,
   a right-aligned `+N -N` (padded over the visible rows, dropped when the label would go under 8 columns)
@@ -425,9 +425,10 @@ the close event is flushed. Events (D8), no Lua during dispatch:
 `qed.pick/prompt/confirm/pane` are Lua sugar in `src/prelude.lua`, installed into every plugin's
 `qed` table by `plugin_qed_push`: `ui.open` + `view:wait()` + `view:close()`; pick/prompt/confirm
 open with `kind = "child"` and `modal` (a child of the focused pane or the active overlay, else
-exclusive). A child from a task not started by the user (`PluginTask.user`: commands, the tree's
+exclusive). A child from a task not started by the user (`PluginTask.user`: commands, the provider's
 open-deleted callback) may only stack on the caller's own pane, else `"busy"`, so a timer cannot steal
-focus. `ctx.view` is only handed to the view's own plugin. `pane_unload` saves state before marking dead.
+focus; an open from such a task also leaves the message line alone. `ctx.view` is only handed to the view's
+own plugin. `pane_unload` saves state before marking dead.
 
 A `markdown` body (`qed.ui.open{markdown}`, full only) is rendered by core at the text width into
 `Pane.md_lines`, a per-pane `virtual.Arena` swapped in as `context.temp_allocator` for `md_render`;
@@ -440,8 +441,8 @@ backgrounded shell; headless only logs). `backdrop` (`dim`/`blank`) is applied i
 before the box, to every cell drawn so far except the status rows, so panes below fade too.
 
 Ported: the quit/close/conflict/merge dialogs, the command palette, the Message Log, the Plugins pane, the LSP
-rename prompt, the working-root picker (`workspace` plugin), line find (`goto` plugin), the file tree and every
-plugin pane. Still legacy overlays: terminal, AI edit prompt, find bar.
+rename prompt, the working-root picker (`workspace` plugin), line find (`goto` plugin), the file tree (`filetree`
+plugin) and every plugin pane. Still legacy overlays: terminal, AI edit prompt, find bar.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
 `Overlay` vtable entries (`editor_overlays`). The stack sits above them: an overlay gets input only
 when no pane has focus, and render draws the active overlay, then the stack. A child opened over
@@ -568,13 +569,13 @@ started at the end of `editor_init`. Invariants the code can't show:
   `plugins_rebind` clears every plugin shortcut, then binds in order. Unknown keybind names
   are checked by `plugins_keybinds_check` at the end of a flush for plugins with `keys_due`
   (set on load and config apply), so `startup` handlers can register first.
-- `ctx.selection_text`, `file` and `files` (file tree selection)
+- `ctx.selection_text`, `file` and `files` (the focused list's selection)
   are computed on first read through `__index` and cached on the ctx, so `when` stays
   cheap.
 - `qed.term` wraps the core sessions (see Terminal pane); a session records its
   creating plugin as owner and unload closes it (after the plugin's tasks are freed)
   unless `detach`. `state.busy` is `tcgetpgrp` of the PTY differing from the session's pid.
-  `qed.jump` closes the file tree.
+  `qed.jump` closes every pane opened with `jump_closes` (the file tree).
 - **Decorations** (`deco.odin`): `Buffer.deco` holds plain `Deco` records (ghosts in their own list, with
   per-row above/below counts rebuilt lazily after a ghost or line change, so the walkers stay O(1) per row). `buffer_insert`/`buffer_delete` shift row anchors and drop spans on
   edited rows (rules in plugins.md §3), so a keystroke runs no Lua. Colors are interned theme keys
@@ -813,11 +814,11 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `module` (ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
-`confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `filetree` (walk service, `qed.fs` writes, file tree pane) · `fuzzy` ·
+`confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*).
+Bundled Lua plugins live in `plugins/` at the repo root (`filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -917,7 +918,7 @@ tab doubles as the buffer switcher — in-memory preview, `Enter` switches; `Ctr
 clean buffers, confirm dialog only when any are unsaved), `Alt+F` search-in-selection (scoped
 project search — a selected dir recurses, a scoped-tab dir expands to its in-scope files; runs
 over the still-active tree, so `Esc` returns to it and opening a result closes both) — plus a scoped `Ctrl+P` command palette
-(the palette pane over the `filetree` scope of `pane_commands` plus tree-scoped plugin commands, a child on the tree);
+(the palette pane over the tree's `filetree`-scoped plugin commands, a child on the tree);
 keyboard multi-select (`Shift+↑↓` contiguous range, log-pane model), batch delete (one confirm,
 "Delete N items?") and batch open (`Enter`); paste targets the selected dir or a file's parent;
 cut+paste and rename both repath open buffers; the open buffer's row keeps an accent fg even
@@ -982,7 +983,7 @@ previews a diff instead: changed hunks + `preview_diff_context` lines of context
 inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
 built by `preview_diff_file` (the provider's base text vs the file on disk, reusing the gutter's
 line-hash diff; a deleted file previews entirely as ghost rows; a `nil` base previews the file plainly).
-*File Tree: Toggle Diff* (`Alt+d`, session flag `FileTree.diff_only` seeded from config
+*File Tree: Toggle Diff* (`Alt+d`, a session flag of the `filetree` plugin seeded from config
 `filetree_diff_only`, default on) switches between this collapsed view and the
 whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
 gap-collapsing never fires).
@@ -990,47 +991,45 @@ Preview loading is **debounced** (`FILETREE_PREVIEW_DEBOUNCE_MS`) for walk lists
 `Pane.preview_due` and `pane_stack_pump` loads once it settles, so a held arrow can't back up the input queue
 or flood the provider with base requests.
 
-**File tree on the model** (`filetree.odin`): the tree is a core `split:tree` pane (`id = "filetree"`,
-scope `filetree`, `keep`) over a **walk handle**. The walk service: `Walk{root, dotfiles, ignored}` records
-in `Editor.walks`, shared by equal options and refcounted by list sources (`walk_gc` frees unreferenced ones
-once their prewarm landed); the candidate set comes from the parallel `readdir` walk (`walk_run`) or a
-background prewarm (ignore-set snapshot, adopted only if `Walk.gen` did not move meanwhile). Each walk has its
-own ignore set (per root: `walk_ignore_set`, fed by the provider's status push today and `h:ignore` from Lua;
-only a changed set restales). A `qed.fs` write (`fs_*`, `qed.fs.write`) restales only the walks whose root can
-contain the path (`walk_invalidate`); a tree open or `qed.fs.walk` call restales just that walk. A stale walk
-keeps serving its old candidates while the prewarm reruns it; only a first walk with nothing to serve runs on
-the main thread. Restaling and adopting bump `Walk.gen`, the list stamp, so open walk lists refill keeping the
-selected and anchor paths. Confirm dialogs freeze their target paths when they open (`FileTree.targets`). `within(paths)`/`union(paths)` narrow through a
-refcounted `WalkScope` (listed paths keep their descendants and skip the dotfiles/ignored rules; virtual
-paths and their missing parents are injected when absent). `list_walk_fill` builds the rows: lazy per-dir
-`readdir` for the browsable tree, or under a filter a ranked, capped (`list.max`, 500) path list that narrows
-the previous hits as the query grows. Tabs are `within` scopes (Open, Unsaved: buffer paths; Changed: the
-provider's files plus `union` of deleted ones). `filetree_source_sync` rebuilds source, tabs, chips and marks
-(provider bars, dim ignored, deleted fg, rename suffix and sizes on Changed) from `FileTree`. New:/Rename: is
-the footer input; delete and close confirms are child dialogs. `qed.fs.copy/rename/remove/mkdir` (`fs_*`)
-refuse an existing target, a target inside the source (`into itself`), special files (fifos, sockets,
-devices; skipped inside a copied dir) and removing the root or an ancestor; they never follow symlinks (copied
-as links), stream file data through a fixed buffer, fall back to copy + remove only on `EXDEV` (keeping mtimes;
-a failed remove drops the copy and fails) and repath buffers; the tree's paste, rename, delete and New dir go
-through them.
+**Walk service** (`walk.odin`): `Walk{root, dotfiles, ignored}` records in `Editor.walks`, shared by equal
+options and refcounted by list sources (`walk_gc` frees unreferenced ones once their prewarm landed); the candidate
+set comes from the parallel `readdir` walk (`walk_run`) or a background prewarm (ignore-set snapshot, adopted only
+if `Walk.gen` did not move meanwhile). Each root has one ignore set (`walk_ignore_set`, fed by `h:ignore`; `false`
+marks it not known yet, which holds the prewarm and `v:expand(true)` back; only a changed set restales). A `qed.fs`
+write (`fs_*`, `qed.fs.write`) restales only the walks whose root can contain the path (`walk_invalidate`); a
+`qed.fs.walk` call restales just that walk. A stale walk keeps serving its old candidates while the prewarm reruns
+it; only a first walk with nothing to serve runs on the main thread. Restaling and adopting bump `Walk.gen`, the list
+stamp, so open walk lists refill keeping the selected and anchor paths. `within(paths)`/`union(paths)` narrow
+through a refcounted `WalkScope` (listed paths keep their descendants and skip the dotfiles/ignored rules; virtual
+paths and their missing parents are injected when absent). `list_walk_fill` builds the rows: lazy per-dir `readdir`
+for the browsable tree, or under a filter a ranked, capped (`list.max`, 500) path list that narrows the previous
+hits as the query grows. `qed.fs.copy/rename/remove/mkdir` (`fs_*`) refuse an existing target, a target inside the
+source (`into itself`), special files (fifos, sockets, devices; skipped inside a copied dir) and removing the root or
+an ancestor; they never follow symlinks (copied as links), stream file data through a fixed buffer, fall back to
+copy + remove only on `EXDEV` (keeping mtimes; a failed remove drops the copy and fails) and repath buffers.
 
-**File tree status provider** (`FileTree.provider`, `qed.filetree.*`): one plugin owns the Changed
-tab (`qed.filetree.provide{refresh?, preview?, open_deleted?}`; another plugin gets `nil, "taken by"`,
-the owner re-providing swaps callbacks and keeps the status, unload clears it); the tab is
-hidden and *File Tree: Changed* / *Toggle Diff* are unavailable without one. Callbacks are registry
-refs queued as `PluginQueued.ref` and run as `.Provider` tasks (event budget; a ref the provider no
-longer holds is skipped). Core calls `refresh` (tree open, root change, a tree file operation, `provide`
-over an open tree), queued once per iteration; the provider pushes `qed.filetree.set_status(files, ignored)`
-(per-file `mark`, rename `from`, `added`/`removed`), which core validates before touching state,
-then propagates marks to ancestors, rebuilds and restarts the prewarm (`scanned` stays false from
-`provide` until the first push so the walk never runs without the ignored set, and *Expand All* on
-`All` waits for it too). The Changed tab's preview calls `preview(path)` and shows nothing until
-`qed.filetree.set_base(path, bytes|nil)` answers (a NUL on either side falls back to the hexdump);
-the single cached base (`base_path`/`base_state`) is dropped on every push, so a moved base re-asks,
-with the old rows kept up meanwhile. Lua never runs on render or per keystroke: every callback is queued.
-The `git` plugin's scan (`tree.lua`) sleeps every 2000 parsed lines (`repo.each`) so no slice nears
-the 200 ms budget, parses and drops each command's output before the next, caps the list at
-`tree.MAX` (50000) paths with a warning, and a new request kills the running scan's spawn and reruns once.
+**File tree** (`plugins/filetree`, D1: not in the works-without-Lua set): a `split:tree` view (`id = "filetree"`,
+scope `filetree`, `toggle = false`, `jump_closes`) over a `qed.fs.walk` handle made at each open and toggle. Tabs are
+`within` handles (Open, Unsaved: buffer paths; Changed: the provider's files plus `union` of deleted ones); each tab's
+`cmd` is its editor command (*File Tree: All/Open/Changed/Unsaved*), so a chord switches tabs and the active tab's
+closes. The plugin propagates provider marks up the ancestor dirs (deleted shows as modified above it) and pushes
+them with `v:marks` (dim ignored, deleted fg, rename suffix and sizes on Changed), chips with `v:footer`, New:/Rename:
+as the footer input, delete and close confirms as `qed.confirm` children with their targets taken before the
+dialog; the Changed tab turns the auto preview off and answers per item with `v:preview{path, base}` after an 80 ms
+sleep in `change` (a newer change kills it, so a held arrow asks once). Tree commands borrow the keys of the core
+*Copy*/*Cut*/*Paste*/*Close Buffer*/*Select All* and re-register on `config_changed` when those move. A root change
+reopens the view, back to each tab's default expansion.
+
+**File tree status provider** (`treeshim.odin`, temporary until M6): `qed.filetree.provide{refresh?, preview?,
+open_deleted?}` (one provider; another plugin gets `nil, "taken by"`; re-providing swaps callbacks and keeps the
+status; unload clears it), `set_status(files, ignored)` (validated, then stored as a normalized Lua table: absolute
+paths, `mark`, `from`, `added`/`removed`) and `set_base(path, bytes|nil)` (ignored unless `path` was asked last). The
+tree side is one listener (`qed.filetree.listen(fn)`, queued with `"provider"`, `"status"` or `"base"`), `state()`
+(pull) and `request("refresh"|"preview"|"open_deleted")`; every callback runs as a queued `.Provider` task (event
+budget) or, for `open_deleted`, a user command task with the tree's ctx. Lua never runs on render or per keystroke.
+The `git` plugin's scan (`tree.lua`) sleeps every 2000 parsed lines (`repo.each`) so no slice nears the 200 ms
+budget, parses and drops each command's output before the next, caps the list at `tree.MAX` (50000) paths with a
+warning, and a new request kills the running scan's spawn and reruns once.
 
 Language intelligence: config-driven language detection (glob rules + built-in
 dotfiles, per-buffer, `Set Language` override); tree-sitter highlight with full

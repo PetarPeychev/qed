@@ -349,7 +349,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M2 (done) | Palette core-built on `qed.command_list`. Cwd picker becomes a Lua plugin on `qed.fs.dirs` + a `path` field (needs `qed.set_root` and an unsaved-outside-root query). | "Collapse the centered pickers" TODO; handles, `path` field, child confirm |
 | M3 (done) | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
 | M4 (done) | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
-| M5 | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
+| M5 (done) | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
 | M6 | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
 | M7 | Conflict UI and AI (aiedit, then fim) ported onto the model and decorations. | |
 | M8 | Remove the module system (`modules.*`, `module_enabled`). | |
@@ -459,6 +459,26 @@ The walk service, the tree pane and the new Lua pieces are in DESIGN.md (Panes, 
 | Search | `plugins/search` opens with `kind = "child"`: over any focused pane (tree, Message Log, Plugins pane, markdown preview) it stacks and Esc returns there. | The tree is an exclusive pane now. |
 | fs writes | `qed.fs.copy/rename/remove/mkdir` (`fs_*` in `filetree.odin`) refuse an existing target, a target inside the source, special files (skipped inside a copied dir) and the root or its ancestors; symlinks are copied as links and never followed; data streams through a fixed buffer; rename copies + removes only on `EXDEV` (mtimes kept; a failed remove drops the copy and fails) and repaths buffers. `qed.fs.write` restales walks too. The tree's paste, rename, delete and New dir use them. | |
 | M5 needs | Spec: `size = "split:tree"`, `tabs`, `tab`, field `hint`/`esc_clears`/`count`, `list{items = walk, tree, multi, max}`, `footer{hints, chips}`, `scope`, `on{activate, tab, expand, submit, change, close}`; methods `set(h, {selected})`, `marks`, `footer`, `tab`, `preview`, `expand`, `reveal`; handles `qed.fs.walk`, `within`, `union`, `ignore`; writes `qed.fs.*`; `ctx.files` expanding dirs on narrowed handles. Lua `list.columns` + item `cells` came along (Plugins-pane style rows). | |
+
+### M5 as built
+
+The plugin, the walk service and the shim are in DESIGN.md (Walk service, File tree, File tree status provider).
+Deviations from §3/§5/§6:
+
+| Area | Built | Why |
+|---|---|---|
+| Core | `filetree.odin` is `walk.odin`: walks, scopes, tree rows/expand/reveal, `fs_*`. Gone: `FileTree`, the tab/toggle/clipboard/prompt/confirm code, the 12 `filetree` pane commands, the 4 *File Tree* core commands, `Pane.on.preview`, `close_question`. Constants are `WALK_*`. | D7. |
+| Names | Display name "File Tree": *All* (was *File Tree*), *Open*, *Changed*, *Unsaved*; tree commands gain the prefix (*File Tree: Copy*, ...). Binds move to `plugins.filetree.keybinds` (`"All"` for the old `"File Tree"`), old top-level keys warn where. Messages read `File Tree: ...` (were `Files: ...`). | Phase 13 naming. |
+| Knobs | `filetree_show_dotfiles`/`_ignored`/`_diff_only` stay top-level, read with `qed.opt` at load; `filetree_list_*` stay the `split:tree` class. | The workspace picker shares the dotfiles knob; M9 reviews plugin keys. |
+| Borrowed binds | *Copy*, *Cut*, *Paste*, *Close Buffers*, *Select All* take `qed.shortcut` of the core command and re-register on `config_changed` when it moved. | No `bind_from` for plugin commands. |
+| Shim | `treeshim.odin`: the git side unchanged; the tree side is `qed.filetree.listen(fn)`, `state()`, `request(kind, path?)`. Status crosses as a normalized Lua table in the registry; propagation, marks, scopes and preview are Lua. | One file to delete in M6, no Odin status model left. |
+| API | `toggle = false`; `jump_closes` (`qed.jump` closes the tree, which core used to do by name); `v:select(row?, anchor?) -> item, row, anchor, count` (Select All, the row above a delete, the item to preview on the Changed tab); `v:expand()` toggles all; `h:ignore(false)` (status not pushed yet); `qed.close(b, {discard})`. | The tree needed each; no other user yet. |
+| Restore | A field given an empty `text` keeps the selection/expanded restore; a pane a background task opens leaves the message line alone. | The tree starts with an empty filter and restores its selection; its root-change reopen must not eat the "Working directory" message. |
+| Preview | The Changed tab turns auto off and answers with `v:preview{path, base}`; the base is asked after an 80 ms sleep in `change` (killed by the next change). A tab switch blanks while waiting, a status push keeps the old rows. | Same debounce and keep rules as the core tree. |
+| Root change | The plugin reopens the view on `root_changed`, then `v:expand(scope ~= "All")` resets expansion. A provider coming or going also reopens it (tabs are fixed per open). | No `v:tabs`; reopen is cheaper than a new method. |
+| Welcome | The welcome hint for the tree is looked up among plugin commands and dropped without it. The welcome gate now applies only to the editor palette, so a scoped palette (tree, log) lists all its commands on welcome. | D1; the tree's Ctrl+P on welcome listed only plugin commands. |
+| UX changes | New/Rename/Paste under an active filter clear the filter to reveal the result (`v:reveal`). | `v:reveal` clears the filter. |
+| Tests | `t.ui()` reports the pane `id` (search's tests wait for `"search"`, the tree is a view too); `e2e_mouse` and `nav_alt` flush like the main loop. | The tree activates through queued events. |
 
 ## 8. Decisions
 
