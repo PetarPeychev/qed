@@ -212,14 +212,15 @@ come from the bundled `settings` plugin (no config of its own;
 
 ### Working directory
 
-*Cwd: Change Working Directory* (`Ctrl+o`, also on the welcome screen) and the file tree's
-*Cwd: Set as Working Directory* (same chord, the selected dir or a file's parent) come from the
-bundled `cwd` plugin. Rebind both with `plugins.cwd.keybinds["Change Working Directory"]`; the old
-top-level `keybinds."Change Working Directory"` warns where it moved.
+*Workspace: Open Directory* (`Ctrl+o`, also on the welcome screen) and the file tree's
+*Workspace: Open Selected Directory* (same chord, the selected dir or a file's parent) come from the
+bundled `workspace` plugin. The picker lists dotfiles when `filetree_show_dotfiles` is on. Rebind both
+with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
+`keybinds."Change Working Directory"` warns where it moved.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.cwd.enabled` | `true` | Off removes both commands. |
+| `plugins.workspace.enabled` | `true` | Off removes both commands. |
 
 ### Search
 

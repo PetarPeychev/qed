@@ -400,16 +400,18 @@ List sources, the `path` field and the palette are in DESIGN.md (Panes). Deviati
 
 | Area | Built | Why |
 |---|---|---|
-| Handle type | A core `ListSource{kind, filetree, path}` on `PaneList.source`; core fills `list.items` (`pane_list_load`). Lua holds a `qed.List` table naming a `PluginList` record; `list.items = h` copies the source into the pane, so the view outlives the handle. M3/M4 add a kind and a fill case; a shared walk adds its own refcount. | Value sources need no shared state yet. |
+| Handle type | A core `ListSource{kind, filetree, path, dotfiles}` (plus a dir cache) on `PaneList.source`; core fills `list.items` (`pane_list_load`). Lua holds a `qed.List` table naming a `PluginList` record; `list.items = h` copies the source into the pane, so the view outlives the handle. M3/M4 add a kind and a fill case; a shared walk adds its own refcount. | Value sources need no shared state yet. |
 | `qed.command_list` | Core only (`.Commands`), no Lua constructor. | The palette is core (D1); no plugin lists commands. |
-| Methods | None (`count`, `ready`, `get`, `index`, `wait`, `within`, `union`), no `view:set(h)`; `v:set(items)` unbinds the source. | No user until M3/M4. |
+| Methods | None (`count`, `ready`, `get`, `index`, `wait`, `within`, `union`), no `view:set(h)`; `v:set(items)` unbinds the source, `v:append`/`v:update` raise on it. | No user until M3/M4. |
+| Identity | One locked registry metatable, compared by identity; `__gc` reads the table's `id`. A handle dies with the plugin that made it. | No forging by `__name`. |
 | Materialization | Activate and change hand Lua `{label, path?, detail?}` built from the core items; the view's Lua item table stays empty. | Only touched items cross. |
-| `qed.fs.dirs(path?)` | `path` defaults to the root; under a `path` field the field's text decides. Dotfiles follow the tree's toggle, no option. | Same behavior as the Odin picker. |
+| `qed.fs.dirs{path?, dotfiles?}` | `path` defaults to the root; under a `path` field the field's text decides. `dotfiles` is the caller's (the picker passes `filetree_show_dotfiles`, not the tree's runtime toggle). The base dir's entries are cached until its segment changes. | Core stays out of the tree's state (M5); a 50k-entry dir is read once, not per key. |
 | `path` field | Reports its text resolved to an absolute path (`~`, root-relative, cleaned) in activate, `wait` and close. Double-click drills in instead of activating. | Lua needs no `~` expansion; same UX as before. |
 | Palette over the tree | A Child with `over = &filetree.active` until the tree is a pane (M4). | Smallest step; the render special case is gone. |
 | Core chord | `Pane.chord` (a core command name) beside the plugin `toggle` id. Enter on an empty core list does nothing. | The palette's own chord closes it; Enter with no match kept it open before. |
-| Root change | `qed.set_root` closes outside buffers unconditionally; the `cwd` plugin confirms first (child `qed.confirm`, cancel leaves the picker as typed). The tree's `ConfirmRoot` mode is gone. | Unsaved check is a few lines of Lua over `qed.buf.list/path/modified`. |
-| Names | *Cwd: Change Working Directory*, the tree's *Cwd: Set as Working Directory*, bind `plugins.cwd.keybinds["Change Working Directory"]` (the old top-level key warns where it moved). Plugin messages read `Cwd: Not a directory: ...`. | Phase 13 namespacing; the short id keeps the Plugins pane columns. |
+| Palette rows | Keyed by command identity (core label, plugin command id), resolved at activate and draw; a removed command's row goes dead. The palette is `modal`. | Removal need not close it; a timer cannot replace it (the M1 focus rule). |
+| Root change | `qed.set_root(path, {discard?})` returns `nil, "unsaved", {total, unsaved, bufs}` and closes nothing while an unsaved outside buffer is unapproved; the `workspace` plugin asks (child `qed.confirm`) and calls again with `info.bufs`. It closes the picker before switching and reopens it by `id` for the confirm, so cancel leaves it as typed. The tree's `ConfirmRoot` mode is gone. | Core never discards unsaved work unasked; approval by id closes the confirm-yield race. |
+| Names | *Workspace: Open Directory*, the tree's *Workspace: Open Selected Directory*, bind `plugins.workspace.keybinds["Open Directory"]` (the old top-level `Change Working Directory` key warns where it moved). Plugin messages read `Workspace: Not a directory: ...`. | Phase 13 namespacing (Petar's naming). |
 
 ## 8. Decisions
 
