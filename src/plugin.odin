@@ -1536,7 +1536,6 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	key, _ := lua.toodinstring(L, 2)
 	editor := entry.editor
-	t := &editor.filetree
 	switch key {
 	case "selection_text":
 		if editor.welcome || len(editor.buffers) == 0 {
@@ -1549,11 +1548,15 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		lua.pushodinstring(L, buffer_text_range(b, from, to))
 	case "file":
-		e, ok := filetree_selected(t)
-		if !t.active || !ok {
+		f := pane_focus(editor)
+		if f == nil || !f.has_list || pane_count(editor, f) == 0 {
 			return 0
 		}
-		lua.pushodinstring(L, e.path)
+		it := list_item(editor, f, pane_item_index(f, f.list.sel))
+		if it.path == "" {
+			return 0
+		}
+		lua.pushodinstring(L, it.path)
 	case "items":
 		f := pane_focus(editor)
 		if f == nil || !f.has_list {
@@ -1578,26 +1581,28 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 			lua.pop(L, 1)
 		}
 	case "files":
-		if f := pane_focus(editor); f != nil && f.has_list {
-			lua.createtable(L, 0, 0)
-			n := 0
-			for idx in pane_selection(editor, f) {
-				if it := list_item(editor, f, idx); it.path != "" {
-					n += 1
-					lua.pushodinstring(L, it.path)
-					lua.rawseti(L, -2, lua.Integer(n))
-				}
+		f := pane_focus(editor)
+		if f == nil || !f.has_list {
+			return 0
+		}
+		sel := pane_selection(editor, f)
+		if f.list.source.kind == .Walk {
+			files := list_walk_files(editor, f, sel)
+			lua.createtable(L, c.int(len(files)), 0)
+			for path, i in files {
+				lua.pushodinstring(L, path)
+				lua.rawseti(L, -2, lua.Integer(i + 1))
 			}
 			break
 		}
-		if !t.active || len(t.entries) == 0 {
-			return 0
-		}
-		files := filetree_sel_files(editor)
-		lua.createtable(L, c.int(len(files)), 0)
-		for f, i in files {
-			lua.pushodinstring(L, f)
-			lua.rawseti(L, -2, lua.Integer(i + 1))
+		lua.createtable(L, 0, 0)
+		n := 0
+		for idx in sel {
+			if it := list_item(editor, f, idx); it.path != "" {
+				n += 1
+				lua.pushodinstring(L, it.path)
+				lua.rawseti(L, -2, lua.Integer(n))
+			}
 		}
 	case:
 		return 0

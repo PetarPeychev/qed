@@ -2,6 +2,7 @@ package main
 
 import "core:c"
 import "core:fmt"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:time"
@@ -16,6 +17,9 @@ ViewEvent :: enum {
 	Query,
 	Close,
 	Link,
+	Tab,
+	Expand,
+	Submit,
 }
 
 view_event_names := [ViewEvent]cstring {
@@ -24,6 +28,9 @@ view_event_names := [ViewEvent]cstring {
 	.Query    = "query",
 	.Close    = "close",
 	.Link     = "link",
+	.Tab      = "tab",
+	.Expand   = "expand",
+	.Submit   = "submit",
 }
 
 UiView :: struct {
@@ -43,6 +50,7 @@ UiViewEvent :: struct {
 	items:    []PaneItem,
 	text:     string,
 	has_text: bool,
+	n:        int,
 }
 
 PluginAnswer :: struct {
@@ -72,6 +80,19 @@ qed_view_methods := [?]lua.L_Reg {
 	{"scroll", qed_view_scroll},
 	{"close", qed_view_close},
 	{"wait", qed_view_wait},
+	{"marks", qed_view_marks},
+	{"footer", qed_view_footer},
+	{"tab", qed_view_tab},
+	{"preview", qed_view_preview},
+	{"expand", qed_view_expand},
+}
+
+@(private = "file")
+qed_walk_methods := [?]lua.L_Reg {
+	{"count", qed_walk_count},
+	{"ready", qed_walk_ready},
+	{"within", qed_walk_within},
+	{"union", qed_walk_union},
 }
 
 plugin_prelude_c :: proc "c" (L: ^lua.State) -> c.int {
@@ -104,8 +125,12 @@ plugin_view_index :: proc(p: ^Plugins, handle: u64) -> int {
 plugin_view_release :: proc(p: ^Plugins, i: int) {
 	v := p.views[i]
 	if p.L != nil {
-		refs := [?]i32{v.view_ref, v.items_ref, v.on[.Activate], v.on[.Change], v.on[.Query], v.on[.Close], v.on[.Link]}
-		for ref in refs {
+		for ref in ([2]i32{v.view_ref, v.items_ref}) {
+			if ref != 0 {
+				lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(ref))
+			}
+		}
+		for ref in v.on {
 			if ref != 0 {
 				lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(ref))
 			}
@@ -204,6 +229,20 @@ plugin_view_queue :: proc(editor: ^Editor, pn: ^Pane, kind: ViewEvent, sel: []in
 plugin_view_closed :: proc(editor: ^Editor, pn: ^Pane) {
 	pane_save(editor, pn)
 	plugin_view_queue(editor, pn, .Close, nil)
+}
+
+plugin_view_tab :: proc(editor: ^Editor, pn: ^Pane) {
+	append(&editor.plugins.view_events, UiViewEvent{handle = pn.handle, kind = .Tab, n = pn.tab + 1})
+}
+
+plugin_view_expand :: proc(editor: ^Editor, pn: ^Pane, path: string, on: bool) {
+	items := make([]PaneItem, 1)
+	items[0] = pane_item_clone({label = filepath.base(path), path = path, key = path, dir = true})
+	append(&editor.plugins.view_events, UiViewEvent{handle = pn.handle, kind = .Expand, items = items, n = int(on)})
+}
+
+plugin_view_submit :: proc(editor: ^Editor, pn: ^Pane, text: string, ok: bool) {
+	append(&editor.plugins.view_events, UiViewEvent{handle = pn.handle, kind = .Submit, text = strings.clone(text), has_text = ok})
 }
 
 plugin_view_link :: proc(editor: ^Editor, pn: ^Pane, target: string) -> bool {
@@ -361,9 +400,25 @@ plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
 		return
 	}
 	v := p.views[vi]
-	if ev.kind == .Link {
+	#partial switch ev.kind {
+	case .Link:
 		if v.on[.Link] != 0 {
 			plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Link], args = .View_Text, view_ref = v.view_ref, line = ev.text})
+		}
+		return
+	case .Tab:
+		if v.on[.Tab] != 0 {
+			plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Tab], args = .View_Int, view_ref = v.view_ref, item = ev.n})
+		}
+		return
+	case .Expand:
+		if v.on[.Expand] != 0 {
+			plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Expand], args = .View_Expand, view_ref = v.view_ref, item = ev.n, pitems = ev.items})
+		}
+		return
+	case .Submit:
+		if v.on[.Submit] != 0 {
+			plugin_task_start(editor, v.owner, .Command, {ref = v.on[.Submit], args = .View_Submit, view_ref = v.view_ref, item = int(ev.has_text), line = ev.text})
 		}
 		return
 	}
@@ -412,6 +467,102 @@ qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+qed_fs_walk :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	root := editor.working_root
+	dotfiles, ignored := false, false
+	#partial switch lua.type(L, 1) {
+	case .NIL, .NONE:
+	case .TABLE:
+		if s, ok := api_field_string(L, 1, "root"); ok {
+			root = api_path(editor, s)
+		}
+		dotfiles = api_opt_bool(L, 1, "dotfiles")
+		ignored = api_opt_bool(L, 1, "ignored")
+	case:
+		lua.L_argerror(L, 1, "options table expected")
+	}
+	lua.settop(L, 0)
+	// a new handle sees the disk as of now
+	walk_invalidate(editor)
+	api_list_push(L, editor, {kind = .Walk, walk = walk_acquire(editor, root, dotfiles, ignored)})
+	return 1
+}
+
+api_walk_handle :: proc(L: ^lua.State, editor: ^Editor) -> ^ListSource {
+	li := api_list_handle(L, editor, 1)
+	if li < 0 || editor.plugins.lists[li].src.kind != .Walk {
+		lua.L_argerror(L, 1, "qed.fs.walk handle expected")
+	}
+	return &editor.plugins.lists[li].src
+}
+
+api_paths :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> []string {
+	if lua.type(L, idx) != .TABLE {
+		lua.L_argerror(L, idx, "list of paths expected")
+	}
+	n := int(lua.rawlen(L, idx))
+	out := make([]string, n, context.temp_allocator)
+	for i in 1 ..= n {
+		if lua.rawgeti(L, idx, lua.Integer(i)) != .STRING {
+			plugin_raise(L, fmt.tprintf("paths[%d] must be a string", i))
+		}
+		sv, _ := lua.toodinstring(L, -1)
+		out[i - 1] = api_path(editor, sv)
+		lua.pop(L, 1)
+	}
+	return out
+}
+
+qed_walk_count :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	src := api_walk_handle(L, entry.editor)
+	lua.pushinteger(L, lua.Integer(len(walk_source_cands(entry.editor, src))))
+	return 1
+}
+
+qed_walk_ready :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	src := api_walk_handle(L, entry.editor)
+	lua.pushboolean(L, b32(walk_ready(entry.editor, src)))
+	return 1
+}
+
+qed_walk_within :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	src := api_walk_handle(L, editor)
+	if src.wscope != nil {
+		plugin_raise(L, "within: the handle is already narrowed")
+	}
+	paths := api_paths(L, editor, 2)
+	w := src.walk
+	w.refs += 1
+	lua.settop(L, 0)
+	api_list_push(L, editor, {kind = .Walk, walk = w, wscope = walk_scope_new(w.root, nil, paths, nil)})
+	return 1
+}
+
+qed_walk_union :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	src := api_walk_handle(L, editor)
+	paths := api_paths(L, editor, 2)
+	w := src.walk
+	w.refs += 1
+	scope := walk_scope_new(w.root, src.wscope, nil, paths)
+	scope.all = src.wscope == nil || src.wscope.all
+	lua.settop(L, 0)
+	api_list_push(L, editor, {kind = .Walk, walk = w, wscope = scope})
+	return 1
+}
+
 qed_buf_line_list :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
@@ -442,6 +593,13 @@ api_list_push :: proc(L: ^lua.State, editor: ^Editor, src: ListSource) {
 		lua.setfield(L, lua.REGISTRYINDEX, QED_LIST_META)
 	}
 	lua.setmetatable(L, -2)
+	if src.kind == .Walk {
+		for m in qed_walk_methods {
+			lua.pushvalue(L, lua.upvalueindex(1))
+			lua.pushcclosure(L, m.func, 1)
+			lua.setfield(L, -2, m.name)
+		}
+	}
 	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = src})
 }
 
@@ -506,6 +664,14 @@ api_pane_item_push :: proc(L: ^lua.State, it: PaneItem) {
 		api_pos_push(L, {it.row - 1, max(0, it.col - 1)})
 		lua.setfield(L, -2, "pos")
 	}
+	if it.dir {
+		lua.pushboolean(L, true)
+		lua.setfield(L, -2, "dir")
+	}
+	if it.depth > 0 {
+		lua.pushinteger(L, lua.Integer(it.depth))
+		lua.setfield(L, -2, "depth")
+	}
 }
 
 api_opt_bool :: proc(L: ^lua.State, t: c.int, key: cstring) -> bool {
@@ -529,6 +695,23 @@ api_view_item :: proc(L: ^lua.State, editor: ^Editor, t: c.int) -> (it: PaneItem
 	case .NIL:
 	case:
 		plugin_raise(L, "pos must be a table {row, col}")
+	}
+	lua.pop(L, 1)
+	#partial switch lua.getfield(L, t, "cells") {
+	case .TABLE:
+		ct := lua.gettop(L)
+		it.cells = make([]string, int(lua.rawlen(L, ct)), context.temp_allocator)
+		for i in 0 ..< len(it.cells) {
+			if lua.rawgeti(L, ct, lua.Integer(i + 1)) != .STRING {
+				plugin_raise(L, "cells must be a list of strings")
+			}
+			sv, _ := lua.toodinstring(L, -1)
+			it.cells[i] = strings.clone(sv, context.temp_allocator)
+			lua.pop(L, 1)
+		}
+	case .NIL:
+	case:
+		plugin_raise(L, "cells must be a list of strings")
 	}
 	lua.pop(L, 1)
 	if it.label == "" {
@@ -660,6 +843,8 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	switch {
 	case size == "" && spec.place == .Split, size == "split:code" && spec.place == .Split:
 		spec.size = .Code
+	case size == "split:tree" && spec.place == .Split:
+		spec.size = .Tree
 	case size == "" || size == "palette" && spec.place == .Center:
 		spec.size = .Palette
 	case size == "dialog" && spec.place == .Center:
@@ -722,6 +907,8 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 				plugin_raise(L, `mode must be "filter", "query", "input" or "path"`)
 			}
 			f.count = api_opt_bool(L, ft, "count")
+			f.esc_clears = api_opt_bool(L, ft, "esc_clears")
+			f.hint, _ = api_field_string(L, ft, "hint")
 			lua.pop(L, 1)
 		}
 	case .NIL:
@@ -750,6 +937,11 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pop(L, 1)
 		spec.list.multi = api_opt_bool(L, t, "multi")
 		spec.list.sort = api_opt_bool(L, t, "sort")
+		spec.list.tree = api_opt_bool(L, t, "tree")
+		if spec.list.tree && spec.list.source.kind != .Walk {
+			plugin_raise(L, "list.tree needs a qed.fs.walk handle")
+		}
+		spec.list.columns = api_columns(L, t)
 		spec.list.empty, _ = api_field_string(L, t, "empty")
 		if lua.getfield(L, t, "max") != .NIL {
 			spec.list.max = max(0, api_int(L, -1, "max must be an integer"))
@@ -818,23 +1010,19 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 
 	#partial switch lua.getfield(L, 1, "footer") {
 	case .TABLE:
-		if lua.getfield(L, -1, "hints") == .TABLE {
-			t := lua.gettop(L)
-			n := int(lua.rawlen(L, t))
-			spec.footer = make([]PaneHint, n, context.temp_allocator)
-			for i in 0 ..< n {
-				if lua.rawgeti(L, t, lua.Integer(i + 1)) != .TABLE {
-					plugin_raise(L, fmt.tprintf("hints[%d] must be a table {label, cmd?}", i + 1))
-				}
-				spec.footer[i].label, _ = api_field_string(L, lua.gettop(L), "label")
-				spec.footer[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
-				lua.pop(L, 1)
-			}
-		}
-		lua.pop(L, 1)
+		spec.footer, _ = api_hints(L, lua.gettop(L))
+		spec.chips, _ = api_chips(L, lua.gettop(L))
 	case .NIL:
 	case:
-		plugin_raise(L, "footer must be a table {hints}")
+		plugin_raise(L, "footer must be a table {hints?, chips?}")
+	}
+	lua.pop(L, 1)
+	spec.tabs = api_tabs(L, 1)
+	if lua.getfield(L, 1, "tab") != .NIL {
+		spec.tab = api_int(L, -1, "tab must be a tab index") - 1
+		if spec.tab < 0 || spec.tab >= len(spec.tabs) {
+			plugin_raise(L, "tab is out of range")
+		}
 	}
 	lua.pop(L, 1)
 
@@ -891,7 +1079,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	append(&spec.list.items, ..api_items_ordered(items, perm))
 	spec.owner = plugin_name_intern(p, pl.name)
 	spec.ctx.lua = true
-	spec.on = {activate = plugin_view_activate, close = plugin_view_closed, link = plugin_view_link}
+	spec.on = {activate = plugin_view_activate, close = plugin_view_closed, link = plugin_view_link, tab = plugin_view_tab, submit = plugin_view_submit, expand = plugin_view_expand}
 	if t := plugin_task_of(p, L); t != nil {
 		spec.toggle = t.command
 	}
@@ -927,6 +1115,11 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	if saved != nil {
 		pn.scroll = saved.scroll
+		if pn.list.tree {
+			for key, on in saved.expanded {
+				pane_tree_set(pn, key, on)
+			}
+		}
 	}
 	pane_list_load(editor, pn)
 	rows := pane_geom(editor, pn).list.h
@@ -1000,6 +1193,9 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 3, "options table expected")
 	}
 	lua.settop(L, 3)
+	if li := api_list_handle(L, editor, 2); li >= 0 {
+		return api_view_set_handle(L, editor, li)
+	}
 	items := api_view_items(L, editor, 2)
 	selected := 0
 	more := false
@@ -1054,6 +1250,376 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	pn.notified = -1
 	pane_preview_sync(editor, pn)
 	lua.pushboolean(L, true)
+	return 1
+}
+
+api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
+	p := &editor.plugins
+	src := p.lists[li].src
+	pn, vi := api_view_live(L, editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if pn.list.tree && src.kind != .Walk {
+		plugin_raise(L, "a tree list needs a qed.fs.walk handle")
+	}
+	keep := strings.clone(pane_selected_key(editor, pn), context.temp_allocator)
+	lua.createtable(L, 0, 0)
+	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	lua.L_unref(L, lua.REGISTRYINDEX, c.int(p.views[vi].items_ref))
+	p.views[vi].items_ref = ref
+	list_source_free(&pn.list.source)
+	pane_items_clear(pn)
+	pn.list.source = list_source_clone(src)
+	pn.list.more, pn.landed = false, true
+	pane_list_load(editor, pn)
+	if keep != "" && list_restores(src.kind) {
+		pn.list.restore = strings.clone(keep)
+		pane_restore(editor, pn, pane_geom(editor, pn).list.h)
+		delete(pn.list.restore)
+		pn.list.restore = ""
+	}
+	pane_preview_sync(editor, pn)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+api_hints :: proc(L: ^lua.State, t: c.int) -> ([]PaneHint, bool) {
+	tp := lua.getfield(L, t, "hints")
+	defer lua.pop(L, 1)
+	if tp == .NIL {
+		return nil, false
+	}
+	if tp != .TABLE {
+		plugin_raise(L, "hints must be a list of {label, cmd?}")
+	}
+	h := lua.gettop(L)
+	out := make([]PaneHint, int(lua.rawlen(L, h)), context.temp_allocator)
+	for i in 0 ..< len(out) {
+		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
+			plugin_raise(L, fmt.tprintf("hints[%d] must be a table {label, cmd?}", i + 1))
+		}
+		out[i].label, _ = api_field_string(L, lua.gettop(L), "label")
+		out[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
+		lua.pop(L, 1)
+	}
+	return out, true
+}
+
+api_chips :: proc(L: ^lua.State, t: c.int) -> ([]PaneChip, bool) {
+	tp := lua.getfield(L, t, "chips")
+	defer lua.pop(L, 1)
+	if tp == .NIL {
+		return nil, false
+	}
+	if tp != .TABLE {
+		plugin_raise(L, "chips must be a list of {label, cmd, on?}")
+	}
+	h := lua.gettop(L)
+	out := make([]PaneChip, int(lua.rawlen(L, h)), context.temp_allocator)
+	for i in 0 ..< len(out) {
+		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
+			plugin_raise(L, fmt.tprintf("chips[%d] must be a table {label, cmd, on?}", i + 1))
+		}
+		ct := lua.gettop(L)
+		out[i].label, _ = api_field_string(L, ct, "label")
+		out[i].cmd, _ = api_field_string(L, ct, "cmd")
+		out[i].on = api_opt_bool(L, ct, "on")
+		lua.pop(L, 1)
+	}
+	return out, true
+}
+
+api_tabs :: proc(L: ^lua.State, t: c.int) -> []PaneTab {
+	tp := lua.getfield(L, t, "tabs")
+	defer lua.pop(L, 1)
+	if tp == .NIL {
+		return nil
+	}
+	if tp != .TABLE {
+		plugin_raise(L, "tabs must be a list of labels or {label, cmd?}")
+	}
+	h := lua.gettop(L)
+	out := make([]PaneTab, int(lua.rawlen(L, h)), context.temp_allocator)
+	for i in 0 ..< len(out) {
+		#partial switch lua.rawgeti(L, h, lua.Integer(i + 1)) {
+		case .STRING:
+			sv, _ := lua.toodinstring(L, -1)
+			out[i].label = strings.clone(sv, context.temp_allocator)
+		case .TABLE:
+			out[i].label, _ = api_field_string(L, lua.gettop(L), "label")
+			out[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
+		case:
+			plugin_raise(L, fmt.tprintf("tabs[%d] must be a label or {label, cmd?}", i + 1))
+		}
+		lua.pop(L, 1)
+	}
+	return out
+}
+
+api_columns :: proc(L: ^lua.State, t: c.int) -> []PaneColumn {
+	tp := lua.getfield(L, t, "columns")
+	defer lua.pop(L, 1)
+	if tp == .NIL {
+		return nil
+	}
+	if tp != .TABLE {
+		plugin_raise(L, "columns must be a list of {width?, right?}")
+	}
+	h := lua.gettop(L)
+	out := make([]PaneColumn, int(lua.rawlen(L, h)), context.temp_allocator)
+	for i in 0 ..< len(out) {
+		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
+			plugin_raise(L, fmt.tprintf("columns[%d] must be a table {width?, right?}", i + 1))
+		}
+		ct := lua.gettop(L)
+		w, _ := api_field_int(L, ct, "width")
+		out[i] = {w = max(0, w), right = api_opt_bool(L, ct, "right")}
+		lua.pop(L, 1)
+	}
+	return out
+}
+
+qed_view_marks :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	if lua.type(L, 2) != .TABLE {
+		lua.L_argerror(L, 2, "marks table expected")
+	}
+	#partial switch lua.type(L, 3) {
+	case .NIL, .NONE, .TABLE:
+	case:
+		lua.L_argerror(L, 3, "options table expected")
+	}
+	lua.settop(L, 3)
+	replace := lua.type(L, 3) == .TABLE && api_opt_bool(L, 3, "replace")
+	pn, _ := api_view_live(L, editor)
+	walk := pn != nil && pn.list.source.kind == .Walk
+	Parsed :: struct {
+		key:  string,
+		mark: PaneMark,
+		drop: bool,
+	}
+	marks := make([dynamic]Parsed, context.temp_allocator)
+	lua.pushnil(L)
+	for lua.next(L, 2) != 0 {
+		if lua.type(L, -2) != .STRING {
+			plugin_raise(L, "marks: keys must be strings")
+		}
+		ks, _ := lua.toodinstring(L, -2)
+		key := api_path(editor, ks) if walk else strings.clone(ks, context.temp_allocator)
+		#partial switch lua.type(L, -1) {
+		case .BOOLEAN:
+			if lua.toboolean(L, -1) {
+				plugin_raise(L, fmt.tprintf("marks[%q] must be a table or false", ks))
+			}
+			append(&marks, Parsed{key = key, drop = true})
+		case .TABLE:
+			v := lua.gettop(L)
+			m: PaneMark
+			m.bar, _ = api_field_string(L, v, "bar")
+			m.fg, _ = api_field_string(L, v, "fg")
+			m.suffix, _ = api_field_string(L, v, "suffix")
+			for c in ([2]string{m.bar, m.fg}) {
+				if c != "" {
+					api_theme_color(L, c)
+				}
+			}
+			added, aok := api_field_int(L, v, "added")
+			removed, rok := api_field_int(L, v, "removed")
+			if added < 0 || removed < 0 {
+				plugin_raise(L, fmt.tprintf("marks[%q]: added and removed must not be negative", ks))
+			}
+			m.added, m.removed, m.sizes = added, removed, aok || rok
+			m.dim = api_opt_bool(L, v, "dim")
+			append(&marks, Parsed{key = key, mark = m})
+		case:
+			plugin_raise(L, fmt.tprintf("marks[%q] must be a table or false", ks))
+		}
+		lua.pop(L, 1)
+	}
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if replace {
+		pane_marks_clear(pn)
+	}
+	for m in marks {
+		if m.drop {
+			pane_mark_drop(pn, m.key)
+		} else {
+			pane_mark_set(pn, m.key, m.mark)
+		}
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_footer :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	if lua.type(L, 2) != .TABLE {
+		lua.L_argerror(L, 2, "footer table expected")
+	}
+	lua.settop(L, 2)
+	hints, has_hints := api_hints(L, 2)
+	chips, has_chips := api_chips(L, 2)
+	input := 0
+	prompt, text: string
+	#partial switch lua.getfield(L, 2, "input") {
+	case .TABLE:
+		input = 1
+		prompt, _ = api_field_string(L, 3, "prompt")
+		text, _ = api_field_string(L, 3, "text")
+	case .BOOLEAN:
+		if lua.toboolean(L, -1) {
+			plugin_raise(L, "input must be a table {prompt?, text?} or false")
+		}
+		input = -1
+	case .NIL:
+	case:
+		plugin_raise(L, "input must be a table {prompt?, text?} or false")
+	}
+	lua.pop(L, 1)
+	pn, _ := api_view_live(L, editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if has_hints {
+		for h in pn.footer {
+			delete(h.label)
+			delete(h.cmd)
+		}
+		delete(pn.footer)
+		pn.footer = make([]PaneHint, len(hints))
+		for h, i in hints {
+			pn.footer[i] = {strings.clone(h.label), strings.clone(h.cmd)}
+		}
+	}
+	if has_chips {
+		pane_chips_set(pn, chips)
+	}
+	switch input {
+	case 1:
+		pane_footer_input(pn, prompt, text)
+	case -1:
+		pn.footer_input = false
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_tab :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	set := lua.type(L, 2) > .NIL
+	i := api_int(L, 2, "tab index expected") - 1 if set else 0
+	pn, _ := api_view_live(L, entry.editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if set {
+		if i < 0 || i >= len(pn.tabs) {
+			plugin_raise(L, "tab is out of range")
+		}
+		pn.tab = i
+	}
+	lua.pushinteger(L, lua.Integer(pn.tab + 1))
+	return 1
+}
+
+qed_view_preview :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	mode := lua.type(L, 2)
+	path, base: string
+	has_base, diff_only := false, true
+	#partial switch mode {
+	case .BOOLEAN:
+		if lua.toboolean(L, 2) {
+			plugin_raise(L, `preview must be false, "auto" or {path, base?, diff_only?}`)
+		}
+	case .STRING:
+		if s, _ := lua.toodinstring(L, 2); s != "auto" {
+			plugin_raise(L, `preview must be false, "auto" or {path, base?, diff_only?}`)
+		}
+	case .TABLE:
+		ps, ok := api_field_string(L, 2, "path")
+		if !ok {
+			plugin_raise(L, "preview: path expected")
+		}
+		path = api_path(editor, ps)
+		base, has_base = api_field_string(L, 2, "base")
+		if lua.getfield(L, 2, "diff_only") != .NIL {
+			diff_only = bool(lua.toboolean(L, -1))
+		}
+		lua.pop(L, 1)
+	case:
+		lua.L_argerror(L, 2, `false, "auto" or a table expected`)
+	}
+	pn, _ := api_view_live(L, editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	g := pane_geom(editor, pn)
+	#partial switch mode {
+	case .BOOLEAN:
+		pn.preview_off, pn.preview_due = true, false
+		preview_reset(&pn.preview)
+	case .STRING:
+		pn.preview_off = false
+		delete(pn.preview_key)
+		pn.preview_key = ""
+		pane_preview_sync(editor, pn)
+	case .TABLE:
+		if !g.has_preview {
+			break
+		}
+		if has_base {
+			preview_set_diff(&pn.preview, path, g.preview.h, diff_only, base)
+		} else {
+			preview_set_file(&pn.preview, path, 0, g.preview.h)
+		}
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_expand :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	all := lua.type(L, 2) == .BOOLEAN
+	path := ""
+	on := bool(lua.toboolean(L, 2))
+	if !all {
+		path = api_path(editor, api_string(L, 2))
+		on = lua.type(L, 3) <= .NIL || bool(lua.toboolean(L, 3))
+	}
+	pn, _ := api_view_live(L, editor)
+	if pn == nil {
+		lua.pushboolean(L, false)
+		return 1
+	}
+	if !pn.list.tree {
+		plugin_raise(L, "expand needs a list.tree view")
+	}
+	ok := true
+	if all {
+		ok = pane_tree_expand_all(editor, pn, on)
+	} else {
+		pane_tree_set(pn, path, on)
+		list_walk_fill(editor, pn)
+	}
+	lua.pushboolean(L, b32(ok))
 	return 1
 }
 

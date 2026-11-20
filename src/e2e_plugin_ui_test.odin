@@ -466,7 +466,7 @@ e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	filetree_open_all(&e.ed)
-	testing.expect(t, e.ed.filetree.active, "the tree is open")
+	testing.expect(t, filetree_active(&e.ed), "the tree is open")
 	cmd: Command
 	for c in e.ed.plugins.commands {
 		if c.name == "UI: Tree Confirm" {
@@ -480,7 +480,7 @@ e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "2")
-	testing.expect(t, e.ed.filetree.active, "the tree stays open")
+	testing.expect(t, filetree_active(&e.ed), "the tree stays open")
 }
 
 @(private = "file")
@@ -528,7 +528,7 @@ e2e_plugin_ui_confirm_parent_overlay_closes :: proc(t: ^testing.T) {
 	}
 	plugin_command_run(&e.ed, cmd)
 	p := pane_focus(&e.ed)
-	testing.expect(t, p != nil && p.over == &e.ed.filetree.active, "a confirm over the tree sits on it")
+	testing.expect(t, p != nil && p.parent == ft_pane(&e.ed).handle, "a confirm over the tree sits on it")
 	filetree_close(&e.ed)
 	e2e_render(&e)
 	testing.expect(t, !e2e_grid_has(&e, "Tree?"), "an orphan is not drawn")
@@ -602,7 +602,7 @@ e2e_plugin_ui_grandchild_of_closed_overlay :: proc(t: ^testing.T) {
 	}
 	plugin_command_run(&e.ed, cmd)
 	ui_run(t, &e, "UI: Prompt")
-	testing.expect_value(t, len(e.ed.panes), 2)
+	testing.expect_value(t, len(e.ed.panes), 3)
 	filetree_close(&e.ed)
 	testing.expect(t, pane_focus(&e.ed) == nil, "a grandchild of a closed overlay is not focusable")
 	pane_stack_sync(&e.ed)

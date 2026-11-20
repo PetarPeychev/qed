@@ -187,6 +187,9 @@ PluginArgs :: enum {
 	View_Item,
 	View_Items,
 	View_Text,
+	View_Int,
+	View_Expand,
+	View_Submit,
 }
 
 PluginStart :: struct {
@@ -412,6 +415,23 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 	case .View_Text:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
 		lua.pushodinstring(L, start.line)
+		nargs = 2
+	case .View_Int:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
+		lua.pushinteger(L, lua.Integer(start.item))
+		nargs = 2
+	case .View_Expand:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
+		api_pane_item_push(L, start.pitems[0])
+		lua.pushboolean(L, b32(start.item != 0))
+		nargs = 3
+	case .View_Submit:
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
+		if start.item != 0 {
+			lua.pushodinstring(L, start.line)
+		} else {
+			lua.pushnil(L)
+		}
 		nargs = 2
 	}
 	lua.call(L, nargs, 0, 0, plugin_co_k)

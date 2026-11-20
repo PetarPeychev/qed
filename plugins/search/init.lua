@@ -93,6 +93,8 @@ local function search(ctx, scope)
 	end
 	qed.ui.open{
 		id = "search",
+		-- over the file tree it stacks, so Esc returns to the tree
+		kind = "child",
 		place = "split",
 		fields = {{mode = "query", count = true, text = start}},
 		list = {max = MAX, sort = true, empty = short_hint()},

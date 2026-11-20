@@ -88,6 +88,11 @@ qed_fs_api := [?]lua.L_Reg {
 	{"stat", qed_fs_stat},
 	{"list", qed_fs_list},
 	{"dirs", qed_fs_dirs},
+	{"walk", qed_fs_walk},
+	{"copy", qed_fs_copy},
+	{"rename", qed_fs_rename},
+	{"remove", qed_fs_remove},
+	{"mkdir", qed_fs_mkdir},
 	{nil, nil},
 }
 
@@ -922,9 +927,7 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	} else if _, idx := api_buf(L, editor, 1); idx != editor.current {
 		editor_switch_to(editor, idx)
 	}
-	if editor.filetree.active {
-		filetree_close(editor)
-	}
+	filetree_close(editor)
 	b := editor_buffer(editor)
 	r := clamp(row - 1, 0, len(b.lines) - 1)
 	text := b.lines[r].text[:]
@@ -1551,6 +1554,42 @@ qed_fs_write :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushboolean(L, true)
 	return 1
+}
+
+api_fs_result :: proc(L: ^lua.State, err: FsError, path: string) -> c.int {
+	if err != .None {
+		return api_fail(L, fs_error_text(err, path))
+	}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_fs_copy :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	src, dst := api_path(entry.editor, api_string(L, 1)), api_path(entry.editor, api_string(L, 2))
+	return api_fs_result(L, fs_copy(entry.editor, src, dst), dst)
+}
+
+qed_fs_rename :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	src, dst := api_path(entry.editor, api_string(L, 1)), api_path(entry.editor, api_string(L, 2))
+	return api_fs_result(L, fs_rename(entry.editor, src, dst), dst)
+}
+
+qed_fs_remove :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	path := api_path(entry.editor, api_string(L, 1))
+	return api_fs_result(L, fs_remove(entry.editor, path), path)
+}
+
+qed_fs_mkdir :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	path := api_path(entry.editor, api_string(L, 1))
+	return api_fs_result(L, fs_mkdir(entry.editor, path), path)
 }
 
 qed_fs_exists :: proc "c" (L: ^lua.State) -> c.int {
@@ -2454,11 +2493,12 @@ qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 			lua.pop(L, 1)
 		}
 	}
-	if t.provider.owner == pl.name {
+	fresh := t.provider.owner != pl.name
+	if !fresh {
 		filetree_provider_unref(editor, &t.provider)
 		t.provider.base_state = .None
-		if t.active {
-			filetree_preview_touch(editor)
+		if p := filetree_pane(editor); p != nil {
+			filetree_preview_touch(p)
 		}
 	} else {
 		filetree_provider_clear(editor)
@@ -2466,7 +2506,10 @@ qed_filetree_provide :: proc "c" (L: ^lua.State) -> c.int {
 		t.scanned = false
 	}
 	t.provider.refresh_ref, t.provider.preview_ref, t.provider.open_ref = refs[0], refs[1], refs[2]
-	if t.active && !t.scanned {
+	if fresh {
+		filetree_provider_set(editor)
+	}
+	if filetree_active(editor) && !t.scanned {
 		filetree_status_request(editor)
 	}
 	lua.pushboolean(L, true)

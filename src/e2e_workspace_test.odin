@@ -305,7 +305,7 @@ e2e_cwd_commit :: proc(t: ^testing.T) {
 	testing.expect(t, editor_open_path(&e.ed, inside), "open inside buffer")
 	testing.expect_value(t, len(e.ed.buffers), 2)
 	nav_alt(&e, 'f')
-	testing.expect(t, len(e.ed.filetree.entries) > 0, "tree populated for the old root")
+	testing.expect(t, len(ft_entries(&e.ed)) > 0, "tree populated for the old root")
 	e2e_key(&e, .Esc)
 
 	e2e_key(&e, .Ctrl_O)
@@ -340,8 +340,8 @@ e2e_cwd_commit :: proc(t: ^testing.T) {
 	testing.expect_value(t, editor_buffer(&e.ed).path, inside)
 	testing.expect(t, !e.ed.welcome, "inside buffer stays current")
 	testing.expect(t, strings.contains(e.ed.message, alpha), "root change is logged on the message line")
-	testing.expect_value(t, len(e.ed.filetree.entries), 0)
-	testing.expect_value(t, len(e.ed.filetree.expanded), 0)
+	testing.expect_value(t, len(ft_entries(&e.ed)), 0)
+	testing.expect_value(t, ft_expanded_count(&e.ed), 0)
 
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/", alpha))
@@ -438,9 +438,9 @@ e2e_cwd_palette_and_welcome :: proc(t: ^testing.T) {
 }
 
 cwd_tree_select :: proc(e: ^E2E, name: string) -> bool {
-	for entry, i in e.ed.filetree.entries {
+	for entry, i in ft_entries(&e.ed) {
 		if entry.name == name {
-			e.ed.filetree.selected = i
+			ft_pane(&e.ed).list.sel = i
 			return true
 		}
 	}
@@ -449,7 +449,7 @@ cwd_tree_select :: proc(e: ^E2E, name: string) -> bool {
 
 cwd_tree_names :: proc(e: ^E2E) -> string {
 	names := make([dynamic]string, context.temp_allocator)
-	for entry in e.ed.filetree.entries {
+	for entry in ft_entries(&e.ed) {
 		append(&names, entry.name)
 	}
 	return strings.join(names[:], ",", context.temp_allocator)
@@ -473,15 +473,15 @@ e2e_cwd_tree_set_root :: proc(t: ^testing.T) {
 
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "alpha row")
 	e2e_key(&e, .Enter)
-	testing.expect(t, len(ft.expanded) > 0, "alpha expanded before the switch")
+	testing.expect(t, ft_expanded_count(&e.ed) > 0, "alpha expanded before the switch")
 	testing.expect(t, cwd_tree_select(&e, "inner"), "inner row")
 	e2e_key(&e, .Ctrl_O)
 	inner := fmt.tprintf("%s/inner", alpha)
 	testing.expect_value(t, e.ed.working_root, inner)
-	testing.expect(t, ft.active, "tree stays open")
-	testing.expect_value(t, ft.mode, FileTreeMode.Nav)
-	testing.expect_value(t, ft.selected, 0)
-	testing.expect_value(t, len(ft.expanded), 0)
+	testing.expect(t, filetree_active(&e.ed), "tree stays open")
+	testing.expect_value(t, ft_mode(&e.ed), FtMode.Nav)
+	testing.expect_value(t, ft_pane(&e.ed).list.sel, 0)
+	testing.expect_value(t, ft_expanded_count(&e.ed), 0)
 	testing.expect_value(t, cwd_tree_names(&e), "")
 	testing.expect(t, e.ed.welcome, "clean outside buffer closed silently")
 	e2e_render(&e)
@@ -498,8 +498,8 @@ e2e_cwd_tree_set_root :: proc(t: ^testing.T) {
 	testing.expect(t, cwd_tree_select(&e, "alpha/in.txt"), "filtered file row")
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, e.ed.working_root, alpha)
-	testing.expect(t, ft.active, "tree stays open")
-	testing.expect_value(t, textfield_str(&ft.filter), "")
+	testing.expect(t, filetree_active(&e.ed), "tree stays open")
+	testing.expect_value(t, textfield_str(&ft_pane(&e.ed).fields[0].field), "")
 	testing.expect_value(t, cwd_tree_names(&e), "Zed,inner,in.txt")
 	testing.expect(t, strings.contains(e.ed.message, alpha), "root change is logged")
 }
@@ -522,7 +522,7 @@ e2e_cwd_tree_keeps_scope :: proc(t: ^testing.T) {
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "alpha row")
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, e.ed.working_root, alpha)
-	testing.expect(t, ft.active, "tree stays open")
+	testing.expect(t, filetree_active(&e.ed), "tree stays open")
 	testing.expect_value(t, ft.scope, FileTreeScope.Open)
 	testing.expect_value(t, cwd_tree_names(&e), "in.txt")
 	testing.expect_value(t, len(e.ed.buffers), 1)
@@ -541,28 +541,28 @@ e2e_cwd_tree_unsaved_confirm :: proc(t: ^testing.T) {
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "alpha row")
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, cwd_confirm(&e), "Close 1 buffer? (1 unsaved)")
-	testing.expect(t, pane_focus(&e.ed).over == &ft.active, "the confirm sits on the tree")
+	testing.expect(t, pane_focus(&e.ed).parent == ft_pane(&e.ed).handle, "the confirm sits on the tree")
 	testing.expect_value(t, e.ed.working_root, root)
 	e2e_render(&e)
 
 	e2e_key(&e, .Enter)
-	testing.expect(t, pane_focus(&e.ed) == nil, "Cancel returns to the tree")
-	testing.expect(t, ft.active, "tree still open")
+	testing.expect(t, pane_focus(&e.ed) == ft_pane(&e.ed), "Cancel returns to the tree")
+	testing.expect(t, filetree_active(&e.ed), "tree still open")
 	testing.expect_value(t, e.ed.working_root, root)
 	testing.expect(t, editor_buffer(&e.ed).modified, "unsaved buffer survives cancel")
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "tree unchanged")
 
 	e2e_key(&e, .Ctrl_O)
 	e2e_key(&e, .Esc)
-	testing.expect(t, pane_focus(&e.ed) == nil && ft.active, "Esc in the confirm returns to the tree")
+	testing.expect(t, pane_focus(&e.ed) == ft_pane(&e.ed) && filetree_active(&e.ed), "Esc in the confirm returns to the tree")
 	testing.expect_value(t, e.ed.working_root, root)
 
 	e2e_key(&e, .Ctrl_O)
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.working_root, fmt.tprintf("%s/alpha", root))
-	testing.expect(t, ft.active, "tree stays open after confirm")
-	testing.expect_value(t, ft.mode, FileTreeMode.Nav)
+	testing.expect(t, filetree_active(&e.ed), "tree stays open after confirm")
+	testing.expect_value(t, ft_mode(&e.ed), FtMode.Nav)
 	testing.expect(t, e.ed.welcome, "confirmed close discards the outside buffer")
 	testing.expect_value(t, cwd_tree_names(&e), "Zed,inner")
 }

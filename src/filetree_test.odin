@@ -41,9 +41,8 @@ rel_set :: proc(entries: []FileEntry, root: string) -> map[string]bool {
 @(private = "file")
 walk_reference_set :: proc(root: string) -> map[string]bool {
 	out := make([dynamic]FileEntry, context.temp_allocator)
-	ref: FileTree
-	ref.scope = .All
-	filetree_walk(&ref, root, &out, 4)
+	admit: WalkAdmit
+	walk_run(&admit, root, &out, 4)
 	set := rel_set(out[:], root)
 	for e in out {
 		delete(e.path)
@@ -88,9 +87,10 @@ walk_fixture :: proc(tag: string) -> string {
 }
 
 @(private = "file")
-walk_collect :: proc(ft: ^FileTree, root: string, threads := 4) -> (rel: map[string]bool, n: int) {
+walk_gather :: proc(ft: ^FileTree, root: string, threads := 4) -> (rel: map[string]bool, n: int) {
 	out := make([dynamic]FileEntry, context.temp_allocator)
-	filetree_walk(ft, root, &out, threads)
+	admit := WalkAdmit{dotfiles = ft.show_dotfiles, ignored = ft.show_ignored, ignore = &ft.ignored}
+	walk_run(&admit, root, &out, threads)
 	rel = make(map[string]bool, context.temp_allocator)
 	n = len(out)
 	for e in out {
@@ -117,7 +117,7 @@ test_filetree_walk_default :: proc(t: ^testing.T) {
 	root := walk_fixture("default")
 	defer {os.remove_all(root);delete(root)}
 	ft: FileTree
-	got, n := walk_collect(&ft, root)
+	got, n := walk_gather(&ft, root)
 	walk_expect(t, got, n, WALK_BASE[:])
 }
 
@@ -127,7 +127,7 @@ test_filetree_walk_dotfiles :: proc(t: ^testing.T) {
 	defer {os.remove_all(root);delete(root)}
 	ft: FileTree
 	ft.show_dotfiles = true
-	got, n := walk_collect(&ft, root)
+	got, n := walk_gather(&ft, root)
 	want := [?]WalkWant {
 		{"a.txt", false},
 		{"sub", true},
@@ -154,12 +154,12 @@ test_filetree_walk_ignored :: proc(t: ^testing.T) {
 		}
 		delete(ft.ignored)
 	}
-	got, n := walk_collect(&ft, root)
+	got, n := walk_gather(&ft, root)
 	want := [?]WalkWant{{"a.txt", false}, {"link", false}}
 	walk_expect(t, got, n, want[:])
 
 	ft.show_ignored = true
-	got2, n2 := walk_collect(&ft, root)
+	got2, n2 := walk_gather(&ft, root)
 	walk_expect(t, got2, n2, WALK_BASE[:])
 }
 
@@ -169,8 +169,8 @@ test_filetree_walk_parallel_parity :: proc(t: ^testing.T) {
 	defer {os.remove_all(root);delete(root)}
 
 	ft: FileTree
-	serial, sn := walk_collect(&ft, root, 1)
-	par, pn := walk_collect(&ft, root, 8)
+	serial, sn := walk_gather(&ft, root, 1)
+	par, pn := walk_gather(&ft, root, 8)
 
 	testing.expectf(t, sn == len(serial), "serial has duplicates: %d entries, %d unique", sn, len(serial))
 	testing.expectf(t, pn == len(par), "parallel has duplicates: %d entries, %d unique", pn, len(par))
@@ -195,7 +195,7 @@ test_filetree_walk_ignored_file :: proc(t: ^testing.T) {
 		}
 		delete(ft.ignored)
 	}
-	got, n := walk_collect(&ft, root)
+	got, n := walk_gather(&ft, root)
 	want := [?]WalkWant {
 		{"sub", true},
 		{"sub/b.txt", false},
@@ -206,42 +206,34 @@ test_filetree_walk_ignored_file :: proc(t: ^testing.T) {
 	walk_expect(t, got, n, want[:])
 
 	ft.show_ignored = true
-	got2, n2 := walk_collect(&ft, root)
+	got2, n2 := walk_gather(&ft, root)
 	walk_expect(t, got2, n2, WALK_BASE[:])
 }
 
 @(private = "file")
-prewarm_editor :: proc(root: string) -> Editor {
+prewarm_editor :: proc(root: string) -> (Editor, ^Walk) {
 	editor: Editor
 	editor.working_root = root
 	editor.filetree.scanned = true
-	editor.filetree.scope = .All
-	return editor
-}
-
-@(private = "file")
-prewarm_cleanup :: proc(editor: ^Editor) {
-	filetree_prewarm_cancel(&editor.filetree)
-	filetree_filter_cache_clear(&editor.filetree)
-	delete(editor.filetree.filter_cands)
+	return editor, walk_acquire(&editor, root, false, false)
 }
 
 @(test)
 test_filetree_prewarm_parity :: proc(t: ^testing.T) {
 	root := walk_stress_fixture("pwparity")
 	defer {os.remove_all(root);delete(root)}
-	editor := prewarm_editor(root)
-	defer prewarm_cleanup(&editor)
+	editor, w := prewarm_editor(root)
+	defer walk_destroy_all(&editor)
 
-	filetree_prewarm_start(&editor)
-	testing.expect(t, editor.filetree.prewarm.active, "prewarm should start")
-	for !filetree_prewarm_pump(&editor) {
+	walk_prewarm(&editor, w)
+	testing.expect(t, w.pw.active, "prewarm should start")
+	for !walk_pump(&editor) {
 		thread.yield()
 	}
-	testing.expect(t, !editor.filetree.prewarm.active, "prewarm should settle")
-	testing.expect(t, editor.filetree.filter_valid, "prewarm should fill the cache")
+	testing.expect(t, !w.pw.active, "prewarm should settle")
+	testing.expect(t, walk_valid(&editor, w), "prewarm should fill the cache")
 
-	got := rel_set(editor.filetree.filter_cands[:], root)
+	got := rel_set(w.cands[:], root)
 	want := walk_reference_set(root)
 	testing.expect(t, len(got) > 200, "stress tree should be large")
 	set_equal(t, got, want, "prewarm-vs-sync")
@@ -251,33 +243,30 @@ test_filetree_prewarm_parity :: proc(t: ^testing.T) {
 test_filetree_prewarm_midflight :: proc(t: ^testing.T) {
 	root := walk_stress_fixture("pwmid")
 	defer {os.remove_all(root);delete(root)}
-	editor := prewarm_editor(root)
-	defer prewarm_cleanup(&editor)
+	editor, w := prewarm_editor(root)
+	defer walk_destroy_all(&editor)
 
-	filetree_prewarm_start(&editor)
-	// A filter arriving before the walk finishes takes the join path.
-	adopted := filetree_prewarm_finish(&editor)
-	testing.expect(t, adopted, "mid-flight finish should adopt the matching snapshot")
-	testing.expect(t, !editor.filetree.prewarm.active, "prewarm should be settled")
-	testing.expect(t, editor.filetree.filter_valid, "cache should be valid after join")
-
-	got := rel_set(editor.filetree.filter_cands[:], root)
-	want := walk_reference_set(root)
-	set_equal(t, got, want, "midflight-vs-sync")
+	walk_prewarm(&editor, w)
+	// a filter arriving before the walk finishes takes the join path
+	got := rel_set(walk_cands(&editor, w), root)
+	testing.expect(t, !w.pw.active, "prewarm should be settled")
+	testing.expect(t, walk_valid(&editor, w), "cache should be valid after join")
+	testing.expect_value(t, w.builds, 1)
+	set_equal(t, got, walk_reference_set(root), "midflight-vs-sync")
 }
 
 @(test)
 test_filetree_prewarm_discard_on_mismatch :: proc(t: ^testing.T) {
 	root := walk_stress_fixture("pwmismatch")
 	defer {os.remove_all(root);delete(root)}
-	editor := prewarm_editor(root)
-	defer prewarm_cleanup(&editor)
+	editor, w := prewarm_editor(root)
+	defer walk_destroy_all(&editor)
 
-	filetree_prewarm_start(&editor)
-	// Snapshot captured show_dotfiles=false; flipping it invalidates the result.
-	editor.filetree.show_dotfiles = true
-	adopted := filetree_prewarm_finish(&editor)
+	walk_prewarm(&editor, w)
+	// a write mid-walk invalidates the snapshot
+	walk_invalidate(&editor)
+	adopted := walk_prewarm_finish(&editor, w)
 	testing.expect(t, !adopted, "a stale snapshot must be discarded")
-	testing.expect(t, !editor.filetree.filter_valid, "cache must not be filled from a stale snapshot")
-	testing.expect(t, !editor.filetree.prewarm.active, "prewarm should be settled")
+	testing.expect(t, !walk_valid(&editor, w), "cache must not be filled from a stale snapshot")
+	testing.expect(t, !w.pw.active, "prewarm should be settled")
 }

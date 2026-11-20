@@ -51,3 +51,90 @@ test_pane_open :: proc(ed: ^Editor, id: string) -> bool {
 
 @(thread_local)
 test_list_built: int
+
+ft_pane :: proc(ed: ^Editor) -> ^Pane {
+	return filetree_pane(ed)
+}
+
+ft_entries :: proc(ed: ^Editor) -> []FileEntry {
+	if p := filetree_pane(ed); p != nil {
+		return p.list.source.entries[:]
+	}
+	return nil
+}
+
+ft_selected :: proc(ed: ^Editor) -> (FileEntry, bool) {
+	return filetree_cursor(ed)
+}
+
+ft_sel_range :: proc(ed: ^Editor) -> (lo, hi: int) {
+	p := filetree_pane(ed)
+	lo, hi = p.list.sel, p.list.sel
+	if a, ok := p.list.anchor.?; ok {
+		lo, hi = min(a, p.list.sel), max(a, p.list.sel)
+	}
+	return
+}
+
+FtMode :: enum {
+	Nav,
+	New,
+	Rename,
+	ConfirmDelete,
+	ConfirmClose,
+}
+
+ft_mode :: proc(ed: ^Editor) -> FtMode {
+	switch {
+	case pane_find(ed, "filetree_delete") != nil:
+		return .ConfirmDelete
+	case pane_find(ed, "filetree_close") != nil:
+		return .ConfirmClose
+	}
+	if p := filetree_pane(ed); p != nil && p.footer_input {
+		return .New if ed.filetree.mode == .New else .Rename
+	}
+	return .Nav
+}
+
+FtLayout :: struct {
+	box, inner:                               Rect,
+	body_top, body_h, filter_y, filter_sep_y: int,
+	footer_y, tab_y, title_sep_y:             int,
+	div_x, left_w, right_x, right_w:          int,
+	preview:                                  bool,
+}
+
+ft_layout :: proc(ed: ^Editor) -> FtLayout {
+	p := filetree_pane(ed)
+	if p == nil {
+		return {}
+	}
+	g := pane_geom(ed, p)
+	return {
+		box = g.box,
+		inner = g.inner,
+		body_top = g.list.y,
+		body_h = g.list.h,
+		filter_y = g.field_y,
+		filter_sep_y = g.left_sep,
+		footer_y = g.footer_y,
+		tab_y = g.title_y,
+		title_sep_y = g.title_y + 1,
+		div_x = g.div_x,
+		left_w = g.list.w,
+		right_x = g.preview.x,
+		right_w = g.preview.w,
+		preview = g.has_preview,
+	}
+}
+
+ft_expanded_count :: proc(ed: ^Editor) -> int {
+	if p := filetree_pane(ed); p != nil {
+		return len(p.list.expanded)
+	}
+	if s := pane_saved_find(ed, "filetree"); s != nil {
+		return len(s.expanded)
+	}
+	return 0
+}

@@ -34,6 +34,8 @@ Editor :: struct {
 	log_file:        ^os.File,
 	log_open:        bool,
 	panes:           [dynamic]Pane,
+	walks:           [dynamic]^Walk,
+	walk_gen:        u64,
 	pane_seq:        u64,
 	pane_saved:      [dynamic]PaneSaved,
 	disk_poll:       time.Tick,
@@ -179,6 +181,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	term_destroy(editor)
 	plugins_shutdown(&editor.plugins)
 	pane_stack_destroy(editor)
+	walk_destroy_all(editor)
 	// Process-global singletons (seeded once at @(init) / lazily, shared across
 	// every editor); real main tears them down once at exit. A headless test reuses
 	// them across many sessions, so freeing them here would dangle the next one.
@@ -244,12 +247,11 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [4]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [3]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
-		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse, filetree_paste},
 	}
 }
 
@@ -368,9 +370,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 }
 
 editor_previews_sync :: proc(editor: ^Editor) {
-	if editor.filetree.active && filetree_layout(editor).preview && !preview_loaded(&editor.filetree.preview) {
-		filetree_preview_touch(editor)
-	}
 	pane_stack_fit(editor, true)
 }
 

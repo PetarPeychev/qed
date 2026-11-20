@@ -139,38 +139,3 @@ dialog_pane :: proc(question: string, actions: []string, selected: int) -> Pane 
 	text[0].text = question
 	return {text = text, has_list = true, list = {items = pane_labels(actions), sel = selected}}
 }
-
-dialog_act :: proc(editor: ^Editor, action: PaneAction, execute, close: proc(editor: ^Editor)) {
-	#partial switch action {
-	case .Activate:
-		execute(editor)
-	case .Close:
-		close(editor)
-	}
-}
-
-dialog_key :: proc(editor: ^Editor, ev: tb2.Event, question: string, actions: []string, selected: ^int, execute, close: proc(editor: ^Editor)) {
-	p := dialog_pane(question, actions, selected^)
-	action := pane_key(editor, &p, ev)
-	selected^ = p.list.sel
-	dialog_act(editor, action, execute, close)
-}
-
-dialog_mouse :: proc(
-	editor: ^Editor,
-	ev: tb2.Event,
-	question: string,
-	actions: []string,
-	selected: ^int,
-	execute, close: proc(editor: ^Editor),
-) {
-	p := dialog_pane(question, actions, selected^)
-	action := pane_mouse(editor, &p, ev)
-	selected^ = p.list.sel
-	dialog_act(editor, action, execute, close)
-}
-
-dialog_render :: proc(editor: ^Editor, question: string, actions: []string, selected: int) {
-	p := dialog_pane(question, actions, selected)
-	pane_render(editor, &p)
-}

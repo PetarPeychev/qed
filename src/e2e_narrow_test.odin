@@ -5,7 +5,7 @@ import "core:strings"
 import "core:testing"
 
 narrow_box_has :: proc(e: ^E2E, needle: string) -> bool {
-	box := filetree_layout(&e.ed).box
+	box := ft_layout(&e.ed).box
 	for y in box.y ..< box.y + box.h {
 		if strings.contains(e2e_row(e, y), needle) {
 			return true
@@ -42,13 +42,13 @@ e2e_narrow_filetree_hides_preview :: proc(t: ^testing.T) {
 	e2e_resize(&e, 140, E2E_H)
 	nav_alt(&e, 'f')
 	tr := &e.ed.filetree
-	for entry, i in tr.entries {
+	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "main.txt" {
-			tr.selected = i
+			ft_pane(&e.ed).list.sel = i
 		}
 	}
-	filetree_load_preview(&e.ed)
-	lay := filetree_layout(&e.ed)
+	pane_preview_load(&e.ed, ft_pane(&e.ed))
+	lay := ft_layout(&e.ed)
 	testing.expect(t, lay.preview)
 	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X)
 	testing.expect_value(t, lay.left_w, 30)
@@ -57,36 +57,36 @@ e2e_narrow_filetree_hides_preview :: proc(t: ^testing.T) {
 	testing.expect(t, narrow_box_has(&e, "NARROWPREVIEWMARK"), "preview shows at 140 cols")
 
 	e2e_resize(&e, 130, E2E_H)
-	filetree_load_preview(&e.ed)
-	lay = filetree_layout(&e.ed)
+	pane_preview_load(&e.ed, ft_pane(&e.ed))
+	lay = ft_layout(&e.ed)
 	testing.expect(t, lay.preview, "preview survives at 130 cols")
 	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X)
 	testing.expect_value(t, lay.left_w, 30)
 	testing.expect_value(t, lay.right_w, 81)
 
 	e2e_resize(&e, 118, E2E_H)
-	filetree_load_preview(&e.ed)
-	lay = filetree_layout(&e.ed)
+	pane_preview_load(&e.ed, ft_pane(&e.ed))
+	lay = ft_layout(&e.ed)
 	testing.expect(t, !lay.preview, "preview hides below 119 cols")
 
 	e2e_resize(&e, 119, E2E_H)
-	filetree_load_preview(&e.ed)
-	lay = filetree_layout(&e.ed)
+	pane_preview_load(&e.ed, ft_pane(&e.ed))
+	lay = ft_layout(&e.ed)
 	testing.expect(t, lay.preview, "preview shows at 119 cols")
 	testing.expect_value(t, lay.left_w + 1 + lay.right_w, lay.inner.w)
 
 	e2e_resize(&e, 60, E2E_H)
-	filetree_load_preview(&e.ed)
-	lay = filetree_layout(&e.ed)
+	pane_preview_load(&e.ed, ft_pane(&e.ed))
+	lay = ft_layout(&e.ed)
 	testing.expect(t, !lay.preview)
 	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X)
-	testing.expect(t, !preview_loaded(&tr.preview), "hidden preview is not loaded")
+	testing.expect(t, !preview_loaded(&ft_pane(&e.ed).preview), "hidden preview is not loaded")
 	e2e_render(&e)
 	testing.expect(t, !narrow_box_has(&e, "NARROWPREVIEWMARK"), "preview hidden at 60 cols")
 	testing.expect(t, e2e_cell(&e, lay.inner.x + 30, lay.body_top) != '│', "no divider when the preview is hidden")
 
 	e2e_resize(&e, 140, E2E_H)
-	filetree_preview_flush(&e.ed)
+	pane_stack_pump(&e.ed, true)
 	e2e_render(&e)
 	testing.expect(t, narrow_box_has(&e, "NARROWPREVIEWMARK"), "preview returns when widened")
 }
@@ -100,7 +100,7 @@ e2e_narrow_filetree_centers_wide :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	nav_scan(&e)
 	tr := &e.ed.filetree
-	lay := filetree_layout(&e.ed)
+	lay := ft_layout(&e.ed)
 	testing.expect(t, lay.preview)
 	testing.expect_value(t, lay.left_w, FILETREE_LIST_MAX_WIDTH)
 	testing.expect_value(t, lay.right_w, PREVIEW_MAX_WIDTH)
@@ -115,13 +115,13 @@ e2e_narrow_filetree_centers_wide :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_cell(&e, lay.inner.x + 1, lay.tab_y) != ' ', "tab bar follows the box")
 	testing.expect(t, e2e_cell(&e, lay.inner.x + 1, lay.footer_y) != ' ', "footer follows the box")
 
-	if len(tr.entries) > 1 {
-		tr.selected = 0
+	if len(ft_entries(&e.ed)) > 1 {
+		ft_pane(&e.ed).list.sel = 0
 		e2e_mouse(&e, lay.inner.x + 3, lay.body_top + 1)
-		testing.expect_value(t, tr.selected, 1)
+		testing.expect_value(t, ft_pane(&e.ed).list.sel, 1)
 	}
 	e2e_mouse(&e, lay.box.x - 2, lay.body_top)
-	testing.expect(t, !tr.active, "a click in the centering margin closes the tree")
+	testing.expect(t, !filetree_active(&e.ed), "a click in the centering margin closes the tree")
 }
 
 @(test)

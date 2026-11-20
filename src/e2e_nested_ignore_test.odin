@@ -24,16 +24,16 @@ e2e_nav_filetree_nested_ignore :: proc(t: ^testing.T) {
 
 	nav_alt(&e, 'f')
 	nav_scan(&e)
-	filetree_expand_all(&e.ed)
+	pane_tree_expand_all(&e.ed, ft_pane(&e.ed), true)
 	tr := &e.ed.filetree
 
-	testing.expect(t, !entry_named(tr, "dist"), "nested ignored dir hidden by default")
-	testing.expect(t, !entry_named(tr, "bundle.js"), "file in nested ignored dir hidden")
-	testing.expect(t, entry_named(tr, "keep.js"), "sibling kept")
+	testing.expect(t, !entry_named(&e.ed, "dist"), "nested ignored dir hidden by default")
+	testing.expect(t, !entry_named(&e.ed, "bundle.js"), "file in nested ignored dir hidden")
+	testing.expect(t, entry_named(&e.ed, "keep.js"), "sibling kept")
 
 	filetree_toggle_ignored(&e.ed)
-	filetree_expand_all(&e.ed)
-	testing.expect(t, entry_named(tr, "dist"), "nested ignored dir visible after toggle")
+	pane_tree_expand_all(&e.ed, ft_pane(&e.ed), true)
+	testing.expect(t, entry_named(&e.ed, "dist"), "nested ignored dir visible after toggle")
 }
 
 // Working root is a plain directory (not a git repo) holding child repos; each
@@ -66,21 +66,21 @@ e2e_nav_filetree_child_repos :: proc(t: ^testing.T) {
 
 	nav_alt(&e, 'f')
 	nav_scan(&e)
-	filetree_expand_all(&e.ed)
+	pane_tree_expand_all(&e.ed, ft_pane(&e.ed), true)
 	tr := &e.ed.filetree
 
-	testing.expect(t, entry_named(tr, "repoA"), "child repo listed")
-	testing.expect(t, entry_named(tr, "app.js"), "child repo file listed")
-	testing.expect(t, !entry_named(tr, "node_modules"), "child repo node_modules hidden")
-	testing.expect(t, !entry_named(tr, "dep.js"), "file inside child node_modules hidden")
+	testing.expect(t, entry_named(&e.ed, "repoA"), "child repo listed")
+	testing.expect(t, entry_named(&e.ed, "app.js"), "child repo file listed")
+	testing.expect(t, !entry_named(&e.ed, "node_modules"), "child repo node_modules hidden")
+	testing.expect(t, !entry_named(&e.ed, "dep.js"), "file inside child node_modules hidden")
 
 	filetree_toggle_ignored(&e.ed)
-	filetree_expand_all(&e.ed)
-	testing.expect(t, entry_named(tr, "node_modules"), "node_modules visible after toggle")
+	pane_tree_expand_all(&e.ed, ft_pane(&e.ed), true)
+	testing.expect(t, entry_named(&e.ed, "node_modules"), "node_modules visible after toggle")
 }
 
-entry_named :: proc(tr: ^FileTree, name: string) -> bool {
-	for entry in tr.entries {
+entry_named :: proc(ed: ^Editor, name: string) -> bool {
+	for entry in ft_entries(ed) {
 		if entry.name == name {
 			return true
 		}

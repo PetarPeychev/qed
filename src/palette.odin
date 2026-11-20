@@ -342,8 +342,6 @@ palette_open :: proc(editor: ^Editor) {
 	}
 	if f := pane_focus(editor); f != nil && f.scope != "" {
 		spec.kind, spec.parent, spec.list.source.scope = .Child, f.handle, f.scope
-	} else if editor.filetree.active {
-		spec.kind, spec.over, spec.list.source.scope = .Child, &editor.filetree.active, "filetree"
 	}
 	if p := pane_open(editor, spec); p != nil {
 		pane_list_load(editor, p)

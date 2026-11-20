@@ -240,7 +240,10 @@ function qed.every(ms, fn) end
 ---@field value? any carried through untouched
 ---@field path? string previewed by a split pane with `preview = "auto"`; a `qed.pick` item with a path switches it to the list + file preview layout
 ---@field pos? qed.Pos preview focus row
----@field key? string identity for `View:update` and for restoring the selection by `id` (default `label`)
+---@field key? string identity for `View:update`, `View:marks` and for restoring the selection by `id` (default `label`; a walk item's is its path)
+---@field cells? string[] one string per `list.columns` entry
+---@field dir? boolean walk items: a directory
+---@field depth? integer walk items: tree depth (0 at the root)
 
 ---@alias qed.PaneLine string|{text: string, color?: string} color is a theme color key, e.g. `"error_foreground"`
 
@@ -249,10 +252,27 @@ function qed.every(ms, fn) end
 ---@field text? string initial text, fully selected unless `mode` is input or path; without it a pane with an `id` restores the last text
 ---@field mode? "filter"|"query"|"input"|"path" filter (default) fuzzy-filters the list per key; query fires `on.query` at open and 120 ms after typing stops; input submits its text on Enter; path drives a `qed.fs.dirs` list (Tab or `/` at the end drills into the highlighted dir, Backspace after `/` drops a segment) and submits on Enter, its text reported as an absolute path (`~` and relative to `qed.root()` resolved)
 ---@field count? boolean shows the match count (`N+` past `list.max` or after `set{more}`) at the end of the row
+---@field hint? string dim placeholder while the field is empty
+---@field esc_clears? boolean Esc clears the non-empty field instead of closing the pane
 
----A core-owned item source (`qed.fs.dirs`, `qed.buf.line_list`). Items live in core and are built only when drawn; only activated or changed ones reach Lua, as `{label, path?, detail?, buf?, pos?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
+---A core-owned item source (`qed.fs.dirs`, `qed.buf.line_list`, `qed.fs.walk`). Items live in core and are built only when drawn; only activated or changed ones reach Lua, as `{label, path?, detail?, buf?, pos?, dir?, depth?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
 ---@class qed.List
 ---@field id integer
+local List = {}
+---Walk handles: the number of items, walking synchronously if the walk has not landed yet.
+---@return integer
+function List:count() end
+---Walk handles: false while the walk (or its background prewarm) is still running.
+---@return boolean
+function List:ready() end
+---Walk handles: a new handle keeping only `paths`, their ancestors and everything under a listed dir. Listed paths ignore the dotfiles and ignored rules. Raises on an already narrowed handle.
+---@param paths string[]
+---@return qed.List
+function List:within(paths) end
+---Walk handles: a new handle that also lists `paths` (and their missing parent dirs) when they are not on disk, e.g. deleted files.
+---@param paths string[]
+---@return qed.List
+function List:union(paths) end
 
 ---@class qed.UiList
 ---@field items? (string|qed.UiItem)[]|qed.List
@@ -261,6 +281,8 @@ function qed.every(ms, fn) end
 ---@field empty? string dim hint while the list is empty
 ---@field selected? integer item index to start on
 ---@field sort? boolean keep the items ordered by key: `append` inserts in place and the selection follows its item once the user moved it
+---@field tree? boolean a `qed.fs.walk` list shown as a tree: indent, expand icons, Enter or double-click on a dir toggles it (a filter shows ranked paths; Enter on a dir clears it and reveals the dir); open buffers get an accent, unsaved ones `●`
+---@field columns? {width?: integer, right?: boolean}[] items draw their `cells` in these columns (width 0 takes the rest)
 
 ---@class qed.UiHandlers
 ---@field activate? fun(v: qed.View, items: (string|qed.UiItem)[]) Enter or double-click: the selection (the range with `multi`), `{}` for a pane without a list; the pane stays open
@@ -268,12 +290,17 @@ function qed.every(ms, fn) end
 ---@field query? fun(v: qed.View, text: string) the query field settled; a newer query and the close kill the previous run and the `qed.spawn` it waits on (`qed.spawn_bg` processes stay the plugin's to kill)
 ---@field close? fun(v: qed.View) any close: Esc, click outside, the opening command's chord, `View:close`, a parent closing, an exclusive pane replacing it
 ---@field link? fun(v: qed.View, target: string) a click on a link in a `markdown` body: the raw destination (URL, relative path, `path#anchor`); `#anchor` links come here too when this handler is set (call `View:anchor`), else core scrolls them
+---@field tab? fun(v: qed.View, i: integer) the user switched tabs (Left/Right, a click or a tab's chord)
+---@field expand? fun(v: qed.View, item: qed.UiItem, open: boolean) the user expanded or collapsed a dir of a tree list
+---@field submit? fun(v: qed.View, text: string|nil) the footer input (`View:footer{input}`) was submitted, or cancelled with Esc (`nil`)
 
 ---@class qed.UiSpec
 ---@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads)
 ---@field modal? boolean exclusive opens are refused as busy while it is open (`qed.pick/prompt/confirm` set it); a non-modal pane is replaced and its waiters get `nil`
 ---@field place? "center"|"full"|"split" center (default) is a centered box, full fills the screen, split puts a full-height preview column beside the fields and list
----@field size? "palette"|"dialog"|"split:code" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default)
+---@field size? "palette"|"dialog"|"split:code"|"split:tree" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default) or split:tree (the `filetree_list_*` widths)
+---@field tabs? (string|{label: string, cmd?: string})[] a tab row over both columns; Left/Right and clicks switch, a tab's `cmd` (visible command name) chord switches to it and on the active tab closes the pane
+---@field tab? integer the tab to start on
 ---@field kind? "exclusive"|"child" exclusive (default) closes the open exclusive pane; child stacks on what has focus (a pane or a core overlay), else opens exclusive; outside a user's command it stacks only on the plugin's own pane, else returns busy
 ---@field parent? qed.View stack on this view (usually `ctx.view`): Esc returns to it, closing it closes this one
 ---@field focus? boolean false opens a passive pane: drawn under focused panes, never takes input
@@ -286,7 +313,7 @@ function qed.every(ms, fn) end
 ---@field toggle? string visible name of the command whose chord closes the pane (default: the command that opened it); needed when opening from a handler
 ---@field backdrop? "none"|"dim"|"blank" what happens to everything drawn under the pane (the editor and panes below, never the status rows): left alone (default), faded (theme tint `pane_backdrop`) or cleared to the background
 ---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
----@field footer? {hints: {label: string, cmd?: string}[]} bottom row; a hint with `cmd` is prefixed with that command's live shortcut
+---@field footer? {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[]} bottom row; a hint or chip with `cmd` (visible command name) is prefixed with that command's live shortcut; chips are right-aligned, lit when `on`, and a click runs `cmd`
 ---@field scope? string commands registered with this `scope` run on their chord while the pane has focus (with `ctx.view`), and Ctrl+P opens a palette of just them
 ---@field on? qed.UiHandlers handlers run as tasks after input dispatch, before the next frame
 
@@ -325,6 +352,28 @@ function View:anchor(slug) end
 function View:scroll(row) end
 ---Closes the pane and its children; a no-op once closed.
 function View:close() end
+---Per-row styling by item key (a walk list's keys are paths, relative ones resolved against the root): `bar` (theme color of a `▌` in the left column), `fg` (theme color), `suffix` (drawn after the label), `added`/`removed` (a right-aligned `+N -N`), `dim` (dims the row and, in a tree, everything under it unless selected). `false` drops a key; `replace` clears the rest first. Validated before anything changes. Returns false once closed.
+---@param marks table<string, {bar?: string, fg?: string, suffix?: string, added?: integer, removed?: integer, dim?: boolean}|false>
+---@param opts? {replace?: boolean}
+---@return boolean
+function View:marks(marks, opts) end
+---Replaces the footer `hints` and/or `chips` (e.g. a chip's `on`), or turns the footer into an input field (`input = {prompt?, text?}`; Enter or Esc fires `on.submit`; `input = false` drops it). Returns false once closed.
+---@param spec {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[], input?: {prompt?: string, text?: string}|false}
+---@return boolean
+function View:footer(spec) end
+---The active tab; with `i`, switches to it first (no `on.tab`). Returns false once closed.
+---@param i? integer
+---@return integer|false
+function View:tab(i) end
+---`false` stops the auto preview (the plugin shows its own), `"auto"` resumes it; a table shows `path` now, diffed against `base` (raw bytes) when given, only the changed hunks unless `diff_only = false`. Returns false once closed.
+---@param spec false|"auto"|{path: string, base?: string, diff_only?: boolean}
+---@return boolean
+function View:preview(spec) end
+---Tree lists: `true`/`false` expands or collapses every dir (false while the walk's ignore set is still loading); a path and a boolean (default true) sets one dir. Returns false once closed.
+---@param what boolean|string
+---@param open? boolean
+---@return boolean
+function View:expand(what, open) end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.
 ---@return (string|qed.UiItem)[]|nil items
 ---@return integer|nil index
@@ -782,6 +831,37 @@ function qed.fs.list(dir) end
 ---@param opts? {path?: string, dotfiles?: boolean}
 ---@return qed.List
 function qed.fs.dirs(opts) end
+
+---A list handle over every file and dir under `root` (default `qed.root()`): a threaded parallel walk, prewarmed in the background when a view opens over it, shared by handles with the same options, rerun after `qed.fs` writes and root changes. Dotfiles and paths the file tree status provider marks ignored are left out unless `dotfiles`/`ignored`. Items `{label, path, dir?, depth?}`. A filter field ranks paths (capped at `list.max`, default 500, narrowing the previous hits as the query grows), debounced.
+---@param opts? {root?: string, dotfiles?: boolean, ignored?: boolean}
+---@return qed.List
+function qed.fs.walk(opts) end
+
+---Copies a file or dir tree (modes kept, symlinks copied as links). Refuses an existing `dst` (`nil, "exists"`); creates missing parent dirs.
+---@param src string
+---@param dst string
+---@return boolean|nil ok
+---@return "exists"|"not found"|string|nil err
+function qed.fs.copy(src, dst) end
+
+---Moves a file or dir, across filesystems too, and repaths open buffers under it. Refuses an existing `dst`.
+---@param src string
+---@param dst string
+---@return boolean|nil ok
+---@return "exists"|"not found"|string|nil err
+function qed.fs.rename(src, dst) end
+
+---Deletes a file or a dir tree; symlinks are removed, never followed. Open buffers stay.
+---@param path string
+---@return boolean|nil ok
+---@return "not found"|string|nil err
+function qed.fs.remove(path) end
+
+---Creates a dir and its missing parents. Refuses an existing path.
+---@param path string
+---@return boolean|nil ok
+---@return "exists"|string|nil err
+function qed.fs.mkdir(path) end
 
 qed.json = {}
 

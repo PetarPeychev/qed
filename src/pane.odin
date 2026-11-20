@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import vmem "core:mem/virtual"
+import "core:slice"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
@@ -127,6 +128,7 @@ PaneSize :: enum {
 	Dialog,
 	Palette,
 	Code,
+	Tree,
 }
 
 PaneAction :: enum {
@@ -143,10 +145,11 @@ PaneFieldMode :: enum {
 }
 
 PaneField :: struct {
-	prompt:      string,
-	mode:        PaneFieldMode,
-	count:       bool,
-	using field: TextField,
+	prompt, hint: string,
+	mode:         PaneFieldMode,
+	count:        bool,
+	esc_clears:   bool,
+	using field:  TextField,
 }
 
 PaneItem :: struct {
@@ -155,6 +158,8 @@ PaneItem :: struct {
 	id, buf:                  u64,
 	color:                    string,
 	cells:                    []string,
+	depth:                    int,
+	dir:                      bool,
 }
 
 PaneLine :: struct {
@@ -168,6 +173,16 @@ PaneHint :: struct {
 PaneChip :: struct {
 	label, cmd: string,
 	on:         bool,
+}
+
+PaneTab :: struct {
+	label, cmd: string,
+}
+
+PaneMark :: struct {
+	bar, fg, suffix: string,
+	added, removed:  int,
+	sizes, dim:      bool,
 }
 
 PaneList :: struct {
@@ -187,9 +202,12 @@ PaneList :: struct {
 	empty:   string,
 	hint:    string,
 	restore: string,
-	sort:    bool,
-	moved:   bool,
-	source:  ListSource,
+	sort:     bool,
+	moved:    bool,
+	tree:     bool,
+	expanded: map[string]bool,
+	columns:  []PaneColumn,
+	source:   ListSource,
 }
 
 PaneHandler :: proc(editor: ^Editor, p: ^Pane)
@@ -237,6 +255,17 @@ Pane :: struct {
 	preview_buf:  u64,
 	footer:       []PaneHint,
 	chips:        []PaneChip,
+	tabs:         []PaneTab,
+	tab:          int,
+	marks:        map[string]PaneMark,
+	footer_field: PaneField,
+	footer_input: bool,
+	refill_due:   bool,
+	refill_at:    time.Tick,
+	preview_due:  bool,
+	preview_at:   time.Tick,
+	preview_key:  string,
+	preview_off:  bool,
 	scope:        string,
 	keep:         bool,
 	toggle:       u64,
@@ -248,17 +277,21 @@ Pane :: struct {
 	notified:     int,
 	backdrop:     PaneBackdrop,
 	on:           struct {
-		activate, close: PaneHandler,
-		link:            proc(editor: ^Editor, p: ^Pane, target: string) -> bool,
-		footer:          proc(editor: ^Editor, p: ^Pane) -> string,
+		activate, close, tab: PaneHandler,
+		link:                 proc(editor: ^Editor, p: ^Pane, target: string) -> bool,
+		footer:               proc(editor: ^Editor, p: ^Pane) -> string,
+		submit:               proc(editor: ^Editor, p: ^Pane, text: string, ok: bool),
+		preview:              proc(editor: ^Editor, p: ^Pane, it: PaneItem) -> bool,
+		expand:               proc(editor: ^Editor, p: ^Pane, path: string, on: bool),
 	},
 }
 
 PaneSaved :: struct {
-	id:     string,
-	texts:  []string,
-	key:    string,
-	scroll: int,
+	id:       string,
+	texts:    []string,
+	key:      string,
+	scroll:   int,
+	expanded: map[string]bool,
 }
 
 pane_labels :: proc(labels: []string) -> [dynamic]PaneItem {
@@ -321,16 +354,23 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	for h, i in spec.footer {
 		p.footer[i] = {strings.clone(h.label), strings.clone(h.cmd)}
 	}
-	p.chips = make([]PaneChip, len(spec.chips))
-	for c, i in spec.chips {
-		p.chips[i] = {strings.clone(c.label), strings.clone(c.cmd), c.on}
-	}
+	p.chips = nil
+	pane_chips_set(&p, spec.chips)
+	p.tabs = nil
+	pane_tabs_set(&p, spec.tabs)
+	p.marks = {}
+	p.list.expanded = {}
+	p.list.columns = slice.clone(spec.list.columns)
+	p.footer_field = {anchor = -1}
+	p.preview_key = ""
 	p.scope = strings.clone(spec.scope)
 	p.fields = make([]PaneField, len(spec.fields))
 	for f, i in spec.fields {
 		p.fields[i].prompt = strings.clone(f.prompt)
+		p.fields[i].hint = strings.clone(f.hint)
 		p.fields[i].mode = f.mode
 		p.fields[i].count = f.count
+		p.fields[i].esc_clears = f.esc_clears
 		p.fields[i].anchor = -1
 	}
 	p.preview = {}
@@ -414,18 +454,132 @@ pane_free :: proc(p: ^Pane) {
 		delete(h.cmd)
 	}
 	delete(p.footer)
+	pane_chips_set(p, nil)
+	pane_tabs_set(p, nil)
+	pane_marks_clear(p)
+	delete(p.marks)
+	walk_set_clear(&p.list.expanded)
+	delete(p.list.expanded)
+	delete(p.list.columns)
+	textfield_destroy(&p.footer_field.field)
+	delete(p.footer_field.prompt)
+	delete(p.preview_key)
+	delete(p.scope)
+	for &f in p.fields {
+		delete(f.prompt)
+		delete(f.hint)
+		textfield_destroy(&f.field)
+	}
+	delete(p.fields)
+	preview_destroy(&p.preview)
+}
+
+pane_chips_set :: proc(p: ^Pane, chips: []PaneChip) {
 	for c in p.chips {
 		delete(c.label)
 		delete(c.cmd)
 	}
 	delete(p.chips)
-	delete(p.scope)
-	for &f in p.fields {
-		delete(f.prompt)
-		textfield_destroy(&f.field)
+	p.chips = make([]PaneChip, len(chips))
+	for c, i in chips {
+		p.chips[i] = {strings.clone(c.label), strings.clone(c.cmd), c.on}
 	}
-	delete(p.fields)
-	preview_destroy(&p.preview)
+}
+
+pane_tabs_set :: proc(p: ^Pane, tabs: []PaneTab) {
+	for t in p.tabs {
+		delete(t.label)
+		delete(t.cmd)
+	}
+	delete(p.tabs)
+	p.tabs = make([]PaneTab, len(tabs))
+	for t, i in tabs {
+		p.tabs[i] = {strings.clone(t.label), strings.clone(t.cmd)}
+	}
+	p.tab = clamp(p.tab, 0, max(0, len(tabs) - 1))
+}
+
+pane_mark_free :: proc(m: PaneMark) {
+	delete(m.bar)
+	delete(m.fg)
+	delete(m.suffix)
+}
+
+pane_marks_clear :: proc(p: ^Pane) {
+	for key, m in p.marks {
+		delete(key)
+		pane_mark_free(m)
+	}
+	clear(&p.marks)
+}
+
+pane_mark_set :: proc(p: ^Pane, key: string, m: PaneMark) {
+	c := PaneMark{strings.clone(m.bar), strings.clone(m.fg), strings.clone(m.suffix), m.added, m.removed, m.sizes, m.dim}
+	if old, ok := p.marks[key]; ok {
+		pane_mark_free(old)
+		p.marks[key] = c
+	} else {
+		p.marks[strings.clone(key)] = c
+	}
+}
+
+pane_mark_drop :: proc(p: ^Pane, key: string) {
+	if k, m := delete_key(&p.marks, key); k != "" {
+		delete(k)
+		pane_mark_free(m)
+	}
+}
+
+pane_footer_input :: proc(p: ^Pane, prompt, text: string) {
+	delete(p.footer_field.prompt)
+	p.footer_field.prompt = strings.clone(prompt)
+	p.footer_field.mode = .Input
+	textfield_set(&p.footer_field.field, text)
+	p.footer_input = true
+}
+
+pane_footer_end :: proc(editor: ^Editor, p: ^Pane, ok: bool) {
+	p.footer_input = false
+	if p.on.submit != nil {
+		p.on.submit(editor, p, textfield_str(&p.footer_field.field), ok)
+	}
+}
+
+pane_tab_set :: proc(editor: ^Editor, p: ^Pane, i: int) {
+	if i == p.tab || i < 0 || i >= len(p.tabs) {
+		return
+	}
+	p.tab = i
+	if p.on.tab != nil {
+		p.on.tab(editor, p)
+	}
+}
+
+pane_tab_at :: proc(p: ^Pane, g: PaneGeom, cx: int) -> int {
+	x := g.inner.x + 1
+	for t, i in p.tabs {
+		if i > 0 {
+			x += 3
+		}
+		w := visual_width(transmute([]u8)t.label)
+		if cx >= x && cx < x + w {
+			return i
+		}
+		x += w
+	}
+	return -1
+}
+
+pane_cmd_matches :: proc(editor: ^Editor, ev: tb2.Event, name: string) -> bool {
+	if command_matches(ev, name) {
+		return true
+	}
+	for cmd in editor.plugins.commands {
+		if cmd.name == name && plugin_command_matches(cmd, ev) {
+			return true
+		}
+	}
+	return false
 }
 
 pane_index :: proc(editor: ^Editor, handle: u64) -> int {
@@ -583,12 +737,15 @@ pane_stack_destroy :: proc(editor: ^Editor) {
 }
 
 pane_saved_free :: proc(s: PaneSaved) {
+	s := s
 	delete(s.id)
 	for t in s.texts {
 		delete(t)
 	}
 	delete(s.texts)
 	delete(s.key)
+	walk_set_clear(&s.expanded)
+	delete(s.expanded)
 }
 
 pane_saved_find :: proc(editor: ^Editor, id: string) -> ^PaneSaved {
@@ -620,6 +777,12 @@ pane_save :: proc(editor: ^Editor, p: ^Pane) {
 	}
 	s.key = strings.clone(pane_selected_key(editor, p))
 	s.scroll = p.scroll
+	if p.list.tree {
+		walk_set_clear(&s.expanded)
+		for key, on in p.list.expanded {
+			s.expanded[strings.clone(key)] = on
+		}
+	}
 }
 
 pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
@@ -652,6 +815,9 @@ pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 		action = pane_mouse(editor, p, ev)
 	case .Resize:
 		editor_overlay_resize(editor)
+	}
+	if action == .Activate && p.list.tree && pane_tree_enter(editor, p) {
+		action = .None
 	}
 	if action == .Activate && !p.ctx.lua && p.on.activate == nil {
 		action = .None
@@ -731,6 +897,10 @@ pane_prompt :: proc(f: ^PaneField) -> string {
 }
 
 pane_refilter :: proc(editor: ^Editor, p: ^Pane) {
+	if p.list.source.kind == .Walk {
+		list_walk_fill(editor, p)
+		return
+	}
 	clear(&p.list.matches)
 	p.list.filtered = false
 	p.list.sel, p.list.scroll, p.list.anchor, p.list.moved = 0, 0, nil, false
@@ -810,7 +980,9 @@ pane_list_fit :: proc(editor: ^Editor, p: ^Pane, rows: int) {
 	if stamp := list_stamp(editor, p); stamp != p.list.stamp {
 		src := &p.list.source
 		sel, anchor := pane_marks(editor, p)
-		if p.list.filtered || stamp == 0 {
+		if src.kind == .Walk {
+			list_walk_fill(editor, p)
+		} else if p.list.filtered || stamp == 0 {
 			pane_refilter_keep(editor, p, rows, sel, anchor)
 		}
 		p.list.stamp = stamp
@@ -870,7 +1042,12 @@ pane_field_changed :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
 	p.list.restore = ""
 	switch f.mode {
 	case .Filter:
-		pane_refilter(editor, p)
+		if p.list.source.kind == .Walk {
+			p.refill_due = true
+			p.refill_at = time.tick_add(time.tick_now(), FILETREE_FILTER_DEBOUNCE_MS * time.Millisecond)
+		} else {
+			pane_refilter(editor, p)
+		}
 	case .Query:
 		p.query_due = true
 		p.query_at = time.tick_add(time.tick_now(), PANE_QUERY_DEBOUNCE_MS * time.Millisecond)
@@ -880,24 +1057,49 @@ pane_field_changed :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
 	}
 }
 
+pane_preview_item :: proc(editor: ^Editor, p: ^Pane) -> (it: PaneItem, g: PaneGeom) {
+	g = pane_geom(editor, p)
+	if g.has_preview && !p.preview_off && pane_count(editor, p) > 0 {
+		it = list_item(editor, p, pane_item_index(p, p.list.sel))
+	}
+	return
+}
+
+// a walk list debounces its preview: a held arrow must not load every file it passes
 pane_preview_sync :: proc(editor: ^Editor, p: ^Pane) {
 	if !p.auto_preview {
 		return
 	}
-	g := pane_geom(editor, p)
-	it: PaneItem
-	if g.has_preview && pane_count(editor, p) > 0 {
-		it = list_item(editor, p, pane_item_index(p, p.list.sel))
+	it, _ := pane_preview_item(editor, p)
+	key := fmt.tprintf("%s\x00%d\x00%d", it.path, it.buf, it.row)
+	if key == p.preview_key {
+		return
+	}
+	delete(p.preview_key)
+	p.preview_key = strings.clone(key)
+	if p.list.source.kind == .Walk && it.path != "" {
+		p.preview_due = true
+		p.preview_at = time.tick_add(time.tick_now(), FILETREE_PREVIEW_DEBOUNCE_MS * time.Millisecond)
+		return
+	}
+	pane_preview_load(editor, p)
+}
+
+pane_preview_load :: proc(editor: ^Editor, p: ^Pane) {
+	p.preview_due = false
+	if p.preview_off {
+		return
+	}
+	it, g := pane_preview_item(editor, p)
+	if p.on.preview != nil && p.on.preview(editor, p, it) {
+		return
 	}
 	b, _ := api_buf_find(editor, it.buf)
-	if it.path == "" && b == nil {
+	if it.dir || (it.path == "" && b == nil) {
 		if preview_loaded(&p.preview) {
 			preview_reset(&p.preview)
 		}
 		p.preview_buf = 0
-		return
-	}
-	if preview_loaded(&p.preview) && p.preview.path == it.path && p.preview_buf == it.buf && p.preview.focus == it.row {
 		return
 	}
 	p.preview_buf = it.buf
@@ -906,6 +1108,35 @@ pane_preview_sync :: proc(editor: ^Editor, p: ^Pane) {
 	} else {
 		preview_set_file(&p.preview, it.path, it.row, g.preview.h)
 	}
+}
+
+pane_stack_pending :: proc(editor: ^Editor) -> bool {
+	for &p in editor.panes {
+		if (p.refill_due || p.preview_due) && pane_live(editor, &p) {
+			return true
+		}
+	}
+	return false
+}
+
+pane_stack_pump :: proc(editor: ^Editor, force := false) -> (redraw: bool) {
+	now := time.tick_now()
+	for i := 0; i < len(editor.panes); i += 1 {
+		p := &editor.panes[i]
+		if !pane_live(editor, p) {
+			continue
+		}
+		if p.refill_due && (force || plugin_tick_due(p.refill_at, now)) {
+			list_walk_fill(editor, p)
+			pane_preview_sync(editor, p)
+			redraw = true
+		}
+		if p.preview_due && (force || plugin_tick_due(p.preview_at, now)) {
+			pane_preview_load(editor, p)
+			redraw = true
+		}
+	}
+	return
 }
 
 PaneGeom :: struct {
@@ -974,7 +1205,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		return
 	}
 	split := p.place == .Split && p.auto_preview
-	lay := overlay_layout(editor, .Code if split else .None)
+	lay := overlay_layout(editor, .FileTree if split && p.size == .Tree else .Code if split else .None)
 	if p.place == .Full && p.max_width > 0 && lay.box.w > p.max_width {
 		lay.box.x += (lay.box.w - p.max_width) / 2
 		lay.box.w = p.max_width
@@ -984,7 +1215,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 	g.box, g.inner = lay.box, lay.inner
 	y := g.inner.y
 	bottom := g.inner.y + g.inner.h
-	if p.title != "" {
+	if p.title != "" || len(p.tabs) > 0 {
 		g.title_y = y
 		pane_geom_sep(&g, y + 1)
 		y += 2
@@ -1024,7 +1255,7 @@ pane_has_footer :: proc(p: ^Pane) -> bool {
 
 pane_count_text :: proc(editor: ^Editor, p: ^Pane) -> string {
 	n := pane_count(editor, p)
-	if n == 0 {
+	if n == 0 || (p.list.source.kind == .Walk && !p.list.source.filtering) {
 		return ""
 	}
 	return fmt.tprintf("%d+" if p.list.more else "%d", n)
@@ -1075,7 +1306,17 @@ pane_chips_layout :: proc(editor: ^Editor, p: ^Pane, g: PaneGeom) -> (xs: []int,
 	return
 }
 
+pane_footer_rect :: proc(p: ^Pane, g: PaneGeom) -> (x, w: int) {
+	x = g.inner.x + 1 + visual_width(transmute([]u8)p.footer_field.prompt)
+	return x, g.inner.x + g.inner.w - 1 - x
+}
+
 pane_render_footer :: proc(editor: ^Editor, p: ^Pane, g: PaneGeom) {
+	if p.footer_input {
+		label := p.footer_field.prompt
+		pane_text(g.inner.x + 1, g.footer_y, visual_width(transmute([]u8)label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
+		return
+	}
 	if p.on.footer != nil {
 		if s := p.on.footer(editor, p); s != "" {
 			pane_text(g.inner.x + 1, g.footer_y, g.inner.w - 2, s, COLOR_ERROR_FG, COLOR_PANE_BG)
@@ -1138,7 +1379,92 @@ pane_render_field :: proc(p: ^Pane, g: PaneGeom, i: int, count: string) {
 		w = max(1, w - len(count) - 1)
 	}
 	overlay_prompt_render(g.field_x, y, w, &f.field, pane_prompt(f))
+	if f.hint != "" && len(f.text) == 0 {
+		pw := visual_width(transmute([]u8)pane_prompt(f))
+		pane_text(g.field_x + pw, y, w - pw, f.hint, COLOR_FILETREE_IGNORED, COLOR_PANE_BG)
+	}
 }
+
+pane_render_tabs :: proc(p: ^Pane, g: PaneGeom) {
+	x := g.inner.x + 1
+	for t, i in p.tabs {
+		if i > 0 {
+			pane_text(x, g.title_y, 3, " │ ", COLOR_PANE_BORDER, COLOR_PANE_BG)
+			x += 3
+		}
+		w := visual_width(transmute([]u8)t.label)
+		pane_text(x, g.title_y, w, t.label, COLOR_PANE_PROMPT_FG if i == p.tab else COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+		x += w
+	}
+}
+
+pane_mark_dim :: proc(p: ^Pane, path: string) -> bool {
+	for q := path; true; {
+		if m, ok := p.marks[q]; ok && m.dim {
+			return true
+		}
+		np := filetree_parent_dir(q)
+		if np == q {
+			return false
+		}
+		q = np
+	}
+	return false
+}
+
+pane_tree_label :: proc(p: ^Pane, it: PaneItem) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for _ in 0 ..< it.depth {
+		strings.write_string(&sb, "  ")
+	}
+	if it.dir {
+		open := !p.list.source.filtering && pane_tree_expanded(p, it.path)
+		strings.write_string(&sb, ICON_TREE_EXPANDED if open else ICON_TREE_COLLAPSED)
+		strings.write_byte(&sb, ' ')
+		strings.write_string(&sb, it.label)
+		strings.write_byte(&sb, '/')
+	} else {
+		strings.write_string(&sb, "  ")
+		strings.write_string(&sb, it.label)
+	}
+	return strings.to_string(sb)
+}
+
+pane_tree_unsaved :: proc(editor: ^Editor, it: PaneItem) -> bool {
+	if !it.dir {
+		idx := editor_find_buffer(editor, it.path)
+		return idx >= 0 && editor.buffers[idx].modified
+	}
+	prefix := strings.concatenate({it.path, "/"}, context.temp_allocator)
+	for &b in editor.buffers {
+		if b.modified && strings.has_prefix(b.path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+pane_theme_color :: proc(key: string, fallback: tb2.Color) -> tb2.Color {
+	if key == "" {
+		return fallback
+	}
+	return g_theme_colors[key] or_else fallback
+}
+
+pane_size_paint :: proc(x, y, max_x: int, label: string, bg: tb2.Color) {
+	fg := COLOR_GIT_ADD
+	for i in 0 ..< len(label) {
+		if x + i >= max_x {
+			return
+		}
+		if label[i] == '-' {
+			fg = COLOR_GIT_DEL
+		}
+		tb2.set_cell(i32(x + i), i32(y), rune(label[i]), fg, bg)
+	}
+}
+
+PANE_SIZES_MIN_LABEL :: 8
 
 pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	g := pane_geom(editor, p)
@@ -1147,7 +1473,9 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	for y in g.seps[:g.nsep] {
 		pane_hline(g.box, y)
 	}
-	if g.title_y >= 0 {
+	if g.title_y >= 0 && len(p.tabs) > 0 {
+		pane_render_tabs(p, g)
+	} else if g.title_y >= 0 {
 		pane_text(g.inner.x + 1, g.title_y, g.inner.w - 2, p.title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	}
 	if g.footer_y >= 0 {
@@ -1202,6 +1530,17 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		pane_text(g.list.x + 1, g.list.y, lw, hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 	}
 	cols := list_columns(editor, p) if n > 0 else nil
+	addw, delw := 0, 0
+	for r in 0 ..< g.list.h {
+		if i := p.list.scroll + r; i < n && len(p.marks) > 0 {
+			it := list_item(editor, p, pane_item_index(p, i))
+			if m, ok := p.marks[pane_item_key(it)]; ok && m.sizes && !it.dir {
+				addw, delw = max(addw, digit_count(m.added)), max(delw, digit_count(m.removed))
+			}
+		}
+	}
+	tree := p.list.tree
+	current := editor_buffer(editor).path if !editor.welcome && len(editor.buffers) > 0 else ""
 	for r in 0 ..< g.list.h {
 		i := p.list.scroll + r
 		if i >= n {
@@ -1213,14 +1552,53 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		if c, ok := g_theme_colors[it.color]; ok && it.color != "" {
 			fg = c
 		}
-		if overlay_row_selected(i, p.list.sel, p.list.anchor if p.list.multi else nil) {
+		selected := overlay_row_selected(i, p.list.sel, p.list.anchor if p.list.multi else nil)
+		if selected {
 			bg = COLOR_PANE_SEL_BG
 			if !p.list.sel_bg {
 				fg, dfg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_FG
 			}
-			pane_fill_row(g.list.x, y, g.list.w, fg, bg)
+			pane_fill_row(g.list.x + (1 if tree else 0), y, g.list.w - (1 if tree else 0), fg, bg)
 		}
-		pane_render_row(it, cols, g.list.x + 1, y, lw, fg, bg)
+		m: PaneMark
+		marked := false
+		if len(p.marks) > 0 {
+			m, marked = p.marks[pane_item_key(it)]
+		}
+		if marked && m.bar != "" {
+			tb2.set_cell(i32(g.list.x), i32(y), '▌', pane_theme_color(m.bar, COLOR_GIT_MOD), COLOR_PANE_BG)
+		}
+		switch {
+		case marked && m.fg != "":
+			fg = pane_theme_color(m.fg, fg)
+		case tree && !it.dir && it.path != "" && it.path == current:
+			fg = COLOR_PANE_PROMPT_FG
+		case !selected && len(p.marks) > 0 && (m.dim || (tree && pane_mark_dim(p, it.path))):
+			fg = COLOR_FILETREE_IGNORED
+		}
+		label := pane_tree_label(p, it) if tree else it.label
+		if marked && m.suffix != "" && !it.dir {
+			label = fmt.tprintf("%s  %s", label, m.suffix)
+		}
+		if tree && pane_tree_unsaved(editor, it) {
+			label = strings.concatenate({label, " ", ICON_MODIFIED}, context.temp_allocator)
+		}
+		label_w, sizes := lw, ""
+		if marked && m.sizes && !it.dir {
+			sizes = fmt.tprintf("%*s  %*s", addw + 1, fmt.tprintf("+%d", m.added), delw + 1, fmt.tprintf("-%d", m.removed))
+			room := label_w - len(sizes) - 1
+			if room >= min(visual_width(transmute([]u8)label), PANE_SIZES_MIN_LABEL) {
+				label_w = room
+				label = status_clip(label, room)
+			} else {
+				sizes = ""
+			}
+		}
+		it.label = label
+		pane_render_row(it, cols, g.list.x + 1, y, label_w, fg, bg)
+		if sizes != "" {
+			pane_size_paint(g.list.x + g.list.w - len(sizes), y, g.list.x + g.list.w, sizes, bg)
+		}
 		if it.detail != "" {
 			dw := visual_width(transmute([]u8)it.detail)
 			pane_text(g.list.x + g.list.w - 1 - dw, y, dw, it.detail, dfg, bg)
@@ -1230,7 +1608,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		pane_draw_scrollbar(g.div_x, g.list.y, g.list.h, p.list.scroll, n)
 	}
 
-	if len(p.fields) == 0 {
+	if len(p.fields) == 0 && !p.footer_input {
 		tb2.hide_cursor()
 		return
 	}
@@ -1241,11 +1619,36 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		}
 	}
 	pane_render_field(p, g, p.focus, count)
+	if p.footer_input && g.footer_y >= 0 {
+		x, w := pane_footer_rect(p, g)
+		textfield_render(x, g.footer_y, w, &p.footer_field.field)
+	}
 }
 
 pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
+	if p.footer_input {
+		#partial switch ev.key {
+		case .Esc:
+			pane_footer_end(editor, p, false)
+		case .Enter:
+			pane_footer_end(editor, p, true)
+		case:
+			textfield_key(&p.footer_field.field, ev)
+		}
+		return .None
+	}
 	if (p.toggle != 0 && plugin_command_id_matches(editor, p.toggle, ev)) || (p.chord != "" && command_matches(ev, p.chord)) {
 		return .Close
+	}
+	// a tab's own chord switches to it, and on the active tab closes the pane
+	for t, i in p.tabs {
+		if t.cmd != "" && pane_cmd_matches(editor, ev, t.cmd) {
+			if i == p.tab {
+				return .Close
+			}
+			pane_tab_set(editor, p, i)
+			return .None
+		}
 	}
 	if p.scope != "" {
 		if command_matches(ev, "Command Palette") {
@@ -1267,7 +1670,22 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	}
 	#partial switch ev.key {
 	case .Esc:
+		for &f in p.fields {
+			if f.esc_clears && len(f.text) > 0 {
+				textfield_reset(&f.field)
+				pane_field_changed(editor, p, &f)
+				if p.refill_due {
+					list_walk_fill(editor, p)
+				}
+				return .None
+			}
+		}
 		return .Close
+	case .Arrow_Left, .Arrow_Right:
+		if len(p.tabs) > 0 {
+			pane_tab_set(editor, p, p.tab + (1 if ev.key == .Arrow_Right else -1))
+			return .None
+		}
 	case .Enter:
 		if !p.ctx.lua && p.has_list && pane_count(editor, p) == 0 {
 			return .None
@@ -1358,6 +1776,20 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		return .None
 	}
 	motion := ev_motion(ev)
+	if p.footer_input {
+		if !mouse_in_rect(ev, g.box) {
+			return .None if motion else .Close
+		}
+		if int(ev.y) == g.footer_y {
+			x, w := pane_footer_rect(p, g)
+			textfield_mouse(&p.footer_field.field, x, g.footer_y, w, ev)
+		}
+		return .None
+	}
+	if !motion && int(ev.y) == g.title_y && len(p.tabs) > 0 {
+		pane_tab_set(editor, p, pane_tab_at(p, g, int(ev.x)))
+		return .None
+	}
 	for &f, i in p.fields {
 		y := g.field_y + i
 		if !motion && int(ev.y) == y && int(ev.x) >= g.field_x && int(ev.x) < g.field_x + g.field_w {
@@ -1459,6 +1891,10 @@ pane_md_lines :: proc(p: ^Pane, w: int) -> []MdLine {
 }
 
 pane_paste :: proc(editor: ^Editor, p: ^Pane, text: string) {
+	if p.footer_input {
+		textfield_insert_flat(&p.footer_field.field, text)
+		return
+	}
 	if len(p.fields) == 0 {
 		return
 	}

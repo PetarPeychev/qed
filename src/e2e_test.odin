@@ -289,9 +289,7 @@ e2e_type :: proc(e: ^E2E, s: string) {
 			editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = r})
 		}
 	}
-	if filetree_filter_pending(&e.ed) {
-		filetree_filter_flush(&e.ed)
-	}
+	pane_stack_pump(&e.ed, true)
 }
 
 e2e_render :: proc(e: ^E2E) {

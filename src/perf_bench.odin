@@ -483,10 +483,10 @@ bench_filetree_walk :: proc(t: ^testing.T) {
 	}
 
 	run :: proc(root: string, threads: int, label: string) {
-		ft: FileTree
+		admit: WalkAdmit
 		out := make([dynamic]FileEntry)
 		start := time.tick_now()
-		filetree_walk(&ft, root, &out, threads)
+		walk_run(&admit, root, &out, threads)
 		fmt.eprintfln("filetree_walk %s (%s): %.2f ms, %d candidates", root, label, ms_since(start), len(out))
 		for e in out {
 			delete(e.path)
@@ -501,23 +501,18 @@ bench_filetree_walk :: proc(t: ^testing.T) {
 
 	// First-filter-after-open latency: without prewarm the keystroke pays the whole
 	// parallel walk; with prewarm it pays only the adopt once the background walk lands.
-	editor: Editor
+	editor := Editor{headless = true}
 	editor.working_root = root
 	editor.filetree.scanned = true
-	editor.filetree.scope = .All
-	filetree_prewarm_start(&editor)
-	for !sync.atomic_load(&editor.filetree.prewarm.done) {
+	w := walk_acquire(&editor, root, false, false)
+	walk_prewarm(&editor, w)
+	for !sync.atomic_load(&w.pw.done) {
 		thread.yield()
 	}
 	adopt_at := time.tick_now()
-	filetree_prewarm_finish(&editor)
-	fmt.eprintfln(
-		"prewarm adopt (first-filter cost when walk already landed): %.3f ms, %d candidates",
-		ms_since(adopt_at),
-		len(editor.filetree.filter_cands),
-	)
-	filetree_filter_cache_clear(&editor.filetree)
-	delete(editor.filetree.filter_cands)
+	walk_prewarm_finish(&editor, w)
+	fmt.eprintfln("prewarm adopt (first-filter cost when walk already landed): %.3f ms, %d candidates", ms_since(adopt_at), len(w.cands))
+	walk_destroy_all(&editor)
 }
 
 @(test)
@@ -724,4 +719,74 @@ bench_decorations :: proc(t: ^testing.T) {
 		fmt.eprintfln("%d decorations (+%d ghosts): %.3f us/keystroke (insert + anchor shift), %.3f ms/frame", n, n / 100, key_us, frame_ms)
 		e2e_stop(&e)
 	}
+}
+
+@(test)
+bench_filetree_filter :: proc(t: ^testing.T) {
+	root := os.get_env("QED_BENCH_TREE", context.temp_allocator)
+	if root == "" {
+		return
+	}
+	queries := []string{"m", "ma", "mak", "make", "makefile", "sched", "kernel/sched/core", "x"}
+	for round in 0 ..< 2 {
+		editor := Editor{headless = true}
+		editor.working_root = root
+		editor.filetree.scanned = true
+		w := walk_acquire(&editor, root, false, false)
+		if round == 1 {
+			walk_prewarm(&editor, w)
+			for !sync.atomic_load(&w.pw.done) {
+				thread.yield()
+			}
+		}
+		p := Pane{fields = make([]PaneField, 1), has_list = true, list = {max = FILETREE_FILTER_MAX_RESULTS, source = {kind = .Walk, walk = w}}}
+		p.fields[0].mode = .Filter
+		fmt.eprintfln("=== filter bench (%s) ===", "prewarmed" if round == 1 else "cold")
+		for q in queries {
+			textfield_set(&p.fields[0].field, q)
+			at := time.tick_now()
+			list_walk_fill(&editor, &p)
+			fmt.eprintfln("filter %-20s %8.2f ms  %d shown / %d matched / %d cands", q, ms_since(at), len(p.list.source.entries), len(p.list.source.narrow_idx), len(w.cands))
+		}
+		pane_free(&p)
+		walk_destroy_all(&editor)
+		editor_log_destroy(&editor)
+	}
+}
+
+@(test)
+bench_filetree_render :: proc(t: ^testing.T) {
+	root := os.get_env("QED_BENCH_TREE", context.temp_allocator)
+	if root == "" {
+		return
+	}
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(root)
+	filetree_open_all(&e.ed)
+	for walk_busy(&e.ed) {
+		walk_pump(&e.ed)
+		thread.yield()
+	}
+	FRAMES :: 200
+	start := time.tick_now()
+	for _ in 0 ..< FRAMES {
+		e2e_render(&e)
+	}
+	fmt.eprintfln("tree browse render: %.3f ms/frame", ms_since(start) / FRAMES)
+	at := time.tick_now()
+	e2e_type(&e, "x")
+	fmt.eprintfln("tree type x + flush: %.2f ms", ms_since(at))
+	start = time.tick_now()
+	for _ in 0 ..< FRAMES {
+		e2e_render(&e)
+	}
+	fmt.eprintfln("tree filtered render: %.3f ms/frame", ms_since(start) / FRAMES)
+	start = time.tick_now()
+	for _ in 0 ..< FRAMES {
+		e2e_key(&e, .Arrow_Down)
+		e2e_render(&e)
+	}
+	fmt.eprintfln("tree arrow + render: %.3f ms/step", ms_since(start) / FRAMES)
 }

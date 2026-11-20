@@ -15,6 +15,7 @@ ListSourceKind :: enum {
 	Lines,
 	Log,
 	Plugins,
+	Walk,
 }
 
 ListSource :: struct {
@@ -29,6 +30,13 @@ ListSource :: struct {
 	rows:      [dynamic]int,
 	stamp:     u64,
 	evicted:   int,
+	walk:      ^Walk,
+	wscope:    ^WalkScope,
+	entries:   [dynamic]FileEntry,
+	filtering: bool,
+	narrow_q:  string,
+	narrow_idx: [dynamic]int,
+	narrow_builds: u64,
 }
 
 PaneColumn :: struct {
@@ -37,7 +45,13 @@ PaneColumn :: struct {
 }
 
 list_source_clone :: proc(s: ListSource) -> ListSource {
-	return {kind = s.kind, scope = strings.clone(s.scope), path = strings.clone(s.path), dotfiles = s.dotfiles, buf = s.buf}
+	if s.walk != nil {
+		s.walk.refs += 1
+	}
+	if s.wscope != nil {
+		s.wscope.refs += 1
+	}
+	return {kind = s.kind, scope = strings.clone(s.scope), path = strings.clone(s.path), dotfiles = s.dotfiles, buf = s.buf, walk = s.walk, wscope = s.wscope}
 }
 
 list_source_free :: proc(s: ^ListSource) {
@@ -47,6 +61,14 @@ list_source_free :: proc(s: ^ListSource) {
 	delete(s.cache)
 	delete(s.ids)
 	delete(s.rows)
+	if s.walk != nil {
+		s.walk.refs -= 1
+	}
+	walk_scope_release(s.wscope)
+	walk_entries_free(&s.entries)
+	delete(s.entries)
+	delete(s.narrow_q)
+	delete(s.narrow_idx)
 	s^ = {}
 }
 
@@ -101,6 +123,8 @@ list_stamp :: proc(editor: ^Editor, p: ^Pane) -> u64 {
 		return stamp
 	case .Plugins:
 		return u64(len(editor.plugins.list))
+	case .Walk:
+		return editor.walk_gen + 1
 	}
 	return 0
 }
@@ -128,6 +152,8 @@ list_count :: proc(editor: ^Editor, p: ^Pane) -> int {
 		return len(list_log_rows(editor, src))
 	case .Plugins:
 		return len(editor.plugins.list)
+	case .Walk:
+		return len(src.entries)
 	}
 	return 0
 }
@@ -152,6 +178,8 @@ list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
 		return list_log_entry(editor, src, i).text
 	case .Plugins:
 		return editor.plugins.list[i].display
+	case .Walk:
+		return src.entries[i].path
 	}
 	return ""
 }
@@ -210,12 +238,21 @@ list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
 		it.cells = make([]string, 4, context.temp_allocator)
 		it.cells[0], it.cells[1], it.cells[2] = pl.display, "bundled" if pl.bundled else "user", state
 		it.cells[3] = fmt.tprintf("%.2f ms", pl.load_ms) if pl.state != .Disabled else ""
+	case .Walk:
+		e := src.entries[i]
+		it.label, it.path, it.key, it.dir, it.depth = e.name, e.path, e.path, e.is_dir, e.depth
+		if idx := editor_find_buffer(editor, e.path); idx >= 0 && !e.is_dir {
+			b := &editor.buffers[idx]
+			it.buf, it.row = b.id, clamp(b.cursor.row, 0, max(0, len(b.lines) - 1)) + 1
+		}
 	}
 	return
 }
 
 list_columns :: proc(editor: ^Editor, p: ^Pane) -> []PaneColumn {
 	#partial switch p.list.source.kind {
+	case .None:
+		return p.list.columns
 	case .Lines:
 		return slice.clone([]PaneColumn{{w = digit_count(list_count(editor, p)), right = true}, {}}, context.temp_allocator)
 	case .Plugins:

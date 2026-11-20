@@ -168,7 +168,7 @@ e2e_plugin_locations_filetree :: proc(t: ^testing.T) {
 	loc_run(t, &e, "Loc: Tree")
 	testing.expect(t, test_view(&e.ed) != nil, "a picker opens over the tree")
 	e2e_key(&e, .Enter)
-	testing.expect(t, !e.ed.filetree.active, "the jump closes the tree")
+	testing.expect(t, !filetree_active(&e.ed), "the jump closes the tree")
 	b := editor_buffer(&e.ed)
 	testing.expect_value(t, filepath.base(b.path), "a.txt")
 	testing.expect_value(t, b.cursor, Cursor{1, 0})

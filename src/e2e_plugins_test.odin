@@ -371,7 +371,7 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushodinstring(L, ed.terminal.shown.name)
 		lua.setfield(L, -2, "session")
 	}
-	lua.pushboolean(L, b32(ed.filetree.active))
+	lua.pushboolean(L, b32(filetree_active(ed)))
 	lua.setfield(L, -2, "tree")
 	lua.pushboolean(L, b32(pane_find(ed, "palette") != nil))
 	lua.setfield(L, -2, "palette")
@@ -476,8 +476,8 @@ pt_settle :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
 	e2e_git_settle(g_pt)
 	e2e_pump_while(g_pt, proc(e: ^E2E) -> bool {
-		if filetree_filter_pending(&e.ed) {
-			filetree_filter_flush(&e.ed)
+		if pane_stack_pending(&e.ed) {
+			pane_stack_pump(&e.ed, true)
 		}
 		return plugin_busy(&e.ed) || e2e_plugin_yielding(e)
 	})
