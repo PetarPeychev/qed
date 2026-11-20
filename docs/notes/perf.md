@@ -159,6 +159,9 @@ Measured with the gate (`-o:speed` unless noted); file:line is where the time go
   `repo.each` yields every 2000 lines but each line costs ~50 µs in Lua (pattern
   parse, path concat, GC). Smaller chunks cut the slice but multiply wall time;
   better a core `git status --porcelain` parser or fewer per-line allocations.
+- **Adopting a background reparse on a 1 MB highlighted line** (~220 ms frame):
+  `highlight_query_paint` (highlight.odin) runs the query over the whole visible
+  row. Fix: restrict the query cursor to the visible byte range of long rows.
 - **format `buf_pre_save`** (100k lines: 83–105 ms): `fixups` materializes
   `qed.buf.lines` and pattern-matches every line in Lua. Fix: a core helper that
   returns only rows with trailing whitespace (like `qed.buf.find_lines`).

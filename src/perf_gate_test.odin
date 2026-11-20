@@ -162,6 +162,26 @@ gate_keys :: proc(e: ^E2E, text: string, settle := false) -> GateStat {
 }
 
 @(private = "file")
+gate_adopt :: proc(e: ^E2E) -> f64 {
+	b := editor_buffer(&e.ed)
+	worst := 0.0
+	start := time.tick_now()
+	for ms_since(start) < 20000 {
+		for highlight_busy(b) && !highlight_ready(b) && ms_since(start) < 20000 {
+			time.sleep(time.Millisecond)
+		}
+		at := time.tick_now()
+		editor_render(&e.ed)
+		free_all(context.temp_allocator)
+		worst = max(worst, ms_since(at))
+		if !highlight_busy(b) {
+			break
+		}
+	}
+	return worst
+}
+
+@(private = "file")
 key :: proc(k: tb2.Key, mod: tb2.Mod = {}) -> tb2.Event {
 	return tb2.Event{type = .Key, key = k, mod = mod}
 }
@@ -226,6 +246,7 @@ gate_long :: proc(name: string, row: int, wrap: bool) {
 	mid := len(b.lines[row].text) / 2
 	gate_place(&e, row, mid)
 	gate_record(50, gate_mean(&e, char('x'), undo = true), fmt.tprintf("type %s", tag), open_wrap)
+	gate_record(50, one(gate_adopt(&e)), fmt.tprintf("frame adopting a reparse %s", tag), .Open if name == "longline1mb.json" else .Gate)
 	gate_record(50, gate_mean(&e, key(.Arrow_Right)), fmt.tprintf("arrow right %s", tag))
 	gate_record(50, gate_mean(&e, key(.Arrow_Down)), fmt.tprintf("arrow down %s", tag))
 	gate_place(&e, row, len(b.lines[row].text))
@@ -335,6 +356,10 @@ gate_plugins :: proc() {
 		defer gate_close(&e)
 		gate_settle(&e)
 		gate_place(&e, 9 * 1000 + 2, 0)
+		// the first incremental reparse runs inline and, being slow, moves the buffer off-thread (Highlight.slow)
+		gate_frame(&e, char('z'))
+		e2e_key(&e, .Backspace)
+		gate_settle(&e)
 		gate_record(16, gate_mean(&e, char('z'), undo = true), "keystroke in conflict block (2000 blocks)")
 		gate_settle(&e)
 		gate_record(50, one(test_slice_max["conflict"]), "plugin slice conflict (2000 blocks)")
@@ -406,7 +431,8 @@ bench_gate :: proc(t: ^testing.T) {
 			return
 		}
 	}
-	only := os.get_env("QED_GATE_ONLY", context.temp_allocator)
+	only := os.get_env("QED_GATE_ONLY", context.allocator)
+	defer delete(only)
 	want :: proc(only, part: string) -> bool {
 		if only == "" {
 			return true

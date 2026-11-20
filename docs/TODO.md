@@ -143,6 +143,7 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 - [ ] Markdown preview renders the whole document in one slice (100k lines: 1.7 s); render per block for the visible range.
 - [ ] Git tab `view:set` on a 50k-path scope is one ~250 ms core call (`walk_scope_rows` readdirs every expanded dir); build narrowed rows from the scope's path list.
 - [ ] git plugin status/numstat parse slices reach 60-100 ms on 50k changes; parse in core or cut per-line allocations.
+- [ ] The frame that adopts a background reparse on a 1 MB highlighted line costs ~220 ms: `highlight_query_paint` queries the whole row; limit the query to the visible byte range.
 - [ ] format `buf_pre_save` fixups take ~90 ms on 100k lines (`qed.buf.lines` + Lua patterns); add a core trailing-whitespace row scan.
 
 ### Refactors
