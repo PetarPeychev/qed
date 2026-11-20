@@ -14,6 +14,41 @@ longline_text :: proc(n: int) -> string {
 }
 
 @(test)
+e2e_long_line_wrapped_segments_render :: proc(t: ^testing.T) {
+	line := longline_text(20000)
+	e := e2e_start(fmt.tprintf("%s\n\tté́xt\t😀 tail\n", line))
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.wrap = true
+	b.cursor = {0, len(line) / 2}
+	editor_scroll(&e.ed)
+	e2e_render(&e)
+	gutter := editor_gutter_width(&e.ed)
+	w := int(80) - gutter
+	segs := line_wrap(b.lines[0].text[:], w)
+	sub := e.ed.scroll_sub
+	testing.expect(t, sub > 100, "viewport is deep inside the long line")
+	for y in 0 ..< 5 {
+		s := sub + y
+		want := strings.trim_right_space(line[segs[s]:segs[s + 1]])
+		got := strings.trim_space(e2e_row_text(&e, y)[gutter:])
+		testing.expectf(t, got == want, "row %d: %q, want %q", y, got, want)
+	}
+
+	b.cursor = {1, 0}
+	editor_scroll(&e.ed)
+	e2e_render(&e)
+	found := false
+	for y in 0 ..< 22 {
+		if strings.contains(e2e_row_text(&e, y), "tail") {
+			found = true
+			testing.expect(t, strings.contains(e2e_row_text(&e, y), "😀"), "emoji renders")
+		}
+	}
+	testing.expect(t, found, "second line visible")
+}
+
+@(test)
 e2e_long_line_find_highlights :: proc(t: ^testing.T) {
 	line := longline_text(20000)
 	e := e2e_start(line)

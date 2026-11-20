@@ -89,14 +89,23 @@ seg_width :: proc(text: []u8, start, end, v: int) -> int {
 }
 
 visual_col :: proc(text: []u8, col: int) -> int {
-	v := 0
+	return visual_col_from(text, 0, 0, col)
+}
+
+// `from` must be a grapheme boundary whose visual column is `v`.
+visual_col_from :: proc(text: []u8, from, v, col: int) -> int {
+	v := v
 	start := -1
-	it := utf8.decode_grapheme_iterator_make(string(text))
+	it := utf8.decode_grapheme_iterator_make(string(text[from:]))
 	for _, g in utf8.decode_grapheme_iterate(&it) {
-		if start >= 0 && start < col {
-			v += seg_width(text, start, g.byte_index, v)
+		gi := from + g.byte_index
+		if start >= 0 {
+			v += seg_width(text, start, gi, v)
 		}
-		start = g.byte_index
+		if gi >= col {
+			return v
+		}
+		start = gi
 	}
 	if start >= 0 && start < col {
 		v += seg_width(text, start, len(text), v)

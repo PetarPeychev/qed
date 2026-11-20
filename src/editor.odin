@@ -1412,15 +1412,16 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h,
 
 		ct := content[:]
 		segs := line_wrap(ct, w)
+		x_origin := 0
 		for s in 0 ..< len(segs) {
 			if sy >= h {
 				return sy
 			}
 			seg_start := segs[s]
 			seg_end := segs[s + 1] if s + 1 < len(segs) else len(ct)
-			x_origin := visual_col(ct, seg_start)
 			editor_render_gutter(sy, gutter, row + 1, true, 0, mark, !first_row)
 			editor_render_text_row(gutter, sy, w, ct, ccol[:], x_origin, line_bg, -1, -1, nil, seg_start, seg_end)
+			x_origin = visual_col_from(ct, seg_start, x_origin, seg_end)
 			sy += 1
 			first_row = false
 		}
@@ -1568,18 +1569,20 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			} else {
 				segs := line_wrap(text[:], w)
 				start_sub := editor.scroll_sub if row == editor.scroll_row else 0
+				x_origin := visual_col(text[:], segs[start_sub]) if start_sub < len(segs) else 0
 				for s in start_sub ..< len(segs) {
 					if screen_y >= h {
 						break
 					}
 					seg_start := segs[s]
 					seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
-					x_origin := visual_col(text[:], seg_start)
+					x_end := visual_col_from(text[:], seg_start, x_origin, seg_end)
 					editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, s > 0, drow.glyph, drow.glyph_fg)
 					editor_render_text_row(gutter, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
 					if s == len(segs) - 1 && len(drow.eols) > 0 {
-						editor_render_eol(gutter, screen_y, w, visual_col(text[:], len(text)) - x_origin + 1, drow.eols[:], line_bg)
+						editor_render_eol(gutter, screen_y, w, x_end - x_origin + 1, drow.eols[:], line_bg)
 					}
+					x_origin = x_end
 					screen_y += 1
 				}
 			}
@@ -2018,19 +2021,31 @@ editor_render_text_row :: proc(
 		return vcol + seg_width(text, pstart, pend, vcol)
 	}
 
-	vcol := 0
+	// A wrap segment (col_start > 0) starts at screen x 0, so its visual column is x_origin.
+	base := col_start if col_start > 0 else 0
+	vcol := x_origin if base > 0 else 0
 	pstart := -1
 	psel := false
 	pfg := COLOR_FG
 	pbg := bg_normal
 	next_match := 0
-	it := utf8.decode_grapheme_iterator_make(string(text))
+	clipped := false
+	it := utf8.decode_grapheme_iterator_make(string(text[base:]))
 	for _, g in utf8.decode_grapheme_iterate(&it) {
+		gi := base + g.byte_index
 		if pstart >= 0 {
-			vcol = emit(gutter, y, w, text, pstart, g.byte_index, vcol, x_origin, col_start, col_end, psel, pfg, pbg)
+			vcol = emit(gutter, y, w, text, pstart, gi, vcol, x_origin, col_start, col_end, psel, pfg, pbg)
 		}
-		pstart = g.byte_index
-		psel = sel_from >= 0 && g.byte_index >= sel_from && g.byte_index < sel_to
+		if gi >= col_end || vcol - x_origin >= w {
+			clipped = true
+			pstart = -1
+			break
+		}
+		pstart = gi
+		if vcol + max(TAB_WIDTH, 2) <= x_origin {
+			continue
+		}
+		psel = sel_from >= 0 && pstart >= sel_from && pstart < sel_to
 		pfg = colors[pstart] if colors != nil && pstart < len(colors) else COLOR_FG
 		if underlined(underlines, pstart) {
 			pfg = tb2.Color(u64(pfg) | u64(tb2.Color.Underline))
@@ -2057,7 +2072,7 @@ editor_render_text_row :: proc(
 	if pstart >= 0 {
 		vcol = emit(gutter, y, w, text, pstart, len(text), vcol, x_origin, col_start, col_end, psel, pfg, pbg)
 	}
-	if col_end >= len(text) && sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
+	if !clipped && col_end >= len(text) && sel_from >= 0 && len(text) >= sel_from && len(text) < sel_to {
 		draw(gutter, y, vcol - x_origin, w, ' ', true, COLOR_FG, bg_normal)
 	}
 }
