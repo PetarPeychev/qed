@@ -249,11 +249,7 @@ return {
 		end)
 		qed.on("buf_open", full)
 		qed.on("buf_reload", function(b) full(b, true) end)
-		qed.on("buf_save", function(b)
-			if not armed[b] then
-				full(b)
-			end
-		end)
+		qed.on("buf_save", function(b) full(b, armed[b]) end)
 		qed.on("buf_close", function(b)
 			state[b], armed[b] = nil, nil
 			sync_hook()

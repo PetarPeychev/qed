@@ -44,6 +44,7 @@ Buffer :: struct {
 	plugin_lo:     int,
 	plugin_hi:     int,
 	typed_rev:     u64,
+	bulk_offsets:  []int,
 }
 
 DiskStamp :: struct {
@@ -144,6 +145,9 @@ buffer_snapshot :: proc(buffer: ^Buffer) -> string {
 }
 
 buffer_byte_offset :: proc(buffer: ^Buffer, at: Cursor) -> int {
+	if at.row < len(buffer.bulk_offsets) {
+		return buffer.bulk_offsets[at.row] + at.col
+	}
 	off := 0
 	for i in 0 ..< at.row {
 		off += len(buffer.lines[i].text) + 1
@@ -472,7 +476,7 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	highlight_record_edit(&buffer.hl, ts.InputEdit {
 		start_byte    = start_byte,
 		old_end_byte  = start_byte,
-		new_end_byte  = u32(buffer_byte_offset(buffer, end)),
+		new_end_byte  = start_byte + u32(len(text)),
 		start_point   = {u32(at.row), u32(at.col)},
 		old_end_point = {u32(at.row), u32(at.col)},
 		new_end_point = {u32(end.row), u32(end.col)},
@@ -481,7 +485,9 @@ buffer_insert :: proc(buffer: ^Buffer, at: Cursor, text: string) -> Cursor {
 	deco_after_insert(buffer, at, end)
 	buffer_dirty_insert(buffer, at, end)
 
-	buffer_recompute_modified(buffer)
+	if buffer.bulk_offsets == nil {
+		buffer_recompute_modified(buffer)
+	}
 	buffer.rev += 1
 	return end
 }
@@ -566,7 +572,9 @@ buffer_delete :: proc(buffer: ^Buffer, from, to: Cursor) -> string {
 		append(&buffer.lines, Line{})
 	}
 
-	buffer_recompute_modified(buffer)
+	if buffer.bulk_offsets == nil {
+		buffer_recompute_modified(buffer)
+	}
 	buffer.rev += 1
 	return strings.to_string(sb)
 }

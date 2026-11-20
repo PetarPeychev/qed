@@ -144,6 +144,17 @@ function T.typed_conflict_highlights_on_save(t)
 	t.eq(d[#d - 1], "span 3:1-3:3 fg=- bg=conflict_ours conflict_word", "armed now, edits rescan")
 end
 
+function T.save_after_resolving_disarms(t)
+	local b = open(t, TWO_WAY)
+	resolve(t, b, 3, 1)
+	t.key("Ctrl+s")
+	qed.buf.set_cursor(b, {row = 3, col = 5})
+	t.type("\n<<<<<<< a\nx\n=======\ny\n>>>>>>> b")
+	t.eq(decos(t, b), "", "a save with no blocks left disarms the buffer")
+	t.key("Ctrl+s")
+	t.eq(#t.deco(b), 10, "the next save finds the new block")
+end
+
 function T.reload_without_blocks_clears(t)
 	local b = open(t, TWO_WAY)
 	t.eq(#t.deco(b), 10)

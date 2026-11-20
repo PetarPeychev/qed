@@ -172,7 +172,7 @@ local Handle = {}
 function Handle:off() end
 
 ---Handlers run as coroutines in plugin load order. `buf_changed(b, rev, typed, lo, hi)` (`typed`: the latest change was the user typing a character, Enter, Backspace or Delete;
----`lo..hi`: the rows touched since the last delivery, in current rows; rows above `lo` are unchanged, rows below `hi` only shifted) and
+---`lo..hi`: the rows touched since the last delivery to any subscriber, in current rows; rows above `lo` are unchanged, rows below `hi` only shifted; a rev change with no recorded edit carries the whole buffer) and
 ---`cursor_moved(b)` fire at most once per main-loop iteration, and again within the same flush for changes a handler made. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.

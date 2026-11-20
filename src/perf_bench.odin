@@ -955,3 +955,47 @@ bench_conflict_keystroke :: proc(t: ^testing.T) {
 	run("1 MB line, typing in its block", 200, 200, 93, 10004, 100)
 	delete(test_slice_max)
 }
+
+@(test)
+bench_text_hunks :: proc(t: ^testing.T) {
+	if os.get_env("QED_BENCH", context.temp_allocator) == "" {
+		return
+	}
+	text :: proc(n, every: int, changed, grow: bool) -> string {
+		sb := strings.builder_make(context.temp_allocator)
+		for i in 0 ..< n {
+			if changed && i % every == 50 {
+				fmt.sbprintf(&sb, "changed line %d\n", i)
+				if grow {
+					fmt.sbprintf(&sb, "added line %d\n", i)
+				}
+			} else {
+				fmt.sbprintf(&sb, "line %d of the file\n", i)
+			}
+		}
+		return strings.to_string(sb)
+	}
+	run :: proc(label: string, every: int, grow: bool) {
+		e := e2e_start(text(100_000, every, false, false))
+		defer e2e_stop(&e)
+		b := editor_buffer(&e.ed)
+		next := text(100_000, every, true, grow)
+		_ = os.write_entire_file(e.path, transmute([]u8)next)
+		start := time.tick_now()
+		buffer_reload(b)
+		reload := ms_since(start)
+		orig := text(100_000, every, false, false)
+		start = time.tick_now()
+		hn := len(text_hunks(b, strings.split(orig, "\n", context.temp_allocator)))
+		diff := ms_since(start)
+		start = time.tick_now()
+		buffer_set_text(b, orig)
+		set := ms_since(start)
+		fmt.eprintfln("%-28s %6d lines  reload %8.2f ms  set_text back %8.2f ms (%d hunks, diff alone %.2f ms)", label, len(b.lines), reload, set, hn, diff)
+	}
+	fmt.eprintln("=== 100k lines, scattered hunks (default build: -define:ODIN_TEST_TRACK_MEMORY=false) ===")
+	run("1000 modified lines", 100, false)
+	run("1000 modified + inserted lines", 100, true)
+	run("200 modified lines", 500, false)
+	run("200 modified + inserted lines", 500, true)
+}

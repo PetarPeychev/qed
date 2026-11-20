@@ -130,7 +130,7 @@ The API is one global, `qed`.
 | `buf_open`, `buf_close`, `buf_enter` | `b` | |
 | `buf_pre_save` | `b` | **yes**, bounded by `plugin_hook_timeout_ms`. On timeout the save proceeds, logging `.Warn` with the slow plugin's name. |
 | `buf_save`, `buf_reload` | `b` | |
-| `buf_changed` | `b`, `rev`, `typed`, `lo`, `hi` | coalesced. `lo..hi`: the rows touched since the last delivery (a coalesced union, current rows); rows above `lo` are unchanged, rows below `hi` only shifted. `typed`: the latest change was the user typing a character, Enter, Backspace or Delete (no Ctrl/Alt), not a paste, undo, command or plugin edit. |
+| `buf_changed` | `b`, `rev`, `typed`, `lo`, `hi` | coalesced. `lo..hi`: the rows touched since the last delivery to any subscriber (a coalesced union, current rows; the whole buffer for a rev change with no recorded edit); rows above `lo` are unchanged, rows below `hi` only shifted. `typed`: the latest change was the user typing a character, Enter, Backspace or Delete (no Ctrl/Alt), not a paste, undo, command or plugin edit. |
 | `cursor_moved` | `b` | coalesced |
 | `language_changed` | `b` | |
 | `root_changed` | `old`, `new` | |

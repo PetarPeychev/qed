@@ -83,6 +83,8 @@ edit_delete :: proc(b: ^Buffer, from, to: Cursor) {
 	append(&b.open.edits, Edit{.Insert, from, removed})
 }
 
+TEXT_HUNKS_WORK :: 100_000_000
+
 TextHunk :: struct {
 	old_lo, old_n, new_lo, new_n: int,
 }
@@ -101,42 +103,25 @@ text_hunks :: proc(b: ^Buffer, lines: []string) -> []TextHunk {
 	if pre == n && pre == m {
 		return hunks[:]
 	}
-	a := make([]u64, n - pre - suf, context.temp_allocator)
+	sa := make([]string, n - pre - suf, context.temp_allocator)
+	a := make([]u64, len(sa), context.temp_allocator)
 	for &h, i in a {
-		h = diff_hash(b.lines[pre + i].text[:])
+		sa[i] = string(b.lines[pre + i].text[:])
+		h = diff_hash(transmute([]u8)sa[i])
 	}
-	c := make([]u64, m - pre - suf, context.temp_allocator)
+	sc := lines[pre:m - suf]
+	c := make([]u64, len(sc), context.temp_allocator)
 	for &h, i in c {
-		h = diff_hash(transmute([]u8)lines[pre + i])
+		h = diff_hash(transmute([]u8)sc[i])
 	}
-	ops, ok := diff_myers(a, c)
+	// Myers costs about (n+m)*d; past that budget one replace hunk is cheaper than the diff
+	ops, ok := diff_myers(a, c, max_d = clamp(TEXT_HUNKS_WORK / max(len(a) + len(c), 1), 64, DIFF_MAX_D))
 	if !ok {
 		append(&hunks, TextHunk{pre, len(a), pre, len(c)})
 		return hunks[:]
 	}
-	oi, ni := pre, pre
-	open := false
-	for op in ops {
-		// A hash collision must not keep a changed line.
-		if op == .Equal && string(b.lines[oi].text[:]) == lines[ni] {
-			open = false
-			oi += 1
-			ni += 1
-			continue
-		}
-		if !open {
-			append(&hunks, TextHunk{oi, 0, ni, 0})
-			open = true
-		}
-		h := &hunks[len(hunks) - 1]
-		if op != .Insert {
-			h.old_n += 1
-			oi += 1
-		}
-		if op != .Delete {
-			h.new_n += 1
-			ni += 1
-		}
+	for r in diff_runs(ops, sa, sc) {
+		append(&hunks, TextHunk{pre + r[0], r[1], pre + r[2], r[3]})
 	}
 	return hunks[:]
 }
@@ -165,7 +150,14 @@ buffer_pos_clamp :: proc(b: ^Buffer, p: Cursor) -> Cursor {
 	return {row, col}
 }
 
+// Bottom-up, so a hunk's rows and everything above it still have their old byte offsets.
 text_hunks_apply :: proc(b: ^Buffer, lines: []string, hunks: []TextHunk) {
+	offsets := make([]int, len(b.lines), context.temp_allocator)
+	for i in 1 ..< len(b.lines) {
+		offsets[i] = offsets[i - 1] + len(b.lines[i - 1].text) + 1
+	}
+	b.bulk_offsets = offsets
+	defer b.bulk_offsets = nil
 	#reverse for h in hunks {
 		body := strings.join(lines[h.new_lo:h.new_lo + h.new_n], "\n", context.temp_allocator)
 		last := len(b.lines) - 1
@@ -201,6 +193,7 @@ buffer_set_text :: proc(b: ^Buffer, text: string) -> bool {
 	}
 	edit_open(b, .Atomic)
 	text_hunks_apply(b, lines, hunks)
+	buffer_recompute_modified(b)
 	buffer_undo_commit(b)
 	b.cursor = buffer_pos_clamp(b, cursor)
 	b.selection = nil

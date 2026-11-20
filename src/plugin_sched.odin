@@ -713,9 +713,11 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 		return false
 	}
 	plugin_views_flush(editor)
+	settled := false
 	for _ in 0 ..< PLUGIN_FLUSH_ROUNDS {
 		plugin_buffers_check(editor)
 		if len(p.queue) == 0 {
+			settled = true
 			break
 		}
 		batch := p.queue
@@ -730,6 +732,13 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 		}
 		delete(batch)
 		ran = true
+	}
+	if !settled {
+		changed := 0
+		for b in editor.buffers {
+			changed += int(b.rev != b.plugin_rev || b.cursor != b.plugin_cursor)
+		}
+		if len(p.queue) > 0 || changed > 0 do editor_log(editor, .Debug, "plugins", fmt.tprintf("all %d flush rounds used: %d events queued, %d buffers changed again; the rest waits for the next flush", PLUGIN_FLUSH_ROUNDS, len(p.queue), changed), false)
 	}
 	plugins_keybinds_check(editor)
 	editor.jump_lock = false

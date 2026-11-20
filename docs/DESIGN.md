@@ -121,9 +121,9 @@ pass returning sorted rows and kinds) for `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>
 decorations: ours/theirs/diff3-base tints (`conflict` tint, markers `conflict_marker`) with marker lines
 fg-colored, and ours↔theirs word spans (`qed.text.diff_rows` with `words`, the core Myers pairing and
 `diff_word_span`, no text copied into Lua) blended at `conflict_word`. Tint strengths are theme tint keys
-resolved per frame. A buffer that has had blocks since open/reload is **armed**; only while some buffer is
-armed does the plugin hold `buf_changed`, so a plain session runs no Lua per keystroke (a conflict typed or
-pasted into a never-armed buffer highlights on save or reload). On `buf_changed` it rescans the markers and
+resolved per frame. A buffer whose last open/reload/save scan found blocks is **armed** (a save or reload
+with none disarms it); only while some buffer is armed does the plugin hold `buf_changed`, so a plain
+session runs no Lua per keystroke (a conflict typed or pasted into an unarmed buffer highlights on save or reload). On `buf_changed` it rescans the markers and
 redecorates only blocks touching the dirty rows `lo..hi` or whose structure changed; blocks elsewhere keep
 their (core-shifted) decorations. *Conflict: Resolve* (`Alt+m`): cursor in a block asks
 `Keep Ours/Theirs/Both` (`qed.confirm`); cursor outside jumps to the next block (wraps). Resolve deletes
@@ -249,7 +249,8 @@ member group is no longer on top).
   `DISK_POLL_MS` (idle branch uses a timed `peek_event`, so it fires even with no
   input). A changed file that is **clean** auto-reloads (`buffer_reload`: re-read,
   apply the changed hunks through the primitives like `buffer_set_text` so decorations and marks on
-  untouched lines stay, clear undo/redo, drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
+  untouched lines stay (`text_hunks_apply`: bottom-up with precomputed byte offsets, `modified` computed
+  once; past a Myers work budget of ~(n+m)·d = 1e8 it is one replace hunk), clear undo/redo, drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
   map the cursor through the hunks); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
   onto it opens the conflict dialog (Cancel / Overwrite / Reload) instead of
   clobbering. Reload skips a buffer while its highlight parse thread is busy

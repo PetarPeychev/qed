@@ -311,27 +311,32 @@ DiffOp :: enum u8 {
 	Insert,
 }
 
-diff_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]DiffOp, bool) {
+diff_myers :: proc(a, b: []u64, allocator := context.temp_allocator, max_d := DIFF_MAX_D) -> ([]DiffOp, bool) {
 	n, m := len(a), len(b)
 	if n == 0 && m == 0 {
 		return {}, true
 	}
 	maxd := n + m
-	// k stays within ±d ≤ ±cap_d, so the arrays only need the capped span — sizing
-	// by maxd would make each of the up-to-cap_d trace snapshots O(n+m).
-	cap_d := min(maxd, DIFF_MAX_D)
+	// k stays within ±d ≤ ±cap_d, so v only needs the capped span, not n+m.
+	cap_d := min(maxd, max_d)
 	offset := cap_d
 	v := make([]int, 2 * cap_d + 1, context.temp_allocator)
-	trace := make([dynamic][]int, context.temp_allocator)
+	// round d's backtrack reads only k in [-d-1, d+1], so each snapshot keeps just that window
+	Snap :: struct {
+		base: int,
+		v:    []int,
+	}
+	trace := make([dynamic]Snap, context.temp_allocator)
 
 	found_d := -1
 	search: for d in 0 ..= maxd {
-		if d > DIFF_MAX_D {
+		if d > max_d {
 			return nil, false
 		}
-		snapshot := make([]int, 2 * cap_d + 1, context.temp_allocator)
-		copy(snapshot, v)
-		append(&trace, snapshot)
+		lo, hi := max(offset - d - 1, 0), min(offset + d + 1, 2 * cap_d)
+		snapshot := make([]int, hi - lo + 1, context.temp_allocator)
+		copy(snapshot, v[lo:hi + 1])
+		append(&trace, Snap{lo, snapshot})
 
 		for k := -d; k <= d; k += 2 {
 			x: int
@@ -359,15 +364,16 @@ diff_myers :: proc(a, b: []u64, allocator := context.temp_allocator) -> ([]DiffO
 	ops := make([dynamic]DiffOp, allocator)
 	x, y := n, m
 	for d := found_d; d >= 0; d -= 1 {
-		vs := trace[d]
+		vs := trace[d].v
+		at := offset - trace[d].base
 		k := x - y
 		prev_k: int
-		if k == -d || (k != d && vs[offset + k - 1] < vs[offset + k + 1]) {
+		if k == -d || (k != d && vs[at + k - 1] < vs[at + k + 1]) {
 			prev_k = k + 1
 		} else {
 			prev_k = k - 1
 		}
-		prev_x := vs[offset + prev_k]
+		prev_x := vs[at + prev_k]
 		prev_y := prev_x - prev_k
 		for x > prev_x && y > prev_y {
 			append(&ops, DiffOp.Equal)

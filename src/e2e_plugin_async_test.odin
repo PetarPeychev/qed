@@ -109,6 +109,19 @@ e2e_plugin_changed_range :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_plugin_flush_rounds_logged :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "loop", `return {setup = function()
+		qed.on("buf_changed", function(b) qed.buf.insert(b, {row = 1, col = 1}, "x") end)
+	end}`)
+	plugin_flush(&e.ed)
+	e2e_type(&e, "y")
+	plugin_flush(&e.ed)
+	testing.expect(t, plugin_test_logged(&e.ed, .Debug, "plugins", "all 16 flush rounds used"), "an endless edit loop is logged")
+}
+
+@(test)
 e2e_plugin_coalesce :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
