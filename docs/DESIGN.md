@@ -76,8 +76,8 @@ language, AI count, then diff size, ahead/behind, diff base, branch, `[n/m]`), t
 screen↔buffer column mapping (cursor placement, mouse).
 
 Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`),
-stacked bottom→top: optional git-hunk row tint → conflict tint → plugin decoration
-tints → AI-edit tint → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
+stacked bottom→top: optional git-hunk row tint → plugin decoration tints (push order;
+the `conflict` plugin's included) → AI-edit tint → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
 (`*_TINT`) and tint colors are both theme-overridable. The
 row tint is part of **diff view** (*Diff: Toggle Diff View*, config
 `diff_view`, off by default), separate from the always-on gutter mark — see
@@ -115,14 +115,15 @@ each repo's `diff --name-status <base>` replaces its tracked `status` lines. A w
 resets the base. The plugin's 2 s stat poll also resolves the base sha; when it changes (a moved
 branch, or HEAD under the default base) it refetches every buffer's base and rescans the tree.
 
-**Merge conflicts** (`conflict.odin`): content-driven, always on, no git dependency —
-`merge_scan` finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks by line prefix. Render
-tints ours green, theirs blue, diff3 base gray, marker lines stronger + fg-colored (all
-via the existing `editor_line_bg`/`diff_bg` render path). Ours↔theirs word emphasis reuses
-`diff_myers` (line pairing) + `diff_word_span` (per-char span), shown on both sides.
-*Git: Resolve Conflict* (`Alt+m`): cursor in a block opens a 3-way `Keep Ours/Theirs/Both`
-dialog (a `merge` pane); cursor outside jumps to the next
-block. Resolve deletes the marker/side rows bottom-up as one undo group (`merge_resolve`).
+**Merge conflicts** (`plugins/conflict`): content-driven, no git dependency. On `buf_open`,
+`buf_reload`, `buf_changed` (coalesced) and `startup` it finds `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>`
+blocks (`qed.buf.find_lines`, so a buffer without markers costs one core pass and no text copy) and
+re-pushes its decorations: ours/theirs/diff3-base tints (`conflict` tint, markers `conflict_marker`)
+with marker lines fg-colored, and ours↔theirs word spans (`qed.text.diff` pairs lines,
+a Lua port of `diff_word_span` trims them) blended at `conflict_word`. Tint strengths are theme tint
+keys resolved per frame. *Conflict: Resolve* (`Alt+m`): cursor in a block asks `Keep Ours/Theirs/Both`
+(`qed.confirm`); cursor outside jumps to the next block (wraps). Resolve deletes the marker/side rows
+bottom-up as one undo group and rescans at once (its edit lands after the flush's change check).
 
 Message line clears on the next input event (no timers); an active interactive
 prompt owns the line + input until it resolves. All user-facing messages go through
@@ -344,7 +345,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
   subtree). `pane_end(handle, activate)` takes that run off the stack, then runs the children's
   `on.close` and the pane's `on.activate` or `on.close`, so a handler that opens another pane
   never sees the old one. A pane is live only if its parent chain is.
-- `Pane.id` names core panes (`quit`, `close`, `conflict`, `merge`) and plugin panes (`qed.ui.open{id}`);
+- `Pane.id` names core panes (`quit`, `close`, `conflict`) and plugin panes (`qed.ui.open{id}`);
   `handle` is unique per open; `ctx.buf` is the buffer a core dialog acts on, resolved in its handler.
 - Plugin unload only marks its panes `dead`; `pane_stack_sync` closes them later, so no Lua runs
   inside an unload. `pane_stack_sync` (end of `editor_step` and `plugin_pump`) also syncs auto previews.
@@ -442,7 +443,7 @@ events), so the plugin owns open-file vs `qed.open_url` (`url_opener` in `shell.
 backgrounded shell; headless only logs). `backdrop` (`dim`/`blank`) is applied in `pane_render`
 before the box, to every cell drawn so far except the status rows, so panes below fade too.
 
-Ported: the quit/close/conflict/merge dialogs, the command palette, the Message Log, the Plugins pane, the LSP
+Ported: the quit/close/conflict dialogs, the merge-conflict resolve dialog (`conflict` plugin), the command palette, the Message Log, the Plugins pane, the LSP
 rename prompt, the working-root picker (`workspace` plugin), line find (`goto` plugin), the file tree (`filetree`
 plugin) and every plugin pane. Still legacy overlays: terminal, AI edit prompt, find bar.
 **Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
@@ -465,7 +466,6 @@ commands carry `Command.lsp`, server spawn/completion/status segment check the f
 the rest: commands carry a `.module`; `command_enabled` covers both, so `command_available`
 and keybind dispatch drop gated commands from palette and chords. After a config hot-reload,
 `editor_modules_sync` calls `ai_module_sync` to cancel in-flight AI a toggle-off orphaned.
-Merge-conflict highlight/resolve (`conflict.odin`) is ungated.
 
 ## Plugins
 
@@ -597,8 +597,9 @@ started at the end of `editor_init`. Invariants the code can't show:
 - **Decorations** (`deco.odin`): `Buffer.deco` holds plain `Deco` records (ghosts in their own list, with
   per-row above/below counts rebuilt lazily after a ghost or line change, so the walkers stay O(1) per row). `buffer_insert`/`buffer_delete` shift row anchors and drop spans on
   edited rows (rules in plugins.md §3), so a keystroke runs no Lua. Colors are interned theme keys
-  (`Plugins.colors`), resolved into a per-frame palette; `deco_rows` buckets the visible rows once per
-  frame. Namespaces (`Plugins.deco_ns`), status segments (`Plugins.status`) and plugin diff bases
+  (`Plugins.colors`), resolved into a per-frame palette; a tint or span alpha may be a theme tint key
+  (`Deco.tint`, an index into `config_tints`), also resolved per frame. `deco_rows` buckets the visible
+  rows once per frame; a blended span (`blend`) paints `color_over(line bg, bg, alpha)`. Namespaces (`Plugins.deco_ns`), status segments (`Plugins.status`) and plugin diff bases
   record their plugin; unload clears them.
 - `qed.spawn` runs on `subprocess_spawn` (stderr captured, reaped with a
   non-blocking `process_wait`). The child leads its own process group
@@ -834,9 +835,9 @@ defaults seeded before main, load + write-back) · `module` (ai enable gate +
 hot-reload teardown) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Debug: Message Log* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `conflict` (merge-marker highlight + resolve) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
+`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations) · `llm` · `aiedit` · `fim` · `terminal` · `plugin` (Lua state, loader, hot reload, *Debug: Plugins* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*).
+Bundled Lua plugins live in `plugins/` at the repo root (`filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -1061,8 +1062,8 @@ hunk navigation (`Diff: Next/Previous Change`, `Alt+'`/`Alt+;`, `diffbase_goto`)
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
 hunk revert (`Diff: Revert Hunk`, `Alt+z`, `diffbase_revert`): restores the base lines for the
 hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-base) as one undo group;
-merge-conflict highlighting (ours green / theirs blue / diff3 base gray, marker lines
-emphasized, ours↔theirs word-level diff on both sides) + resolve (`Alt+m`: keep ours /
+merge-conflict highlighting (`conflict` plugin: ours green / theirs blue / diff3 base gray, marker lines
+emphasized, ours↔theirs word-level diff on both sides) + resolve (*Conflict: Resolve*, `Alt+m`: keep ours /
 theirs / both, or jump to next conflict).
 
 AI assist: selection + prompt (`Ctrl+K`) via a configurable chat command

@@ -57,7 +57,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | git: line-hash + Myers gutter diff, ghost rows, word spans, next/prev change, revert hunk | KS (`git_recompute` per rev) | core **diff base** (`diffbase.odin`, phase 8) | The plugin sets base text, and core diffs and renders. "Changed since save" becomes a few lines of Lua. |
 | file tree Git tab + status bars: status scan, numstat sizes, renames, deleted files, ignored set, preview base, restore | | **plugin** (phase 11, `plugins/git/tree.lua`) | Since M6 through the `filetree` plugin's exports (`set_tab`, `set_marks`, `set_ignored`, `open`), reached with `qed.plugin("filetree")` at `startup` and on `plugin_loaded`. |
 | file tree | | **plugin** (M5, `plugins/filetree`) | `qed.fs.walk` handles, `ui.open` (tabs, tree list, marks, footer input, chips), `v:select`, `qed.fs.*` writes, `qed.confirm`. Core keeps the walk, tree rows, render, filter and preview. |
-| conflict.odin | KS (per render) | later | Needs tints, spans, `confirm`. |
+| conflict.odin | KS (per render) | **plugin** (M7, `plugins/conflict`) | `buf_changed`/`buf_open`/`buf_reload`/`startup` rescans over `qed.buf.find_lines`, `qed.deco` tints and spans with theme tint keys, `qed.text.diff`, `qed.confirm`, `qed.edit`. Core keeps the render and the anchor shifts. |
 | projsearch: rg invocation, parse, sort, 500 cap, min query, query and selection memory, tree scope | | **plugin** (phase 12, done: `plugins/search`; on `qed.ui.open` since M1) | `ui.open{id, query field}`, `view:set/append`, `spawn_bg{on_line}`, `jump`, `ctx.files`. Core keeps the split layout, the preview, the count and hint, the query debounce (keystroke path) and the query/selection memory (`id`). |
 | llm / aiedit | KS (relocate per render) | later | `prompt`, `spawn`, range-anchored tints. |
 | fim | KS (debounce) | later, last | Inline ghost decoration + `buf_changed`. |
@@ -88,6 +88,7 @@ The API is one global, `qed`.
 - Ranges are half-open: `{from, to}`, with `to` after the last byte, so `line:sub(from.col, to.col - 1)` is the text.
 - Positions are `{row, col}` (`qed.Pos` in the stub).
 - `qed.text.width(s)` gives display width.
+- `qed.text.diff(a, b) -> hunks | nil` diffs two string lists with the gutter's engine: `{a, a_count, b, b_count}` runs, `nil` past its edit-distance cap.
 - The binding is the only place that converts to core's 0-based coordinates.
 
 ### Buffers, cursor, edits
@@ -97,6 +98,7 @@ The API is one global, `qed`.
 | `qed.buf.valid(b) -> bool` | Any other call on a closed buffer raises `buffer closed`. |
 | `qed.buf.path(b)`, `.language(b)`, `.modified(b)`, `.rev(b)`, `.line_count(b)` | `rev` is the version used for await safety. |
 | `qed.buf.lines(b, from?, to?) -> string[]`, `.line(b, row)`, `.text(b)` | Bulk copies. No per-line FFI loops. |
+| `qed.buf.find_lines(b, prefix) -> rows` | Rows starting with `prefix` (plain bytes). One core pass, no text copy: a `buf_changed` handler's cheap check. |
 | `qed.buf.insert(b, pos, text) -> pos`, `.delete(b, from, to) -> string`, `.replace(b, from, to, text)` | Wrappers over the primitives. |
 | `qed.buf.set_text(b, text, {rev?}) -> bool` | Minimal-diff whole replace. Returns false if `rev` is stale. |
 | `qed.edit(b, fn, {rev?}) -> bool` | Everything inside `fn` is one undo group. `fn` must not yield. |
@@ -203,9 +205,9 @@ unless they were created with `{detach = true}`.
 | Function | Notes |
 |---|---|
 | `qed.deco.gutter(b, ns, row, glyph, color)` | Mark column, one single-width glyph. A diff-base mark on the row wins; among decorations the last pushed wins. |
-| `qed.deco.tint(b, ns, from_row, to_row, color, alpha?)` | Goes through the `editor_line_bg` stack: diff hunk, conflict, decoration tints (push order), AI edit, current line. `alpha` defaults to the theme tint `decoration`. |
+| `qed.deco.tint(b, ns, from_row, to_row, color, alpha?)` | Goes through the `editor_line_bg` stack: diff hunk, decoration tints (push order), AI edit, current line. `alpha` is a number or a theme tint key (`"conflict"`, resolved per frame); default the theme tint `decoration`. |
 | `qed.deco.ghost(b, ns, row, lines, {above?, color?})` | Virtual rows, one clipped row each, folded into the screen-mapping walkers like the diff ghosts. Order: decoration ghosts above, diff ghosts above, the row, decoration ghosts below, diff ghosts below. Like the diff ghosts, ghosts above the top screen row are hidden. `color` defaults to `ghost_foreground`. |
-| `qed.deco.span(b, ns, from, to, style)` | `{fg?, bg?, bold?, underline?}`, over syntax and diff word colors, under find matches and the selection. |
+| `qed.deco.span(b, ns, from, to, style)` | `{fg?, bg?, alpha?, bold?, underline?}`, over syntax and diff word colors, under find matches and the selection. `alpha` (number or theme tint key, needs `bg`) blends `bg` over the line background. |
 | `qed.deco.eol(b, ns, row, text, color)` | Virtual text one cell after the line end (last wrapped row), clipped at the window edge (a wide char never splits). Several on a row join with a space. |
 | `qed.deco.clear(b, ns, from_row?, to_row?)` | Decorations touching the rows; all when omitted. |
 
@@ -261,7 +263,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | Config changes | A changed `plugins.<name>` subtree (other than `enabled`) reaches a plugin that subscribes to `config_changed` through that handler, so its runtime state (e.g. `format`'s toggles) survives. A plugin without a `config_changed` handler, or an errored one, is reloaded instead. |
 | Isolation | One `lua_State` with a per-plugin `_ENV`. |
 | Errors | Every Odin→Lua entry goes through resume/pcall with a traceback. Only load and setup errors mark the plugin errored (unloaded). A Lua error in a command, handler, timer or any other task is logged and the plugin stays loaded; a repeat of the plugin's last error logs again only at the 2nd, 4th, 8th, ... repeat (`(repeated N times)`). A task over its budget or out of memory is stopped with a warning. All errors are logged as `.Error` under the plugin's display name and the traceback at `.Debug`. Each plugin's last error is kept for the Plugins pane. A memory cap turns OOM into a catchable `LUA_ERRMEM`. |
-| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab is the `git` plugin's (through `filetree` exports since M6), conflicts are ungated. Phase 13 made `modules.lsp` the top-level `lsp` section, gated on `LSP_ENABLED`. `.Ai` stays a module. |
+| Modules | `modules.git` became `plugins.git`, and phase 11 removed `.Git`: the Git tab is the `git` plugin's (through `filetree` exports since M6), conflicts are the `conflict` plugin's since M7. Phase 13 made `modules.lsp` the top-level `lsp` section, gated on `LSP_ENABLED`. `.Ai` stays a module. |
 
 Hot reload mechanics:
 - `plugins_poll` runs in the disk poll, before the config reload. It rescans bundled plugins plus `Plugins.user_dir` (headless sessions have none and never poll).
@@ -364,7 +366,8 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | M4 | `qed.fs.walk` handles (`count`, `ready`, `within`, `union`), `qed.fs.copy/rename/remove/mkdir`; the file tree core-built on the pane model; `qed.ui.open` tabs, marks, footer chips and input, tree lists, `v:preview`, `v:expand`; `search` stacks as a child over the tree. | minor |
 | M5 | The file tree becomes the bundled `filetree` plugin (*File Tree: All* replaces *File Tree*, binds under `plugins.filetree.keybinds`); `filetree.odin` becomes `walk.odin`; temporary `qed.filetree.listen/state/request` shim; `toggle = false`, `jump_closes`, `v:select`, `v:expand()`, `h:ignore(false)`, `qed.close{discard}`. | minor |
 | M6 | `qed.export`/`qed.plugin`/`qed.caller`, `qed.emit` + `qed.on("<plugin>:<event>")`, `plugin_loaded`/`plugin_unloaded`; `filetree` exports `set_tab`/`remove_tab`/`set_marks`/`set_ignored`/`open`, `v:tab(i, tabs)`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`, `plugins.git.keybinds.Changes`; *File Tree: Changed* is gone); `treeshim.odin`, `qed.filetree.*` and the `.Provider` task kind are gone; task errors no longer disable a plugin. | minor |
-| later | Conflicts, aiedit, fim and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
+| M7 (conflict) | The merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`, `plugins.conflict.keybinds.Resolve`; the top-level `Git: Resolve Conflict` bind warns where it moved); `conflict.odin` and the core `merge` pane are gone; `qed.buf.find_lines`, `qed.text.diff`, theme tint keys as deco alphas, blended spans. | minor |
+| later | aiedit, fim and the remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
 
 ## 9. Decisions
 

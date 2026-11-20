@@ -80,6 +80,7 @@ Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/
 - [ ] Pane model M4: walk service behind `qed.fs.walk` handles (`count`/`ready`/`within`/`union`), `qed.fs.copy/rename/remove/mkdir`, the file tree core-built on the model (tabs, tree list, marks, chips, footer input, child confirms and palette); Lua tabs, marks, footer, tree expand, preview ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M5: the file tree becomes the bundled `filetree` plugin over walk handles, `walk.odin` keeps only the walk service, the Changed tab through a temporary provider shim ([notes/panes.md](notes/panes.md) §7).
 - [ ] Pane model M6: plugin exports (`qed.export/plugin/caller`), namespaced custom events (`qed.emit`), `plugin_loaded`/`plugin_unloaded`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`) through `filetree` exports; the provider shim and `qed.filetree.*` are gone; task errors no longer disable a plugin ([notes/panes.md](notes/panes.md) §7).
+- [ ] Pane model M7 (conflict): the merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`, `plugins.conflict.keybinds.Resolve`); `qed.buf.find_lines`, `qed.text.diff`, theme tint keys as deco alphas, blended spans; `conflict.odin` and the core `merge` pane are gone ([notes/panes.md](notes/panes.md) §7).
 - [ ] Low priority: review every bundled plugin's config keys for naming and sense.
 
 ## Post-1.0 — deferred

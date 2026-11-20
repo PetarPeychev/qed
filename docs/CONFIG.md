@@ -316,7 +316,19 @@ and are ignored: `enabled` moved here, `diff_view` and `filetree_diff_only` to t
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Git** tab, its status bars and ignored set, *Git: Changes*, *Git: Set Diff Base* and *Git: Restore File*. Merge-conflict highlighting stays. |
+| `plugins.git.enabled` | `true` | Off removes the diff base, the git status segments, the file-tree **Git** tab, its status bars and ignored set, *Git: Changes*, *Git: Set Diff Base* and *Git: Restore File*. Merge-conflict highlighting is the `conflict` plugin's. |
+
+### Merge conflicts
+
+The bundled `conflict` plugin highlights `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` blocks (theme colors
+`conflict_ours`/`conflict_theirs`/`conflict_base`, tints `conflict`/`conflict_marker`/`conflict_word`)
+with or without git. *Conflict: Resolve* (`Alt+m`) asks Keep Ours / Theirs / Both inside a block and
+jumps to the next block outside one. Rebind with `plugins.conflict.keybinds.Resolve`; the old top-level
+`keybinds."Git: Resolve Conflict"` warns where it moved.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `plugins.conflict.enabled` | `true` | Off removes the highlighting and *Conflict: Resolve*. |
 
 ## Writing your own commands
 
