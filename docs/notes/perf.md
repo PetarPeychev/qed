@@ -19,7 +19,7 @@ Large and odd files and repos must not break the editor. Budgets:
 
 **Gate.** `tools/perf-gate.sh [CORPUS_DIR] [default]` generates the corpus if
 missing and runs `bench_gate` (`src/perf_gate_test.odin`) on an `-o:speed`
-build (`default`: the optimization `./build.sh` uses). It opens each corpus file
+build, as `./build.sh` ships (`default`: `odin test`'s `-o:minimal`). It opens each corpus file
 through `editor_init`, drives keys through `editor_step` and renders with
 `editor_render`, plugins loaded, at 160×48, on the heap allocator. Each row is
 checked against a limit of 3× the budget under 50 ms, 2× otherwise; `info` rows
@@ -128,21 +128,25 @@ big-file mode.
   exceeds 16 ms reparses off-thread from then on (`Highlight.slow`).
 - `buffer_set_content` walks newlines in place into a reserved array; the
   snapshot builder is presized (1M lines: 467 → ~300 ms).
+- `build.sh` builds `-o:speed` (`-o:minimal` was 3–25× slower on these paths;
+  costs ~25 s of build time). CI and release build through it.
+- `buffer_line_wrap` memoizes the last 4 wraps of lines ≥ 4 KB, keyed on buffer
+  id, rev, row, width and tab width; the wrap helpers take its segments. A
+  keystroke used to wrap the cursor line 6–8 times. `line_wrap` also skips
+  `cluster_end` for printable ASCII (5 MB line: ~36 → ~11 ms per wrap). 5 MB
+  line, wrap on: type 272 → ~30 ms, search keystroke 164 → ~1 ms.
+- `buffer_recompute_modified` resumes from a clean-row watermark
+  (`clean_rows`/`clean_pos`, lowered to the edited row by each insert/delete)
+  instead of row 0. 1M-line keystroke: ~6 → ~1.2 ms (default build 34 → 10 ms).
 
 ## Still open (see TODO.md)
 
 Measured with the gate (`-o:speed` unless noted); file:line is where the time goes.
 
-- **Repeated `line_wrap` of the cursor line** (wrap on, 5 MB line: type 200 ms,
-  search keystroke 136 ms; 1.4 s/key on the default build). Each keystroke wraps
-  the whole line 6–8 times: `wrap_subrow` (`editor_scroll_vert`, editor.odin),
-  `wrap_seg_start` (`cursor_goal_sync`, cursor.odin), `line_rows` (`vpos_up`,
-  wrap.odin) and the render loop, each O(line). Fix: a per-frame (or per buffer
-  rev + width) memo of the last `line_wrap` result keyed on the line, which is the
-  existing "per-frame line_wrap memo" TODO, now justified.
-- **Default build is `-o:minimal`.** The same paths run 3–25× slower than
-  `-o:speed` (Go to: Line filter on 1M lines: 40 ms vs 1.1 s; minified type with
-  wrap: 200 ms vs 1.4 s). `build.sh` passing `-o:speed` is the cheapest win.
+- **Typing on a 5 MB wrapped line** (~30 ms; 200 ms on `-o:minimal`): one
+  rewrap per edit (rev changes) plus ~5 `visual_col` prefix scans of the cursor
+  line (`cursor_goal_sync`, cursor placement in `editor_render`, ~3 ms each).
+  Next step if needed: store each segment's start visual column in the wrap memo.
 - **Markdown preview renders the whole document** in one slice (100k lines:
   1.7 s, `md_render` → `md_blocks` → `md_emit_wrapped`/`md_cells`, append churn in
   mdrender.odin). Fix: render per block lazily for the visible range and cache
@@ -158,10 +162,11 @@ Measured with the gate (`-o:speed` unless noted); file:line is where the time go
 - **format `buf_pre_save`** (100k lines: 83–105 ms): `fixups` materializes
   `qed.buf.lines` and pattern-matches every line in Lua. Fix: a core helper that
   returns only rows with trailing whitespace (like `qed.buf.find_lines`).
-- **1M-line open** (~300–380 ms; 590 ms default build): one `clone_to_dynamic`
+- **1M-line open** (~300–400 ms; 560 ms on `-o:minimal`): one `clone_to_dynamic`
   per line plus the `saved` snapshot. Fix candidates: line storage in one block
   (data-structure change, needs a decision) or a lighter saved-state watermark.
-- **Typing at EOF of a 1M-line file** (5.5 ms speed, 17 ms default):
-  `buffer_recompute_modified` scans from row 0.
+- **Edits deep in a 1M-line file** still pay `buffer_byte_offset` (buffer.odin),
+  which sums line lengths from row 0 for the tree-sitter edit (keystroke now
+  1.2 ms, ~4 ms on `-o:minimal`; unprofiled).
 - The diff-base algorithm (line hash + Myers) is only gated off above the big
   cutoff, not made cheaper for large-but-sub-cutoff files.

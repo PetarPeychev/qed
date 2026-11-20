@@ -57,7 +57,9 @@ poll → dispatch → redraw (text, status bar, overlays) → set hardware curso
 on; *Toggle Line Wrap* flips the current buffer): a logical line spills over
 consecutive visual rows, breaking at word boundaries (a word wider than the width
 hard-breaks), tab/grapheme-width aware. Continuation rows get a blank gutter.
-`line_wrap` yields per-line segment start offsets; `vpos_*` walk/measure visual
+`line_wrap` yields per-line segment start offsets (buffer lines go through
+`buffer_line_wrap`, which memoizes the last few lines ≥ 4 KB keyed on buffer id, rev,
+row, width and tab width); `vpos_*` walk/measure visual
 rows (bounded by the viewport). The render loop iterates visual rows; the row
 renderer draws a byte range `[col_start,col_end)` at an `x_origin`. The inline
 ghost (`qed.deco.inline`) on the cursor line renders through the same wrap layout
