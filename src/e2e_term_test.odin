@@ -98,7 +98,7 @@ e2e_term_kill_group :: proc(t: ^testing.T) {
 	term_kill(&e.ed, k)
 	testing.expect(t, !k.alive, "kill stops the session")
 	testing.expect_value(t, k.code, 128 + 9)
-	testing.expect(t, posix.kill(-pgid, posix.Signal(0)) != .OK, "the whole process group is gone")
+	testing.expect(t, e2e_group_gone(pgid), "the whole process group is gone")
 	testing.expect(t, term_find(&e.ed, "k") == k, "a killed session keeps its output")
 
 	term_spawn(&e.ed, k)
@@ -179,7 +179,7 @@ e2e_term_plugin_unload :: proc(t: ^testing.T) {
 	reload_write(dir, "tt.lua", `return {setup = function() end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
 	testing.expect(t, term_find(&e.ed, "owned") == nil, "the owned session is torn down")
-	testing.expect(t, posix.kill(-pgid, posix.Signal(0)) != .OK, "its process group is gone")
+	testing.expect(t, e2e_group_gone(pgid), "its process group is gone")
 	testing.expect(t, !e.ed.terminal.active && e.ed.terminal.shown == nil, "the pane that showed it closes")
 	testing.expect(t, term_find(&e.ed, "kept") == kept && kept.alive, "a detached session survives")
 	testing.expect_value(t, reload_owned(&e.ed.plugins, "tt"), 0)
@@ -209,6 +209,15 @@ e2e_term_master_cloexec :: proc(t: ^testing.T) {
 	a_index := index_of(fmt.tprintf("/proc/self/fdinfo/%d", a.pty_fd))
 	if a_index == "" {
 		return
+	}
+	// until the forked child execs it still holds every parent fd, CLOEXEC or not
+	self_exe, _ := os.read_link("/proc/self/exe", context.temp_allocator)
+	for start := time.tick_now(); time.duration_seconds(time.tick_since(start)) < 5; {
+		exe, _ := os.read_link(fmt.tprintf("/proc/%d/exe", b.pid), context.temp_allocator)
+		if exe != self_exe {
+			break
+		}
+		time.sleep(time.Millisecond)
 	}
 	fds, _ := os.read_directory_by_path(fmt.tprintf("/proc/%d/fdinfo", b.pid), -1, context.temp_allocator)
 	testing.expect(t, len(fds) > 0, "the later child's fds are readable")
@@ -260,5 +269,5 @@ e2e_term_kill_shell_job :: proc(t: ^testing.T) {
 	}
 	job := posix.tcgetpgrp(posix.FD(sh.pty_fd))
 	term_kill(&e.ed, sh)
-	testing.expect(t, posix.kill(-job, posix.Signal(0)) != .OK, "the foreground job's group dies with the shell")
+	testing.expect(t, e2e_group_gone(job), "the foreground job's group dies with the shell")
 }

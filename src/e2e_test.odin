@@ -1,5 +1,6 @@
 package main
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
@@ -40,7 +41,28 @@ E2E :: struct {
 	cfg:     json.Value,
 }
 
+// the shell session runs $SHELL -i; the developer's rc files must not run (they touch real state, e.g. pyenv's shim lock)
+@(init)
+e2e_shell_hermetic :: proc "contextless" () {
+	context = runtime.default_context()
+	defer free_all(context.temp_allocator)
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	// shared by every run (the test runner exits without @(fini)), so the script lands via rename
+	dir := fmt.tprintf("%s/qed_test_shell", tmp)
+	home := fmt.tprintf("%s/home", dir)
+	os.make_directory_all(home)
+	shell := fmt.tprintf("%s/shell", dir)
+	staged := fmt.tprintf("%s.%d", shell, posix.getpid())
+	script := fmt.tprintf("#!/bin/sh\nHOME=%s HISTFILE=/dev/null exec bash --norc --noprofile \"$@\"\n", shell_quote(home))
+	_ = os.write_entire_file(staged, transmute([]u8)script)
+	posix.chmod(strings.clone_to_cstring(staged, context.temp_allocator), {.IRUSR, .IWUSR, .IXUSR})
+	os.rename(staged, shell)
+	posix.setenv("SHELL", strings.clone_to_cstring(shell, context.temp_allocator), true)
+}
+
 e2e_backend_init :: proc() {
+	// the backend outlives the test that happens to bring it up, so keep it off that test's tracking allocator
+	context.allocator = os.heap_allocator()
 	master, slave, ok := pty.open(E2E_H, E2E_W)
 	assert(ok, "pty.open failed")
 	// Nothing consumes the terminal output; a background thread drains the master
@@ -107,6 +129,18 @@ e2e_stop :: proc(e: ^E2E) {
 		delete(e.dir)
 	}
 	sync.mutex_unlock(&e2e_lock)
+}
+
+// SIGKILL lands asynchronously and init reaps orphaned members, so a killed group lingers briefly
+e2e_group_gone :: proc(pgid: posix.pid_t) -> bool {
+	start := time.tick_now()
+	for posix.kill(-pgid, posix.Signal(0)) == .OK {
+		if time.duration_seconds(time.tick_since(start)) > 5 {
+			return false
+		}
+		time.sleep(time.Millisecond)
+	}
+	return true
 }
 
 e2e_key :: proc(e: ^E2E, key: tb2.Key, mod: tb2.Mod = {}, ch: rune = 0) {

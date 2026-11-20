@@ -1,8 +1,10 @@
 package main
 
+import "core:fmt"
 import "core:math/rand"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 import "core:testing"
 
 @(private = "file")
@@ -346,6 +348,12 @@ test_insert_delete_roundtrip :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
+tmp_path :: proc(name: string) -> string {
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	return fmt.tprintf("%s/qed-test-%d-%s", tmp, posix.getpid(), name)
+}
+
+@(private = "file")
 save_roundtrip :: proc(t: ^testing.T, path: string, content: string) {
 	testing.expect(t, os.write_entire_file(path, transmute([]u8)content) == nil)
 	defer os.remove(path)
@@ -363,7 +371,7 @@ save_roundtrip :: proc(t: ^testing.T, path: string, content: string) {
 
 @(test)
 test_open_detects_lf_no_final_newline :: proc(t: ^testing.T) {
-	path := "/tmp/qed-test-lf"
+	path := tmp_path("lf")
 	testing.expect(t, os.write_entire_file(path, transmute([]u8)string("a\nb")) == nil)
 	defer os.remove(path)
 
@@ -378,7 +386,7 @@ test_open_detects_lf_no_final_newline :: proc(t: ^testing.T) {
 
 @(test)
 test_open_detects_crlf_final_newline :: proc(t: ^testing.T) {
-	path := "/tmp/qed-test-crlf"
+	path := tmp_path("crlf")
 	testing.expect(t, os.write_entire_file(path, transmute([]u8)string("a\r\nb\r\n")) == nil)
 	defer os.remove(path)
 
@@ -393,26 +401,26 @@ test_open_detects_crlf_final_newline :: proc(t: ^testing.T) {
 
 @(test)
 test_save_preserves_lf :: proc(t: ^testing.T) {
-	save_roundtrip(t, "/tmp/qed-test-save-lf", "a\nb\n")
+	save_roundtrip(t, tmp_path("save-lf"), "a\nb\n")
 }
 
 @(test)
 test_save_preserves_lf_no_final_newline :: proc(t: ^testing.T) {
-	save_roundtrip(t, "/tmp/qed-test-save-lf-nonl", "a\nb")
+	save_roundtrip(t, tmp_path("save-lf-nonl"), "a\nb")
 }
 
 @(test)
 test_save_preserves_crlf :: proc(t: ^testing.T) {
-	save_roundtrip(t, "/tmp/qed-test-save-crlf", "a\r\nb\r\n")
+	save_roundtrip(t, tmp_path("save-crlf"), "a\r\nb\r\n")
 }
 
 @(test)
 test_save_creates_missing_parent_dirs :: proc(t: ^testing.T) {
-	root := "/tmp/qed-test-save-mkdirs"
+	root := tmp_path("save-mkdirs")
 	os.remove_all(root)
 	defer os.remove_all(root)
 
-	path := "/tmp/qed-test-save-mkdirs/a/b/file.txt"
+	path := fmt.tprintf("%s/a/b/file.txt", root)
 	b := buffer_new()
 	defer buffer_destroy(&b)
 	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
@@ -427,12 +435,12 @@ test_save_creates_missing_parent_dirs :: proc(t: ^testing.T) {
 
 @(test)
 test_save_into_existing_dir :: proc(t: ^testing.T) {
-	root := "/tmp/qed-test-save-existing"
+	root := tmp_path("save-existing")
 	os.remove_all(root)
 	testing.expect(t, os.make_directory_all(root) == nil)
 	defer os.remove_all(root)
 
-	path := "/tmp/qed-test-save-existing/file.txt"
+	path := fmt.tprintf("%s/file.txt", root)
 	b := buffer_new()
 	defer buffer_destroy(&b)
 	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
@@ -447,12 +455,12 @@ test_save_into_existing_dir :: proc(t: ^testing.T) {
 
 @(test)
 test_save_parent_is_file_errors :: proc(t: ^testing.T) {
-	parent := "/tmp/qed-test-save-parentfile"
+	parent := tmp_path("save-parentfile")
 	os.remove_all(parent)
 	testing.expect(t, os.write_entire_file(parent, transmute([]u8)string("x")) == nil)
 	defer os.remove_all(parent)
 
-	path := "/tmp/qed-test-save-parentfile/file.txt"
+	path := fmt.tprintf("%s/file.txt", parent)
 	b := buffer_new()
 	defer buffer_destroy(&b)
 	testing.expect_value(t, buffer_open(&b, path), BufferOpenError.None)
