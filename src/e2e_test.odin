@@ -41,6 +41,8 @@ E2E :: struct {
 }
 
 e2e_backend_init :: proc() {
+	// the backend outlives the test that happens to bring it up, so keep it off that test's tracking allocator
+	context.allocator = os.heap_allocator()
 	master, slave, ok := pty.open(E2E_H, E2E_W)
 	assert(ok, "pty.open failed")
 	// Nothing consumes the terminal output; a background thread drains the master
