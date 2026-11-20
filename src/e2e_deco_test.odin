@@ -357,14 +357,6 @@ e2e_deco_set_base_no_git :: proc(t: ^testing.T) {
 	testing.expect_value(t, diff_mark_at(b, 0), DiffMark.None)
 }
 
-@(private = "file")
-buffer_snapshot_tmp :: proc(b: ^Buffer) -> string {
-	s := buffer_snapshot(b)
-	out := strings.clone(s, context.temp_allocator)
-	delete(s)
-	return out
-}
-
 @(test)
 e2e_deco_set_base_matches_git :: proc(t: ^testing.T) {
 	if !shell_command_exists("git") {

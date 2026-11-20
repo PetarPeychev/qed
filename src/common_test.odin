@@ -246,3 +246,10 @@ test_dialog_open :: proc(editor: ^Editor) {
 		editor_log(editor, .Warn, "", "busy")
 	}
 }
+
+buffer_snapshot_tmp :: proc(b: ^Buffer) -> string {
+	s := buffer_snapshot(b)
+	out := strings.clone(s, context.temp_allocator)
+	delete(s)
+	return out
+}

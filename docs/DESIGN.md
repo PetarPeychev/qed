@@ -250,10 +250,11 @@ member group is no longer on top).
   input). A changed file that is **clean** auto-reloads (`buffer_reload`: re-read,
   apply the changed hunks through the primitives like `buffer_set_text` so decorations and marks on
   untouched lines stay (`text_hunks_apply`: bottom-up with precomputed byte offsets, `modified` computed
-  once; past a Myers work budget of ~(n+m)·d = 1e8 it is one replace hunk), clear undo/redo, drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
+  once; past a Myers work budget of ~(n+m)·d = 1e8 it is one replace hunk) as one undo step (Ctrl+Z brings the
+  pre-reload text back, modified against disk; above `big_file_bytes`, old or new, undo/redo are cleared instead), drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
   map the cursor through the hunks); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
   onto it opens the conflict dialog (Cancel / Overwrite / Reload) instead of
-  clobbering. Reload skips a buffer while its highlight parse thread is busy
+  clobbering; Reload is the same undoable step, so the discarded edits come back with Ctrl+Z. Reload skips a buffer while its highlight parse thread is busy
   (retries next poll). Deletion on disk is ignored (buffer stays; save recreates).
 - **Startup arg:** file → open it; directory → set working root + welcome screen;
   absent → welcome screen.

@@ -291,22 +291,25 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	}
 	hunks := text_hunks(buffer, lines)
 	cur := text_hunks_map(hunks, buffer.cursor)
-	edit_open(buffer, .Atomic)
-	text_hunks_apply(buffer, lines, hunks)
+	was_big := buffer.big
+	if len(hunks) > 0 {
+		edit_open(buffer, .Atomic)
+		text_hunks_apply(buffer, lines, hunks)
+		buffer_undo_commit(buffer)
+	}
 	buffer_set_meta(buffer, data)
 
-	// The prior edit log describes content that no longer exists on disk.
-	for &group in buffer.undo {
-		group_destroy(&group)
+	// One undo step undoes the reload, except where a big file's old text would sit in the log.
+	if was_big || buffer.big {
+		for &group in buffer.undo {
+			group_destroy(&group)
+		}
+		clear(&buffer.undo)
+		redo_clear(buffer)
+		group_destroy(&buffer.open)
+		buffer.open = {}
+		buffer.has_open = false
 	}
-	clear(&buffer.undo)
-	for &group in buffer.redo {
-		group_destroy(&group)
-	}
-	clear(&buffer.redo)
-	group_destroy(&buffer.open)
-	buffer.open = {}
-	buffer.has_open = false
 
 	buffer.cursor = buffer_pos_clamp(buffer, cur)
 	buffer.selection = nil

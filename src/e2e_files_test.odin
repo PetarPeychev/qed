@@ -234,6 +234,74 @@ e2e_files_conflict_reload :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_files_reload_undo :: proc(t: ^testing.T) {
+	e := e2e_start("aaa\nbbb\nccc\n")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	e2e_type(&e, "X")
+	e2e_key(&e, .Ctrl_S)
+	_ = os.write_entire_file_from_string(e.path, "Xaaa\nYYYY\nccc\nddd\n")
+	editor_poll_disk(&e.ed)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "Xaaa\nYYYY\nccc\nddd\n")
+	testing.expect(t, !b.modified, "a reload is clean")
+
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "Xaaa\nbbb\nccc\n")
+	testing.expect(t, b.modified, "undoing the reload differs from disk")
+	e2e_key(&e, .Ctrl_Y)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "Xaaa\nYYYY\nccc\nddd\n")
+	testing.expect(t, !b.modified, "redoing the reload matches disk")
+	e2e_key(&e, .Ctrl_Z)
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "aaa\nbbb\nccc\n")
+	testing.expect(t, b.modified, "edits before the reload stay undoable")
+}
+
+@(test)
+e2e_files_conflict_reload_undo :: proc(t: ^testing.T) {
+	e := e2e_start("first line\nsecond line\n")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	e2e_type(&e, "X")
+	_ = os.write_entire_file_from_string(e.path, "DISK\n")
+	editor_poll_disk(&e.ed)
+	e2e_key(&e, .Ctrl_S)
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "DISK\n")
+
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, buffer_snapshot_tmp(b), "Xfirst line\nsecond line\n")
+	testing.expect(t, b.modified, "the discarded edit comes back unsaved")
+	testing.expect(t, !b.disk_conflict, "no conflict: the buffer was loaded from the current disk")
+	e2e_key(&e, .Ctrl_S)
+	testing.expect_value(t, e2e_read_disk(e.path), "Xfirst line\nsecond line\n")
+}
+
+@(test)
+e2e_files_big_reload_clears_undo :: proc(t: ^testing.T) {
+	e := e2e_start("small\n")
+	defer e2e_stop(&e)
+
+	b := editor_buffer(&e.ed)
+	e2e_type(&e, "X")
+	e2e_key(&e, .Ctrl_S)
+	big := strings.repeat("qed big file test line\n", 100000)
+	_ = os.write_entire_file_from_string(e.path, big)
+	delete(big)
+	editor_poll_disk(&e.ed)
+	testing.expect(t, b.big, "the reloaded file is big")
+	testing.expect_value(t, len(b.undo), 0)
+	testing.expect_value(t, len(b.redo), 0)
+	e2e_key(&e, .Ctrl_Z)
+	testing.expect_value(t, len(b.lines), 100001)
+	testing.expect(t, !b.modified, "nothing to undo")
+}
+
+@(test)
 e2e_files_big :: proc(t: ^testing.T) {
 	big := strings.repeat("qed big file test line\n", 100000) // ~2.3 MB > BIG_FILE_BYTES
 	e := e2e_start(big)
