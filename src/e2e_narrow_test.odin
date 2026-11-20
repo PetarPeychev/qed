@@ -130,7 +130,7 @@ e2e_narrow_linefind_code_split :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	e2e_resize(&e, 300, E2E_H)
-	linefind_open(&e.ed)
+	e2e_key(&e, .Ctrl_G)
 	lay := overlay_layout(&e.ed, .Code)
 	testing.expect(t, lay.preview)
 	testing.expect_value(t, lay.left_w, CODE_LIST_MAX_WIDTH)
@@ -138,8 +138,10 @@ e2e_narrow_linefind_code_split :: proc(t: ^testing.T) {
 	testing.expect_value(t, lay.box.x, PICKER_MARGIN_X + (300 - 2 * PICKER_MARGIN_X - lay.box.w) / 2)
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, lay.box.x, lay.box.y), '┌')
-	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.title_sep_y), '┬')
-	testing.expect(t, preview_loaded(&e.ed.linefind.preview))
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.box.y), '┬')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.title_sep_y), '┤')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x + 1, lay.title_sep_y), ' ')
+	testing.expect(t, preview_loaded(&test_view(&e.ed).preview))
 
 	e2e_resize(&e, 200, E2E_H)
 	lay = overlay_layout(&e.ed, .Code)
@@ -162,5 +164,5 @@ e2e_narrow_linefind_code_split :: proc(t: ^testing.T) {
 	testing.expect_value(t, lay.left_w, lay.inner.w)
 
 	e2e_mouse(&e, lay.box.x - 2, lay.body_top)
-	testing.expect(t, !e.ed.linefind.active, "a click outside the box closes line jump")
+	testing.expect(t, !test_pane_open(&e.ed, "lines"), "a click outside the box closes line jump")
 }

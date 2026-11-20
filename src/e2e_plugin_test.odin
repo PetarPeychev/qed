@@ -86,7 +86,7 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	e2e_type(&e, "debug: plugins")
 	e2e_key(&e, .Enter)
-	testing.expect(t, e.ed.pluginview.active, "Debug: Plugins opens the pane")
+	testing.expect(t, test_pane_open(&e.ed, "plugins"), "Debug: Plugins opens the pane")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Fine       user     enabled"), "a healthy plugin row")
 	testing.expect(t, e2e_grid_has(&e, "Broken     user     errored"), "an errored plugin row")
@@ -104,12 +104,12 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	for _ in 0 ..< broken {
 		e2e_key(&e, .Arrow_Down)
 	}
-	testing.expect_value(t, e.ed.pluginview.selected, broken)
+	testing.expect_value(t, pane_find(&e.ed, "plugins").list.sel, broken)
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "setup exploded"), "the selected row's last error shows in the footer")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.pluginview.active, "Esc closes the pane")
+	testing.expect(t, !test_pane_open(&e.ed, "plugins"), "Esc closes the pane")
 }
 
 @(test)

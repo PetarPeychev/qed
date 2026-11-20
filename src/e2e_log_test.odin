@@ -32,6 +32,17 @@ e2e_log_find :: proc(e: ^E2E, needle: string) -> (row, col: int) {
 	return -1, -1
 }
 
+@(private = "file")
+log_open :: proc(e: ^E2E) -> bool {
+	p := pane_find(&e.ed, "log")
+	return p != nil && pane_live(&e.ed, p)
+}
+
+@(private = "file")
+log_pane :: proc(e: ^E2E) -> ^Pane {
+	return pane_find(&e.ed, "log")
+}
+
 @(test)
 e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 	e := e2e_start()
@@ -44,7 +55,7 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(e.ed.message, "Format on save"), "toggle sets the message line")
 
 	cmd_message_log(&e.ed)
-	testing.expect(t, e.ed.logview.active, "command opens the log pane")
+	testing.expect(t, log_open(&e), "command opens the log pane")
 	e2e_render(&e)
 
 	screen := e2e_log_screen(&e)
@@ -81,11 +92,11 @@ e2e_log_bind_toggles :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	e2e_alt(&e, 'l')
-	testing.expect(t, e.ed.logview.active, "Alt+l opens the log pane")
+	testing.expect(t, log_open(&e), "Alt+l opens the log pane")
 	e2e_alt(&e, 'l')
-	testing.expect(t, !e.ed.logview.active, "Alt+l again closes it")
+	testing.expect(t, !log_open(&e), "Alt+l again closes it")
 	e2e_alt(&e, 'l')
-	testing.expect(t, e.ed.logview.active, "and a third press reopens it")
+	testing.expect(t, log_open(&e), "and a third press reopens it")
 }
 
 @(test)
@@ -106,13 +117,13 @@ e2e_log_rebound_bind_toggles :: proc(t: ^testing.T) {
 	defer commands[idx].alt_ch = saved
 
 	e2e_alt(&e, 'j')
-	testing.expect(t, e.ed.logview.active, "rebound chord opens the pane")
+	testing.expect(t, log_open(&e), "rebound chord opens the pane")
 	e2e_alt(&e, 'l')
-	testing.expect(t, e.ed.logview.active, "the old chord no longer closes it")
+	testing.expect(t, log_open(&e), "the old chord no longer closes it")
 	e2e_alt(&e, 'j')
-	testing.expect(t, !e.ed.logview.active, "rebound chord closes it")
+	testing.expect(t, !log_open(&e), "rebound chord closes it")
 	e2e_alt(&e, 'l')
-	testing.expect(t, !e.ed.logview.active, "the old chord no longer opens it")
+	testing.expect(t, !log_open(&e), "the old chord no longer opens it")
 }
 
 @(test)
@@ -148,15 +159,15 @@ e2e_log_multiselect_copy :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.message, "Copied 3 entries")
 
 	e2e_key(&e, .Arrow_Down)
-	testing.expect(t, e.ed.logview.anchor == nil, "plain arrow collapses the selection")
+	testing.expect(t, log_pane(&e).list.anchor == nil, "plain arrow collapses the selection")
 	e2e_key(&e, .Ctrl_C)
 	testing.expect_value(t, clipboard_register, "Git: two")
 	testing.expect_value(t, e.ed.message, "Copied to clipboard")
 
 	e2e_key(&e, .Arrow_Up, mod = .Shift)
-	testing.expect(t, e.ed.logview.anchor != nil, "shift re-anchors")
+	testing.expect(t, log_pane(&e).list.anchor != nil, "shift re-anchors")
 	editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = 'w'})
-	testing.expect(t, e.ed.logview.anchor == nil, "filter toggle collapses the selection")
+	testing.expect(t, log_pane(&e).list.anchor == nil, "filter toggle collapses the selection")
 }
 
 @(test)
@@ -180,7 +191,7 @@ e2e_log_debug_filter :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(e2e_log_screen(&e), "a trace line"), "Debug row revealed")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.logview.active, "Esc closes the pane")
+	testing.expect(t, !log_open(&e), "Esc closes the pane")
 	cmd_message_log(&e.ed)
 	testing.expect(t, e.ed.logview.filter[.Debug], "Debug filter persists on reopen")
 	e2e_render(&e)
@@ -198,11 +209,15 @@ e2e_log_wheel_scroll_and_thumb :: proc(t: ^testing.T) {
 	cmd_message_log(&e.ed)
 	e2e_render(&e)
 
-	v := &e.ed.logview
-	lay := logview_layout(&e.ed)
-	h := logview_body_h(&e.ed)
-	n := len(logview_filtered(&e.ed))
-	border_x := lay.box.x + lay.box.w - 1
+	v := &log_pane(&e).list
+	g := pane_geom(&e.ed, log_pane(&e))
+	lay := struct {
+		inner:    Rect,
+		body_top: int,
+	}{g.inner, g.list.y}
+	h := g.list.h
+	n := pane_count(&e.ed, log_pane(&e))
+	border_x := g.box.x + g.box.w - 1
 	testing.expect(t, n > h + WHEEL_SCROLL_LINES, "the log should overflow the pane")
 	testing.expect_value(t, v.scroll, n - h)
 
@@ -259,7 +274,7 @@ e2e_log_history_filter :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(e2e_log_screen(&e), "session started"), "old session marker revealed too")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.logview.active, "Esc closes the pane")
+	testing.expect(t, !log_open(&e), "Esc closes the pane")
 	cmd_message_log(&e.ed)
 	testing.expect(t, e.ed.logview.history, "History filter persists on reopen")
 	e2e_render(&e)

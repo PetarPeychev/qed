@@ -253,6 +253,11 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 		_, ok := g_config_defaults[it.key].(json.Boolean)
 		testing.expectf(t, ok, "embedded bool %s", it.key)
 	}
+	for it in config_backdrops {
+		s, _ := g_config_defaults[it.key].(json.String)
+		_, ok := backdrop_parse(string(s))
+		testing.expectf(t, ok, "embedded backdrop %s", it.key)
+	}
 	name, name_ok := g_config_defaults["theme"].(json.String)
 	testing.expect(t, name_ok, "embedded theme is a string")
 	found := false
@@ -264,7 +269,7 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 	testing.expect(t, found, "embedded theme names a bundled theme")
 	kb, kb_ok := g_config_defaults["keybinds"].(json.Object)
 	testing.expect(t, kb_ok, "embedded keybinds object")
-	for table in ([?][]Command{commands[:], filetree_commands[:]}) {
+	for table in ([?][]Command{commands[:], pane_commands[:]}) {
 		for cmd in table {
 			if cmd.bind_from != "" {
 				continue
@@ -273,14 +278,14 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 			s, ok := kb[name].(json.String)
 			testing.expectf(t, ok, "embedded keybind %q present", name)
 			if ok && s != "" {
-				_, _, pok := parse_keybind(string(s))
-				testing.expectf(t, pok, "embedded keybind %q parses", name)
+				_, _, ch, pok := parse_bind(string(s))
+				testing.expectf(t, pok && (ch == 0 || bind_bare_ok(cmd.scope)), "embedded keybind %q parses", name)
 			}
 		}
 	}
 	// A borrowed bind must name a real global command, or the tree command would be
 	// permanently unbound (command_effective_bind returns an empty bind for a typo).
-	for cmd in filetree_commands {
+	for cmd in pane_commands {
 		if cmd.bind_from == "" {
 			continue
 		}
@@ -438,11 +443,11 @@ test_config_files :: proc(t: ^testing.T) {
 	pcmd, pok := command_for_key(.Ctrl_G)
 	testing.expect(t, pok && pcmd.name == "Command Palette", "rebound palette bind dispatches")
 	testing.expect(t, command_matches(tb2.Event{type = .Key, key = .Ctrl_G}, "Command Palette"), "command_matches honors the rebind")
-	ccmd, ccok := filetree_command_for_event(tb2.Event{type = .Key, key = .Ctrl_B})
+	ccmd, ccok := pane_command_for_event("filetree", tb2.Event{type = .Key, key = .Ctrl_B}, false)
 	testing.expect(t, ccok && ccmd.name == "Copy", "tree Copy follows the rebound global Copy bind")
-	_, oldc := filetree_command_for_event(tb2.Event{type = .Key, key = .Ctrl_C})
+	_, oldc := pane_command_for_event("filetree", tb2.Event{type = .Key, key = .Ctrl_C}, false)
 	testing.expect(t, !oldc, "tree Copy no longer answers the old Ctrl+C")
-	ncmd, nok := filetree_command_for_event(tb2.Event{type = .Key, key = .Ctrl_T})
+	ncmd, nok := pane_command_for_event("filetree", tb2.Event{type = .Key, key = .Ctrl_T}, false)
 	testing.expect(t, nok && ncmd.name == "New", "unique tree command keeps its own independent bind")
 
 	// Language overrides: per-key merge, patterns drive detection, invalid subkey

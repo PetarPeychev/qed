@@ -47,16 +47,16 @@ palette_open_now :: proc(e: ^E2E) -> bool {
 
 palette_selected :: proc(e: ^E2E) -> string {
 	p := pane_find(&e.ed, "palette")
-	if p == nil || pane_count(p) == 0 {
+	if p == nil || pane_count(&e.ed, p) == 0 {
 		return ""
 	}
-	return p.list.items[pane_item_index(p, p.list.sel)].label
+	return test_pane_label(&e.ed, p, p.list.sel)
 }
 
 palette_labels :: proc(e: ^E2E) -> string {
 	labels := make([dynamic]string, context.temp_allocator)
 	if p := pane_find(&e.ed, "palette"); p != nil {
-		for it in p.list.items {
+		for it in test_pane_items(&e.ed, p) {
 			append(&labels, it.label)
 		}
 	}
@@ -281,17 +281,17 @@ e2e_nav_welcome_log :: proc(t: ^testing.T) {
 	testing.expect(t, e.ed.welcome, "a no-file session shows the welcome screen")
 
 	nav_alt(&e, 'l')
-	testing.expect(t, e.ed.logview.active, "Alt+l opens the log pane from welcome")
+	testing.expect(t, test_pane_open(&e.ed, "log"), "Alt+l opens the log pane from welcome")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Message Log"), "the log pane renders over welcome")
 
 	nav_alt(&e, 'l')
-	testing.expect(t, !e.ed.logview.active, "Alt+l again closes the pane on welcome")
+	testing.expect(t, !test_pane_open(&e.ed, "log"), "Alt+l again closes the pane on welcome")
 	nav_alt(&e, 'l')
-	testing.expect(t, e.ed.logview.active, "and reopens it")
+	testing.expect(t, test_pane_open(&e.ed, "log"), "and reopens it")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.logview.active, "Esc closes the log pane")
+	testing.expect(t, !test_pane_open(&e.ed, "log"), "Esc closes the log pane")
 	testing.expect(t, e.ed.welcome, "closing returns to the welcome screen")
 }
 
@@ -305,21 +305,21 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
 
 	p := pane_find(&e.ed, "palette")
-	rows := min(pane_count(p), PALETTE_MAX_ROWS)
+	rows := min(pane_count(&e.ed, p), PALETTE_MAX_ROWS)
 	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)
 	border_x := box.x + box.w - 1
-	testing.expect(t, pane_count(p) > rows, "the command list should overflow the palette")
+	testing.expect(t, pane_count(&e.ed, p) > rows, "the command list should overflow the palette")
 	testing.expect_value(t, pane_geom(&e.ed, p).box, box)
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, border_x, box.y + 3), '┃')
 	testing.expect_value(t, e2e_cell_fg(&e, border_x, box.y + 3), COLOR_PANE_FG)
 
 	e2e_type(&e, "line wrap")
-	testing.expect(t, pane_count(p) > 0, "fuzzy query should match a command")
+	testing.expect(t, pane_count(&e.ed, p) > 0, "fuzzy query should match a command")
 	testing.expect_value(t, palette_selected(&e), "Toggle Line Wrap")
 	testing.expect(t, e2e_grid_has(&e, "Ctrl+f"), "the shortcut column shows live binds")
 
-	rows = min(pane_count(p), PALETTE_MAX_ROWS)
+	rows = min(pane_count(&e.ed, p), PALETTE_MAX_ROWS)
 	box = pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, box.x + box.w - 1, box.y + 3), '│')
@@ -353,7 +353,7 @@ e2e_nav_palette_welcome_filter :: proc(t: ^testing.T) {
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette from welcome")
 
 	has := proc(ed: ^Editor, name: string) -> bool {
-		for it in pane_find(ed, "palette").list.items {
+		for it in test_pane_items(ed, pane_find(ed, "palette")) {
 			if it.label == name {
 				return true
 			}
@@ -661,11 +661,12 @@ e2e_nav_line_jump_selection_prefill :: proc(t: ^testing.T) {
 	b.cursor = {0, 5} // select "alpha"
 
 	e2e_key(&e, .Ctrl_G)
-	p := &e.ed.linefind
-	testing.expect_value(t, textfield_str(&p.field), "alpha")
-	testing.expect_value(t, len(p.matches), 3) // filter ran on the pre-fill
-	testing.expect_value(t, p.field.anchor, 0) // fully selected
-	testing.expect_value(t, p.field.caret, 5)
+	p := test_view(&e.ed)
+	testing.expect(t, p != nil && p.owner == "lines", "Ctrl+G opens the lines plugin's view")
+	testing.expect_value(t, textfield_str(&p.fields[0].field), "alpha")
+	testing.expect_value(t, pane_count(&e.ed, p), 3) // filter ran on the pre-fill
+	testing.expect_value(t, p.fields[0].anchor, 0) // fully selected
+	testing.expect_value(t, p.fields[0].caret, 5)
 	e2e_key(&e, .Esc)
 }
 
@@ -693,11 +694,11 @@ e2e_nav_line_jump :: proc(t: ^testing.T) {
 	// Fuzzy content match, in file order.
 	e2e_key(&e, .Ctrl_G)
 	e2e_type(&e, "alpha")
-	p := &e.ed.linefind
-	testing.expect_value(t, len(p.matches), 3)
-	testing.expect_value(t, p.matches[0], 0)
-	testing.expect_value(t, p.matches[1], 3)
-	testing.expect_value(t, p.matches[2], 5)
+	p := test_view(&e.ed)
+	testing.expect_value(t, pane_count(&e.ed, p), 3)
+	testing.expect_value(t, pane_item_index(p, 0), 0)
+	testing.expect_value(t, pane_item_index(p, 1), 3)
+	testing.expect_value(t, pane_item_index(p, 2), 5)
 	e2e_key(&e, .Esc)
 }
 
@@ -1250,7 +1251,7 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette over the tree")
 	pal := pane_find(&e.ed, "palette")
-	testing.expect(t, pal.list.source.filetree, "palette sources the file-command table")
+	testing.expect_value(t, pal.list.source.scope, "filetree")
 	testing.expect(t, pal.over == &tr.active, "the palette sits on the tree")
 	testing.expect(t, strings.contains(palette_labels(&e), "|Workspace: Open Selected Directory|"), "tree-scoped plugin commands are listed")
 	testing.expect(t, !strings.contains(palette_labels(&e), "|Save|"), "editor commands are not")

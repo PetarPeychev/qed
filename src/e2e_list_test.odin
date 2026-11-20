@@ -81,10 +81,10 @@ list_logged :: proc(e: ^E2E, text: string) -> bool {
 }
 
 @(private = "file")
-list_labels :: proc(p: ^Pane) -> string {
+list_labels :: proc(ed: ^Editor, p: ^Pane) -> string {
 	s := ""
-	for i in 0 ..< pane_count(p) {
-		s = fmt.tprintf("%s%s%s", s, "," if i > 0 else "", p.list.items[pane_item_index(p, i)].label)
+	for i in 0 ..< pane_count(ed, p) {
+		s = fmt.tprintf("%s%s%s", s, "," if i > 0 else "", test_pane_label(ed, p, i))
 	}
 	return s
 }
@@ -111,8 +111,8 @@ e2e_list_handle_virtual :: proc(t: ^testing.T) {
 	p := pane_focus(&e.ed)
 	testing.expect(t, p != nil && p.owner == "l", "a view over the handle opens")
 	testing.expect_value(t, p.list.source.kind, ListSourceKind.Dirs)
-	testing.expect_value(t, list_labels(p), "Beta,alpha,apple,link")
-	testing.expect_value(t, p.list.items[1].path, fmt.tprintf("%s/alpha", root))
+	testing.expect_value(t, list_labels(&e.ed, p), "Beta,alpha,apple,link")
+	testing.expect_value(t, list_item(&e.ed, p, 1).path, fmt.tprintf("%s/alpha", root))
 	testing.expect_value(t, len(e.ed.plugins.lists), 1)
 	testing.expect_value(t, list_items_len(&e, p.handle), 0)
 	e2e_render(&e)
@@ -120,7 +120,7 @@ e2e_list_handle_virtual :: proc(t: ^testing.T) {
 
 	e2e_type(&e, "ppl")
 	plugin_flush(&e.ed)
-	testing.expect_value(t, list_labels(p), "apple")
+	testing.expect_value(t, list_labels(&e.ed, p), "apple")
 	testing.expect(t, list_logged(&e, fmt.tprintf("chg apple=%s/apple", root)), "change materializes the highlighted item")
 	testing.expect_value(t, list_items_len(&e, p.handle), 0)
 
@@ -153,7 +153,7 @@ e2e_list_handle_lifetime :: proc(t: ^testing.T) {
 	list_run(t, &e, "L: Drop")
 	testing.expect_value(t, len(lists), 0)
 	e2e_type(&e, "be")
-	testing.expect_value(t, list_labels(p), "Beta")
+	testing.expect_value(t, list_labels(&e.ed, p), "Beta")
 
 	list_run(t, &e, "L: Make")
 	testing.expect_value(t, len(lists), 1)
@@ -175,7 +175,7 @@ e2e_list_path_field :: proc(t: ^testing.T) {
 	testing.expect_value(t, f.caret, 2)
 	_, _, sel := textfield_selection(&f.field)
 	testing.expect(t, !sel, "a path field's text is not selected")
-	testing.expect_value(t, list_labels(p), "alpha")
+	testing.expect_value(t, list_labels(&e.ed, p), "alpha")
 	e2e_key(&e, .Enter)
 	testing.expect(t, list_logged(&e, fmt.tprintf("path 0 nil %s/al", root)), "Enter submits the written path, resolved")
 
@@ -184,7 +184,7 @@ e2e_list_path_field :: proc(t: ^testing.T) {
 	testing.expect(t, !list_logged(&e, "pchg alpha"), "no change at open")
 	e2e_key(&e, .Tab)
 	testing.expect_value(t, textfield_str(&pane_path(pane_focus(&e.ed)).field), "alpha/")
-	testing.expect_value(t, list_labels(pane_focus(&e.ed)), "Zed,inner")
+	testing.expect_value(t, list_labels(&e.ed, pane_focus(&e.ed)), "Zed,inner")
 	testing.expect(t, list_logged(&e, "pchg Zed"), "a path reload fires change")
 	e2e_key(&e, .Enter)
 	testing.expect(t, list_logged(&e, fmt.tprintf("path 0 nil %s/alpha", root)), "a relative path resolves against the root")

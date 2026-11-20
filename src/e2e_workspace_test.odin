@@ -29,7 +29,7 @@ cwd_names :: proc(e: ^E2E) -> string {
 		return "<closed>"
 	}
 	names := make([dynamic]string, context.temp_allocator)
-	for it in p.list.items {
+	for it in test_pane_items(&e.ed, p) {
 		append(&names, it.label)
 	}
 	return strings.join(names[:], ",", context.temp_allocator)
@@ -37,10 +37,10 @@ cwd_names :: proc(e: ^E2E) -> string {
 
 cwd_first_path :: proc(e: ^E2E) -> string {
 	p := cwd_pane(e)
-	if p == nil || len(p.list.items) == 0 {
+	if p == nil || list_count(&e.ed, p) == 0 {
 		return ""
 	}
-	return p.list.items[0].path
+	return list_item(&e.ed, p, 0).path
 }
 
 cwd_reopen :: proc(e: ^E2E) {
@@ -92,7 +92,7 @@ e2e_cwd_open_prefill :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.list.sel, 0)
 
 	e2e_render(&e)
-	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + min(len(p.list.items), PALETTE_MAX_ROWS))
+	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + min(pane_count(&e.ed, p), PALETTE_MAX_ROWS))
 	testing.expect_value(t, pane_geom(&e.ed, p).box, box)
 	top := e2e_row(&e, box.y)
 	testing.expectf(t, strings.contains(top, "┌──────────") && !strings.contains(top, filepath.base(root)), "no title on the border: %q", top)
@@ -165,7 +165,7 @@ e2e_cwd_bases :: proc(t: ^testing.T) {
 	e2e_type(&e, "../")
 	testing.expect_value(t, cwd_query(&e), "../")
 	found := false
-	for it in cwd_pane(&e).list.items {
+	for it in test_pane_items(&e.ed, cwd_pane(&e)) {
 		if it.path == root {
 			found = true
 		}
@@ -182,7 +182,7 @@ e2e_cwd_bases :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_A)
 	e2e_type(&e, "~/")
 	home, _ := filepath.clean(os.get_env("HOME", context.temp_allocator), context.temp_allocator)
-	for it in cwd_pane(&e).list.items {
+	for it in test_pane_items(&e.ed, cwd_pane(&e)) {
 		testing.expect(t, it.label != "." && it.label != "..", "no . / .. rows")
 		testing.expect_value(t, filepath.dir(it.path), home)
 	}

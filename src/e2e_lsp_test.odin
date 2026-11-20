@@ -464,7 +464,9 @@ e2e_lsp_rename_cross_file :: proc(t: ^testing.T) {
 	b.cursor = {1, 4}
 
 	e2e_alt(&e, 'r')
-	testing.expect(t, e.ed.rename.active, "Alt+r opens the rename box")
+	testing.expect(t, test_pane_open(&e.ed, "rename"), "Alt+r opens the rename box")
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "Rename to: target"), "prefilled with the word under the cursor")
 	e2e_key(&e, .Ctrl_A)
 	e2e_type(&e, "renamed")
 	e2e_key(&e, .Enter)

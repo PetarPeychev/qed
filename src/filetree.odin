@@ -1979,11 +1979,11 @@ filetree_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		palette_open(editor)
 		return
 	}
-	if cmd, ok := filetree_command_for_event(ev); ok {
+	if cmd, ok := pane_command_for_event("filetree", ev, false); ok {
 		cmd.run(editor)
 		return
 	}
-	if cmd, ok := plugin_command_for_event(editor, ev, true); ok {
+	if cmd, ok := plugin_command_for_event(editor, ev, "filetree"); ok {
 		plugin_command_chord(editor, cmd)
 		return
 	}

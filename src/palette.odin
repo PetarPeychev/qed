@@ -13,6 +13,7 @@ Command :: struct {
 	shortcut:    string,
 	key:         tb2.Key,
 	alt_ch:      rune,
+	ch:          rune,
 	module:      Module,
 	lsp:         bool,
 	run:         proc(editor: ^Editor),
@@ -20,7 +21,7 @@ Command :: struct {
 	id:          u64,
 	ref:         i32,
 	when_ref:    i32,
-	filetree:    bool,
+	scope:       string,
 	welcome:     bool,
 	key_default: string,
 }
@@ -30,7 +31,9 @@ command_run :: proc(editor: ^Editor, cmd: Command) {
 		plugin_command_run(editor, cmd)
 		return
 	}
-	cmd.run(editor)
+	if command_enabled(cmd) {
+		cmd.run(editor)
+	}
 }
 
 command_config_name :: proc(cmd: Command) -> string {
@@ -121,6 +124,10 @@ cmd_ai_cancel :: proc(editor: ^Editor) {llm_cancel_all(editor)}
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
 cmd_message_log :: proc(editor: ^Editor) {logview_open(editor)}
 cmd_plugins :: proc(editor: ^Editor) {pluginview_open(editor)}
+cmd_log_debug :: proc(editor: ^Editor) {logview_toggle(editor, .Debug)}
+cmd_log_info :: proc(editor: ^Editor) {logview_toggle(editor, .Info)}
+cmd_log_warn :: proc(editor: ^Editor) {logview_toggle(editor, .Warn)}
+cmd_log_error :: proc(editor: ^Editor) {logview_toggle(editor, .Error)}
 
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
@@ -133,7 +140,6 @@ commands := [?]Command {
 	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Find", run = find_open},
 	{name = "Replace", run = find_open_replace},
-	{name = "Find Line", run = linefind_open},
 	{name = "Go to Start of File", run = cmd_buffer_start},
 	{name = "Go to End of File", run = cmd_buffer_end},
 	{name = "Jump Back", run = jump_back},
@@ -168,19 +174,28 @@ commands := [?]Command {
 	{name = "Debug: Plugins", run = cmd_plugins},
 }
 
-filetree_commands := [?]Command {
-	{name = "Copy", bind_from = "Copy", run = filetree_cmd_copy},
-	{name = "Cut", bind_from = "Cut", run = filetree_cmd_cut},
-	{name = "Paste", bind_from = "Paste", run = filetree_clip_paste},
-	{name = "Delete", config_name = "File Tree: Delete", run = filetree_cmd_delete},
-	{name = "Close Buffers", bind_from = "Close Buffer", run = filetree_cmd_close},
-	{name = "Rename", config_name = "File Tree: Rename", run = filetree_cmd_rename},
-	{name = "New", config_name = "File Tree: New", run = filetree_cmd_new},
-	{name = "Select All", bind_from = "Select All", run = filetree_select_all},
-	{name = "Toggle Dotfiles", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
-	{name = "Toggle Ignored", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
-	{name = "Toggle Diff", config_name = "File Tree: Toggle Diff", run = filetree_toggle_diff},
-	{name = "Expand/Collapse All", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
+pane_commands := [?]Command {
+	{name = "Copy", scope = "filetree", bind_from = "Copy", run = filetree_cmd_copy},
+	{name = "Cut", scope = "filetree", bind_from = "Cut", run = filetree_cmd_cut},
+	{name = "Paste", scope = "filetree", bind_from = "Paste", run = filetree_clip_paste},
+	{name = "Delete", scope = "filetree", config_name = "File Tree: Delete", run = filetree_cmd_delete},
+	{name = "Close Buffers", scope = "filetree", bind_from = "Close Buffer", run = filetree_cmd_close},
+	{name = "Rename", scope = "filetree", config_name = "File Tree: Rename", run = filetree_cmd_rename},
+	{name = "New", scope = "filetree", config_name = "File Tree: New", run = filetree_cmd_new},
+	{name = "Select All", scope = "filetree", bind_from = "Select All", run = filetree_select_all},
+	{name = "Toggle Dotfiles", scope = "filetree", config_name = "File Tree: Toggle Dotfiles", run = filetree_toggle_dotfiles},
+	{name = "Toggle Ignored", scope = "filetree", config_name = "File Tree: Toggle Ignored", run = filetree_toggle_ignored},
+	{name = "Toggle Diff", scope = "filetree", config_name = "File Tree: Toggle Diff", run = filetree_toggle_diff},
+	{name = "Expand/Collapse All", scope = "filetree", config_name = "File Tree: Expand/Collapse All", run = filetree_toggle_expand_all},
+	{name = "Copy", scope = "log", bind_from = "Copy", run = logview_copy},
+	{name = "Toggle Debug", scope = "log", config_name = "Message Log: Toggle Debug", run = cmd_log_debug},
+	{name = "Toggle Info", scope = "log", config_name = "Message Log: Toggle Info", run = cmd_log_info},
+	{name = "Toggle Warn", scope = "log", config_name = "Message Log: Toggle Warn", run = cmd_log_warn},
+	{name = "Toggle Error", scope = "log", config_name = "Message Log: Toggle Error", run = cmd_log_error},
+	{name = "Toggle History", scope = "log", config_name = "Message Log: Toggle History", run = logview_toggle_history},
+	{name = "Enable/Disable", scope = "plugins", config_name = "Plugins: Enable/Disable", run = pluginview_toggle},
+	{name = "Reload", scope = "plugins", config_name = "Plugins: Reload", run = pluginview_reload},
+	{name = "Show Log", scope = "plugins", config_name = "Plugins: Show Log", run = pluginview_log},
 }
 
 command_enabled :: proc(cmd: Command) -> bool {
@@ -189,11 +204,6 @@ command_enabled :: proc(cmd: Command) -> bool {
 
 command_gated :: proc(name: string) -> bool {
 	for cmd in commands {
-		if cmd.name == name {
-			return !command_enabled(cmd)
-		}
-	}
-	for cmd in filetree_commands {
 		if cmd.name == name {
 			return !command_enabled(cmd)
 		}
@@ -240,7 +250,7 @@ command_available :: proc(editor: ^Editor, name: string) -> bool {
 
 table_command_for_key :: proc(table: []Command, key: tb2.Key) -> (Command, bool) {
 	for cmd in table {
-		if cmd.alt_ch == 0 && cmd.shortcut != "" && cmd.key == key {
+		if cmd.alt_ch == 0 && cmd.ch == 0 && cmd.shortcut != "" && cmd.key == key {
 			return cmd, true
 		}
 	}
@@ -264,15 +274,26 @@ command_for_alt :: proc(ch: rune) -> (Command, bool) {
 	return table_command_for_alt(commands[:], ch)
 }
 
-filetree_command_for_event :: proc(ev: tb2.Event) -> (Command, bool) {
-	alt := ev_alt(ev) && ev.ch != 0
-	for cmd in filetree_commands {
+command_bind_matches :: proc(key: tb2.Key, alt_ch, ch: rune, shortcut: string, ev: tb2.Event, bare: bool) -> bool {
+	if shortcut == "" {
+		return false
+	}
+	if ev_alt(ev) && ev.ch != 0 {
+		return alt_ch != 0 && alt_ch == ev.ch
+	}
+	if ev.ch != 0 {
+		return bare && ch != 0 && ch == ev.ch
+	}
+	return alt_ch == 0 && ch == 0 && key == ev.key
+}
+
+pane_command_for_event :: proc(scope: string, ev: tb2.Event, bare: bool) -> (Command, bool) {
+	for cmd in pane_commands {
+		if cmd.scope != scope {
+			continue
+		}
 		key, alt_ch, shortcut := command_effective_bind(cmd)
-		if alt {
-			if alt_ch != 0 && alt_ch == ev.ch {
-				return cmd, true
-			}
-		} else if alt_ch == 0 && shortcut != "" && key == ev.key {
+		if command_bind_matches(key, alt_ch, cmd.ch, shortcut, ev, bare) {
 			return cmd, true
 		}
 	}
@@ -285,7 +306,7 @@ command_shortcut :: proc(name: string) -> string {
 			return cmd.shortcut
 		}
 	}
-	for cmd in filetree_commands {
+	for cmd in pane_commands {
 		if cmd.bind_from == "" && command_config_name(cmd) == name {
 			return cmd.shortcut
 		}
@@ -316,11 +337,13 @@ palette_open :: proc(editor: ^Editor) {
 		fields = []PaneField{{mode = .Filter}},
 		modal = true,
 		has_list = true,
-		list = {source = {kind = .Commands, filetree = editor.filetree.active}},
+		list = {source = {kind = .Commands}},
 		on = {activate = palette_activate},
 	}
-	if editor.filetree.active {
-		spec.kind, spec.over = .Child, &editor.filetree.active
+	if f := pane_focus(editor); f != nil && f.scope != "" {
+		spec.kind, spec.parent, spec.list.source.scope = .Child, f.handle, f.scope
+	} else if editor.filetree.active {
+		spec.kind, spec.over, spec.list.source.scope = .Child, &editor.filetree.active, "filetree"
 	}
 	if p := pane_open(editor, spec); p != nil {
 		pane_list_load(editor, p)
@@ -328,7 +351,7 @@ palette_open :: proc(editor: ^Editor) {
 }
 
 palette_activate :: proc(editor: ^Editor, p: ^Pane) {
-	if cmd, ok := list_command(editor, &p.list.source, p.list.items[pane_item_index(p, p.list.sel)]); ok {
+	if cmd, ok := list_command(editor, &p.list.source, pane_item_index(p, p.list.sel)); ok {
 		command_run(editor, cmd)
 	}
 }

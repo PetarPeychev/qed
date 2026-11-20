@@ -194,7 +194,7 @@ plugin_view_queue :: proc(editor: ^Editor, pn: ^Pane, kind: ViewEvent, sel: []in
 	if pn.list.source.kind != .None && len(sel) > 0 {
 		ev.items = make([]PaneItem, len(sel))
 		for idx, i in sel {
-			ev.items[i] = pane_item_clone(pn.list.items[idx])
+			ev.items[i] = pane_item_clone(list_item(editor, pn, idx))
 		}
 	}
 	append(&editor.plugins.view_events, ev)
@@ -226,7 +226,7 @@ plugin_view_activate_now :: proc(editor: ^Editor, pn: ^Pane) {
 			return
 		}
 	}
-	if !pn.has_list || pane_count(pn) == 0 {
+	if !pn.has_list || pane_count(editor, pn) == 0 {
 		return
 	}
 	lo, hi := pn.list.sel, pn.list.sel
@@ -304,7 +304,7 @@ plugin_views_flush :: proc(editor: ^Editor) {
 		}
 		v := p.views[vi]
 		pn := &editor.panes[pi]
-		if pane_count(pn) == 0 {
+		if pane_count(editor, pn) == 0 {
 			continue
 		}
 		item := pane_item_index(pn, pn.list.sel)
@@ -319,7 +319,7 @@ plugin_views_flush :: proc(editor: ^Editor) {
 		start := PluginStart{ref = v.on[.Change], args = .View_Item, view_ref = v.view_ref, item_ref = v.items_ref, item = item + 1}
 		one: [1]PaneItem
 		if pn.list.source.kind != .None {
-			one[0] = pn.list.items[item]
+			one[0] = list_item(editor, pn, item)
 			start.pitems = one[:]
 		}
 		task, finished := plugin_task_start(editor, v.owner, .Command, start)
@@ -394,8 +394,26 @@ qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
 	case:
 		lua.L_argerror(L, 1, "options table expected")
 	}
-	pl := api_loaded(L, editor)
 	lua.settop(L, 0)
+	api_list_push(L, editor, {kind = .Dirs, path = strings.clone(path), dotfiles = dotfiles})
+	return 1
+}
+
+qed_buf_line_list :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	id := b.id
+	lua.settop(L, 0)
+	api_list_push(L, editor, {kind = .Lines, buf = id})
+	return 1
+}
+
+// takes ownership of src
+api_list_push :: proc(L: ^lua.State, editor: ^Editor, src: ListSource) {
+	p := &editor.plugins
+	pl := api_loaded(L, editor)
 	id := plugin_next_id(p)
 	lua.createtable(L, 0, 1)
 	lua.pushinteger(L, lua.Integer(id))
@@ -411,8 +429,7 @@ qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
 		lua.setfield(L, lua.REGISTRYINDEX, QED_LIST_META)
 	}
 	lua.setmetatable(L, -2)
-	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = {kind = .Dirs, path = strings.clone(path), dotfiles = dotfiles}})
-	return 1
+	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = src})
 }
 
 qed_list_gc :: proc "c" (L: ^lua.State) -> c.int {
@@ -457,7 +474,7 @@ api_view_handle_check :: proc(L: ^lua.State, pn: ^Pane) {
 
 api_pane_item_push :: proc(L: ^lua.State, it: PaneItem) {
 	lua.L_checkstack(L, 3, "item")
-	lua.createtable(L, 0, 3)
+	lua.createtable(L, 0, 4)
 	lua.pushodinstring(L, it.label)
 	lua.setfield(L, -2, "label")
 	if it.path != "" {
@@ -467,6 +484,14 @@ api_pane_item_push :: proc(L: ^lua.State, it: PaneItem) {
 	if it.detail != "" {
 		lua.pushodinstring(L, it.detail)
 		lua.setfield(L, -2, "detail")
+	}
+	if it.buf != 0 {
+		lua.pushinteger(L, lua.Integer(it.buf))
+		lua.setfield(L, -2, "buf")
+	}
+	if it.row > 0 {
+		api_pos_push(L, {it.row - 1, max(0, it.col - 1)})
+		lua.setfield(L, -2, "pos")
 	}
 }
 
@@ -606,6 +631,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	spec.id, _ = api_field_string(L, 1, "id")
 	spec.modal = api_opt_bool(L, 1, "modal")
 	spec.title, _ = api_field_string(L, 1, "title")
+	spec.scope, _ = api_field_string(L, 1, "scope")
 	place, _ := api_field_string(L, 1, "place")
 	switch place {
 	case "", "center":
@@ -892,13 +918,13 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	pane_list_load(editor, pn)
 	rows := pane_geom(editor, pn).list.h
 	if selected > 0 {
-		pane_select(pn, selected - 1, rows)
+		pane_select(editor, pn, selected - 1, rows)
 		pn.list.moved = true
-	} else if restored && saved.key != "" {
+	} else if restored && saved.key != "" && pn.list.source.kind != .Lines {
 		pn.list.restore = strings.clone(saved.key)
-		pane_restore(pn, rows)
+		pane_restore(editor, pn, rows)
 	}
-	if pane_count(pn) > 0 {
+	if pane_count(editor, pn) > 0 {
 		pn.notified = pane_item_index(pn, pn.list.sel)
 	}
 	if pane_query(pn) != nil {
@@ -999,18 +1025,18 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	pn.landed = true
 	delete(pn.list.hint)
 	pn.list.hint = strings.clone(hint)
-	pane_refilter(pn)
+	pane_refilter(editor, pn)
 	rows := pane_geom(editor, pn).list.h
 	pn.list.sel, pn.list.scroll, pn.list.anchor = 0, 0, nil
 	if selected > 0 {
 		delete(pn.list.restore)
 		pn.list.restore = ""
-		pn.list.sel = clamp(selected - 1, 0, max(0, pane_count(pn) - 1))
+		pn.list.sel = clamp(selected - 1, 0, max(0, pane_count(editor, pn) - 1))
 		pn.list.moved = true
 		pn.list.scroll = max(0, pn.list.sel - rows / 2)
 		pane_scroll_fit(pn, rows)
 	} else {
-		pane_restore(pn, rows)
+		pane_restore(editor, pn, rows)
 	}
 	pn.notified = -1
 	pane_preview_sync(editor, pn)
@@ -1041,7 +1067,7 @@ qed_view_append :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].items_ref))
 	rows := pane_geom(editor, pn).list.h
-	sel, anchor := pane_marks(pn)
+	sel, anchor := pane_marks(editor, pn)
 	filtered := pane_filter(pn) != nil
 	for it, k in items[:room] {
 		pos := len(pn.list.items)
@@ -1074,7 +1100,7 @@ qed_view_append :: proc "c" (L: ^lua.State) -> c.int {
 	lua.settop(L, 2)
 	pn.landed = true
 	if filtered {
-		pane_refilter_keep(pn, rows, sel, anchor)
+		pane_refilter_keep(editor, pn, rows, sel, anchor)
 	} else if pn.list.moved {
 		pn.list.sel = max(0, sel)
 		if anchor >= 0 {
@@ -1082,7 +1108,7 @@ qed_view_append :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		pane_scroll_fit(pn, rows)
 	}
-	pane_restore(pn, rows)
+	pane_restore(editor, pn, rows)
 	pane_preview_sync(editor, pn)
 	lua.pushboolean(L, true)
 	return 1
@@ -1131,11 +1157,11 @@ qed_view_update :: proc "c" (L: ^lua.State) -> c.int {
 	it := api_view_item(L, editor, 5)
 	lua.rawseti(L, 4, lua.Integer(idx + 1))
 	lua.settop(L, 3)
-	sel, anchor := pane_marks(pn)
+	sel, anchor := pane_marks(editor, pn)
 	pane_item_free(pn.list.items[idx])
 	pn.list.items[idx] = pane_item_clone(it)
 	if pane_filter(pn) != nil {
-		pane_refilter_keep(pn, pane_geom(editor, pn).list.h, sel, anchor)
+		pane_refilter_keep(editor, pn, pane_geom(editor, pn).list.h, sel, anchor)
 	}
 	pane_preview_sync(editor, pn)
 	lua.pushboolean(L, true)

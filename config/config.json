@@ -27,6 +27,8 @@
   "terminal_escape_closes": true,
   "diff_view": false,
   "filetree_diff_only": true,
+  "message_log_backdrop": "none",
+  "plugins_pane_backdrop": "none",
   "lsp": {
     "enabled": true,
     "completion_max_rows": 8,
@@ -53,6 +55,9 @@
     "git": {
       "enabled": true
     },
+    "lines": {
+      "enabled": true
+    },
     "markdown": {
       "enabled": true
     },
@@ -76,7 +81,6 @@
     "Terminal: Toggle": "Alt+t",
     "Find": "Ctrl+f",
     "Replace": "Ctrl+h",
-    "Find Line": "Ctrl+g",
     "Go to Start of File": "Alt+{",
     "Go to End of File": "Alt+}",
     "Jump Back": "Alt+,",
@@ -115,7 +119,15 @@
     "File Tree: Toggle Dotfiles": "Alt+.",
     "File Tree: Toggle Ignored": "Alt+i",
     "File Tree: Toggle Diff": "Alt+d",
-    "File Tree: Expand/Collapse All": "Alt+e"
+    "File Tree: Expand/Collapse All": "Alt+e",
+    "Message Log: Toggle Debug": "d",
+    "Message Log: Toggle Info": "i",
+    "Message Log: Toggle Warn": "w",
+    "Message Log: Toggle Error": "e",
+    "Message Log: Toggle History": "h",
+    "Plugins: Enable/Disable": "e",
+    "Plugins: Reload": "r",
+    "Plugins: Show Log": "l"
   },
   "languages": {
     "odin": {

@@ -356,7 +356,7 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 		{"file_tree.lua", `return {setup = function() qed.command{name = "Open", run = function() end} end}`},
 		{"core.lua", `return {setup = function() qed.command{name = "Save", run = function() end} end}`},
 		{"badkey.lua", `return {setup = function() qed.command{name = "Bad: Key", key = "Hyper+x", run = function() end} end}`},
-		{"badscope.lua", `return {setup = function() qed.command{name = "Bad: Scope", scope = "nowhere", run = function() end} end}`},
+		{"badscope.lua", `return {setup = function() qed.command{name = "Bad: Scope", scope = "", run = function() end} end}`},
 		{"norun.lua", `return {setup = function() qed.command{name = "No: Run"} end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
@@ -369,14 +369,14 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "core").last_error, "'Save' is a core command"), "a bare name equal to a core command is rejected")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
-	a, ok := plugin_command_for_event(ed, alt('k'), false)
+	a, ok := plugin_command_for_event(ed, alt('k'), "")
 	testing.expect(t, ok && a.name == "Cmd: A", "config keybind overrides the plugin key")
 	testing.expect_value(t, a.shortcut, "Alt+k")
-	_, old := plugin_command_for_event(ed, alt('j'), false)
+	_, old := plugin_command_for_event(ed, alt('j'), "")
 	testing.expect(t, !old, "the plugin default key is gone once overridden")
-	_, unbound := plugin_command_for_event(ed, alt('w'), false)
+	_, unbound := plugin_command_for_event(ed, alt('w'), "")
 	testing.expect(t, !unbound, "an empty config bind unbinds")
-	tree, tok := plugin_command_for_event(ed, alt('j'), true)
+	tree, tok := plugin_command_for_event(ed, alt('j'), "filetree")
 	testing.expect(t, tok && tree.name == "Cmd: Tree", "filetree scope dispatches only in the tree")
 
 	plugin_command_chord(ed, a)
@@ -405,7 +405,7 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 
 	ed.plugins.config_override = nil
 	plugins_rebind(ed)
-	a2, ok2 := plugin_command_for_event(ed, alt('j'), false)
+	a2, ok2 := plugin_command_for_event(ed, alt('j'), "")
 	testing.expect(t, ok2 && a2.name == "Cmd: A", "rebinding without the override restores the plugin key")
 }
 
@@ -510,8 +510,8 @@ plugin_meta_display :: proc(t: ^testing.T) {
 
 	off := plugin_find(&ed.plugins, "off_one")
 	testing.expect_value(t, off.state, PluginState.Disabled)
-	testing.expect(t, strings.has_prefix(pluginview_row(off^, 8), "Off One "), "a disabled plugin shows its title-cased id")
-	testing.expect(t, strings.has_prefix(pluginview_row(plugin_find(&ed.plugins, "renamed")^, 8), "Gitty "), "the pane shows the display name")
+	testing.expect_value(t, off.display, "Off One")
+	testing.expect_value(t, plugin_find(&ed.plugins, "renamed").display, "Gitty")
 
 	ren := plugin_find(&ed.plugins, "renamed")
 	plugin_enabled_set(ed, ren, false)
@@ -579,7 +579,7 @@ plugin_palette_prefix_and_run :: proc(t: ^testing.T) {
 
 	palette_open(ed)
 	labels := make([dynamic]string, context.temp_allocator)
-	for it in pane_find(ed, "palette").list.items {
+	for it in test_pane_items(ed, pane_find(ed, "palette")) {
 		append(&labels, it.label)
 	}
 	names := fmt.tprintf("|%s|", strings.join(labels[:], "|", context.temp_allocator))
@@ -642,15 +642,15 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"File Tree: Restore File" (moved to plugins/git/keybinds/"Restore File")`), "old bundled bind names say where they moved")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
-	a, aok := plugin_command_for_event(ed, alt('k'), false)
+	a, aok := plugin_command_for_event(ed, alt('k'), "")
 	testing.expect(t, aok && a.name == "A: Run", "plugins.a.keybinds overrides a's key")
-	_, old := plugin_command_for_event(ed, alt('1'), false)
+	_, old := plugin_command_for_event(ed, alt('1'), "")
 	testing.expect(t, !old, "a's default is replaced")
-	b, bok := plugin_command_for_event(ed, alt('2'), false)
+	b, bok := plugin_command_for_event(ed, alt('2'), "")
 	testing.expect(t, bok && b.name == "B: Run", "the same bare name in b keeps its own key")
-	tree, tok := plugin_command_for_event(ed, alt('n'), true)
+	tree, tok := plugin_command_for_event(ed, alt('n'), "filetree")
 	testing.expect(t, tok && tree.name == "A: Search Tree", "keybind shares the bind key within the plugin")
-	ed_search, sok := plugin_command_for_event(ed, alt('n'), false)
+	ed_search, sok := plugin_command_for_event(ed, alt('n'), "")
 	testing.expect(t, sok && ed_search.name == "A: Search", "both sharing commands move together")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown plugins/a/keybinds/"Nope"`), "an unknown command in a loaded plugin's keybinds warns")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/a/keybinds/"Run"`), "known commands do not warn")
@@ -658,14 +658,14 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown keybinds/"Run" (moved to plugins/`), "a plugin command in the top-level keybinds warns where it moved")
 
 	plugin_enabled_set(ed, plugin_find(&ed.plugins, "b"), false)
-	_, gone := plugin_command_for_event(ed, alt('2'), false)
+	_, gone := plugin_command_for_event(ed, alt('2'), "")
 	testing.expect(t, !gone, "disabling a plugin drops its binds")
 
 	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"a": {"keybinds": {"Run": 5}}}}`)
 	plugins_config_apply(ed, false)
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", "plugins/a/keybinds/Run"), "an invalid plugin bind warns")
-	shared, shok := plugin_command_for_event(ed, alt('j'), true)
+	shared, shok := plugin_command_for_event(ed, alt('j'), "filetree")
 	testing.expect(t, shok && shared.name == "A: Search Tree", "a keybind sharer without key takes the shared default")
-	_, a1 := plugin_command_for_event(ed, alt('1'), false)
+	_, a1 := plugin_command_for_event(ed, alt('1'), "")
 	testing.expect(t, !a1, "an invalid user bind leaves the command unbound")
 }

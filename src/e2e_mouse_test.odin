@@ -122,7 +122,7 @@ e2e_mouse_palette_wheel :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	p := pane_find(&e.ed, "palette")
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
-	testing.expect(t, pane_count(p) > PALETTE_MAX_ROWS, "more commands than fit")
+	testing.expect(t, pane_count(&e.ed, p) > PALETTE_MAX_ROWS, "more commands than fit")
 
 	e2e_mouse(&e, 0, 0, .Mouse_Wheel_Down)
 	testing.expect(t, p.list.scroll > 0, "wheel-down scrolls the palette")
@@ -139,13 +139,14 @@ e2e_mouse_linefind_click_row :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.cursor = {0, 0}
 	e2e_key(&e, .Ctrl_G)
-	testing.expect(t, e.ed.linefind.active, "Ctrl+G opens line jump")
-	testing.expect_value(t, e.ed.linefind.selected, 0)
+	p := test_view(&e.ed)
+	testing.expect(t, test_pane_open(&e.ed, "lines"), "Ctrl+G opens line jump")
+	testing.expect_value(t, p.list.sel, 0)
 
-	lay := overlay_layout(&e.ed)
-	e2e_mouse(&e, lay.inner.x + 1, lay.body_top + 2)
-	testing.expect_value(t, e.ed.linefind.selected, 2)
-	testing.expect(t, e.ed.linefind.active, "a single click only selects, stays open")
+	g := pane_geom(&e.ed, p)
+	e2e_mouse(&e, g.list.x + 1, g.list.y + 2)
+	testing.expect_value(t, test_view(&e.ed).list.sel, 2)
+	testing.expect(t, test_pane_open(&e.ed, "lines"), "a single click only selects, stays open")
 }
 
 // Open tab (Alt+o): a double click on a row switches to that buffer, same as Enter.

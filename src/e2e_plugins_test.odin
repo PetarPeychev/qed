@@ -510,7 +510,7 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	case pn.has_list:
 		kind = "confirm"
 	}
-	n := pane_count(pn)
+	n := pane_count(entry.editor, pn)
 	lua.createtable(L, 0, 6)
 	lua.pushodinstring(L, kind)
 	lua.setfield(L, -2, "kind")
@@ -520,7 +520,7 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "matches")
 	lua.createtable(L, c.int(n), 0)
 	for i in 0 ..< n {
-		lua.pushodinstring(L, pn.list.items[pane_item_index(pn, i)].label)
+		lua.pushodinstring(L, test_pane_label(entry.editor, pn, i))
 		lua.rawseti(L, -2, lua.Integer(i + 1))
 	}
 	lua.setfield(L, -2, "labels")

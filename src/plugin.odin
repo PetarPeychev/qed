@@ -107,6 +107,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
+	{"lines/init.lua", #load("../plugins/lines/init.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
@@ -785,20 +786,22 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 		}
 		append(&next, pl)
 	}
+	selected := ""
+	if pl := pluginview_selected(editor); pl != nil {
+		selected = strings.clone(pl.name, context.temp_allocator)
+	}
 	for &pl, i in p.list {
 		if kept[i] < 0 {
 			plugin_strings_free(&pl)
 		}
 	}
-	selected := ""
-	if pl := pluginview_selected(editor); pl != nil {
-		selected = pl.name
-	}
 	delete(p.list)
 	p.list = next
-	for pl, i in p.list {
-		if pl.name == selected {
-			editor.pluginview.selected = i
+	if pn := pane_find(editor, "plugins"); pn != nil {
+		for pl, i in p.list {
+			if pl.name == selected {
+				pn.list.sel = i
+			}
 		}
 	}
 	for name, i in loads {
@@ -1168,15 +1171,16 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		return lua.L_argerror(L, 1, "key must be a string")
 	}
 	key_s, _ := lua.toodinstring(L, 5)
-	if key_t == .STRING && key_s != "" {
-		if _, _, kok := parse_keybind(key_s); !kok {
-			return plugin_raise(L, fmt.tprintf("invalid key '%s' for command '%s'", key_s, name))
-		}
-	}
 	scope_t := lua.getfield(L, 1, "scope")
 	scope_s, _ := lua.toodinstring(L, 6)
-	if (scope_t != .STRING && scope_t != .NIL) || (scope_t == .STRING && scope_s != "editor" && scope_s != "filetree") {
-		return lua.L_argerror(L, 1, "scope must be \"editor\" or \"filetree\"")
+	if (scope_t != .STRING && scope_t != .NIL) || (scope_t == .STRING && scope_s == "") {
+		return lua.L_argerror(L, 1, "scope must be a non-empty string")
+	}
+	scope := "" if scope_s == "editor" else scope_s
+	if key_t == .STRING && key_s != "" {
+		if _, _, ch, kok := parse_bind(key_s); !kok || (ch != 0 && !bind_bare_ok(scope)) {
+			return plugin_raise(L, fmt.tprintf("invalid key '%s' for command '%s'", key_s, name))
+		}
 	}
 	welcome_t := lua.getfield(L, 1, "welcome")
 	if welcome_t != .BOOLEAN && welcome_t != .NIL {
@@ -1191,15 +1195,14 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if keybind_t == .STRING && keybind_s == "" {
 		return lua.L_argerror(L, 1, "keybind must not be empty")
 	}
-	filetree := scope_s == "filetree"
 	if pl == nil || pl.state != .Enabled {
 		return plugin_raise(L, "plugin is not loaded")
 	}
-	if plugin_command_core(name, filetree) {
+	if plugin_command_core(name, scope) {
 		return plugin_raise(L, fmt.tprintf("command name '%s' is a core command", name))
 	}
 	visible := fmt.tprintf("%s: %s", pl.display, name)
-	if plugin_command_taken(p, visible, filetree) {
+	if plugin_command_taken(p, visible, scope) {
 		return plugin_raise(L, fmt.tprintf("command '%s' already exists", visible))
 	}
 	lua.pushvalue(L, 3)
@@ -1215,7 +1218,7 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		bare        = strings.clone(name),
 		owner       = pl.name,
 		id          = id,
-		filetree    = filetree,
+		scope       = strings.clone(scope),
 		welcome     = welcome,
 		key_default = strings.clone(key_s) if key_t == .STRING else "",
 		config_name = strings.clone(keybind_s if keybind_t == .STRING else name),
@@ -1295,7 +1298,7 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	caller, _ := lua.toodinstring(L, lua.upvalueindex(1))
 	found := -1
 	for cmd, i in editor.plugins.commands {
-		if cmd.filetree {
+		if cmd.scope != "" {
 			continue
 		}
 		if cmd.name == name {
@@ -1314,28 +1317,35 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-plugin_command_core :: proc(name: string, filetree: bool) -> bool {
-	for cmd in (filetree_commands[:] if filetree else commands[:]) {
-		if cmd.name == name || command_config_name(cmd) == name {
+plugin_command_core :: proc(name: string, scope: string) -> bool {
+	if scope == "" {
+		for cmd in commands {
+			if cmd.name == name || command_config_name(cmd) == name {
+				return true
+			}
+		}
+	}
+	for cmd in pane_commands {
+		if cmd.scope == scope && (cmd.name == name || command_config_name(cmd) == name) {
 			return true
 		}
 	}
 	return false
 }
 
-plugin_command_taken :: proc(p: ^Plugins, name: string, filetree: bool) -> bool {
+plugin_command_taken :: proc(p: ^Plugins, name: string, scope: string) -> bool {
 	for cmd in commands {
 		if cmd.name == name {
 			return true
 		}
 	}
-	for cmd in filetree_commands {
-		if command_config_name(cmd) == name || (filetree && cmd.name == name) {
+	for cmd in pane_commands {
+		if command_config_name(cmd) == name || (cmd.scope == scope && cmd.name == name) {
 			return true
 		}
 	}
 	for cmd in p.commands {
-		if cmd.name == name && cmd.filetree == filetree {
+		if cmd.name == name && cmd.scope == scope {
 			return true
 		}
 	}
@@ -1348,6 +1358,7 @@ plugin_command_free :: proc(cmd: ^Command) {
 	delete(cmd.shortcut)
 	delete(cmd.key_default)
 	delete(cmd.config_name)
+	delete(cmd.scope)
 }
 
 editor_config_user :: proc(editor: ^Editor) -> json.Object {
@@ -1363,10 +1374,10 @@ plugin_keybind :: proc(cfg: json.Object, owner, key: string) -> (json.Value, boo
 	return v, ok
 }
 
-plugin_bind_taken :: proc(key: tb2.Key, alt_ch: rune, filetree: bool) -> string {
-	for cmd in (filetree_commands[:] if filetree else commands[:]) {
+plugin_bind_taken :: proc(key: tb2.Key, alt_ch, ch: rune, scope: string) -> string {
+	for cmd in (commands[:] if scope == "" else pane_commands[:]) {
 		k, a, sc := command_effective_bind(cmd)
-		if sc != "" && a == alt_ch && (alt_ch != 0 || k == key) {
+		if cmd.scope == scope && sc != "" && a == alt_ch && cmd.ch == ch && (alt_ch != 0 || ch != 0 || k == key) {
 			return cmd.name
 		}
 	}
@@ -1386,8 +1397,8 @@ plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -
 	}
 	if v, ok := plugin_keybind(cfg_user, cmd.owner, cmd.config_name); ok {
 		s, is_str := v.(json.String)
-		_, _, parses := parse_keybind(string(s))
-		if !is_str || (s != "" && !parses) {
+		_, _, ch, parses := parse_bind(string(s))
+		if !is_str || (s != "" && (!parses || (ch != 0 && !bind_bare_ok(cmd.scope)))) {
 			problem = label
 		} else {
 			bind = string(s)
@@ -1398,23 +1409,25 @@ plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -
 	cmd.shortcut = ""
 	cmd.key = {}
 	cmd.alt_ch = 0
+	cmd.ch = 0
 	if problem != "" || bind == "" {
 		return
 	}
-	key, alt_ch, ok := parse_keybind(bind)
-	if !ok {
+	key, alt_ch, ch, ok := parse_bind(bind)
+	if !ok || (ch != 0 && !bind_bare_ok(cmd.scope)) {
 		return label, from_user
 	}
-	if taken := plugin_bind_taken(key, alt_ch, cmd.filetree); taken != "" {
+	if taken := plugin_bind_taken(key, alt_ch, ch, cmd.scope); taken != "" {
 		return fmt.tprintf("%s (%s is %q)", label, bind, taken), from_user
 	}
 	for other in p.commands {
-		if other.id != cmd.id && other.filetree == cmd.filetree && other.shortcut != "" && other.alt_ch == alt_ch && (alt_ch != 0 || other.key == key) {
+		if other.id != cmd.id && other.scope == cmd.scope && other.shortcut != "" && other.alt_ch == alt_ch && other.ch == ch && (alt_ch != 0 || ch != 0 || other.key == key) {
 			return fmt.tprintf("%s (%s is %q)", label, bind, other.name), from_user
 		}
 	}
 	cmd.key = key
 	cmd.alt_ch = alt_ch
+	cmd.ch = ch
 	cmd.shortcut = strings.clone(bind)
 	return
 }
@@ -1447,19 +1460,13 @@ plugins_rebind :: proc(editor: ^Editor) {
 	p.bound = true
 }
 
-plugin_command_matches :: proc(cmd: Command, ev: tb2.Event) -> bool {
-	if cmd.shortcut == "" {
-		return false
-	}
-	if ev_alt(ev) && ev.ch != 0 {
-		return cmd.alt_ch != 0 && cmd.alt_ch == ev.ch
-	}
-	return cmd.alt_ch == 0 && cmd.key == ev.key
+plugin_command_matches :: proc(cmd: Command, ev: tb2.Event, bare := false) -> bool {
+	return command_bind_matches(cmd.key, cmd.alt_ch, cmd.ch, cmd.shortcut, ev, bare)
 }
 
-plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, filetree: bool) -> (Command, bool) {
+plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, scope: string, bare := false) -> (Command, bool) {
 	for cmd in editor.plugins.commands {
-		if cmd.filetree == filetree && plugin_command_matches(cmd, ev) {
+		if cmd.scope == scope && plugin_command_matches(cmd, ev, bare) {
 			return cmd, true
 		}
 	}
@@ -1701,56 +1708,53 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	pl.unknown = strings.join(unknown[:], ", ")
 }
 
-PluginView :: struct {
-	active:   bool,
-	selected: int,
-	scroll:   int,
-	viewing:  bool,
-	source:   Preview,
-}
-
 pluginview_open :: proc(editor: ^Editor) {
-	v := &editor.pluginview
-	v.active = true
-	v.viewing = false
-	v.selected = clamp(v.selected, 0, max(0, len(editor.plugins.list) - 1))
+	p := &editor.plugins
 	editor_clear_message(editor)
-}
-
-pluginview_close :: proc(editor: ^Editor) {
-	v := &editor.pluginview
-	v.active = false
-	v.viewing = false
-	preview_reset(&v.source)
-}
-
-pluginview_body_h :: proc(editor: ^Editor) -> int {
-	lay := logview_layout(editor)
-	return max(1, lay.footer_sep_y - lay.body_top)
+	pn := pane_open(editor, Pane {
+		id = "plugins",
+		place = .Full,
+		chord = "Debug: Plugins",
+		scope = "plugins",
+		keep = true,
+		title = "Plugins (Lua failed to start)" if p.L == nil else fmt.tprintf("Plugins  ·  Lua init %.2f ms", p.init_ms),
+		has_list = true,
+		backdrop = PLUGINS_PANE_BACKDROP,
+		list = {source = {kind = .Plugins}, sel_bg = true, empty = "(no plugins)"},
+		footer = []PaneHint {
+			{label = "↑↓ select"},
+			{label = "Enter open"},
+			{label = "enable/disable", cmd = "Plugins: Enable/Disable"},
+			{label = "reload", cmd = "Plugins: Reload"},
+			{label = "log", cmd = "Plugins: Show Log"},
+			{label = "Esc close"},
+		},
+		on = {activate = pluginview_enter, close = pane_save, footer = pluginview_footer},
+	})
+	if pn == nil {
+		return
+	}
+	if saved := pane_saved_find(editor, "plugins"); saved != nil && saved.key != "" {
+		pn.list.restore = strings.clone(saved.key)
+		pane_restore(editor, pn, pane_geom(editor, pn).list.h)
+	}
 }
 
 pluginview_selected :: proc(editor: ^Editor) -> ^Plugin {
-	v := &editor.pluginview
-	if v.selected < 0 || v.selected >= len(editor.plugins.list) {
+	pn := pane_find(editor, "plugins")
+	if pn == nil || pn.list.sel < 0 || pn.list.sel >= len(editor.plugins.list) {
 		return nil
 	}
-	return &editor.plugins.list[v.selected]
+	return &editor.plugins.list[pn.list.sel]
 }
 
-pluginview_move :: proc(editor: ^Editor, delta: int) {
-	v := &editor.pluginview
-	n := len(editor.plugins.list)
-	if n == 0 {
-		return
+pluginview_footer :: proc(editor: ^Editor, pn: ^Pane) -> string {
+	pl := pluginview_selected(editor)
+	if pl == nil || pl.last_error == "" {
+		return ""
 	}
-	v.selected = clamp(v.selected + delta, 0, n - 1)
-	h := pluginview_body_h(editor)
-	if v.selected < v.scroll {
-		v.scroll = v.selected
-	}
-	if v.selected >= v.scroll + h {
-		v.scroll = v.selected - h + 1
-	}
+	err, _ := strings.replace_all(pl.last_error, "\n", " ", context.temp_allocator)
+	return err
 }
 
 plugin_enabled_set :: proc(editor: ^Editor, pl: ^Plugin, enable: bool) {
@@ -1786,7 +1790,8 @@ pluginview_reload :: proc(editor: ^Editor) {
 		return
 	}
 	if pl.state == .Disabled {
-		editor_log(editor, .Warn, "", fmt.tprintf("%s is disabled (e enables it)", pl.display))
+		key := command_shortcut("Plugins: Enable/Disable")
+		editor_log(editor, .Warn, "", fmt.tprintf("%s is disabled (%s enables it)", pl.display, key if key != "" else "Enable/Disable"))
 		return
 	}
 	pl.stamp = plugin_stamp_of(pl^)
@@ -1794,15 +1799,21 @@ pluginview_reload :: proc(editor: ^Editor) {
 	plugin_reload_report(editor, pl, "reloaded")
 }
 
-pluginview_enter :: proc(editor: ^Editor) {
-	v := &editor.pluginview
+pluginview_log :: proc(editor: ^Editor) {
+	pn := pane_find(editor, "plugins")
+	if pl := pluginview_selected(editor); pl != nil {
+		logview_open(editor, pl.display, pn.handle)
+	}
+}
+
+pluginview_enter :: proc(editor: ^Editor, pn: ^Pane) {
 	pl := pluginview_selected(editor)
 	if pl == nil {
 		return
 	}
 	if !pl.bundled {
 		main := strings.clone(pl.main, context.temp_allocator)
-		pluginview_close(editor)
+		pane_end(editor, pn.handle, false)
 		editor_open_path(editor, main)
 		return
 	}
@@ -1810,183 +1821,21 @@ pluginview_enter :: proc(editor: ^Editor) {
 	if !ok {
 		return
 	}
-	preview_set_text(&v.source, pl.main, src, pluginview_body_h(editor))
-	v.viewing = true
-}
-
-pluginview_source_close :: proc(editor: ^Editor) {
-	editor.pluginview.viewing = false
-	preview_reset(&editor.pluginview.source)
-}
-
-pluginview_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	v := &editor.pluginview
-	if command_matches(ev, "Debug: Plugins") {
-		pluginview_close(editor)
-		return
+	fork := fmt.tprintf("%s/%s", editor.plugins.user_dir, pl.dir if pl.dir != "" else pl.main)
+	if home := os.get_env("HOME", context.temp_allocator); home != "" && strings.has_prefix(fork, home) {
+		fork = fmt.tprintf("~%s", fork[len(home):])
 	}
-	if v.viewing {
-		h := pluginview_body_h(editor)
-		#partial switch ev.key {
-		case .Esc:
-			pluginview_source_close(editor)
-		case .Arrow_Up:
-			preview_scroll_by(&v.source, -1, h)
-		case .Arrow_Down:
-			preview_scroll_by(&v.source, 1, h)
-		case .Pgup:
-			preview_scroll_by(&v.source, -h, h)
-		case .Pgdn:
-			preview_scroll_by(&v.source, h, h)
-		case .Home:
-			preview_scroll_by(&v.source, -len(v.source.src), h)
-		case .End:
-			preview_scroll_by(&v.source, len(v.source.src), h)
-		}
-		return
+	main := strings.clone(pl.main, context.temp_allocator)
+	c := pane_open(editor, Pane {
+		id = "plugin_source",
+		kind = .Child,
+		parent = pn.handle,
+		place = .Full,
+		title = fmt.tprintf("plugins/%s  ·  bundled, read-only", main),
+		body_preview = true,
+		footer = []PaneHint{{label = fmt.tprintf("Esc back  ·  fork: copy to %s", fork)}},
+	})
+	if c != nil {
+		preview_set_text(&c.preview, main, src, pane_geom(editor, c).text.h)
 	}
-	#partial switch ev.key {
-	case .Esc:
-		pluginview_close(editor)
-		return
-	case .Arrow_Up:
-		pluginview_move(editor, -1)
-		return
-	case .Arrow_Down:
-		pluginview_move(editor, +1)
-		return
-	case .Enter:
-		pluginview_enter(editor)
-		return
-	}
-	switch ev.ch {
-	case 'e':
-		pluginview_toggle(editor)
-	case 'r':
-		pluginview_reload(editor)
-	case 'l':
-		if pl := pluginview_selected(editor); pl != nil {
-			logview_open(editor, pl.display)
-		}
-	}
-}
-
-pluginview_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	v := &editor.pluginview
-	lay := logview_layout(editor)
-	n := len(editor.plugins.list)
-	h := pluginview_body_h(editor)
-	if v.viewing {
-		#partial switch ev.key {
-		case .Mouse_Wheel_Up:
-			preview_scroll_by(&v.source, -WHEEL_SCROLL_LINES, h)
-		case .Mouse_Wheel_Down:
-			preview_scroll_by(&v.source, WHEEL_SCROLL_LINES, h)
-		case .Mouse_Left:
-			if !mouse_in_rect(ev, lay.box) && !ev_motion(ev) {
-				pluginview_source_close(editor)
-			}
-		}
-		return
-	}
-	#partial switch ev.key {
-	case .Mouse_Wheel_Up:
-		overlay_scroll_by(&v.scroll, -WHEEL_SCROLL_LINES, n, h)
-	case .Mouse_Wheel_Down:
-		overlay_scroll_by(&v.scroll, WHEEL_SCROLL_LINES, n, h)
-	case .Mouse_Left:
-		if !mouse_in_rect(ev, lay.box) {
-			if !ev_motion(ev) {
-				pluginview_close(editor)
-			}
-			return
-		}
-		off := overlay_row_off(ev, Rect{lay.inner.x, lay.body_top, lay.inner.w, h})
-		if off >= 0 && v.scroll + off < n {
-			v.selected = v.scroll + off
-			if !ev_motion(ev) && overlay_double_click(editor, v.selected) {
-				pluginview_enter(editor)
-			}
-		}
-	}
-}
-
-pluginview_row :: proc(pl: Plugin, name_w: int) -> string {
-	state := "enabled"
-	switch pl.state {
-	case .Enabled:
-	case .Disabled:
-		state = "disabled"
-	case .Errored:
-		state = "errored"
-	}
-	source := "bundled" if pl.bundled else "user"
-	load := fmt.tprintf("%10s", fmt.tprintf("%.2f ms", pl.load_ms)) if pl.state != .Disabled else ""
-	return fmt.tprintf("%-*s  %-7s  %-8s  %s", name_w, pl.display, source, state, load)
-}
-
-pluginview_render :: proc(editor: ^Editor) {
-	v := &editor.pluginview
-	p := &editor.plugins
-	lay := logview_layout(editor)
-	inner := pane_draw_box(lay.box)
-	h := pluginview_body_h(editor)
-	if v.viewing {
-		pl := pluginview_selected(editor)
-		pane_text(inner.x + 1, inner.y, inner.w - 2, fmt.tprintf("plugins/%s  ·  bundled, read-only", v.source.path), COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-		pane_hline(lay.box, lay.title_sep_y)
-		preview_ensure(&v.source, h)
-		preview_render(&v.source, inner.x, lay.body_top, inner.w - 1, h)
-		pane_draw_scrollbar(lay.box.x + lay.box.w - 1, lay.body_top, h, v.source.scroll, preview_total(&v.source))
-		pane_hline(lay.box, lay.footer_sep_y)
-		fork := fmt.tprintf("%s/%s", p.user_dir, pl.dir if pl != nil && pl.dir != "" else v.source.path)
-		if home := os.get_env("HOME", context.temp_allocator); home != "" && strings.has_prefix(fork, home) {
-			fork = fmt.tprintf("~%s", fork[len(home):])
-		}
-		pane_text(inner.x + 1, lay.footer_y, inner.w - 2, fmt.tprintf("Esc back  ·  fork: copy to %s", fork), COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-		tb2.hide_cursor()
-		return
-	}
-	title := "Plugins (Lua failed to start)" if p.L == nil else fmt.tprintf("Plugins  ·  Lua init %.2f ms", p.init_ms)
-	pane_text(inner.x + 1, inner.y, inner.w - 2, title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_hline(lay.box, lay.title_sep_y)
-
-	n := len(p.list)
-	if n == 0 {
-		pane_text(inner.x + 1, lay.body_top, inner.w - 2, "(no plugins)", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	}
-	v.selected = clamp(v.selected, 0, max(0, n - 1))
-	name_w := 4
-	for pl in p.list {
-		name_w = max(name_w, len(pl.display))
-	}
-	v.scroll = clamp(v.scroll, 0, max(0, n - h))
-	for i in v.scroll ..< min(v.scroll + h, n) {
-		pl := p.list[i]
-		y := lay.body_top + i - v.scroll
-		fg := COLOR_PANE_FG
-		switch pl.state {
-		case .Enabled:
-		case .Disabled:
-			fg = COLOR_PANE_SHORTCUT_FG
-		case .Errored:
-			fg = COLOR_ERROR_FG
-		}
-		bg := COLOR_PANE_BG
-		if i == v.selected {
-			bg = COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
-		}
-		pane_text(inner.x + 1, y, inner.w - 2, pluginview_row(pl, name_w), fg, bg)
-	}
-	pane_draw_scrollbar(lay.box.x + lay.box.w - 1, lay.body_top, h, v.scroll, n)
-
-	pane_hline(lay.box, lay.footer_sep_y)
-	if v.selected < n && p.list[v.selected].last_error != "" {
-		err, _ := strings.replace_all(p.list[v.selected].last_error, "\n", " ", context.temp_allocator)
-		pane_text(inner.x + 1, lay.footer_y, inner.w - 2, err, COLOR_ERROR_FG, COLOR_PANE_BG)
-	} else {
-		pane_text(inner.x + 1, lay.footer_y, inner.w - 2, "↑↓ select  Enter open  e enable/disable  r reload  l log  Esc close", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	}
-	tb2.hide_cursor()
 }

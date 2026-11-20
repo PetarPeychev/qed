@@ -28,9 +28,9 @@ Editor :: struct {
 	message_source:  string,
 	message_level:   LogLevel,
 	log:             [dynamic]LogEntry,
+	log_seq:         u64,
 	logview:         LogView,
 	plugins:         Plugins,
-	pluginview:      PluginView,
 	log_file:        ^os.File,
 	log_open:        bool,
 	panes:           [dynamic]Pane,
@@ -53,9 +53,7 @@ Editor :: struct {
 	accel_tick:      time.Tick,
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
-	linefind:        LineFind,
 	find:            Find,
-	rename:          Rename,
 	filetree:        FileTree,
 	jumps:           JumpList,
 	jump_lock:       bool,
@@ -171,9 +169,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	editor_log_destroy(editor)
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
-	linefind_destroy(&editor.linefind)
 	find_destroy(&editor.find)
-	rename_destroy(&editor.rename)
 	filetree_destroy(&editor.filetree)
 	jump_destroy(&editor.jumps)
 	llm_cancel_all(editor)
@@ -183,7 +179,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	term_destroy(editor)
 	plugins_shutdown(&editor.plugins)
 	pane_stack_destroy(editor)
-	preview_destroy(&editor.pluginview.source)
 	// Process-global singletons (seeded once at @(init) / lazily, shared across
 	// every editor); real main tears them down once at exit. A headless test reuses
 	// them across many sessions, so freeing them here would dangle the next one.
@@ -249,15 +244,11 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [8]Overlay {
+editor_overlays :: proc(editor: ^Editor) -> [4]Overlay {
 	return {
 		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
-		{&editor.logview.active, logview_dispatch_key, logview_render, logview_dispatch_mouse, nil},
-		{&editor.pluginview.active, pluginview_dispatch_key, pluginview_render, pluginview_dispatch_mouse, nil},
 		{&editor.aiedit.active, aiedit_dispatch_key, aiedit_render, aiedit_dispatch_mouse, aiedit_paste},
-		{&editor.linefind.active, linefind_dispatch_key, linefind_render, linefind_dispatch_mouse, linefind_paste},
 		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
-		{&editor.rename.active, rename_dispatch_key, rename_render, rename_dispatch_mouse, rename_paste},
 		{&editor.filetree.active, filetree_dispatch_key, filetree_render, filetree_dispatch_mouse, filetree_paste},
 	}
 }
@@ -359,7 +350,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				palette_open(editor)
 				return
 			}
-			if pcmd, pok := plugin_command_for_event(editor, ev, false); pok && pcmd.welcome {
+			if pcmd, pok := plugin_command_for_event(editor, ev, ""); pok && pcmd.welcome {
 				plugin_command_chord(editor, pcmd)
 				return
 			}
@@ -379,9 +370,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 editor_previews_sync :: proc(editor: ^Editor) {
 	if editor.filetree.active && filetree_layout(editor).preview && !preview_loaded(&editor.filetree.preview) {
 		filetree_preview_touch(editor)
-	}
-	if editor.linefind.active && overlay_layout(editor, .Code).preview && !preview_loaded(&editor.linefind.preview) {
-		linefind_load_preview(editor)
 	}
 	pane_stack_fit(editor, true)
 }
@@ -599,7 +587,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 			if command_enabled(cmd) {
 				cmd.run(editor)
 			}
-		} else if pcmd, pok := plugin_command_for_event(editor, ev, false); pok {
+		} else if pcmd, pok := plugin_command_for_event(editor, ev, ""); pok {
 			plugin_command_chord(editor, pcmd)
 		}
 		return
@@ -612,7 +600,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	}
 
-	if pcmd, pok := plugin_command_for_event(editor, ev, false); pok {
+	if pcmd, pok := plugin_command_for_event(editor, ev, ""); pok {
 		plugin_command_chord(editor, pcmd)
 		return
 	}

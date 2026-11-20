@@ -413,7 +413,7 @@ plugin_reload_shared_bind_sibling :: proc(t: ^testing.T) {
 
 	tree := proc(ed: ^Editor) -> string {
 		for cmd in ed.plugins.commands {
-			if cmd.filetree {
+			if cmd.scope == "filetree" {
 				return cmd.shortcut
 			}
 		}

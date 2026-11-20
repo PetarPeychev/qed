@@ -75,6 +75,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"set_indent", qed_buf_set_indent},
 	{"indent", qed_buf_indent},
 	{"set_base", qed_buf_set_base},
+	{"line_list", qed_buf_line_list},
 	{nil, nil},
 }
 

@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import "lib:tb2"
 
@@ -11,25 +12,40 @@ ListSourceKind :: enum {
 	None,
 	Commands,
 	Dirs,
+	Lines,
+	Log,
+	Plugins,
 }
 
 ListSource :: struct {
 	kind:      ListSourceKind,
-	filetree:  bool,
+	scope:     string,
 	path:      string,
 	dotfiles:  bool,
+	buf:       u64,
 	cache_dir: string,
 	cache:     [dynamic]string,
+	ids:       [dynamic]u64,
+	rows:      [dynamic]int,
+	stamp:     u64,
+}
+
+PaneColumn :: struct {
+	w:     int,
+	right: bool,
 }
 
 list_source_clone :: proc(s: ListSource) -> ListSource {
-	return {kind = s.kind, filetree = s.filetree, path = strings.clone(s.path), dotfiles = s.dotfiles}
+	return {kind = s.kind, scope = strings.clone(s.scope), path = strings.clone(s.path), dotfiles = s.dotfiles, buf = s.buf}
 }
 
 list_source_free :: proc(s: ^ListSource) {
+	delete(s.scope)
 	delete(s.path)
 	list_source_uncache(s)
 	delete(s.cache)
+	delete(s.ids)
+	delete(s.rows)
 	s^ = {}
 }
 
@@ -38,13 +54,14 @@ list_source_uncache :: proc(s: ^ListSource) {
 		delete(n)
 	}
 	clear(&s.cache)
+	clear(&s.ids)
+	clear(&s.rows)
 	delete(s.cache_dir)
 	s.cache_dir = ""
 }
 
 pane_list_load :: proc(editor: ^Editor, p: ^Pane) {
-	switch p.list.source.kind {
-	case .None:
+	#partial switch p.list.source.kind {
 	case .Commands:
 		list_commands_fill(editor, p)
 	case .Dirs:
@@ -52,64 +69,161 @@ pane_list_load :: proc(editor: ^Editor, p: ^Pane) {
 	}
 	p.list.sel, p.list.scroll, p.list.anchor = 0, 0, nil
 	p.notified = -1
-	pane_refilter(p)
+	pane_refilter(editor, p)
+	if p.list.source.kind == .Lines {
+		list_lines_center(editor, p)
+	}
+}
+
+list_count :: proc(editor: ^Editor, p: ^Pane) -> int {
+	src := &p.list.source
+	switch src.kind {
+	case .None:
+		return len(p.list.items)
+	case .Commands:
+		return len(src.cache)
+	case .Dirs:
+		return len(src.rows)
+	case .Lines:
+		b, _ := api_buf_find(editor, src.buf)
+		return len(b.lines) if b != nil else 0
+	case .Log:
+		return len(list_log_rows(editor, src))
+	case .Plugins:
+		return len(editor.plugins.list)
+	}
+	return 0
+}
+
+// borrowed: valid until the source changes
+list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
+	src := &p.list.source
+	switch src.kind {
+	case .None:
+		return p.list.items[i].label
+	case .Commands:
+		return src.cache[i]
+	case .Dirs:
+		return src.cache[src.rows[i]]
+	case .Lines:
+		b, _ := api_buf_find(editor, src.buf)
+		return string(b.lines[i].text[:])
+	case .Log:
+		return editor.log[list_log_rows(editor, src)[i]].text
+	case .Plugins:
+		return editor.plugins.list[i].display
+	}
+	return ""
+}
+
+// strings are temp or borrowed; only drawn, activated and changed items are ever built
+list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
+	src := &p.list.source
+	if src.kind == .None {
+		return p.list.items[i]
+	}
+	p.list.built += 1
+	switch src.kind {
+	case .None:
+	case .Commands:
+		it.label, it.id = src.cache[i], src.ids[i]
+		if cmd, ok := list_command(editor, src, i); ok {
+			_, _, it.detail = command_effective_bind(cmd)
+		}
+	case .Dirs:
+		it.label = src.cache[src.rows[i]]
+		it.path, _ = filepath.join({src.cache_dir, it.label}, context.temp_allocator)
+	case .Lines:
+		b, _ := api_buf_find(editor, src.buf)
+		text := b.lines[i].text[:]
+		it.label, it.row, it.buf = string(text), i + 1, src.buf
+		it.col = line_indent_len(text) + 1
+		if row, col, ok := lines_goto(editor, p); ok && row == i && col >= 0 {
+			it.col = min(col, len(text)) + 1
+		}
+		it.cells = make([]string, 2, context.temp_allocator)
+		it.cells[0], it.cells[1] = fmt.tprintf("%d", i + 1), it.label
+	case .Log:
+		e := editor.log[list_log_rows(editor, src)[i]]
+		if e.source != "" {
+			it.label = fmt.tprintf("%s  %s: %s", log_clock(e.time), e.source, e.text)
+		} else {
+			it.label = fmt.tprintf("%s  %s", log_clock(e.time), e.text)
+		}
+		it.color = log_level_color(e.level)
+	case .Plugins:
+		pl := editor.plugins.list[i]
+		it.label, it.key = pl.display, pl.name
+		state := "enabled"
+		switch pl.state {
+		case .Enabled:
+		case .Disabled:
+			state, it.color = "disabled", "pane_shortcut_foreground"
+		case .Errored:
+			state, it.color = "errored", "error_foreground"
+		}
+		it.cells = make([]string, 4, context.temp_allocator)
+		it.cells[0], it.cells[1], it.cells[2] = pl.display, "bundled" if pl.bundled else "user", state
+		it.cells[3] = fmt.tprintf("%.2f ms", pl.load_ms) if pl.state != .Disabled else ""
+	}
+	return
+}
+
+list_columns :: proc(editor: ^Editor, p: ^Pane) -> []PaneColumn {
+	#partial switch p.list.source.kind {
+	case .Lines:
+		return slice.clone([]PaneColumn{{w = digit_count(list_count(editor, p)), right = true}, {}}, context.temp_allocator)
+	case .Plugins:
+		name_w := 4
+		for pl in editor.plugins.list {
+			name_w = max(name_w, len(pl.display))
+		}
+		return slice.clone([]PaneColumn{{w = name_w}, {w = 7}, {w = 8}, {w = 10, right = true}}, context.temp_allocator)
+	}
+	return nil
 }
 
 list_commands_fill :: proc(editor: ^Editor, p: ^Pane) {
-	pane_items_clear(p)
-	ft := p.list.source.filetree
-	if ft {
-		for cmd in filetree_commands {
-			append(&p.list.items, PaneItem{label = strings.clone(cmd.name)})
-		}
-	} else {
-		for cmd in commands {
-			if command_available(editor, cmd.name) {
-				append(&p.list.items, PaneItem{label = strings.clone(cmd.name)})
-			}
+	src := &p.list.source
+	list_source_uncache(src)
+	for cmd in (commands[:] if src.scope == "" else pane_commands[:]) {
+		if cmd.scope == src.scope && command_available(editor, cmd.name) {
+			append(&src.cache, strings.clone(cmd.name))
+			append(&src.ids, 0)
 		}
 	}
 	for cmd in editor.plugins.commands {
-		if cmd.filetree != ft || (editor.welcome && !ft && !cmd.welcome) || !plugin_command_when(editor, cmd) {
+		if cmd.scope != src.scope || (editor.welcome && src.scope == "" && !cmd.welcome) || !plugin_command_when(editor, cmd) {
 			continue
 		}
-		append(&p.list.items, PaneItem{label = strings.clone(cmd.name), id = cmd.id})
+		append(&src.cache, strings.clone(cmd.name))
+		append(&src.ids, cmd.id)
 	}
 }
 
 // rows name a core command by label and a plugin command by id, so a removed command just goes dead
-list_command :: proc(editor: ^Editor, s: ^ListSource, it: PaneItem) -> (Command, bool) {
-	if it.id != 0 {
+list_command :: proc(editor: ^Editor, s: ^ListSource, i: int) -> (Command, bool) {
+	if i < 0 || i >= len(s.cache) {
+		return {}, false
+	}
+	if id := s.ids[i]; id != 0 {
 		for cmd in editor.plugins.commands {
-			if cmd.id == it.id {
+			if cmd.id == id {
 				return cmd, true
 			}
 		}
 		return {}, false
 	}
-	for cmd in (filetree_commands[:] if s.filetree else commands[:]) {
-		if cmd.name == it.label {
+	for cmd in (commands[:] if s.scope == "" else pane_commands[:]) {
+		if cmd.scope == s.scope && cmd.name == s.cache[i] {
 			return cmd, true
 		}
 	}
 	return {}, false
 }
 
-list_item_detail :: proc(editor: ^Editor, p: ^Pane, it: PaneItem) -> string {
-	if p.list.source.kind == .Commands {
-		cmd, ok := list_command(editor, &p.list.source, it)
-		if !ok {
-			return ""
-		}
-		_, _, shortcut := command_effective_bind(cmd)
-		return shortcut
-	}
-	return it.detail
-}
-
 list_dirs_fill :: proc(editor: ^Editor, p: ^Pane) {
 	src := &p.list.source
-	pane_items_clear(p)
 	base, term := src.path, ""
 	if f := pane_path(p); f != nil {
 		typed: string
@@ -132,12 +246,96 @@ list_dirs_fill :: proc(editor: ^Editor, p: ^Pane) {
 			slice.sort(src.cache[:])
 		}
 	}
-	for n in src.cache {
+	clear(&src.rows)
+	for n, i in src.cache {
 		if path_prefix_match(n, term) {
-			full, _ := filepath.join({base, n}, context.temp_allocator)
-			append(&p.list.items, PaneItem{label = strings.clone(n), path = strings.clone(full)})
+			append(&src.rows, i)
 		}
 	}
+}
+
+list_log_rows :: proc(editor: ^Editor, src: ^ListSource) -> []int {
+	v := &editor.logview
+	stamp := editor.log_seq << 8 | u64(v.history)
+	for on, level in v.filter {
+		stamp |= u64(on) << (1 + uint(level))
+	}
+	if stamp != src.stamp || v.source != src.path {
+		src.stamp = stamp
+		delete(src.path)
+		src.path = strings.clone(v.source)
+		clear(&src.rows)
+		for e, i in editor.log {
+			if v.filter[e.level] && (!e.seeded || v.history) && (v.source == "" || e.source == v.source) {
+				append(&src.rows, i)
+			}
+		}
+	}
+	return src.rows[:]
+}
+
+// An all-digit `:N` or `:N:M` is an exact jump, not a content match; col -1 means the first non-blank
+lines_goto :: proc(editor: ^Editor, p: ^Pane) -> (row, col: int, ok: bool) {
+	f := pane_filter(p)
+	if f == nil {
+		return
+	}
+	s := textfield_str(&f.field)
+	n := list_count(editor, p)
+	if len(s) < 2 || s[0] != ':' || n == 0 {
+		return
+	}
+	rest := s[1:]
+	col = -1
+	if c := strings.index_byte(rest, ':'); c >= 0 {
+		if cs := rest[c + 1:]; len(cs) > 0 {
+			if !all_digits(cs) {
+				return
+			}
+			v, _ := strconv.parse_int(cs, 10)
+			col = max(0, v - 1)
+		}
+		rest = rest[:c]
+	}
+	if !all_digits(rest) {
+		return
+	}
+	v, vok := strconv.parse_int(rest, 10)
+	if !vok {
+		return
+	}
+	return clamp(v - 1, 0, n - 1), col, true
+}
+
+all_digits :: proc(s: string) -> bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i in 0 ..< len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+list_lines_center :: proc(editor: ^Editor, p: ^Pane) {
+	b, _ := api_buf_find(editor, p.list.source.buf)
+	if b == nil {
+		return
+	}
+	pos := b.cursor.row
+	if p.list.filtered {
+		best := max(int)
+		for m, i in p.list.matches {
+			if d := abs(m - b.cursor.row); d < best {
+				best, pos = d, i
+			}
+		}
+	}
+	p.list.sel = clamp(pos, 0, max(0, pane_count(editor, p) - 1))
+	p.list.scroll = max(0, p.list.sel - pane_geom(editor, p).list.h / 2)
+	p.list.moved = true
 }
 
 path_split :: proc(text: string) -> (base, term: string) {
@@ -206,10 +404,10 @@ pane_field_value :: proc(editor: ^Editor, f: ^PaneField) -> string {
 }
 
 pane_path_complete :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
-	if pane_count(p) == 0 {
+	if pane_count(editor, p) == 0 {
 		return
 	}
-	name := p.list.items[pane_item_index(p, p.list.sel)].label
+	name := list_item(editor, p, pane_item_index(p, p.list.sel)).label
 	text := textfield_str(&f.field)
 	head := text[:strings.last_index_byte(text, '/') + 1]
 	textfield_set(&f.field, fmt.tprintf("%s%s/", head, name))
@@ -231,7 +429,7 @@ pane_path_key :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField, ev: tb2.Event) -
 			return true
 		}
 	}
-	if ev.ch == '/' && !ev_alt(ev) && at_end && pane_count(p) > 0 {
+	if ev.ch == '/' && !ev_alt(ev) && at_end && pane_count(editor, p) > 0 {
 		pane_path_complete(editor, p, f)
 		return true
 	}

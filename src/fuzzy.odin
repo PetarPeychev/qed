@@ -36,15 +36,19 @@ fuzzy_rank_builtin :: proc(f: ^Fuzzy, query: string, out: ^[dynamic]int) {
 			append(&entries, ScoreIdx{score, i})
 		}
 	}
-	slice.sort_by(entries[:], proc(a, b: ScoreIdx) -> bool {
+	fuzzy_sort(entries[:])
+	for e in entries {
+		append(out, e.idx)
+	}
+}
+
+fuzzy_sort :: proc(entries: []ScoreIdx) {
+	slice.sort_by(entries, proc(a, b: ScoreIdx) -> bool {
 		if a.score != b.score {
 			return a.score > b.score
 		}
 		return a.idx < b.idx
 	})
-	for e in entries {
-		append(out, e.idx)
-	}
 }
 
 ascii_lower :: proc(c: u8) -> u8 {

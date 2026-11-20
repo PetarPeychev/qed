@@ -103,6 +103,31 @@ Config_Str :: struct {
 	ptr: ^string,
 }
 
+MESSAGE_LOG_BACKDROP: PaneBackdrop
+PLUGINS_PANE_BACKDROP: PaneBackdrop
+
+Config_Backdrop :: struct {
+	key: string,
+	ptr: ^PaneBackdrop,
+}
+
+config_backdrops := [?]Config_Backdrop {
+	{"message_log_backdrop", &MESSAGE_LOG_BACKDROP},
+	{"plugins_pane_backdrop", &PLUGINS_PANE_BACKDROP},
+}
+
+backdrop_parse :: proc(s: string) -> (PaneBackdrop, bool) {
+	switch s {
+	case "none":
+		return .None, true
+	case "dim":
+		return .Dim, true
+	case "blank":
+		return .Blank, true
+	}
+	return .None, false
+}
+
 LLM_CHAT_COMMAND: string
 LLM_EDIT_PROMPT: string
 LLM_COMPLETION_ENDPOINT: string
@@ -372,6 +397,19 @@ parse_keybind :: proc(s: string) -> (key: tb2.Key, alt_ch: rune, ok: bool) {
 	return {}, 0, false
 }
 
+parse_bind :: proc(s: string) -> (key: tb2.Key, alt_ch, ch: rune, ok: bool) {
+	if r, sz := utf8.decode_rune_in_string(s); sz > 0 && sz == len(s) && r > ' ' && r != utf8.RUNE_ERROR {
+		return {}, 0, r, true
+	}
+	key, alt_ch, ok = parse_keybind(s)
+	return
+}
+
+// a bare key would swallow typing in the editor and in the tree's filter field
+bind_bare_ok :: proc(scope: string) -> bool {
+	return scope != "" && scope != "filetree"
+}
+
 embedded_config_data := #load("../config/config.json")
 
 g_config_defaults: json.Object
@@ -413,7 +451,7 @@ settings_destroy :: proc "contextless" () {
 	for &cmd in commands {
 		delete(cmd.shortcut, os.heap_allocator())
 	}
-	for &cmd in filetree_commands {
+	for &cmd in pane_commands {
 		delete(cmd.shortcut, os.heap_allocator())
 	}
 	for it in config_ai_strs {
@@ -507,17 +545,19 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 		if s == "" {
 			cmd.key = tb2.Key(0)
 			cmd.alt_ch = 0
+			cmd.ch = 0
 			delete(cmd.shortcut, os.heap_allocator())
 			cmd.shortcut = ""
 			continue
 		}
-		key, alt_ch, pok := parse_keybind(string(s))
-		if !pok {
+		key, alt_ch, ch, pok := parse_bind(string(s))
+		if !pok || (ch != 0 && !bind_bare_ok(cmd.scope)) {
 			append(invalid, fmt.tprintf("keybinds/%s", name))
 			continue
 		}
 		cmd.key = key
 		cmd.alt_ch = alt_ch
+		cmd.ch = ch
 		delete(cmd.shortcut, os.heap_allocator())
 		cmd.shortcut = strings.clone(string(s), os.heap_allocator())
 	}
@@ -576,6 +616,18 @@ config_apply_strs :: proc(obj: json.Object, tbl: []Config_Str, prefix: string, i
 config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	config_apply_ints(root, config_ints[:], "", invalid)
 	config_apply_bools(root, config_bools[:], "", invalid)
+	for it in config_backdrops {
+		v, present := root[it.key]
+		if !present {
+			continue
+		}
+		str, _ := v.(json.String)
+		if b, ok := backdrop_parse(string(str)); ok {
+			it.ptr^ = b
+		} else {
+			append(invalid, it.key)
+		}
+	}
 
 	if theme_val, present := root["theme"]; present {
 		if s, is_str := theme_val.(json.String); is_str {
@@ -589,7 +641,7 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	if kb_val, present := root["keybinds"]; present {
 		if kb_obj, kb_is_obj := kb_val.(json.Object); kb_is_obj {
 			config_apply_keybinds(kb_obj, commands[:], invalid)
-			config_apply_keybinds(kb_obj, filetree_commands[:], invalid)
+			config_apply_keybinds(kb_obj, pane_commands[:], invalid)
 		} else {
 			append(invalid, "keybinds")
 		}
@@ -667,6 +719,9 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 					break
 				}
 			}
+		}
+		for it in config_backdrops {
+			known ||= it.key == key
 		}
 		switch {
 		case known:
@@ -761,6 +816,7 @@ CONFIG_KEYBINDS_MOVED :: [?]struct {
 	{"Git: Set Diff Base", "git", "Set Diff Base"},
 	{"File Tree: Restore File", "git", "Restore File"},
 	{"Change Working Directory", "workspace", "Open Directory"},
+	{"Find Line", "lines", "Find Line"},
 }
 
 config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {
@@ -775,7 +831,7 @@ config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -
 				}
 			}
 			if !found {
-				for cmd in filetree_commands {
+				for cmd in pane_commands {
 					if cmd.bind_from == "" && command_config_name(cmd) == key {
 						found = true
 						break

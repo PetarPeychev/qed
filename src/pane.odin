@@ -151,8 +151,10 @@ PaneField :: struct {
 
 PaneItem :: struct {
 	label, detail, path, key: string,
-	row:                      int,
-	id:                       u64,
+	row, col:                 int,
+	id, buf:                  u64,
+	color:                    string,
+	cells:                    []string,
 }
 
 PaneLine :: struct {
@@ -163,10 +165,20 @@ PaneHint :: struct {
 	label, cmd: string,
 }
 
+PaneChip :: struct {
+	label, cmd: string,
+	on:         bool,
+}
+
 PaneList :: struct {
-	items:   [dynamic]PaneItem,
-	matches: [dynamic]int,
-	sel:     int,
+	items:    [dynamic]PaneItem,
+	matches:  [dynamic]int,
+	filtered: bool,
+	built:    int,
+	follow:   bool,
+	stick:    bool,
+	sel_bg:   bool,
+	sel:      int,
 	scroll:  int,
 	anchor:  Maybe(int),
 	multi:   bool,
@@ -220,8 +232,13 @@ Pane :: struct {
 	list:         PaneList,
 	has_list:     bool,
 	auto_preview: bool,
+	body_preview: bool,
 	preview:      Preview,
+	preview_buf:  u64,
 	footer:       []PaneHint,
+	chips:        []PaneChip,
+	scope:        string,
+	keep:         bool,
 	toggle:       u64,
 	chord:        string,
 	query_due:    bool,
@@ -233,6 +250,7 @@ Pane :: struct {
 	on:           struct {
 		activate, close: PaneHandler,
 		link:            proc(editor: ^Editor, p: ^Pane, target: string),
+		footer:          proc(editor: ^Editor, p: ^Pane) -> string,
 	},
 }
 
@@ -303,6 +321,11 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	for h, i in spec.footer {
 		p.footer[i] = {strings.clone(h.label), strings.clone(h.cmd)}
 	}
+	p.chips = make([]PaneChip, len(spec.chips))
+	for c, i in spec.chips {
+		p.chips[i] = {strings.clone(c.label), strings.clone(c.cmd), c.on}
+	}
+	p.scope = strings.clone(spec.scope)
 	p.fields = make([]PaneField, len(spec.fields))
 	for f, i in spec.fields {
 		p.fields[i].prompt = strings.clone(f.prompt)
@@ -337,10 +360,25 @@ pane_item_free :: proc(it: PaneItem) {
 	delete(it.detail)
 	delete(it.path)
 	delete(it.key)
+	delete(it.color)
+	for c in it.cells {
+		delete(c)
+	}
+	delete(it.cells)
 }
 
 pane_item_clone :: proc(it: PaneItem) -> PaneItem {
-	return {strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path), strings.clone(it.key), it.row, it.id}
+	out := it
+	out.label, out.detail, out.path = strings.clone(it.label), strings.clone(it.detail), strings.clone(it.path)
+	out.key, out.color = strings.clone(it.key), strings.clone(it.color)
+	out.cells = nil
+	if len(it.cells) > 0 {
+		out.cells = make([]string, len(it.cells))
+		for c, i in it.cells {
+			out.cells[i] = strings.clone(c)
+		}
+	}
+	return out
 }
 
 pane_items_add :: proc(p: ^Pane, items: []PaneItem) {
@@ -376,6 +414,12 @@ pane_free :: proc(p: ^Pane) {
 		delete(h.cmd)
 	}
 	delete(p.footer)
+	for c in p.chips {
+		delete(c.label)
+		delete(c.cmd)
+	}
+	delete(p.chips)
+	delete(p.scope)
 	for &f in p.fields {
 		delete(f.prompt)
 		textfield_destroy(&f.field)
@@ -574,7 +618,7 @@ pane_save :: proc(editor: ^Editor, p: ^Pane) {
 	for &f, i in p.fields {
 		s.texts[i] = strings.clone(textfield_str(&f.field))
 	}
-	s.key = strings.clone(pane_selected_key(p))
+	s.key = strings.clone(pane_selected_key(editor, p))
 	s.scroll = p.scroll
 }
 
@@ -582,6 +626,23 @@ pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	p := pane_focus(editor)
 	if p == nil {
 		return false
+	}
+	if ev.type == .Key {
+		for parent := p.parent; parent != 0; {
+			i := pane_index(editor, parent)
+			if i < 0 {
+				break
+			}
+			if q := &editor.panes[i]; q.chord != "" && command_matches(ev, q.chord) {
+				pane_end(editor, q.handle, false)
+				pane_stack_fit(editor, false)
+				return true
+			}
+			parent = editor.panes[i].parent
+		}
+	}
+	if p.has_list {
+		pane_list_fit(editor, p, pane_geom(editor, p).list.h)
 	}
 	action := PaneAction.None
 	#partial switch ev.type {
@@ -592,7 +653,10 @@ pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	case .Resize:
 		editor_overlay_resize(editor)
 	}
-	if action == .Activate && p.ctx.lua {
+	if action == .Activate && !p.ctx.lua && p.on.activate == nil {
+		action = .None
+	}
+	if action == .Activate && (p.ctx.lua || p.keep) {
 		p.on.activate(editor, p)
 	} else if action != .None {
 		pane_end(editor, p.handle, action == .Activate)
@@ -639,23 +703,23 @@ pane_query :: proc(p: ^Pane) -> ^PaneField {
 	return nil
 }
 
-pane_count :: proc(p: ^Pane) -> int {
-	return len(p.list.matches) if pane_filter(p) != nil else len(p.list.items)
+pane_count :: proc(editor: ^Editor, p: ^Pane) -> int {
+	return len(p.list.matches) if p.list.filtered else list_count(editor, p)
 }
 
 pane_item_index :: proc(p: ^Pane, i: int) -> int {
-	return p.list.matches[i] if pane_filter(p) != nil else i
+	return p.list.matches[i] if p.list.filtered else i
 }
 
 pane_item_key :: proc(it: PaneItem) -> string {
 	return it.key if it.key != "" else it.label
 }
 
-pane_selected_key :: proc(p: ^Pane) -> string {
-	if pane_count(p) == 0 {
+pane_selected_key :: proc(editor: ^Editor, p: ^Pane) -> string {
+	if pane_count(editor, p) == 0 {
 		return ""
 	}
-	return pane_item_key(p.list.items[pane_item_index(p, p.list.sel)])
+	return pane_item_key(list_item(editor, p, pane_item_index(p, p.list.sel)))
 }
 
 pane_hint :: proc(p: ^Pane) -> string {
@@ -666,26 +730,43 @@ pane_prompt :: proc(f: ^PaneField) -> string {
 	return f.prompt if f.prompt != "" else "> "
 }
 
-pane_refilter :: proc(p: ^Pane) {
+// an empty query leaves the list unfiltered, so a huge source never builds an index array
+pane_refilter :: proc(editor: ^Editor, p: ^Pane) {
+	clear(&p.list.matches)
+	p.list.filtered = false
+	p.list.sel, p.list.scroll, p.list.anchor, p.list.moved = 0, 0, nil, false
 	f := pane_filter(p)
 	if f == nil {
 		return
 	}
-	labels := make([]string, len(p.list.items), context.temp_allocator)
-	for it, i in p.list.items {
-		labels[i] = it.label
+	lines := p.list.source.kind == .Lines
+	if row, _, ok := lines_goto(editor, p); ok && lines {
+		append(&p.list.matches, row)
+		p.list.filtered = true
+		return
 	}
-	fz := fuzzy_begin(labels)
-	clear(&p.list.matches)
-	for idx in fuzzy_rank(&fz, textfield_str(&f.field)) {
-		append(&p.list.matches, idx)
+	query := textfield_str(&f.field)
+	if query == "" {
+		return
 	}
-	p.list.sel, p.list.scroll, p.list.anchor, p.list.moved = 0, 0, nil, false
+	entries := make([dynamic]ScoreIdx, 0, 64, context.temp_allocator)
+	for i in 0 ..< list_count(editor, p) {
+		if score, ok := fuzzy_match(query, list_text(editor, p, i)); ok {
+			append(&entries, ScoreIdx{score, i})
+		}
+	}
+	if !lines {
+		fuzzy_sort(entries[:])
+	}
+	for e in entries {
+		append(&p.list.matches, e.idx)
+	}
+	p.list.filtered = true
 }
 
-pane_marks :: proc(p: ^Pane) -> (sel, anchor: int) {
+pane_marks :: proc(editor: ^Editor, p: ^Pane) -> (sel, anchor: int) {
 	sel, anchor = -1, -1
-	if pane_count(p) > 0 {
+	if pane_count(editor, p) > 0 {
 		sel = pane_item_index(p, p.list.sel)
 	}
 	if a, ok := p.list.anchor.?; ok {
@@ -695,9 +776,15 @@ pane_marks :: proc(p: ^Pane) -> (sel, anchor: int) {
 }
 
 // a full re-rank per call is O(n log n); fine for the small lists that change under a filter
-pane_refilter_keep :: proc(p: ^Pane, rows, sel, anchor: int) {
+pane_refilter_keep :: proc(editor: ^Editor, p: ^Pane, rows, sel, anchor: int) {
 	moved, scroll := p.list.moved, p.list.scroll
-	pane_refilter(p)
+	pane_refilter(editor, p)
+	if !p.list.filtered {
+		p.list.sel = max(0, sel)
+		if anchor >= 0 {
+			p.list.anchor = anchor
+		}
+	}
 	for m, i in p.list.matches {
 		if m == sel {
 			p.list.sel = i
@@ -719,21 +806,37 @@ pane_scroll_fit :: proc(p: ^Pane, rows: int) {
 	}
 }
 
-pane_select :: proc(p: ^Pane, i, rows: int) {
-	n := pane_count(p)
+// live sources shrink under the selection (log filters, unloaded plugins)
+pane_list_fit :: proc(editor: ^Editor, p: ^Pane, rows: int) {
+	n := pane_count(editor, p)
+	if a, ok := p.list.anchor.?; ok {
+		p.list.anchor = clamp(a, 0, n - 1) if n > 0 else nil
+	}
+	if p.list.follow && p.list.stick {
+		p.list.sel = max(0, n - 1)
+		p.list.scroll = max(0, n - rows)
+		return
+	}
+	p.list.sel = clamp(p.list.sel, 0, max(0, n - 1))
+	p.list.scroll = clamp(p.list.scroll, 0, max(0, n - rows))
+}
+
+pane_select :: proc(editor: ^Editor, p: ^Pane, i, rows: int) {
+	n := pane_count(editor, p)
 	if n == 0 {
 		return
 	}
 	p.list.sel = clamp(i, 0, n - 1)
+	p.list.stick = p.list.sel == n - 1
 	pane_scroll_fit(p, rows)
 }
 
-pane_restore :: proc(p: ^Pane, rows: int) {
+pane_restore :: proc(editor: ^Editor, p: ^Pane, rows: int) {
 	if p.list.restore == "" {
 		return
 	}
-	for i in 0 ..< pane_count(p) {
-		if pane_item_key(p.list.items[pane_item_index(p, i)]) == p.list.restore {
+	for i in 0 ..< pane_count(editor, p) {
+		if pane_item_key(list_item(editor, p, pane_item_index(p, i))) == p.list.restore {
 			p.list.sel = i
 			p.list.scroll = max(0, i - rows / 2)
 			p.list.moved = true
@@ -751,7 +854,7 @@ pane_field_changed :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
 	p.list.restore = ""
 	switch f.mode {
 	case .Filter:
-		pane_refilter(p)
+		pane_refilter(editor, p)
 	case .Query:
 		p.query_due = true
 		p.query_at = time.tick_add(time.tick_now(), PANE_QUERY_DEBOUNCE_MS * time.Millisecond)
@@ -766,21 +869,27 @@ pane_preview_sync :: proc(editor: ^Editor, p: ^Pane) {
 		return
 	}
 	g := pane_geom(editor, p)
-	path, row := "", 0
-	if g.has_preview && pane_count(p) > 0 {
-		it := p.list.items[pane_item_index(p, p.list.sel)]
-		path, row = it.path, it.row
+	it: PaneItem
+	if g.has_preview && pane_count(editor, p) > 0 {
+		it = list_item(editor, p, pane_item_index(p, p.list.sel))
 	}
-	if path == "" {
+	b, _ := api_buf_find(editor, it.buf)
+	if it.path == "" && b == nil {
 		if preview_loaded(&p.preview) {
 			preview_reset(&p.preview)
 		}
+		p.preview_buf = 0
 		return
 	}
-	if preview_loaded(&p.preview) && p.preview.path == path && p.preview.focus == row {
+	if preview_loaded(&p.preview) && p.preview.path == it.path && p.preview_buf == it.buf && p.preview.focus == it.row {
 		return
 	}
-	preview_set_file(&p.preview, path, row, g.preview.h)
+	p.preview_buf = it.buf
+	if b != nil {
+		preview_set_buffer(&p.preview, b, it.row, g.preview.h)
+	} else {
+		preview_set_file(&p.preview, it.path, it.row, g.preview.h)
+	}
 }
 
 PaneGeom :: struct {
@@ -804,7 +913,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 	g.title_y, g.footer_y, g.left_sep = -1, -1, -1
 	nf := len(p.fields)
 	if p.place == .Center {
-		n := pane_count(p)
+		n := pane_count(editor, p)
 		rows := min(n, PALETTE_MAX_ROWS) if p.size == .Palette else n
 		if n == 0 && pane_hint(p) != "" {
 			rows = 1
@@ -825,7 +934,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		if p.max_width > 0 {
 			w = min(w, p.max_width - 2)
 		}
-		g.box = pane_center(editor, w, head + rows + (1 if sep else 0) + (2 if len(p.footer) > 0 else 0))
+		g.box = pane_center(editor, w, head + rows + (1 if sep else 0) + (2 if pane_has_footer(p) else 0))
 		g.inner = {g.box.x + 1, g.box.y + 1, g.box.w - 2, g.box.h - 2}
 		y := g.inner.y
 		if p.title != "" {
@@ -841,7 +950,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 			y += 1
 		}
 		g.list = {g.inner.x, y, g.inner.w, rows}
-		if len(p.footer) > 0 {
+		if pane_has_footer(p) {
 			pane_geom_sep(&g, y + rows)
 			g.footer_y = y + rows + 1
 		}
@@ -864,7 +973,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		pane_geom_sep(&g, y + 1)
 		y += 2
 	}
-	if len(p.footer) > 0 {
+	if pane_has_footer(p) {
 		g.footer_y = bottom - 1
 		pane_geom_sep(&g, bottom - 2)
 		bottom -= 2
@@ -893,8 +1002,12 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 	return
 }
 
-pane_count_text :: proc(p: ^Pane) -> string {
-	n := pane_count(p)
+pane_has_footer :: proc(p: ^Pane) -> bool {
+	return len(p.footer) > 0 || len(p.chips) > 0 || p.on.footer != nil
+}
+
+pane_count_text :: proc(editor: ^Editor, p: ^Pane) -> string {
+	n := pane_count(editor, p)
 	if n == 0 {
 		return ""
 	}
@@ -913,15 +1026,91 @@ pane_shortcut :: proc(editor: ^Editor, name: string) -> string {
 	return ""
 }
 
+pane_hint_text :: proc(editor: ^Editor, label, cmd: string) -> string {
+	if key := pane_shortcut(editor, cmd); cmd != "" && key != "" {
+		return fmt.tprintf("%s %s", key, label)
+	}
+	return label
+}
+
 pane_footer_text :: proc(editor: ^Editor, p: ^Pane) -> string {
 	parts := make([]string, len(p.footer), context.temp_allocator)
 	for h, i in p.footer {
-		parts[i] = h.label
-		if key := pane_shortcut(editor, h.cmd); h.cmd != "" && key != "" {
-			parts[i] = fmt.tprintf("%s %s", key, h.label)
-		}
+		parts[i] = pane_hint_text(editor, h.label, h.cmd)
 	}
 	return strings.join(parts, "  ", context.temp_allocator)
+}
+
+pane_chips_layout :: proc(editor: ^Editor, p: ^Pane, g: PaneGeom) -> (xs: []int, hints_w: int) {
+	xs = make([]int, len(p.chips), context.temp_allocator)
+	if len(p.chips) == 0 {
+		return xs, g.inner.w - 2
+	}
+	total := 0
+	for c, i in p.chips {
+		total += visual_width(transmute([]u8)pane_hint_text(editor, c.label, c.cmd)) + (2 if i > 0 else 0)
+	}
+	x := g.inner.x + g.inner.w - 1 - total
+	hints_w = max(0, x - (g.inner.x + 1) - 1)
+	for c, i in p.chips {
+		xs[i] = x
+		x += visual_width(transmute([]u8)pane_hint_text(editor, c.label, c.cmd)) + 2
+	}
+	return
+}
+
+pane_render_footer :: proc(editor: ^Editor, p: ^Pane, g: PaneGeom) {
+	if p.on.footer != nil {
+		if s := p.on.footer(editor, p); s != "" {
+			pane_text(g.inner.x + 1, g.footer_y, g.inner.w - 2, s, COLOR_ERROR_FG, COLOR_PANE_BG)
+			return
+		}
+	}
+	xs, hints_w := pane_chips_layout(editor, p, g)
+	pane_text(g.inner.x + 1, g.footer_y, hints_w, pane_footer_text(editor, p), COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+	for c, i in p.chips {
+		s := pane_hint_text(editor, c.label, c.cmd)
+		pane_text(xs[i], g.footer_y, visual_width(transmute([]u8)s), s, COLOR_PANE_PROMPT_FG if c.on else COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+	}
+}
+
+pane_run_command :: proc(editor: ^Editor, p: ^Pane, name: string) {
+	for cmd in pane_commands {
+		if cmd.scope == p.scope && command_config_name(cmd) == name {
+			command_run(editor, cmd)
+			return
+		}
+	}
+	for cmd in commands {
+		if cmd.name == name {
+			command_run(editor, cmd)
+			return
+		}
+	}
+	for cmd in editor.plugins.commands {
+		if cmd.name == name {
+			plugin_command_chord(editor, cmd)
+			return
+		}
+	}
+}
+
+pane_render_row :: proc(it: PaneItem, cols: []PaneColumn, x, y, w: int, fg, bg: tb2.Color) {
+	if len(cols) == 0 {
+		pane_text(x, y, w, it.label, fg, bg)
+		return
+	}
+	cx := x
+	for c, i in cols {
+		if i >= len(it.cells) || cx >= x + w {
+			break
+		}
+		cw := x + w - cx if c.w == 0 else min(c.w, x + w - cx)
+		sw := visual_width(transmute([]u8)it.cells[i])
+		off := max(0, cw - sw) if c.right else 0
+		pane_text(cx + off, y, cw - off, it.cells[i], fg, bg)
+		cx += cw + 2
+	}
 }
 
 pane_render_field :: proc(p: ^Pane, g: PaneGeom, i: int, count: string) {
@@ -946,7 +1135,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		pane_text(g.inner.x + 1, g.title_y, g.inner.w - 2, p.title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	}
 	if g.footer_y >= 0 {
-		pane_text(g.inner.x + 1, g.footer_y, g.inner.w - 2, pane_footer_text(editor, p), COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
+		pane_render_footer(editor, p, g)
 	}
 	if g.has_preview {
 		preview_render(&p.preview, g.preview.x + 1, g.preview.y, g.preview.w - 1, g.preview.h)
@@ -965,6 +1154,11 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		tb2.set_cell(i32(g.div_x), i32(g.left_sep), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
 	}
 
+	if p.body_preview {
+		preview_ensure(&p.preview, g.text.h)
+		preview_render(&p.preview, g.text.x - 1, g.text.y, g.text.w + 1, g.text.h)
+		pane_draw_scrollbar(g.box.x + g.box.w - 1, g.text.y, g.text.h, p.preview.scroll, preview_total(&p.preview))
+	}
 	rows := pane_body_rows(p, g)
 	p.scroll = clamp(p.scroll, 0, max(0, rows - g.text.h))
 	for i in 0 ..< min(g.text.h, rows - p.scroll) {
@@ -979,31 +1173,41 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		}
 		pane_text(g.text.x, g.text.y + i, g.text.w, l.text, fg, COLOR_PANE_BG)
 	}
-	if p.place != .Center {
+	if p.place != .Center && !p.body_preview {
 		pane_draw_scrollbar(g.box.x + g.box.w - 1, g.text.y, g.text.h, p.scroll, rows)
 	}
 
-	n := pane_count(p)
+	if p.has_list {
+		pane_list_fit(editor, p, g.list.h)
+	}
+	n := pane_count(editor, p)
 	lw := g.list.w - (1 if p.place == .Split else 2)
 	if hint := pane_hint(p); n == 0 && hint != "" && g.list.h > 0 {
 		pane_text(g.list.x + 1, g.list.y, lw, hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 	}
+	cols := list_columns(editor, p) if n > 0 else nil
 	for r in 0 ..< g.list.h {
 		i := p.list.scroll + r
 		if i >= n {
 			break
 		}
-		it := p.list.items[pane_item_index(p, i)]
+		it := list_item(editor, p, pane_item_index(p, i))
 		y := g.list.y + r
 		fg, bg, dfg := COLOR_PANE_FG, COLOR_PANE_BG, COLOR_PANE_SHORTCUT_FG
+		if c, ok := g_theme_colors[it.color]; ok && it.color != "" {
+			fg = c
+		}
 		if overlay_row_selected(i, p.list.sel, p.list.anchor if p.list.multi else nil) {
-			fg, bg, dfg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG, COLOR_PANE_SEL_FG
+			bg = COLOR_PANE_SEL_BG
+			if !p.list.sel_bg {
+				fg, dfg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_FG
+			}
 			pane_fill_row(g.list.x, y, g.list.w, fg, bg)
 		}
-		pane_text(g.list.x + 1, y, lw, it.label, fg, bg)
-		if detail := list_item_detail(editor, p, it); detail != "" {
-			dw := visual_width(transmute([]u8)detail)
-			pane_text(g.list.x + g.list.w - 1 - dw, y, dw, detail, dfg, bg)
+		pane_render_row(it, cols, g.list.x + 1, y, lw, fg, bg)
+		if it.detail != "" {
+			dw := visual_width(transmute([]u8)it.detail)
+			pane_text(g.list.x + g.list.w - 1 - dw, y, dw, it.detail, dfg, bg)
 		}
 	}
 	if p.has_list {
@@ -1014,7 +1218,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		tb2.hide_cursor()
 		return
 	}
-	count := pane_count_text(p)
+	count := pane_count_text(editor, p)
 	for i in 0 ..< len(p.fields) {
 		if i != p.focus {
 			pane_render_field(p, g, i, count)
@@ -1027,6 +1231,21 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	if (p.toggle != 0 && plugin_command_id_matches(editor, p.toggle, ev)) || (p.chord != "" && command_matches(ev, p.chord)) {
 		return .Close
 	}
+	if p.scope != "" {
+		if command_matches(ev, "Command Palette") {
+			palette_open(editor)
+			return .None
+		}
+		bare := len(p.fields) == 0
+		if cmd, ok := pane_command_for_event(p.scope, ev, bare); ok {
+			command_run(editor, cmd)
+			return .None
+		}
+		if cmd, ok := plugin_command_for_event(editor, ev, p.scope, bare); ok {
+			plugin_command_chord(editor, cmd)
+			return .None
+		}
+	}
 	if len(p.fields) > 0 && p.fields[p.focus].mode == .Path && pane_path_key(editor, p, &p.fields[p.focus], ev) {
 		return .None
 	}
@@ -1034,7 +1253,7 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	case .Esc:
 		return .Close
 	case .Enter:
-		if !p.ctx.lua && p.has_list && pane_count(p) == 0 {
+		if !p.ctx.lua && p.has_list && pane_count(editor, p) == 0 {
 			return .None
 		}
 		return .Activate
@@ -1050,8 +1269,12 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		case .Pgdn:
 			d = max(1, page)
 		}
+		if p.body_preview {
+			preview_scroll_by(&p.preview, d, g.text.h)
+			return .None
+		}
 		if p.has_list {
-			if pane_count(p) > 0 {
+			if pane_count(editor, p) > 0 {
 				if p.list.multi && ev_shift(ev) && (ev.key == .Arrow_Up || ev.key == .Arrow_Down) {
 					if p.list.anchor == nil {
 						p.list.anchor = p.list.sel
@@ -1062,7 +1285,7 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 				delete(p.list.restore)
 				p.list.restore = ""
 				p.list.moved = true
-				pane_select(p, p.list.sel + d, g.list.h)
+				pane_select(editor, p, p.list.sel + d, g.list.h)
 			}
 			return .None
 		}
@@ -1071,6 +1294,12 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 			return .None
 		}
 	case .Home, .End:
+		if p.body_preview {
+			g := pane_geom(editor, p)
+			total := preview_total(&p.preview)
+			preview_scroll_by(&p.preview, -total if ev.key == .Home else total, g.text.h)
+			return .None
+		}
 		if !p.has_list && len(p.fields) == 0 {
 			g := pane_geom(editor, p)
 			p.scroll = 0 if ev.key == .Home else max(0, pane_body_rows(p, g) - g.text.h)
@@ -1093,14 +1322,17 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 
 pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 	g := pane_geom(editor, p)
-	n := pane_count(p)
+	n := pane_count(editor, p)
 	#partial switch ev.key {
 	case .Mouse_Wheel_Up, .Mouse_Wheel_Down:
 		d := -WHEEL_SCROLL_LINES if ev.key == .Mouse_Wheel_Up else WHEEL_SCROLL_LINES
 		if g.has_preview && mouse_in_rect(ev, g.preview) {
 			preview_scroll_by(&p.preview, d, g.preview.h)
+		} else if p.body_preview {
+			preview_scroll_by(&p.preview, d, g.text.h)
 		} else if p.has_list {
 			overlay_scroll_by(&p.list.scroll, d, n, g.list.h)
+			p.list.stick = d > 0 && p.list.scroll >= max(0, n - g.list.h)
 		} else {
 			overlay_scroll_by(&p.scroll, d, pane_body_rows(p, g), g.text.h)
 		}
@@ -1118,9 +1350,20 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 			return .None
 		}
 	}
+	if !motion && int(ev.y) == g.footer_y && len(p.chips) > 0 {
+		xs, _ := pane_chips_layout(editor, p, g)
+		for c, i in p.chips {
+			w := visual_width(transmute([]u8)pane_hint_text(editor, c.label, c.cmd))
+			if int(ev.x) >= xs[i] && int(ev.x) < xs[i] + w {
+				pane_run_command(editor, p, c.cmd)
+				return .None
+			}
+		}
+	}
 	if off := overlay_row_off(ev, g.list); off >= 0 {
 		if i := p.list.scroll + off; i < n {
 			p.list.sel, p.list.anchor, p.list.moved = i, nil, true
+			p.list.stick = i == n - 1
 			delete(p.list.restore)
 			p.list.restore = ""
 			if !motion && overlay_double_click(editor, i) {

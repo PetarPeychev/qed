@@ -24,19 +24,24 @@ e2e_reload_stop :: proc(e: ^E2E, dir: string) {
 e2e_reload_select :: proc(e: ^E2E, name: string) {
 	for pl, i in e.ed.plugins.list {
 		if pl.name == name {
-			e.ed.pluginview.selected = i
+			pane_find(&e.ed, "plugins").list.sel = i
 		}
 	}
 }
 
 e2e_reload_row_y :: proc(e: ^E2E, name: string) -> int {
-	lay := logview_layout(&e.ed)
+	p := pane_find(&e.ed, "plugins")
+	g := pane_geom(&e.ed, p)
 	for pl, i in e.ed.plugins.list {
 		if pl.name == name {
-			return lay.body_top + i - e.ed.pluginview.scroll
+			return g.list.y + i - p.list.scroll
 		}
 	}
 	return -1
+}
+
+e2e_reload_selected :: proc(e: ^E2E) -> string {
+	return e.ed.plugins.list[pane_find(&e.ed, "plugins").list.sel].name
 }
 
 @(test)
@@ -113,8 +118,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	e2e_type(&e, "debug: plugins")
 	e2e_key(&e, .Enter)
-	v := &e.ed.pluginview
-	testing.expect(t, v.active, "the pane opens")
+	testing.expect(t, test_pane_open(&e.ed, "plugins"), "the pane opens")
 	e2e_reload_select(&e, "alpha")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Alpha      user     enabled"), "the user plugin row")
@@ -149,41 +153,40 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 
 	reload_write(dir, "aaa.lua", `return {}`)
 	plugins_poll(&e.ed)
-	testing.expect_value(t, e.ed.plugins.list[v.selected].name, "alpha")
+	testing.expect_value(t, e2e_reload_selected(&e), "alpha")
 	e2e_key(&e, tb2.Key(0), {}, 'l')
-	testing.expect(t, e.ed.logview.active, "l opens the message log")
+	testing.expect(t, test_pane_open(&e.ed, "log"), "l opens the message log")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Message Log  ·  Alpha"), "filtered to the plugin")
 	testing.expect(t, e2e_grid_has(&e, "alpha says hi"), "the plugin's entries show")
 	testing.expect(t, !e2e_grid_has(&e, "not alpha"), "other sources are hidden")
 	e2e_key(&e, .Esc)
-	testing.expect(t, !e.ed.logview.active && v.active, "Esc returns to the plugins pane")
+	testing.expect(t, !test_pane_open(&e.ed, "log") && test_pane_open(&e.ed, "plugins"), "Esc returns to the plugins pane")
 
 	e2e_reload_select(&e, "format")
+	user_dir := e.ed.plugins.user_dir
+	e.ed.plugins.user_dir = "/qed-u"
 	e2e_key(&e, .Enter)
-	testing.expect(t, v.viewing, "Enter on a bundled plugin opens its source")
+	e.ed.plugins.user_dir = user_dir
+	testing.expect(t, test_pane_open(&e.ed, "plugin_source"), "Enter on a bundled plugin opens its source")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "plugins/format/init.lua  ·  bundled, read-only"), "the read-only title")
 	testing.expect(t, e2e_grid_has(&e, "local on = {}"), "the embedded source shows")
-	user_dir := e.ed.plugins.user_dir
-	e.ed.plugins.user_dir = "/qed-u"
-	e2e_render(&e)
-	e.ed.plugins.user_dir = user_dir
 	testing.expect(t, e2e_grid_has(&e, "fork: copy to /qed-u/format"), "the fork hint points into the user plugin dir")
 	e2e_key(&e, .Pgdn)
-	testing.expect(t, v.source.scroll > 0, "the source scrolls")
-	lay := logview_layout(&e.ed)
-	e2e_mouse(&e, lay.inner.x + 2, lay.body_top + 1, .Mouse_Wheel_Up)
+	testing.expect(t, pane_find(&e.ed, "plugin_source").preview.scroll > 0, "the source scrolls")
+	g := pane_geom(&e.ed, pane_find(&e.ed, "plugins"))
+	e2e_mouse(&e, g.inner.x + 2, g.list.y + 1, .Mouse_Wheel_Up)
 	e2e_key(&e, tb2.Key(0), {}, 'e')
 	testing.expect_value(t, plugin_find(&e.ed.plugins, "format").state, PluginState.Enabled)
 	e2e_key(&e, .Esc)
-	testing.expect(t, v.active && !v.viewing, "Esc leaves the source view")
+	testing.expect(t, test_pane_open(&e.ed, "plugins") && !test_pane_open(&e.ed, "plugin_source"), "Esc leaves the source view")
 
 	y := e2e_reload_row_y(&e, "alpha")
-	e2e_mouse(&e, lay.inner.x + 2, y)
-	testing.expect_value(t, e.ed.plugins.list[v.selected].name, "alpha")
-	e2e_mouse(&e, lay.inner.x + 2, y)
-	testing.expect(t, !v.active, "a double click opens the user plugin file")
+	e2e_mouse(&e, g.inner.x + 2, y)
+	testing.expect_value(t, e2e_reload_selected(&e), "alpha")
+	e2e_mouse(&e, g.inner.x + 2, y)
+	testing.expect(t, !test_pane_open(&e.ed, "plugins"), "a double click opens the user plugin file")
 	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "/alpha.lua"), "the file is open for editing")
 	for highlight_busy(editor_buffer(&e.ed)) {
 		e2e_render(&e)

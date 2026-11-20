@@ -21,8 +21,8 @@
 ---@field name string bare name; the palette shows `<display name>: <name>`
 ---@field run fun(ctx: qed.Ctx)
 ---@field when? fun(ctx: qed.Ctx): boolean
----@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`
----@field scope? "editor"|"filetree"
+---@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`; a bare key (`"x"`) is allowed outside the editor and file tree scopes and fires only in a pane without fields
+---@field scope? string `"editor"` (default), `"filetree"`, a core pane's scope (`"log"`, `"plugins"`) or a `qed.ui.open{scope}`: the command runs on its chord while a pane of that scope has focus and is listed in that pane's Ctrl+P
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
 ---@field keybind? string the key in `plugins.<id>.keybinds`, default `name`; commands sharing it share the bind and the first `key` among them
 
@@ -244,7 +244,7 @@ function qed.every(ms, fn) end
 ---@field mode? "filter"|"query"|"input"|"path" filter (default) fuzzy-filters the list per key; query fires `on.query` at open and 120 ms after typing stops; input submits its text on Enter; path drives a `qed.fs.dirs` list (Tab or `/` at the end drills into the highlighted dir, Backspace after `/` drops a segment) and submits on Enter, its text reported as an absolute path (`~` and relative to `qed.root()` resolved)
 ---@field count? boolean shows the match count (`N+` past `list.max` or after `set{more}`) at the end of the row
 
----A core-owned item source (`qed.fs.dirs`). Items live in core; only activated or changed ones reach Lua, as `{label, path?, detail?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
+---A core-owned item source (`qed.fs.dirs`, `qed.buf.line_list`). Items live in core and are built only when drawn; only activated or changed ones reach Lua, as `{label, path?, detail?, buf?, pos?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
 ---@class qed.List
 ---@field id integer
 
@@ -281,6 +281,7 @@ function qed.every(ms, fn) end
 ---@field backdrop? "none"|"dim"|"blank" what happens to everything drawn under the pane (the editor and panes below, never the status rows): left alone (default), faded (theme tint `pane_backdrop`) or cleared to the background
 ---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
 ---@field footer? {hints: {label: string, cmd?: string}[]} bottom row; a hint with `cmd` is prefixed with that command's live shortcut
+---@field scope? string commands registered with this `scope` run on their chord while the pane has focus (with `ctx.view`), and Ctrl+P opens a palette of just them
 ---@field on? qed.UiHandlers handlers run as tasks after input dispatch, before the next frame
 
 ---@class qed.View
@@ -323,7 +324,7 @@ function View:wait() end
 qed.ui = {}
 
 ---Opens a pane. Returns `nil, "busy"` while a quit, close or conflict dialog shows, or when an exclusive open meets a `modal` pane; `nil, "closed"` when `parent` is gone. Raises in `setup`.
----A command of the view's own plugin run while the view has focus gets it as `ctx.view` (reachable once panes get scoped commands).
+---A command of the view's own plugin run while the view has focus (a `scope` command's chord, or its scoped Ctrl+P) gets it as `ctx.view`.
 ---@param spec qed.UiSpec
 ---@return qed.View|nil
 ---@return "busy"|"closed"|nil err
@@ -729,6 +730,11 @@ function qed.buf.indent(b) end
 ---@param opts? {label?: string} label shown in the status bar: `±base` when omitted, nothing when `""`
 ---@return boolean active true when this plugin's base is the one shown
 function qed.buf.set_base(b, text, opts) end
+
+---A list handle over the buffer's lines, live (edits show at once). Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching. A view over it opens on the match nearest the cursor.
+---@param b qed.Buf
+---@return qed.List
+function qed.buf.line_list(b) end
 
 qed.fs = {}
 

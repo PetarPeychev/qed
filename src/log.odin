@@ -79,6 +79,7 @@ editor_log :: proc(editor: ^Editor, level: LogLevel, source, msg: string, show :
 		text   = strings.clone(msg),
 	}
 	append(&editor.log, entry)
+	editor.log_seq += 1
 	for len(editor.log) > LOG_MAX {
 		delete(editor.log[0].text)
 		delete(editor.log[0].source)
@@ -299,157 +300,109 @@ editor_log_seed_text :: proc(editor: ^Editor, data: string) {
 		entry := log_seed_entry(line, last)
 		last = entry.time
 		append(&editor.log, entry)
+		editor.log_seq += 1
 	}
 }
 
 LogView :: struct {
-	active:   bool,
-	selected: int,
-	anchor:   Maybe(int),
-	scroll:   int,
-	stick:    bool,
-	filter:   [LogLevel]bool,
-	history:  bool,
-	source:   string,
+	filter:  [LogLevel]bool,
+	history: bool,
+	source:  string,
 }
 
-logview_sel_range :: proc(v: ^LogView) -> (lo, hi: int) {
-	lo, hi = v.selected, v.selected
-	if a, ok := v.anchor.?; ok {
-		lo, hi = min(a, v.selected), max(a, v.selected)
+log_level_color :: proc(level: LogLevel) -> string {
+	switch level {
+	case .Debug:
+		return "pane_shortcut_foreground"
+	case .Info:
+		return ""
+	case .Warn:
+		return "warn_foreground"
+	case .Error:
+		return "error_foreground"
 	}
-	return
+	return ""
 }
 
-logview_body_h :: proc(editor: ^Editor) -> int {
-	lay := logview_layout(editor)
-	return max(1, lay.footer_sep_y - lay.body_top)
+logview_chips :: proc(editor: ^Editor) -> []PaneChip {
+	v := &editor.logview
+	chips := make([]PaneChip, 5, context.temp_allocator)
+	chips[0] = {"debug", "Message Log: Toggle Debug", v.filter[.Debug]}
+	chips[1] = {"info", "Message Log: Toggle Info", v.filter[.Info]}
+	chips[2] = {"warn", "Message Log: Toggle Warn", v.filter[.Warn]}
+	chips[3] = {"error", "Message Log: Toggle Error", v.filter[.Error]}
+	chips[4] = {"history", "Message Log: Toggle History", v.history}
+	return chips
 }
 
-LogLayout :: struct {
-	box, inner:            Rect,
-	title_sep_y:           int,
-	body_top:              int,
-	footer_sep_y, footer_y: int,
-}
-
-logview_layout :: proc(editor: ^Editor) -> LogLayout {
-	base := overlay_layout(editor)
-	inner := base.inner
-	title_sep_y := inner.y + 1
-	body_top := inner.y + 2
-	footer_sep_y := inner.y + inner.h - 2
-	footer_y := inner.y + inner.h - 1
-	return {base.box, inner, title_sep_y, body_top, footer_sep_y, footer_y}
-}
-
-logview_filtered :: proc(editor: ^Editor) -> [dynamic]int {
-	out := make([dynamic]int, context.temp_allocator)
-	for e, i in editor.log {
-		if !editor.logview.filter[e.level] {
-			continue
-		}
-		if e.seeded && !editor.logview.history {
-			continue
-		}
-		if editor.logview.source != "" && e.source != editor.logview.source {
-			continue
-		}
-		append(&out, i)
-	}
-	return out
-}
-
-logview_open :: proc(editor: ^Editor, source := "") {
+logview_open :: proc(editor: ^Editor, source := "", parent: u64 = 0) {
 	v := &editor.logview
 	delete(v.source)
 	v.source = strings.clone(source)
-	v.active = true
-	v.anchor = nil
 	editor_clear_message(editor)
-	n := len(logview_filtered(editor))
-	v.selected = max(0, n - 1)
-	v.stick = true
-	logview_reveal(editor)
-}
-
-logview_close :: proc(editor: ^Editor) {
-	editor.logview.active = false
-}
-
-logview_reveal :: proc(editor: ^Editor, follow := false) {
-	v := &editor.logview
-	n := len(logview_filtered(editor))
-	h := logview_body_h(editor)
-	if a, ok := v.anchor.?; ok {
-		if n == 0 {
-			v.anchor = nil
-		} else {
-			v.anchor = clamp(a, 0, n - 1)
-		}
+	spec := Pane {
+		id = "log",
+		place = .Full,
+		chord = "Debug: Message Log",
+		scope = "log",
+		title = fmt.tprintf("Message Log  ·  %s", source) if source != "" else "Message Log",
+		has_list = true,
+		backdrop = MESSAGE_LOG_BACKDROP,
+		list = {source = {kind = .Log}, multi = true, follow = true, stick = true, sel_bg = true, empty = "(no messages)"},
+		footer = []PaneHint{{label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "copy", cmd = "Copy"}},
+		chips = logview_chips(editor),
 	}
-	if v.stick {
-		v.selected = max(0, n - 1)
-		v.scroll = max(0, n - h)
+	if parent != 0 {
+		spec.kind, spec.parent = .Child, parent
+	}
+	pane_open(editor, spec)
+}
+
+logview_refit :: proc(editor: ^Editor) {
+	p := pane_find(editor, "log")
+	if p == nil {
 		return
 	}
-	v.selected = clamp(v.selected, 0, max(0, n - 1))
-	if follow {
-		if v.selected < v.scroll {
-			v.scroll = v.selected
-		}
-		if h > 0 && v.selected >= v.scroll + h {
-			v.scroll = v.selected - h + 1
-		}
+	for c, i in logview_chips(editor) {
+		p.chips[i].on = c.on
 	}
-	v.scroll = clamp(v.scroll, 0, max(0, n - h))
-}
-
-logview_move :: proc(editor: ^Editor, delta: int, extend := false) {
-	v := &editor.logview
-	n := len(logview_filtered(editor))
-	if n == 0 {
-		return
-	}
-	if !extend {
-		v.anchor = nil
-	} else if v.anchor == nil {
-		v.anchor = v.selected
-	}
-	v.selected = clamp(v.selected + delta, 0, n - 1)
-	v.stick = v.selected == n - 1
-	logview_reveal(editor, follow = true)
+	p.list.anchor = nil
+	rows := pane_geom(editor, p).list.h
+	pane_list_fit(editor, p, rows)
+	pane_scroll_fit(p, rows)
 }
 
 logview_toggle :: proc(editor: ^Editor, level: LogLevel) {
-	v := &editor.logview
-	v.filter[level] = !v.filter[level]
-	v.anchor = nil
-	logview_reveal(editor, follow = true)
+	editor.logview.filter[level] = !editor.logview.filter[level]
+	logview_refit(editor)
 }
 
 logview_toggle_history :: proc(editor: ^Editor) {
-	v := &editor.logview
-	v.history = !v.history
-	v.anchor = nil
-	logview_reveal(editor, follow = true)
+	editor.logview.history = !editor.logview.history
+	logview_refit(editor)
 }
 
 logview_copy :: proc(editor: ^Editor) {
-	v := &editor.logview
-	filtered := logview_filtered(editor)
-	if len(filtered) == 0 || v.selected >= len(filtered) {
+	p := pane_find(editor, "log")
+	if p == nil {
 		return
 	}
-	lo, hi := logview_sel_range(v)
-	lo = clamp(lo, 0, len(filtered) - 1)
-	hi = clamp(hi, 0, len(filtered) - 1)
+	rows := list_log_rows(editor, &p.list.source)
+	if len(rows) == 0 || p.list.sel >= len(rows) {
+		return
+	}
+	lo, hi := p.list.sel, p.list.sel
+	if a, ok := p.list.anchor.?; ok {
+		lo, hi = min(a, p.list.sel), max(a, p.list.sel)
+	}
+	lo = clamp(lo, 0, len(rows) - 1)
+	hi = clamp(hi, 0, len(rows) - 1)
 	sb := strings.builder_make(context.temp_allocator)
 	for pos in lo ..= hi {
 		if pos > lo {
 			strings.write_byte(&sb, '\n')
 		}
-		e := editor.log[filtered[pos]]
+		e := editor.log[rows[pos]]
 		if e.source != "" {
 			fmt.sbprintf(&sb, "%s: %s", e.source, e.text)
 		} else {
@@ -461,158 +414,6 @@ logview_copy :: proc(editor: ^Editor) {
 		editor_log(editor, .Info, "", fmt.tprintf("Copied %d entries", hi - lo + 1))
 	} else {
 		editor_log(editor, .Info, "", "Copied to clipboard")
-	}
-}
-
-logview_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	if command_matches(ev, "Debug: Message Log") {
-		logview_close(editor)
-		return
-	}
-	if command_matches(ev, "Copy") {
-		logview_copy(editor)
-		return
-	}
-	#partial switch ev.key {
-	case .Esc:
-		logview_close(editor)
-		return
-	case .Arrow_Up:
-		logview_move(editor, -1, ev_shift(ev))
-		return
-	case .Arrow_Down:
-		logview_move(editor, +1, ev_shift(ev))
-		return
-	}
-	switch ev.ch {
-	case 'd':
-		logview_toggle(editor, .Debug)
-	case 'i':
-		logview_toggle(editor, .Info)
-	case 'w':
-		logview_toggle(editor, .Warn)
-	case 'e':
-		logview_toggle(editor, .Error)
-	case 'h':
-		logview_toggle_history(editor)
-	}
-}
-
-logview_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	v := &editor.logview
-	lay := logview_layout(editor)
-	n := len(logview_filtered(editor))
-	h := logview_body_h(editor)
-	#partial switch ev.key {
-	case .Mouse_Wheel_Up:
-		v.stick = false
-		overlay_scroll_by(&v.scroll, -WHEEL_SCROLL_LINES, n, h)
-	case .Mouse_Wheel_Down:
-		overlay_scroll_by(&v.scroll, WHEEL_SCROLL_LINES, n, h)
-		v.stick = v.scroll >= max(0, n - h)
-	case .Mouse_Left:
-		if !mouse_in_rect(ev, lay.box) {
-			if !ev_motion(ev) {
-				logview_close(editor)
-			}
-			return
-		}
-		off := overlay_row_off(ev, Rect{lay.inner.x, lay.body_top, lay.inner.w, h})
-		if off < 0 {
-			return
-		}
-		idx := v.scroll + off
-		if idx >= n {
-			return
-		}
-		v.selected = idx
-		v.anchor = nil
-		v.stick = idx == n - 1
-	}
-}
-
-logview_level_fg :: proc(level: LogLevel) -> tb2.Color {
-	switch level {
-	case .Debug:
-		return COLOR_PANE_SHORTCUT_FG
-	case .Info:
-		return COLOR_PANE_FG
-	case .Warn:
-		return COLOR_WARN_FG
-	case .Error:
-		return COLOR_ERROR_FG
-	}
-	return COLOR_PANE_FG
-}
-
-logview_render :: proc(editor: ^Editor) {
-	v := &editor.logview
-	lay := logview_layout(editor)
-	inner := pane_draw_box(lay.box)
-	logview_reveal(editor)
-
-	title := fmt.tprintf("Message Log  ·  %s", v.source) if v.source != "" else "Message Log"
-	pane_text(inner.x + 1, inner.y, inner.w - 2, title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	pane_hline(lay.box, lay.title_sep_y)
-
-	filtered := logview_filtered(editor)
-	h := max(1, lay.footer_sep_y - lay.body_top)
-	if len(filtered) == 0 {
-		pane_text(inner.x + 1, lay.body_top, inner.w - 2, "(no messages)", COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	}
-	sel_lo, sel_hi := logview_sel_range(v)
-	end := min(v.scroll + h, len(filtered))
-	for pos in v.scroll ..< end {
-		e := editor.log[filtered[pos]]
-		y := lay.body_top + (pos - v.scroll)
-		fg := logview_level_fg(e.level)
-		bg := COLOR_PANE_BG
-		if pos >= sel_lo && pos <= sel_hi {
-			bg = COLOR_PANE_SEL_BG
-			pane_fill_row(inner.x, y, inner.w, fg, bg)
-		}
-		row: string
-		if e.source != "" {
-			row = fmt.tprintf("%s  %s: %s", log_clock(e.time), e.source, e.text)
-		} else {
-			row = fmt.tprintf("%s  %s", log_clock(e.time), e.text)
-		}
-		pane_text(inner.x + 1, y, inner.w - 2, row, fg, bg)
-	}
-	pane_draw_scrollbar(lay.box.x + lay.box.w - 1, lay.body_top, h, v.scroll, len(filtered))
-
-	pane_hline(lay.box, lay.footer_sep_y)
-	logview_render_footer(editor, inner, lay.footer_y)
-	tb2.hide_cursor()
-}
-
-logview_render_footer :: proc(editor: ^Editor, inner: Rect, y: int) {
-	v := &editor.logview
-	Toggle :: struct {
-		label: string,
-		on:    bool,
-	}
-	toggles := [?]Toggle {
-		{"d debug", v.filter[.Debug]},
-		{"i info", v.filter[.Info]},
-		{"w warn", v.filter[.Warn]},
-		{"e error", v.filter[.Error]},
-		{"h history", v.history},
-	}
-	total := 0
-	for tg, i in toggles {
-		total += len(tg.label)
-		if i > 0 {
-			total += 2
-		}
-	}
-	tx := inner.x + inner.w - 1 - total
-	actions_w := max(0, tx - (inner.x + 1) - 1)
-	pane_text(inner.x + 1, y, actions_w, fmt.tprintf("↑↓ select  Shift+↑↓ extend  %s copy", command_shortcut("Copy")), COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
-	for tg in toggles {
-		fg := COLOR_PANE_PROMPT_FG if tg.on else COLOR_PANE_SHORTCUT_FG
-		pane_text(tx, y, len(tg.label), tg.label, fg, COLOR_PANE_BG)
-		tx += len(tg.label) + 2
 	}
 }
 
