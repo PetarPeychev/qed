@@ -77,6 +77,33 @@ ref_line_wrap :: proc(text: []u8, width: int) -> [dynamic]int {
 }
 
 @(test)
+test_cluster_end_after_control :: proc(t: ^testing.T) {
+	// the oracle below misses these: Odin's iterator mis-segments the cluster right after a control char
+	Case :: struct {
+		text: string,
+		want: []int,
+	}
+	cases := []Case {
+		{"\t\U0001F468\u200d\U0001F469", {0, 1, 12}},
+		{"\x01\u0915\u094d\u0937", {0, 1, 10}},
+		{"\x01\U0001F468\u200d\U0001F469x", {0, 1, 12, 13}},
+	}
+	for c in cases {
+		text := transmute([]u8)c.text
+		got := make([dynamic]int, context.temp_allocator)
+		for i := 0; i < len(text); i = cluster_end(text, i) {
+			append(&got, i)
+		}
+		append(&got, len(text))
+		same := len(got) == len(c.want)
+		for k in 0 ..< min(len(got), len(c.want)) {
+			same &&= got[k] == c.want[k]
+		}
+		testing.expectf(t, same, "%q: boundaries %v, want %v", c.text, got[:], c.want)
+	}
+}
+
+@(test)
 test_cluster_fast_path_matches_grapheme_iterator :: proc(t: ^testing.T) {
 	samples := make([dynamic]string, context.temp_allocator)
 	append(&samples, ..CLUSTER_SAMPLES)
@@ -92,6 +119,12 @@ test_cluster_fast_path_matches_grapheme_iterator :: proc(t: ^testing.T) {
 		testing.expectf(t, len(got) == len(starts), "%q: %d clusters, want %d", s, len(got) - 1, len(starts) - 1)
 		for i in 0 ..< min(len(got), len(starts)) {
 			testing.expectf(t, got[i] == starts[i], "%q: boundary %d at %d, want %d", s, i, got[i], starts[i])
+		}
+		for i := 0; i < len(text); i = cluster_end(text, i) {
+			if text[i] != '\t' {
+				e := cluster_end(text, i)
+				testing.expectf(t, seg_width(text, i, e, 0) == cluster_width(text[i:e]), "%q: seg_width at %d", s, i)
+			}
 		}
 		for col in 0 ..= len(text) {
 			testing.expectf(t, visual_col(text, col) == ref_visual_col(text, col), "%q: visual_col(%d)", s, col)
