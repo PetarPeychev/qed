@@ -532,7 +532,7 @@ e2e_alt_esc_retag :: proc(t: ^testing.T) {
 	b.cursor = {0, 0}
 
 	// A bare Esc followed by a printable within the ALT window dispatches as
-	// Alt+<char>: Alt+} is Go to End of File.
+	// Alt+<char>: Alt+} is Go to: End of File.
 	e2e_step(&e, tb2.Event{type = .Key, key = .Esc}, tb2.Event{type = .Key, ch = '}'})
 	testing.expect_value(t, b.cursor.row, 1)
 	testing.expect_value(t, b.cursor.col, len(b.lines[1].text))

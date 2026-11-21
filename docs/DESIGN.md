@@ -87,7 +87,7 @@ Line backgrounds are **alpha-composited** tints (`editor_line_bg` + `color_over`
 stacked bottom→top: optional git-hunk row tint → plugin decoration tints (push order;
 the `conflict` and `ai` plugins' included) → current-line tint (a semi-transparent white lift over whatever's beneath). Tint strengths
 (`*_TINT`) and tint colors are both theme-overridable. The
-row tint is part of **diff view** (*Diff: Toggle View*, config
+row tint is part of **diff view** (*Git: Toggle Diff View*, config
 `diff_view`, off by default), separate from the always-on gutter mark — see
 Diff view below.
 
@@ -110,7 +110,7 @@ the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `ghost_abo
 add plugin decoration ghosts to the diff ones).
 `diff_lines` also emits a flat `DiffChange` list (`{new_lo,new_hi,old_lo,old_hi}`, current
 rows ↔ base rows) as the **revert unit** — independent of `g_diff_view`, consumed by
-*Diff: Revert Hunk*;
+*Git: Revert Hunk*;
 cursor *motion* is unaffected (it walks real rows via `cursor_visual_*`). All ghost math
 no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 
@@ -864,7 +864,7 @@ defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *Find in Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
+Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -1089,11 +1089,11 @@ document formatting (`format` plugin: external command e.g. `ruff format -`, els
 (config `plugins.format.on_save`, toggleable), `LSP: Restart`, state-colored status segment
 (dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
 `.Debug` message log; diff gutter against any diff base (the `git` plugin's: live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
-+ optional inline diff view (`Diff: Toggle View`, config `diff_view`): row
++ optional inline diff view (`Git: Toggle Diff View`, config `diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 hunk navigation (`Diff: Next/Previous Change`, `Alt+'`/`Alt+;`, `diffbase_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
-hunk revert (`Diff: Revert Hunk`, `Alt+z`, `diffbase_revert`): restores the base lines for the
+hunk revert (`Git: Revert Hunk`, `Alt+z`, `diffbase_revert`): restores the base lines for the
 hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-base) as one undo group;
 merge-conflict highlighting (`conflict` plugin: ours green / theirs blue / diff3 base gray, marker lines
 emphasized, ours↔theirs word-level diff on both sides) + resolve (*Conflict: Resolve*, `Alt+m`: keep ours /

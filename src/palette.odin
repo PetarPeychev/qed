@@ -121,8 +121,8 @@ commands := [?]Command {
 	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Find", run = find_open},
 	{name = "Replace", run = find_open_replace},
-	{name = "Go to Start of File", run = cmd_buffer_start},
-	{name = "Go to End of File", run = cmd_buffer_end},
+	{name = "Go to: Start of File", run = cmd_buffer_start},
+	{name = "Go to: End of File", run = cmd_buffer_end},
 	{name = "Jump Back", run = jump_back},
 	{name = "Jump Forward", run = jump_forward},
 	{name = "Close Buffer", run = editor_close_buffer},
@@ -138,10 +138,10 @@ commands := [?]Command {
 	{name = "LSP: Go to Definition", lsp = true, run = cmd_lsp_definition},
 	{name = "LSP: Hover", lsp = true, run = cmd_lsp_hover},
 	{name = "LSP: Rename Symbol", lsp = true, run = cmd_lsp_rename},
-	{name = "Diff: Toggle View", run = cmd_toggle_diff_view},
-	{name = "Diff: Next Change", run = cmd_diff_next},
-	{name = "Diff: Previous Change", run = cmd_diff_prev},
-	{name = "Diff: Revert Hunk", run = cmd_diff_revert},
+	{name = "Git: Toggle Diff View", run = cmd_toggle_diff_view},
+	{name = "Git: Next Change", run = cmd_diff_next},
+	{name = "Git: Previous Change", run = cmd_diff_prev},
+	{name = "Git: Revert Hunk", run = cmd_diff_revert},
 	{name = "Toggle Line Wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", lsp = true, run = cmd_diag_next},
 	{name = "LSP: Previous Diagnostic", lsp = true, run = cmd_diag_prev},
@@ -202,7 +202,7 @@ command_available :: proc(editor: ^Editor, name: string, scope := "") -> bool {
 		}
 	}
 	switch name {
-	case "Diff: Next Change", "Diff: Previous Change", "Diff: Revert Hunk":
+	case "Git: Next Change", "Git: Previous Change", "Git: Revert Hunk":
 		return diffbase_active(editor_buffer(editor)) != nil
 	}
 	return true

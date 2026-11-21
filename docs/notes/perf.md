@@ -13,7 +13,7 @@ Large and odd files and repos must not break the editor. Budgets:
 | Keystroke-to-frame, one scroll step (≤100k lines or ≤10 MB) | 16 ms |
 | Open to first frame | 300 ms |
 | 5 MB one-line minified JS, a 1 MB line in a file: type, move, scroll, select, search (highlighting may degrade) | 50 ms per action |
-| 100k-file repo / 1M-line buffer: pane opens (file tree, Find in Files, Go to: Line, palette) | 300 ms |
+| 100k-file repo / 1M-line buffer: pane opens (file tree, Search: In Files, Go to: Line, palette) | 300 ms |
 | Same: one filter keystroke | 50 ms |
 | One plugin slice in normal use (conflict, git, filetree, markdown, format) | 50 ms |
 
@@ -27,7 +27,7 @@ otherwise. `.Info` rows and `.Open` rows (known over budget, in TODO.md; flip th
 row's mode to `.Gate` once fixed) are not enforced. Keystroke rows count dispatch +
 render only: a reparse running off-thread is not in them. The gate refuses to run
 when the load average exceeds the core count (`QED_GATE_ANY_LOAD=1` overrides).
-Without `rg` the Find in Files rows skip.
+Without `rg` the Search: In Files rows skip.
 `QED_GATE_ONLY=files,long,longoff,longon,panes,plugins` and
 `QED_GATE_FILES=a.c,b.md` narrow a run. Always under `ulimit -v` and `timeout`
 (the script sets 6 GB / 30 min).

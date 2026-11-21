@@ -115,7 +115,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
-| `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Diff: Toggle View*. |
+| `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Git: Toggle Diff View*. |
 
 ## Keybinds
 
@@ -257,13 +257,13 @@ warns where it moved, and a `plugins.lines` section warns that it was renamed.
 
 ### Search
 
-*Search: Find in Files* (`Alt+F`) and the file tree's *Search: Find in Files* (same
+*Search: In Files* (`Alt+F`) and the file tree's *Search: In Files* (same
 chord, scoped to the selection) come from the bundled `search` plugin; both need `rg`
-on `PATH`. Rebind both with `plugins.search.keybinds["Find in Files"]`.
+on `PATH`. Rebind both with `plugins.search.keybinds["In Files"]`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugins.search.enabled` | `true` | Off removes both *Find in Files* commands. |
+| `plugins.search.enabled` | `true` | Off removes both *Search: In Files* commands. |
 | `plugins.search.min_query` | `2` | Min query length before a search runs (was `projsearch_min_query`). |
 
 ### Markdown
@@ -293,7 +293,7 @@ jump list too. LSP hover uses the same renderer (plaintext hovers render verbati
 ### Git
 
 The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
-*Diff: Next/Previous Change*, *Diff: Revert Hunk*), polls the branch, ahead/behind
+*Git: Next/Previous Change*, *Git: Revert Hunk*), polls the branch, ahead/behind
 and repo diff size into the status bar every 2 s, adds the file tree's **Git** tab
 (*Git: Changes*, `Alt+g`, shown only while the `filetree` plugin is loaded), and owns *Git: Set Diff Base* and the tree's
 *Git: Restore File* (also `Enter` on a deleted file). A moved branch or HEAD is followed within a poll. It
