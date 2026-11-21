@@ -87,6 +87,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"set_indent", qed_buf_set_indent},
 	{"indent", qed_buf_indent},
 	{"set_base", qed_buf_set_base},
+	{"base", qed_buf_base},
 	{"line_list", qed_buf_line_list},
 	{nil, nil},
 }
@@ -2734,8 +2735,11 @@ plugin_color_id :: proc(p: ^Plugins, key: string) -> u16 {
 	return u16(len(p.colors))
 }
 
-api_color :: proc(L: ^lua.State, p: ^Plugins, idx: c.int) -> u16 {
-	key := api_string(L, idx)
+api_color :: proc(L: ^lua.State, p: ^Plugins, idx: c.int, what: string) -> u16 {
+	if lua.type(L, idx) != .STRING {
+		plugin_raise(L, fmt.tprintf("%s must be a theme color key", what))
+	}
+	key, _ := lua.toodinstring(L, idx)
 	api_theme_color(L, key)
 	return plugin_color_id(p, key)
 }
@@ -2744,10 +2748,8 @@ api_deco_color :: proc(L: ^lua.State, p: ^Plugins, idx: c.int, fields: cstring) 
 	if lua.type(L, idx) != .TABLE {
 		lua.L_argerror(L, idx, fields)
 	}
-	if lua.getfield(L, idx, "color") != .STRING {
-		lua.L_argerror(L, idx, "color must be a theme color key")
-	}
-	color := api_color(L, p, -1)
+	lua.getfield(L, idx, "color")
+	color := api_color(L, p, -1, "opts.color")
 	lua.pop(L, 1)
 	return color
 }
@@ -2822,14 +2824,14 @@ qed_deco_tint :: proc "c" (L: ^lua.State) -> c.int {
 	color := api_deco_color(L, &editor.plugins, 5, "options {color, alpha?} expected")
 	d := Deco{kind = .Tint, ns = ns, from = {lo, 0}, to = {hi, 0}, color = color, alpha = DECO_TINT}
 	if lua.getfield(L, 5, "alpha") > .NIL {
-		d.alpha, d.tint = api_alpha(L, -1)
+		d.alpha, d.tint = api_alpha(L, -1, "opts.alpha")
 	}
 	lua.pop(L, 1)
 	deco_add(b, d)
 	return 0
 }
 
-api_alpha :: proc(L: ^lua.State, idx: c.int) -> (alpha: f32, tint: u8) {
+api_alpha :: proc(L: ^lua.State, idx: c.int, what: string) -> (alpha: f32, tint: u8) {
 	if lua.type(L, idx) == .STRING {
 		key, _ := lua.toodinstring(L, idx)
 		for t, i in config_tints {
@@ -2837,12 +2839,12 @@ api_alpha :: proc(L: ^lua.State, idx: c.int) -> (alpha: f32, tint: u8) {
 				return 0, u8(i + 1)
 			}
 		}
-		lua.L_argerror(L, idx, fmt.ctprintf("unknown theme tint '%s'", key))
+		plugin_raise(L, fmt.tprintf("%s: unknown theme tint '%s'", what, key))
 	}
 	isnum: b32
 	alpha = f32(lua.tonumberx(L, idx, &isnum))
 	if !isnum || alpha < 0 || alpha > 1 {
-		lua.L_argerror(L, idx, "alpha must be a number in 0..1 or a theme tint key")
+		plugin_raise(L, fmt.tprintf("%s must be a number in 0..1 or a theme tint key", what))
 	}
 	return
 }
@@ -2929,7 +2931,7 @@ qed_deco_ghost :: proc "c" (L: ^lua.State) -> c.int {
 		above = bool(lua.toboolean(L, -1))
 		lua.pop(L, 1)
 		if lua.getfield(L, 5, "color") != .NIL {
-			color = api_color(L, &editor.plugins, -1)
+			color = api_color(L, &editor.plugins, -1, "opts.color")
 		}
 		lua.pop(L, 1)
 	} else if lua.type(L, 5) > .NIL {
@@ -2956,16 +2958,16 @@ qed_deco_span :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	d := Deco{kind = .Span, ns = ns, from = from, to = to}
 	if lua.getfield(L, 5, "fg") != .NIL {
-		d.color = api_color(L, &editor.plugins, -1)
+		d.color = api_color(L, &editor.plugins, -1, "style.fg")
 	}
 	if lua.getfield(L, 5, "bg") != .NIL {
-		d.bg = api_color(L, &editor.plugins, -1)
+		d.bg = api_color(L, &editor.plugins, -1, "style.bg")
 	}
 	if lua.getfield(L, 5, "alpha") != .NIL {
 		if d.bg == 0 {
 			plugin_raise(L, "alpha needs bg")
 		}
-		d.alpha, d.tint = api_alpha(L, -1)
+		d.alpha, d.tint = api_alpha(L, -1, "style.alpha")
 		d.blend = true
 	}
 	lua.getfield(L, 5, "bold")
@@ -3030,7 +3032,20 @@ qed_buf_set_base :: proc "c" (L: ^lua.State) -> c.int {
 	} else {
 		diffbase_set(b, plugin_name_intern(&editor.plugins, pl.name), text, label)
 	}
-	lua.pushboolean(L, b32(diffbase_owner(b) == pl.name))
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_buf_base :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	owner := diffbase_owner(b)
+	if owner == "" {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.pushodinstring(L, owner)
 	return 1
 }
 
