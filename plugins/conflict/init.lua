@@ -211,7 +211,7 @@ local function run(ctx)
 	end
 	local row = qed.buf.cursor(b).row
 	if block_at(blocks, row) then
-		local keep, err = qed.confirm("Resolve merge conflict:", KEEP)
+		local keep, err = qed.confirm{question = "Resolve merge conflict:", choices = KEEP}
 		if err then
 			qed.message("Cannot resolve while another dialog is open", "warn")
 		end

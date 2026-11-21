@@ -23,7 +23,7 @@ local function switch(target, reopen)
 			return v
 		end
 		local question = ("Close %d buffer%s? (%d unsaved)"):format(info.total, info.total == 1 and "" or "s", info.unsaved)
-		if qed.confirm(question, ACTIONS) ~= 2 then
+		if qed.confirm{question = question, choices = ACTIONS} ~= 2 then
 			return v
 		end
 		if v then

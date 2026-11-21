@@ -1445,25 +1445,6 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-qed_shortcut :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	name := api_string(L, 1)
-	for cmd in commands {
-		if cmd.name == name {
-			lua.pushodinstring(L, cmd.shortcut)
-			return 1
-		}
-	}
-	for cmd in entry.editor.plugins.commands {
-		if cmd.name == name && cmd.scope == "" {
-			lua.pushodinstring(L, cmd.shortcut)
-			return 1
-		}
-	}
-	return 0
-}
-
 plugin_command_core :: proc(name: string, scope: string) -> bool {
 	if scope == "" {
 		for cmd in commands {

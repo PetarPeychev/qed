@@ -22,19 +22,22 @@ local function cmd(name, run) qed.command{name = name, run = run} end
 return {setup = function()
 	qed.meta{display_name = "UI"}
 	cmd("Strings", function()
-		local r, err = qed.pick{items = {"alpha", "beta", "gamma"}, initial = 2}
+		local r, err = qed.pick{items = {"alpha", "beta", "gamma"}, selected = 2}
 		show(r or err)
 	end)
 	cmd("Tables", function()
-		local r = qed.pick{items = {{label = "one", detail = "D1", value = 7}, {label = "two", detail = "D2", value = 8}}, initial = "two"}
+		local r = qed.pick{items = {{label = "one", detail = "D1", value = 7}, {label = "two", detail = "D2", value = 8}}, selected = "two"}
 		show(r and r.value)
 	end)
 	cmd("Change", function()
-		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item) qed.log("chg " .. item) end}
+		local r = qed.pick{items = {"a", "b", "c"}, on = {change = function(_, item) qed.log("chg " .. item) end}}
 		show(r)
 	end)
 	cmd("Multi", function()
-		show(qed.pick{items = {"a", "b", "c", "d"}, multi = true})
+		local v = qed.ui.open{kind = "child", modal = true, fields = {{}}, list = {items = {"a", "b", "c", "d"}, multi = true}}
+		local items = v:wait()
+		v:close()
+		show(items)
 	end)
 	cmd("Paths", function()
 		local dir = qed.path.dir(qed.buf.path())
@@ -45,21 +48,24 @@ return {setup = function()
 		show(qed.prompt{prompt = "Name:", text = "x"})
 	end)
 	cmd("Confirm", function()
-		show(qed.confirm("Sure?", {"A", "B", "C"}))
+		show(qed.confirm{question = "Sure?", choices = {"A", "B", "C"}})
 	end)
 	cmd("Confirm Default", function()
-		show(qed.confirm("Ok?"))
+		show(qed.confirm{question = "Ok?"})
 	end)
 	cmd("Pane", function()
-		pane = qed.pane{title = "Pane Title", lines = {"line one", {text = "line two", color = "error_foreground"}}, footer = "my footer"}
+		pane = qed.ui.open{place = "full", title = "Pane Title", text = {"line one", {text = "line two", color = "error_foreground"}}, footer = {hints = {{label = "my footer"}}}}
 	end)
-	cmd("Pane Set", function() show(pane:set({"line three"})) end)
+	cmd("Pane Set", function()
+		local ok, err = pane:text({"line three"})
+		show(ok or err)
+	end)
 	cmd("Pane Close", function() pane:close() end)
 	cmd("Slow", function()
-		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item)
+		local r = qed.pick{items = {"a", "b", "c"}, on = {change = function(_, item)
 			qed.sleep(40)
 			qed.log("applied " .. item)
-		end}
+		end}}
 		show("picked " .. tostring(r))
 	end)
 	cmd("Chain", function()
@@ -72,7 +78,9 @@ return {setup = function()
 		show(tostring(ok) .. " " .. tostring(err))
 	end)
 	qed.command{name = "Query", key = "Alt+q", run = function()
-		local r, err, q = qed.pick{query = "ab", on_change = function(it) qed.log("chg " .. it.label) end, on_query = function(q, picker)
+		local v, err = qed.ui.open{kind = "child", modal = true, place = "split", preview = "auto", list = {},
+			fields = {{text = "ab", mode = "query", count = true}},
+			on = {change = function(_, it) qed.log("chg " .. it.label) end, query = function(picker, q)
 			qed.log("query " .. q)
 			last = picker
 			if q == "slow" then
@@ -84,15 +92,23 @@ return {setup = function()
 				return
 			end
 			picker:set({{label = q .. "1"}, {label = q .. "2"}, {label = q .. "3"}}, {selected = 2, more = q == "more"})
-		end}
-		show(r and r.label or err or ("q " .. tostring(q)))
+		end}}
+		if not v then
+			return show(err)
+		end
+		local items, _, q = v:wait()
+		v:close()
+		show(items and items[1].label or ("q " .. tostring(q)))
 	end}
-	cmd("Stale", function() show(last:set({"x"})) end)
+	cmd("Stale", function() show(select(2, last:set({"x"}))) end)
 	cmd("Query Static", function()
-		show(qed.pick{items = {"alpha", "beta", "gamma"}, query = "gam"})
+		local v = qed.ui.open{kind = "child", modal = true, fields = {{text = "gam"}}, list = {items = {"alpha", "beta", "gamma"}}}
+		local items = v:wait()
+		v:close()
+		show(items and items[1])
 	end)
 	cmd("Pick Ask", function()
-		qed.defer(0, function() show("ask " .. tostring(qed.confirm("Over?"))) end)
+		qed.defer(0, function() show("ask " .. tostring(qed.confirm{question = "Over?"})) end)
 		show(qed.pick{items = {"a", "b"}})
 	end)
 	cmd("Prompt Ask", function()
@@ -100,7 +116,7 @@ return {setup = function()
 		show("outer " .. tostring(qed.prompt{prompt = "Outer:"}))
 	end)
 	qed.command{name = "Tree Confirm", scope = "filetree", run = function()
-		show(qed.confirm("Tree?", {"One", "Two"}))
+		show(qed.confirm{question = "Tree?", choices = {"One", "Two"}})
 	end}
 end}`
 
@@ -299,7 +315,7 @@ e2e_plugin_ui_pane :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	ui_run(t, &e, "UI: Pane")
-	testing.expect(t, ui_open(&e), "qed.pane opens")
+	testing.expect(t, ui_open(&e), "a full pane opens")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Pane Title"), "title")
 	testing.expect(t, e2e_grid_has(&e, "line two"), "lines")
@@ -307,12 +323,12 @@ e2e_plugin_ui_pane :: proc(t: ^testing.T) {
 	ui_run(t, &e, "UI: Pane Set")
 	testing.expect_value(t, e.ed.message, "true")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "line three"), "pane:set replaces the lines")
+	testing.expect(t, e2e_grid_has(&e, "line three"), "view:text replaces the lines")
 	testing.expect(t, !e2e_grid_has(&e, "line one"), "old lines are gone")
 	ui_run(t, &e, "UI: Pane Close")
-	testing.expect(t, !ui_open(&e), "pane:close closes")
+	testing.expect(t, !ui_open(&e), "view:close closes")
 	ui_run(t, &e, "UI: Pane Set")
-	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, e.ed.message, "closed")
 
 	ui_run(t, &e, "UI: Pane")
 	e2e_key(&e, .Esc)
@@ -633,7 +649,7 @@ e2e_plugin_ui_busy_under_safety :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "asker", `return {setup = function()
-		qed.command{name = "Confirm", run = function() local r, err = qed.confirm("Q?"); qed.message(tostring(r) .. " " .. tostring(err)) end}
+		qed.command{name = "Confirm", run = function() local r, err = qed.confirm{question = "Q?"}; qed.message(tostring(r) .. " " .. tostring(err)) end}
 		qed.command{name = "Prompt", run = function() local r, err = qed.prompt{prompt = "P:"}; qed.message(tostring(r) .. " " .. tostring(err)) end}
 	end}`)
 	e2e_type(&e, "x")
@@ -656,7 +672,7 @@ e2e_plugin_ui_unload_closes_children :: proc(t: ^testing.T) {
 	e, pl := ui_start(t)
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "ui2", `return {setup = function()
-		qed.command{name = "Ask", run = function() qed.message("ui2 " .. tostring(qed.confirm("Two?"))) end}
+		qed.command{name = "Ask", run = function() qed.message("ui2 " .. tostring(qed.confirm{question = "Two?"})) end}
 	end}`)
 	ui_run(t, &e, "UI: Confirm")
 	ui_run(t, &e, "Ask")
@@ -791,7 +807,7 @@ e2e_plugin_ui_query_set :: proc(t: ^testing.T) {
 	testing.expect_value(t, pl.last_error, "")
 
 	ui_run(t, &e, "UI: Stale")
-	testing.expect_value(t, e.ed.message, "nil")
+	testing.expect_value(t, e.ed.message, "closed")
 }
 
 @(test)

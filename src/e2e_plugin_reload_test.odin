@@ -85,7 +85,7 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	before := p.mem.used
 
 	reload_write(dir, "t.lua", `return {setup = function()
-		qed.on("startup", function() qed.pane{title = "Hello pane", lines = {"x"}} end)
+		qed.on("startup", function() qed.ui.open{place = "full", title = "Hello pane", text = {"x"}} end)
 	end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
 	testing.expect(t, test_view(&e.ed) == nil, "the modal closes")

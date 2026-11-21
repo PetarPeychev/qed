@@ -622,7 +622,7 @@ local function delete(ctx)
 	else
 		question = ("Delete %s?"):format(qed.path.base(items[1].path))
 	end
-	if qed.confirm(question, {"Cancel", "Delete"}) ~= 2 then
+	if qed.confirm{question = question, choices = {"Cancel", "Delete"}} ~= 2 then
 		return
 	end
 	local failed, reason = 0, nil
@@ -672,7 +672,7 @@ local function close_buffers(ctx)
 	end
 	if #approved > 0 then
 		local question = ("Close %d buffer%s? (%d unsaved)"):format(#paths, #paths == 1 and "" or "s", #approved)
-		if qed.confirm(question, {"Cancel", "Close All"}) ~= 2 then
+		if qed.confirm{question = question, choices = {"Cancel", "Close All"}} ~= 2 then
 			return
 		end
 	end

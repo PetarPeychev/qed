@@ -779,10 +779,6 @@ return {setup = function()
 		local v = qed.ui.open{list = {items = {"a"}}}
 		add("View", v)
 		v:close()
-		local pn = qed.pane{title = "x", lines = {"a"}}
-		add("Pane", pn)
-		pn:close()
-		qed.pick{on_query = function(_, picker) add("Picker", picker) end}
 		table.sort(out)
 		qed.message(table.concat(out, " "))
 	end}
@@ -797,7 +793,6 @@ end}`)
 	testing.expect(t, run_ok, "the probe command registered")
 	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return plugin_busy(&e.ed) || plugin_views_due(&e.ed)}, 500)
 	plugin_flush(&e.ed)
-	e2e_key(&e, .Esc)
 	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
 	methods := strings.split(e.ed.message, " ", context.temp_allocator)
 	testing.expect(t, len(methods) > 30, "probed the method tables")

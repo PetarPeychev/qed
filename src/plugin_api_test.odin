@@ -628,6 +628,9 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 			{"closed buffer", "raise", function() return qed.buf.line(spare, 1) end},
 			{"run unknown", "raise", function() return qed.run("No Such Command") end},
 			{"spawn bad spec", "raise", function() return qed.spawn{} end},
+			{"confirm positional", "raise", function() return qed.confirm("Sure?") end},
+			{"pick query handler", "raise", function() return qed.pick{items = {}, on = {query = function() end}} end},
+			{"pick initial", "raise", function() return qed.pick{items = {}, selected = {}} end},
 		}
 		local bad = {}
 		for _, c in ipairs(cases) do
@@ -646,6 +649,7 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 			end
 		end
 		assert(#bad == 0, table.concat(bad, "; "))
+		assert(qed.shortcut == nil and qed.pane == nil, "dead sugar is gone")
 	`, "abc")
 	defer api_test_destroy(ed)
 	defer delete(ed.panes)

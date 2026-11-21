@@ -230,7 +230,7 @@ restore_path = function(path)
 		return
 	end
 	local name = qed.path.base(path)
-	local choice = qed.confirm(("Restore %s from %s?"):format(name, base.ref and base.label or "HEAD"), {"Cancel", "Restore"})
+	local choice = qed.confirm{question = ("Restore %s from %s?"):format(name, base.ref and base.label or "HEAD"), choices = {"Cancel", "Restore"}}
 	if choice ~= 2 then
 		return
 	end

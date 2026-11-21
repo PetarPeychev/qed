@@ -387,7 +387,7 @@ e2e_ui_open_busy_over_ask :: proc(t: ^testing.T) {
 	e, _ := view_start(t)
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "asker", `return {setup = function()
-		qed.command{name = "Confirm", run = function() qed.message("asked " .. tostring(qed.confirm("Q?"))) end}
+		qed.command{name = "Confirm", run = function() qed.message("asked " .. tostring(qed.confirm{question = "Q?"})) end}
 	end}`)
 	view_run(t, &e, "Asker: Confirm")
 	view_run(t, &e, "V: Busy")
@@ -419,9 +419,9 @@ e2e_ui_open_foreign_ask :: proc(t: ^testing.T) {
 	e2e_plugin(&e, "asker", `return {setup = function()
 		qed.command{name = "View", run = function(ctx) qed.message("view " .. tostring(ctx.view)) end}
 		qed.command{name = "Later", run = function()
-			qed.defer(0, function() local r, err = qed.confirm("L?"); qed.message("later " .. tostring(err)) end)
+			qed.defer(0, function() local r, err = qed.confirm{question = "L?"}; qed.message("later " .. tostring(err)) end)
 		end}
-		qed.command{name = "Now", run = function() qed.message("now " .. tostring(qed.confirm("N?"))) end}
+		qed.command{name = "Now", run = function() qed.message("now " .. tostring(qed.confirm{question = "N?"})) end}
 	end}`)
 	view_run(t, &e, "V: Center")
 	view_run(t, &e, "Asker: View")
