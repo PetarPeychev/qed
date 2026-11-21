@@ -382,6 +382,7 @@ buffer_reload :: proc(buffer: ^Buffer) -> BufferOpenError {
 	buffer.selection = nil
 	buffer.goal_col = 0
 
+	highlight_job_cancel(&buffer.hl)
 	if buffer.hl.tree != nil {
 		ts.tree_delete(buffer.hl.tree)
 		buffer.hl.tree = nil

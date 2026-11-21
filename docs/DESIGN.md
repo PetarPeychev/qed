@@ -257,8 +257,9 @@ member group is no longer on top).
   up to the previous one; when the old file, the buffer or the new file reaches `big_file_bytes`, undo/redo are cleared instead), drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
   map the cursor through the hunks); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
   onto it opens the conflict dialog (Cancel / Overwrite / Reload) instead of
-  clobbering; Reload is the same undoable step, so the discarded edits come back with Ctrl+Z. Reload skips a buffer while its highlight parse thread is busy
-  (retries next poll). Deletion on disk is ignored (buffer stays; save recreates).
+  clobbering; Reload is the same undoable step, so the discarded edits come back with Ctrl+Z. The poll skips a buffer while its highlight parse thread is busy
+  (retries next poll); `highlight_jobs_pump` (main loop) adopts every buffer's finished parse, not only the shown one's, and
+  `buffer_reload` joins and discards an in-flight parse (the conflict dialog's Reload). Deletion on disk is ignored (buffer stays; save recreates).
 - **Startup arg:** file → open it; directory → set working root + welcome screen;
   absent → welcome screen.
 - **Working root change**: the bundled `workspace` plugin's *Workspace: Open Directory* (`Ctrl+o`) is a

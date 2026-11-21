@@ -5,6 +5,7 @@ import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "core:testing"
+import "core:time"
 import "lib:tb2"
 
 e2e_lang_start :: proc(content: string, name: string) -> E2E {
@@ -176,4 +177,42 @@ e2e_git_diff_view_ghost :: proc(t: ^testing.T) {
 	testing.expect_value(t, e2e_cell(&e, 0, 2), '▌')
 	testing.expect_value(t, e2e_cell(&e, gutter+0, 2), 'c')
 	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, gutter+0, 2)), e2e_rgb(COLOR_GHOST_FG))
+}
+
+@(test)
+e2e_highlight_background_job :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	path := fmt.tprintf("%s/qed_e2e_bgjob_%d.py", tmp, posix.getpid())
+	big := strings.repeat("def f(a, b):\n    return a + b\n", 12000, context.temp_allocator)
+	_ = os.write_entire_file(path, transmute([]u8)big)
+	defer os.remove(path)
+
+	testing.expect(t, editor_open_path(&e.ed, path), "open")
+	b := editor_buffer(&e.ed)
+	id := b.id
+	e2e_render(&e)
+	testing.expect(t, highlight_busy(b), "a large buffer parses in the background")
+	buffer_reload(b)
+	testing.expect(t, !highlight_busy(b), "a reload cancels the in-flight parse")
+	e2e_render(&e)
+	testing.expect(t, highlight_busy(b), "the reloaded text parses again")
+
+	e.ed.current = 0
+	for _ in 0 ..< 1000 {
+		if !highlight_busy(&e.ed.buffers[1]) {
+			break
+		}
+		highlight_jobs_pump(&e.ed)
+		time.sleep(5 * time.Millisecond)
+	}
+	b = &e.ed.buffers[1]
+	testing.expect_value(t, b.id, id)
+	testing.expect(t, !highlight_busy(b), "a background buffer's finished parse is adopted")
+
+	_ = os.write_entire_file(path, transmute([]u8)string("changed\n"))
+	editor_poll_disk(&e.ed)
+	testing.expect_value(t, string(e.ed.buffers[1].lines[0].text[:]), "changed")
 }
