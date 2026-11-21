@@ -613,6 +613,13 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	if pl != nil {
 		plugin_error(editor, pl, message, traceback, false, .Warn if ended else .Error)
 	}
+	if status == .ERRMEM && pl != nil && pl.state == .Enabled && p.mem != nil && p.mem.cap > 0 {
+		lua.gc(p.L, .COLLECT)
+		if p.mem.used > p.mem.cap / 8 * 7 {
+			plugin_error(editor, pl, fmt.tprintf("disabled: Lua memory stays at the %d MB cap after a full collection", p.mem.cap / (1024 * 1024)), "", true)
+			return
+		}
+	}
 	if killed && source != 0 && plugin_source_killed(p, source) && pl != nil {
 		plugin_error(editor, pl, fmt.tprintf("%s was stopped by its budget %d times in a row and was removed", label, PLUGIN_KILLS_MAX), "", false)
 	}
