@@ -175,6 +175,7 @@ function Handle:off() end
 ---`lo..hi`: the rows touched since the last delivery to any subscriber, in current rows; rows above `lo` are unchanged, rows below `hi` only shifted; a rev change with no recorded edit carries the whole buffer) and
 ---`cursor_moved(b)` fire at most once per main-loop iteration, and again within the same flush for changes a handler made. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
+---`config_changed(changed)`: `changed` is a set of this plugin's top-level config keys whose merged value changed (`{}` when only core config did); apply just those to keep live toggles of the others.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
 ---`plugin_loaded(id)` and `plugin_unloaded(id)` fire for other plugins after startup (hot reload, enable, disable, an error).
 ---A `"<plugin>:<event>"` name subscribes to that plugin's `qed.emit` and gets its `data`.

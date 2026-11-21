@@ -3,7 +3,6 @@ local ranges, tints, ghosts
 local edits = {}
 local waiting = {}
 local fim = {enabled = false, warned = false, gen = 0}
-local seen = {}
 
 local CONTEXT_BYTES = 64 * 1024
 
@@ -439,10 +438,9 @@ local function fim_typed(b)
 	end)
 end
 
-local function configure(c)
+local function configure(c, changed)
 	cfg = c
-	if c.completion_enabled ~= seen.completion_enabled then
-		seen.completion_enabled = c.completion_enabled
+	if not changed or changed.completion_enabled then
 		fim.enabled = c.completion_enabled
 		if not fim.enabled then
 			fim_dismiss()
@@ -493,6 +491,6 @@ return {
 			sync_hook()
 			qed.message("Inline completion: " .. (fim.enabled and "on" or "off"))
 		end}
-		qed.on("config_changed", function() configure(qed.config()) end)
+		qed.on("config_changed", function(changed) configure(qed.config(), changed) end)
 	end,
 }

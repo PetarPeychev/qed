@@ -249,8 +249,13 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 		{"aware.lua", `
 			aware_loads = (aware_loads or 0) + 1
 			return {setup = function()
-				qed.options{greeting = "hi"}
-				qed.on("config_changed", function() seen = qed.config().greeting end)
+				qed.options{greeting = "hi", list = {1}, other = 1}
+				qed.on("config_changed", function(changed)
+					local keys = {}
+					for k in pairs(changed) do keys[#keys + 1] = k end
+					table.sort(keys)
+					seen, seen_keys = qed.config().greeting, table.concat(keys, ",")
+				end)
 			end}`},
 	}, "")
 	defer plugin_test_destroy(ed)
@@ -262,6 +267,7 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Info, "Plain", "reloaded (config changed)"), "a plugin without config_changed reloads")
 	testing.expect(t, !plugin_test_logged(ed, .Info, "Aware", "reloaded"), "a plugin with config_changed keeps its state")
 	testing.expect_value(t, sched_var(ed, "seen"), "hey")
+	testing.expect_value(t, sched_var(ed, "seen_keys"), "greeting")
 	testing.expect_value(t, sched_var(ed, "aware_loads"), "1")
 	testing.expect_value(t, plugin_find(&ed.plugins, "aware").cfg_sig, plugin_cfg_sig("aware", ed.plugins.config_override.?))
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "unknown"), "keys declared by qed.options are known after a reload")
@@ -269,6 +275,11 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 	editor_clear_message(ed)
 	plugins_config_apply(ed, false)
 	testing.expect_value(t, reload_logged_count(ed, .Info, "Plain", "reloaded"), 1)
+	testing.expect_value(t, sched_var(ed, "seen_keys"), "")
+
+	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"plain": {"greeting": "yo"}, "aware": {"list": [2]}}}`)
+	plugins_config_apply(ed, false)
+	testing.expect_value(t, sched_var(ed, "seen_keys"), "greeting,list")
 }
 
 @(test)

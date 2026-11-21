@@ -743,14 +743,12 @@ local function toggle_diff()
 end
 
 local KNOBS = {show_dotfiles = "dotfiles", show_ignored = "ignored", diff_only = "diff"}
-local seen = {}
 
 -- only knobs whose config value moved: a reload must not undo a live toggle
-local function apply(cfg)
+local function apply(cfg, changed)
 	local moved = {}
 	for key, knob in pairs(KNOBS) do
-		if cfg[key] ~= seen[key] then
-			seen[key] = cfg[key]
+		if not changed or changed[key] then
 			if show[knob] ~= cfg[key] then
 				show[knob] = cfg[key]
 				moved[knob] = true
@@ -923,7 +921,7 @@ return {
 		end}
 		qed.export(exports)
 		qed.on("plugin_unloaded", drop)
-		qed.on("config_changed", function() apply(qed.config()) end)
+		qed.on("config_changed", function(changed) apply(qed.config(), changed) end)
 		qed.on("root_changed", function()
 			if v then
 				reopen()

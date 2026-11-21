@@ -461,8 +461,17 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 
 plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 	#partial switch q.event {
-	case .Startup, .Config_Changed, .Theme_Changed, .Quit:
+	case .Startup, .Theme_Changed, .Quit:
 		return 0
+	case .Config_Changed:
+		lua.createtable(L, 0, 2)
+		for k in strings.split(q.a, "\n", context.temp_allocator) {
+			if k != "" {
+				lua.pushboolean(L, true)
+				lua.setfield(L, -2, strings.clone_to_cstring(k, context.temp_allocator))
+			}
+		}
+		return 1
 	case .Buf_Changed:
 		lua.pushinteger(L, lua.Integer(q.buf))
 		lua.pushinteger(L, lua.Integer(q.n))

@@ -136,7 +136,8 @@ The API is one global, `qed`.
 | `cursor_moved` | `b` | coalesced |
 | `language_changed` | `b` | |
 | `root_changed` | `old`, `new` | |
-| `config_changed`, `theme_changed` | | |
+| `config_changed` | `changed`: set of this plugin's top-level keys whose merged value changed (`{}` when only core config did); apply just those to keep live toggles of the others | |
+| `theme_changed` | | |
 | `term_open`, `term_close` | `name` | |
 | `term_exit` | `name`, `code` | |
 | `quit` | | yes, bounded by `plugin_hook_timeout_ms` |

@@ -38,6 +38,7 @@ Plugin :: struct {
 	stamp:      u64,
 	cfg_sig:    string,
 	unknown:    string,
+	changed:    string,
 	keys_due:   bool,
 	exports:    c.int,
 	gen:        u64,
@@ -432,6 +433,7 @@ plugin_strings_free :: proc(pl: ^Plugin) {
 	delete(pl.last_error)
 	delete(pl.cfg_sig)
 	delete(pl.unknown)
+	delete(pl.changed)
 	plugin_errors_forget(&pl.errors)
 	delete(pl.errors.counts)
 }
@@ -920,7 +922,11 @@ plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool, parsed := tru
 	if parsed {
 		plugins_config_sync(editor)
 	}
-	plugin_queue(editor, {event = .Config_Changed})
+	for pl in p.list {
+		if pl.state == .Enabled {
+			plugin_queue(editor, {event = .Config_Changed, only = pl.name, a = pl.changed})
+		}
+	}
 	if theme_changed {
 		plugin_queue(editor, {event = .Theme_Changed})
 	}
@@ -1956,6 +1962,31 @@ plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object, path: st
 	}
 }
 
+plugin_lua_equal :: proc(L: ^lua.State, a, b: c.int, depth: int) -> bool {
+	a, b := lua.absindex(L, a), lua.absindex(L, b)
+	if lua.type(L, a) != .TABLE || lua.type(L, b) != .TABLE {
+		return bool(lua.rawequal(L, a, b))
+	}
+	if depth > PLUGIN_TABLE_DEPTH_MAX || lua.rawlen(L, a) != lua.rawlen(L, b) {
+		return false
+	}
+	lua.L_checkstack(L, 4, "config nested too deeply")
+	for pass in 0 ..< 2 {
+		x, y := a if pass == 0 else b, b if pass == 0 else a
+		lua.pushnil(L)
+		for lua.next(L, x) != 0 {
+			lua.pushvalue(L, -2)
+			lua.rawget(L, y)
+			if !plugin_lua_equal(L, -2, -1, depth + 1) {
+				lua.pop(L, 3)
+				return false
+			}
+			lua.pop(L, 2)
+		}
+	}
+	return true
+}
+
 plugin_config_type :: proc(t: lua.Type) -> string {
 	#partial switch t {
 	case .BOOLEAN:
@@ -2016,9 +2047,31 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	lua.pushodinstring(L, "enabled")
 	lua.pushnil(L)
 	lua.rawset(L, cfg)
+	changed := make([dynamic]string, context.temp_allocator)
 	if pl.cfg != lua.NOREF {
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.cfg))
+		old := lua.gettop(L)
+		for side in ([2]c.int{old, cfg}) {
+			lua.pushnil(L)
+			for lua.next(L, side) != 0 {
+				lua.pop(L, 1)
+				k, _ := lua.toodinstring(L, -1)
+				lua.pushvalue(L, -1)
+				lua.rawget(L, old)
+				lua.pushvalue(L, -2)
+				lua.rawget(L, cfg)
+				if !plugin_lua_equal(L, -2, -1, 0) && !slice.contains(changed[:], k) {
+					append(&changed, strings.clone(k, context.temp_allocator))
+				}
+				lua.pop(L, 2)
+			}
+		}
+		lua.pop(L, 1)
 		lua.L_unref(L, lua.REGISTRYINDEX, pl.cfg)
 	}
+	slice.sort(changed[:])
+	delete(pl.changed)
+	pl.changed = strings.join(changed[:], "\n")
 	plugin_table_copy(L, cfg)
 	pl.cfg = lua.L_ref(L, lua.REGISTRYINDEX)
 	slice.sort(unknown[:])
