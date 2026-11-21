@@ -670,6 +670,46 @@ plugin_sched_bg_streaming :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_sched_kill_in_on_line_closes_once :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"kl.lua", `
+			return {setup = function()
+				qed.command{name = "Kill", run = function()
+					local p
+					p = qed.spawn_bg{cmd = "printf 'a\nb\n'", on_line = function()
+						if f then return end
+						p:kill()
+						f = {}
+						for i = 1, 8 do
+							f[i] = io.open("/dev/null", "r")
+						end
+					end}
+				end}
+				qed.command{name = "Read", run = function()
+					got = ""
+					for _, h in ipairs(f) do
+						got = got .. tostring(h:read("a"))
+						h:close()
+					end
+				end}
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	sched_run(t, ed, "Kl: Kill")
+	time.sleep(200 * time.Millisecond)
+	start := time.tick_now()
+	for sched_var(ed, "f") == "" && ms_since(start) < 3000 {
+		plugin_pump(ed)
+		time.sleep(time.Millisecond)
+	}
+	plugin_pump(ed)
+	sched_run(t, ed, "Kl: Read")
+	testing.expect_value(t, sched_var(ed, "got"), "")
+	testing.expect_value(t, plugin_find(&ed.plugins, "kl").last_error, "")
+}
+
+@(test)
 plugin_sched_resume_guard :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"a.lua", `

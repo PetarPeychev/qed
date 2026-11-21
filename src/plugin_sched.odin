@@ -1145,7 +1145,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		}
 		eof := subprocess_drain(&pr.sp, PLUGIN_LINE_READ_MAX if pr.line_ref != 0 else PLUGIN_SPAWN_READ_MAX, PLUGIN_SPAWN_READ_MAX)
 		plugin_proc_lines(editor, id, false)
-		if i = plugin_proc_index(p, id); i < 0 {
+		if i = plugin_proc_index(p, id); i < 0 || p.procs[i].done {
 			continue
 		}
 		if pr = &p.procs[i]; len(pr.sp.out.buf) + len(pr.sp.err.buf) > PLUGIN_SPAWN_OUTPUT_MAX {

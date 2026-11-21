@@ -210,7 +210,10 @@ subprocess_drain_file :: proc(file: ^os.File, sb: ^strings.Builder, max := 0) ->
 }
 
 subprocess_close_pipes :: proc(p: ^Subprocess) {
-	os.close(p.stdout)
+	if p.stdout != nil {
+		os.close(p.stdout)
+		p.stdout = nil
+	}
 	if p.stderr != nil {
 		os.close(p.stderr)
 		p.stderr = nil
@@ -218,6 +221,9 @@ subprocess_close_pipes :: proc(p: ^Subprocess) {
 }
 
 subprocess_reap :: proc(p: ^Subprocess) -> (exited: bool) {
+	if !p.running {
+		return true
+	}
 	state, err := os.process_wait(p.process, 0)
 	if err == os.General_Error.Timeout {
 		return false
