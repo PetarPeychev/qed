@@ -336,10 +336,9 @@ test_md_links :: proc(t: ^testing.T) {
 	src := "See [qed](https://q.ed/x \"t\") and [top](#top), [ref][r], <https://auto.link>, https://bare.url/p.\n\n![logo](a.png) [again](https://q.ed/x)\n\n[r]: https://r.ef"
 	lines := md_render(src, 80, .Plain)
 	texts := md_texts(lines)
-	testing.expect_value(t, texts[0], "See qed[1] and top, ref[2], https://auto.link, https://bare.url/p.")
-	testing.expect_value(t, texts[2], "[image: logo] again[1]")
-	testing.expect_value(t, texts[len(texts) - 2], "[1] https://q.ed/x")
-	testing.expect_value(t, texts[len(texts) - 1], "[2] https://r.ef")
+	testing.expect_value(t, texts[0], "See qed and top, ref, https://auto.link, https://bare.url/p.")
+	testing.expect_value(t, texts[2], "[image: logo] again")
+	testing.expect_value(t, len(texts), 3)
 	fg, _ := md_span_fg(lines, "qed")
 	testing.expect(t, u64(fg) & u64(tb2.Color.Underline) != 0, "link text underlined")
 }
@@ -382,7 +381,8 @@ test_md_hover_style :: proc(t: ^testing.T) {
 		testing.expect(t, strings.contains(text, "formats"), "prose kept")
 	}
 	wide := md_all_text(md_render(src, 76, .Go))
-	testing.expect(t, strings.contains(wide, "[1] https://pkg.go.dev/fmt#Fprintf"), "footnote url")
+	testing.expect(t, !strings.contains(wide, "[1]"), "no footnote marker")
+	testing.expect(t, !strings.contains(wide, "https://pkg.go.dev/fmt#Fprintf"), "no footnote url")
 }
 
 @(test)
@@ -393,12 +393,10 @@ test_md_link_targets :: proc(t: ^testing.T) {
 	testing.expect_value(t, md_line_link(lines[0], 0), "")
 	testing.expect_value(t, md_line_link(lines[0], 2), "https://x.y")
 	testing.expect_value(t, md_line_link(lines[0], 4), "https://x.y")
-	testing.expect_value(t, md_line_link(lines[0], 6), "https://x.y")
+	testing.expect_value(t, md_line_link(lines[0], 6), "")
 	text := md_line_text(lines[0])
 	testing.expect_value(t, md_line_link(lines[0], strings.index(text, "q.r")), "https://q.r")
 	testing.expect_value(t, md_line_link(lines[0], strings.index(text, " e") + 1), "#f")
-	foot := lines[len(lines) - 1]
-	testing.expect_value(t, md_line_link(foot, 5), "https://x.y")
 	wrapped := md_render("[one two three four](https://w.x)", 8, .Plain)
 	for line in wrapped[:2] {
 		testing.expect_value(t, md_line_link(line, 0), "https://w.x")
@@ -474,7 +472,7 @@ test_md_front_matter_comments_refs :: proc(t: ^testing.T) {
 	testing.expect_value(t, md_all_text(md_render("a\n\n<!-- one\n\ntwo -->\n\nb", 40, .Plain)), "a\n\nb")
 	testing.expect_value(t, md_all_text(md_render("[x]: https://u junk\n\n[x]", 40, .Plain)), "[x]: https://u junk\n\n[x]")
 	titled := md_render("[t](https://u.v \"a (b)\") end", 40, .Plain)
-	testing.expect_value(t, md_line_text(titled[0]), "t[1] end")
+	testing.expect_value(t, md_line_text(titled[0]), "t end")
 }
 
 @(test)
@@ -581,6 +579,14 @@ test_md_job_steps_match_one_pass :: proc(t: ^testing.T) {
 			testing.expect_value(t, stepped[i].slug, l.slug)
 		}
 	}
-	testing.expect(t, strings.contains(md_all_text(stepped), "[3] http://r"), "a reference defined below resolves")
-	testing.expect(t, strings.contains(md_all_text(stepped), "[4] http://c"), "footnotes number in order")
+	ref_linked := false
+	for l in stepped {
+		for sp in l.spans {
+			if sp.link == "http://r" {
+				ref_linked = true
+			}
+		}
+	}
+	testing.expect(t, ref_linked, "a reference defined below resolves")
+	testing.expect(t, !strings.contains(md_all_text(stepped), "[3]"), "no footnote markers")
 }

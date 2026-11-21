@@ -299,8 +299,6 @@ function T.url_link_opens_url(t)
 	t.click("the-site")
 	t.wait(function() return t.log_has("debug", "", "Open URL: https://example.com/x") end)
 	t.ok(t.ui() ~= nil, "the preview stays open")
-	t.click("[1] https")
-	t.wait(function() return t.log_has("debug", "", "Open URL: https://example.com/x") end)
 	t.key("Esc")
 end
 

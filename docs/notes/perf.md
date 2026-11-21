@@ -159,7 +159,7 @@ big-file mode.
 - Markdown preview (100k lines): one 1.75 s slice. `md_render` is now an `MdJob` stepped by whole
   top-level blocks, 10 ms per step (first step inline, then `pane_stack_pump`); the pane keeps the last
   finished render and the layout-reading `v:` calls wait for it. Constant factor: 16-byte cells indexing
-  their spans, one wrap buffer, runs sliced from their span, footnote map, no grapheme iterator for
+  their spans, one wrap buffer, runs sliced from their span, no grapheme iterator for
   simple runes, inline text copied in runs (render 1.75 s -> ~0.6 s total, arena 715 -> 276 MB).
   Gate: open 1753 -> 48 ms, slice 1750 -> 35 ms, content after ~0.75 s.
 - Git tab, 50k changed: `walk_scope_rows` read every expanded dir. An uncovered dir now takes its rows

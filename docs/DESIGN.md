@@ -759,8 +759,7 @@ on the run color (`text.strong` is `foreground bold`, so bold never reads as a h
 `━` rule in the heading color, H2 a `─` rule. Code (blocks and inline) sits on a band: tint
 `markdown_code` of the pane selection color over the pane background, filled to the right edge
 via `MdLine.fill`; blocks are highlighted by `highlight_lines` and char-wrapped. Links show their
-text underlined plus `[n]` (both carry the target), each URL listed once as a footnote at the end (anchors and autolinks
-get none). Images and `<img>` show `[image: alt]`; other HTML tags drop (`br` and block closers
+text underlined (spans carry the target for click-to-follow). Images and `<img>` show `[image: alt]`; other HTML tags drop (`br` and block closers
 break lines; only real tag names count, so `Vec<T>` stays text). Plaintext hovers go through
 `md_escape_plain` (punctuation escaped, hard breaks, indent as no-break spaces); a MarkedString
 `{language, value}` becomes a fenced block. Front matter renders as a yaml code block. Containers

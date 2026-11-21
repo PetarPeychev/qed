@@ -96,8 +96,6 @@ MdRender :: struct {
 	lang:        Language,
 	style:       MdStyle,
 	refs:        map[string]string,
-	links:       [dynamic]string,
-	link_index:  map[string]int,
 	link:        string,
 	slugs:       map[string]int,
 	prefix:      [dynamic]MdPrefix,
@@ -176,8 +174,6 @@ md_job_start :: proc(job: ^MdJob, src: string, width: int, default_lang: Languag
 		return
 	}
 	r.refs = make(map[string]string, context.temp_allocator)
-	r.links = make([dynamic]string, context.temp_allocator)
-	r.link_index = make(map[string]int, context.temp_allocator)
 	r.slugs = make(map[string]int, context.temp_allocator)
 	r.prefix = make([dynamic]MdPrefix, context.temp_allocator)
 	raw := strings.split(src, "\n", context.temp_allocator)
@@ -230,17 +226,6 @@ md_job_step :: proc(job: ^MdJob, deadline: time.Tick) -> []MdLine {
 		}
 	}
 	job.done = true
-	if len(r.links) > 0 {
-		md_gap(r, r.src)
-		for url, i in r.links {
-			mark := fmt.tprintf("[%d] ", i + 1)
-			append(&r.prefix, MdPrefix{mark, strings.repeat(" ", len(mark), context.temp_allocator), r.style.dim, true})
-			for row in md_wrap_hard({{text = url, fg = r.style.dim, link = url}}, md_avail(r)) {
-				md_emit(r, row)
-			}
-			pop(&r.prefix)
-		}
-	}
 	for len(r.out) > 0 {
 		last := r.out[len(r.out) - 1]
 		if last.fill != 0 || len(last.spans) != 0 {
@@ -1323,7 +1308,6 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 				outer := r.link
 				r.link = dest
 				md_inline_into(r, spans, inner, md_fg(r.style.link, fg, u64(tb2.Color.Underline)))
-				md_footnote(r, spans, dest, inner)
 				r.link = outer
 				i = end
 				continue
@@ -1410,19 +1394,6 @@ MD_INLINE_SPECIAL := #partial [256]bool {
 	'~'  = true,
 	'&'  = true,
 	'h'  = true,
-}
-
-md_footnote :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, dest, label: string) {
-	if dest == "" || dest[0] == '#' || md_plain(label) == dest {
-		return
-	}
-	n, found := r.link_index[dest]
-	if !found {
-		append(&r.links, dest)
-		n = len(r.links) - 1
-		r.link_index[dest] = n
-	}
-	append(spans, MdSpan{text = fmt.tprintf("[%d]", n + 1), fg = r.style.dim, link = dest})
 }
 
 md_plain :: proc(s: string) -> string {
