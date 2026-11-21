@@ -4,6 +4,7 @@ local M = {}
 
 local RANK = {added = 1, modified = 2, deleted = 3}
 local BAR = {added = "git_added", modified = "git_modified", deleted = "git_deleted"}
+local BAR_RANK = {git_added = 1, git_modified = 2, git_deleted = 3}
 
 local SPACE = {[9] = true, [10] = true, [11] = true, [12] = true, [13] = true, [32] = true}
 
@@ -161,10 +162,9 @@ local function parse_sizes(st, text, untracked)
 	for line in repo.each(text) do
 		local rel, a, d = M.numstat_line(line, untracked)
 		-- keyed by the short relative path: no absolute path is built or hashed per line
-		if rel and (a > 0 or d > 0) and not st.sized[rel] then
-			st.sized[rel] = true
+		if rel and (a > 0 or d > 0) then
 			local e = st.byrel[rel] or st.files[st.under .. rel]
-			if e then
+			if e and not e.added then
 				e.added, e.removed = a, d
 			end
 		end
@@ -172,7 +172,7 @@ local function parse_sizes(st, text, untracked)
 end
 
 local function state(files, ignored, top)
-	return {files = files, ignored = ignored, top = top, under = top .. "/", count = 0, sized = {}, byrel = {}, based = false, full = false}
+	return {files = files, ignored = ignored, top = top, under = top .. "/", count = 0, byrel = {}, based = false, full = false}
 end
 
 function M.parse(files, ignored, top, out)
@@ -306,14 +306,18 @@ function M.compare(a, b, stop)
 end
 
 function M.view(files, ignored, stop)
-	local status, changed, gone = {}, {}, {}
+	local marks, changed, gone = {}, {}, {}
 	local under = qed.root() .. "/"
 	local function set(path, mark)
-		local cur = status[path]
-		if cur and RANK[cur] >= RANK[mark] then
+		local e = marks[path]
+		if not e then
+			marks[path] = {bar = BAR[mark]}
+			return false
+		end
+		if BAR_RANK[e.bar] >= RANK[mark] then
 			return true
 		end
-		status[path] = mark
+		e.bar = BAR[mark]
 		return false
 	end
 	local n = 0
@@ -338,23 +342,18 @@ function M.view(files, ignored, stop)
 			return nil
 		end
 	end
-	local marks = {}
 	local icon = qed.theme.icon("tree_renamed")
-	for path, mark in pairs(status) do
-		local e = {bar = BAR[mark]}
-		if mark == "deleted" and not qed.fs.exists(path, {follow = false}) then
+	for path, f in pairs(files) do
+		local e = marks[path]
+		if e.bar == "git_deleted" and not qed.fs.exists(path, {follow = false}) then
 			e.fg = "git_deleted"
 		end
-		local f = files[path]
-		if f then
-			if f.from then
-				e.suffix = icon .. " " .. (qed.path.rel(f.from, qed.path.dir(path)) or f.from)
-			end
-			if (f.added or 0) > 0 or (f.removed or 0) > 0 then
-				e.added, e.removed = f.added or 0, f.removed or 0
-			end
+		if f.from then
+			e.suffix = icon .. " " .. (qed.path.rel(f.from, qed.path.dir(path)) or f.from)
 		end
-		marks[path] = e
+		if (f.added or 0) > 0 or (f.removed or 0) > 0 then
+			e.added, e.removed = f.added or 0, f.removed or 0
+		end
 		n = n + 1
 		if tick(n, stop) then
 			return nil
