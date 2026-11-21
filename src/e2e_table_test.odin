@@ -174,6 +174,39 @@ e2e_table_fit_resample :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_table_list_accel :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "tbl", TABLE_PLUGIN)
+	table_run(&e, "Tbl: Table")
+	p := test_view(&e.ed)
+	for _ in 0 ..< 10 {
+		e.ed.accel_tick = {}
+		e2e_key(&e, .Arrow_Down)
+	}
+	testing.expect_value(t, p.list.sel, 10)
+	e.ed.accel_tick = {}
+	for _ in 0 ..< 30 {
+		e2e_key(&e, .Arrow_Down)
+	}
+	testing.expect(t, p.list.sel > 40, "held arrows accelerate the selection")
+	sel := p.list.sel
+	for _ in 0 ..< 30 {
+		e2e_key(&e, .Arrow_Up)
+	}
+	testing.expect(t, sel - p.list.sel > 30, "and back up")
+	e.ed.accel_tick = {}
+	for _ in 0 ..< 200 {
+		e2e_key(&e, .Arrow_Up)
+	}
+	testing.expect_value(t, p.list.sel, 0)
+	e.ed.accel_tick = {}
+	e2e_key(&e, .Pgdn)
+	testing.expect_value(t, p.list.sel, pane_geom(&e.ed, p).list.h)
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_table_core_max_width :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)

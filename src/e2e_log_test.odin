@@ -246,6 +246,7 @@ e2e_log_wheel_scroll_and_thumb :: proc(t: ^testing.T) {
 	testing.expect(t, v.stick, "wheel-down to the end re-sticks")
 
 	for _ in 0 ..< h {
+		e.ed.accel_tick = {}
 		e2e_key(&e, .Arrow_Up)
 	}
 	e2e_render(&e)
