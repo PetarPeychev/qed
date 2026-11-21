@@ -260,31 +260,33 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 	plugin_flush(ed)
 	evhog := plugin_find(&ed.plugins, "evhog")
 	testing.expect_value(t, evhog.state, PluginState.Enabled)
-	testing.expect(t, strings.contains(evhog.last_error, "not enough memory"), evhog.last_error)
-	testing.expect(t, plugin_test_logged(ed, .Warn, "Evhog", "not enough memory"), "a task out of memory is a warning")
+	testing.expect(t, strings.contains(evhog.last_error, "buf_changed handler ran out of Lua memory and was stopped (cap 4 MB"), evhog.last_error)
+	testing.expect(t, plugin_test_logged(ed, .Error, "Evhog", "ran out of Lua memory"), "a task out of memory is an error")
 }
 
 @(test)
-plugin_memory_hog_disabled :: proc(t: ^testing.T) {
+plugin_memory_victim_stays :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
-		{"keep.lua", `return {setup = function()
-			qed.command{name = "Grow", run = function() big = big or {} for i = 1, 1e7 do big[#big + 1] = string.rep("x", 64) .. i end end}
+		{"hog.lua", `return {setup = function() hold = {} for i = 1, 36 do hold[i] = string.rep(string.char(64 + i % 26), 100 * 1024) end end}`},
+		{"small.lua", `return {setup = function()
+			qed.command{name = "Big", run = function() local s = string.rep("y", 512 * 1024) qed.message(#s) end}
+			qed.command{name = "Cmd", run = function() qed.message("ok") end}
 		end}`},
-		{"small.lua", `return {setup = function() qed.command{name = "Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
 	}, mem_cap = 4 * 1024 * 1024)
 	defer plugin_test_destroy(ed)
 
-	grow, ok := plugin_test_command(ed, "Keep: Grow")
-	testing.expect(t, ok, "grow registered")
-	command_run(ed, grow)
-	keep := plugin_find(&ed.plugins, "keep")
-	testing.expect_value(t, keep.state, PluginState.Errored)
-	testing.expect(t, plugin_test_logged(ed, .Error, "Keep", "disabled: Lua memory stays at the 4 MB cap"), "the disable is an error naming the plugin")
-	testing.expect(t, ed.plugins.mem.used < ed.plugins.mem.cap / 2, "unloading the hog frees its memory")
-	cmd, found := plugin_test_command(ed, "Small: Cmd")
-	testing.expect(t, found, "other plugins stay")
+	big, ok := plugin_test_command(ed, "Small: Big")
+	testing.expect(t, ok, "big registered")
+	for _ in 0 ..< 3 {
+		command_run(ed, big)
+	}
+	small := plugin_find(&ed.plugins, "small")
+	testing.expect_value(t, small.state, PluginState.Enabled)
+	testing.expect_value(t, plugin_find(&ed.plugins, "hog").state, PluginState.Enabled)
+	testing.expect(t, strings.contains(small.last_error, "command ran out of Lua memory and was stopped (cap 4 MB, "), small.last_error)
+	cmd, _ := plugin_test_command(ed, "Small: Cmd")
 	command_run(ed, cmd)
-	testing.expect_value(t, ed.message, "yyy")
+	testing.expect_value(t, ed.message, "ok")
 }
 
 @(test)

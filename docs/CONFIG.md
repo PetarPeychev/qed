@@ -175,7 +175,7 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `plugin_memory_mb` | `256` | Memory cap for the Lua state, shared by every plugin; a task that exceeds it fails (logged) instead of growing. Its plugin stays loaded unless memory is still above 7/8 of the cap after a full collection, which disables it. `0` means no cap. |
+| `plugin_memory_mb` | `256` | Memory cap for the Lua state, shared by every plugin; a task that exceeds it fails (logged) instead of growing. The cap is shared, so the task that hits it is not necessarily the one holding the memory: qed runs a full collection, stops only that task and logs the cap and current usage; no plugin is disabled. `0` means no cap. |
 | `plugin_slice_max_ms` | `1000` | Longest a plugin event handler, timer or background task may run without yielding; past it the task is stopped with a warning (the plugin stays loaded, as it does after any Lua error outside setup). |
 | `plugin_command_max_ms` | `5000` | The same limit for a plugin command. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |

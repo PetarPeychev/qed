@@ -318,7 +318,7 @@ load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*,
   | commands, `when` | n/a | `plugin_command_max_ms` (5 s): the task stops, a warning is logged |
   | `setup` | 2 ms | 1 s: the plugin is marked errored |
 
-  A stopped task, a task's out-of-memory error and a task's own Lua error leave the plugin loaded. The memory cap is shared by every plugin, so after a task runs out of memory qed runs a full collection, and if usage is still above 7/8 of the cap it disables the plugin that owns the failing task. An exported function runs under its caller's task budget.
+  A stopped task, a task's out-of-memory error and a task's own Lua error leave the plugin loaded. The memory cap is shared by every plugin, so the task that hits it may not be the one holding the memory: qed runs a full collection, stops only that task and logs one rate-limited error with the cap and the usage after collection; it never disables a plugin. An exported function runs under its caller's task budget.
 
 - **Startup budget.**
   - perf.md has no cold-start target today. Its known pre-paint costs are cold `git_gutter_update` (~45-56 ms) and `buffer_open` on huge files.

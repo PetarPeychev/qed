@@ -599,7 +599,6 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 		return
 	}
 	message, traceback: string
-	ended := killed || status == .ERRMEM
 	switch {
 	case killed:
 		message = fmt.tprintf("%s exceeded its %.0f ms budget and was stopped", label, plugin_budget(kind).hard_ms)
@@ -613,6 +612,7 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 			plugin_source_clean(p, source)
 		}
 		return
+	case status == .ERRMEM:
 	case:
 		message, traceback = plugin_task_error(editor, co)
 	}
@@ -620,16 +620,14 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	if i >= 0 {
 		plugin_task_free(editor, i)
 	}
+	if status == .ERRMEM {
+		lua.gc(p.L, .COLLECT)
+		mb :: 1024 * 1024
+		message = fmt.tprintf("%s ran out of Lua memory and was stopped (cap %d MB, %.1f MB in use after a full collection)", label, p.mem.cap / mb, f64(p.mem.used) / mb)
+	}
 	pl := plugin_find(p, owner)
 	if pl != nil {
-		plugin_error(editor, pl, message, traceback, false, .Warn if ended else .Error)
-	}
-	if status == .ERRMEM && pl != nil && pl.state == .Enabled && p.mem != nil && p.mem.cap > 0 {
-		lua.gc(p.L, .COLLECT)
-		if p.mem.used > p.mem.cap / 8 * 7 {
-			plugin_error(editor, pl, fmt.tprintf("disabled: Lua memory stays at the %d MB cap after a full collection", p.mem.cap / (1024 * 1024)), "", true)
-			return
-		}
+		plugin_error(editor, pl, message, traceback, false, .Warn if killed else .Error)
 	}
 	if killed && source != 0 && plugin_source_killed(p, source) && pl != nil {
 		plugin_error(editor, pl, fmt.tprintf("%s was stopped by its budget %d times in a row and was removed", label, PLUGIN_KILLS_MAX), "", false)
