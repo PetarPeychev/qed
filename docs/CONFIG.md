@@ -165,7 +165,7 @@ detected language for the current session.
 | `lsp.enabled` | `true` | Master switch. Off stops every language server: no diagnostics, completion, hover, go-to-definition or rename, and the `LSP:` commands leave the palette. *Format: Document* works only for languages with a `plugins.format.commands` entry. |
 | `lsp.completion_max_rows` | `8` | Max rows in the completion popup. |
 | `lsp.completion_min_chars` | `1` | Word-char count that auto-triggers completion. |
-| `lsp.hover_max_width` | `120` | Max width of the hover popup, borders included; text wraps inside it. |
+| `lsp.hover_max_width` | `120` | Max width of the hover popup, borders included (at least 20); text wraps inside it. |
 
 Per-language server commands live in the [`languages`](#languages) section. The
 old `modules.lsp` keys warn and are ignored.

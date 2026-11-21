@@ -549,4 +549,9 @@ e2e_hover_max_width :: proc(t: ^testing.T) {
 	editor_render_hover_pane(&e.ed, 0, 0)
 	w := e.ed.hover_rect.w
 	testing.expectf(t, w <= HOVER_MAX_WIDTH && w > HOVER_MAX_WIDTH - 8, "hover width %d, max %d", w, HOVER_MAX_WIDTH)
+	saved := HOVER_MAX_WIDTH
+	HOVER_MAX_WIDTH = 5
+	defer HOVER_MAX_WIDTH = saved
+	editor_render_hover_pane(&e.ed, 0, 0)
+	testing.expectf(t, e.ed.hover_rect.w > 0 && e.ed.hover_rect.w <= PANE_MIN_WIDTH, "a tiny max clamps to the pane minimum, got %d", e.ed.hover_rect.w)
 }

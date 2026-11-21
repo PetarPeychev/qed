@@ -846,17 +846,21 @@ editor_open_path :: proc(editor: ^Editor, path: string) -> bool {
 	}
 	editor_log(editor, .Debug, "Lang", fmt.tprintf("detected %s for %s", LANGUAGES[b.language].name, editor_display_path(editor, abs)))
 
+	editor_switch_to(editor, editor_add_buffer(editor, b))
+	return true
+}
+
+// a lone untouched scratch buffer gives way to the new one
+editor_add_buffer :: proc(editor: ^Editor, b: Buffer) -> int {
 	plugin_queue(editor, {event = .Buf_Open, buf = b.id})
 	scratch := editor.buffers[0]
 	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
 		buffer_destroy(&editor.buffers[0])
 		editor.buffers[0] = b
-		editor_switch_to(editor, 0)
-	} else {
-		append(&editor.buffers, b)
-		editor_switch_to(editor, len(editor.buffers) - 1)
+		return 0
 	}
-	return true
+	append(&editor.buffers, b)
+	return len(editor.buffers) - 1
 }
 
 editor_load_buffer :: proc(editor: ^Editor, path: string) -> int {
@@ -872,15 +876,7 @@ editor_load_buffer :: proc(editor: ^Editor, path: string) -> int {
 		buffer_destroy(&b)
 		return -1
 	}
-	plugin_queue(editor, {event = .Buf_Open, buf = b.id})
-	scratch := editor.buffers[0]
-	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
-		buffer_destroy(&editor.buffers[0])
-		editor.buffers[0] = b
-		return 0
-	}
-	append(&editor.buffers, b)
-	return len(editor.buffers) - 1
+	return editor_add_buffer(editor, b)
 }
 
 editor_copy :: proc(editor: ^Editor) {
@@ -1372,7 +1368,7 @@ editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
 
 editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 	editor.hover_rect = {}
-	text_w := min(int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X, HOVER_MAX_WIDTH) - 3
+	text_w := min(int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X, max(PANE_MIN_WIDTH, HOVER_MAX_WIDTH)) - 3
 	if text_w < 8 {
 		return
 	}

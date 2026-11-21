@@ -892,16 +892,7 @@ qed_new_buf :: proc "c" (L: ^lua.State) -> c.int {
 		b.language = lang
 	}
 	id := b.id
-	plugin_queue(editor, {event = .Buf_Open, buf = id})
-	scratch := editor.buffers[0]
-	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
-		buffer_destroy(&editor.buffers[0])
-		editor.buffers[0] = b
-		editor_switch_to(editor, 0)
-	} else {
-		append(&editor.buffers, b)
-		editor_switch_to(editor, len(editor.buffers) - 1)
-	}
+	editor_switch_to(editor, editor_add_buffer(editor, b))
 	lua.pushinteger(L, lua.Integer(id))
 	return 1
 }

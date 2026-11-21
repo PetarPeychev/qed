@@ -263,7 +263,8 @@ function qed.ui.open(spec) end
 `qed.ui.open` + `v:wait()`; `wait` resolves on `activate` (value) or `close` (`nil`).
 
 ```lua
-function qed.confirm(question, choices)
+function qed.confirm(o)
+	local question, choices = o.question, o.choices
 	local v, busy = qed.ui.open{place = "center", size = "dialog", text = {question},
 		list = {items = choices or {"Yes", "No"}}}
 	if not v then return nil, busy end
@@ -313,7 +314,7 @@ local v = qed.ui.open{
 	},
 }
 qed.command{name = "Delete", scope = "filetree", key = "delete", run = function(ctx)
-	if qed.confirm("Delete " .. #ctx.files .. " files?") == 1 then for _, p in ipairs(ctx.files) do qed.fs.remove(p) end end
+	if qed.confirm{question = "Delete " .. #ctx.files .. " files?"} == 1 then for _, p in ipairs(ctx.files) do qed.fs.remove(p) end end
 end}
 ```
 
@@ -388,7 +389,7 @@ Views, events and the prelude are in DESIGN.md (Panes). Deviations from §3/§5:
 | Methods | `set`, `append`, `update`, `text`, `close`, `wait`. `text` replaces the text body. `set` has `selected`, `more`, `hint`; no `keep`. | No `marks`/`preview`/`footer`/`title`/`tab` user yet. |
 | Sizes | `palette`, `dialog`, `split:code`. | No tree yet. |
 | Prelude | `src/prelude.lua` returns an installer that `plugin_qed_push` runs on each plugin's `qed` table. | Each plugin's `qed.ui.open` carries its owner as an upvalue. Query fields and multi-select are `ui.open` only; the sugar has no `on_query`. |
-| Search | Parallel `rg --line-buffered` streamed through `spawn_bg{on_line}` into `append` on a `sort` list keyed `file\0row`; rows are deduped; the previous results stay up until the first new hit; Enter opens a visible hit while rg still runs; `max = 500`, the 501st hit kills rg and shows `500+` (which 500 is nondeterministic, shown sorted, as in phase 12). The plugin kills its rg on requery and close. A spawn error or rg exit code above 1 with no hits shows `Search failed: ...`. The selection persists through core `id`, also across a plugin reload. | `--sort path` is single-threaded and block-buffered (first hit 1-2 s on a large tree). |
+| Search | Parallel `rg --line-buffered` streamed through `spawn_bg{on_line}` into `append` on a `sort` list keyed `file\0row`; rows are deduped; the previous results stay up until the first new hit; Enter opens a visible hit while rg still runs; `max = 500`, the 501st hit kills rg and shows `500+` (which 500 is nondeterministic, shown sorted, as in phase 12). The plugin kills its rg on requery and close. A spawn error or rg exit code above 1 with no hits shows `Search failed: ...`. | `--sort path` is single-threaded and block-buffered (first hit 1-2 s on a large tree). |
 | Kill | Task kill frees only the foreground `qed.spawn` the task waits on; `spawn_bg` processes stay with the plugin until it kills them or unloads. | Keeps the pre-save timeout and query supersede killing formatters and searches without reaching into background work. |
 | Markdown body | `markdown = text` (full, no list/text) makes the text body core-rendered markdown (`md_render` at the text width, cached in a per-pane arena keyed on width, invalidated by `v:markdown` and retheme). Home/End scroll a text body; its scroll persists by `id`. Each rendered line carries its source row (`MdLine.src`: its own row for code and table rows, a reflowed block's first row otherwise), so a plugin maps body rows to buffer rows (`v:source_line`, `v:source_scroll`); a closed view keeps its last visible rows for its `close` handler. | The plugin cannot know the pane width and highlight colors are not theme keys, so core renders. |
 | Links, backdrop | Markdown spans carry their link target; a click on an `#anchor` scrolls in core unless the view has `on.link` (M3), other targets queue `on.link(v, target)`. `backdrop = "dim"\|"blank"` fades or clears everything drawn before the pane (editor and panes below) except the status rows; set per pane (`plugins.markdown.backdrop`), no global knob. | The plugin owns link policy; core owns hit-testing and scrolling. |
@@ -514,7 +515,7 @@ conflicts and AI plugin; the primitives in plugins.md). Deviations from §7:
 | Conflict scans | `buf_open`, `buf_reload`, `buf_save`, `startup` (hot reload) scan in full; one core `qed.buf.find_lines` pass with the marker list and `word` returns sorted rows and kinds. `buf_changed` (`lo`, `hi`) rescans the markers and redecorates only blocks touching the dirty rows or whose structure changed; blocks elsewhere keep their core-shifted decorations. | Spans drop on edited rows only, so untouched blocks stay correct; the dirty range also catches a paste of identical text over a block, which a content diff of old and new blocks would miss. |
 | Arming | `buf_changed` is held only while some buffer's last open/reload/save scan found blocks; dropped on close and on a save or reload with no blocks. A conflict typed or pasted into a never-conflicted buffer highlights on save or reload. | Keeps the zero-Lua keystroke for plain editing. Resolve then undo still highlights (the buffer stays armed). |
 | Conflict API | `qed.text.diff_rows(..., {words = true})` (core Myers pairing + `diff_word_span`, no block text copied into Lua); a deco `alpha` may be a theme tint key (`conflict`, `conflict_marker`, `conflict_word`, `ai_edit`), resolved per frame; span `alpha` blends `bg` over the line background (the old `diff_bg` path). | Exact old colors, live theme changes without a re-push, no 1 MB text copy per keystroke. |
-| Resolve | `qed.confirm("Resolve merge conflict:", {"Keep Ours", "Keep Theirs", "Keep Both"})`, a child dialog instead of the exclusive `merge` pane; one `qed.edit` group. Core now checks for changes at the top of every flush round, so the edit's `buf_changed` fires in the same flush. | The edit lands after the flush's first change check. |
+| Resolve | `qed.confirm{question = "Resolve merge conflict:", choices = {"Keep Ours", "Keep Theirs", "Keep Both"}}`, a child dialog instead of the exclusive `merge` pane; one `qed.edit` group. Core now checks for changes at the top of every flush round, so the edit's `buf_changed` fires in the same flush. | The edit lands after the flush's first change check. |
 | Name, key | *Conflict: Resolve* (was *Git: Resolve Conflict*), `Alt+m`, `plugins.conflict.keybinds.Resolve`; the old top-level bind warns where it moved. | Phase 13 naming. |
 | Marker fg | A whole-line `fg` span; it keeps the syntax attributes (bold, italic) the old full color override dropped. | Spans compose with syntax by design. |
 | AI ranges | `qed.deco.mark`/`range`: a byte-position anchor shifted by the primitives and removed when an edit overlaps its inside. Set before the prompt and re-read after it. The plugin cancels on `buf_changed` when its mark is gone (`block edited`), on a reload that removed it (`file reloaded`) and on `buf_close`. Reloads apply hunks through the primitives, so a mark on untouched lines survives. | The old content search (`llm_locate`) could relocate onto a duplicate; an anchor is exact and free per frame. |

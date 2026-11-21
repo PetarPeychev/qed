@@ -864,7 +864,7 @@ defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
+Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -1028,7 +1028,7 @@ hits as the query grows. A browsable fill caches each dir's rows on the source u
 a dir rereads it) and reads uncached dirs for at most `walk_fill_slice_ms` (6); dirs left unread stay `pending`
 (drawn `…`) and the next pump splices them in after their rows (`list_walk_resume`), keeping the selected path
 and its screen offset. Expand All marks dirs open as the fill meets them (`expanding`, stopped at
-`WALK_EXPAND_MAX_ROWS`, 200k, with a warning), so it streams; Esc or Alt+e mid-stream closes the pending dirs.
+`WALK_EXPAND_MAX_ROWS`, 200k, with a warning), so it streams; Esc mid-stream closes just the pending dirs, Alt+e collapses everything.
 Symlinked dirs are leaves, so a cycle ends. `qed.fs.copy/rename/remove/mkdir` (`fs_*`) refuse an existing target, a target inside the
 source (`into itself`), special files (fifos, sockets, devices; skipped inside a copied dir) and removing the root or
 an ancestor; they never follow symlinks (copied as links), stream file data through a fixed buffer, fall back to

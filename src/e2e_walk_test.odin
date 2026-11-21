@@ -531,8 +531,36 @@ e2e_walk_expand_all_streams :: proc(t: ^testing.T) {
 			testing.expectf(t, row.path in p.list.source.dirs, "%s stays open only if read", row.path)
 		}
 	}
+
+	nav_alt(&e, 'e')
+	nav_alt(&e, 'e')
+	for i := 0; pane_tree_loading(p) && i < 100; i += 1 {
+		pane_stack_pump(&e.ed, true)
+	}
+	deep := fmt.tprintf("%s/d4/sub/g.txt", e.dir)
+	for row, i in ft_entries(&e.ed) {
+		if row.path == deep {
+			p.list.sel = i
+		}
+	}
+	clear(&p.list.source.dirs)
+	list_walk_fill(&e.ed, p)
+	testing.expect(t, pane_tree_loading(p) && p.list.source.keep == deep, "a refill holds the selection under a dir not read yet")
+	e2e_key(&e, .Arrow_Up)
+	testing.expect_value(t, p.list.source.keep, "")
+	moved, _ := ft_selected(&e.ed)
+	for i := 0; pane_tree_loading(p) && i < 100; i += 1 {
+		pane_stack_pump(&e.ed, true)
+	}
+	sel, _ = ft_selected(&e.ed)
+	testing.expect_value(t, sel.path, moved.path)
+	testing.expect_value(t, p.list.source.keep, "")
+
+	clear(&p.list.source.dirs)
+	list_walk_fill(&e.ed, p)
+	testing.expect(t, pane_tree_loading(p) && !p.list.source.expanding, "a plain refill streams too")
 	e2e_key(&e, .Esc)
-	testing.expect(t, !filetree_active(&e.ed), "then Esc closes")
+	testing.expect(t, !filetree_active(&e.ed), "Esc closes the tree when no Expand All runs")
 }
 
 @(test)

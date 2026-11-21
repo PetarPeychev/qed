@@ -737,8 +737,7 @@ list_walk_fill :: proc(editor: ^Editor, p: ^Pane) {
 			p.list.anchor = i
 		}
 	}
-	delete(src.keep)
-	src.keep = ""
+	list_walk_keep_clear(src)
 	if found {
 		p.list.scroll = max(0, p.list.sel - off)
 	} else if keep != "" && len(src.pending) > 0 {
@@ -806,7 +805,13 @@ list_walk_rearm :: proc(p: ^Pane) {
 		p.refill_due, p.refill_at = true, time.tick_now()
 	} else {
 		src.expanding = false
+		list_walk_keep_clear(src)
 	}
+}
+
+list_walk_keep_clear :: proc(src: ^ListSource) {
+	delete(src.keep)
+	src.keep = ""
 }
 
 // a continuation splices the newly read dirs in after their rows instead of rebuilding the list
@@ -851,8 +856,7 @@ list_walk_resume :: proc(editor: ^Editor, p: ^Pane) {
 		for e, i in src.entries {
 			if e.path == src.keep {
 				sel = i
-				delete(src.keep)
-				src.keep = ""
+				list_walk_keep_clear(src)
 				break
 			}
 		}
@@ -1310,8 +1314,7 @@ pane_tree_expand_all :: proc(editor: ^Editor, p: ^Pane, on: bool) -> bool {
 	}
 	if !on {
 		src.expanding = false
-		delete(src.keep)
-		src.keep = ""
+		list_walk_keep_clear(src)
 	}
 	list_walk_fill(editor, p)
 	return true
@@ -1328,8 +1331,7 @@ pane_tree_cancel :: proc(editor: ^Editor, p: ^Pane) {
 	for dir in src.pending {
 		pane_tree_set(p, dir, false)
 	}
-	delete(src.keep)
-	src.keep = ""
+	list_walk_keep_clear(src)
 	list_walk_fill(editor, p)
 }
 

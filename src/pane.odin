@@ -1867,7 +1867,7 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 				return .None
 			}
 		}
-		if pane_tree_loading(p) {
+		if p.list.source.expanding && pane_tree_loading(p) {
 			pane_tree_cancel(editor, p)
 			return .None
 		}
@@ -1912,6 +1912,7 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 				}
 				delete(p.list.restore)
 				p.list.restore = ""
+				list_walk_keep_clear(&p.list.source)
 				p.list.moved = true
 				pane_select(editor, p, p.list.sel + d, g.list.h)
 			}
@@ -2008,6 +2009,7 @@ pane_mouse :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 			p.list.stick = i == n - 1
 			delete(p.list.restore)
 			p.list.restore = ""
+			list_walk_keep_clear(&p.list.source)
 			if !motion && overlay_double_click(editor, i) {
 				if f := pane_path(p); f != nil {
 					pane_path_complete(editor, p, f)
