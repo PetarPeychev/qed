@@ -574,7 +574,26 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	if n > 0 {
 		lua.pushodinstring(L, test_view_selected(entry.editor))
 		lua.setfield(L, -2, "selected")
+		it := list_item(entry.editor, pn, pane_item_index(pn, pn.list.sel))
+		lua.createtable(L, c.int(len(it.cells)), 0)
+		for cell, i in it.cells {
+			lua.pushodinstring(L, cell)
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+		lua.setfield(L, -2, "cells")
+		if m, ok := pn.marks[pane_item_key(it)]; ok {
+			lua.pushodinstring(L, m.bar)
+			lua.setfield(L, -2, "mark")
+		}
 	}
+	if pn.footer_input {
+		lua.pushodinstring(L, pn.footer_field.prompt)
+		lua.setfield(L, -2, "input")
+		lua.pushodinstring(L, textfield_str(&pn.footer_field.field))
+		lua.setfield(L, -2, "input_text")
+	}
+	lua.pushinteger(L, lua.Integer(pn.tab + 1))
+	lua.setfield(L, -2, "tab")
 	return 1
 }
 

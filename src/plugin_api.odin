@@ -35,6 +35,11 @@ qed_api := [?]lua.L_Reg {
 	{"new_buf", qed_new_buf},
 	{"config_path", qed_config_path},
 	{"config_defaults", qed_config_defaults},
+	{"config_schema", qed_config_schema},
+	{"config_set", qed_config_set},
+	{"config_unset", qed_config_unset},
+	{"commands", qed_commands},
+	{"plugins", qed_plugins},
 	{"open_url", qed_open_url},
 	{"set_root", qed_set_root},
 	{"config", qed_config},
@@ -912,6 +917,166 @@ qed_config_defaults :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+qed_config_schema :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	lua.pushodinstring(L, string(embedded_schema_data))
+	return 1
+}
+
+api_config_keys :: proc(L: ^lua.State, idx: c.int) -> []string {
+	if lua.type(L, idx) == .STRING {
+		s, _ := lua.toodinstring(L, idx)
+		if s == "" {
+			lua.L_argerror(L, idx, "key must not be empty")
+		}
+		keys := make([]string, 1, context.temp_allocator)
+		keys[0] = strings.clone(s, context.temp_allocator)
+		return keys
+	}
+	if lua.type(L, idx) != .TABLE {
+		lua.L_argerror(L, idx, "key or list of keys expected")
+	}
+	n := int(lua.rawlen(L, idx))
+	if n == 0 {
+		lua.L_argerror(L, idx, "key list must not be empty")
+	}
+	keys := make([]string, n, context.temp_allocator)
+	for i in 1 ..= n {
+		s: string
+		if lua.rawgeti(L, idx, lua.Integer(i)) == .STRING {
+			s, _ = lua.toodinstring(L, -1)
+		}
+		if s == "" {
+			lua.L_argerror(L, idx, "keys must be non-empty strings")
+		}
+		keys[i - 1] = strings.clone(s, context.temp_allocator)
+		lua.pop(L, 1)
+	}
+	return keys
+}
+
+api_config_write :: proc(L: ^lua.State, editor: ^Editor, keys: []string, v: json.Value, remove: bool) -> c.int {
+	path := editor.plugins.persist_path if editor.headless else config_path()
+	if path == "" {
+		return api_fail(L, "no config file")
+	}
+	if !config_persist_path_to(path, keys, v, remove) {
+		return api_fail(L, "cannot write config.json (unwritable or not valid JSON)")
+	}
+	editor.config_written = buffer_disk_stamp(path)
+	editor.disk_poll = {}
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_config_set :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	keys := api_config_keys(L, 1)
+	if lua.type(L, 2) <= .NIL {
+		lua.L_argerror(L, 2, "value expected (qed.config_unset removes a key)")
+	}
+	sb := strings.builder_make(context.temp_allocator)
+	if err := api_json_write(L, 2, &sb, 0); err != "" {
+		return plugin_raise(L, err)
+	}
+	v, _ := json.parse_string(strings.to_string(sb), parse_integers = true, allocator = context.temp_allocator)
+	// an empty Lua table is written as a list: an empty object would only be an empty diff
+	if o, ok := v.(json.Object); ok && len(o) == 0 {
+		v = json.Array{}
+	}
+	return api_config_write(L, entry.editor, keys, v, false)
+}
+
+qed_config_unset :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	return api_config_write(L, entry.editor, api_config_keys(L, 1), nil, true)
+}
+
+qed_commands :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	kb, _ := g_config_defaults["keybinds"].(json.Object)
+	lua.createtable(L, c.int(len(commands) + len(pane_commands) + len(p.commands)), 0)
+	n := 0
+	for table in ([?][]Command{commands[:], pane_commands[:]}) {
+		for cmd in table {
+			_, _, shortcut := command_effective_bind(cmd)
+			keybind, key: string
+			if cmd.bind_from == "" {
+				keybind = command_config_name(cmd)
+				key = string(kb[keybind].(json.String) or_else "")
+			}
+			n += 1
+			api_command_push(L, cmd.name, shortcut, "", cmd.scope, keybind, key)
+			lua.rawseti(L, -2, lua.Integer(n))
+		}
+	}
+	for &cmd in p.commands {
+		n += 1
+		api_command_push(L, cmd.name, cmd.shortcut, cmd.owner, cmd.scope, cmd.config_name, plugin_command_default(p, &cmd))
+		lua.rawseti(L, -2, lua.Integer(n))
+	}
+	return 1
+}
+
+api_command_push :: proc(L: ^lua.State, name, shortcut, owner, scope, keybind, key: string) {
+	lua.createtable(L, 0, 6)
+	lua.pushodinstring(L, name)
+	lua.setfield(L, -2, "name")
+	lua.pushodinstring(L, shortcut)
+	lua.setfield(L, -2, "shortcut")
+	lua.pushodinstring(L, scope if scope != "" else "editor")
+	lua.setfield(L, -2, "scope")
+	if owner != "" {
+		lua.pushodinstring(L, owner)
+		lua.setfield(L, -2, "owner")
+	}
+	if keybind != "" {
+		lua.pushodinstring(L, keybind)
+		lua.setfield(L, -2, "keybind")
+		lua.pushodinstring(L, key)
+		lua.setfield(L, -2, "key")
+	}
+}
+
+qed_plugins :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	lua.createtable(L, c.int(len(p.list)), 0)
+	for pl, i in p.list {
+		lua.createtable(L, 0, 6)
+		lua.pushodinstring(L, pl.name)
+		lua.setfield(L, -2, "id")
+		lua.pushodinstring(L, pl.display)
+		lua.setfield(L, -2, "display")
+		lua.pushodinstring(L, pl.description)
+		lua.setfield(L, -2, "description")
+		lua.pushodinstring(L, "enabled" if pl.state == .Enabled else "disabled" if pl.state == .Disabled else "errored")
+		lua.setfield(L, -2, "state")
+		lua.pushboolean(L, b32(pl.bundled))
+		lua.setfield(L, -2, "bundled")
+		if pl.defaults != lua.NOREF {
+			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.defaults))
+			plugin_table_copy(L, -1)
+			lua.setfield(L, -3, "options")
+			lua.pop(L, 1)
+		}
+		if pl.info != lua.NOREF {
+			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.info))
+			plugin_table_copy(L, -1)
+			lua.setfield(L, -3, "info")
+			lua.pop(L, 1)
+		}
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	return 1
+}
+
 qed_buf_set_indent :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
@@ -1379,17 +1544,85 @@ qed_options :: proc "c" (L: ^lua.State) -> c.int {
 	if lua.type(L, 1) != .TABLE {
 		return lua.L_argerror(L, 1, "defaults table expected")
 	}
-	lua.settop(L, 1)
+	#partial switch lua.type(L, 2) {
+	case .NONE, .NIL, .TABLE:
+	case:
+		return lua.L_argerror(L, 2, "info table expected")
+	}
+	lua.settop(L, 2)
 	for key in ([?]cstring{"enabled", "keybinds"}) {
 		if lua.getfield(L, 1, key) != .NIL {
 			return plugin_raise(L, fmt.tprintf("qed.options: '%s' is reserved", key))
 		}
 		lua.pop(L, 1)
 	}
+	if lua.type(L, 2) == .TABLE {
+		api_options_info_check(L)
+	}
 	plugin_table_copy(L, 1)
 	pl.defaults = lua.L_ref(L, lua.REGISTRYINDEX)
+	if lua.type(L, 2) == .TABLE {
+		plugin_table_copy(L, 2)
+		pl.info = lua.L_ref(L, lua.REGISTRYINDEX)
+	}
+	lua.settop(L, 1)
 	plugin_config_push(entry.editor, pl, 1)
 	return 1
+}
+
+api_options_info_check :: proc(L: ^lua.State) {
+	lua.pushnil(L)
+	for lua.next(L, 2) != 0 {
+		if lua.type(L, -2) != .STRING {
+			plugin_raise(L, "qed.options: info keys must be option names")
+		}
+		k, _ := lua.toodinstring(L, -2)
+		key := strings.clone(k, context.temp_allocator)
+		lua.pushvalue(L, -2)
+		if lua.rawget(L, 1) == .NIL {
+			plugin_raise(L, fmt.tprintf("qed.options: info for unknown option '%s'", key))
+		}
+		def := lua.gettop(L)
+		info := def - 1
+		#partial switch lua.type(L, info) {
+		case .STRING:
+		case .TABLE:
+			lua.pushnil(L)
+			for lua.next(L, info) != 0 {
+				f, _ := lua.toodinstring(L, -2)
+				if lua.type(L, -2) != .STRING || (f != "description" && f != "choices") {
+					plugin_raise(L, fmt.tprintf("qed.options: info '%s': unknown field '%s'", key, lua.L_tostring(L, -2)))
+				}
+				lua.pop(L, 1)
+			}
+			if t := lua.getfield(L, info, "description"); t != .NIL && t != .STRING {
+				plugin_raise(L, fmt.tprintf("qed.options: info '%s': description must be a string", key))
+			}
+			lua.pop(L, 1)
+			if t := lua.getfield(L, info, "choices"); t != .NIL {
+				choices := lua.gettop(L)
+				n := lua.Integer(lua.rawlen(L, choices))
+				if t != .TABLE || n == 0 {
+					plugin_raise(L, fmt.tprintf("qed.options: info '%s': choices must be a non-empty list of strings", key))
+				}
+				found := false
+				for i in 1 ..= n {
+					if lua.rawgeti(L, choices, i) != .STRING {
+						plugin_raise(L, fmt.tprintf("qed.options: info '%s': choices must be a non-empty list of strings", key))
+					}
+					found = found || (lua.type(L, def) == .STRING && lua.rawequal(L, -1, def) != 0)
+					lua.pop(L, 1)
+				}
+				if !found {
+					plugin_raise(L, fmt.tprintf("qed.options: info '%s': the default must be one of the choices", key))
+				}
+			}
+			lua.pop(L, 1)
+		case:
+			plugin_raise(L, fmt.tprintf("qed.options: info '%s' must be a description or {description?, choices?}", key))
+		}
+		lua.settop(L, info - 1)
+	}
 }
 
 PLUGIN_RESERVED_LABELS :: [?]string{"Clipboard", "Config", "Diff", "Files", "Git", "Lang", "LSP", "Plugins", "Rename", "Save", "Startup", "Syntax", "Terminal"}

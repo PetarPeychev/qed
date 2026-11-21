@@ -1,3 +1,5 @@
+local menu = require("menu")
+
 local INDENT = {"Auto-detect", "Tabs", "Spaces:4", "Spaces:3", "Spaces:2", "Spaces:1"}
 
 local function has_buf(ctx)
@@ -75,7 +77,8 @@ end
 
 return {
 	setup = function()
-		qed.meta{description = "Theme, language, indentation and config files"}
+		qed.meta{description = "Settings menu, theme, language, indentation and config files"}
+		menu.setup()
 		qed.command{name = "Theme", welcome = true, run = set_theme}
 		qed.command{name = "Open Config", welcome = true, run = open_config}
 		qed.command{name = "Open Defaults", welcome = true, run = open_defaults}

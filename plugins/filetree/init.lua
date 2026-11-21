@@ -879,7 +879,11 @@ local exports = {
 return {
 	setup = function()
 		qed.meta{display_name = "File Tree", description = "File browser with git status and file operations"}
-		apply(qed.options{show_dotfiles = false, show_ignored = false, diff_only = true})
+		apply(qed.options({show_dotfiles = false, show_ignored = false, diff_only = true}, {
+			show_dotfiles = "Show dotfiles when the tree opens",
+			show_ignored = "Show ignored files when the tree opens",
+			diff_only = "Diff previews show only the changed hunks",
+		}))
 		for _, t in ipairs({{"All", "Alt+f"}, {"Open", "Alt+o"}, {"Unsaved", "Alt+u"}}) do
 			qed.command{name = t[1], key = t[2], welcome = true, run = function()
 				open(t[1])

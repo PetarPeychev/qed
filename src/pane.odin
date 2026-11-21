@@ -160,6 +160,7 @@ PaneFieldMode :: enum {
 	Filter,
 	Query,
 	Path,
+	Chord,
 }
 
 PaneField :: struct {
@@ -384,12 +385,8 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	pane_tabs_set(&p, spec.tabs)
 	p.marks = {}
 	p.list.expanded = {}
-	p.list.columns = make([]PaneColumn, len(spec.list.columns))
-	for c, i in spec.list.columns {
-		p.list.columns[i] = c
-		p.list.columns[i].title = strings.clone(c.title)
-	}
-	p.list.fit, p.list.fit_n, p.list.fit_cap = {}, 0, 0
+	p.list.columns, p.list.fit = nil, {}
+	pane_columns_set(&p, spec.list.columns)
 	p.footer_field = {anchor = -1}
 	p.preview_key = ""
 	p.notified_key = ""
@@ -555,10 +552,24 @@ pane_mark_drop :: proc(p: ^Pane, key: string) {
 	delete_key(&p.marks, key)
 }
 
-pane_footer_input :: proc(p: ^Pane, prompt, text: string) {
+pane_columns_set :: proc(p: ^Pane, cols: []PaneColumn) {
+	for c in p.list.columns {
+		delete(c.title)
+	}
+	delete(p.list.columns)
+	p.list.columns = make([]PaneColumn, len(cols))
+	for c, i in cols {
+		p.list.columns[i] = c
+		p.list.columns[i].title = strings.clone(c.title)
+	}
+	clear(&p.list.fit)
+	p.list.fit_n, p.list.fit_cap = 0, 0
+}
+
+pane_footer_input :: proc(p: ^Pane, prompt, text: string, mode := PaneFieldMode.Input) {
 	delete(p.footer_field.prompt)
 	p.footer_field.prompt = strings.clone(prompt)
-	p.footer_field.mode = .Input
+	p.footer_field.mode = mode
 	textfield_set(&p.footer_field.field, text)
 	p.footer_input = true
 }
@@ -1082,7 +1093,7 @@ pane_field_changed :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
 		p.query_at = time.tick_add(time.tick_now(), PANE_QUERY_DEBOUNCE_MS * time.Millisecond)
 	case .Path:
 		pane_list_load(editor, p)
-	case .Input:
+	case .Input, .Chord:
 	}
 }
 
@@ -1819,6 +1830,15 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 }
 
 pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
+	if p.footer_input && p.footer_field.mode == .Chord {
+		if ev.key == .Esc && ev.ch == 0 && !ev_alt(ev) {
+			pane_footer_end(editor, p, false)
+		} else if chord, ok := bind_format(ev); ok {
+			textfield_set(&p.footer_field.field, chord)
+			pane_footer_end(editor, p, true)
+		}
+		return .None
+	}
 	if p.footer_input {
 		#partial switch ev.key {
 		case .Esc:
@@ -2149,7 +2169,9 @@ pane_md_reset :: proc(p: ^Pane) {
 
 pane_paste :: proc(editor: ^Editor, p: ^Pane, text: string) {
 	if p.footer_input {
-		textfield_insert_flat(&p.footer_field.field, text)
+		if p.footer_field.mode != .Chord {
+			textfield_insert_flat(&p.footer_field.field, text)
+		}
 		return
 	}
 	if len(p.fields) == 0 {
