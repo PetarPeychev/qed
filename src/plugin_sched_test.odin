@@ -452,6 +452,62 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_sched_pre_save_timeout_close_saves :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	ed := plugin_test_editor({
+		{"slow.lua", `return {setup = function()
+			qed.on("buf_pre_save", function(id)
+				if id == qed.buf.list()[1] then
+					local guard <close> = setmetatable({}, {__close = function()
+						for _, b in ipairs(qed.buf.list()) do
+							if b ~= id then qed.save(b) end
+						end
+					end})
+					qed.sleep(60000)
+				end
+				qed.sleep(60000)
+			end)
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+	paths: [6]string
+	for i in 0 ..< len(paths) {
+		paths[i] = fmt.tprintf("%s/qed_presave_close_%d_%d.txt", tmp, posix.getpid(), i)
+		_ = os.write_entire_file(paths[i], transmute([]u8)string("v1"))
+		if i > 0 {
+			append(&ed.buffers, buffer_new())
+		}
+		b := &ed.buffers[i]
+		if i == 0 {
+			buffer_destroy(b)
+			b^ = buffer_new()
+		}
+		buffer_open(b, paths[i])
+		buffer_insert_rune(b, '2')
+	}
+	defer for p in paths {
+		os.remove(p)
+	}
+	start := time.tick_now()
+	editor_save_full(ed, &ed.buffers[0])
+	peak := 0
+	for len(ed.plugins.saves) > 0 && ms_since(start) < 3 * f64(PLUGIN_HOOK_TIMEOUT_MS) + 2000 {
+		plugin_pump(ed)
+		peak = max(peak, len(ed.plugins.saves))
+		time.sleep(time.Millisecond)
+	}
+	testing.expect_value(t, peak, len(paths) - 1)
+	testing.expect_value(t, len(ed.plugins.saves), 0)
+	for p in paths {
+		data, _ := os.read_entire_file(p, context.temp_allocator)
+		testing.expect_value(t, string(data), "2v1")
+	}
+	testing.expect_value(t, len(ed.plugins.tasks), 0)
+}
+
+@(test)
 plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 	sync.lock(&e2e_lock)
 	defer sync.unlock(&e2e_lock)

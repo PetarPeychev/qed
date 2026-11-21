@@ -1190,12 +1190,12 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		for owner in plugin_pending_owners(p, s.tasks[:]) {
 			editor_log(editor, .Warn, plugin_label(&editor.plugins, owner), fmt.tprintf("buf_pre_save handler still running after %d ms, stopped it and saving", PLUGIN_HOOK_TIMEOUT_MS))
 		}
-		for task in s.tasks {
+		buf, tasks := s.buf, s.tasks
+		ordered_remove(&p.saves, i)
+		for task in tasks {
 			plugin_task_kill(editor, task)
 		}
-		buf := s.buf
-		delete(s.tasks)
-		ordered_remove(&p.saves, i)
+		delete(tasks)
 		editor_save_id(editor, buf)
 		for w in plugin_waiters(p, .Save, id) {
 			plugin_task_resume(editor, w, 0)
