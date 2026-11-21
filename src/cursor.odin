@@ -72,7 +72,7 @@ cluster_end :: proc(text: []u8, i: int) -> int {
 
 // termbox's own measure: present() advances by it, so any other value drifts the row
 cluster_width :: proc(cluster: []u8) -> int {
-	buf: [32]rune
+	buf: [32]rune = ---
 	runes := buf[:]
 	n := utf8.rune_count(cluster)
 	if n > len(buf) {

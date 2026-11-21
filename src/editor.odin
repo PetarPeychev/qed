@@ -1841,12 +1841,12 @@ status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
 			cx := x
 			for ch in s.chunks {
 				if cx < max_x {
-					tb2.print(i32(cx), i32(y), ch.fg, COLOR_PANE_BG, strings.clone_to_cstring(ch.text, context.temp_allocator))
+					pane_text(cx, y, int(tb2.width()) - cx, ch.text, ch.fg, COLOR_PANE_BG)
 				}
 				cx += visual_width(transmute([]u8)ch.text)
 			}
 		} else if x < max_x {
-			tb2.print(i32(x), i32(y), s.fg, COLOR_PANE_BG, strings.clone_to_cstring(s.text, context.temp_allocator))
+			pane_text(x, y, int(tb2.width()) - x, s.text, s.fg, COLOR_PANE_BG)
 		}
 		x += visual_width(transmute([]u8)s.text)
 	}
@@ -1965,11 +1965,10 @@ editor_render_welcome :: proc(editor: ^Editor) {
 }
 
 editor_render_welcome_line :: proc(x, y: int, text: string) {
-	if y < 0 || y >= int(tb2.height()) {
+	if y < 0 || y >= int(tb2.height()) || x < 0 {
 		return
 	}
-	cstr := strings.clone_to_cstring(text, context.temp_allocator)
-	tb2.print(i32(x), i32(y), COLOR_FG, COLOR_BG, cstr)
+	pane_text(x, y, int(tb2.width()) - x, text, COLOR_FG, COLOR_BG)
 }
 
 editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
@@ -2173,6 +2172,5 @@ editor_render_row :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
 	for _ in 0 ..< pad {
 		strings.write_byte(&sb, ' ')
 	}
-	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
-	tb2.print(i32(x), i32(y), fg, bg, cstr)
+	pane_text(x, y, w, strings.to_string(sb), fg, bg)
 }

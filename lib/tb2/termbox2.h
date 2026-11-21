@@ -2449,13 +2449,20 @@ int tb_present(void) {
                 int odumb;
                 int oraw = cell_width(front, &odumb);
                 int ow = oraw < 1 ? 1 : oraw;
-                int risky = raw != 1 || dumb != 1;
-                int orisky = oraw != 1 || odumb != 1;
+                // a lone non-emoji codepoint (CJK) is drawn alike everywhere;
+                // emoji widths still vary between terminal tables
+                int risky = (back->nech > 0 || raw == 0 || back->ch >= 0x1f000) &&
+                    (raw != 1 || dumb != 1);
+                int orisky = (front->nech > 0 || oraw == 0 || front->ch >= 0x1f000) &&
+                    (oraw != 1 || odumb != 1);
+                // tmux joins a ZWJ family to 4 cells, not the 8 its codepoints sum to
+                int reach = dumb > w ? dumb : w;
+                if (back->nech > 0 && raw >= 2 && reach > 2 * raw) reach = 2 * raw;
 
                 cell_copy(front, back);
 
                 send_attr(back->fg, back->bg);
-                if (x + (dumb > w ? dumb : w) > global.front.width) {
+                if (x + reach > global.front.width) {
                     // Not enough room for wide char, send spaces (qed patch:
                     // also when a summing terminal would wrap the cluster)
                     for (i = x; i < global.front.width; i++) {
@@ -2463,7 +2470,7 @@ int tb_present(void) {
                     }
                 } else {
                     // a terminal drawing the cluster narrower leaves these untouched
-                    for (i = 1; i < w; i++) {
+                    for (i = 1; risky && i < w; i++) {
                         send_char(x + i, y, ' ');
                     }
                     if (raw == 0) {
@@ -2502,6 +2509,9 @@ int tb_present(void) {
                             cell_set(front_wide, &invalid, 1, -1, -1));
                     }
                 }
+
+                // the terminal's cursor is past the wide char: the next cell needs no move
+                if (!risky && w > 1) global.last_x = x + w - 1;
 
                 if (risky || orisky) {
                     // the terminal may have drawn the old or new cluster wider
@@ -4140,7 +4150,8 @@ static int cell_cmp(struct tb_cell *a, struct tb_cell *b) {
     if (a->nech != b->nech) {
         return 1;
     } else if (a->nech > 0) { // a->nech == b->nech
-        return memcmp(a->ech, b->ech, a->nech);
+        /* qed patch: compare every codepoint, not nech bytes (see lib/tb2/PATCHES.md) */
+        return memcmp(a->ech, b->ech, a->nech * sizeof(*a->ech));
     }
 #endif
     return 0;

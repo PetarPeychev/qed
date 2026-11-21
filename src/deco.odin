@@ -377,14 +377,7 @@ editor_render_eol :: proc(gutter, y, w, x: int, eols: []RowEol, bg: tb2.Color) {
 				return
 			}
 			if x >= 0 {
-				r, n := utf8.decode_rune(cluster)
-				tb2.set_cell(i32(gutter + x), i32(y), r, e.color, bg)
-				rest := cluster[n:]
-				for len(rest) > 0 {
-					rr, m := utf8.decode_rune(rest)
-					tb2.extend_cell(i32(gutter + x), i32(y), rr)
-					rest = rest[m:]
-				}
+				cell_put_cluster(gutter + x, y, cluster, e.color, bg)
 			}
 			x += cw
 		}
@@ -499,18 +492,23 @@ inline_render :: proc(editor: ^Editor, cx, cy: int) {
 
 	emit :: proc(text: string, gutter, full_w, y, bx: int, fg, bg: tb2.Color) -> int {
 		bx := bx
-		for r in text {
-			if r == '\t' {
+		bytes := transmute([]u8)text
+		for i := 0; i < len(bytes); {
+			e := cluster_end(bytes, i)
+			if bytes[i] == '\t' {
 				bx = gutter + ((bx - gutter) / TAB_WIDTH + 1) * TAB_WIDTH
+				i = e
 				continue
 			}
-			if bx >= full_w {
+			cw := cluster_width(bytes[i:e])
+			if bx + cw > full_w {
 				break
 			}
 			if bx >= gutter {
-				tb2.set_cell(i32(bx), i32(y), r, fg, bg)
+				cell_put_cluster(bx, y, bytes[i:e], fg, bg)
 			}
-			bx += 1
+			bx += cw
+			i = e
 		}
 		return bx
 	}

@@ -78,22 +78,37 @@ spacing codepoint.
    this exact function, so qed's columns and termbox's cells agree by
    construction.
 
-2. **`tb_present` tolerates a terminal that still disagrees** (e.g. tmux draws a
-   ZWJ family 4 wide). For each changed cell, with `cell_width` giving the model
-   width and the width a codepoint-summing terminal would draw:
-   - the cells a wide cluster covers are first written as spaces, so a
+2. **`cell_cmp` compares whole clusters.** Upstream `memcmp`ed `nech` bytes
+   of the codepoint array, so only part of the first codepoint was compared:
+   `नि` to `ना`, `é` to `è`, `🇧🇬` to `🇧🇪` sent nothing and stayed stale.
+   It now compares `nech * sizeof(*ech)` bytes.
+
+3. **`tb_present` tolerates a terminal that still disagrees** (e.g. tmux draws a
+   ZWJ family 4 wide). A cell is *risky* when it is a multi-codepoint cluster, a
+   zero-width cluster, or an emoji codepoint, and its model or summed width is
+   not 1; a lone wide non-emoji codepoint (CJK) is drawn alike everywhere and is
+   sent like upstream, without a cursor move between adjacent wide chars. For
+   each changed cell:
+   - the cells a risky wide cluster covers are first written as spaces, so a
      terminal drawing it narrower leaves no old glyph there;
    - a zero-width cluster (lone ZWSP, BOM, combining mark) is sent after a
      space so it fills the one cell counted for it (just the space in the last
      column: libvterm wraps a zero-width char in the pending-wrap state);
    - a cluster a summing terminal would push past the right edge is sent as
-     spaces, like upstream does for a wide char without room;
-   - when the old or new content has a model or summed width other than 1,
-     the cells the terminal could have covered (up to the larger of both widths,
-     plus one) are invalidated in the front buffer so they are resent in the
-     same pass, and the next send repositions the cursor explicitly.
+     spaces, like upstream does for a wide char without room (an emoji cluster
+     counts at most twice its width there, as tmux joins a ZWJ family to 4);
+   - when the old or new content is risky, the cells the terminal could have
+     covered (up to the larger of both widths, plus one) are invalidated in the
+     front buffer so they are resent in the same pass, and the next send
+     repositions the cursor explicitly.
 
-   The extra output is limited to changed cells holding non-trivial clusters.
+   The extra output is limited to changed cells holding risky clusters.
+
+The width rule matches non-clustering terminals (tmux, xterm). Terminals that
+cluster graphemes (kitty, WezTerm, Ghostty, Windows Terminal's grapheme mode)
+draw an Indic cluster narrower: the result is blank cells after it, never
+stale ones. Negotiating mode 2027 is the way to serve both (tracked in
+docs/TODO.md).
 
 Autowrap (DECAWM) is deliberately left on: tmux 3.4 drops a combining mark that
 follows a VS16 wide char (`1️⃣`) when autowrap is off.

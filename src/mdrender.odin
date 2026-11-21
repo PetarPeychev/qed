@@ -2066,13 +2066,7 @@ md_draw_line :: proc(x, y, w: int, line: MdLine, bg: tb2.Color) {
 			if col + cw > w {
 				return
 			}
-			r, n := utf8.decode_rune(cluster)
-			tb2.set_cell(i32(x + col), i32(y), r, sp.fg, sbg)
-			for rest := cluster[n:]; len(rest) > 0; {
-				rr, m := utf8.decode_rune(rest)
-				tb2.extend_cell(i32(x + col), i32(y), rr)
-				rest = rest[m:]
-			}
+			cell_put_cluster(x + col, y, cluster, sp.fg, sbg)
 			col += cw
 		}
 	}

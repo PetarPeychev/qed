@@ -541,22 +541,6 @@ preview_scroll_by :: proc(p: ^Preview, delta, view_h: int) {
 	preview_ensure(p, view_h)
 }
 
-// Screen columns spanned by `text[:upto]`, tab-aware; every other cluster counts
-// as width 1 (the preview's simple model, matching `preview_draw_seg`).
-preview_vcol :: proc(text: string, upto: int) -> int {
-	col, i := 0, 0
-	for i < upto && i < len(text) {
-		r, sz := utf8.decode_rune(text[i:])
-		if r == '\t' {
-			col = (col / TAB_WIDTH + 1) * TAB_WIDTH
-		} else {
-			col += 1
-		}
-		i += sz
-	}
-	return col
-}
-
 preview_draw_gutter :: proc(x, y, numw, lineno: int, fg, bg: tb2.Color) {
 	s: string
 	if lineno <= 0 {
@@ -578,10 +562,11 @@ preview_draw_gutter :: proc(x, y, numw, lineno: int, fg, bg: tb2.Color) {
 // segment, past-the-break for wrap continuations) so tab stops stay aligned.
 // `colors` and `span` are indexed by absolute byte offset into `text`.
 preview_draw_seg :: proc(x, y, w: int, text: string, colors: []tb2.Color, seg_start, seg_end, x_origin: int, base_fg, bg: tb2.Color, span: [2]int, span_bg: tb2.Color) {
+	bytes := transmute([]u8)text
 	col := 0
 	i := seg_start
 	for i < seg_end && col < w {
-		r, sz := utf8.decode_rune(text[i:])
+		e := min(cluster_end(bytes, i), seg_end)
 		fg := base_fg
 		if i < len(colors) {
 			fg = colors[i]
@@ -590,7 +575,7 @@ preview_draw_seg :: proc(x, y, w: int, text: string, colors: []tb2.Color, seg_st
 		if span[0] != span[1] && i >= span[0] && i < span[1] {
 			cell_bg = span_bg
 		}
-		if r == '\t' {
+		if bytes[i] == '\t' {
 			abs := x_origin + col
 			next := (abs / TAB_WIDTH + 1) * TAB_WIDTH - x_origin
 			for col < next && col < w {
@@ -598,10 +583,14 @@ preview_draw_seg :: proc(x, y, w: int, text: string, colors: []tb2.Color, seg_st
 				col += 1
 			}
 		} else {
-			tb2.set_cell(i32(x + col), i32(y), r, fg, cell_bg)
-			col += 1
+			cw := cluster_width(bytes[i:e])
+			if col + cw > w {
+				break
+			}
+			cell_put_cluster(x + col, y, bytes[i:e], fg, cell_bg)
+			col += cw
 		}
-		i += sz
+		i = e
 	}
 	for col < w {
 		tb2.set_cell(i32(x + col), i32(y), ' ', base_fg, bg)
@@ -671,7 +660,7 @@ preview_render :: proc(p: ^Preview, x, y, w, h: int) {
 			}
 			seg_start := segs[s]
 			seg_end := segs[s + 1] if s + 1 < len(segs) else len(row.text)
-			x_origin := preview_vcol(row.text, seg_start)
+			x_origin := visual_col(transmute([]u8)row.text, seg_start)
 			preview_draw_gutter(x, y + sy, p.numw, row.lineno if s == 0 else 0, base_fg, bg)
 			preview_draw_seg(x + gutterw, y + sy, textw, row.text, colors, seg_start, seg_end, x_origin, base_fg, bg, row.span, word_bg)
 			sy += 1

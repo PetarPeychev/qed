@@ -92,22 +92,38 @@ pane_fill_row :: proc(x, y, w: int, fg, bg: tb2.Color) {
 	}
 }
 
-pane_text :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
+pane_text :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) -> int {
+	bytes := transmute([]u8)text
 	col := 0
 	i := 0
-	for i < len(text) && col < w {
-		r, sz := utf8.decode_rune(text[i:])
-		if r == '\t' {
+	for i < len(bytes) && col < w {
+		e := cluster_end(bytes, i)
+		if bytes[i] == '\t' {
 			next := (col / TAB_WIDTH + 1) * TAB_WIDTH
 			for col < next && col < w {
 				tb2.set_cell(i32(x + col), i32(y), ' ', fg, bg)
 				col += 1
 			}
 		} else {
-			tb2.set_cell(i32(x + col), i32(y), r, fg, bg)
-			col += 1
+			cw := cluster_width(bytes[i:e])
+			if col + cw > w {
+				break
+			}
+			cell_put_cluster(x + col, y, bytes[i:e], fg, bg)
+			col += cw
 		}
-		i += sz
+		i = e
+	}
+	return col
+}
+
+cell_put_cluster :: proc(x, y: int, cluster: []u8, fg, bg: tb2.Color) {
+	r, n := utf8.decode_rune(cluster)
+	tb2.set_cell(i32(x), i32(y), r, fg, bg)
+	for rest := cluster[n:]; len(rest) > 0; {
+		rr, m := utf8.decode_rune(rest)
+		tb2.extend_cell(i32(x), i32(y), rr)
+		rest = rest[m:]
 	}
 }
 

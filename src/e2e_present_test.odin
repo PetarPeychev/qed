@@ -1,6 +1,7 @@
 package main
 
 import "core:c"
+import "core:fmt"
 import "core:strings"
 import "core:sync"
 import "core:sys/posix"
@@ -47,83 +48,264 @@ vterm_rune :: proc(screen: ^vterm.Screen, x, y: int) -> rune {
 	return rune(cell.chars[0]) if cell.chars[0] != 0 && cell.chars[0] != max(u32) else ' '
 }
 
+// what termbox means a cell to show, when it is a lone width-1 codepoint (else ok = false)
 @(private = "file")
-back_ascii :: proc(x, y: int) -> (rune, bool) {
+back_plain :: proc(x, y: int) -> (r: rune, w: int, ok: bool) {
 	cell: ^tb2.Cell_Raw
-	if tb2.get_cell(i32(x), i32(y), 1, &cell) != .Ok || cell.nech > 0 || cell.ch <= 0x20 || cell.ch >= 0x7f {
-		return 0, false
+	if tb2.get_cell(i32(x), i32(y), 1, &cell) != .Ok {
+		return 0, 1, false
 	}
-	return rune(cell.ch), true
+	if cell.nech > 0 {
+		return 0, max(int(tb2.cluster_width(cast([^]rune)cell.ech, cell.nech)), 1), false
+	}
+	cw := int(tb2.wcwidth(rune(cell.ch)))
+	return rune(cell.ch), max(cw, 1), cw == 1
+}
+
+@(private = "file")
+Vt :: struct {
+	vt:     ^vterm.VTerm,
+	screen: ^vterm.Screen,
 }
 
 // libvterm stands in for a terminal whose width table and clustering differ from termbox's
-@(test)
-test_present_keeps_a_disagreeing_terminal_in_sync :: proc(t: ^testing.T) {
+@(private = "file")
+vt_begin :: proc() -> Vt {
 	e2e_enter()
-	defer sync.mutex_unlock(&e2e_lock)
-
-	vt := vterm.new(E2E_H, E2E_W)
-	defer vterm.free(vt)
-	vterm.set_utf8(vt, 1)
-	screen := vterm.obtain_screen(vt)
-	vterm.screen_reset(screen, 1)
-
+	v: Vt
+	v.vt = vterm.new(E2E_H, E2E_W)
+	vterm.set_utf8(v.vt, 1)
+	v.screen = vterm.obtain_screen(v.vt)
+	vterm.screen_reset(v.screen, 1)
 	sync.mutex_lock(&e2e_tap_lock)
 	e2e_tapping = true
 	clear(&e2e_tap)
 	sync.mutex_unlock(&e2e_tap_lock)
-	defer {
-		sync.mutex_lock(&e2e_tap_lock)
-		e2e_tapping = false
-		clear(&e2e_tap)
-		sync.mutex_unlock(&e2e_tap_lock)
-	}
 	tap_sync()
 	tb2.invalidate()
+	return v
+}
 
-	rows := []string {
-		"नेपाली भाषामा अनुवाद गरिएको सन्देश | end",
-		"क्षेत्र श्रीमान् ज्ञान क़ क्\u200dष क्\u200cष | end",
-		"zero width: a\u200bb\u200cc\u200dd\ufeffe | end",
-		"emoji: 😀👍🏽👨\u200d👩\u200d👧\u200d👦🇧🇬🏳️\u200d🌈 1️⃣ ❤️ ❤ | end",
-		"combining: e\u0301 Z̵̡̛̰ ñ̃̃ | end",
-		"\u0301 lone mark | end",
-		"wide: 漢字かなカナ한국어 全角ＡＢＣ | end",
-		"thai: กำ น้ำ | end",
-		strings.concatenate({strings.repeat("x", E2E_W - 2, context.temp_allocator), "👨\u200d👩\u200d👧\u200d👦"}, context.temp_allocator),
-		strings.concatenate({strings.repeat("x", E2E_W - 2, context.temp_allocator), "ना"}, context.temp_allocator),
-		strings.concatenate({strings.repeat("x", E2E_W - 1, context.temp_allocator), "e\u0301"}, context.temp_allocator),
-		strings.concatenate({strings.repeat("x", E2E_W - 1, context.temp_allocator), "\u0928\u093f"}, context.temp_allocator),
-		strings.concatenate({strings.repeat("x", E2E_W - 1, context.temp_allocator), "\u200b"}, context.temp_allocator),
+@(private = "file")
+vt_end :: proc(v: ^Vt) {
+	sync.mutex_lock(&e2e_tap_lock)
+	e2e_tapping = false
+	clear(&e2e_tap)
+	sync.mutex_unlock(&e2e_tap_lock)
+	vterm.free(v.vt)
+	sync.mutex_unlock(&e2e_lock)
+}
+
+// presents the back buffer, then: every lone width-1 glyph termbox placed is at that column in
+// the terminal, and with `all` every cell matches (blank where termbox has no plain glyph)
+@(private = "file")
+vt_present_check :: proc(t: ^testing.T, v: ^Vt, label: string, all: bool) -> (sent: int) {
+	tb2.present()
+	out := tap_sync()
+	vterm_feed(v.vt, out)
+	for y in 0 ..< E2E_H {
+		for x := 0; x < E2E_W; {
+			want, w, ok := back_plain(x, y)
+			got := vterm_rune(v.screen, x, y)
+			if ok && want != ' ' {
+				testing.expectf(t, got == want, "%s row %d col %d: terminal shows %q, termbox has %q", label, y, x, got, want)
+			} else if all {
+				testing.expectf(t, got == ' ', "%s row %d col %d: stale %q, termbox has a blank", label, y, x, got)
+			}
+			x += w if !all else 1
+		}
 	}
+	return len(out)
+}
+
+@(private = "file")
+ODD_ROWS := []string {
+	"नेपाली भाषामा अनुवाद गरिएको सन्देश | end",
+	"क्षेत्र श्रीमान् ज्ञान क़ क्\u200dष क्\u200cष | end",
+	"zero width: a\u200bb\u200cc\u200dd\ufeffe | end",
+	"emoji: 😀👍🏽👨\u200d👩\u200d👧\u200d👦🇧🇬🏳️\u200d🌈 1️⃣ ❤️ ❤ | end",
+	"combining: e\u0301 Z̵̡̛̰ ñ̃̃ | end",
+	"\u0301 lone mark | end",
+	"wide: 漢字かなカナ한국어 全角ＡＢＣ | end",
+	"thai: กำ น้ำ\t| tab end",
+}
+
+@(test)
+test_present_keeps_a_disagreeing_terminal_in_sync :: proc(t: ^testing.T) {
+	v := vt_begin()
+	defer vt_end(&v)
+
+	rows := make([dynamic]string, context.temp_allocator)
+	append(&rows, ..ODD_ROWS)
+	x78 := strings.repeat("x", E2E_W - 2, context.temp_allocator)
+	x79 := strings.repeat("x", E2E_W - 1, context.temp_allocator)
+	append(&rows, strings.concatenate({x78, "👨\u200d👩\u200d👧\u200d👦"}, context.temp_allocator))
+	append(&rows, strings.concatenate({x78, "ना"}, context.temp_allocator))
+	append(&rows, strings.concatenate({x79, "e\u0301"}, context.temp_allocator))
+	append(&rows, strings.concatenate({x79, "नि"}, context.temp_allocator))
+	append(&rows, strings.concatenate({x79, "\u200b"}, context.temp_allocator))
 	tb2.clear()
 	for s, y in rows {
 		spans := []MdSpan{{text = s, fg = COLOR_FG, bg = COLOR_BG}}
 		md_draw_line(0, y, E2E_W, MdLine{spans = spans}, COLOR_BG)
 	}
-	tb2.present()
-	vterm_feed(vt, tap_sync())
-	for y in 0 ..< E2E_H {
-		for x in 0 ..< E2E_W {
-			if want, ok := back_ascii(x, y); ok {
-				got := vterm_rune(screen, x, y)
-				testing.expectf(t, got == want, "frame A row %d col %d: terminal shows %q, termbox has %q", y, x, got, want)
-			}
-		}
-	}
+	vt_present_check(t, &v, "frame A", false)
 
 	tb2.clear()
 	tb2.print(0, 0, COLOR_FG, COLOR_BG, "plain ascii line")
-	tb2.present()
-	vterm_feed(vt, tap_sync())
-	for y in 0 ..< E2E_H {
-		for x in 0 ..< E2E_W {
-			want, ok := back_ascii(x, y)
-			if !ok {
-				want = ' '
-			}
-			got := vterm_rune(screen, x, y)
-			testing.expectf(t, got == want, "frame B row %d col %d: stale %q, termbox has %q", y, x, got, want)
+	vt_present_check(t, &v, "frame B", true)
+}
+
+// a list/preview split: the preview swaps between odd text and plain code, between two borders
+@(test)
+test_preview_swap_keeps_a_disagreeing_terminal_in_sync :: proc(t: ^testing.T) {
+	v := vt_begin()
+	defer vt_end(&v)
+
+	odd := strings.join(ODD_ROWS, "\n", context.temp_allocator)
+	code := strings.repeat("static int helper(struct state *s, const char *name, size_t len) {\n", E2E_H, context.temp_allocator)
+	px, pw := 20, E2E_W - 21
+	frame :: proc(text: string, px, pw: int) {
+		tb2.clear()
+		for y in 0 ..< E2E_H {
+			tb2.set_cell(i32(px - 1), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+			tb2.set_cell(i32(px + pw), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		}
+		p: Preview
+		defer preview_destroy(&p)
+		preview_set_text(&p, "corpus.txt", text, E2E_H)
+		preview_render(&p, px, 0, pw, E2E_H)
+	}
+	for text, i in ([]string{odd, code, odd, code}) {
+		frame(text, px, pw)
+		vt_present_check(t, &v, fmt.tprintf("preview %d", i), false)
+		if text != odd {
+			continue
+		}
+		for y in ([]int{0, 4, 6}) {
+			got := vterm_row_text(v.screen, y)
+			testing.expectf(t, strings.contains(got, ODD_ROWS[y]), "preview %d row %d: terminal shows %q", i, y, got)
 		}
 	}
+	tb2.clear()
+	vt_present_check(t, &v, "cleared", true)
+}
+
+@(private = "file")
+vterm_row_text :: proc(screen: ^vterm.Screen, y: int) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for x in 0 ..< E2E_W {
+		cell: vterm.ScreenCell
+		vterm.screen_get_cell(screen, {c.int(y), c.int(x)}, &cell)
+		if cell.chars[0] == 0 {
+			strings.write_byte(&sb, ' ')
+		}
+		for ch in cell.chars {
+			if ch == 0 || ch == max(u32) {
+				break
+			}
+			strings.write_rune(&sb, rune(ch))
+		}
+	}
+	return strings.trim_right_space(strings.to_string(sb))
+}
+
+@(private = "file")
+draw_row :: proc(y: int, s: string) {
+	spans := []MdSpan{{text = s, fg = COLOR_FG, bg = COLOR_BG}}
+	md_draw_line(0, y, E2E_W, MdLine{spans = spans}, COLOR_BG)
+}
+
+// clusters sharing their first codepoint: only the tail differs
+@(test)
+test_present_resends_a_changed_cluster_tail :: proc(t: ^testing.T) {
+	v := vt_begin()
+	defer vt_end(&v)
+	tb2.clear()
+	draw_row(0, "नि e\u0301 🇧🇬 |")
+	vt_present_check(t, &v, "first", false)
+	tb2.clear()
+	draw_row(0, "ना è 🇧🇪 |")
+	vt_present_check(t, &v, "second", false)
+	got := vterm_row_text(v.screen, 0)
+	testing.expectf(t, got == "ना è 🇧🇪 |", "terminal row %q", got)
+}
+
+// only changed cells are diffed; what the terminal draws around them must still be right
+@(test)
+test_present_partial_updates_around_a_disagreeing_cluster :: proc(t: ^testing.T) {
+	v := vt_begin()
+	defer vt_end(&v)
+
+	x74 := strings.repeat("x", E2E_W - 6, context.temp_allocator)
+	tb2.clear()
+	draw_row(0, "XYZW")
+	draw_row(1, "abcdefghijkl")
+	draw_row(2, "xAB")
+	vt_present_check(t, &v, "before", true)
+
+	tb2.clear()
+	draw_row(0, "❤️ZW")
+	draw_row(2, "x\u200bB")
+	draw_row(3, strings.concatenate({x74, "👨\u200d👩\u200d👧\u200d👦"}, context.temp_allocator))
+	draw_row(1, "👨\u200d👩\u200d👧\u200d👦cdefghijkl")
+	vt_present_check(t, &v, "after", false)
+	// libvterm draws the VS16 heart 1 wide: the cell it no longer covers must not keep Y
+	testing.expectf(t, vterm_rune(v.screen, 1, 0) == ' ', "row 0 col 1 shows %q", vterm_rune(v.screen, 1, 0))
+	// 6 columns hold a family even for a terminal that draws it 4 wide
+	testing.expectf(t, vterm_rune(v.screen, E2E_W - 6, 3) == 0x1f468, "row 3 col %d shows %q", E2E_W - 6, vterm_rune(v.screen, E2E_W - 6, 3))
+	// a lone ZWSP advances nothing: the cell it replaced must not keep A
+	testing.expectf(t, vterm_rune(v.screen, 1, 2) == ' ', "row 2 col 1 shows %q", vterm_rune(v.screen, 1, 2))
+	// libvterm draws the family 8 wide over cdefgh, which termbox never changed
+	for x in 2 ..< 12 {
+		want := rune('c' + x - 2)
+		testing.expectf(t, vterm_rune(v.screen, x, 1) == want, "row 1 col %d shows %q, want %q", x, vterm_rune(v.screen, x, 1), want)
+	}
+}
+
+// a lone wide codepoint is drawn alike by every terminal: no blanking or resending around it
+@(test)
+test_present_sends_plain_wide_text_once :: proc(t: ^testing.T) {
+	v := vt_begin()
+	defer vt_end(&v)
+	tb2.clear()
+	draw_row(0, strings.repeat("字", E2E_W / 2, context.temp_allocator))
+	vt_present_check(t, &v, "first", false)
+	tb2.clear()
+	draw_row(0, strings.repeat("漢", E2E_W / 2, context.temp_allocator))
+	sent := vt_present_check(t, &v, "second", false)
+	// 3 UTF-8 bytes per char plus one cursor move, colors and the final cursor
+	testing.expectf(t, sent < 3 * E2E_W / 2 + 80, "%d bytes for %d chars", sent, E2E_W / 2)
+	got := vterm_row_text(v.screen, 0)
+	testing.expectf(t, got == strings.repeat("漢", E2E_W / 2, context.temp_allocator), "terminal row %q", got)
+}
+
+@(test)
+test_pane_text_draws_clusters :: proc(t: ^testing.T) {
+	e2e_enter()
+	defer sync.mutex_unlock(&e2e_lock)
+	Case :: struct {
+		text:  string,
+		width: int,
+		cells: []rune,
+	}
+	cases := []Case {
+		{"漢字ab", 6, {0x6f22, 0, 0x5b57, 0, 'a', 'b'}},
+		{"éx", 2, {'e', 'x'}},
+		{"क्षेab", 4, {0x0915, 0, 'a', 'b'}},
+	}
+	for c in cases {
+		tb2.clear()
+		got := pane_text(0, 0, 20, c.text, COLOR_FG, COLOR_BG)
+		testing.expectf(t, got == c.width, "%q: %d columns, want %d", c.text, got, c.width)
+		for want, x in c.cells {
+			cell: ^tb2.Cell_Raw
+			tb2.get_cell(i32(x), 0, 1, &cell)
+			if want != 0 {
+				testing.expectf(t, rune(cell.ch) == want, "%q col %d: %q, want %q", c.text, x, rune(cell.ch), want)
+			}
+		}
+	}
+	tb2.clear()
+	testing.expect(t, pane_text(0, 0, 3, "ab漢", COLOR_FG, COLOR_BG) == 2, "a wide char past the width is left out")
 }
