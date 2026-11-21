@@ -20,6 +20,18 @@ local function label_of(it)
 	return it
 end
 
+local function check_fields(fn, spec, allowed)
+	for k in pairs(spec) do
+		if not allowed[k] then
+			error(("qed.%s: unknown field '%s'"):format(fn, tostring(k)), 3)
+		end
+	end
+end
+
+local PICK = {items = true, prompt = true, selected = true, on = true}
+local PROMPT = {prompt = true, text = true}
+local CONFIRM = {question = true, choices = true}
+
 return function(qed)
 	local open = qed.ui.open
 
@@ -27,6 +39,7 @@ return function(qed)
 		if type(spec) ~= "table" then
 			error("table {items, prompt?, selected?, on?} expected", 2)
 		end
+		check_fields("pick", spec, PICK)
 		local items, selected, on = spec.items, spec.selected, spec.on
 		if type(items) ~= "table" then
 			error("items must be a table", 2)
@@ -74,6 +87,7 @@ return function(qed)
 		if type(spec) ~= "table" then
 			error("table {prompt, text?} expected", 2)
 		end
+		check_fields("prompt", spec, PROMPT)
 		local v, err = open{kind = "child", modal = true, fields = {{prompt = prefix(spec.prompt), text = spec.text, mode = "input"}}}
 		if not v then
 			return nil, err
@@ -89,6 +103,7 @@ return function(qed)
 		if type(spec) ~= "table" then
 			error("table {question, choices?} expected", 2)
 		end
+		check_fields("confirm", spec, CONFIRM)
 		local question, choices = spec.question, spec.choices
 		if type(question) ~= "string" then
 			error("question must be a string", 2)
