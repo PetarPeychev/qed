@@ -66,7 +66,7 @@ function CommandHandle:remove() end
 ---@return qed.CommandHandle
 function qed.command(spec) end
 
----Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command (bare names never equal a core command). `nil, "unavailable"` when a core command does not apply now; raises on an unknown name.
+---Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command (bare names never equal a core command). `nil, "unavailable"` when a core command does not apply now or a plugin command's `when` returns false; raises on an unknown name.
 ---@param name string
 ---@return true|nil ok
 ---@return "unavailable"|nil err
@@ -934,8 +934,13 @@ function qed.buf.indent(b) end
 ---@param b qed.Buf
 ---@param text string|nil raw bytes (need not be UTF-8)
 ---@param opts? {label?: string} label shown in the status bar: `±base` when omitted, nothing when `""`
----@return boolean active true when this plugin's base is the one shown
+---@return true
 function qed.buf.set_base(b, text, opts) end
+
+---The id of the plugin whose diff base is shown, or nil when the buffer has none.
+---@param b qed.Buf
+---@return string|nil
+function qed.buf.base(b) end
 
 ---A list handle over the buffer's lines. An edit, a disk reload or the buffer closing shows on the next frame: a filter is recomputed keeping the selected line (a `:N` past the end clamps), a closed buffer empties the list. Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching; a bare number lists row N first, then the text matches. A view over it opens on the match nearest the cursor.
 ---@param b qed.Buf

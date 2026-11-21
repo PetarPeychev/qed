@@ -357,7 +357,8 @@ return {setup = function()
   qed.command{name = "Grep Word", key = "Alt+8", run = function(ctx) -- palette: "My: Grep Word"
     local word = ctx.selection_text or qed.prompt{prompt = "Grep:"}
     if not word or word == "" then return end
-    local r = qed.spawn{argv = {"grep", "-rn", "--", word, "."}}
+    local r, err = qed.spawn{argv = {"grep", "-rn", "--", word, "."}}
+    if not r then return qed.message(err, "error") end
     local items = qed.parse_locations(r.stdout)
     if #items == 0 then return qed.message("no matches") end
     local it = qed.pick{items = items, prompt = "Grep >"}

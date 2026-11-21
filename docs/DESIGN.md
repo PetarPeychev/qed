@@ -427,7 +427,7 @@ the close event is flushed. Events (D8), no Lua during dispatch:
 - `activate`/`close`: the pane's Odin handler queues a `UiViewEvent` (item indices, first field
   text); `plugin_views_flush` (start of `plugin_flush`) resumes `view:wait` waiters through
   `Plugins.answer`, then starts the handler task; close also kills the change/query tasks and
-  releases the view. Closing saves field texts and the selected key under `id` (`Editor.pane_saved`).
+  releases the view. Closing saves the selected key (and a tree's expanded dirs) under `id` (`Editor.pane_saved`), never the field text.
 - `change`: the same flush compares the selected item with `notified`, so moves between flushes
   coalesce; the previous change task is killed.
 - `query`: `plugin_views_pump` (in `plugin_pump`, joined to `plugin_busy` and the poll timeout)
@@ -464,7 +464,7 @@ yields that also step it; synchronous outside a task), so they always see the ne
 source order, so `md_line_of_src` (a source row to the first line of its block from the closest row at or
 above it; an opening fence maps to the first code line) is a forward scan; `plugin_view_closed` snapshots the visible rows' `src` and the scroll into the
 `UiView`, so a `close` handler can still map them (the markdown plugin's cursor sync). `max_width` caps a
-center/full box. A text body's scroll is saved by `id` with the field texts. A left click on a
+center/full box. A text body's scroll is saved by `id` with the selected key. A left click on a
 markdown body hit-tests `MdSpan.link`: `#anchor` scrolls to the line whose `MdLine.slug` matches
 (GitHub slugs, repeats `-1`, `-2`) unless the view has a `link` handler; anything else goes to `on.link` (queued like the other view
 events), so the plugin owns open-file vs `qed.open_url` (`url_opener` in `shell.odin`, detached via a
@@ -1095,7 +1095,7 @@ document formatting (`format` plugin: external command e.g. `ruff format -`, els
 `.Debug` message log; diff gutter against any diff base (the `git` plugin's: live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
 + optional inline diff view (`Git: Toggle Diff View`, config `diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
-hunk navigation (`Diff: Next/Previous Change`, `Alt+'`/`Alt+;`, `diffbase_goto`): jumps the cursor,
+hunk navigation (`Git: Next/Previous Change`, `Alt+'`/`Alt+;`, `diffbase_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
 hunk revert (`Git: Revert Hunk`, `Alt+z`, `diffbase_revert`): restores the base lines for the
 hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-base) as one undo group;

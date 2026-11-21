@@ -41,12 +41,11 @@ Refs are phase-11 `src/` unless noted.
 | Plugins pane | `plugin.odin:1545-1833` | full | columns (name/source/state/ms), footer = hints or error; Enter on bundled swaps body to read-only `Preview` | `e` enable, `r` reload, `l` log, Enter open | trivial |
 | AI edit prompt | `aiedit.odin` 93 | center, 1 row | `AI edit: ` field | Enter submit | none |
 | Command palette | `palette.odin:307-411` | center | `> ` field, list (name + shortcut) | own chord closes; contextual table | fuzzy over ~100 names per key; live bind per row per frame |
-| Plugin UI (`qed.pick/prompt/confirm`) | `plugin_ui.odin:9-394` | center, or split when items have `path` | field, list (+ multi range), preview / prompt / dialog | `on_change`, `on_query` (phase 12) | fuzzy per key |
-| `qed.pane` | `plugin_ui.odin:47` | full | title, colored lines, footer | scroll, Esc | none |
+| Plugin UI (`qed.pick/prompt/confirm`) | `src/prelude.lua` over `qed.ui.open` | center, or split when items have `path` | field, list, preview / prompt / dialog | `on.change` | fuzzy per key |
 | Change Working Directory | `cwdpick.odin` 316 | center | path field, dir list, nested confirm | Tab or `/` drills in, Backspace after `/` drops a segment | `read_directory` + prefix match per key |
 | Line find | `linefind.odin` 240 | split, field full width | field, numbered lines, buffer preview | `:N[:M]` jump syntax | fuzzy over all lines per key |
 | Find / replace | `find.odin` 405 | top-right box | 2 fields, `.*` `Aa` chips, `n/m` | Alt+c/r/a, Tab, Enter step/replace, undo pass-through | full-buffer scan per key |
-| Project search | `plugins/search` (phase 12) | split, field over list column | query field + count, hint, `path:row text`, preview | debounced rg via `on_query` | debounce 120 ms, async rg |
+| Project search | `plugins/search` (phase 12) | split, field over list column | query field + count, hint, `path:row text`, preview | debounced rg via a `query` field's `on.query` | debounce 120 ms, async rg |
 | LSP rename | `rename.odin` 85 | center, 1 row | `Rename to: ` field | Enter submit | none |
 | File tree | `filetree.odin` 2352 | split, tabs row, field over list column | tabs (All/Open/Changed/Unsaved), filter + count, tree list (indent, icons, git bar, `+N -N`, rename suffix), preview (file/buffer/diff), footer chips; `New:`/`Rename:` footer field; 3 nested confirms | rebindable Ctrl-chord commands + scoped palette (af9e4d4), type-to-filter, tab chords, multi range | debounced filter over a threaded walk + cache + prewarm, cap 500; preview debounced 80 ms |
 | Quit / Close / Conflict dialogs | `confirm.odin` 271 | center | question + actions | none | none |
@@ -96,7 +95,7 @@ The file tree is the only pane that renders under another (palette or plugin UI 
 | `Item` | `label`, `detail`, `key` (default `path` or `label`), `path`, `pos`, `buf`, `depth`, `dir`, `fg`, `value` | | `PluginPickItem`, `FileEntry`, `Match` |
 | `Mark` | `bar`, `fg`, `suffix`, `sizes` (`+N -N`), `hidden` | applied at draw by key; dirs inherit `bar` from descendants | `FileTree.status/diffsize/renames/ignored/deleted` |
 | `Preview` | `auto` (from item `path`/`pos`/`buf`), `text{lines, language}`, `diff{path, base}`, `none` | debounced load, hidden below the split minimum, wheel scroll | 4 `preview_set_*` callers |
-| `Text` body | styled lines or markdown | wrap/clip, scroll | `qed.pane`, inspect, dialog question, welcome |
+| `Text` body | styled lines or markdown | wrap/clip, scroll | `qed.ui.open{place = "full", text}`, inspect, dialog question, welcome |
 | `Tabs` | labels, active, per-tab command | Left/Right, click, chord; emits `tab` | tree tabs |
 | `Footer` | `hints` (`{cmd, label}` via `command_shortcut`), `chips` (`{label, on, cmd}`), or a footer `Field` | live keybind strings, right-aligned chips | tree / log / Plugins footers |
 | `Term` body | session name | raw input to PTY | terminal interior |
@@ -108,7 +107,7 @@ Dialog = `Text` + `List` of actions. Prompt = one `input` field. Palette = `filt
 | `place` | Geometry | Used by |
 |---|---|---|
 | `center` | `pane_center(width class, rows)`, shrinks to content | palette, pickers, prompts, dialogs, cwd picker |
-| `full` | screen minus `PICKER_MARGIN_X/Y` and status rows | log, Plugins pane, `qed.pane`, terminal |
+| `full` | screen minus `PICKER_MARGIN_X/Y` and status rows | log, Plugins pane, `qed.ui.open{place = "full"}`, terminal |
 | `split` | `full` + list/preview split; tabs over both, field over the list column, preview full height (D3) | file tree, line find, search, path picks |
 | `corner` | top-right box below row 1 | find bar, inspect |
 | `cursor` | below caret, flips above (core only) | completion, hover, diag |
@@ -260,7 +259,7 @@ function qed.ui.open(spec) end
 | `v:marks(map, {replace?})` | per-row styling by key |
 | `v:preview(spec)` | answer an async preview (diff base) |
 
-`qed.pick`, `qed.prompt`, `qed.confirm` and `qed.pane` become ~10-line wrappers in an embedded prelude over
+`qed.pick`, `qed.prompt` and `qed.confirm` become ~10-line wrappers in an embedded prelude over
 `qed.ui.open` + `v:wait()`; `wait` resolves on `activate` (value) or `close` (`nil`).
 
 ```lua
@@ -379,16 +378,16 @@ Views, events and the prelude are in DESIGN.md (Panes). Deviations from §3/§5:
 | Struct | `Pane` adds `place`, `title`, field `mode`/`count`, a styled `text` body with scroll, `PaneList` (items, matches, sel, scroll, anchor, multi, max, more, empty, hint, restore), `auto_preview` + `Preview`, `footer` hints, `toggle`, query debounce state. No tabs, marks, chips, columns, tree, scope, field `hint`/`esc_clears`, `path` mode. | Only what M1's ports use. |
 | Lua refs | In `Plugins.views` (`UiView`, keyed by handle), not `Pane.ctx`. | The close event is flushed after the Pane is gone; its refs must outlive it. |
 | Activate | Never closes the pane. `v:wait()` resolves on the next activate or the close; the prelude closes after it. | One shape for pickers and for panes whose activate does something else (tree expand). |
-| `wait` | Returns `items, index, text` (`nil, nil, text` on close). | Prompt needs the text; `qed.pick{on_query}` returns the query even on Esc. |
+| `wait` | Returns `items, index, text` (`nil, nil, text` on close). | Prompt needs the text; a query pane reads the final query even on Esc. |
 | Item key | `key`, default `label`. | Search hits share a path; the tree will pass `key = path`. |
 | Toggle | Default: the opening command's chord. A `toggle = <visible command name>` spec field overrides it (added for the markdown preview, which reopens from a link handler). | Panes opened from handlers have no command of their own. |
 | Kinds | `kind = "exclusive"\|"child"`, passive is `focus = false`. `kind = "child"` without `parent` stacks on the focus (a pane or a core overlay), else opens exclusive. | The sugar needs D5's "pick/prompt/confirm opened while a pane is open is a child". |
 | Busy | Exclusive opens are refused while a `modal` pane is live (M0: any plugin pane). The sugar sets `modal`; a non-modal pane is replaced and its waiters get `nil` like Esc. `qed.pick` over an open pane is now a child, not `"busy"`. `nil, "closed"` when `parent` is gone. | Modality, not waiting, is what must not be cancelled. |
 | Focus | A `kind = "child"` open from a task the user did not start (timer, event, handler) stacks only on the caller's own pane; over another plugin's pane or a core overlay it returns `"busy"`. User commands keep stacking per D5. `ctx.view` goes only to the view's own plugin. | A background task must not steal focus from someone else's pane. |
 | Sorted lists | `list.sort = true` keeps items ordered by key; `append` binary-inserts and keeps selection and scroll on their item once the user moved. Under a filter, `append`/`update` re-rank fully (O(n log n)) and keep the selection, anchor and scroll. | Streaming search output arrives unordered. |
-| Methods | `set`, `append`, `update`, `text`, `close`, `wait`. `text` replaces the text body (`qed.pane`'s `set`). `set` has `selected`, `more`, `hint`; no `keep`. | No `marks`/`preview`/`footer`/`title`/`tab` user yet. |
+| Methods | `set`, `append`, `update`, `text`, `close`, `wait`. `text` replaces the text body. `set` has `selected`, `more`, `hint`; no `keep`. | No `marks`/`preview`/`footer`/`title`/`tab` user yet. |
 | Sizes | `palette`, `dialog`, `split:code`. | No tree yet. |
-| Prelude | `src/prelude.lua` returns an installer that `plugin_qed_push` runs on each plugin's `qed` table. | Each plugin's `qed.ui.open` carries its owner as an upvalue. `on_query`/`picker:set` stay as sugar (6 lines); no bundled plugin uses them. |
+| Prelude | `src/prelude.lua` returns an installer that `plugin_qed_push` runs on each plugin's `qed` table. | Each plugin's `qed.ui.open` carries its owner as an upvalue. Query fields and multi-select are `ui.open` only; the sugar has no `on_query`. |
 | Search | Parallel `rg --line-buffered` streamed through `spawn_bg{on_line}` into `append` on a `sort` list keyed `file\0row`; rows are deduped; the previous results stay up until the first new hit; Enter opens a visible hit while rg still runs; `max = 500`, the 501st hit kills rg and shows `500+` (which 500 is nondeterministic, shown sorted, as in phase 12). The plugin kills its rg on requery and close. A spawn error or rg exit code above 1 with no hits shows `Search failed: ...`. The selection persists through core `id`, also across a plugin reload. | `--sort path` is single-threaded and block-buffered (first hit 1-2 s on a large tree). |
 | Kill | Task kill frees only the foreground `qed.spawn` the task waits on; `spawn_bg` processes stay with the plugin until it kills them or unloads. | Keeps the pre-save timeout and query supersede killing formatters and searches without reaching into background work. |
 | Markdown body | `markdown = text` (full, no list/text) makes the text body core-rendered markdown (`md_render` at the text width, cached in a per-pane arena keyed on width, invalidated by `v:markdown` and retheme). Home/End scroll a text body; its scroll persists by `id`. Each rendered line carries its source row (`MdLine.src`: its own row for code and table rows, a reflowed block's first row otherwise), so a plugin maps body rows to buffer rows (`v:source_line`, `v:source_scroll`); a closed view keeps its last visible rows for its `close` handler. | The plugin cannot know the pane width and highlight colors are not theme keys, so core renders. |
