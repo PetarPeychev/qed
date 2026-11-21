@@ -242,7 +242,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 | `qed.root()`, `qed.version` | |
 | `qed.set_root(path, {discard?}) -> true \| nil, err, info` | Switch the working root: closes buffers outside it, restarts LSP, resets the tree, fires `root_changed`. While an unsaved outside buffer is not in `discard` (buffer ids) it closes nothing and returns `nil, "unsaved", {total, unsaved, bufs}`. `nil, "not a directory: ..."`. |
 | `qed.options(defaults) -> table` | Declares this plugin's config keys and defaults, returns the merged config. Setup only, once per load; raises otherwise. `enabled` and `keybinds` are reserved and raise. Objects merge per key, lists and other values replace; a user value whose type differs from the default's warns and keeps the default; `null` drops a default. |
-| `qed.meta{display_name?}` | Plugin metadata. Setup only, once per load; unknown fields and a non-string or empty `display_name` raise. Must come before any `qed.command`. A display name another loaded plugin uses, or a core log label (`PLUGIN_RESERVED_LABELS`), raises. |
+| `qed.meta{display_name?, description?}` | Plugin metadata. Setup only, once per load; unknown fields, a non-string or empty `display_name` and a non-string `description` raise. `description` is one line for the Plugins pane. Must come before any `qed.command`. A display name another loaded plugin uses, or a core log label (`PLUGIN_RESERVED_LABELS`), raises. |
 | `qed.config() -> table` | This plugin's merged subtree. Read-only. |
 | `qed.opt(key)` | Read-only core knob. |
 | ⏳ `qed.lsp.format(b) -> true \| false, err` | Core LSP formatting. `err`: `disabled` (`lsp.enabled` off), `no server`, `unavailable`, `stale`, `timeout` (`plugin_hook_timeout_ms`) or `error`. |
@@ -289,7 +289,7 @@ load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*,
 
 | Column / action | Behavior |
 |---|---|
-| Rows | Columns under a header: Plugin (display name), Source (`bundled`/`user`), Status (`enabled` / `disabled` / `errored`), Load (ms). The selected row's last error is shown in the footer. Click selects, double click is `Enter`. The selection persists by name. |
+| Rows | Columns under a header: Name (display name), Description (`qed.meta`, fills the rest), Source (`bundled`/`user`), Status (`enabled` / `disabled` / `errored`), Load (ms). The selected row's last error is shown in the footer. Click selects, double click is `Enter`. The selection persists by name. |
 | `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view (a child pane over the same box; Esc returns), with a hint to fork it to the user dir. |
 | `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, atomic; refused when config.json doesn't parse) and loads or unloads the plugin. The config stamp is left alone, so the next poll runs the normal reload and finds the flip already applied. |
 | `r` | Reloads the plugin. |

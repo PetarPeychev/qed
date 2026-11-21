@@ -176,6 +176,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Rendered markdown preview"}
 		cfg = qed.options{max_width = 120, backdrop = "dim"}
 		qed.command{
 			name = "Preview",

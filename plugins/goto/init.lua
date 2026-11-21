@@ -29,7 +29,7 @@ end
 
 return {
 	setup = function()
-		qed.meta{display_name = "Go to"}
+		qed.meta{display_name = "Go to", description = "Fuzzy jump to a line"}
 		qed.command{name = "Line", key = "Ctrl+g", run = find_line}
 	end,
 }

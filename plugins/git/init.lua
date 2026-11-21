@@ -241,6 +241,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Diff base, gutter marks and status for git repos"}
 		show()
 		qed.command{name = "Set Diff Base", run = set_base, when = when}
 		qed.command{name = "Restore File", scope = "filetree", run = function(ctx) restore_path(ctx.file) end, when = when}

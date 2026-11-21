@@ -370,6 +370,16 @@ e2e_cell_bg :: proc(e: ^E2E, x, y: int) -> tb2.Color {
 	return e2e_cell_raw(e, x, y).bg
 }
 
+e2e_grid_has_words :: proc(e: ^E2E, words: string) -> bool {
+	for y in 0 ..< int(tb2.height()) {
+		squeezed := strings.join(strings.fields(e2e_row_text(e, y), context.temp_allocator), " ", context.temp_allocator)
+		if strings.contains(squeezed, words) {
+			return true
+		}
+	}
+	return false
+}
+
 e2e_row_text :: proc(e: ^E2E, y: int) -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	for x in 0 ..< int(tb2.width()) {

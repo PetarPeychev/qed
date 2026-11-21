@@ -31,6 +31,7 @@
 
 ---@class qed.Meta
 ---@field display_name? string shown wherever the plugin is named (palette prefix, message and log labels, Plugins pane); default the id title-cased (`my_tools` is "My Tools")
+---@field description? string one line shown in the Plugins pane
 
 ---@class qed.Stat
 ---@field size integer

@@ -130,6 +130,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Project-wide search with ripgrep"}
 		min_query = qed.options{min_query = 2}.min_query
 		qed.command{name = "Find in Files", key = "Alt+F", welcome = true, run = search}
 		qed.command{name = "Find in Files", scope = "filetree", run = search_tree}

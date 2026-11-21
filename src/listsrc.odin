@@ -238,9 +238,9 @@ list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
 		case .Errored:
 			state, it.color = "errored", "error_foreground"
 		}
-		it.cells = make([]string, 4, context.temp_allocator)
-		it.cells[0], it.cells[1], it.cells[2] = pl.display, "bundled" if pl.bundled else "user", state
-		it.cells[3] = fmt.tprintf("%.2f ms", pl.load_ms) if pl.state != .Disabled else ""
+		it.cells = make([]string, 5, context.temp_allocator)
+		it.cells[0], it.cells[1], it.cells[2], it.cells[3] = pl.display, pl.description, "bundled" if pl.bundled else "user", state
+		it.cells[4] = fmt.tprintf("%.2f ms", pl.load_ms) if pl.state != .Disabled else ""
 	case .Walk:
 		e := src.entries[i]
 		it.label, it.path, it.key, it.dir, it.depth = e.name, e.path, e.path, e.is_dir, e.depth

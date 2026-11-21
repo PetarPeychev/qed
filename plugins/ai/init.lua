@@ -463,7 +463,7 @@ end
 
 return {
 	setup = function()
-		qed.meta{display_name = "AI"}
+		qed.meta{display_name = "AI", description = "Selection edits and inline completion from an LLM"}
 		configure(qed.options{
 			edit_command = "claude -p",
 			edit_prompt = "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region, and nothing else, inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}",

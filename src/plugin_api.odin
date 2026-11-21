@@ -1367,7 +1367,7 @@ qed_meta :: proc "c" (L: ^lua.State) -> c.int {
 		}
 	}
 	if lua.type(L, 1) != .TABLE {
-		return lua.L_argerror(L, 1, "table {display_name?} expected")
+		return lua.L_argerror(L, 1, "table {display_name?, description?} expected")
 	}
 	lua.settop(L, 1)
 	lua.pushnil(L)
@@ -1376,7 +1376,7 @@ qed_meta :: proc "c" (L: ^lua.State) -> c.int {
 		if lua.type(L, -2) == .STRING {
 			k, _ = lua.toodinstring(L, -2)
 		}
-		if k != "display_name" {
+		if k != "display_name" && k != "description" {
 			return plugin_raise(L, fmt.tprintf("qed.meta: unknown field '%s'", lua.L_tostring(L, -2)))
 		}
 		lua.pop(L, 1)
@@ -1392,17 +1392,26 @@ qed_meta :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		display = s
 	}
+	description := ""
+	if dt := lua.getfield(L, 1, "description"); dt != .NIL {
+		if dt != .STRING {
+			return lua.L_argerror(L, 1, "description must be a string")
+		}
+		description, _ = lua.toodinstring(L, -1)
+	}
 	for src in PLUGIN_RESERVED_LABELS {
-		if strings.equal_fold(src, display) {
+		if display != pl.display && strings.equal_fold(src, display) {
 			return plugin_raise(L, fmt.tprintf("display_name '%s' is a core log label", display))
 		}
 	}
 	for other in p.list {
-		if other.name != pl.name && other.state == .Enabled && strings.equal_fold(other.display, display) {
+		if display != pl.display && other.name != pl.name && other.state == .Enabled && strings.equal_fold(other.display, display) {
 			return plugin_raise(L, fmt.tprintf("display_name '%s' is taken by plugin '%s'", display, other.name))
 		}
 	}
 	pl.meta_set = true
+	delete(pl.description)
+	pl.description = strings.clone(description)
 	if display != pl.display {
 		display = strings.clone(display)
 		delete(pl.display)

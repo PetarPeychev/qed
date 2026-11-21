@@ -123,7 +123,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect(t, test_pane_open(&e.ed, "plugins"), "the pane opens")
 	e2e_reload_select(&e, "alpha")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Alpha      user     enabled"), "the user plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Alpha user enabled"), "the user plugin row")
 
 	_ = os.write_entire_file(e.ed.plugins.persist_path, transmute([]u8)string(`{"tab_width": 2}`))
 	stamp := DiskStamp{mtime = 42, ok = true}
@@ -138,7 +138,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(string(data), `"alpha": {`) && strings.contains(string(data), `"enabled": false`), "e persists only plugins.alpha.enabled")
 	testing.expect(t, strings.contains(string(data), `"tab_width": 2`), "an unpolled external edit survives the persist")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Alpha      user     disabled"), "the row shows disabled")
+	testing.expect(t, e2e_grid_has_words(&e, "Alpha user disabled"), "the row shows disabled")
 
 	e2e_key(&e, tb2.Key(0), {}, 'r')
 	testing.expect(t, strings.contains(e.ed.message, "Alpha is disabled"), "r on a disabled plugin explains")

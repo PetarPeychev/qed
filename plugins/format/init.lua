@@ -143,6 +143,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Formats on save and trims whitespace"}
 		apply(qed.options{
 			on_save = false,
 			trim_whitespace_on_save = false,

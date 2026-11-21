@@ -66,6 +66,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Switches the working root directory"}
 		qed.command{name = "Open Directory", key = "Ctrl+o", welcome = true, run = open_directory}
 		qed.command{name = "Open Selected Directory", keybind = "Open Directory", scope = "filetree", run = open_selected}
 	end,

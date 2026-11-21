@@ -236,6 +236,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Highlights and resolves merge conflict blocks"}
 		ns = qed.deco.ns("conflict")
 		qed.command{name = "Resolve", key = "Alt+m", run = run}
 		qed.on("startup", function()

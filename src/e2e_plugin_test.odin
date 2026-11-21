@@ -80,7 +80,7 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
 
-	e2e_plugin(&e, "fine", `return {}`)
+	e2e_plugin(&e, "fine", `return {setup = function() qed.meta{description = "Does fine things"} end}`)
 	e2e_plugin(&e, "broken", `return {setup = function() error("setup exploded") end}`)
 
 	e2e_key(&e, .Ctrl_P)
@@ -89,15 +89,11 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	testing.expect(t, test_pane_open(&e.ed, "plugins"), "Plugins: Open opens the pane")
 	e2e_reload_select(&e, "fine")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Fine       user     enabled"), "a healthy plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Plugin     Source   Status   Load"), "the header row titles the columns")
+	testing.expect(t, e2e_grid_has_words(&e, "Fine Does fine things user enabled"), "a healthy plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Name Description Source Status Load"), "the header row titles the columns")
 	e2e_reload_select(&e, "broken")
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Broken     user     errored"), "an errored plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Format     bundled  enabled"), "the bundled format plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Settings   bundled  enabled"), "the bundled settings plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Git        bundled  enabled"), "the bundled git plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Workspace  bundled  enabled"), "the bundled workspace plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Broken user errored"), "an errored plugin row")
 
 	broken := -1
 	for pl, i in e.ed.plugins.list {
@@ -111,7 +107,11 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	testing.expect_value(t, pane_find(&e.ed, "plugins").list.sel, broken)
 	e2e_resize(&e, 400, E2E_H)
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Broken     user     errored"), "an errored plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Format Formats on save and trims whitespace bundled enabled"), "the bundled format plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Settings Pickers for theme, language and indentation bundled enabled"), "the bundled settings plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Git Diff base, gutter marks and status for git repos bundled enabled"), "the bundled git plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Workspace Switches the working root directory bundled enabled"), "the bundled workspace plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Broken user errored"), "an errored plugin row")
 	testing.expect(t, e2e_grid_has(&e, "setup exploded"), "the selected row's last error shows in the footer")
 
 	e2e_key(&e, .Esc)

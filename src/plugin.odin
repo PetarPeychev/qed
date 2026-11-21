@@ -25,6 +25,7 @@ PluginState :: enum {
 Plugin :: struct {
 	name:       string,
 	display:    string,
+	description: string,
 	meta_set:   bool,
 	bundled:    bool,
 	dir:        string,
@@ -429,6 +430,7 @@ plugin_name_intern :: proc(p: ^Plugins, name: string) -> string {
 
 plugin_strings_free :: proc(pl: ^Plugin) {
 	delete(pl.display)
+	delete(pl.description)
 	delete(pl.dir)
 	delete(pl.main)
 	delete(pl.last_error)
@@ -479,6 +481,8 @@ plugin_title_case :: proc(id: string, allocator := context.allocator) -> string 
 plugin_display_reset :: proc(pl: ^Plugin) {
 	delete(pl.display)
 	pl.display = plugin_title_case(pl.name)
+	delete(pl.description)
+	pl.description = ""
 	pl.meta_set = false
 }
 
@@ -2123,7 +2127,8 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 }
 
 PLUGIN_COLUMNS := [?]PaneColumn {
-	{size = .Fit, title = "Plugin"},
+	{size = .Fit, title = "Name"},
+	{title = "Description"},
 	{size = .Fit, title = "Source"},
 	{size = .Fit, title = "Status"},
 	{size = .Fit, title = "Load", right = true},

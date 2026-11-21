@@ -52,6 +52,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Pickers for theme, language and indentation"}
 		qed.command{name = "Theme", welcome = true, run = set_theme}
 		qed.command{name = "Language", when = has_buf, run = set_language}
 		qed.command{name = "Indentation", when = has_buf, run = change_indent}

@@ -579,6 +579,7 @@ plugin_meta_misuse :: proc(t: ^testing.T) {
 		{"unknown.lua", `return {setup = function() qed.meta{display_name = "A", version = 2} end}`},
 		{"badtype.lua", `return {setup = function() qed.meta{display_name = 3} end}`},
 		{"empty.lua", `return {setup = function() qed.meta{display_name = ""} end}`},
+		{"baddesc.lua", `return {setup = function() qed.meta{description = 3} end}`},
 		{"x_first.lua", `return {setup = function() qed.command{name = "Go", run = function() end} end}`},
 		{"y_clash.lua", `return {setup = function() qed.meta{display_name = "x first"} end}`},
 		{"z_late.lua", `return {setup = function()
@@ -595,7 +596,7 @@ plugin_meta_misuse :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "top").last_error, "only callable during setup"), "a command cannot call qed.meta")
 	expect := [?]struct {
 		name, fragment: string,
-	}{{"twice", "once per load"}, {"unknown", "unknown field 'version'"}, {"badtype", "display_name must be"}, {"empty", "display_name must be"}, {"y_clash", "display_name 'x first' is taken by plugin 'x_first'"}, {"z_late", "must come before qed.command()"}, {"z_core", "core log label"}}
+	}{{"twice", "once per load"}, {"unknown", "unknown field 'version'"}, {"badtype", "display_name must be"}, {"empty", "display_name must be"}, {"baddesc", "description must be a string"}, {"y_clash", "display_name 'x first' is taken by plugin 'x_first'"}, {"z_late", "must come before qed.command()"}, {"z_core", "core log label"}}
 	for e in expect {
 		pl := plugin_find(&ed.plugins, e.name)
 		testing.expectf(t, pl.state == .Errored && strings.contains(pl.last_error, e.fragment), "%s: %s (got %q)", e.name, e.fragment, pl.last_error)
