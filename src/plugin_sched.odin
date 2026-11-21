@@ -11,6 +11,8 @@ PLUGIN_HOOK_COUNT :: 100_000
 PLUGIN_POOL_MAX :: 16
 PLUGIN_FLUSH_ROUNDS :: 16
 PLUGIN_LINE_READ_MAX :: 64 * 1024
+PLUGIN_SPAWN_READ_MAX :: 1024 * 1024
+PLUGIN_SPAWN_OUTPUT_MAX :: 32 * 1024 * 1024
 
 PluginKind :: enum {
 	Command,
@@ -151,6 +153,7 @@ PluginProc :: struct {
 	fake:     bool,
 	killed:   bool,
 	orphan:   bool,
+	too_big:  bool,
 	due:      time.Tick,
 }
 
@@ -1095,9 +1098,19 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 			}
 			continue
 		}
-		eof := subprocess_drain(&pr.sp, PLUGIN_LINE_READ_MAX if pr.line_ref != 0 else 0)
+		eof := subprocess_drain(&pr.sp, PLUGIN_LINE_READ_MAX if pr.line_ref != 0 else PLUGIN_SPAWN_READ_MAX, PLUGIN_SPAWN_READ_MAX)
 		plugin_proc_lines(editor, id, false)
-		if i = plugin_proc_index(p, id); i >= 0 && eof && subprocess_reap(&p.procs[i].sp) {
+		if i = plugin_proc_index(p, id); i < 0 {
+			continue
+		}
+		if pr = &p.procs[i]; len(pr.sp.out.buf) + len(pr.sp.err.buf) > PLUGIN_SPAWN_OUTPUT_MAX {
+			pr.too_big = true
+			pr.killed = true
+			plugin_proc_stop(pr)
+			plugin_proc_finish(editor, id)
+			continue
+		}
+		if eof && subprocess_reap(&pr.sp) {
 			plugin_proc_finish(editor, id)
 		}
 	}

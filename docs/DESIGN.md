@@ -631,8 +631,11 @@ started at the end of `editor_init`. Invariants the code can't show:
   non-blocking `process_wait`). The child leads its own process group
   (`subprocess_start_group`, a fork/exec like `os.process_start`) and every kill signals
   the group, so a cancelled shell takes its descendants. Argv and env strings over
-  128 KiB raise before forking (Linux `MAX_ARG_STRLEN`). With `on_line`, delivered lines are cut from `out`
-  and reads are capped per pump, so a streaming process stays bounded. A
+  128 KiB raise before forking (Linux `MAX_ARG_STRLEN`). Reads are capped per pump (1 MiB per stream, stdout 64 KiB
+  with `on_line`); with `on_line`, delivered lines are cut from `out`. Past `PLUGIN_SPAWN_OUTPUT_MAX` (32 MiB) stored
+  stdout + stderr the group is killed and the result is `nil, "output too large"`. **External quirk:** Odin's heap
+  allocator frees the old block when a resize fails, leaving the dynamic array dangling, so an uncapped
+  buffer that hits an allocation failure segfaults on the next append instead of failing cleanly. A
   `spawn_bg` record is freed when its result is handed out by `wait()`, or once
   done after its handle's `__gc` (which only marks it; the pump frees).
   `Plugins.fakes` (`e2e_spawn_fake`) answers a matching command without forking.

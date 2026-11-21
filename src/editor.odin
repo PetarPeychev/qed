@@ -5,6 +5,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:sys/posix"
 import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
@@ -76,6 +77,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	// headless: a test has already brought up the termbox backend (init_fd on a
 	// PTS) and owns its teardown; skip the real-terminal bring-up here.
 	if !headless {
+		crash_restore_install()
 		tb2.init()
 		tb2.set_output_mode(.Truecolor)
 		tb2.set_input_mode(.Mouse)
@@ -182,6 +184,31 @@ editor_shutdown :: proc(editor: ^Editor) {
 		log_tz_shutdown()
 		tb2.shutdown()
 	}
+}
+
+@(private = "file")
+g_crash_termios: posix.termios
+@(private = "file")
+g_crash_fd: posix.FD = -1
+
+crash_restore_install :: proc() {
+	fd := posix.open("/dev/tty", {.RDWR, .CLOEXEC})
+	if fd < 0 || posix.tcgetattr(fd, &g_crash_termios) != .OK {
+		return
+	}
+	g_crash_fd = fd
+	act := posix.sigaction_t{sa_handler = crash_restore, sa_flags = {.RESETHAND}}
+	for sig in ([]posix.Signal{.SIGSEGV, .SIGBUS, .SIGFPE, .SIGILL, .SIGTRAP, .SIGABRT}) {
+		posix.sigaction(sig, &act, nil)
+	}
+}
+
+// Only async-signal-safe calls; the raised signal is delivered under SIG_DFL once the handler returns.
+crash_restore :: proc "c" (sig: posix.Signal) {
+	reset := "\x1b[?1006l\x1b[?1015l\x1b[?1002l\x1b[?1000l\x1b[?2004l\x1b[0m\x1b[?25h\x1b[?1l\x1b>\x1b[?1049l"
+	posix.write(g_crash_fd, raw_data(reset), len(reset))
+	posix.tcsetattr(g_crash_fd, .TCSAFLUSH, &g_crash_termios)
+	posix.raise(sig)
 }
 
 editor_buffer :: proc(editor: ^Editor) -> ^Buffer {

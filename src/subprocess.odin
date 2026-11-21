@@ -186,11 +186,9 @@ subprocess_kill_group :: proc(p: ^Subprocess) {
 	_ = os.process_kill(p.process)
 }
 
-// Drain whatever is readable now into `p.out`; returns true once stdout hits EOF
-// (the child closed it / exited) so the caller can collect the full output.
-subprocess_drain :: proc(p: ^Subprocess, max_out := 0) -> (done: bool) {
+subprocess_drain :: proc(p: ^Subprocess, max_out := 0, max_err := 0) -> (done: bool) {
 	done = subprocess_drain_file(p.stdout, &p.out, max_out)
-	if p.stderr != nil && !subprocess_drain_file(p.stderr, &p.err) {
+	if p.stderr != nil && !subprocess_drain_file(p.stderr, &p.err, max_err) {
 		done = false
 	}
 	return

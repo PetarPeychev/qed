@@ -442,6 +442,43 @@ plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_sched_spawn_output_cap :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"fl.lua", `
+			return {setup = function()
+				qed.command{name = "Out", run = function()
+					local r, err = qed.spawn{cmd = "yes"}
+					out = tostring(r) .. " " .. tostring(err)
+				end}
+				qed.command{name = "Err", run = function()
+					local r, err = qed.spawn{cmd = "yes >&2", on_line = function() end}
+					errout = tostring(r) .. " " .. tostring(err)
+				end}
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	for cmd, i in ([]string{"Fl: Out", "Fl: Err"}) {
+		name: cstring = "out" if i == 0 else "errout"
+		sched_run(t, ed, cmd)
+		peak := 0
+		start := time.tick_now()
+		for sched_var(ed, name) == "" && ms_since(start) < 20000 {
+			pump_start := time.tick_now()
+			plugin_pump(ed)
+			testing.expect(t, ms_since(pump_start) < 1000, "a pump returns while the process floods")
+			for pr in ed.plugins.procs {
+				peak = max(peak, len(pr.sp.out.buf) + len(pr.sp.err.buf))
+			}
+		}
+		testing.expect_value(t, sched_var(ed, name), "nil output too large")
+		testing.expect(t, peak <= PLUGIN_SPAWN_OUTPUT_MAX + 2 * PLUGIN_SPAWN_READ_MAX + 32768, "stored output stays bounded")
+		testing.expect_value(t, len(ed.plugins.procs), 0)
+	}
+	testing.expect_value(t, plugin_find(&ed.plugins, "fl").last_error, "")
+}
+
+@(test)
 plugin_sched_bg_streaming :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"st.lua", `
