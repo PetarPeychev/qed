@@ -37,6 +37,10 @@ Runs on Linux and macOS in any truecolor terminal.
   with mouse, scrollback, and copy/paste.
 - **AI (optional):** selection-and-prompt edits via a chat command (`Ctrl+K`),
   inline FIM ghost-text completion.
+- **Markdown preview:** rendered preview (`Alt+p`) that follows links and
+  anchors, with Back/Forward.
+- **Lua plugins:** bundled features (file tree, git, search, format, AI) are
+  plugins; add your own commands, panes and hooks in `~/.config/qed/plugins/`.
 - **Configuration:** JSON knobs, keybinds, and colors, hot-reloaded from
   `~/.config/qed/`.
 
@@ -166,8 +170,10 @@ can be swapped in config (see the configuration reference for
 ## Configuration
 
 Defaults are compiled into the binary. `~/.config/qed/config.json` overrides them
-as a sparse per-key diff (only the keys you set), hot-reloaded on save. qed never
-writes it. Colors live in themes; set `"theme"` or use the *Settings: Theme* picker.
+as a sparse per-key diff (only the keys you set), hot-reloaded on save. qed writes
+only two keys there: `theme` from the *Settings: Theme* picker and a plugin's
+`enabled` from the Plugins pane (`e`). Colors live in themes; set `"theme"` or use
+the *Settings: Theme* picker.
 
 Full reference of knobs, keybinds, languages, and theme keys:
 [configuration reference](docs/CONFIG.md). It links to the canonical defaults,

@@ -14,8 +14,10 @@ files, which are the canonical, always-current reference:
 
 You never copy either file. `~/.config/qed/config.json` is a sparse per-key
 diff: put in only the keys you want to change; everything else keeps its
-compiled-in default. qed never writes this file (except *Settings: Theme*, which
-persists the single `theme` key when you press Enter on it, via `qed.theme.set`).
+compiled-in default. qed writes only two keys there: *Settings: Theme* persists
+`theme` when you press Enter on it (via `qed.theme.set`), and `e` in the Plugins
+pane sets `plugins.<id>.enabled` (removing it when you re-enable a plugin that is
+on by default).
 
 - **Hot-reloaded.** Save the file and the change applies live: colors, keybinds,
   and knobs take effect without a restart.

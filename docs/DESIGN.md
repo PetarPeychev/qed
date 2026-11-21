@@ -948,10 +948,10 @@ the shell prompt), runtime working-root change (`workspace` plugin: `Ctrl+o` pat
 `Ctrl+o` on a dir), jump list
 (back/forward), runtime config (**sparse overlays**: embedded `config/config.json`
 is every default, none in Odin source, completeness test-enforced; user
-`~/.config/qed/config.json` is a per-key diff qed never writes — no
-materialization, unknown keys get a one-shot warning, malformed JSON falls back
-to defaults without crashing; UI persistence like the theme picker's Enter writes
-only its own key; both config + active theme hot-reload via the disk poll —
+`~/.config/qed/config.json` is a per-key diff, never materialized; only the theme
+picker's Enter (`theme`) and the Plugins pane's `e` (`plugins.<id>.enabled`,
+removed when it returns to the default) write it, one key each; unknown keys get a
+one-shot warning, malformed JSON falls back to defaults without crashing; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
 their command), `lsp.enabled` (live toggle-off tears servers down; git is
