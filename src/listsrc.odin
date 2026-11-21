@@ -427,6 +427,41 @@ all_digits :: proc(s: string) -> bool {
 	return true
 }
 
+// a longer query matches a subset of the shorter one's hits, so only those are rescanned
+lines_filter :: proc(editor: ^Editor, p: ^Pane, query: string, lead: int) {
+	src := &p.list.source
+	b, _ := api_buf_find(editor, src.buf)
+	if b == nil {
+		return
+	}
+	incremental := src.narrow_q != "" && src.narrow_builds == b.rev + 1 && strings.has_prefix(query, src.narrow_q)
+	hits := make([dynamic]int, 0, len(src.narrow_idx) if incremental else len(b.lines) / 4)
+	if incremental {
+		for i in src.narrow_idx {
+			if fuzzy_has(query, string(b.lines[i].text[:])) {
+				append(&hits, i)
+			}
+		}
+	} else {
+		for line, i in b.lines {
+			if fuzzy_has(query, string(line.text[:])) {
+				append(&hits, i)
+			}
+		}
+	}
+	delete(src.narrow_idx)
+	src.narrow_idx = hits
+	delete(src.narrow_q)
+	src.narrow_q = strings.clone(query)
+	src.narrow_builds = b.rev + 1
+	reserve(&p.list.matches, len(p.list.matches) + len(hits))
+	for i in hits {
+		if i != lead {
+			append(&p.list.matches, i)
+		}
+	}
+}
+
 list_lines_center :: proc(editor: ^Editor, p: ^Pane) {
 	b, _ := api_buf_find(editor, p.list.source.buf)
 	if b == nil {

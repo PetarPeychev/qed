@@ -1,6 +1,7 @@
 package main
 
 import "core:slice"
+import "core:strings"
 
 Fuzzy :: struct {
 	items: []string,
@@ -49,6 +50,29 @@ fuzzy_sort :: proc(entries: []ScoreIdx) {
 		}
 		return a.idx < b.idx
 	})
+}
+
+fuzzy_has :: proc(pattern, text: string) -> bool #no_bounds_check {
+	t := text
+	for i in 0 ..< len(pattern) {
+		want := ascii_lower(pattern[i])
+		j := -1
+		if want >= 'a' && want <= 'z' {
+			for k in 0 ..< len(t) {
+				if t[k] | 0x20 == want {
+					j = k
+					break
+				}
+			}
+		} else {
+			j = strings.index_byte(t, want)
+		}
+		if j < 0 {
+			return false
+		}
+		t = t[j + 1:]
+	}
+	return true
 }
 
 ascii_lower :: proc(c: u8) -> u8 {

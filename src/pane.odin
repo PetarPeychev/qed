@@ -939,6 +939,11 @@ pane_refilter :: proc(editor: ^Editor, p: ^Pane) {
 			append(&p.list.matches, lead)
 		}
 	}
+	if p.list.source.kind == .Lines {
+		lines_filter(editor, p, query, lead)
+		p.list.filtered = true
+		return
+	}
 	entries := make([dynamic]ScoreIdx, 0, 64, context.temp_allocator)
 	for i in 0 ..< n {
 		if i == lead {

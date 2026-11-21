@@ -55,3 +55,15 @@ test_fuzzy_match_scores :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+@(test)
+test_fuzzy_has_agrees_with_match :: proc(t: ^testing.T) {
+	texts := []string{"", "line 50 of a million", "Save As", "a@b`c[d{e", "\u00fcber \u00dcnit", "ZZ top", "5000", "x\x00y"}
+	patterns := []string{"5", "50", "500", "sa", "SA", "@`", "[{", "zt", "\u00dc", "\u00fc", "\x00", "of a", "lime", "xy"}
+	for p in patterns {
+		for s in texts {
+			_, ok := fuzzy_match(p, s)
+			testing.expectf(t, fuzzy_has(p, s) == ok, "fuzzy_has(%q, %q) disagrees with fuzzy_match", p, s)
+		}
+	}
+}
