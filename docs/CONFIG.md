@@ -10,6 +10,9 @@ files, which are the canonical, always-current reference:
 - [`config/themes/default.json`](../config/themes/default.json): the complete
   color, icon, and tint palette every theme overlays.
 
+*Settings: Open Config* opens (creating `{}` if missing) your `config.json`; *Settings: Open Defaults*
+opens the embedded defaults in an unnamed JSON buffer to browse every key.
+
 ## How config works
 
 You never copy either file. `~/.config/qed/config.json` is a sparse per-key
@@ -193,7 +196,7 @@ ignored with a warning. Keybinds and `plugin_memory_mb` hot-reload. Changes unde
 `plugins.<id>` reach the plugin through its `config_changed` handler (`format`,
 `filetree`, `search` apply them live, keeping runtime state); a plugin without one
 is reloaded. Adding, removing or editing a file under `plugins/` reloads just that
-plugin. *Settings: Theme*, *Settings: Language* and *Settings: Indentation*
+plugin. *Settings: Theme*, *Settings: Language*, *Settings: Indentation*, *Settings: Open Config* and *Settings: Open Defaults*
 come from the bundled `settings` plugin (no config of its own;
 `plugins.settings.enabled = false` removes them).
 

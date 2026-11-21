@@ -108,7 +108,7 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_resize(&e, 400, E2E_H)
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has_words(&e, "Format Formats on save and trims whitespace bundled enabled"), "the bundled format plugin row")
-	testing.expect(t, e2e_grid_has_words(&e, "Settings Pickers for theme, language and indentation bundled enabled"), "the bundled settings plugin row")
+	testing.expect(t, e2e_grid_has_words(&e, "Settings Theme, language, indentation and config files bundled enabled"), "the bundled settings plugin row")
 	testing.expect(t, e2e_grid_has_words(&e, "Git Diff base, gutter marks and status for git repos bundled enabled"), "the bundled git plugin row")
 	testing.expect(t, e2e_grid_has_words(&e, "Workspace Switches the working root directory bundled enabled"), "the bundled workspace plugin row")
 	testing.expect(t, e2e_grid_has_words(&e, "Broken user errored"), "an errored plugin row")

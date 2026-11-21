@@ -33,6 +33,9 @@ qed_api := [?]lua.L_Reg {
 	{"close", qed_close},
 	{"jump", qed_jump},
 	{"root", qed_root},
+	{"new_buf", qed_new_buf},
+	{"config_path", qed_config_path},
+	{"config_defaults", qed_config_defaults},
 	{"open_url", qed_open_url},
 	{"set_root", qed_set_root},
 	{"config", qed_config},
@@ -853,18 +856,66 @@ qed_buf_set_selection :: proc "c" (L: ^lua.State) -> c.int {
 	return 0
 }
 
+api_language :: proc(L: ^lua.State, name: string) -> Language {
+	for info, lang in LANGUAGES {
+		if lang != .MarkdownInline && info.name == name {
+			return lang
+		}
+	}
+	plugin_raise(L, fmt.tprintf("unknown language '%s'", name))
+	return .Plain
+}
+
 qed_buf_set_language :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	b, _ := api_buf(L, entry.editor, 1)
-	name := api_string(L, 2)
-	for info, lang in LANGUAGES {
-		if lang != .MarkdownInline && info.name == name {
-			lua.pushboolean(L, b32(editor_set_language(entry.editor, b, lang)))
-			return 1
-		}
+	lang := api_language(L, api_string(L, 2))
+	lua.pushboolean(L, b32(editor_set_language(entry.editor, b, lang)))
+	return 1
+}
+
+qed_new_buf :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	if lua.type(L, 1) != .TABLE {
+		return plugin_raise(L, "qed.new_buf expects an options table")
 	}
-	return plugin_raise(L, fmt.tprintf("unknown language '%s'", name))
+	text, _ := api_field_string(L, 1, "text")
+	b := buffer_new()
+	buffer_set_content(&b, transmute([]u8)text)
+	if name, ok := api_field_string(L, 1, "language"); ok {
+		b.language = api_language(L, name)
+	}
+	id := b.id
+	plugin_queue(editor, {event = .Buf_Open, buf = id})
+	scratch := editor.buffers[0]
+	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
+		buffer_destroy(&editor.buffers[0])
+		editor.buffers[0] = b
+		editor_switch_to(editor, 0)
+	} else {
+		append(&editor.buffers, b)
+		editor_switch_to(editor, len(editor.buffers) - 1)
+	}
+	lua.pushinteger(L, lua.Integer(id))
+	return 1
+}
+
+qed_config_path :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	path := entry.editor.plugins.persist_path if entry.editor.headless else config_path()
+	lua.pushodinstring(L, path)
+	return 1
+}
+
+qed_config_defaults :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	lua.pushodinstring(L, string(embedded_config_data))
+	return 1
 }
 
 qed_buf_set_indent :: proc "c" (L: ^lua.State) -> c.int {

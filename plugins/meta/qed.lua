@@ -91,6 +91,19 @@ function qed.edit(b, fn, opts) end
 ---@return string|nil err
 function qed.open(path) end
 
+---Opens a new unnamed buffer (the untouched welcome scratch is replaced) holding `text` as its clean content, and switches to it. Saving it asks for a file name. Raises on an unknown `language`.
+---@param opts {text?: string, language?: string}
+---@return integer b
+function qed.new_buf(opts) end
+
+---The user config file path (`$XDG_CONFIG_HOME/qed/config.json`, else `~/.config/qed/config.json`); `""` without a home.
+---@return string
+function qed.config_path() end
+
+---The embedded default `config/config.json` text.
+---@return string
+function qed.config_defaults() end
+
 ---Save through the full pipeline. Fails without saving if the file changed on disk
 ---(the conflict dialog opens only for the current buffer). Waits for `buf_pre_save` handlers.
 ---@param b qed.Buf

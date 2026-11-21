@@ -149,4 +149,32 @@ function T.indent_esc_keeps(t)
 	t.eq(w2, width)
 end
 
+function T.open_config_creates_and_opens(t)
+	local path = t.config_path()
+	t.ok(not qed.fs.exists(path), "no config yet")
+	qed.run("Settings: Open Config")
+	t.eq(qed.fs.read(path), "{}\n", "the file is created")
+	local b = qed.buf.current()
+	t.eq(qed.buf.path(b), path, "it opens in the editor")
+	t.eq(qed.buf.language(b), "json")
+	qed.close(b)
+	qed.fs.write(path, '{"tab_width": 2}')
+	qed.run("Settings: Open Config")
+	t.eq(qed.buf.text(qed.buf.current()), '{"tab_width": 2}', "an existing file is not overwritten")
+	qed.close(qed.buf.current())
+	qed.fs.remove(path)
+end
+
+function T.open_defaults_is_an_unsaved_scratch(t)
+	qed.run("Settings: Open Defaults")
+	local b = qed.buf.current()
+	t.eq(qed.buf.text(b), qed.config_defaults(), "the embedded defaults")
+	t.eq(qed.buf.path(b), "", "no file behind it")
+	t.eq(qed.buf.language(b), "json")
+	t.ok(not qed.buf.modified(b), "clean")
+	local ok, err = qed.save(b)
+	t.ok(not ok and err == "no file name", "it cannot be saved over a file")
+	qed.close(b)
+end
+
 return T
