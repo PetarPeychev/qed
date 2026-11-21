@@ -826,14 +826,17 @@ plugin_gc_steps_while_typing :: proc(t: ^testing.T) {
 
 	no_peek :: proc(ms: int) -> (tb2.Event, bool) {return {}, false}
 	plugin_flush(ed)
+	test_gc_steps, test_gc_cycles, test_gc_shrinks = 0, 0, 0
 	peak := 0
 	for _ in 0 ..< 200 {
 		editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, no_peek)
 		peak = max(peak, ed.plugins.mem.used)
 	}
 	testing.expect_value(t, gc_test_count(t, ed, "Hog: N"), "200")
-	testing.expectf(t, peak < 4 * 1024 * 1024, "keystrokes alone keep the heap off the cap (peak %d)", peak)
-	testing.expect(t, !plugin_test_logged(ed, .Debug, "Hog", "took"), "no handler pays a collection")
+	testing.expectf(t, test_gc_steps >= 200, "every keystroke steps the collector (%d steps)", test_gc_steps)
+	testing.expectf(t, test_gc_cycles >= 20, "and cycles finish (%d)", test_gc_cycles)
+	testing.expect_value(t, test_gc_shrinks, 0)
+	testing.expectf(t, peak < PLUGIN_TEST_MEM / 2, "the heap stays far from the cap (peak %d)", peak)
 }
 
 @(test)

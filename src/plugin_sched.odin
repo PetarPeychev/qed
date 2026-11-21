@@ -1245,6 +1245,9 @@ plugin_gc_due :: proc(p: ^Plugins) -> bool {
 	// an emergency or a plugin's own collection shrank the heap behind the pacer's back
 	if !p.gc_active && p.mem.used < p.gc_base {
 		p.gc_base = p.mem.used
+		when ODIN_TEST {
+			test_gc_shrinks += 1
+		}
 	}
 	return p.gc_active || p.mem.used >= plugin_gc_threshold(p)
 }
@@ -1260,9 +1263,18 @@ plugin_gc_step :: proc(editor: ^Editor) {
 	entry: PluginEntry
 	prev := plugin_enter(editor, &entry)
 	start := time.tick_now()
-	for ms_since(start) < budget {
-		if lua.gc(p.L, .STEP, c.int(0)) != 0 {
+	// at least one step per call, so progress never depends on the clock
+	for {
+		done := lua.gc(p.L, .STEP, c.int(0)) != 0
+		when ODIN_TEST {
+			test_gc_steps += 1
+			test_gc_cycles += int(done)
+		}
+		if done {
 			plugin_gc_rebase(p)
+			break
+		}
+		if ms_since(start) >= budget {
 			break
 		}
 	}

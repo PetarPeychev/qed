@@ -66,6 +66,9 @@ test_slice_max: map[string]f64
 @(thread_local)
 test_gc_max: f64
 
+@(thread_local)
+test_gc_steps, test_gc_cycles, test_gc_shrinks: int
+
 ft_pane :: proc(ed: ^Editor) -> ^Pane {
 	p := pane_find(ed, "filetree")
 	if p == nil || !pane_live(ed, p) {
