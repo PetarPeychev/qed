@@ -153,3 +153,37 @@ test_status_fit_clips_undroppable_plugin_segment :: proc(t: ^testing.T) {
 	status_fit(left[:], right[:], 12)
 	testing.expect(t, status_overflow(left[:], right[:], 12) <= 0, "segments too narrow to clip hide")
 }
+
+@(test)
+test_columns_layout_fixed_fit_fill :: proc(t: ^testing.T) {
+	w := columns_layout({{size = .Fixed, w = 4}, {}}, nil, 20)
+	testing.expect_value(t, w[0], 4)
+	testing.expect_value(t, w[1], 14)
+	w = columns_layout({{size = .Fixed, w = 3}, {}, {}}, nil, 20)
+	testing.expect_value(t, w[1], 7)
+	testing.expect_value(t, w[2], 6)
+	w = columns_layout({{size = .Fit, max = 5}, {size = .Fit, min = 6}, {size = .Fit}}, {9, 2, 3}, 40)
+	testing.expect_value(t, w[0], 5)
+	testing.expect_value(t, w[1], 6)
+	testing.expect_value(t, w[2], 3)
+}
+
+@(test)
+test_columns_layout_narrow :: proc(t: ^testing.T) {
+	cols := []PaneColumn{{size = .Fit}, {size = .Fill, min = 3}}
+	w := columns_layout(cols, {6, 0}, 12)
+	testing.expect_value(t, w[0], 6)
+	testing.expect_value(t, w[1], 4)
+	w = columns_layout(cols, {6, 0}, 10)
+	testing.expect_value(t, w[0], 5)
+	testing.expect_value(t, w[1], 3)
+	titled := []PaneColumn{{size = .Fit, title = "Name"}, {}}
+	w = columns_layout(titled, {10, 0}, 8)
+	testing.expect_value(t, w[0], 6)
+	testing.expect_value(t, w[1], 0)
+	w = columns_layout(titled, {10, 0}, 4)
+	testing.expect_value(t, w[0], 4)
+	w = columns_layout({{size = .Fit}, {size = .Fit}}, {10, 4}, 12)
+	testing.expect_value(t, w[0], 6)
+	testing.expect_value(t, w[1], 4)
+}

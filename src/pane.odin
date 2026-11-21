@@ -209,6 +209,8 @@ PaneList :: struct {
 	tree:     bool,
 	expanded: map[string]bool,
 	columns:  []PaneColumn,
+	fit:      [dynamic]int,
+	fit_n:    int,
 	source:   ListSource,
 }
 
@@ -366,7 +368,12 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	pane_tabs_set(&p, spec.tabs)
 	p.marks = {}
 	p.list.expanded = {}
-	p.list.columns = slice.clone(spec.list.columns)
+	p.list.columns = make([]PaneColumn, len(spec.list.columns))
+	for c, i in spec.list.columns {
+		p.list.columns[i] = c
+		p.list.columns[i].title = strings.clone(c.title)
+	}
+	p.list.fit, p.list.fit_n = {}, 0
 	p.footer_field = {anchor = -1}
 	p.preview_key = ""
 	p.notified_key = ""
@@ -468,7 +475,11 @@ pane_free :: proc(p: ^Pane) {
 	vmem.arena_destroy(&p.marks_arena)
 	walk_set_clear(&p.list.expanded)
 	delete(p.list.expanded)
+	for c in p.list.columns {
+		delete(c.title)
+	}
 	delete(p.list.columns)
+	delete(p.list.fit)
 	textfield_destroy(&p.footer_field.field)
 	delete(p.footer_field.prompt)
 	delete(p.preview_key)
@@ -1159,7 +1170,7 @@ pane_md_busy :: proc(editor: ^Editor) -> bool {
 
 PaneGeom :: struct {
 	box, inner:                Rect,
-	title_y, footer_y:         int,
+	title_y, footer_y, head_y: int,
 	field_x, field_y, field_w: int,
 	text, list, preview:       Rect,
 	has_preview:               bool,
@@ -1175,16 +1186,17 @@ pane_geom_sep :: proc(g: ^PaneGeom, y: int) {
 }
 
 pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
-	g.title_y, g.footer_y, g.left_sep = -1, -1, -1
+	g.title_y, g.footer_y, g.head_y, g.left_sep = -1, -1, -1, -1
 	nf := len(p.fields)
+	head := pane_has_header(editor, p)
 	if p.place == .Center {
 		n := pane_count(editor, p)
 		rows := min(n, PALETTE_MAX_ROWS) if p.size == .Palette else n
 		if n == 0 && pane_hint(p) != "" {
 			rows = 1
 		}
-		head := (1 if p.title != "" else 0) + nf + len(p.text)
-		sep := head > 0 && p.has_list
+		top := (1 if p.title != "" else 0) + nf + len(p.text)
+		sep := top > 0 && p.has_list
 		w := PALETTE_WIDTH
 		if p.size == .Dialog {
 			w = visual_width(transmute([]u8)p.title)
@@ -1199,7 +1211,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		if p.max_width > 0 {
 			w = min(w, p.max_width - 2)
 		}
-		g.box = pane_center(editor, w, head + rows + (1 if sep else 0) + (2 if pane_has_footer(p) else 0))
+		g.box = pane_center(editor, w, top + (1 if head else 0) + rows + (1 if sep else 0) + (2 if pane_has_footer(p) else 0))
 		g.inner = {g.box.x + 1, g.box.y + 1, g.box.w - 2, g.box.h - 2}
 		y := g.inner.y
 		if p.title != "" {
@@ -1212,6 +1224,10 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		y += len(p.text)
 		if sep {
 			pane_geom_sep(&g, y)
+			y += 1
+		}
+		if head {
+			g.head_y = y
 			y += 1
 		}
 		g.list = {g.inner.x, y, g.inner.w, rows}
@@ -1260,6 +1276,10 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		y += 1
 	}
 	if p.has_list {
+		if head && y < bottom {
+			g.head_y = y
+			y += 1
+		}
 		g.list = {g.inner.x, y, lay.left_w, max(0, bottom - y)}
 	} else {
 		g.text = {g.inner.x + 1, y, g.inner.w - 2, max(0, bottom - y)}
@@ -1370,21 +1390,128 @@ pane_run_command :: proc(editor: ^Editor, p: ^Pane, name: string) {
 	}
 }
 
-pane_render_row :: proc(it: PaneItem, cols: []PaneColumn, x, y, w: int, fg, bg: tb2.Color) {
-	if len(cols) == 0 {
-		pane_text(x, y, w, it.label, fg, bg)
-		return
+COLUMN_GAP :: 2
+COLUMN_FIT_SAMPLE :: 1000
+
+cell_width :: proc(s: string, cap: int) -> int {
+	b := transmute([]u8)s
+	if c := col_at_visual(b, cap + 1); c < len(b) {
+		return max(visual_width(b[:c]), cap + 1)
 	}
-	cx := x
+	return visual_width(b)
+}
+
+columns_layout :: proc(cols: []PaneColumn, seen: []int, w: int) -> []int {
+	n := len(cols)
+	out := make([]int, n, context.temp_allocator)
+	floor := make([]int, n, context.temp_allocator)
+	used, fills := 0, 0
 	for c, i in cols {
-		if i >= len(it.cells) || cx >= x + w {
+		switch c.size {
+		case .Fixed:
+			out[i], floor[i] = c.w, c.w
+		case .Fit:
+			want := max(seen[i] if i < len(seen) else 0, c.min)
+			if c.max > 0 {
+				want = min(want, c.max)
+			}
+			lo := c.min if c.min > 0 else visual_width(transmute([]u8)c.title)
+			out[i], floor[i] = want, min(max(lo, 1), want)
+		case .Fill:
+			floor[i] = c.min
+			fills += 1
+		}
+		used += out[i]
+	}
+	avail := w - COLUMN_GAP * max(0, n - 1)
+	rest := max(0, avail - used)
+	k := 0
+	for c, i in cols {
+		if c.size == .Fill {
+			out[i] = max(c.min, rest / fills + (1 if k < rest % fills else 0))
+			used += out[i]
+			k += 1
+		}
+	}
+	for over := used - avail; over > 0; over -= 1 {
+		wide := -1
+		for c, i in cols {
+			if c.size == .Fit && out[i] > floor[i] && (wide < 0 || out[i] > out[wide]) {
+				wide = i
+			}
+		}
+		if wide < 0 {
 			break
 		}
-		cw := x + w - cx if c.w == 0 else min(c.w, x + w - cx)
-		sw := visual_width(transmute([]u8)it.cells[i])
-		off := max(0, cw - sw) if c.right else 0
-		pane_text(cx + off, y, cw - off, it.cells[i], fg, bg)
-		cx += cw + 2
+		out[wide] -= 1
+	}
+	return out
+}
+
+columns_header :: proc(cols: []PaneColumn) -> bool {
+	for c in cols {
+		if c.title != "" {
+			return true
+		}
+	}
+	return false
+}
+
+pane_has_header :: proc(editor: ^Editor, p: ^Pane) -> bool {
+	return p.has_list && columns_header(list_columns(editor, p))
+}
+
+pane_columns_seen :: proc(p: ^Pane, cols: []PaneColumn, it: PaneItem, cap: int) {
+	for c, i in cols {
+		if c.size == .Fit && i < len(it.cells) {
+			p.list.fit[i] = max(p.list.fit[i], cell_width(it.cells[i], min(cap, c.max) if c.max > 0 else cap))
+		}
+	}
+}
+
+pane_columns_fit :: proc(editor: ^Editor, p: ^Pane, cols: []PaneColumn, drawn: []PaneItem, cap: int) -> []int {
+	fit := false
+	for c in cols {
+		fit ||= c.size == .Fit
+	}
+	for len(p.list.fit) < len(cols) {
+		append(&p.list.fit, visual_width(transmute([]u8)cols[len(p.list.fit)].title))
+	}
+	if fit {
+		n := min(list_count(editor, p), COLUMN_FIT_SAMPLE)
+		if n < p.list.fit_n {
+			p.list.fit_n = 0
+		}
+		for i in p.list.fit_n ..< n {
+			pane_columns_seen(p, cols, list_item(editor, p, i), cap)
+		}
+		p.list.fit_n = n
+		for it in drawn {
+			pane_columns_seen(p, cols, it, cap)
+		}
+	}
+	return columns_layout(cols, p.list.fit[:], cap)
+}
+
+pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x, y, w: int, fg, bg: tb2.Color) {
+	cx := x
+	for c, i in cols {
+		if i >= len(cells) || cx >= x + w {
+			break
+		}
+		cw := min(widths[i], x + w - cx)
+		if cw > 0 {
+			text := cells[i]
+			sw := cell_width(text, cw)
+			if sw > cw {
+				b := transmute([]u8)text
+				text = status_clip(text[:col_at_visual(b, cw + 1)], cw)
+				sw = cw
+			}
+			off := cw - sw if c.right else 0
+			pane_text(cx + off, y, cw - off, text, fg, bg)
+		}
+		cx += widths[i] + COLUMN_GAP
 	}
 }
 
@@ -1547,11 +1674,25 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	if hint := pane_hint(p); n == 0 && hint != "" && g.list.h > 0 {
 		pane_text(g.list.x + 1, g.list.y, lw, hint, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG)
 	}
-	cols := list_columns(editor, p) if n > 0 else nil
+	drawn := make([]PaneItem, clamp(n - p.list.scroll, 0, g.list.h), context.temp_allocator)
+	for &it, r in drawn {
+		it = list_item(editor, p, pane_item_index(p, p.list.scroll + r))
+	}
+	cols := list_columns(editor, p) if p.has_list else nil
+	widths: []int
+	if len(cols) > 0 {
+		widths = pane_columns_fit(editor, p, cols, drawn, lw)
+	}
+	if g.head_y >= 0 {
+		titles := make([]string, len(cols), context.temp_allocator)
+		for c, i in cols {
+			titles[i] = c.title
+		}
+		pane_render_cells(titles, cols, widths, g.list.x + 1, g.head_y, lw, color_attr(COLOR_PANE_SHORTCUT_FG, .Bold), COLOR_PANE_BG)
+	}
 	addw, delw := 0, 0
-	for r in 0 ..< g.list.h {
-		if i := p.list.scroll + r; i < n && len(p.marks) > 0 {
-			it := list_item(editor, p, pane_item_index(p, i))
+	if len(p.marks) > 0 {
+		for it in drawn {
 			if m, ok := p.marks[pane_item_key(it)]; ok && m.sizes && !it.dir && !p.marks_plain {
 				addw, delw = max(addw, digit_count(m.added)), max(delw, digit_count(m.removed))
 			}
@@ -1559,12 +1700,8 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	}
 	tree := p.list.tree
 	current := editor_buffer(editor).path if !editor.welcome && len(editor.buffers) > 0 else ""
-	for r in 0 ..< g.list.h {
+	for &it, r in drawn {
 		i := p.list.scroll + r
-		if i >= n {
-			break
-		}
-		it := list_item(editor, p, pane_item_index(p, i))
 		y := g.list.y + r
 		fg, bg, dfg := COLOR_PANE_FG, COLOR_PANE_BG, COLOR_PANE_SHORTCUT_FG
 		if c, ok := g_theme_colors[it.color]; ok && it.color != "" {
@@ -1612,8 +1749,11 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 				sizes = ""
 			}
 		}
-		it.label = label
-		pane_render_row(it, cols, g.list.x + 1, y, label_w, fg, bg)
+		if len(cols) > 0 {
+			pane_render_cells(it.cells, cols, widths, g.list.x + 1, y, label_w, fg, bg)
+		} else {
+			pane_text(g.list.x + 1, y, label_w, label, fg, bg)
+		}
 		if sizes != "" {
 			pane_size_paint(g.list.x + g.list.w - len(sizes), y, g.list.x + g.list.w, sizes, bg)
 		}

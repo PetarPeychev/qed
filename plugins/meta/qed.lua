@@ -318,7 +318,14 @@ function List:release() end
 ---@field selected? integer item index to start on
 ---@field sort? boolean keep the items ordered by key: `append` inserts in place and the selection follows its item once the user moved it
 ---@field tree? boolean a `qed.fs.walk` list shown as a tree: indent, expand icons, Enter or double-click on a dir toggles it (a filter shows ranked paths; Enter on a dir clears it and reveals the dir); open buffers get an accent, unsaved ones `●`
----@field columns? {width?: integer, right?: boolean}[] items draw their `cells` in these columns (width 0 takes the rest)
+---@field columns? qed.UiColumn[] items draw their `cells` in these columns, two spaces apart; a title on any column adds a header row that stays put while the list scrolls
+
+---@class qed.UiColumn
+---@field title? string header text, drawn dim and bold
+---@field width? integer|"fit"|"fill" a positive integer is fixed; `"fit"` grows to the widest cell seen (title included, the first 1000 items and every drawn row; it never shrinks while the pane is open); `"fill"` (default) shares what is left with the other fill columns. Too narrow a pane shrinks fill columns first, then fit columns down to their `min`; cells that do not fit end in `…`
+---@field min? integer `"fit"` or `"fill"`: never narrower than this (a fit column's default is its title width)
+---@field max? integer `"fit"`: never wider than this
+---@field right? boolean right-align cells and title
 
 ---@class qed.UiHandlers
 ---@field activate? fun(v: qed.View, items: (string|qed.UiItem)[]) Enter or double-click: the selection (the range with `multi`), `{}` for a pane without a list; the pane stays open

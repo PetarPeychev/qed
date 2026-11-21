@@ -1467,17 +1467,70 @@ api_columns :: proc(L: ^lua.State, t: c.int) -> []PaneColumn {
 		return nil
 	}
 	if tp != .TABLE {
-		plugin_raise(L, "columns must be a list of {width?, right?}")
+		plugin_raise(L, "columns must be a list of {title?, width?, min?, max?, right?}")
 	}
 	h := lua.gettop(L)
 	out := make([]PaneColumn, int(lua.rawlen(L, h)), context.temp_allocator)
-	for i in 0 ..< len(out) {
+	for &col, i in out {
 		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
-			plugin_raise(L, fmt.tprintf("columns[%d] must be a table {{width?, right?}}", i + 1))
+			plugin_raise(L, fmt.tprintf("columns[%d] must be a table {{title?, width?, min?, max?, right?}}", i + 1))
 		}
 		ct := lua.gettop(L)
-		w, _ := api_field_int(L, ct, "width")
-		out[i] = {w = max(0, w), right = api_opt_bool(L, ct, "right")}
+		#partial switch lua.getfield(L, ct, "width") {
+		case .NIL:
+		case .NUMBER:
+			n, ok := api_field_int(L, ct, "width")
+			if !ok || n < 1 {
+				plugin_raise(L, fmt.tprintf(`columns[%d].width must be a positive integer, "fit" or "fill"`, i + 1))
+			}
+			col.size, col.w = .Fixed, n
+		case .STRING:
+			switch s, _ := lua.toodinstring(L, -1); s {
+			case "fit":
+				col.size = .Fit
+			case "fill":
+			case:
+				plugin_raise(L, fmt.tprintf(`columns[%d].width must be a positive integer, "fit" or "fill"`, i + 1))
+			}
+		case:
+			plugin_raise(L, fmt.tprintf(`columns[%d].width must be a positive integer, "fit" or "fill"`, i + 1))
+		}
+		lua.pop(L, 1)
+		bounds := [2]cstring{"min", "max"}
+		for key, k in bounds {
+			if lua.getfield(L, ct, key) != .NIL {
+				n, ok := api_field_int(L, ct, string(key))
+				if !ok || n < k {
+					plugin_raise(L, fmt.tprintf("columns[%d].%s must be a %s integer", i + 1, key, "non-negative" if k == 0 else "positive"))
+				}
+				if col.size == .Fixed || (k == 1 && col.size == .Fill) {
+					plugin_raise(L, fmt.tprintf(`columns[%d].%s needs width = "fit"%s`, i + 1, key, ` or "fill"` if k == 0 else ""))
+				}
+				if k == 0 {
+					col.min = n
+				} else {
+					col.max = n
+				}
+			}
+			lua.pop(L, 1)
+		}
+		if col.max > 0 && col.min > col.max {
+			plugin_raise(L, fmt.tprintf("columns[%d].min is above its max", i + 1))
+		}
+		#partial switch lua.getfield(L, ct, "title") {
+		case .NIL:
+		case .STRING:
+			title, _ := lua.toodinstring(L, -1)
+			col.title = strings.clone(title, context.temp_allocator)
+		case:
+			plugin_raise(L, fmt.tprintf("columns[%d].title must be a string", i + 1))
+		}
+		lua.pop(L, 1)
+		if tp := lua.getfield(L, ct, "right"); tp != .NIL && tp != .BOOLEAN {
+			plugin_raise(L, fmt.tprintf("columns[%d].right must be a boolean", i + 1))
+		}
+		col.right = bool(lua.toboolean(L, -1))
+		lua.pop(L, 1)
 		lua.pop(L, 1)
 	}
 	return out

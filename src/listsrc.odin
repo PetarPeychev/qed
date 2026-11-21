@@ -41,9 +41,18 @@ ListSource :: struct {
 	narrow_builds: u64,
 }
 
+ColumnSize :: enum {
+	Fill,
+	Fixed,
+	Fit,
+}
+
 PaneColumn :: struct {
-	w:     int,
-	right: bool,
+	size:     ColumnSize,
+	w:        int,
+	min, max: int,
+	right:    bool,
+	title:    string,
 }
 
 list_source_clone :: proc(s: ListSource) -> ListSource {
@@ -251,13 +260,13 @@ list_columns :: proc(editor: ^Editor, p: ^Pane) -> []PaneColumn {
 	case .None:
 		return p.list.columns
 	case .Lines:
-		return slice.clone([]PaneColumn{{w = digit_count(list_count(editor, p)), right = true}, {}}, context.temp_allocator)
+		return slice.clone([]PaneColumn{{size = .Fixed, w = digit_count(list_count(editor, p)), right = true}, {}}, context.temp_allocator)
 	case .Plugins:
 		name_w := 4
 		for pl in editor.plugins.list {
 			name_w = max(name_w, len(pl.display))
 		}
-		return slice.clone([]PaneColumn{{w = name_w}, {w = 7}, {w = 8}, {w = 10, right = true}}, context.temp_allocator)
+		return slice.clone([]PaneColumn{{size = .Fixed, w = name_w}, {size = .Fixed, w = 7}, {size = .Fixed, w = 8}, {size = .Fixed, w = 10, right = true}}, context.temp_allocator)
 	}
 	return nil
 }

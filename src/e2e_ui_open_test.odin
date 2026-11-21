@@ -609,7 +609,7 @@ e2e_ui_open_shape_errors :: proc(t: ^testing.T) {
 	cmd, ok := plugin_test_command(&e.ed, "Shape: Bad")
 	testing.expect(t, ok, "registered")
 	command_run(&e.ed, cmd)
-	want := "must be a string or {text, color};must be a table {label, cmd?};must be a table {label, cmd, on?};must be a label or {label, cmd?};must be a table {width?, right?}"
+	want := "must be a string or {text, color};must be a table {label, cmd?};must be a table {label, cmd, on?};must be a label or {label, cmd?};must be a table {title?, width?, min?, max?, right?}"
 	found := false
 	for l in e.ed.log {
 		found ||= l.source == "Shape" && l.text == want
