@@ -24,7 +24,8 @@ TermPos :: struct {
 }
 
 Terminals :: struct {
-	active: bool,
+	active:  bool,
+	more:    bool,
 	list:    [dynamic]^Terminal,
 	shown:   ^Terminal,
 	zombies: [dynamic]int,
@@ -465,6 +466,7 @@ term_pump :: proc(editor: ^Editor) -> bool {
 		}
 	}
 	redraw := false
+	editor.terminal.more = false
 	for t in editor.terminal.list {
 		if !t.alive {
 			continue
@@ -476,7 +478,11 @@ term_pump :: proc(editor: ^Editor) -> bool {
 			editor_log(editor, .Warn, "Terminal", fmt.tprintf("%s is not reading its input: dropped %d bytes", t.name, t.dropped))
 			t.dropped = 0
 		}
-		if term_drain(t) && editor.terminal.active && editor.terminal.shown == t {
+		got, more := term_drain(t)
+		if more {
+			editor.terminal.more = true
+		}
+		if got && editor.terminal.active && editor.terminal.shown == t {
 			redraw = true
 		}
 		status: c.int
@@ -495,16 +501,21 @@ term_pump :: proc(editor: ^Editor) -> bool {
 	return redraw
 }
 
-term_drain :: proc(t: ^Terminal) -> (got: bool) {
+TERM_DRAIN_MAX :: 256 * 1024
+
+term_drain :: proc(t: ^Terminal) -> (got, more: bool) {
 	buf: [16384]u8
-	for {
+	total := 0
+	for total < TERM_DRAIN_MAX {
 		n := posix.read(posix.FD(t.pty_fd), &buf[0], len(buf))
 		if n <= 0 {
 			return
 		}
 		vterm.input_write(t.vt, &buf[0], c.size_t(n))
+		total += n
 		got = true
 	}
+	return got, true
 }
 
 term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
