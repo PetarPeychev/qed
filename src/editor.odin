@@ -41,6 +41,7 @@ Editor :: struct {
 	pane_saved:      [dynamic]PaneSaved,
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
+	config_written:  DiskStamp,
 	theme_stamp:     DiskStamp,
 	theme_shown:     string,
 	quit:            bool,
@@ -1065,6 +1066,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	now := buffer_disk_stamp(path)
 	tnow := buffer_disk_stamp(theme_path(path, THEME))
 	cfg_changed := now.ok && (now.mtime != editor.config_stamp.mtime || now.size != editor.config_stamp.size)
+	own_write := cfg_changed && now.mtime == editor.config_written.mtime && now.size == editor.config_written.size
 	theme_changed := tnow.ok && (tnow.mtime != editor.theme_stamp.mtime || tnow.size != editor.theme_stamp.size)
 	if !cfg_changed && !theme_changed {
 		return false
@@ -1081,6 +1083,9 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor_retheme(editor)
 	lsp_enabled_sync(editor)
 	plugins_config_apply(editor, theme_changed, !g_config_user_broken)
+	if message == "" && own_write && !theme_changed {
+		return true
+	}
 	if message == "" {
 		message = "config.json reloaded"
 	}

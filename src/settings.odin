@@ -1438,7 +1438,7 @@ config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> b
 	return config_persist_path_to(path, {key}, value)
 }
 
-config_persist_path_to :: proc(path: string, keys: []string, value: json.Value) -> bool {
+config_persist_path_to :: proc(path: string, keys: []string, value: json.Value, remove := false) -> bool {
 	root: json.Object
 	if data, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil && strings.trim_space(string(data)) != "" {
 		v, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
@@ -1448,7 +1448,7 @@ config_persist_path_to :: proc(path: string, keys: []string, value: json.Value) 
 		}
 		root = o
 	}
-	root = json_object_set(root, keys, value)
+	root = json_object_remove(root, keys) if remove else json_object_set(root, keys, value)
 
 	if dir := config_dir(path); dir != "" {
 		os.make_directory_all(dir)
@@ -1472,6 +1472,28 @@ json_object_set :: proc(obj: json.Object, keys: []string, value: json.Value) -> 
 	}
 	sub, _ := obj[keys[0]].(json.Object)
 	obj[keys[0]] = json_object_set(sub, keys[1:], value)
+	return obj
+}
+
+json_object_remove :: proc(obj: json.Object, keys: []string) -> json.Object {
+	obj := obj
+	if obj == nil {
+		return obj
+	}
+	if len(keys) == 1 {
+		delete_key(&obj, keys[0])
+		return obj
+	}
+	sub, ok := obj[keys[0]].(json.Object)
+	if !ok {
+		return obj
+	}
+	sub = json_object_remove(sub, keys[1:])
+	if len(sub) == 0 {
+		delete_key(&obj, keys[0])
+	} else {
+		obj[keys[0]] = sub
+	}
 	return obj
 }
 

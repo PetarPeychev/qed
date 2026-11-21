@@ -2149,10 +2149,15 @@ pluginview_toggle :: proc(editor: ^Editor) {
 	}
 	enable := pl.state == .Disabled
 	path := editor.plugins.persist_path if editor.headless else config_path()
-	if path == "" || !config_persist_path_to(path, {"plugins", pl.name, "enabled"}, json.Boolean(enable)) {
+	default_on := true
+	if v, ok := plugin_cfg_entry(g_config_defaults, pl.name)["enabled"].(json.Boolean); ok {
+		default_on = bool(v)
+	}
+	if path == "" || !config_persist_path_to(path, {"plugins", pl.name, "enabled"}, json.Boolean(enable), remove = enable == default_on) {
 		editor_log(editor, .Error, "", "Cannot update config.json (unwritable or not valid JSON)")
 		return
 	}
+	editor.config_written = buffer_disk_stamp(path)
 	plugin_enabled_set(editor, pl, enable)
 }
 

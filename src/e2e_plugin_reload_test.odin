@@ -147,7 +147,8 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	alpha = plugin_find(&e.ed.plugins, "alpha")
 	testing.expect_value(t, alpha.state, PluginState.Enabled)
 	data, _ = os.read_entire_file(e.ed.plugins.persist_path, context.temp_allocator)
-	testing.expect(t, strings.contains(string(data), `"enabled": true`), "e persists the flip back")
+	testing.expect(t, !strings.contains(string(data), `"enabled"`) && !strings.contains(string(data), `"alpha"`), "re-enabling removes the key instead of writing the default")
+	testing.expect(t, strings.contains(string(data), `"tab_width": 2`), "other keys stay")
 
 	e2e_key(&e, tb2.Key(0), {}, 'r')
 	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "Alpha", "reloaded"), 1)
