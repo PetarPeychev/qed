@@ -498,7 +498,9 @@ qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 1, "options table expected")
 	}
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Dirs, path = strings.clone(path), dotfiles = dotfiles})
+	src := api_list_push(L, editor, .Dirs)
+	src.path = strings.clone(path)
+	src.dotfiles = dotfiles
 	return 1
 }
 
@@ -520,10 +522,10 @@ qed_fs_walk :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 1, "options table expected")
 	}
 	lua.settop(L, 0)
-	w := walk_acquire(editor, root, dotfiles, ignored)
+	src := api_list_push(L, editor, .Walk)
+	src.walk = walk_acquire(editor, root, dotfiles, ignored)
 	// a new handle sees the disk as of now
-	walk_refresh(editor, w)
-	api_list_push(L, editor, {kind = .Walk, walk = w})
+	walk_refresh(editor, src.walk)
 	return 1
 }
 
@@ -602,9 +604,11 @@ qed_walk_within :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	paths := api_paths(L, editor, 2)
 	w := src.walk
-	w.refs += 1
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Walk, walk = w, wscope = walk_scope_new(w.root, nil, paths, nil)})
+	dst := api_list_push(L, editor, .Walk)
+	w.refs += 1
+	dst.walk = w
+	dst.wscope = walk_scope_new(w.root, nil, paths, nil)
 	return 1
 }
 
@@ -614,12 +618,13 @@ qed_walk_union :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	src := api_walk_handle(L, editor)
 	paths := api_paths(L, editor, 2)
-	w := src.walk
-	w.refs += 1
-	scope := walk_scope_new(w.root, src.wscope, nil, paths)
-	scope.all = src.wscope == nil || src.wscope.all
+	w, parent := src.walk, src.wscope
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Walk, walk = w, wscope = scope})
+	dst := api_list_push(L, editor, .Walk)
+	w.refs += 1
+	dst.walk = w
+	dst.wscope = walk_scope_new(w.root, parent, nil, paths)
+	dst.wscope.all = parent == nil || parent.all
 	return 1
 }
 
@@ -630,12 +635,12 @@ qed_buf_line_list :: proc "c" (L: ^lua.State) -> c.int {
 	b, _ := api_buf(L, editor, 1)
 	id := b.id
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Lines, buf = id})
+	api_list_push(L, editor, .Lines).buf = id
 	return 1
 }
 
-// takes ownership of src
-api_list_push :: proc(L: ^lua.State, editor: ^Editor, src: ListSource) {
+// The record goes in after the last call that can raise, so the caller acquires what src owns only then.
+api_list_push :: proc(L: ^lua.State, editor: ^Editor, kind: ListSourceKind) -> ^ListSource {
 	p := &editor.plugins
 	pl := api_loaded(L, editor)
 	id := plugin_next_id(p)
@@ -653,14 +658,15 @@ api_list_push :: proc(L: ^lua.State, editor: ^Editor, src: ListSource) {
 		lua.setfield(L, lua.REGISTRYINDEX, QED_LIST_META)
 	}
 	lua.setmetatable(L, -2)
-	if src.kind == .Walk {
+	if kind == .Walk {
 		for m in qed_walk_methods {
 			lua.pushvalue(L, lua.upvalueindex(1))
 			lua.pushcclosure(L, m.func, 1)
 			lua.setfield(L, -2, m.name)
 		}
 	}
-	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = src})
+	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = {kind = kind}})
+	return &p.lists[len(p.lists) - 1].src
 }
 
 qed_list_release :: proc "c" (L: ^lua.State) -> c.int {
