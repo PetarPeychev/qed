@@ -813,7 +813,7 @@ child still unreaped is parked in `Terminals.zombies` for `term_pump`. Writes to
 PTY never spin: what the program does not read waits in `Terminal.pending` (flushed
 by `term_pump`, capped at 1 MiB, overflow dropped with a warning).
 `term_pump` (main loop, next to `lsp_pump`) drains every live session's PTY
-(non-blocking `read` → `vterm_input_write`, at most `TERM_DRAIN_MAX` (256 KiB) per session per pump; a session left with more sets `Terminals.more`, which drops the next peek timeout to 0 so a flood keeps draining between input events) whether shown or not, then reaps with
+(non-blocking `read` → `vterm_input_write`, at most `TERM_DRAIN_MAX` (256 KiB) or `TERM_DRAIN_MS` (8 ms) per session per pump, since libvterm moves the whole grid per scrolled line; a session left with more sets `Terminals.more`, which drops the next peek timeout to 0 so a flood keeps draining between input events) whether shown or not, then reaps with
 `waitpid(WNOHANG)`; a reaped child marks the session exited (code, 128 + signal when
 killed) and queues `term_exit` (`term_open`/`term_close` on spawn and close). The loop's fast-poll gate carries `term_alive` (any
 live session) so a hidden session never blocks on a full PTY. Only the shown

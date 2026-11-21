@@ -98,7 +98,7 @@ e2e_term_flood_bounded :: proc(t: ^testing.T) {
 	for _ in 0 ..< 20 {
 		start := time.tick_now()
 		term_pump(&e.ed)
-		testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 1000, "a pump returns while the session floods")
+		testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 200, "a pump returns while the session floods")
 		if e.ed.terminal.more {
 			more += 1
 		}

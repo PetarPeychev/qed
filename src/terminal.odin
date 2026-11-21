@@ -502,11 +502,14 @@ term_pump :: proc(editor: ^Editor) -> bool {
 }
 
 TERM_DRAIN_MAX :: 256 * 1024
+TERM_DRAIN_MS :: 8
 
+// libvterm moves the whole grid per scrolled line, so a line flood costs far more per byte than plain text
 term_drain :: proc(t: ^Terminal) -> (got, more: bool) {
-	buf: [16384]u8
+	buf: [4096]u8
 	total := 0
-	for total < TERM_DRAIN_MAX {
+	start := time.tick_now()
+	for total < TERM_DRAIN_MAX && time.duration_milliseconds(time.tick_since(start)) < TERM_DRAIN_MS {
 		n := posix.read(posix.FD(t.pty_fd), &buf[0], len(buf))
 		if n <= 0 {
 			return
