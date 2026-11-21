@@ -52,6 +52,10 @@ still misalign because certain terminals contradict `tb_wcwidth`; unavoidable.
 Full redraw per event; termbox flushes only changed cells. Each loop iteration:
 poll → dispatch → redraw (text, status bar, overlays) → set hardware cursor →
 `present()` → `free_all(context.temp_allocator)`.
+While termbox is up, fd 2 points at `$XDG_STATE_HOME/qed/crash.log` (so Odin panic, assert and bounds messages,
+and stray child stderr, don't vanish with the alt screen), and `crash_restore` (SIGSEGV/BUS/FPE/ILL/TRAP/ABRT,
+async-signal-safe) restores the saved termios and modes, writes one line naming that file to the original fd 2,
+then re-raises; shutdown and the Lua panic handler put fd 2 back first.
 
 **Soft wrap** (`wrap.odin`, per-buffer `Buffer.wrap`, config `line_wrap`, default
 on; *Toggle Line Wrap* flips the current buffer): a logical line spills over

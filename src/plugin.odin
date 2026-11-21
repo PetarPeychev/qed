@@ -207,6 +207,7 @@ plugin_panic :: proc "c" (L: ^lua.State) -> c.int {
 	context = runtime.default_context()
 	msg, _ := lua.toodinstring(L, -1)
 	tb2.shutdown()
+	crash_stderr_restore()
 	fmt.eprintfln("qed: unrecoverable Lua error: %s", msg)
 	os.exit(1)
 }

@@ -184,6 +184,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 		clipboard_shutdown()
 		log_tz_shutdown()
 		tb2.shutdown()
+		crash_stderr_restore()
 	}
 }
 
@@ -191,6 +192,12 @@ editor_shutdown :: proc(editor: ^Editor) {
 g_crash_termios: posix.termios
 @(private = "file")
 g_crash_fd: posix.FD = -1
+@(private = "file")
+g_crash_stderr: posix.FD = -1
+@(private = "file")
+g_crash_note: [1024]u8
+@(private = "file")
+g_crash_note_len: int
 
 crash_restore_install :: proc() {
 	fd := posix.open("/dev/tty", {.RDWR, .CLOEXEC})
@@ -198,9 +205,29 @@ crash_restore_install :: proc() {
 		return
 	}
 	g_crash_fd = fd
+	// Odin writes panic and bounds messages to stderr, which would land on the alt screen and vanish
+	if dir := log_state_dir(); dir != "" {
+		os.make_directory_all(dir)
+		path := fmt.tprintf("%s/crash.log", dir)
+		log_fd := posix.open(strings.clone_to_cstring(path, context.temp_allocator), {.WRONLY, .CREAT, .TRUNC, .CLOEXEC}, posix.mode_t{.IRUSR, .IWUSR, .IRGRP, .IROTH})
+		if log_fd >= 0 {
+			g_crash_stderr = posix.dup(2)
+			posix.dup2(log_fd, 2)
+			posix.close(log_fd)
+			g_crash_note_len = copy(g_crash_note[:], fmt.tprintf("qed crashed; details in %s\n", path))
+		}
+	}
 	act := posix.sigaction_t{sa_handler = crash_restore, sa_flags = {.RESETHAND}}
 	for sig in ([]posix.Signal{.SIGSEGV, .SIGBUS, .SIGFPE, .SIGILL, .SIGTRAP, .SIGABRT}) {
 		posix.sigaction(sig, &act, nil)
+	}
+}
+
+crash_stderr_restore :: proc "contextless" () {
+	if g_crash_stderr >= 0 {
+		posix.dup2(g_crash_stderr, 2)
+		posix.close(g_crash_stderr)
+		g_crash_stderr = -1
 	}
 }
 
@@ -209,6 +236,9 @@ crash_restore :: proc "c" (sig: posix.Signal) {
 	reset := "\x1b[?1006l\x1b[?1015l\x1b[?1002l\x1b[?1000l\x1b[?2004l\x1b[0m\x1b[?25h\x1b[?1l\x1b>\x1b[?1049l"
 	posix.write(g_crash_fd, raw_data(reset), len(reset))
 	posix.tcsetattr(g_crash_fd, .TCSAFLUSH, &g_crash_termios)
+	if g_crash_stderr >= 0 && g_crash_note_len > 0 {
+		posix.write(g_crash_stderr, &g_crash_note[0], uint(g_crash_note_len))
+	}
 	posix.raise(sig)
 }
 
