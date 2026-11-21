@@ -40,12 +40,14 @@ backspace/delete step whole **extended grapheme clusters** (UAX #29, via
 `core:unicode/utf8`); every screen↔buffer column mapping goes through display
 width.
 
-**External-quirk invariant:** `cluster_width` (`cursor.odin`) is a direct port of
-termbox2's `tb_cluster_width`. termbox recomputes each cell's width in `present()`,
-so qed *must* advance columns by the identical value or the terminal cursor drifts
-and corrupts the row. Multi-rune clusters render via `tb_set_cell` +
-`tb_extend_cell` (EGC mode, enabled in `build.sh`). Some ZWJ-flag/keycap emoji
-still misalign because certain terminals contradict `tb_wcwidth`; unavoidable.
+**External-quirk invariant:** `cluster_width` (`cursor.odin`) calls termbox2's
+`tb_cluster_width` (made public by a local patch), the value `present()` advances
+by, so qed's columns and termbox's cells agree by construction. A non-emoji
+cluster is the sum of its codepoint widths, as tmux draws Devanagari vowel signs
+and conjuncts; emoji sequences are 2. Multi-rune clusters render via
+`tb_set_cell` + `tb_extend_cell` (EGC mode, enabled in `build.sh`). Where a
+terminal still disagrees (tmux draws a ZWJ family 4 wide) the glyph may clip, but
+the patched `present()` never leaves stale cells (`lib/tb2/PATCHES.md`).
 
 ## Rendering
 

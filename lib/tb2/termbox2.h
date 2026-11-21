@@ -747,6 +747,9 @@ int tb_attr_width(void);
 const char *tb_version(void);
 int tb_iswprint(uint32_t ch);
 int tb_wcwidth(uint32_t ch);
+/* qed patch: public so qed measures clusters with the exact function
+ * tb_present uses (see lib/tb2/PATCHES.md) */
+int tb_cluster_width(uint32_t *ch, size_t nch);
 
 /* Deprecation notice!
  *
@@ -2343,7 +2346,9 @@ static int bytebuf_flush(struct bytebuf *b, int fd);
 static int bytebuf_reserve(struct bytebuf *b, size_t sz);
 static int bytebuf_free(struct bytebuf *b);
 static int tb_iswprint_ex(uint32_t ch, int *width);
-static int tb_cluster_width(uint32_t *ch, size_t nch);
+/* qed patch: see lib/tb2/PATCHES.md */
+static int cell_width(struct tb_cell *c, int *dumb);
+static int send_codepoints(uint32_t *ch, size_t nch);
 
 int tb_init(void) {
     return tb_init_file("/dev/tty");
@@ -2427,6 +2432,8 @@ int tb_present(void) {
     global.last_x = -1;
     global.last_y = -1;
 
+    /* qed patch: a terminal whose width table disagrees with ours must not be
+     * able to leave stale glyphs (see lib/tb2/PATCHES.md) */
     int x, y, i;
     for (y = 0; y < global.front.height; y++) {
         for (x = 0; x < global.front.width;) {
@@ -2434,28 +2441,44 @@ int tb_present(void) {
             if_err_return(rv, cellbuf_get(&global.back, x, y, &back));
             if_err_return(rv, cellbuf_get(&global.front, x, y, &front));
 
-            int w;
-            {
-#ifdef TB_OPT_EGC
-                if (back->nech > 0)
-                    w = tb_cluster_width(back->ech, back->nech);
-                else
-#endif
-                    w = tb_wcwidth((wchar_t)back->ch);
-            }
-            if (w < 1) w = 1; // wcwidth returns -1 for invalid codepoints
+            int dumb;
+            int raw = cell_width(back, &dumb);
+            int w = raw < 1 ? 1 : raw;
 
             if (cell_cmp(back, front) != 0) {
+                int odumb;
+                int oraw = cell_width(front, &odumb);
+                int ow = oraw < 1 ? 1 : oraw;
+                int risky = raw != 1 || dumb != 1;
+                int orisky = oraw != 1 || odumb != 1;
+
                 cell_copy(front, back);
 
                 send_attr(back->fg, back->bg);
-                if (w > 1 && x >= global.front.width - (w - 1)) {
-                    // Not enough room for wide char, send spaces
+                if (x + (dumb > w ? dumb : w) > global.front.width) {
+                    // Not enough room for wide char, send spaces (qed patch:
+                    // also when a summing terminal would wrap the cluster)
                     for (i = x; i < global.front.width; i++) {
                         send_char(i, y, ' ');
                     }
                 } else {
-                    {
+                    // a terminal drawing the cluster narrower leaves these untouched
+                    for (i = 1; i < w; i++) {
+                        send_char(x + i, y, ' ');
+                    }
+                    if (raw == 0) {
+                        // zero width rides on a space, filling the cell we counted
+                        send_char(x, y, ' ');
+                        // libvterm wraps a zero-width char that follows the last column
+                        if (x < global.front.width - 1) {
+#ifdef TB_OPT_EGC
+                            if (back->nech > 0)
+                                send_codepoints(back->ech, back->nech);
+                            else
+#endif
+                                send_codepoints(&back->ch, 1);
+                        }
+                    } else {
 #ifdef TB_OPT_EGC
                         if (back->nech > 0)
                             send_cluster(x, y, back->ech, back->nech);
@@ -2478,6 +2501,25 @@ int tb_present(void) {
                         if_err_return(rv,
                             cell_set(front_wide, &invalid, 1, -1, -1));
                     }
+                }
+
+                if (risky || orisky) {
+                    // the terminal may have drawn the old or new cluster wider
+                    // than we did: resend what it could cover, explicitly placed
+                    int end = w;
+                    if (risky) end = (dumb > w ? dumb : w) + 1;
+                    if (orisky) {
+                        int oend = (odumb > ow ? odumb : ow) + 1;
+                        if (oend > end) end = oend;
+                    }
+                    for (i = w; i < end && x + i < global.front.width; i++) {
+                        struct tb_cell *next;
+                        uint32_t invalid = -1;
+                        if_err_return(rv,
+                            cellbuf_get(&global.front, x + i, y, &next));
+                        if_err_return(rv, cell_set(next, &invalid, 1, -1, -1));
+                    }
+                    global.last_x = -1;
                 }
             }
             x += w;
@@ -4049,7 +4091,6 @@ static int send_char(int x, int y, uint32_t ch) {
 
 static int send_cluster(int x, int y, uint32_t *ch, size_t nch) {
     int rv;
-    char chu8[8];
 
     if (global.last_x != x - 1 || global.last_y != y) {
         if_err_return(rv, send_cursor_if(x, y));
@@ -4057,6 +4098,12 @@ static int send_cluster(int x, int y, uint32_t *ch, size_t nch) {
     global.last_x = x;
     global.last_y = y;
 
+    return send_codepoints(ch, nch);
+}
+
+static int send_codepoints(uint32_t *ch, size_t nch) {
+    int rv;
+    char chu8[8];
     int i;
     for (i = 0; i < (int)nch; i++) {
         uint32_t ch32 = *(ch + i);
@@ -4316,26 +4363,52 @@ int tb_wcwidth(uint32_t ch) {
     return w;
 }
 
-static int tb_cluster_width(uint32_t *ch, size_t nch) {
-    int wmax = -1;
-    int vs15 = 0, vs16 = 0, ri = 0, zwj = 0;
+/* qed patch: a non-emoji cluster spans the sum of its codepoint widths, as a
+ * terminal without grapheme clustering (tmux) draws it, so Indic vowel signs
+ * and conjuncts keep their columns (see lib/tb2/PATCHES.md) */
+int tb_cluster_width(uint32_t *ch, size_t nch) {
+    int wmax = 0, sum = 0;
+    int vs15 = 0, vs16 = 0, ri = 0;
     size_t i = 0;
     for (i = 0; i < nch; i++) {
         uint32_t c = ch[i];
         switch (c) {
             case 0xfe0e: ++vs15; break;
             case 0xfe0f: ++vs16; break;
-            case 0x200d: ++zwj; break;
             default: if (c >= 0x1f1e6 && c <= 0x1f1ff) ++ri;
         }
-        int w = tb_wcwidth(c);
+        int w;
+        // non-printables go out as U+FFFD
+        if (!tb_iswprint_ex(c, &w) || w < 0) w = 1;
         if (w > wmax) wmax = w;
+        sum += w;
     }
-    if (wmax >= 1) {
+    if (sum >= 1) {
         if (vs15) return 1;
-        else if (vs16 || zwj || ri >= 2) return 2;
+        else if (vs16 || ri >= 2 || wmax >= 2) return 2;
     }
-    return wmax;
+    return sum;
+}
+
+/* qed patch: our width, plus in `dumb` what a terminal summing codepoint
+ * widths would draw */
+static int cell_width(struct tb_cell *c, int *dumb) {
+    int w;
+#ifdef TB_OPT_EGC
+    if (c->nech > 0) {
+        int sum = 0;
+        size_t i;
+        for (i = 0; i < c->nech; i++) {
+            if (!tb_iswprint_ex(c->ech[i], &w) || w < 0) w = 1;
+            sum += w;
+        }
+        *dumb = sum;
+        return tb_cluster_width(c->ech, c->nech);
+    }
+#endif
+    if (!tb_iswprint_ex(c->ch, &w) || w < 0) w = 1;
+    *dumb = w;
+    return w;
 }
 
 static int tb_iswprint_ex(uint32_t ch, int *w) {

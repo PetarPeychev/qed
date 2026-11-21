@@ -70,38 +70,20 @@ cluster_end :: proc(text: []u8, i: int) -> int {
 	return i + g.byte_index if ok else len(text)
 }
 
+// termbox's own measure: present() advances by it, so any other value drifts the row
 cluster_width :: proc(cluster: []u8) -> int {
-	wmax := -1
-	vs15, vs16, ri, zwj := 0, 0, 0, 0
-	rest := cluster
-	for len(rest) > 0 {
-		r, n := utf8.decode_rune(rest)
-		rest = rest[n:]
-		switch r {
-		case 0xfe0e:
-			vs15 += 1
-		case 0xfe0f:
-			vs16 += 1
-		case 0x200d:
-			zwj += 1
-		case:
-			if r >= 0x1f1e6 && r <= 0x1f1ff {
-				ri += 1
-			}
-		}
-		w := int(tb2.wcwidth(r))
-		if w > wmax {
-			wmax = w
-		}
+	buf: [32]rune
+	runes := buf[:]
+	n := utf8.rune_count(cluster)
+	if n > len(buf) {
+		runes = make([]rune, n, context.temp_allocator)
 	}
-	if wmax >= 1 {
-		if vs15 > 0 {
-			return 1
-		} else if vs16 > 0 || zwj > 0 || ri >= 2 {
-			return 2
-		}
+	i := 0
+	for r in string(cluster) {
+		runes[i] = r
+		i += 1
 	}
-	return max(wmax, 1)
+	return max(int(tb2.cluster_width(raw_data(runes), uint(i))), 1)
 }
 
 seg_width :: proc(text: []u8, start, end, v: int) -> int {

@@ -105,6 +105,38 @@ test_cluster_end_after_control :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_visual_width_matches_tmux :: proc(t: ^testing.T) {
+	// cursor advance tmux 3.4 shows for each; it draws clusters codepoint by codepoint
+	Case :: struct {
+		text: string,
+		want: int,
+	}
+	cases := []Case {
+		{"नेपाली भाषामा अनुवाद गरिएको सन्देश", 30},
+		{"क्षेत्र", 4},
+		{"श्रीमान्", 6},
+		{"ज्ञान", 4},
+		{"क़", 1},
+		{"क्\u200cष", 2},
+		{"กำ", 2},
+		{"a\u200db", 2},
+		{"😀", 2},
+		{"👍🏽", 2},
+		{"🇧🇬", 2},
+		{"🏳️\u200d🌈", 2},
+		{"1️⃣", 2},
+		{"❤️", 2},
+		{"❤", 1},
+		{"e\u0301", 1},
+		{"漢", 2},
+	}
+	for c in cases {
+		got := visual_width(transmute([]u8)c.text)
+		testing.expectf(t, got == c.want, "%q: width %d, want %d", c.text, got, c.want)
+	}
+}
+
+@(test)
 test_cluster_fast_path_matches_grapheme_iterator :: proc(t: ^testing.T) {
 	samples := make([dynamic]string, context.temp_allocator)
 	append(&samples, ..CLUSTER_SAMPLES)

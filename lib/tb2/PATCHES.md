@@ -60,3 +60,40 @@ them to the input buffer, so the sequence completes and termbox's own parser
 handles it as a real mouse/CSI/SS3 event. If nothing is queued (a genuine Esc
 press), the buffer stays a lone `ESC` and the Esc key is emitted as before, with
 no added latency.
+
+## Cluster width and stale-cell-proof present
+
+termbox only re-sends cells whose content changed. When the terminal draws a
+cluster at a different width than termbox's model, the following text lands in
+the wrong columns and, once the content changes (buffer switch, overlay close),
+cells termbox believes unchanged keep stale glyphs. Upstream measured a cluster
+as the widest of its codepoints, so a Devanagari vowel sign or conjunct
+(`ना`, `क्षे`) counted 1 while tmux, which does not cluster, draws one column per
+spacing codepoint.
+
+1. **`tb_cluster_width` is public and sums.** A non-emoji cluster spans the sum
+   of its codepoint widths (non-printables count 1, since they go out as
+   U+FFFD); VS15 makes it 1; VS16, a regional-indicator pair, or any wide
+   codepoint (emoji + modifier/ZWJ) makes it 2. qed's `cluster_width` calls
+   this exact function, so qed's columns and termbox's cells agree by
+   construction.
+
+2. **`tb_present` tolerates a terminal that still disagrees** (e.g. tmux draws a
+   ZWJ family 4 wide). For each changed cell, with `cell_width` giving the model
+   width and the width a codepoint-summing terminal would draw:
+   - the cells a wide cluster covers are first written as spaces, so a
+     terminal drawing it narrower leaves no old glyph there;
+   - a zero-width cluster (lone ZWSP, BOM, combining mark) is sent after a
+     space so it fills the one cell counted for it (just the space in the last
+     column: libvterm wraps a zero-width char in the pending-wrap state);
+   - a cluster a summing terminal would push past the right edge is sent as
+     spaces, like upstream does for a wide char without room;
+   - when the old or new content has a model or summed width other than 1,
+     the cells the terminal could have covered (up to the larger of both widths,
+     plus one) are invalidated in the front buffer so they are resent in the
+     same pass, and the next send repositions the cursor explicitly.
+
+   The extra output is limited to changed cells holding non-trivial clusters.
+
+Autowrap (DECAWM) is deliberately left on: tmux 3.4 drops a combining mark that
+follows a VS16 wide char (`1️⃣`) when autowrap is off.

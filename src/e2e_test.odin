@@ -32,6 +32,9 @@ e2e_seq: int
 e2e_slave: int
 e2e_peek_events: [8]tb2.Event
 e2e_peek_pos, e2e_peek_len: int
+e2e_tap_lock: sync.Mutex
+e2e_tap: [dynamic]u8
+e2e_tapping: bool
 
 E2E :: struct {
 	ed:      Editor,
@@ -75,10 +78,21 @@ e2e_backend_init :: proc() {
 	// it can't wedge on a read after the process winds down.
 	flags := posix.fcntl(posix.FD(master), .GETFL)
 	posix.fcntl(posix.FD(master), .SETFL, flags | transmute(i32)posix.O_Flags{.NONBLOCK})
+	e2e_tap = make([dynamic]u8, os.heap_allocator())
 	thread.create_and_start_with_poly_data(master, proc(fd: int) {
 		buf: [4096]u8
 		for {
-			for posix.read(posix.FD(fd), &buf[0], len(buf)) > 0 {}
+			for {
+				n := posix.read(posix.FD(fd), &buf[0], len(buf))
+				if n <= 0 {
+					break
+				}
+				sync.mutex_lock(&e2e_tap_lock)
+				if e2e_tapping {
+					append(&e2e_tap, ..buf[:n])
+				}
+				sync.mutex_unlock(&e2e_tap_lock)
+			}
 			thread.yield()
 		}
 	})
