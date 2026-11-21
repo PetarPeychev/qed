@@ -513,3 +513,16 @@ e2e_alt_esc_retag :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.cursor.row, 1)
 	testing.expect_value(t, b.cursor.col, len(b.lines[1].text))
 }
+
+@(test)
+e2e_hover_max_width :: proc(t: ^testing.T) {
+	e := e2e_start("x\n")
+	defer e2e_stop(&e)
+	e2e_resize(&e, 200, E2E_H)
+	clear(&e.ed.hover)
+	append(&e.ed.hover, ..transmute([]u8)strings.repeat("word ", 100, context.temp_allocator))
+	defer clear(&e.ed.hover)
+	editor_render_hover_pane(&e.ed, 0, 0)
+	w := e.ed.hover_rect.w
+	testing.expectf(t, w <= HOVER_MAX_WIDTH && w > HOVER_MAX_WIDTH - 8, "hover width %d, max %d", w, HOVER_MAX_WIDTH)
+}

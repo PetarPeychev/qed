@@ -41,6 +41,7 @@ PALETTE_MAX_ROWS: int
 PREVIEW_DIFF_CONTEXT: int
 ALT_ESC_TIMEOUT_MS: int
 COMPLETION_MAX_ROWS: int
+HOVER_MAX_WIDTH: int
 COMPLETION_MIN_CHARS: int
 JUMP_THRESHOLD: int
 BIG_FILE_BYTES: int
@@ -136,6 +137,7 @@ Config_Section :: struct {
 config_lsp_ints := [?]Config_Int {
 	{"completion_max_rows", &COMPLETION_MAX_ROWS},
 	{"completion_min_chars", &COMPLETION_MIN_CHARS},
+	{"hover_max_width", &HOVER_MAX_WIDTH},
 }
 
 config_lsp_bools := [?]Config_Bool {

@@ -31,7 +31,8 @@
   "lsp": {
     "enabled": true,
     "completion_max_rows": 8,
-    "completion_min_chars": 1
+    "completion_min_chars": 1,
+    "hover_max_width": 120
   },
   "plugins": {
     "ai": {

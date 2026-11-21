@@ -1372,7 +1372,7 @@ editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
 
 editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 	editor.hover_rect = {}
-	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 3
+	text_w := min(int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X, HOVER_MAX_WIDTH) - 3
 	if text_w < 8 {
 		return
 	}
