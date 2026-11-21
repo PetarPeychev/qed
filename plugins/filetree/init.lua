@@ -671,7 +671,7 @@ local function close_buffers(ctx)
 	end
 	if #approved > 0 then
 		local question = ("Close %d buffer%s? (%d unsaved)"):format(#paths, #paths == 1 and "" or "s", #approved)
-		if qed.confirm(question, {"Cancel", "Close all"}) ~= 2 then
+		if qed.confirm(question, {"Cancel", "Close All"}) ~= 2 then
 			return
 		end
 	end

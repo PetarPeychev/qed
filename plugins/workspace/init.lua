@@ -1,4 +1,4 @@
-local ACTIONS = {"Cancel", "Close all"}
+local ACTIONS = {"Cancel", "Close All"}
 
 local function picker(text)
 	local tree = qed.plugin("filetree")

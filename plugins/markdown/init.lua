@@ -34,7 +34,7 @@ local function preview(b, anchor)
 		backdrop = cfg.backdrop,
 		title = path ~= "" and qed.path.base(path) or "untitled",
 		markdown = qed.buf.text(b),
-		footer = {hints = {{label = "↑↓ PgUp PgDn Home End scroll  click a link to open it"}, {label = "close", cmd = "Markdown: Preview"}}},
+		footer = {hints = {{label = "↑↓ PgUp PgDn scroll  click a link to open it"}, {label = "back", cmd = "Markdown: Back"}, {label = "forward", cmd = "Markdown: Forward"}, {label = "close", cmd = "Markdown: Preview"}}},
 		on = {
 			close = function(cv)
 				if view == cv then

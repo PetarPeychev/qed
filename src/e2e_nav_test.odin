@@ -529,10 +529,10 @@ e2e_nav_open_tab_close_unsaved_confirms :: proc(t: ^testing.T) {
 	testing.expect_value(t, ft_mode(&e.ed), FtMode.Nav)
 	testing.expect_value(t, len(e.ed.buffers), 2)
 
-	// Reopen, confirm "Close all" discards the unsaved buffer.
+	// Reopen, confirm "Close All" discards the unsaved buffer.
 	e2e_key(&e, .Ctrl_W)
 	testing.expect_value(t, ft_mode(&e.ed), FtMode.ConfirmClose)
-	e2e_key(&e, .Arrow_Down) // move to "Close all"
+	e2e_key(&e, .Arrow_Down) // move to "Close All"
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, len(e.ed.buffers), 1)
 	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "main.txt"), "main.txt remains")
@@ -1400,8 +1400,7 @@ e2e_nav_quit_guard :: proc(t: ^testing.T) {
 	testing.expect(t, !e.ed.quit, "editor does not quit yet")
 
 	// Choose the non-destructive Cancel action.
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Arrow_Up)
 	e2e_key(&e, .Enter)
 	testing.expect(t, pane_find(&e.ed, "quit") == nil, "Cancel closes the dialog")
 	testing.expect(t, !e.ed.quit, "editor stays open")

@@ -5,8 +5,8 @@ import "core:path/filepath"
 import "core:strings"
 import "lib:tb2"
 
-quit_actions := [?]string{"Save All", "Discard All", "Cancel"}
-close_actions := [?]string{"Save", "Discard", "Cancel"}
+quit_actions := [?]string{"Cancel", "Save All", "Discard All"}
+close_actions := [?]string{"Cancel", "Save", "Discard"}
 conflict_actions := [?]string{"Cancel", "Overwrite (keep my version)", "Reload (discard my changes)"}
 
 quit_dialog_open :: proc(editor: ^Editor) {
@@ -15,12 +15,12 @@ quit_dialog_open :: proc(editor: ^Editor) {
 	}
 	editor_clear_message(editor)
 	text := []PaneLine{{text = quit_dialog_question(editor)}}
-	pane_open(editor, {id = "quit", safety = true, text = text, list = {items = pane_labels(quit_actions[:])}, on = {activate = quit_dialog_execute}})
+	pane_open(editor, {id = "quit", safety = true, text = text, list = {items = pane_labels(quit_actions[:]), sel = 1}, on = {activate = quit_dialog_execute}})
 }
 
 quit_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 	switch p.list.sel {
-	case 0:
+	case 1:
 		conflict := false
 		ids := make([dynamic]u64, context.temp_allocator)
 		for &b in editor.buffers {
@@ -47,7 +47,7 @@ quit_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 		} else {
 			editor.quit = true
 		}
-	case 1:
+	case 2:
 		editor.quit = true
 	}
 }
@@ -81,7 +81,7 @@ close_dialog_open :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	name := filepath.base(b.path) if b.path != "" else "[No Name]"
 	text := []PaneLine{{text = fmt.tprintf("Save changes to %s?", name)}}
-	pane_open(editor, {id = "close", safety = true, ctx = {buf = b.id}, text = text, list = {items = pane_labels(close_actions[:])}, on = {activate = close_dialog_execute}})
+	pane_open(editor, {id = "close", safety = true, ctx = {buf = b.id}, text = text, list = {items = pane_labels(close_actions[:]), sel = 1}, on = {activate = close_dialog_execute}})
 }
 
 close_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
@@ -90,14 +90,14 @@ close_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 		return
 	}
 	switch p.list.sel {
-	case 0:
+	case 1:
 		if buffer_disk_changed(b) {
 			conflict_dialog_open(editor, b)
 			return
 		}
 		editor_save_intent_set(editor, .Close, b.path)
 		editor_save_full(editor, b)
-	case 1:
+	case 2:
 		editor_close_index(editor, idx)
 	}
 }

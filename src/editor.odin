@@ -1287,7 +1287,7 @@ editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
 
 editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 	editor.hover_rect = {}
-	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 2
+	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 3
 	if text_w < 8 {
 		return
 	}
@@ -1309,7 +1309,7 @@ editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 		content_w = max(content_w, md_line_width(lines[i]))
 	}
 	content_w = clamp(content_w, 1, text_w)
-	pane_w := content_w + 2
+	pane_w := content_w + 3
 	pane_h := view_h + 2
 	y := room_below >= pane_h ? cy + 1 : cy - pane_h
 	x := clamp(cx, 0, max(0, sw - pane_w))

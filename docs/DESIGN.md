@@ -351,6 +351,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - Kinds: Exclusive (default; opening one closes the open non-safety exclusive pane, or returns
   nil while a `modal` pane is live), Child (`parent` handle), Passive. Safety dialogs
   (`safety`: quit, close, conflict; one each) stay on top: other root panes are inserted below them.
+  Every dialog lists Cancel first; quit and close start on Save (All), the rest on Cancel.
 - Invariant: a pane's descendants follow it contiguously (a child goes right after its parent's
   subtree). `pane_end(handle, activate)` takes that run off the stack, then runs the children's
   `on.close` and the pane's `on.activate` or `on.close`, so a handler that opens another pane
@@ -1048,7 +1049,7 @@ budget, parses and drops each command's output before the next, caps the list at
 warning, and a new request kills the running scan's spawn and reruns once.
 
 Language intelligence: config-driven language detection (glob rules + built-in
-dotfiles, per-buffer, `Set Language` override); tree-sitter highlight with full
+dotfiles, per-buffer, *Settings: Language* override); tree-sitter highlight with full
 predicate evaluation (Odin, JSON,
 Python, C, C++, Go, Rust, JS/JSX, TS/TSX, HTML w/ script/style injection, CSS,
 Shell, Lua, SQL, TOML, YAML, Dockerfile, Markdown w/ inline + fenced-code
