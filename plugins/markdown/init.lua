@@ -1,8 +1,6 @@
 local cfg
 local view, watch, current
--- the preview's top row right after the last cursor sync; closing syncs back only once it moved
 local synced
--- {path, buf, scroll} per visited place; anchor jumps and file links push, Back/Forward step
 local history, at = {}, 0
 local follow
 
@@ -10,31 +8,6 @@ local function stop(v)
 	if view == v then
 		watch:off()
 		view, watch, current, synced = nil, nil, nil, nil
-	end
-end
-
--- must match md_slug in core so file#anchor links land on the heading the preview shows
-local function slug(text, seen)
-	local s = text:gsub("%[([^%]]*)%]%b()", "%1"):gsub("[*`~]", ""):lower()
-	s = s:gsub("[^%w%s%-_\128-\255]", ""):gsub("%s", "-")
-	local n = seen[s] or 0
-	seen[s] = n + 1
-	return n == 0 and s or ("%s-%d"):format(s, n)
-end
-
-local function heading_row(text, anchor)
-	local seen, fence, row = {}, nil, 0
-	for line in (text .. "\n"):gmatch("(.-)\r?\n") do
-		row = row + 1
-		local f = line:match("^%s*(```)") or line:match("^%s*(~~~)")
-		if f then
-			fence = fence == nil and f or (fence == f and nil or fence)
-		elseif not fence then
-			local h = line:match("^ ? ? ?#+%s+(.-)%s*#*%s*$")
-			if h and slug(h, seen) == anchor then
-				return row
-			end
-		end
 	end
 end
 
@@ -61,7 +34,7 @@ local function preview(b, anchor)
 		backdrop = cfg.backdrop,
 		title = path ~= "" and qed.path.base(path) or "untitled",
 		markdown = qed.buf.text(b),
-		footer = {hints = {{label = "↑↓ PgUp PgDn Home End scroll  click a link to open it"}, {label = "close", cmd = "Markdown: Preview"}}},
+		footer = {hints = {{label = "↑↓ PgUp PgDn scroll  click a link to open it"}, {label = "back", cmd = "Markdown: Back"}, {label = "forward", cmd = "Markdown: Forward"}, {label = "close", cmd = "Markdown: Preview"}}},
 		on = {
 			close = function(cv)
 				if view == cv then
@@ -80,11 +53,13 @@ local function preview(b, anchor)
 	end
 	v:source_scroll(qed.buf.cursor(b).row, qed.buf.screen_row(b))
 	if anchor and anchor ~= "" then
-		v:anchor(anchor)
+		local found, src = v:anchor(anchor)
+		if found then
+			qed.buf.set_cursor(b, {row = src, col = 1})
+		end
 	end
 	synced = v:scroll()
 	current = {path = path, buf = b}
-	-- subscribed only while open, so typing elsewhere runs no Lua
 	view, watch = v, qed.on("buf_changed", function(changed)
 		if changed == b then
 			v:markdown(qed.buf.text(b))
@@ -112,7 +87,12 @@ local function show(entry)
 			if entry.path == "" or not qed.fs.exists(entry.path) then
 				return
 			end
-			entry.buf = qed.open(entry.path)
+			local b, err = qed.open(entry.path)
+			if not b then
+				qed.message(err, "error")
+				return
+			end
+			entry.buf = b
 		end
 		local _, err = qed.jump(entry.buf, qed.buf.cursor(entry.buf))
 		if err then
@@ -135,15 +115,13 @@ local function step(d)
 	show(history[at])
 end
 
-local function target_pos(path, anchor)
+local function target_pos(path)
 	for _, b in ipairs(qed.buf.list()) do
 		if qed.buf.path(b) == path then
-			local row = anchor ~= "" and heading_row(qed.buf.text(b), anchor)
-			return row and {row = row, col = 1} or qed.buf.cursor(b)
+			return qed.buf.cursor(b)
 		end
 	end
-	local row = anchor ~= "" and heading_row(qed.fs.read(path) or "", anchor)
-	return {row = row or 1, col = 1}
+	return {row = 1, col = 1}
 end
 
 follow = function(v, target)
@@ -178,7 +156,7 @@ follow = function(v, target)
 		stop(v)
 		v:close()
 	end
-	local _, err = qed.jump(path, target_pos(path, anchor))
+	local _, err = qed.jump(path, target_pos(path))
 	if err then
 		qed.message(err, "error")
 		return

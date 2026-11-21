@@ -144,7 +144,6 @@ local function parse_base(st, text)
 	end
 end
 
--- against a base, tracked changes come from `diff --name-status`; status adds only untracked and ignored paths
 local function parse_status(st, text)
 	for line in repo.each(text) do
 		local rel, mark, from = M.porcelain_line(line)
@@ -187,7 +186,6 @@ function M.parse(files, ignored, top, out)
 	return st.full
 end
 
--- runs in the background so a superseded scan can kill it; nil once cancelled
 local function run(job, spec)
 	if job.cancelled then
 		return nil
@@ -227,7 +225,6 @@ local function repos(root, job)
 	return out
 end
 
--- each output is parsed and dropped before the next spawn so only one is held at a time
 function M.scan(root, base, job)
 	local files, ignored, full, count = {}, {}, false, 0
 	for _, top in ipairs(repos(root, job)) do
@@ -265,7 +262,6 @@ function M.scan(root, base, job)
 	return files, ignored, full
 end
 
--- paths handled between yields while a scan becomes the file tree's view
 local CHUNK = 2000
 
 local function tick(i, stop)
@@ -349,7 +345,7 @@ function M.view(files, ignored, stop)
 		local f = files[path]
 		if f then
 			if f.from then
-				e.suffix = icon .. " " .. (qed.path.rel(f.from) or f.from)
+				e.suffix = icon .. " " .. (qed.path.rel(f.from, qed.path.dir(path)) or f.from)
 			end
 			if (f.added or 0) > 0 or (f.removed or 0) > 0 then
 				e.added, e.removed = f.added or 0, f.removed or 0

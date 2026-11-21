@@ -3,7 +3,6 @@ local ranges, tints, ghosts
 local edits = {}
 local waiting = {}
 local fim = {enabled = false, warned = false, gen = 0}
-local seen = {}
 
 local CONTEXT_BYTES = 64 * 1024
 
@@ -51,7 +50,6 @@ local function before(a, b)
 	return a.row < b.row or (a.row == b.row and a.col < b.col)
 end
 
--- Unlike a plain plugin edit, a position at `from` stays put, so a selection keeps covering the new text.
 local function translate(p, from, to, new_end)
 	if not before(from, p) then
 		return p
@@ -102,7 +100,6 @@ end
 
 local changed, reloaded, closed
 
--- Subscribed only while something listens, so an idle plugin costs no task per keystroke.
 local function sync_hook()
 	local want = #edits > 0 or fim.enabled
 	if want and not hook then
@@ -192,7 +189,7 @@ local function apply(e, r)
 		qed.message("Edit discarded: block changed", "error")
 		return
 	end
-	qed.log("debug", ("applied at %d:%d (%dB)"):format(from.row - 1, from.col - 1, #core))
+	qed.log("debug", ("applied at %d:%d (%dB)"):format(from.row, from.col, #core))
 	local cursor = qed.buf.cursor(b)
 	local sel_from, sel_to = qed.buf.selection(b)
 	local anchor
@@ -286,6 +283,8 @@ local function cancel_all()
 	sync_hook()
 	if n > 0 then
 		qed.message(("Cancelled %d edit(s)"):format(n))
+	else
+		qed.message("No edits running")
 	end
 end
 
@@ -342,8 +341,8 @@ local function fim_dismiss()
 end
 
 local function fim_parse(raw)
-	local ok, val = pcall(qed.json.decode, raw)
-	if not ok or type(val) ~= "table" or type(val.choices) ~= "table" or type(val.choices[1]) ~= "table" then
+	local val = qed.json.decode(raw)
+	if type(val) ~= "table" or type(val.choices) ~= "table" or type(val.choices[1]) ~= "table" then
 		return ""
 	end
 	local c0 = val.choices[1]
@@ -439,10 +438,9 @@ local function fim_typed(b)
 	end)
 end
 
-local function configure(c)
+local function configure(c, changed)
 	cfg = c
-	if c.completion_enabled ~= seen.completion_enabled then
-		seen.completion_enabled = c.completion_enabled
+	if not changed or changed.completion_enabled then
 		fim.enabled = c.completion_enabled
 		if not fim.enabled then
 			fim_dismiss()
@@ -493,6 +491,6 @@ return {
 			sync_hook()
 			qed.message("Inline completion: " .. (fim.enabled and "on" or "off"))
 		end}
-		qed.on("config_changed", function() configure(qed.config()) end)
+		qed.on("config_changed", function(changed) configure(qed.config(), changed) end)
 	end,
 }

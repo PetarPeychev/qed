@@ -382,3 +382,25 @@ e2e_files_format_trim_on_save :: proc(t: ^testing.T) {
 	testing.expect_value(t, format_save("a  \n  \nhard break  \nx \t\nlast  ", true), "za  \n\nhard break  \nx\nlast  \n")
 	testing.expect_value(t, format_save("clean", false), "zclean\n")
 }
+
+@(test)
+e2e_files_conflict_before_pre_save :: proc(t: ^testing.T) {
+	e := e2e_start("first line   \nsecond line\n")
+	defer e2e_stop(&e)
+	e2e_plugin_config(&e, "format", `{"trim_whitespace_on_save": true}`)
+	b := editor_buffer(&e.ed)
+	e2e_type(&e, "X")
+	_ = os.write_entire_file_from_string(e.path, "DISK\n")
+	editor_poll_disk(&e.ed)
+	e2e_key(&e, .Ctrl_S)
+	testing.expect(t, pane_find(&e.ed, "conflict") != nil, "Ctrl+S opens the conflict dialog")
+	e2e_key(&e, .Esc)
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
+	testing.expect_value(t, string(b.lines[0].text[:]), "Xfirst line   ")
+	testing.expect_value(t, e2e_read_disk(e.path), "DISK\n")
+	e2e_key(&e, .Ctrl_S)
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
+	testing.expect_value(t, e2e_read_disk(e.path), "Xfirst line\nsecond line\n")
+}

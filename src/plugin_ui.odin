@@ -768,9 +768,18 @@ api_view_item :: proc(L: ^lua.State, editor: ^Editor, t: c.int) -> (it: PaneItem
 	#partial switch lua.getfield(L, t, "pos") {
 	case .TABLE:
 		it.row, _ = api_field_int(L, lua.gettop(L), "row")
+		it.col, _ = api_field_int(L, lua.gettop(L), "col")
 	case .NIL:
 	case:
 		plugin_raise(L, "pos must be a table {row, col}")
+	}
+	lua.pop(L, 1)
+	#partial switch lua.getfield(L, t, "buf") {
+	case .NUMBER:
+		it.buf = u64(max(0, lua.tointeger(L, -1)))
+	case .NIL:
+	case:
+		plugin_raise(L, "buf must be a buffer id")
 	}
 	lua.pop(L, 1)
 	#partial switch lua.getfield(L, t, "cells") {
@@ -2052,17 +2061,18 @@ qed_view_anchor :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	slug := strings.clone(api_string(L, 2), context.temp_allocator)
 	pn, _ := api_view_live(L, entry.editor)
-	found := false
 	if pn != nil && pn.has_md {
 		pane_md_lines(pn, pane_geom(entry.editor, pn).text.w)
 		for line, i in pn.md_lines {
 			if line.slug != "" && line.slug == slug {
-				pn.scroll, found = i, true
-				break
+				pn.scroll = i
+				lua.pushboolean(L, true)
+				lua.pushinteger(L, lua.Integer(line.src + 1))
+				return 2
 			}
 		}
 	}
-	lua.pushboolean(L, b32(found))
+	lua.pushboolean(L, false)
 	return 1
 }
 

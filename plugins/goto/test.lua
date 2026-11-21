@@ -39,6 +39,30 @@ function T.exact_jump_with_column(t)
 	t.eq(c.col, 4, ":N:M sets the column")
 end
 
+function T.bare_number_leads(t)
+	local lines = {}
+	for i = 1, 1200 do
+		lines[i] = ("v%d"):format(i + 100)
+	end
+	local b = t.open("a.txt", table.concat(lines, "\n"))
+	qed.run(FIND)
+	t.type("1004")
+	local ui = t.ui()
+	t.eq(rows(ui), "v1104,v1004", "the line-number row comes first, fuzzy text matches follow")
+	t.key("Enter")
+	t.eq(qed.buf.cursor(b).row, 1004, "Enter goes to the line")
+	qed.run(FIND)
+	t.key("Ctrl+a")
+	t.type("99999")
+	t.key("Enter")
+	t.eq(qed.buf.cursor(b).row, 1200, "past the end clamps to the last line")
+	qed.run(FIND)
+	t.key("Ctrl+a")
+	t.type("v120")
+	t.eq(t.ui().labels[1], "v120", "other input stays a fuzzy filter in buffer order")
+	t.key("Esc")
+end
+
 function T.query_persists_fully_selected(t)
 	t.open("a.txt", "xa\nxb\nyc")
 	qed.run(FIND)

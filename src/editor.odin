@@ -42,6 +42,7 @@ Editor :: struct {
 	pane_saved:      [dynamic]PaneSaved,
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
+	config_written:  DiskStamp,
 	theme_stamp:     DiskStamp,
 	theme_shown:     string,
 	quit:            bool,
@@ -893,6 +894,10 @@ editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
 		editor_log(editor, .Info, "", "Save is waiting for plugins")
 		return
 	}
+	if buffer_disk_changed(b) {
+		editor_save_id(editor, id)
+		return
+	}
 	if plugin_pre_save(editor, id) != 0 {
 		return
 	}
@@ -1086,6 +1091,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	now := buffer_disk_stamp(path)
 	tnow := buffer_disk_stamp(theme_path(path, THEME))
 	cfg_changed := now.ok && (now.mtime != editor.config_stamp.mtime || now.size != editor.config_stamp.size)
+	own_write := cfg_changed && now.mtime == editor.config_written.mtime && now.size == editor.config_written.size
 	theme_changed := tnow.ok && (tnow.mtime != editor.theme_stamp.mtime || tnow.size != editor.theme_stamp.size)
 	if !cfg_changed && !theme_changed {
 		return false
@@ -1102,6 +1108,9 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor_retheme(editor)
 	lsp_enabled_sync(editor)
 	plugins_config_apply(editor, theme_changed, !g_config_user_broken)
+	if own_write && !theme_changed {
+		return true
+	}
 	if message == "" {
 		message = "config.json reloaded"
 	}
@@ -1333,7 +1342,7 @@ editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
 
 editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 	editor.hover_rect = {}
-	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 2
+	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 3
 	if text_w < 8 {
 		return
 	}
@@ -1355,7 +1364,7 @@ editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 		content_w = max(content_w, md_line_width(lines[i]))
 	}
 	content_w = clamp(content_w, 1, text_w)
-	pane_w := content_w + 2
+	pane_w := content_w + 3
 	pane_h := view_h + 2
 	y := room_below >= pane_h ? cy + 1 : cy - pane_h
 	x := clamp(cx, 0, max(0, sw - pane_w))

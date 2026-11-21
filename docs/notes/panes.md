@@ -1,6 +1,6 @@
 # Note: pane model
 
-Design for one UI abstraction shared by core and Lua. Status: decided. Build steps are in §7 and tracked in TODO.md.
+Design for one UI abstraction shared by core and Lua. Status: shipped; build steps are in §7.
 
 ## 1. Goal
 

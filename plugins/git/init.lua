@@ -13,18 +13,13 @@ local scanning, dirty, job = false, false, nil
 local renames = {}
 local published, ft
 
-local function say(text, level)
-	qed.message(text, level)
-end
-
 local function fetch(b)
 	local path = qed.buf.path(b)
 	gen[b] = (gen[b] or 0) + 1
 	local mine = gen[b]
 	fetched[b] = path
-	local st = path ~= "" and qed.fs.stat(path)
 	local blob
-	if path ~= "" and not (st and st.size > qed.opt("big_file_bytes")) then
+	if path ~= "" and not qed.buf.big(b) then
 		blob = repo.blob(path, base)
 	end
 	if qed.buf.valid(b) and gen[b] == mine then
@@ -46,7 +41,6 @@ end
 
 local restore_path
 
--- the file tree may unload between its plugin_unloaded event and a scan landing; its exports raise then
 local function push()
 	if not ft then
 		return
@@ -72,10 +66,9 @@ local function stopped()
 	return dirty
 end
 
--- a scan that only moved sizes or marks keeps the path lists, so the tree keeps its narrowed Git tab
 local function publish(files, ignored, full)
 	if full then
-		say(("Over %d changed files: the Git tab lists the first %d"):format(tree.MAX, tree.MAX), "warn")
+		qed.message(("Over %d changed files: the Git tab lists the first %d"):format(tree.MAX, tree.MAX), "warn")
 	end
 	local how = published and tree.compare({files = files, ignored = ignored}, published, stopped) or "paths"
 	if how == nil or how == "same" then
@@ -97,7 +90,6 @@ local function publish(files, ignored, full)
 	push()
 end
 
--- a request while a scan runs kills its spawn and reruns once, so only the latest result is published
 local function scan()
 	if scanning then
 		dirty = true
@@ -203,25 +195,25 @@ end
 local function set_base()
 	local new, err = picker.pick(qed.root())
 	if err then
-		say(err, "error")
+		qed.message(err, "error")
 	end
 	if not new then
 		return
 	end
-	say("Diff base: " .. (new.ref and new.label or "HEAD"))
+	qed.message("Diff base: " .. (new.ref and new.label or "HEAD"))
 	restart(new)
 	scan()
 end
 
 restore_path = function(path)
 	if not path or qed.fs.exists(path) then
-		say("Not a deleted file")
+		qed.message("Not a deleted file")
 		return
 	end
 	local dir, rel = repo.anchor(path)
 	local rev = repo.rev(dir, base)
 	if repo.out(dir, {"cat-file", "-t", rev .. ":./" .. rel}) ~= "blob" then
-		say("Not a deleted file")
+		qed.message("Not a deleted file")
 		return
 	end
 	local name = qed.path.base(path)
@@ -236,10 +228,10 @@ restore_path = function(path)
 		table.insert(args, 4, "--staged")
 	end
 	if repo.git(dir, args).code ~= 0 then
-		say("Restore failed: " .. name, "error")
+		qed.message("Restore failed: " .. name, "error")
 		return
 	end
-	say("Restored " .. name)
+	qed.message("Restored " .. name)
 	qed.defer(0, scan)
 end
 

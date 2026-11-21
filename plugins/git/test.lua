@@ -172,6 +172,11 @@ function T.parse_tree_status(t)
 	t.eq(files["/r/b/plain.txt"].mark, "modified")
 	t.eq(f("/r/b/y.txt"), qed.json.encode({mark = "modified", from = "/r/b/x.txt"}))
 	t.eq(files["/r/b/lost.txt"].mark, "deleted")
+	files["/r/c/deep/z.txt"] = {mark = "modified", from = "/r/c/other/x.txt"}
+	local view = tree.view(files, {})
+	local icon = qed.theme.icon("tree_renamed")
+	t.eq(view.marks["/r/b/y.txt"].suffix, icon .. " x.txt", "a rename in place names the old file")
+	t.eq(view.marks["/r/c/deep/z.txt"].suffix, icon .. " ../other/x.txt", "a move names the old path from the new dir")
 end
 
 function T.not_a_repo_picker(t)

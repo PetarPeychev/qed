@@ -1012,8 +1012,24 @@ list_walk_dir :: proc(editor: ^Editor, p: ^Pane, dir: string, depth: int, kids: 
 	}
 }
 
+WalkSelected :: struct {
+	path:   string,
+	is_dir: bool,
+}
+
 list_walk_files :: proc(editor: ^Editor, p: ^Pane, sel: []int) -> []string {
 	src := &p.list.source
+	rows := make([dynamic]WalkSelected, 0, len(sel), context.temp_allocator)
+	for i in sel {
+		if i >= 0 && i < len(src.entries) {
+			append(&rows, WalkSelected{src.entries[i].path, src.entries[i].is_dir})
+		}
+	}
+	return list_walk_files_of(p, rows[:])
+}
+
+list_walk_files_of :: proc(p: ^Pane, sel: []WalkSelected) -> []string {
+	wscope := p.list.source.wscope if p != nil else nil
 	seen := make(map[string]bool, context.temp_allocator)
 	out := make([dynamic]string, context.temp_allocator)
 	add :: proc(out: ^[dynamic]string, seen: ^map[string]bool, path: string) {
@@ -1022,17 +1038,13 @@ list_walk_files :: proc(editor: ^Editor, p: ^Pane, sel: []int) -> []string {
 			append(out, path)
 		}
 	}
-	for i in sel {
-		if i < 0 || i >= len(src.entries) {
-			continue
-		}
-		e := src.entries[i]
-		if !e.is_dir || src.wscope == nil || src.wscope.all {
+	for e in sel {
+		if !e.is_dir || wscope == nil || wscope.all {
 			add(&out, &seen, e.path)
 			continue
 		}
 		prefix := strings.concatenate({e.path, "/"}, context.temp_allocator)
-		for sc := src.wscope; sc != nil; sc = sc.base {
+		for sc := wscope; sc != nil; sc = sc.base {
 			for path in sc.paths {
 				if strings.has_prefix(path, prefix) {
 					add(&out, &seen, path)

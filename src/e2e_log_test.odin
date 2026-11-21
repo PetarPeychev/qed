@@ -52,7 +52,7 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 	editor_log(&e.ed, .Error, "LSP", "boom", show = false)
 	toggle, _ := plugin_test_command(&e.ed, "Format: Toggle on Save")
 	plugin_command_run(&e.ed, toggle)
-	testing.expect(t, strings.contains(e.ed.message, "Format on save"), "toggle sets the message line")
+	testing.expect(t, strings.contains(e.ed.message, "On save: on"), "toggle sets the message line")
 
 	cmd_message_log(&e.ed)
 	testing.expect(t, log_open(&e), "command opens the log pane")
@@ -61,7 +61,7 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 	screen := e2e_log_screen(&e)
 	testing.expect(t, strings.contains(screen, "Message Log"), "pane title renders")
 	testing.expect(t, strings.contains(screen, "LSP: boom"), "error entry row renders")
-	testing.expect(t, strings.contains(screen, "Format on save"), "info entry row renders")
+	testing.expect(t, strings.contains(screen, "Format: On save: on"), "info entry row renders")
 
 	// The error row (not the selected last row) paints with the error colour.
 	ey, ex := e2e_log_find(&e, "LSP: boom")
@@ -279,4 +279,25 @@ e2e_log_history_filter :: proc(t: ^testing.T) {
 	testing.expect(t, e.ed.logview.history, "History filter persists on reopen")
 	e2e_render(&e)
 	testing.expect(t, strings.contains(e2e_log_screen(&e), "a previous session line"), "history still visible after reopen")
+}
+
+@(test)
+e2e_log_full_entry :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_resize(&e, 60, 20)
+	long := strings.repeat("word ", 40, context.temp_allocator)
+	editor_log(&e.ed, .Warn, "", fmt.tprintf("%sTHE-END", long), show = false)
+	cmd_message_log(&e.ed)
+	e2e_render(&e)
+	testing.expect(t, !e2e_grid_has(&e, "THE-END"), "the row clips the long entry")
+	e2e_key(&e, .Enter)
+	e2e_render(&e)
+	p := pane_find(&e.ed, "log_entry")
+	testing.expect(t, p != nil, "Enter opens the entry")
+	e2e_key(&e, .End)
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "THE-END"), "the full text wraps into view")
+	e2e_key(&e, .Esc)
+	testing.expect(t, pane_find(&e.ed, "log_entry") == nil && pane_find(&e.ed, "log") != nil, "Esc returns to the log")
 }

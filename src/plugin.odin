@@ -38,6 +38,7 @@ Plugin :: struct {
 	stamp:      u64,
 	cfg_sig:    string,
 	unknown:    string,
+	changed:    string,
 	keys_due:   bool,
 	exports:    c.int,
 	gen:        u64,
@@ -432,6 +433,7 @@ plugin_strings_free :: proc(pl: ^Plugin) {
 	delete(pl.last_error)
 	delete(pl.cfg_sig)
 	delete(pl.unknown)
+	delete(pl.changed)
 	plugin_errors_forget(&pl.errors)
 	delete(pl.errors.counts)
 }
@@ -920,7 +922,11 @@ plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool, parsed := tru
 	if parsed {
 		plugins_config_sync(editor)
 	}
-	plugin_queue(editor, {event = .Config_Changed})
+	for pl in p.list {
+		if pl.state == .Enabled {
+			plugin_queue(editor, {event = .Config_Changed, only = pl.name, a = pl.changed})
+		}
+	}
 	if theme_changed {
 		plugin_queue(editor, {event = .Theme_Changed})
 	}
@@ -1618,6 +1624,7 @@ plugins_rebind :: proc(editor: ^Editor) {
 		}
 	}
 	if len(problems) > 0 {
+		slice.sort(problems[:])
 		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
 	}
 	p.bound = true
@@ -1636,15 +1643,13 @@ plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, scope: string, 
 	return {}, false
 }
 
-plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string) {
-	lua.createtable(L, 0, 4)
+plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, snapshot := false) {
+	lua.L_checkstack(L, 6, "ctx")
+	lua.createtable(L, 0, 8)
 	lua.pushodinstring(L, editor.working_root)
 	lua.setfield(L, -2, "root")
-	lua.createtable(L, 0, 1)
-	lua.pushcfunction(L, plugin_ctx_index)
-	lua.setfield(L, -2, "__index")
-	lua.setmetatable(L, -2)
-	if f := pane_focus(editor); f != nil && f.ctx.lua {
+	f := pane_focus(editor)
+	if f != nil && f.ctx.lua {
 		if vi := plugin_view_index(&editor.plugins, f.handle); vi >= 0 {
 			if editor.plugins.views[vi].owner == owner {
 				lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].view_ref))
@@ -1652,16 +1657,95 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string) {
 			}
 		}
 	}
-	if editor.welcome || len(editor.buffers) == 0 {
+	if !(editor.welcome || len(editor.buffers) == 0) {
+		b := editor_buffer(editor)
+		lua.pushinteger(L, lua.Integer(b.id))
+		lua.setfield(L, -2, "buf")
+		lua.pushodinstring(L, b.path)
+		lua.setfield(L, -2, "path")
+		lua.pushodinstring(L, LANGUAGES[b.language].name)
+		lua.setfield(L, -2, "language")
+	}
+	if !snapshot {
+		lua.createtable(L, 0, 1)
+		lua.pushcfunction(L, plugin_ctx_index)
+		lua.setfield(L, -2, "__index")
+		lua.setmetatable(L, -2)
 		return
 	}
-	b := editor_buffer(editor)
-	lua.pushinteger(L, lua.Integer(b.id))
-	lua.setfield(L, -2, "buf")
-	lua.pushodinstring(L, b.path)
-	lua.setfield(L, -2, "path")
-	lua.pushodinstring(L, LANGUAGES[b.language].name)
-	lua.setfield(L, -2, "language")
+	for key in ([?]cstring{"selection_text", "file", "items"}) {
+		if plugin_ctx_field_push(L, editor, string(key)) {
+			lua.setfield(L, -2, key)
+		}
+	}
+	if f == nil || !f.has_list {
+		return
+	}
+	sel := pane_selection(editor, f)
+	if f.list.source.kind != .Walk {
+		if plugin_ctx_field_push(L, editor, "files") {
+			lua.setfield(L, -2, "files")
+		}
+		return
+	}
+	// a selected dir on a scoped walk can stand for 100k files: keep the selected rows and expand on first access
+	src := &f.list.source
+	lua.createtable(L, 0, 1)
+	lua.createtable(L, c.int(len(sel)), 0)
+	n := 0
+	for i in sel {
+		if i < 0 || i >= len(src.entries) {
+			continue
+		}
+		e := src.entries[i]
+		lua.pushodinstring(L, e.path)
+		lua.rawseti(L, -2, lua.Integer(2 * n + 1))
+		lua.pushboolean(L, b32(e.is_dir))
+		lua.rawseti(L, -2, lua.Integer(2 * n + 2))
+		n += 1
+	}
+	lua.pushinteger(L, lua.Integer(f.handle))
+	lua.pushcclosure(L, plugin_ctx_files_index, 2)
+	lua.setfield(L, -2, "__index")
+	lua.setmetatable(L, -2)
+}
+
+plugin_ctx_files_index :: proc "c" (L: ^lua.State) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil {
+		return plugin_unavailable(L)
+	}
+	context = entry.ctx
+	key, _ := lua.toodinstring(L, 2)
+	if key != "files" {
+		return 0
+	}
+	editor := entry.editor
+	rows := lua.upvalueindex(1)
+	n := int(lua.rawlen(L, rows)) / 2
+	sel := make([]WalkSelected, n, context.temp_allocator)
+	for i in 0 ..< n {
+		lua.rawgeti(L, rows, lua.Integer(2 * i + 1))
+		s, _ := lua.toodinstring(L, -1)
+		sel[i].path = strings.clone(s, context.temp_allocator)
+		lua.rawgeti(L, rows, lua.Integer(2 * i + 2))
+		sel[i].is_dir = bool(lua.toboolean(L, -1))
+		lua.pop(L, 2)
+	}
+	wp: ^Pane
+	if pi := pane_index(editor, u64(lua.tointeger(L, lua.upvalueindex(2)))); pi >= 0 && editor.panes[pi].list.source.kind == .Walk {
+		wp = &editor.panes[pi]
+	}
+	files := list_walk_files_of(wp, sel)
+	lua.createtable(L, c.int(len(files)), 0)
+	for path, i in files {
+		lua.pushodinstring(L, path)
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	lua.pushvalue(L, 2)
+	lua.pushvalue(L, -2)
+	lua.rawset(L, 1)
+	return 1
 }
 
 plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
@@ -1671,32 +1755,41 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	context = entry.ctx
 	key, _ := lua.toodinstring(L, 2)
-	editor := entry.editor
+	if !plugin_ctx_field_push(L, entry.editor, key) {
+		return 0
+	}
+	lua.pushvalue(L, 2)
+	lua.pushvalue(L, -2)
+	lua.rawset(L, 1)
+	return 1
+}
+
+plugin_ctx_field_push :: proc(L: ^lua.State, editor: ^Editor, key: string) -> bool {
 	switch key {
 	case "selection_text":
 		if editor.welcome || len(editor.buffers) == 0 {
-			return 0
+			return false
 		}
 		b := editor_buffer(editor)
 		from, to, ok := selection_range(b)
 		if !ok {
-			return 0
+			return false
 		}
 		lua.pushodinstring(L, buffer_text_range(b, from, to))
 	case "file":
 		f := pane_focus(editor)
 		if f == nil || !f.has_list || pane_count(editor, f) == 0 {
-			return 0
+			return false
 		}
 		it := list_item(editor, f, pane_item_index(f, f.list.sel))
 		if it.path == "" {
-			return 0
+			return false
 		}
 		lua.pushodinstring(L, it.path)
 	case "items":
 		f := pane_focus(editor)
 		if f == nil || !f.has_list {
-			return 0
+			return false
 		}
 		sel := pane_selection(editor, f)
 		lua.createtable(L, c.int(len(sel)), 0)
@@ -1719,7 +1812,7 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 	case "files":
 		f := pane_focus(editor)
 		if f == nil || !f.has_list {
-			return 0
+			return false
 		}
 		sel := pane_selection(editor, f)
 		if f.list.source.kind == .Walk {
@@ -1741,12 +1834,9 @@ plugin_ctx_index :: proc "c" (L: ^lua.State) -> c.int {
 			}
 		}
 	case:
-		return 0
+		return false
 	}
-	lua.pushvalue(L, 2)
-	lua.pushvalue(L, -2)
-	lua.rawset(L, 1)
-	return 1
+	return true
 }
 
 plugin_invoke_c :: proc "c" (L: ^lua.State) -> c.int {
@@ -1851,23 +1941,80 @@ plugin_table_copy :: proc(L: ^lua.State, idx: c.int, depth := 0) {
 	}
 }
 
-plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object) {
+plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object, path: string, problems: ^[dynamic]string) {
 	lua.L_checkstack(L, 4, "config nested too deeply")
 	idx := lua.absindex(L, idx)
 	for k, v in src {
-		if sub, is_obj := v.(json.Object); is_obj {
-			lua.pushodinstring(L, k)
-			if lua.rawget(L, idx) == .TABLE {
-				plugin_table_merge(L, -1, sub)
-				lua.pop(L, 1)
-				continue
-			}
+		lua.pushodinstring(L, k)
+		have := lua.rawget(L, idx)
+		if sub, is_obj := v.(json.Object); is_obj && have == .TABLE {
+			plugin_table_merge(L, -1, sub, fmt.tprintf("%s/%s", path, k), problems)
 			lua.pop(L, 1)
+			continue
+		}
+		lua.pop(L, 1)
+		if want, got := plugin_config_type(have), plugin_json_type(v); want != "" && got != "" && want != got {
+			append(problems, fmt.tprintf("%q (expected %s)", fmt.tprintf("%s/%s", path, k), want))
+			continue
 		}
 		lua.pushodinstring(L, k)
 		plugin_json_push(L, v)
 		lua.rawset(L, idx)
 	}
+}
+
+plugin_lua_equal :: proc(L: ^lua.State, a, b: c.int, depth: int) -> bool {
+	a, b := lua.absindex(L, a), lua.absindex(L, b)
+	if lua.type(L, a) != .TABLE || lua.type(L, b) != .TABLE {
+		return bool(lua.rawequal(L, a, b))
+	}
+	if depth > PLUGIN_TABLE_DEPTH_MAX || lua.rawlen(L, a) != lua.rawlen(L, b) {
+		return false
+	}
+	lua.L_checkstack(L, 4, "config nested too deeply")
+	for pass in 0 ..< 2 {
+		x, y := a if pass == 0 else b, b if pass == 0 else a
+		lua.pushnil(L)
+		for lua.next(L, x) != 0 {
+			lua.pushvalue(L, -2)
+			lua.rawget(L, y)
+			if !plugin_lua_equal(L, -2, -1, depth + 1) {
+				lua.pop(L, 3)
+				return false
+			}
+			lua.pop(L, 2)
+		}
+	}
+	return true
+}
+
+plugin_config_type :: proc(t: lua.Type) -> string {
+	#partial switch t {
+	case .BOOLEAN:
+		return "a boolean"
+	case .NUMBER:
+		return "a number"
+	case .STRING:
+		return "a string"
+	case .TABLE:
+		return "a list or object"
+	}
+	return ""
+}
+
+plugin_json_type :: proc(v: json.Value) -> string {
+	switch _ in v {
+	case json.Boolean:
+		return "a boolean"
+	case json.Integer, json.Float:
+		return "a number"
+	case json.String:
+		return "a string"
+	case json.Array, json.Object:
+		return "a list or object"
+	case json.Null:
+	}
+	return ""
 }
 
 plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
@@ -1897,13 +2044,35 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 			append(&unknown, config_unknown_msg(fmt.tprintf("plugins/%s/%s", pl.name, k)))
 		}
 	}
-	plugin_table_merge(L, cfg, user)
+	plugin_table_merge(L, cfg, user, fmt.tprintf("plugins/%s", pl.name), &unknown)
 	lua.pushodinstring(L, "enabled")
 	lua.pushnil(L)
 	lua.rawset(L, cfg)
+	changed := make([dynamic]string, context.temp_allocator)
 	if pl.cfg != lua.NOREF {
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.cfg))
+		old := lua.gettop(L)
+		for side in ([2]c.int{old, cfg}) {
+			lua.pushnil(L)
+			for lua.next(L, side) != 0 {
+				lua.pop(L, 1)
+				k, _ := lua.toodinstring(L, -1)
+				lua.pushvalue(L, -1)
+				lua.rawget(L, old)
+				lua.pushvalue(L, -2)
+				lua.rawget(L, cfg)
+				if !plugin_lua_equal(L, -2, -1, 0) && !slice.contains(changed[:], k) {
+					append(&changed, strings.clone(k, context.temp_allocator))
+				}
+				lua.pop(L, 2)
+			}
+		}
+		lua.pop(L, 1)
 		lua.L_unref(L, lua.REGISTRYINDEX, pl.cfg)
 	}
+	slice.sort(changed[:])
+	delete(pl.changed)
+	pl.changed = strings.join(changed[:], "\n")
 	plugin_table_copy(L, cfg)
 	pl.cfg = lua.L_ref(L, lua.REGISTRYINDEX)
 	slice.sort(unknown[:])
@@ -1980,10 +2149,15 @@ pluginview_toggle :: proc(editor: ^Editor) {
 	}
 	enable := pl.state == .Disabled
 	path := editor.plugins.persist_path if editor.headless else config_path()
-	if path == "" || !config_persist_path_to(path, {"plugins", pl.name, "enabled"}, json.Boolean(enable)) {
+	default_on := true
+	if v, ok := plugin_cfg_entry(g_config_defaults, pl.name)["enabled"].(json.Boolean); ok {
+		default_on = bool(v)
+	}
+	if path == "" || !config_persist_path_to(path, {"plugins", pl.name, "enabled"}, json.Boolean(enable), remove = enable == default_on) {
 		editor_log(editor, .Error, "", "Cannot update config.json (unwritable or not valid JSON)")
 		return
 	}
+	editor.config_written = buffer_disk_stamp(path)
 	plugin_enabled_set(editor, pl, enable)
 }
 

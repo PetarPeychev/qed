@@ -9,7 +9,7 @@ VERSION :: #config(QED_VERSION, "dev")
 LSP_POLL_MS :: 30
 
 print_help :: proc() {
-	fmt.println("Usage: qed [FILE]")
+	fmt.println("Usage: qed [PATH]      PATH is a file to open or a directory to work in")
 	fmt.println("       qed --version")
 }
 

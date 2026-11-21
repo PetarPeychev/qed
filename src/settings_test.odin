@@ -538,6 +538,9 @@ test_config_files :: proc(t: ^testing.T) {
 
 	// Unknown top-level key: warned, file untouched.
 	unknown_path := fmt.tprintf("%s/unknown.json", dir)
+	_ = os.write_entire_file(unknown_path, transmute([]byte)string(`{"zz_bogus": 1, "mm_bogus": 2, "aa_bogus": 3}`))
+	msg, is_err = config_load_from(unknown_path)
+	testing.expect(t, strings.index(msg, "aa_bogus") < strings.index(msg, "mm_bogus") && strings.index(msg, "mm_bogus") < strings.index(msg, "zz_bogus"), "config warnings are sorted")
 	_ = os.write_entire_file(unknown_path, transmute([]byte)string(`{"totally_bogus": 5}`))
 	msg, is_err = config_load_from(unknown_path)
 	testing.expect(t, is_err, "unknown key reports a warning")
@@ -593,6 +596,16 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, COLOR_BG == tb2.Color(0x181818), "missing key falls back to default theme")
 	os.remove(newname_theme)
 	os.remove(newname_cfg)
+
+	moved_cfg := fmt.tprintf("%s/movedtheme.json", dir)
+	moved_theme := fmt.tprintf("%s/themes/moved.json", dir)
+	_ = os.write_entire_file(moved_cfg, transmute([]byte)string(`{"theme": "moved"}`))
+	_ = os.write_entire_file(moved_theme, transmute([]byte)string(`{"colors": {"filetree_ignored": "#010203"}, "zz": 1, "aa": 2}`))
+	msg, is_err = config_load_from(moved_cfg)
+	testing.expect(t, strings.contains(msg, `"colors/filetree_ignored" moved to "colors/pane_dim_foreground"`), "a renamed theme color warns where it moved")
+	testing.expect(t, strings.index(msg, `"aa"`) < strings.index(msg, `"zz"`), "theme warnings are sorted")
+	os.remove(moved_theme)
+	os.remove(moved_cfg)
 
 	// Missing non-default theme -> error, no file created.
 	nf_path := fmt.tprintf("%s/notheme.json", dir)

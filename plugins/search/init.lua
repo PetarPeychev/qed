@@ -53,7 +53,6 @@ local function query(v, text, args)
 			path = qed.path.join(root, file),
 			pos = {row = tonumber(row), col = tonumber(col)},
 		}
-		-- the previous results stay up until the first new hit, so typing does not flash an empty list
 		if n == 1 then
 			v:set({item})
 		else
@@ -93,7 +92,6 @@ local function search(ctx, scope)
 	end
 	qed.ui.open{
 		id = "search",
-		-- over the file tree it stacks, so Esc returns to the tree
 		kind = "child",
 		place = "split",
 		fields = {{mode = "query", count = true, text = start}},

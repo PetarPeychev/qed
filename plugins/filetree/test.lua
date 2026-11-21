@@ -103,7 +103,7 @@ function T.new_rename_delete(t)
 	t.key("Down")
 	t.key("Enter")
 	t.ok(not qed.fs.exists("dir/made/x.txt"), "Delete")
-	t.eq(t.message(), "Deleted")
+	t.eq(t.message(), "Deleted x.txt")
 	t.eq(t.ui().selected, "made", "the selection moves to the row above")
 end
 

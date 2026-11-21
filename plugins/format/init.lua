@@ -1,5 +1,4 @@
 local on = {}
-local seen = {}
 local commands = {}
 
 local KNOBS = {
@@ -126,10 +125,9 @@ local function format(b, on_save)
 	end
 end
 
-local function apply(cfg)
+local function apply(cfg, changed)
 	for key, knob in pairs(KNOBS) do
-		if cfg[key] ~= seen[key] then
-			seen[key] = cfg[key]
+		if not changed or changed[key] then
 			on[knob] = cfg[key]
 		end
 	end
@@ -139,7 +137,7 @@ end
 local function toggle(name, knob, label)
 	qed.command{name = name, run = function()
 		on[knob] = not on[knob]
-		qed.message(("%s on save: %s"):format(label, on[knob] and "on" or "off"))
+		qed.message(("%s: %s"):format(label, on[knob] and "on" or "off"))
 	end}
 end
 
@@ -163,10 +161,10 @@ return {
 			when = function(ctx) return ctx.buf ~= nil end,
 			run = function(ctx) format(ctx.buf, false) end,
 		}
-		toggle("Toggle on Save", "format", "Format")
-		toggle("Toggle Trim Whitespace on Save", "trim", "Trim whitespace")
-		toggle("Toggle Final Newline on Save", "newline", "Final newline")
-		qed.on("config_changed", function() apply(qed.config()) end)
+		toggle("Toggle on Save", "format", "On save")
+		toggle("Toggle Trim Whitespace on Save", "trim", "Trim whitespace on save")
+		toggle("Toggle Final Newline on Save", "newline", "Final newline on save")
+		qed.on("config_changed", function(changed) apply(qed.config(), changed) end)
 		qed.on("buf_pre_save", function(b)
 			fixups(b)
 			if on.format then

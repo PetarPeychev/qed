@@ -148,7 +148,7 @@ disk logging is skipped when `headless`. *Message Log: Open* (`Alt+l`) opens a
 full core pane (`log`, scope `log`, see Panes) over the ring through the `.Log` source:
 timestamped rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
 arrow/wheel scroll + select, `Shift+↑↓` extends a contiguous selection, *Copy* copies it
-(newline-joined), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
+(newline-joined), `Enter` shows the selected entries in full, wrapped (child `log_entry`), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
 (`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history off by
 default, persisted for the session in `Editor.logview`; seeded entries carry `LogEntry.seeded`).
 Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
@@ -352,6 +352,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - Kinds: Exclusive (default; opening one closes the open non-safety exclusive pane, or returns
   nil while a `modal` pane is live), Child (`parent` handle), Passive. Safety dialogs
   (`safety`: quit, close, conflict; one each) stay on top: other root panes are inserted below them.
+  Every dialog lists Cancel first; quit and close start on Save (All), the rest on Cancel.
 - Invariant: a pane's descendants follow it contiguously (a child goes right after its parent's
   subtree). `pane_end(handle, activate)` takes that run off the stack, then runs the children's
   `on.close` and the pane's `on.activate` or `on.close`, so a handler that opens another pane
@@ -373,7 +374,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
   command at activate and draw (`list_command`), so a removed command's row goes dead). `.Dirs` lists
   `path`'s subdirs, or under a `path` field the dir its text names, prefix-matched smart-case on the last
   segment (base dir's entries cached until its segment changes). `.Lines` is live over a buffer: matches
-  stay in buffer order, `:N[:M]` (`lines_goto`) selects one row, the view opens on the match nearest the
+  stay in buffer order, `:N[:M]` (`lines_goto`) selects one row, a bare number leads with row N, the view opens on the match nearest the
   cursor, items carry `buf` so the auto preview shows the buffer. `.Log` holds entry seqs passing the
   filters, recomputed when `Editor.log_seq` or a filter changes. `.Plugins` reads `Plugins.list`.
   `.Walk` is a walk handle (see Walk service), self-filtering with a debounced refill.
@@ -956,10 +957,10 @@ the shell prompt), runtime working-root change (`workspace` plugin: `Ctrl+o` pat
 `Ctrl+o` on a dir), jump list
 (back/forward), runtime config (**sparse overlays**: embedded `config/config.json`
 is every default, none in Odin source, completeness test-enforced; user
-`~/.config/qed/config.json` is a per-key diff qed never writes — no
-materialization, unknown keys get a one-shot warning, malformed JSON falls back
-to defaults without crashing; UI persistence like the theme picker's Enter writes
-only its own key; both config + active theme hot-reload via the disk poll —
+`~/.config/qed/config.json` is a per-key diff, never materialized; only the theme
+picker's Enter (`theme`) and the Plugins pane's `e` (`plugins.<id>.enabled`,
+removed when it returns to the default) write it, one key each; unknown keys get a
+one-shot warning, malformed JSON falls back to defaults without crashing; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
 their command), `lsp.enabled` (live toggle-off tears servers down; git is
@@ -1056,7 +1057,7 @@ budget, parses and drops each command's output before the next, caps the list at
 warning, and a new request kills the running scan's spawn and reruns once.
 
 Language intelligence: config-driven language detection (glob rules + built-in
-dotfiles, per-buffer, `Set Language` override); tree-sitter highlight with full
+dotfiles, per-buffer, *Settings: Language* override); tree-sitter highlight with full
 predicate evaluation (Odin, JSON,
 Python, C, C++, Go, Rust, JS/JSX, TS/TSX, HTML w/ script/style injection, CSS,
 Shell, Lua, SQL, TOML, YAML, Dockerfile, Markdown w/ inline + fenced-code

@@ -365,8 +365,10 @@ logview_open :: proc(editor: ^Editor, source := "", parent: u64 = 0) {
 		has_list = true,
 		backdrop = MESSAGE_LOG_BACKDROP,
 		list = {source = {kind = .Log}, multi = true, follow = true, stick = true, sel_bg = true, empty = "(no messages)"},
-		footer = []PaneHint{{label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "copy", cmd = "Copy"}},
+		footer = []PaneHint{{label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "Enter full text"}, {label = "copy", cmd = "Copy"}},
 		chips = logview_chips(editor),
+		keep = true,
+		on = {activate = logview_show},
 	}
 	if parent != 0 {
 		spec.kind, spec.parent = .Child, parent
@@ -396,6 +398,42 @@ logview_toggle :: proc(editor: ^Editor, level: LogLevel) {
 logview_toggle_history :: proc(editor: ^Editor) {
 	editor.logview.history = !editor.logview.history
 	logview_refit(editor)
+}
+
+logview_show :: proc(editor: ^Editor, p: ^Pane) {
+	rows := list_log_rows(editor, &p.list.source)
+	if len(rows) == 0 || p.list.sel >= len(rows) {
+		return
+	}
+	lo, hi := p.list.sel, p.list.sel
+	if a, ok := p.list.anchor.?; ok {
+		lo, hi = clamp(min(a, p.list.sel), 0, len(rows) - 1), clamp(max(a, p.list.sel), 0, len(rows) - 1)
+	}
+	c := pane_open(editor, Pane {
+		id = "log_entry",
+		kind = .Child,
+		parent = p.handle,
+		place = .Full,
+		title = "Message Log",
+		footer = []PaneHint{{label = "↑↓ scroll"}, {label = "Esc back"}},
+	})
+	if c == nil {
+		return
+	}
+	width := max(10, pane_geom(editor, c).text.w)
+	lines := make([dynamic]PaneLine, context.temp_allocator)
+	for pos in lo ..= hi {
+		if pos > lo {
+			append(&lines, PaneLine{})
+		}
+		e := list_log_entry(editor, &p.list.source, pos)
+		head := fmt.tprintf("%s  %s", log_clock(e.time), e.source) if e.source != "" else log_clock(e.time)
+		append(&lines, PaneLine{text = head, color = log_level_color(e.level)})
+		for l in wrap_text(e.text, width) {
+			append(&lines, PaneLine{text = l})
+		}
+	}
+	c.text = pane_lines_clone(lines[:])
 }
 
 logview_copy :: proc(editor: ^Editor) {
