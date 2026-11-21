@@ -267,7 +267,7 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 @(test)
 plugin_config_merge :: proc(t: ^testing.T) {
 	cfg := plugin_test_cfg(`{"plugins": {
-		"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1, "enabled": true},
+		"merge": {"nested": {"b": 20, "c": "x"}, "list": [9], "bogus": 1, "enabled": true, "a": "1", "s": null},
 		"bare": {"stray": 1},
 		"off": {"enabled": false, "typo": 1},
 		"broken": {"typo": 1},
@@ -277,13 +277,14 @@ plugin_config_merge :: proc(t: ^testing.T) {
 	}}`)
 	ed := plugin_test_editor({
 		{"merge.lua", `
-			local defaults = {a = 1, nested = {b = 2, c = 3}, list = {1, 2}}
+			local defaults = {a = 1, nested = {b = 2, c = 3}, list = {1, 2}, s = "x"}
 			return {
 				setup = function(...)
 					assert(select("#", ...) == 0, "setup gets no arguments")
 					assert(next(qed.config()) == nil, "no keys before qed.options")
 					local cfg = qed.options(defaults)
-					assert(cfg.a == 1, "default kept")
+					assert(cfg.a == 1, "default kept, also over a value of the wrong type")
+					assert(cfg.s == nil, "null drops a default")
 					assert(cfg.nested.b == 20 and cfg.nested.c == 3, "nested objects merge per key")
 					assert(#cfg.list == 1 and cfg.list[1] == 9, "arrays replace wholesale")
 					assert(cfg.bogus == nil, "unknown keys are ignored")
@@ -309,6 +310,8 @@ plugin_config_merge :: proc(t: ^testing.T) {
 	testing.expect_value(t, off.last_error, "")
 	testing.expect_value(t, plugin_find(&ed.plugins, "broken").state, PluginState.Errored)
 	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `"plugins/merge/bogus"`), 1)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/merge/a" (expected a number)`), "a value of the wrong type warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/merge/nested/c" (expected a number)`), "a nested value of the wrong type warns")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/bare/stray"`), "a plugin without qed.options has no keys")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/off/`), "a disabled plugin's keys are not checked")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/broken/`), "an errored plugin's keys are not checked")
@@ -316,7 +319,7 @@ plugin_config_merge :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/lines" moved to "plugins/goto"`), "a renamed plugin says where")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/ai/chat_command" moved to "plugins/ai/edit_command"`), "a moved plugin key says where")
 
-	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1}, "off": {"typo": 1}}}`)
+	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1, "s": null}, "off": {"typo": 1}}}`)
 	plugins_config_apply(ed, false)
 	testing.expect_value(t, off.state, PluginState.Enabled)
 	testing.expect_value(t, merge.state, PluginState.Enabled)

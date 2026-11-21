@@ -1934,23 +1934,55 @@ plugin_table_copy :: proc(L: ^lua.State, idx: c.int, depth := 0) {
 	}
 }
 
-plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object) {
+plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object, path: string, problems: ^[dynamic]string) {
 	lua.L_checkstack(L, 4, "config nested too deeply")
 	idx := lua.absindex(L, idx)
 	for k, v in src {
-		if sub, is_obj := v.(json.Object); is_obj {
-			lua.pushodinstring(L, k)
-			if lua.rawget(L, idx) == .TABLE {
-				plugin_table_merge(L, -1, sub)
-				lua.pop(L, 1)
-				continue
-			}
+		lua.pushodinstring(L, k)
+		have := lua.rawget(L, idx)
+		if sub, is_obj := v.(json.Object); is_obj && have == .TABLE {
+			plugin_table_merge(L, -1, sub, fmt.tprintf("%s/%s", path, k), problems)
 			lua.pop(L, 1)
+			continue
+		}
+		lua.pop(L, 1)
+		if want, got := plugin_config_type(have), plugin_json_type(v); want != "" && got != "" && want != got {
+			append(problems, fmt.tprintf("%q (expected %s)", fmt.tprintf("%s/%s", path, k), want))
+			continue
 		}
 		lua.pushodinstring(L, k)
 		plugin_json_push(L, v)
 		lua.rawset(L, idx)
 	}
+}
+
+plugin_config_type :: proc(t: lua.Type) -> string {
+	#partial switch t {
+	case .BOOLEAN:
+		return "a boolean"
+	case .NUMBER:
+		return "a number"
+	case .STRING:
+		return "a string"
+	case .TABLE:
+		return "a list or object"
+	}
+	return ""
+}
+
+plugin_json_type :: proc(v: json.Value) -> string {
+	switch _ in v {
+	case json.Boolean:
+		return "a boolean"
+	case json.Integer, json.Float:
+		return "a number"
+	case json.String:
+		return "a string"
+	case json.Array, json.Object:
+		return "a list or object"
+	case json.Null:
+	}
+	return ""
 }
 
 plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
@@ -1980,7 +2012,7 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 			append(&unknown, config_unknown_msg(fmt.tprintf("plugins/%s/%s", pl.name, k)))
 		}
 	}
-	plugin_table_merge(L, cfg, user)
+	plugin_table_merge(L, cfg, user, fmt.tprintf("plugins/%s", pl.name), &unknown)
 	lua.pushodinstring(L, "enabled")
 	lua.pushnil(L)
 	lua.rawset(L, cfg)
