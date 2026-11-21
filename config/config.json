@@ -28,6 +28,7 @@
   "diff_view": false,
   "message_log_backdrop": "none",
   "plugins_pane_backdrop": "none",
+  "pane_table_borders": "none",
   "lsp": {
     "enabled": true,
     "completion_max_rows": 8,

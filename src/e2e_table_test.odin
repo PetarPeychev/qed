@@ -143,7 +143,9 @@ e2e_table_column_errors :: proc(t: ^testing.T) {
 table_x_col :: proc(e: ^E2E, p: ^Pane) -> int {
 	e2e_render(e)
 	g := pane_geom(&e.ed, p)
-	return strings.index(e2e_row_text(e, g.head_y), "X") - strings.index(e2e_row_text(e, g.head_y), "Name")
+	row := e2e_row_text(e, g.head_y)
+	name := strings.index(row, "Name")
+	return strings.rune_count(row[name:strings.index(row, "X")])
 }
 
 @(test)
@@ -169,4 +171,47 @@ e2e_table_fit_resample :: proc(t: ^testing.T) {
 	e2e_resize(&e, 120, E2E_H)
 	testing.expect_value(t, table_x_col(&e, p), len("k150-a-sampled-but-offscreen-name-that-is-really-quite-long") + 2)
 	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_table_borders :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	saved := PANE_TABLE_BORDERS
+	defer PANE_TABLE_BORDERS = saved
+	e2e_plugin(&e, "tbl", TABLE_PLUGIN)
+
+	PANE_TABLE_BORDERS = .Header
+	table_run(&e, "Tbl: Sorted")
+	p := test_view(&e.ed)
+	e2e_render(&e)
+	g := pane_geom(&e.ed, p)
+	testing.expect_value(t, g.rule_y, g.head_y + 1)
+	testing.expect_value(t, g.list.y, g.rule_y + 1)
+	testing.expect_value(t, e2e_cell(&e, g.box.x, g.rule_y), '├')
+	testing.expect_value(t, e2e_cell(&e, g.list.x + 3, g.rule_y), '─')
+	testing.expect_value(t, table_x_col(&e, p), 4 + 2)
+	e2e_key(&e, .Esc)
+
+	PANE_TABLE_BORDERS = .All
+	table_run(&e, "Tbl: Sorted")
+	p = test_view(&e.ed)
+	e2e_render(&e)
+	g = pane_geom(&e.ed, p)
+	x := g.list.x + 1
+	testing.expect_value(t, table_x_col(&e, p), 4 + 3)
+	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.head_y), '│')
+	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.rule_y), '┼')
+	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.list.y), '│')
+	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.list.y + g.list.h - 1), '│')
+	e2e_key(&e, .Esc)
+
+	table_run(&e, "Tbl: Center")
+	testing.expect_value(t, pane_geom(&e.ed, test_view(&e.ed)).box, pane_center(&e.ed, PALETTE_WIDTH, 1 + 1 + 1))
+	e2e_key(&e, .Esc)
+	PANE_TABLE_BORDERS = .None
+	table_run(&e, "Tbl: Sorted")
+	g = pane_geom(&e.ed, test_view(&e.ed))
+	testing.expect_value(t, g.rule_y, -1)
+	testing.expect_value(t, g.list.y, g.head_y + 1)
 }

@@ -92,6 +92,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `split_preview_min_width` / `split_preview_max_width` | `70` / `130` | Preview column of any split pane. |
 | `message_log_backdrop` | `"none"` | What shows around *Message Log: Open*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
 | `plugins_pane_backdrop` | `"none"` | The same for *Plugins: Open*. |
+| `pane_table_borders` | `"none"` | Lines in pane lists with titled columns (Plugins pane, Message Log, plugin tables): `"header"` rules off the header row, `"all"` also separates the columns. |
 
 ## Search & navigation
 
