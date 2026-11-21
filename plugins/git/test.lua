@@ -125,6 +125,10 @@ function T.parse_porcelain(t)
 		{"RM old.txt -> new.txt", "new.txt", "modified", "old.txt"},
 		{"RD old.txt -> new.txt", "old.txt", "deleted"},
 		{"AD temp.txt"},
+		{'?? "with space.txt"', "with space.txt", "added"},
+		{"?? dir/sub/", "dir/sub", "added"},
+		{" M  padded.txt ", "padded.txt", "modified"},
+		{"MM both.txt", "both.txt", "modified"},
 		{"x"},
 	}
 	for _, c in ipairs(cases) do
@@ -143,6 +147,8 @@ function T.parse_numstat_paths(t)
 	t.eq(tree.numstat_path("src/{sub => }/f.odin"), "src/f.odin")
 	t.eq(tree.numstat_path("{old => }/f.odin"), "f.odin")
 	t.eq(tree.numstat_path("dir/{x.txt => y.txt}"), "dir/y.txt")
+	t.eq(tree.numstat_path('"quoted name.txt"'), "quoted name.txt")
+	t.eq(tree.numstat_path("plain/path.txt"), "plain/path.txt")
 end
 
 function T.parse_tree_status(t)

@@ -240,7 +240,7 @@ gate_long :: proc(name: string, row: int, wrap: bool) {
 	b := editor_buffer(&e.ed)
 	tag := fmt.aprintf("%s wrap %s", name, "on" if wrap else "off")
 	defer delete(tag)
-	open_wrap := GateMode.Open if wrap && name == "minified5mb.js" else .Gate
+	open_wrap := GateMode.Gate
 	gate_record(300, one(open_ms), fmt.tprintf("open %s", tag))
 	gate_settle(&e)
 	mid := len(b.lines[row].text) / 2
@@ -281,7 +281,7 @@ gate_panes :: proc(has_rg: bool) {
 		e, _ := gate_open("")
 		defer gate_close(&e)
 		gate_settle(&e)
-		gate_record(50, one(test_slice_max["git"]), "plugin slice git, startup (50k changed)", .Open)
+		gate_record(50, one(test_slice_max["git"]), "plugin slice git, startup (50k changed)", .Gate)
 		gate_record(50, one(test_slice_max["filetree"]), "plugin slice filetree, startup")
 
 		clear(&test_slice_max)
@@ -296,7 +296,7 @@ gate_panes :: proc(has_rg: bool) {
 		gate_record(300, one(ms_since(start)), "file tree walk landed (100k files)", .Info)
 		gate_settle(&e)
 		gate_record(50, one(test_slice_max["filetree"]), "plugin slice filetree, tree open (100k files)")
-		gate_record(50, one(test_slice_max["git"]), "plugin slice git, tree open (50k changed)", .Open)
+		gate_record(50, one(test_slice_max["git"]), "plugin slice git, tree open (50k changed)", .Gate)
 		gate_record(50, gate_pane_filter(&e, "file0123"), "file tree filter keystroke")
 		gate_record(16, gate_mean(&e, key(.Arrow_Down)), "file tree arrow")
 		gate_frame(&e, key(.Esc))
@@ -309,7 +309,7 @@ gate_panes :: proc(has_rg: bool) {
 		gate_settle(&e)
 		gate_record(300, one(ms_since(start)), "Git tab populated (50k changed)", .Info)
 		gate_record(16, gate_mean(&e, key(.Arrow_Down)), "Git tab arrow")
-		gate_record(50, one(test_slice_max["filetree"]), "plugin slice filetree, Git tab (50k changed)", .Open)
+		gate_record(50, one(test_slice_max["filetree"]), "plugin slice filetree, Git tab (50k changed)", .Gate)
 		gate_record(50, one(test_slice_max["git"]), "plugin slice git, Git tab (50k changed)")
 		gate_frame(&e, key(.Esc))
 		gate_settle(&e)
@@ -373,12 +373,13 @@ gate_plugins :: proc() {
 		clear(&test_slice_max)
 		start := time.tick_now()
 		gate_frame(&e, char('p', .Alt))
-		gate_record(300, one(ms_since(start)), "markdown preview open (100k lines)", .Open)
+		gate_record(300, one(ms_since(start)), "markdown preview open (100k lines)", .Gate)
 		gate_settle(&e)
+		gate_record(300, one(ms_since(start)), "markdown preview rendered (100k lines)", .Info)
 		gate_place(&e, 50_000, 0)
 		gate_record(16, gate_mean(&e, char('x'), undo = true), "keystroke with markdown preview")
 		gate_settle(&e)
-		gate_record(50, one(test_slice_max["markdown"]), "plugin slice markdown (100k lines)", .Open)
+		gate_record(50, one(test_slice_max["markdown"]), "plugin slice markdown (100k lines)", .Gate)
 		test_slice_on = false
 	}
 	{
@@ -400,8 +401,8 @@ gate_plugins :: proc() {
 		start := time.tick_now()
 		gate_frame(&e, key(.Ctrl_S))
 		gate_settle(&e)
-		gate_record(50, one(ms_since(start)), "save with format fixups (100k lines)", .Open)
-		gate_record(50, one(test_slice_max["format"]), "plugin slice format (100k lines)", .Open)
+		gate_record(50, one(ms_since(start)), "save with format fixups (100k lines)", .Gate)
+		gate_record(50, one(test_slice_max["format"]), "plugin slice format (100k lines)", .Gate)
 		test_slice_on = false
 	}
 }
@@ -431,6 +432,7 @@ bench_gate :: proc(t: ^testing.T) {
 			return
 		}
 	}
+	// the parts run free_all(context.temp_allocator)
 	only := os.get_env("QED_GATE_ONLY", context.allocator)
 	defer delete(only)
 	want :: proc(only, part: string) -> bool {

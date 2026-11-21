@@ -138,11 +138,8 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
 - [ ] Migrate remaining interactive-path blocking spawns (`format_external`, `git show`) to the async subprocess runner.
-- [ ] Markdown preview renders the whole document in one slice (100k lines: 1.7 s); render per block for the visible range.
-- [ ] Git tab `view:set` on a 50k-path scope is one ~250 ms core call (`walk_scope_rows` readdirs every expanded dir); build narrowed rows from the scope's path list.
-- [ ] git plugin status/numstat parse slices reach 60-100 ms on 50k changes; parse in core or cut per-line allocations.
 - [ ] The frame that adopts a background reparse on a 1 MB highlighted line costs ~220 ms: `highlight_query_paint` queries the whole row; limit the query to the visible byte range.
-- [ ] format `buf_pre_save` fixups take ~90 ms on 100k lines (`qed.buf.lines` + Lua patterns); add a core trailing-whitespace row scan.
+- [ ] Lua GC steps add 20-50 ms to plugin slices once the heap holds 50k-entry tables (git, filetree at 50k changes); cut allocations or tune the GC ([notes/perf.md](notes/perf.md)).
 
 ### Refactors
 

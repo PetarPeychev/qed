@@ -275,3 +275,75 @@ test_walk_prewarm_discard_on_mismatch :: proc(t: ^testing.T) {
 	testing.expect(t, !walk_valid(w), "cache must not be filled from a stale snapshot")
 	testing.expect(t, !w.pw.active, "prewarm should be settled")
 }
+
+@(private = "file")
+scope_rows_match :: proc(t: ^testing.T, src: ^ListSource, dir: string, kids: ^map[string][dynamic]WalkRow, label: string) {
+	got := walk_scope_rows(src, dir, kids)
+	want := list_walk_rows(src, dir, kids)
+	testing.expectf(t, len(got) == len(want), "%s: %s has %d rows, disk says %d", label, dir, len(got), len(want))
+	for w, i in want {
+		if i < len(got) {
+			testing.expectf(t, got[i] == w, "%s: row %d %v, disk says %v", label, i, got[i], w)
+		}
+		if w.is_dir {
+			scope_rows_match(t, src, w.path, kids, label)
+		}
+	}
+}
+
+@(test)
+test_walk_scope_rows_without_disk :: proc(t: ^testing.T) {
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	root := fmt.aprintf("%s/qed_walk_scoperows_%d", tmp, posix.getpid())
+	defer {os.remove_all(root);delete(root)}
+	for d in ([]string{"a/sub/deep", "b", "c", ".hid", "e"}) {
+		os.make_directory_all(fmt.tprintf("%s/%s", root, d))
+	}
+	for f in ([]string{"a/x.txt", "a/y.txt", "a/sub/z.txt", "a/sub/deep/w.txt", "b/1.txt", "b/2.txt", "c/c.txt", ".hid/h.txt"}) {
+		_ = os.write_entire_file(fmt.tprintf("%s/%s", root, f), transmute([]u8)string("x"))
+	}
+	posix.symlink(strings.clone_to_cstring(fmt.tprintf("%s/a", root), context.temp_allocator), strings.clone_to_cstring(fmt.tprintf("%s/link", root), context.temp_allocator))
+	Case :: struct {
+		within, virtual: []string,
+	}
+	cases := []Case {
+		{within = {"a/x.txt", "a/sub/z.txt", "c/c.txt"}},
+		{within = {"a/x.txt", "b"}},
+		{within = {"a/sub/deep/w.txt", "link/x.txt"}},
+		{within = {"a/x.txt"}, virtual = {"a/gone.txt", "gone/dir/f.txt"}},
+		{within = {".hid/h.txt", "a/sub"}},
+		{within = {"a/x.txt", "a/x.txt", "a/y.txt", "a/sub/deep/w.txt"}},
+		{within = {"a/x.txt", "a/sub/z.txt", "a/sub/deep/w.txt", "a/sub/deep"}},
+		{within = {"a/sub/z.txt"}, virtual = {"a/sub/z.txt", "a/sub/deep/w.txt"}},
+	}
+	abs :: proc(root: string, rels: []string) -> []string {
+		out := make([]string, len(rels), context.temp_allocator)
+		for r, i in rels {
+			out[i] = fmt.tprintf("%s/%s", root, r)
+		}
+		return out
+	}
+	w := Walk{root = root}
+	for c, i in cases {
+		s := walk_scope_new(root, nil, abs(root, c.within), nil)
+		if len(c.virtual) > 0 {
+			u := walk_scope_new(root, s, nil, abs(root, c.virtual))
+			walk_scope_release(s)
+			s = u
+		}
+		src := ListSource{kind = .Walk, walk = &w, wscope = s}
+		kids := walk_virtual_kids(s, root)
+		scope_rows_match(t, &src, root, &kids, fmt.tprintf("case %d", i))
+		walk_scope_release(s)
+	}
+
+	s := walk_scope_new(root, nil, abs(root, {"a/x.txt", "a/sub/z.txt", "a/sub/deep/w.txt"}), nil)
+	defer walk_scope_release(s)
+	src := ListSource{kind = .Walk, walk = &w, wscope = s}
+	kids := walk_virtual_kids(s, root)
+	walk_scope_rows(&src, root, &kids)
+	for d in ([]string{"a", "a/sub", "a/sub/deep"}) {
+		testing.expectf(t, walk_scope_known_rows(s, fmt.tprintf("%s/%s", root, d), context.temp_allocator) != nil, "%s comes from the scope, not the disk", d)
+	}
+	testing.expect(t, walk_scope_known_rows(s, root, context.temp_allocator) == nil, "a dir with subdirs the scope does not name reads the disk")
+}

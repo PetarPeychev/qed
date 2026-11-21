@@ -813,6 +813,13 @@ function qed.buf.line(b, row) end
 ---@return integer[]? kinds
 function qed.buf.find_lines(b, prefix, opts) end
 
+---Rows ending in spaces or tabs, in order, with each run's span: `from[i]` is its first column, `to[i]` the line end (`#line + 1`). One core pass, no text copy.
+---@param b qed.Buf
+---@return integer[] rows
+---@return integer[] from
+---@return integer[] to
+function qed.buf.find_trailing(b) end
+
 ---The whole text, lines joined with LF regardless of the file's line endings.
 ---@param b qed.Buf
 ---@return string

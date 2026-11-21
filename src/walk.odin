@@ -68,7 +68,9 @@ WalkScope :: struct {
 	paths:   []string,
 	virtual: []string,
 	listed:  map[string]bool,
-	closure: map[string]bool,
+	closure: map[string]i32,
+	dirs:    [dynamic]string,
+	parent:  []i32,
 	cands:   [dynamic]FileEntry,
 	valid:   bool,
 	seen:    u64,
@@ -76,6 +78,7 @@ WalkScope :: struct {
 	rows:       map[string][]WalkRow,
 	rows_arena: vmem.Arena,
 	rows_gen:   u64,
+	kids:       map[string][dynamic]WalkRow,
 }
 
 walk_entries_free :: proc(entries: ^[dynamic]FileEntry) {
@@ -500,8 +503,10 @@ walk_scope_new :: proc(root: string, base: ^WalkScope, within, virtual: []string
 	}
 	s.text = make([]u8, n)
 	s.paths = make([]string, len(within))
+	s.parent = make([]i32, len(within))
 	s.virtual = make([]string, len(virtual))
-	reserve(&s.listed, len(within))
+	// a map grows at 3/4 full, so reserving the exact count would rehash once on the last quarter
+	reserve(&s.listed, len(within) * 4 / 3 + 1)
 	reserve(&s.closure, len(virtual) + 64)
 	at := 0
 	keep :: proc(s: ^WalkScope, at: ^int, p: string) -> string {
@@ -513,11 +518,11 @@ walk_scope_new :: proc(root: string, base: ^WalkScope, within, virtual: []string
 	for p, i in within {
 		s.paths[i] = keep(s, &at, p)
 		s.listed[s.paths[i]] = true
-		walk_closure_add(&s.closure, root, path_parent(s.paths[i]))
+		s.parent[i] = walk_closure_add(s, root, path_parent(s.paths[i]))
 	}
 	for p, i in virtual {
 		s.virtual[i] = keep(s, &at, p)
-		walk_closure_add(&s.closure, root, s.virtual[i])
+		walk_closure_add(s, root, s.virtual[i])
 	}
 	return s
 }
@@ -533,6 +538,8 @@ walk_scope_release :: proc(s: ^WalkScope) {
 	walk_scope_release(s.base)
 	delete(s.listed)
 	delete(s.closure)
+	delete(s.dirs)
+	delete(s.parent)
 	delete(s.paths)
 	delete(s.virtual)
 	delete(s.text)
@@ -556,18 +563,28 @@ walk_set_clear :: proc(set: ^map[string]bool) {
 	clear(set)
 }
 
-// ancestors are prefixes of path, so they share its storage
-walk_closure_add :: proc(set: ^map[string]bool, root, path: string) {
-	set[path] = true
+// ancestors are prefixes of path, so they share its storage; returns path's index in dirs
+walk_closure_add :: proc(s: ^WalkScope, root, path: string) -> i32 {
+	if i, ok := s.closure[path]; ok {
+		return i
+	}
+	add :: proc(s: ^WalkScope, p: string) -> i32 {
+		i := i32(len(s.dirs))
+		s.closure[p] = i
+		append(&s.dirs, p)
+		return i
+	}
+	at := add(s, path)
 	p := path
 	for strings.has_prefix(p, root) && p != root {
 		np := path_parent(p)
-		if np == p || np in set {
+		if np == p || np in s.closure {
 			break
 		}
 		p = np
-		set[p] = true
+		add(s, p)
 	}
+	return at
 }
 
 walk_scope_in_closure :: proc(s: ^WalkScope, p: string) -> bool {
@@ -869,17 +886,125 @@ walk_scope_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynami
 	if s.rows_gen != src.walk.stales + 1 {
 		clear(&s.rows)
 		vmem.arena_free_all(&s.rows_arena)
+		s.kids = walk_scope_kids(s, src.walk.root, vmem.arena_allocator(&s.rows_arena))
 		s.rows_gen = src.walk.stales + 1
 	}
 	if r, ok := s.rows[dir]; ok {
 		return r
 	}
 	a := vmem.arena_allocator(&s.rows_arena)
-	rows := slice.clone(list_walk_rows(src, dir, kids), a)
-	for &r in rows {
-		r.path = strings.clone(r.path, a)
+	rows := walk_scope_known_rows(s, dir, a)
+	if rows == nil {
+		rows = slice.clone(list_walk_rows(src, dir, kids), a)
+		for &r in rows {
+			r.path = strings.clone(r.path, a)
+		}
 	}
 	s.rows[strings.clone(dir, a)] = rows
+	return rows
+}
+
+// every path the scope chain names, by parent dir, repeats included; only a closure path can have
+// children, and a listed path's parent was indexed when the scope was built, so only dirs are hashed here
+walk_scope_kids :: proc(s: ^WalkScope, root: string, a: runtime.Allocator) -> map[string][dynamic]WalkRow {
+	kids := make(map[string][dynamic]WalkRow, a)
+	group :: proc(kids: ^map[string][dynamic]WalkRow, dir: string, a: runtime.Allocator) -> ^[dynamic]WalkRow {
+		rows, ok := &kids[dir]
+		if !ok {
+			kids[dir] = make([dynamic]WalkRow, a)
+			rows = &kids[dir]
+		}
+		return rows
+	}
+	for sc := s; sc != nil; sc = sc.base {
+		for p in sc.dirs {
+			if dir := path_parent(p); p != root && dir != p {
+				append(group(&kids, dir, a), WalkRow{p, len(dir) + 1, true})
+			}
+		}
+		count := make([]int, len(sc.dirs), context.temp_allocator)
+		for d in sc.parent {
+			count[d] += 1
+		}
+		for n, d in count {
+			if n > 0 {
+				reserve(group(&kids, sc.dirs[d], a), n)
+			}
+		}
+		// no insert from here on, so the map keeps these value pointers in place
+		slot := make([]^[dynamic]WalkRow, len(sc.dirs), context.temp_allocator)
+		for n, d in count {
+			if n > 0 {
+				slot[d] = &kids[sc.dirs[d]]
+			}
+		}
+		for p, i in sc.paths {
+			dir := sc.dirs[sc.parent[i]]
+			if p != root && dir != p {
+				append(slot[sc.parent[i]], WalkRow{p, len(dir) + 1, false})
+			}
+		}
+	}
+	for _, &rows in kids {
+		for &r in rows {
+			r.is_dir = r.is_dir && r.path in kids
+		}
+	}
+	return kids
+}
+
+// rows of an uncovered dir straight from the scope, which names every row it can show; the dir's link
+// count (2 + subdirs) must match the scope's dirs there, or a listed dir or a missing one needs the disk
+walk_scope_known_rows :: proc(s: ^WalkScope, dir: string, a: runtime.Allocator) -> []WalkRow {
+	for q := dir; true; {
+		for sc := s; sc != nil; sc = sc.base {
+			if q in sc.listed {
+				return nil
+			}
+		}
+		np := path_parent(q)
+		if np == q {
+			break
+		}
+		q = np
+	}
+	named := slice.clone(s.kids[dir][:], context.temp_allocator)
+	// insertion sort: a dir's rows are few, and slice.sort_by's smoothsort costs more per compare
+	for i in 1 ..< len(named) {
+		r := named[i]
+		k := i
+		for k > 0 && r.path[r.name:] < named[k - 1].path[named[k - 1].name:] {
+			named[k] = named[k - 1]
+			k -= 1
+		}
+		named[k] = r
+	}
+	n, dirs := 0, 0
+	for r in named {
+		if n > 0 && named[n - 1].path == r.path {
+			named[n - 1].is_dir ||= r.is_dir
+			continue
+		}
+		named[n] = r
+		n += 1
+	}
+	for r in named[:n] {
+		dirs += int(r.is_dir)
+	}
+	st: posix.stat_t
+	if posix.stat(strings.clone_to_cstring(dir, context.temp_allocator), &st) != .OK || !posix.S_ISDIR(st.st_mode) || int(st.st_nlink) != dirs + 2 {
+		return nil
+	}
+	rows := make([]WalkRow, n, a)
+	k := 0
+	for want in ([]bool{true, false}) {
+		for r in named[:n] {
+			if r.is_dir == want {
+				rows[k] = r
+				k += 1
+			}
+		}
+	}
 	return rows
 }
 
@@ -1309,8 +1434,10 @@ buffers_repath :: proc(editor: ^Editor, old, new: string) {
 }
 
 path_parent :: proc(path: string) -> string {
-	if idx := strings.last_index_byte(path, '/'); idx > 0 {
-		return path[:idx]
+	for i := len(path) - 1; i > 0; i -= 1 {
+		if path[i] == '/' {
+			return path[:i]
+		}
 	}
 	return path
 }

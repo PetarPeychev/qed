@@ -69,6 +69,7 @@ qed_buf_api := [?]lua.L_Reg {
 	{"lines", qed_buf_lines},
 	{"line", qed_buf_line},
 	{"find_lines", qed_buf_find_lines},
+	{"find_trailing", qed_buf_find_trailing},
 	{"text", qed_buf_text},
 	{"insert", qed_buf_insert},
 	{"delete", qed_buf_delete},
@@ -580,6 +581,34 @@ qed_buf_find_lines :: proc "c" (L: ^lua.State) -> c.int {
 	return 1 + c.int(listed)
 }
 
+qed_buf_find_trailing :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	b, _ := api_buf(L, entry.editor, 1)
+	lua.newtable(L)
+	lua.newtable(L)
+	lua.newtable(L)
+	n := 0
+	for line, r in b.lines {
+		text := line.text[:]
+		from := len(text)
+		for from > 0 && (text[from - 1] == ' ' || text[from - 1] == '\t') {
+			from -= 1
+		}
+		if from == len(text) {
+			continue
+		}
+		n += 1
+		lua.pushinteger(L, lua.Integer(r + 1))
+		lua.rawseti(L, -4, lua.Integer(n))
+		lua.pushinteger(L, lua.Integer(from + 1))
+		lua.rawseti(L, -3, lua.Integer(n))
+		lua.pushinteger(L, lua.Integer(len(text) + 1))
+		lua.rawseti(L, -2, lua.Integer(n))
+	}
+	return 3
+}
+
 qed_buf_text :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
@@ -911,11 +940,24 @@ api_path :: proc(editor: ^Editor, path: string) -> string {
 	return joined
 }
 
+// one pass for "//", "/./", "/../" and a trailing "/." or "/..": a 50k-path list goes through here
 api_path_clean :: proc(path: string) -> bool {
 	if len(path) < 2 || path[0] != '/' || path[len(path) - 1] == '/' {
 		return false
 	}
-	return !strings.contains(path, "//") && !strings.contains(path, "/./") && !strings.contains(path, "/../") && !strings.has_suffix(path, "/.") && !strings.has_suffix(path, "/..")
+	for i in 0 ..< len(path) - 1 {
+		if path[i] != '/' {
+			continue
+		}
+		rest := path[i + 1:]
+		if rest[0] == '/' {
+			return false
+		}
+		if rest[0] == '.' && (len(rest) == 1 || rest[1] == '/' || (rest[1] == '.' && (len(rest) == 2 || rest[2] == '/'))) {
+			return false
+		}
+	}
+	return true
 }
 
 qed_open :: proc "c" (L: ^lua.State) -> c.int {

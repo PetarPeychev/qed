@@ -444,8 +444,14 @@ focus; an open from such a task also leaves the message line alone. `ctx.view` i
 own plugin. `pane_unload` saves state before marking dead.
 
 A `markdown` body (`qed.ui.open{markdown}`, full only) is rendered by core at the text width into
-`Pane.md_lines`, a per-pane `virtual.Arena` swapped in as `context.temp_allocator` for `md_render`;
-the cache is keyed on width and dropped by `v:markdown` and `editor_retheme`. Rendered lines stay in
+`Pane.md_lines`, a per-pane `virtual.Arena` swapped in as `context.temp_allocator`;
+the cache is keyed on width and dropped by `v:markdown` and `editor_retheme`. The render is an
+`MdJob` (`md_job_start`/`md_job_step`, whole top-level blocks per step, the full parse first since a
+reference definition resolves links above it) in its own arena: the first `md_slice_ms` (10 ms) step
+runs inline, the rest from `pane_stack_pump` (the main loop peeks without waiting meanwhile), and the
+pane keeps showing the last finished render (nothing on a first open) until the arenas swap.
+`v:scroll`, `v:anchor`, `v:source_line` and `v:source_scroll` wait for a pending render (sleep-0
+yields that also step it; synchronous outside a task), so they always see the new layout. Rendered lines stay in
 source order, so `md_line_of_src` (a source row to the first line of its block from the closest row at or
 above it; an opening fence maps to the first code line) is a forward scan; `plugin_view_closed` snapshots the visible rows' `src` and the scroll into the
 `UiView`, so a `close` handler can still map them (the markdown plugin's cursor sync). `max_width` caps a
@@ -997,8 +1003,11 @@ stamp, so open walk lists refill keeping the selected and anchor paths. `within(
 through a refcounted `WalkScope` (listed paths keep their descendants and skip the dotfiles/ignored rules; virtual
 paths and their missing parents are injected when absent). A scope copies its paths into one buffer and keys its
 listed and ancestor sets by slices of it; `union` points at its base scope instead of copying it. A narrowed tree's
-dir rows (`posix` readdir, sorted, filtered) are cached on the scope until the walk restales, so a refill is a
-copy; entry paths and pane mark keys live in arenas. `h:release()` frees a handle before collection. `list_walk_fill` builds the rows: lazy per-dir `readdir`
+dir rows are cached on the scope until the walk restales, so a refill is a copy. A dir no listed path covers takes
+its rows from the scope chain's own paths (grouped by parent; a listed path's parent index is kept from creation),
+guarded by one `stat`: the dir's link count must equal 2 + the scope's subdirs there, else (a listed or symlinked
+dir, a missing one, or a filesystem without dir link counts) it reads the disk (`posix` readdir, sorted, filtered).
+A listed file missing from disk in such a dir still shows (the disk read hid it unless virtual); entry paths and pane mark keys live in arenas. `h:release()` frees a handle before collection. `list_walk_fill` builds the rows: lazy per-dir `readdir`
 for the browsable tree, or under a filter a ranked, capped (`list.max`, 500) path list that narrows the previous
 hits as the query grows. `qed.fs.copy/rename/remove/mkdir` (`fs_*`) refuse an existing target, a target inside the
 source (`into itself`), special files (fifos, sockets, devices; skipped inside a copied dir) and removing the root or

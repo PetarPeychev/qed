@@ -2000,17 +2000,58 @@ qed_view_markdown :: proc "c" (L: ^lua.State) -> c.int {
 		plugin_raise(L, "view has no markdown body")
 	}
 	if pn != nil {
+		pane_md_reset(pn)
 		delete(pn.md)
 		pn.md = strings.clone(src)
-		pn.md_w = -1
 	}
 	lua.pushboolean(L, b32(pn != nil))
 	return 1
 }
 
+// a call that reads the layout waits out a render still in progress, stepping it from its own slices too
+api_md_wait :: proc(L: ^lua.State, editor: ^Editor) -> bool {
+	pn, _ := api_view_live(L, editor)
+	if pn == nil || !pn.has_md {
+		return false
+	}
+	pane_md_lines(pn, pane_geom(editor, pn).text.w)
+	if pn.md_job == nil {
+		return false
+	}
+	p := &editor.plugins
+	if t := plugin_task_of(p, L); t != nil && p.current == L && p.edit_depth == 0 && lua.isyieldable(L) {
+		if pane_md_step(pn, md_slice_ms) {
+			return false
+		}
+		t.wait = {kind = .Sleep, until = time.tick_now()}
+		return true
+	}
+	pane_md_step(pn, -1)
+	return false
+}
+
+qed_view_md_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := plugin_entry(L)
+	if entry == nil || entry.editor.plugins.current != L {
+		return lua.yieldk(L, 0, ctx, qed_view_md_k)
+	}
+	switch ctx {
+	case 0:
+		return qed_view_anchor(L)
+	case 1:
+		return qed_view_scroll(L)
+	case 2:
+		return qed_view_source_line(L)
+	}
+	return qed_view_source_scroll(L)
+}
+
 qed_view_anchor :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	if api_md_wait(L, entry.editor) {
+		return lua.yieldk(L, 0, 0, qed_view_md_k)
+	}
 	slug := strings.clone(api_string(L, 2), context.temp_allocator)
 	pn, _ := api_view_live(L, entry.editor)
 	found := false
@@ -2030,6 +2071,9 @@ qed_view_anchor :: proc "c" (L: ^lua.State) -> c.int {
 qed_view_scroll :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	if api_md_wait(L, entry.editor) {
+		return lua.yieldk(L, 0, 1, qed_view_md_k)
+	}
 	set := lua.type(L, 2) > .NIL
 	row := api_int(L, 2, "row must be an integer") if set else 0
 	pn, _ := api_view_live(L, entry.editor)
@@ -2061,6 +2105,9 @@ api_view_closed :: proc(L: ^lua.State, editor: ^Editor) -> ^UiView {
 qed_view_source_line :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	if api_md_wait(L, entry.editor) {
+		return lua.yieldk(L, 0, 2, qed_view_md_k)
+	}
 	src: []int
 	top := 0
 	if pn, _ := api_view_live(L, entry.editor); pn != nil {
@@ -2086,6 +2133,9 @@ qed_view_source_line :: proc "c" (L: ^lua.State) -> c.int {
 qed_view_source_scroll :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	if api_md_wait(L, entry.editor) {
+		return lua.yieldk(L, 0, 3, qed_view_md_k)
+	}
 	src := api_int(L, 2, "row must be an integer")
 	set_at := lua.type(L, 3) > .NIL
 	at := api_int(L, 3, "row must be an integer") if set_at else 0

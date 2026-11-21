@@ -29,16 +29,16 @@ local function fixups(b)
 		return
 	end
 	local markdown = qed.buf.language(b) == "markdown"
-	local lines = qed.buf.lines(b)
-	local last = #lines
-	local last_trim = on.trim and trim_len(lines[last], markdown) or 0
-	local newline = on.newline and #lines[last] > last_trim
+	local last = qed.buf.line_count(b)
+	local tail = qed.buf.line(b, last)
+	local last_trim = on.trim and trim_len(tail, markdown) or 0
+	local newline = on.newline and #tail > last_trim
 	local cuts = {}
 	if on.trim then
-		for row, line in ipairs(lines) do
-			local n = trim_len(line, markdown)
-			if n > 0 then
-				cuts[#cuts + 1] = {row = row, col = #line - n + 1, to = #line + 1}
+		local rows, from, to = qed.buf.find_trailing(b)
+		for i, row in ipairs(rows) do
+			if not markdown or trim_len(qed.buf.line(b, row), true) > 0 then
+				cuts[#cuts + 1] = {row = row, col = from[i], to = to[i]}
 			end
 		end
 	end

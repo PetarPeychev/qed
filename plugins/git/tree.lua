@@ -3,8 +3,16 @@ local repo = require("repo")
 local M = {}
 
 local RANK = {added = 1, modified = 2, deleted = 3}
+local BAR = {added = "git_added", modified = "git_modified", deleted = "git_deleted"}
 
+local SPACE = {[9] = true, [10] = true, [11] = true, [12] = true, [13] = true, [32] = true}
+
+-- almost every path needs nothing stripped, so the gsubs run only when an end byte says so
 local function clean(s)
+	local a, z = s:byte(1), s:byte(-1)
+	if not (SPACE[a] or SPACE[z] or a == 34 or z == 34 or z == 47) then
+		return s
+	end
 	s = s:gsub("^%s+", ""):gsub("%s+$", "")
 	return (s:gsub('^"', ""):gsub('"$', ""):gsub("/$", ""))
 end
@@ -36,7 +44,7 @@ function M.porcelain_line(line)
 	if #line < 4 then
 		return nil
 	end
-	local x, y, rel = line:sub(1, 1), line:sub(2, 2), line:sub(4)
+	local x, y, rel = line:byte(1), line:byte(2), line:sub(4)
 	local from
 	local arrow = rel:find(" -> ", 1, true)
 	if arrow then
@@ -47,20 +55,20 @@ function M.porcelain_line(line)
 	if path == "" then
 		return nil
 	end
-	local code = x .. y
-	if code == "??" then
+	-- status letters as bytes: ? 63, ! 33, A 65, D 68, R 82
+	if x == 63 and y == 63 then
 		return path, "added"
-	elseif code == "!!" then
+	elseif x == 33 and y == 33 then
 		return path, "ignored"
-	elseif code == "AD" then
+	elseif x == 65 and y == 68 then
 		return nil
-	elseif code == "RD" then
+	elseif x == 82 and y == 68 then
 		return from, "deleted"
-	elseif x == "D" or y == "D" then
+	elseif x == 68 or y == 68 then
 		return path, "deleted"
-	elseif x == "R" then
+	elseif x == 82 then
 		return path, "modified", from
-	elseif x == "A" or y == "A" then
+	elseif x == 65 or y == 65 then
 		return path, "added"
 	end
 	return path, "modified"
@@ -68,6 +76,9 @@ end
 
 -- a rename prints `old => new` or `dir/{old => new}/f`; sizes key on the new path
 function M.numstat_path(s)
+	if s:byte(1) ~= 34 and s:byte(-1) ~= 34 and not s:find(" => ", 1, true) then
+		return s
+	end
 	local p = s:gsub('^"', ""):gsub('"$', "")
 	local arrow = p:find(" => ", 1, true)
 	if not arrow then
@@ -101,7 +112,7 @@ end
 M.MAX = 50000
 
 local function add(st, rel, mark, from)
-	local path = st.top .. "/" .. rel
+	local path = st.under .. rel
 	if mark == "deleted" and qed.fs.exists(path) then
 		mark = "modified"
 	end
@@ -114,6 +125,7 @@ local function add(st, rel, mark, from)
 		st.count = st.count + 1
 		e = {mark = mark}
 		st.files[path] = e
+		st.byrel[rel] = e
 	elseif RANK[mark] > RANK[e.mark] then
 		e.mark = mark
 	end
@@ -149,10 +161,10 @@ end
 local function parse_sizes(st, text, untracked)
 	for line in repo.each(text) do
 		local rel, a, d = M.numstat_line(line, untracked)
-		local path = rel and st.top .. "/" .. rel
-		if path and (a > 0 or d > 0) and not st.sized[path] then
-			st.sized[path] = true
-			local e = st.files[path]
+		-- keyed by the short relative path: no absolute path is built or hashed per line
+		if rel and (a > 0 or d > 0) and not st.sized[rel] then
+			st.sized[rel] = true
+			local e = st.byrel[rel] or st.files[st.under .. rel]
 			if e then
 				e.added, e.removed = a, d
 			end
@@ -161,7 +173,7 @@ local function parse_sizes(st, text, untracked)
 end
 
 local function state(files, ignored, top)
-	return {files = files, ignored = ignored, top = top, count = 0, sized = {}, based = false, full = false}
+	return {files = files, ignored = ignored, top = top, under = top .. "/", count = 0, sized = {}, byrel = {}, based = false, full = false}
 end
 
 function M.parse(files, ignored, top, out)
@@ -313,7 +325,9 @@ function M.view(files, ignored, stop)
 			gone[#gone + 1] = path
 		end
 		local up, p = f.mark == "deleted" and "modified" or f.mark, path
-		while p:sub(1, #under) == under do
+		-- every ancestor at least as long as under shares the prefix, so it is checked once
+		local inside = p:find(under, 1, true) == 1
+		while inside and #p >= #under do
 			local np = parent(p)
 			if np == p or set(np, up) then
 				break
@@ -328,7 +342,7 @@ function M.view(files, ignored, stop)
 	local marks = {}
 	local icon = qed.theme.icon("tree_renamed")
 	for path, mark in pairs(status) do
-		local e = {bar = "git_" .. mark}
+		local e = {bar = BAR[mark]}
 		if mark == "deleted" and not qed.fs.exists(path, {follow = false}) then
 			e.fg = "git_deleted"
 		end

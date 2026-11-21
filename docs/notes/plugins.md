@@ -100,6 +100,7 @@ The API is one global, `qed`.
 | `qed.buf.path(b)`, `.language(b)`, `.modified(b)`, `.big(b)`, `.rev(b)`, `.line_count(b)` | `rev` is the version used for await safety. `big`: opened from a file over `BIG_FILE_BYTES`. |
 | `qed.buf.lines(b, from?, to?) -> string[]`, `.line(b, row)`, `.text(b)` | Bulk copies. No per-line FFI loops. |
 | `qed.buf.find_lines(b, prefix \| prefixes, {word?}) -> rows, kinds?` | Rows starting with `prefix` (plain bytes), in order. With a list, `kinds` holds each row's prefix index. `word`: the prefix is followed by the line end or a space. One core pass, no text copy: a `buf_changed` handler's cheap check. |
+| `qed.buf.find_trailing(b) -> rows, from, to` | Rows ending in spaces or tabs, in order; `from` is the run's first column, `to` the line end. One core pass, no text copy (the format plugin's trim on save). |
 | `qed.buf.insert(b, pos, text) -> pos`, `.delete(b, from, to) -> string`, `.replace(b, from, to, text)` | Wrappers over the primitives. |
 | `qed.buf.set_text(b, text, {rev?}) -> bool` | Minimal-diff whole replace. Returns false if `rev` is stale. |
 | `qed.edit(b, fn, {rev?}) -> bool` | Everything inside `fn` is one undo group. `fn` must not yield. |

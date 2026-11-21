@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:math"
 import "core:strconv"
 import "core:strings"
+import "core:time"
 import "core:unicode"
 import "core:unicode/utf8"
 import "lib:tb2"
@@ -24,12 +25,11 @@ MdLine :: struct {
 	src, block:       int,
 }
 
+// a cluster of spans[span], text[off:][:n]; a tab expands to space cells with n = 0
 MdCell :: struct {
-	text:       string,
-	fg, bg:     tb2.Color,
-	w:          int,
-	space, brk: bool,
-	link:       string,
+	span, off, n: i32,
+	w:            i16,
+	space, brk:   bool,
 }
 
 MdKind :: enum {
@@ -98,6 +98,7 @@ MdRender :: struct {
 	style:       MdStyle,
 	refs:        map[string]string,
 	links:       [dynamic]string,
+	link_index:  map[string]int,
 	link:        string,
 	slugs:       map[string]int,
 	prefix:      [dynamic]MdPrefix,
@@ -150,18 +151,34 @@ md_contrast :: proc(a, b: tb2.Color) -> f32 {
 	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 }
 
+MdJob :: struct {
+	r:      MdRender,
+	lines:  []string,
+	rows:   []int,
+	blocks: [dynamic]MdBlock,
+	parsed: int,
+	shown:  int,
+	done:   bool,
+}
+
 md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
-	r := MdRender {
-		width = width,
-		lang  = default_lang,
-		style = md_style(),
-	}
+	job: MdJob
+	md_job_start(&job, src, width, default_lang)
+	return md_job_step(&job, {})
+}
+
+md_job_start :: proc(job: ^MdJob, src: string, width: int, default_lang: Language) {
+	job^ = {}
+	r := &job.r
+	r.width, r.lang, r.style = width, default_lang, md_style()
 	r.out = make([dynamic]MdLine, context.temp_allocator)
 	if width <= 0 {
-		return r.out[:]
+		job.done = true
+		return
 	}
 	r.refs = make(map[string]string, context.temp_allocator)
 	r.links = make([dynamic]string, context.temp_allocator)
+	r.link_index = make(map[string]int, context.temp_allocator)
 	r.slugs = make(map[string]int, context.temp_allocator)
 	r.prefix = make([dynamic]MdPrefix, context.temp_allocator)
 	raw := strings.split(src, "\n", context.temp_allocator)
@@ -176,25 +193,51 @@ md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
 	for &row, k in rows {
 		row = k
 	}
-	blocks := make([dynamic]MdBlock, context.temp_allocator)
+	job.blocks = make([dynamic]MdBlock, context.temp_allocator)
 	if len(raw) > 1 && raw[0] == "---" {
 		for k in 1 ..< len(raw) {
 			if raw[k] == "---" || raw[k] == "..." {
-				append(&blocks, MdBlock{kind = .Code, lines = raw[1:k], info = "yaml", line_src = rows[1:k]})
+				append(&job.blocks, MdBlock{kind = .Code, lines = raw[1:k], info = "yaml", line_src = rows[1:k]})
 				raw, rows = raw[k + 1:], rows[k + 1:]
 				break
 			}
 		}
 	}
-	append(&blocks, ..md_parse(&r, raw, rows))
-	md_blocks(&r, blocks[:])
+	job.lines, job.rows = raw, rows
+}
+
+// whole top-level blocks per step: the full parse runs first, since a reference definition anywhere resolves links above it
+md_job_step :: proc(job: ^MdJob, deadline: time.Tick) -> []MdLine {
+	r := &job.r
+	if job.done {
+		return r.out[:]
+	}
+	over :: proc(deadline: time.Tick) -> bool {
+		return deadline != {} && time.tick_diff(deadline, time.tick_now()) >= 0
+	}
+	r.nest = 1
+	for job.parsed < len(job.lines) {
+		job.parsed = md_parse_block(r, job.lines, job.rows, job.parsed, &job.blocks)
+		if over(deadline) {
+			return nil
+		}
+	}
+	r.nest = 0
+	for job.shown < len(job.blocks) {
+		md_block(r, &job.blocks[job.shown])
+		job.shown += 1
+		if over(deadline) {
+			return nil
+		}
+	}
+	job.done = true
 	if len(r.links) > 0 {
-		md_gap(&r, r.src)
+		md_gap(r, r.src)
 		for url, i in r.links {
 			mark := fmt.tprintf("[%d] ", i + 1)
 			append(&r.prefix, MdPrefix{mark, strings.repeat(" ", len(mark), context.temp_allocator), r.style.dim, true})
-			for row in md_wrap_hard({{text = url, fg = r.style.dim, link = url}}, md_avail(&r)) {
-				md_emit(&r, row)
+			for row in md_wrap_hard({{text = url, fg = r.style.dim, link = url}}, md_avail(r)) {
+				md_emit(r, row)
 			}
 			pop(&r.prefix)
 		}
@@ -296,150 +339,156 @@ md_parse :: proc(r: ^MdRender, lines_in: []string, rows: []int) -> []MdBlock {
 	}
 	r.nest += 1
 	defer r.nest -= 1
-	nest_ok := r.nest < MD_MAX_NEST
 	i := 0
 	for i < len(lines) {
-		line := lines[i]
-		ind := md_indent(line)
-		t := md_trim(line)
-		if t == "" {
-			i += 1
-			continue
-		}
-		src := rows[i]
-		if ind >= 4 {
-			code := make([dynamic]string, context.temp_allocator)
-			code_rows := make([dynamic]int, context.temp_allocator)
-			for i < len(lines) && (md_blank(lines[i]) || md_indent(lines[i]) >= 4) {
-				append(&code, lines[i][4:] if len(lines[i]) >= 4 else "")
-				append(&code_rows, rows[i])
-				i += 1
-			}
-			for len(code) > 0 && md_trim(code[len(code) - 1]) == "" {
-				pop(&code)
-				pop(&code_rows)
-			}
-			append(&blocks, MdBlock{kind = .Code, lines = code[:], src = src, line_src = code_rows[:]})
-			continue
-		}
-		if fence, n, info, ok := md_fence(t); ok {
-			code := make([dynamic]string, context.temp_allocator)
-			code_rows := make([dynamic]int, context.temp_allocator)
-			i += 1
-			for i < len(lines) {
-				ct := md_trim(lines[i])
-				if cf, cn, cinfo, cok := md_fence(ct); cok && cf == fence && cn >= n && cinfo == "" && md_indent(lines[i]) < 4 {
-					i += 1
-					break
-				}
-				append(&code, lines[i][min(ind, md_indent(lines[i])):])
-				append(&code_rows, rows[i])
-				i += 1
-			}
-			append(&blocks, MdBlock{kind = .Code, lines = code[:], info = info, src = src, line_src = code_rows[:]})
-			continue
-		}
-		if level, text, ok := md_heading(t); ok {
-			append(&blocks, MdBlock{kind = .Heading, level = level, text = text, src = src})
-			i += 1
-			continue
-		}
-		if md_is_rule(t) {
-			append(&blocks, MdBlock{kind = .Rule, src = src})
-			i += 1
-			continue
-		}
-		if t[0] == '>' && nest_ok {
-			sub := make([dynamic]string, context.temp_allocator)
-			sub_rows := make([dynamic]int, context.temp_allocator)
-			append(&sub, strings.trim_prefix(t[1:], " "))
-			append(&sub_rows, src)
-			i += 1
-			for i < len(lines) {
-				l := lines[i]
-				lt := strings.trim_left(l, " ")
-				if md_indent(l) < 4 && strings.has_prefix(lt, ">") {
-					rest := lt[1:]
-					if strings.has_prefix(rest, " ") {
-						rest = rest[1:]
-					}
-					append(&sub, rest)
-					append(&sub_rows, rows[i])
-					i += 1
-					continue
-				}
-				if md_blank(l) || len(sub) == 0 || md_blank(sub[len(sub) - 1]) || md_interrupts(l) {
-					break
-				}
-				append(&sub, l)
-				append(&sub_rows, rows[i])
-				i += 1
-			}
-			append(&blocks, MdBlock{kind = .Quote, children = md_parse(r, sub[:], sub_rows[:]), src = src})
-			continue
-		}
-		if _, ok := md_list_marker(line); ok && nest_ok {
-			b: MdBlock
-			b, i = md_parse_list(r, lines, rows, i)
-			append(&blocks, b)
-			continue
-		}
-		if b, end, ok := md_parse_table(lines, i); ok {
-			b.src, b.line_src = src, rows[i:end]
-			append(&blocks, b)
-			i = end
-			continue
-		}
-		if md_html_start(t) {
-			sub := make([dynamic]string, context.temp_allocator)
-			comment := strings.has_prefix(t, "<!--")
-			for i < len(lines) && (comment || !md_blank(lines[i])) {
-				append(&sub, md_trim(lines[i]))
-				i += 1
-				if comment && strings.contains(sub[len(sub) - 1], "-->") {
-					comment = false
-				}
-			}
-			append(&blocks, MdBlock{kind = .Html, text = strings.join(sub[:], " ", context.temp_allocator), src = src})
-			continue
-		}
-		if label, url, ok := md_ref_def(t); ok {
-			if label not_in r.refs {
-				r.refs[label] = url
-			}
-			i += 1
-			continue
-		}
-		para := make([dynamic]string, context.temp_allocator)
-		append(&para, line)
-		i += 1
-		level := 0
-		for i < len(lines) {
-			l := lines[i]
-			if md_blank(l) {
-				break
-			}
-			if level = md_setext(l); level > 0 {
-				i += 1
-				break
-			}
-			if md_interrupts(l) {
-				break
-			}
-			if _, _, ok := md_parse_table(lines, i); ok {
-				break
-			}
-			append(&para, l)
-			i += 1
-		}
-		text := md_join_para(para[:])
-		if level > 0 {
-			append(&blocks, MdBlock{kind = .Heading, level = level, text = text, src = src})
-		} else {
-			append(&blocks, MdBlock{kind = .Paragraph, text = text, src = src})
-		}
+		i = md_parse_block(r, lines, rows, i, &blocks)
 	}
 	return blocks[:]
+}
+
+md_parse_block :: proc(r: ^MdRender, lines: []string, rows: []int, start: int, blocks: ^[dynamic]MdBlock) -> int {
+	nest_ok := r.nest < MD_MAX_NEST
+	i := start
+	line := lines[i]
+	ind := md_indent(line)
+	t := md_trim(line)
+	if t == "" {
+		i += 1
+		return i
+	}
+	src := rows[i]
+	if ind >= 4 {
+		code := make([dynamic]string, context.temp_allocator)
+		code_rows := make([dynamic]int, context.temp_allocator)
+		for i < len(lines) && (md_blank(lines[i]) || md_indent(lines[i]) >= 4) {
+			append(&code, lines[i][4:] if len(lines[i]) >= 4 else "")
+			append(&code_rows, rows[i])
+			i += 1
+		}
+		for len(code) > 0 && md_trim(code[len(code) - 1]) == "" {
+			pop(&code)
+			pop(&code_rows)
+		}
+		append(blocks, MdBlock{kind = .Code, lines = code[:], src = src, line_src = code_rows[:]})
+		return i
+	}
+	if fence, n, info, ok := md_fence(t); ok {
+		code := make([dynamic]string, context.temp_allocator)
+		code_rows := make([dynamic]int, context.temp_allocator)
+		i += 1
+		for i < len(lines) {
+			ct := md_trim(lines[i])
+			if cf, cn, cinfo, cok := md_fence(ct); cok && cf == fence && cn >= n && cinfo == "" && md_indent(lines[i]) < 4 {
+				i += 1
+				break
+			}
+			append(&code, lines[i][min(ind, md_indent(lines[i])):])
+			append(&code_rows, rows[i])
+			i += 1
+		}
+		append(blocks, MdBlock{kind = .Code, lines = code[:], info = info, src = src, line_src = code_rows[:]})
+		return i
+	}
+	if level, text, ok := md_heading(t); ok {
+		append(blocks, MdBlock{kind = .Heading, level = level, text = text, src = src})
+		i += 1
+		return i
+	}
+	if md_is_rule(t) {
+		append(blocks, MdBlock{kind = .Rule, src = src})
+		i += 1
+		return i
+	}
+	if t[0] == '>' && nest_ok {
+		sub := make([dynamic]string, context.temp_allocator)
+		sub_rows := make([dynamic]int, context.temp_allocator)
+		append(&sub, strings.trim_prefix(t[1:], " "))
+		append(&sub_rows, src)
+		i += 1
+		for i < len(lines) {
+			l := lines[i]
+			lt := strings.trim_left(l, " ")
+			if md_indent(l) < 4 && strings.has_prefix(lt, ">") {
+				rest := lt[1:]
+				if strings.has_prefix(rest, " ") {
+					rest = rest[1:]
+				}
+				append(&sub, rest)
+				append(&sub_rows, rows[i])
+				i += 1
+				continue
+			}
+			if md_blank(l) || len(sub) == 0 || md_blank(sub[len(sub) - 1]) || md_interrupts(l) {
+				break
+			}
+			append(&sub, l)
+			append(&sub_rows, rows[i])
+			i += 1
+		}
+		append(blocks, MdBlock{kind = .Quote, children = md_parse(r, sub[:], sub_rows[:]), src = src})
+		return i
+	}
+	if _, ok := md_list_marker(line); ok && nest_ok {
+		b: MdBlock
+		b, i = md_parse_list(r, lines, rows, i)
+		append(blocks, b)
+		return i
+	}
+	if b, end, ok := md_parse_table(lines, i); ok {
+		b.src, b.line_src = src, rows[i:end]
+		append(blocks, b)
+		i = end
+		return i
+	}
+	if md_html_start(t) {
+		sub := make([dynamic]string, context.temp_allocator)
+		comment := strings.has_prefix(t, "<!--")
+		for i < len(lines) && (comment || !md_blank(lines[i])) {
+			append(&sub, md_trim(lines[i]))
+			i += 1
+			if comment && strings.contains(sub[len(sub) - 1], "-->") {
+				comment = false
+			}
+		}
+		append(blocks, MdBlock{kind = .Html, text = strings.join(sub[:], " ", context.temp_allocator), src = src})
+		return i
+	}
+	if label, url, ok := md_ref_def(t); ok {
+		if label not_in r.refs {
+			r.refs[label] = url
+		}
+		i += 1
+		return i
+	}
+	para := make([dynamic]string, context.temp_allocator)
+	append(&para, line)
+	i += 1
+	level := 0
+	for i < len(lines) {
+		l := lines[i]
+		if md_blank(l) {
+			break
+		}
+		if level = md_setext(l); level > 0 {
+			i += 1
+			break
+		}
+		if md_interrupts(l) {
+			break
+		}
+		if _, _, ok := md_parse_table(lines, i); ok {
+			break
+		}
+		append(&para, l)
+		i += 1
+	}
+	text := md_join_para(para[:])
+	if level > 0 {
+		append(blocks, MdBlock{kind = .Heading, level = level, text = text, src = src})
+	} else {
+		append(blocks, MdBlock{kind = .Paragraph, text = text, src = src})
+	}
+	return i
 }
 
 md_join_para :: proc(lines: []string) -> string {
@@ -1144,11 +1193,11 @@ md_emit :: proc(r: ^MdRender, content: []MdSpan, fill: rune = 0, fill_fg: tb2.Co
 	if md_spans_width(out) > r.width {
 		cells := md_cells(out)
 		w, n := 0, 0
-		for n < len(cells) && w + cells[n].w <= r.width {
-			w += cells[n].w
+		for n < len(cells) && w + int(cells[n].w) <= r.width {
+			w += int(cells[n].w)
 			n += 1
 		}
-		out = md_cells_to_spans(cells[:n])
+		out = md_cells_to_spans(out, cells[:n])
 	}
 	append(&r.out, MdLine{spans = out, fill = fill, fill_fg = fill_fg, fill_bg = fill_bg, src = r.src, block = r.block})
 }
@@ -1341,26 +1390,38 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 				continue
 			}
 		}
-		strings.write_byte(&sb, c)
-		i += 1
+		j := i + 1
+		for j < len(text) && !MD_INLINE_SPECIAL[text[j]] {
+			j += 1
+		}
+		strings.write_string(&sb, text[i:j])
+		i = j
 	}
 	md_inline_flush(r, spans, &sb, fg)
+}
+
+MD_INLINE_SPECIAL := #partial [256]bool {
+	'\\' = true,
+	'`'  = true,
+	'!'  = true,
+	'['  = true,
+	'<'  = true,
+	'*'  = true,
+	'_'  = true,
+	'~'  = true,
+	'&'  = true,
+	'h'  = true,
 }
 
 md_footnote :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, dest, label: string) {
 	if dest == "" || dest[0] == '#' || md_plain(label) == dest {
 		return
 	}
-	n := -1
-	for u, k in r.links {
-		if u == dest {
-			n = k
-			break
-		}
-	}
-	if n < 0 {
+	n, found := r.link_index[dest]
+	if !found {
 		append(&r.links, dest)
 		n = len(r.links) - 1
+		r.link_index[dest] = n
 	}
 	append(spans, MdSpan{text = fmt.tprintf("[%d]", n + 1), fg = r.style.dim, link = dest})
 }
@@ -1736,14 +1797,12 @@ md_rune_width :: proc(r: rune) -> int {
 
 // grapheme_next rescans from the start, so long lines walk the iterator once here
 md_clusters :: proc(s: string) -> []string {
-	ascii := true
-	for c in transmute([]u8)s {
-		ascii &&= c < 0x80
-	}
 	out := make([dynamic]string, 0, len(s), context.temp_allocator)
-	if ascii {
-		for i in 0 ..< len(s) {
-			append(&out, s[i:i + 1])
+	if md_simple_runes(s) {
+		for i := 0; i < len(s); {
+			_, n := utf8.decode_rune(s[i:])
+			append(&out, s[i:i + n])
+			i += n
 		}
 		return out[:]
 	}
@@ -1761,6 +1820,19 @@ md_clusters :: proc(s: string) -> []string {
 	return out[:]
 }
 
+// every rune is a cluster of its own: none extends, joins or pairs with a neighbour (box drawing, bullets, Latin)
+md_simple_runes :: proc(s: string) -> bool {
+	for r in s {
+		switch r {
+		case 0 ..< 0x300:
+		case 0x2010 ..= 0x2027, 0x2030 ..= 0x205f, 0x2070 ..= 0x20cf, 0x2100 ..= 0x2bff:
+		case:
+			return false
+		}
+	}
+	return true
+}
+
 md_text_width :: proc(s: string) -> int {
 	ascii := true
 	for c in transmute([]u8)s {
@@ -1770,6 +1842,12 @@ md_text_width :: proc(s: string) -> int {
 		return len(s)
 	}
 	w := 0
+	if md_simple_runes(s) {
+		for r in s {
+			w += max(int(tb2.wcwidth(r)), 1)
+		}
+		return w
+	}
 	for c in md_clusters(s) {
 		w += cluster_width(transmute([]u8)c)
 	}
@@ -1784,49 +1862,109 @@ md_spans_width :: proc(spans: []MdSpan) -> int {
 	return w
 }
 
-md_cells :: proc(spans: []MdSpan) -> [dynamic]MdCell {
-	cells := make([dynamic]MdCell, context.temp_allocator)
-	col := 0
+md_cells :: proc(spans: []MdSpan) -> []MdCell {
+	n := 0
 	for sp in spans {
+		n += len(sp.text) + strings.count(sp.text, "\t") * (TAB_WIDTH - 1)
+	}
+	cells := make([]MdCell, n, context.temp_allocator)
+	k, col := 0, 0
+	for sp, si in spans {
+		ascii := true
+		for c in transmute([]u8)sp.text {
+			ascii &&= c >= 0x20 && c < 0x7f
+		}
+		if ascii {
+			for i in 0 ..< len(sp.text) {
+				cells[k + i] = MdCell{i32(si), i32(i), 1, 1, sp.text[i] == ' ', false}
+			}
+			k += len(sp.text)
+			col += len(sp.text)
+			continue
+		}
+		off := 0
 		for cluster in md_clusters(sp.text) {
 			switch cluster {
 			case "\n":
-				append(&cells, MdCell{brk = true})
+				cells[k] = MdCell{span = i32(si), off = i32(off), brk = true}
+				k += 1
 				col = 0
 			case "\t":
 				for stop := (col / TAB_WIDTH + 1) * TAB_WIDTH; col < stop; col += 1 {
-					append(&cells, MdCell{" ", sp.fg, sp.bg, 1, true, false, sp.link})
+					cells[k] = MdCell{i32(si), i32(off), 0, 1, true, false}
+					k += 1
 				}
 			case:
 				cw := cluster_width(transmute([]u8)cluster)
-				append(&cells, MdCell{cluster, sp.fg, sp.bg, cw, cluster == " ", false, sp.link})
+				cells[k] = MdCell{i32(si), i32(off), i32(len(cluster)), i16(cw), cluster == " ", false}
+				k += 1
 				col += cw
 			}
+			off += len(cluster)
 		}
 	}
-	return cells
+	return cells[:k]
 }
 
-md_cells_to_spans :: proc(cells: []MdCell) -> []MdSpan {
-	spans := make([dynamic]MdSpan, context.temp_allocator)
-	sb := strings.builder_make(context.temp_allocator)
-	fg, bg: tb2.Color
-	link: string
+md_cell_text :: proc(spans: []MdSpan, c: MdCell) -> string {
+	if c.brk {
+		return ""
+	}
+	return " " if c.n == 0 else spans[c.span].text[c.off:][:c.n]
+}
+
+md_cell_same_style :: proc(spans: []MdSpan, a, b: MdCell) -> bool {
+	if a.span == b.span {
+		return true
+	}
+	x, y := spans[a.span], spans[b.span]
+	return x.fg == y.fg && x.bg == y.bg && x.link == y.link
+}
+
+// a run of cells from one span, back to back, is a slice of its text rather than a copy
+md_cells_to_spans :: proc(spans: []MdSpan, cells: []MdCell) -> []MdSpan {
+	runs := 0
 	for c, k in cells {
-		if k > 0 && (c.fg != fg || c.bg != bg || c.link != link) {
-			append(&spans, MdSpan{strings.clone(strings.to_string(sb), context.temp_allocator), fg, bg, link})
-			strings.builder_reset(&sb)
+		if k == 0 || !md_cell_same_style(spans, cells[k - 1], c) {
+			runs += 1
 		}
-		fg, bg, link = c.fg, c.bg, c.link
-		strings.write_string(&sb, c.text)
 	}
-	if len(cells) > 0 {
-		append(&spans, MdSpan{strings.clone(strings.to_string(sb), context.temp_allocator), fg, bg, link})
+	out := make([]MdSpan, runs, context.temp_allocator)
+	at := 0
+	for k := 0; k < len(cells); {
+		c := cells[k]
+		end := k + 1
+		sliced := c.n > 0
+		for end < len(cells) && md_cell_same_style(spans, c, cells[end]) {
+			prev, cur := cells[end - 1], cells[end]
+			sliced &&= cur.n > 0 && cur.span == c.span && cur.off == prev.off + prev.n
+			end += 1
+		}
+		sp := spans[c.span]
+		text: string
+		if sliced {
+			last := cells[end - 1]
+			text = sp.text[c.off:last.off + last.n]
+		} else {
+			n := 0
+			for x in cells[k:end] {
+				n += len(md_cell_text(spans, x))
+			}
+			buf := make([]u8, n, context.temp_allocator)
+			n = 0
+			for x in cells[k:end] {
+				n += copy(buf[n:], md_cell_text(spans, x))
+			}
+			text = string(buf)
+		}
+		out[at] = MdSpan{text, sp.fg, sp.bg, sp.link}
+		at += 1
+		k = end
 	}
-	return spans[:]
+	return out
 }
 
-md_wrap_flush :: proc(out: ^[dynamic][]MdSpan, line: []MdCell) {
+md_wrap_flush :: proc(out: ^[dynamic][]MdSpan, spans: []MdSpan, line: []MdCell) {
 	start, end := 0, len(line)
 	for end > 0 && line[end - 1].space {
 		end -= 1
@@ -1834,56 +1972,56 @@ md_wrap_flush :: proc(out: ^[dynamic][]MdSpan, line: []MdCell) {
 	for start < end && line[start].space {
 		start += 1
 	}
-	append(out, md_cells_to_spans(line[start:end]))
+	append(out, md_cells_to_spans(spans, line[start:end]))
 }
 
+// rows are flushed to spans as they close, so one line buffer serves the whole wrap
 md_wrap :: proc(spans: []MdSpan, width: int) -> [][]MdSpan {
 	out := make([dynamic][]MdSpan, context.temp_allocator)
-	line := make([dynamic]MdCell, context.temp_allocator)
-	lw, last := 0, -1
-	for c in md_cells(spans) {
+	cells := md_cells(spans)
+	buf := make([]MdCell, len(cells), context.temp_allocator)
+	n, lw, last := 0, 0, -1
+	for c in cells {
+		cw := int(c.w)
 		if c.brk {
-			md_wrap_flush(&out, line[:])
-			line = make([dynamic]MdCell, context.temp_allocator)
-			lw, last = 0, -1
+			md_wrap_flush(&out, spans, buf[:n])
+			n, lw, last = 0, 0, -1
 			continue
 		}
 		if c.space && lw == 0 && len(out) > 0 {
 			continue
 		}
-		if lw > 0 && lw + c.w > width {
+		if lw > 0 && lw + cw > width {
 			if c.space {
-				md_wrap_flush(&out, line[:])
-				line = make([dynamic]MdCell, context.temp_allocator)
-				lw, last = 0, -1
+				md_wrap_flush(&out, spans, buf[:n])
+				n, lw, last = 0, 0, -1
 				continue
 			}
-			tail := make([dynamic]MdCell, context.temp_allocator)
 			if last > 0 {
-				append(&tail, ..line[last + 1:])
-				md_wrap_flush(&out, line[:last])
+				md_wrap_flush(&out, spans, buf[:last])
+				n = copy(buf, buf[last + 1:n])
 			} else {
-				md_wrap_flush(&out, line[:])
+				md_wrap_flush(&out, spans, buf[:n])
+				n = 0
 			}
-			line = tail
 			lw, last = 0, -1
-			for t in line {
-				lw += t.w
+			for t in buf[:n] {
+				lw += int(t.w)
 			}
-			if lw > 0 && lw + c.w > width {
-				md_wrap_flush(&out, line[:])
-				line = make([dynamic]MdCell, context.temp_allocator)
-				lw = 0
+			if lw > 0 && lw + cw > width {
+				md_wrap_flush(&out, spans, buf[:n])
+				n, lw = 0, 0
 			}
 		}
-		append(&line, c)
-		lw += c.w
-		if c.space && len(line) > 1 {
-			last = len(line) - 1
+		buf[n] = c
+		n += 1
+		lw += cw
+		if c.space && n > 1 {
+			last = n - 1
 		}
 	}
-	if len(line) > 0 {
-		md_wrap_flush(&out, line[:])
+	if n > 0 {
+		md_wrap_flush(&out, spans, buf[:n])
 	}
 	return out[:]
 }
@@ -1891,21 +2029,20 @@ md_wrap :: proc(spans: []MdSpan, width: int) -> [][]MdSpan {
 // always at least one row, so an empty code line still gets its band
 md_wrap_hard :: proc(spans: []MdSpan, width: int) -> [][]MdSpan {
 	out := make([dynamic][]MdSpan, context.temp_allocator)
-	line := make([dynamic]MdCell, context.temp_allocator)
-	lw := 0
-	for c in md_cells(spans) {
-		if c.brk || (lw > 0 && lw + c.w > width) {
-			append(&out, md_cells_to_spans(line[:]))
-			line = make([dynamic]MdCell, context.temp_allocator)
-			lw = 0
+	cells := md_cells(spans)
+	start, lw := 0, 0
+	for c, k in cells {
+		if c.brk || (lw > 0 && lw + int(c.w) > width) {
+			append(&out, md_cells_to_spans(spans, cells[start:k]))
+			start, lw = k, 0
 			if c.brk {
+				start = k + 1
 				continue
 			}
 		}
-		append(&line, c)
-		lw += c.w
+		lw += int(c.w)
 	}
-	append(&out, md_cells_to_spans(line[:]))
+	append(&out, md_cells_to_spans(spans, cells[start:]))
 	return out[:]
 }
 
