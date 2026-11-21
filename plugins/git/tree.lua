@@ -345,7 +345,7 @@ function M.view(files, ignored, stop)
 		local f = files[path]
 		if f then
 			if f.from then
-				e.suffix = icon .. " " .. (qed.path.rel(f.from) or f.from)
+				e.suffix = icon .. " " .. (qed.path.rel(f.from, qed.path.dir(path)) or f.from)
 			end
 			if (f.added or 0) > 0 or (f.removed or 0) > 0 then
 				e.added, e.removed = f.added or 0, f.removed or 0
