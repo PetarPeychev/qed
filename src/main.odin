@@ -56,8 +56,8 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || highlight_busy(editor_buffer(&editor)) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) {
-				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_md_busy(&editor) else LSP_POLL_MS))) == .Ok {
+			if lsp_running() || highlight_jobs_busy(&editor) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) {
+				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_md_busy(&editor) || editor.terminal.more else LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
 				redraw := false
@@ -77,7 +77,7 @@ main :: proc() {
 					editor.completion.want = false
 					completion_request(&editor)
 				}
-				if highlight_ready(editor_buffer(&editor)) {
+				if highlight_jobs_pump(&editor) {
 					redraw = true
 				}
 				if editor_maybe_poll_disk(&editor) {
@@ -123,10 +123,6 @@ main_peek :: proc(ms: int) -> (tb2.Event, bool) {
 	return {}, false
 }
 
-// One iteration's post-event handling, split out of the main loop so the e2e
-// harness can drive it with synthetic events: after a bare Esc the ALT retag
-// peeks the next event (real peek_event in main, a queued event in tests) and
-// re-tags a buffered printable as Alt; a non-printable peek dispatches on its own.
 editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.Event, bool)) {
 	ev := ev
 	pending: tb2.Event

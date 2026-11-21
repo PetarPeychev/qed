@@ -573,3 +573,34 @@ e2e_ui_open_links :: proc(t: ^testing.T) {
 	testing.expect_value(t, test_view(&e.ed).scroll, min(top, max(0, len(lines) - g.text.h)))
 	e2e_key(&e, .Esc)
 }
+
+@(test)
+e2e_ui_open_shape_errors :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "shape", `return {setup = function()
+		qed.command{name = "Bad", run = function()
+			local errs = {}
+			for _, o in ipairs({
+				{text = {1}},
+				{text = {"x"}, footer = {hints = {1}}},
+				{text = {"x"}, footer = {chips = {1}}},
+				{text = {"x"}, tabs = {1}},
+				{list = {items = {}, columns = {1}}},
+			}) do
+				local ok, err = pcall(qed.ui.open, o)
+				errs[#errs + 1] = tostring(err):match("must be [^\n]*")
+			end
+			qed.log("info", table.concat(errs, ";"))
+		end}
+	end}`)
+	cmd, ok := plugin_test_command(&e.ed, "Shape: Bad")
+	testing.expect(t, ok, "registered")
+	command_run(&e.ed, cmd)
+	want := "must be a string or {text, color};must be a table {label, cmd?};must be a table {label, cmd, on?};must be a label or {label, cmd?};must be a table {width?, right?}"
+	found := false
+	for l in e.ed.log {
+		found ||= l.source == "Shape" && l.text == want
+	}
+	testing.expect(t, found, "shape errors print their braces")
+}

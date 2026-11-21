@@ -312,6 +312,82 @@ plugin_sched_budgets :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_sched_runaway_removed :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"spin.lua", `
+			return {setup = function()
+				qed.every(1, function() while true do end end)
+				local n = 0
+				qed.on("buf_changed", function()
+					n = n + 1
+					if n == 3 then return end
+					while true do end
+				end)
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	pl := plugin_find(&ed.plugins, "spin")
+	start := time.tick_now()
+	for len(ed.plugins.timers) > 0 && ms_since(start) < 10000 {
+		time.sleep(2 * time.Millisecond)
+		plugin_pump(ed)
+	}
+	testing.expect_value(t, len(ed.plugins.timers), 0)
+	testing.expect(t, plugin_test_logged(ed, .Error, "Spin", "timer was stopped by its budget 3 times in a row and was removed"), "the removal is an error naming the timer")
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+
+	b := editor_buffer(ed)
+	hooks := len(ed.plugins.hooks)
+	for _ in 0 ..< 3 {
+		buffer_insert_rune(b, 'x')
+		plugin_flush(ed)
+	}
+	testing.expect_value(t, len(ed.plugins.hooks), hooks)
+	for _ in 0 ..< 3 {
+		buffer_insert_rune(b, 'x')
+		plugin_flush(ed)
+	}
+	testing.expect_value(t, len(ed.plugins.hooks), hooks - 1)
+	testing.expect(t, plugin_test_logged(ed, .Error, "Spin", "buf_changed handler was stopped by its budget 3 times in a row and was removed"), "the removal names the hook")
+	testing.expect_value(t, ed.plugins.subs[.Buf_Changed], 0)
+}
+
+@(test)
+plugin_sched_nested_budget :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	path := fmt.tprintf("%s/qed_nested_budget_%d.txt", tmp, posix.getpid())
+	_ = os.write_entire_file(path, transmute([]u8)string("v1"))
+	defer os.remove(path)
+
+	ed := plugin_test_editor({
+		{"loop.lua", `return {setup = function()
+			qed.on("buf_pre_save", function()
+				local t = os.clock()
+				while os.clock() - t < 0.02 do end
+			end)
+			qed.defer(0, function()
+				local b = qed.buf.list()[1]
+				while true do qed.save(b) end
+			end)
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+	b := editor_buffer(ed)
+	buffer_destroy(b)
+	b^ = buffer_new()
+	buffer_open(b, path)
+	start := time.tick_now()
+	plugin_pump(ed)
+	elapsed := ms_since(start)
+	testing.expect(t, elapsed < f64(PLUGIN_SLICE_MAX_MS) + 500, "a task looping over nested handlers is stopped by its own budget")
+	pl := plugin_find(&ed.plugins, "loop")
+	testing.expect(t, strings.contains(pl.last_error, "timer exceeded its"), pl.last_error)
+}
+
+@(test)
 plugin_sched_coalesce :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"quiet.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},
@@ -410,6 +486,62 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_sched_pre_save_timeout_close_saves :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	ed := plugin_test_editor({
+		{"slow.lua", `return {setup = function()
+			qed.on("buf_pre_save", function(id)
+				if id == qed.buf.list()[1] then
+					local guard <close> = setmetatable({}, {__close = function()
+						for _, b in ipairs(qed.buf.list()) do
+							if b ~= id then qed.save(b) end
+						end
+					end})
+					qed.sleep(60000)
+				end
+				qed.sleep(60000)
+			end)
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+	paths: [6]string
+	for i in 0 ..< len(paths) {
+		paths[i] = fmt.tprintf("%s/qed_presave_close_%d_%d.txt", tmp, posix.getpid(), i)
+		_ = os.write_entire_file(paths[i], transmute([]u8)string("v1"))
+		if i > 0 {
+			append(&ed.buffers, buffer_new())
+		}
+		b := &ed.buffers[i]
+		if i == 0 {
+			buffer_destroy(b)
+			b^ = buffer_new()
+		}
+		buffer_open(b, paths[i])
+		buffer_insert_rune(b, '2')
+	}
+	defer for p in paths {
+		os.remove(p)
+	}
+	start := time.tick_now()
+	editor_save_full(ed, &ed.buffers[0])
+	peak := 0
+	for len(ed.plugins.saves) > 0 && ms_since(start) < 3 * f64(PLUGIN_HOOK_TIMEOUT_MS) + 2000 {
+		plugin_pump(ed)
+		peak = max(peak, len(ed.plugins.saves))
+		time.sleep(time.Millisecond)
+	}
+	testing.expect_value(t, peak, len(paths) - 1)
+	testing.expect_value(t, len(ed.plugins.saves), 0)
+	for p in paths {
+		data, _ := os.read_entire_file(p, context.temp_allocator)
+		testing.expect_value(t, string(data), "2v1")
+	}
+	testing.expect_value(t, len(ed.plugins.tasks), 0)
+}
+
+@(test)
 plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 	sync.lock(&e2e_lock)
 	defer sync.unlock(&e2e_lock)
@@ -439,6 +571,43 @@ plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 	testing.expect_value(t, string(data), "2v1")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "Slow", "buf_pre_save handler still running"), "the slow plugin is named")
 	testing.expect_value(t, len(ed.plugins.tasks), 0)
+}
+
+@(test)
+plugin_sched_spawn_output_cap :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"fl.lua", `
+			return {setup = function()
+				qed.command{name = "Out", run = function()
+					local r, err = qed.spawn{cmd = "yes"}
+					out = tostring(r) .. " " .. tostring(err)
+				end}
+				qed.command{name = "Err", run = function()
+					local r, err = qed.spawn{cmd = "yes >&2", on_line = function() end}
+					errout = tostring(r) .. " " .. tostring(err)
+				end}
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	for cmd, i in ([]string{"Fl: Out", "Fl: Err"}) {
+		name: cstring = "out" if i == 0 else "errout"
+		sched_run(t, ed, cmd)
+		peak := 0
+		start := time.tick_now()
+		for sched_var(ed, name) == "" && ms_since(start) < 20000 {
+			pump_start := time.tick_now()
+			plugin_pump(ed)
+			testing.expect(t, ms_since(pump_start) < 1000, "a pump returns while the process floods")
+			for pr in ed.plugins.procs {
+				peak = max(peak, len(pr.sp.out.buf) + len(pr.sp.err.buf))
+			}
+		}
+		testing.expect_value(t, sched_var(ed, name), "nil output too large")
+		testing.expect(t, peak <= PLUGIN_SPAWN_OUTPUT_MAX + 2 * PLUGIN_SPAWN_READ_MAX + 32768, "stored output stays bounded")
+		testing.expect_value(t, len(ed.plugins.procs), 0)
+	}
+	testing.expect_value(t, plugin_find(&ed.plugins, "fl").last_error, "")
 }
 
 @(test)
@@ -596,7 +765,7 @@ plugin_sched_save_intent :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_save_pending(&ed.plugins, b.id), "parked")
 	editor_save_intent_set(ed, .Quit, "")
 	editor_save_full(ed, b)
-	testing.expect_value(t, ed.save_intent, SaveIntent.None)
+	testing.expect_value(t, ed.save_intent, SaveIntent.Quit)
 	editor_save_intent_set(ed, .Close, "x")
 	editor_save_id(ed, 999999)
 	testing.expect_value(t, ed.save_intent, SaveIntent.None)

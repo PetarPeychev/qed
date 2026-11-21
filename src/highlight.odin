@@ -27,7 +27,7 @@ Highlight :: struct {
 	colors:   [dynamic][dynamic]tb2.Color,
 	clips:    [dynamic]HighlightClip,
 	job:      ^HighlightJob,
-	slow:     bool, // an incremental inline parse blew the frame budget: parse off-thread until one comes in under it
+	slow:     bool,
 }
 
 HighlightClip :: struct {
@@ -699,20 +699,50 @@ highlight_colors :: proc(b: ^Buffer, row: int) -> []tb2.Color {
 	return b.hl.colors[row][:]
 }
 
-highlight_destroy :: proc(hl: ^Highlight) {
-	if hl.job != nil {
-		thread.destroy(hl.job.thread)
-		if hl.job.tree != nil {
-			ts.tree_delete(hl.job.tree)
-		}
-		if hl.job.old_tree != nil {
-			ts.tree_delete(hl.job.old_tree)
-		}
-		delete(hl.job.snapshot)
-		delete(hl.job.edits)
-		free(hl.job)
-		hl.job = nil
+highlight_job_cancel :: proc(hl: ^Highlight) {
+	if hl.job == nil {
+		return
 	}
+	thread.destroy(hl.job.thread)
+	if hl.job.tree != nil {
+		ts.tree_delete(hl.job.tree)
+	}
+	if hl.job.old_tree != nil {
+		ts.tree_delete(hl.job.old_tree)
+	}
+	delete(hl.job.snapshot)
+	delete(hl.job.edits)
+	free(hl.job)
+	hl.job = nil
+}
+
+highlight_jobs_pump :: proc(editor: ^Editor) -> (redraw: bool) {
+	for &b, i in editor.buffers {
+		if !highlight_ready(&b) {
+			continue
+		}
+		if !highlight_job_adopt(&b) {
+			b.hl.valid = false
+			b.hl.computed = true
+			b.hl.rev = b.rev
+		}
+		b.hl.top = -1
+		redraw ||= i == editor.current
+	}
+	return
+}
+
+highlight_jobs_busy :: proc(editor: ^Editor) -> bool {
+	for &b in editor.buffers {
+		if highlight_busy(&b) {
+			return true
+		}
+	}
+	return false
+}
+
+highlight_destroy :: proc(hl: ^Highlight) {
+	highlight_job_cancel(hl)
 	if hl.tree != nil {
 		ts.tree_delete(hl.tree)
 		hl.tree = nil

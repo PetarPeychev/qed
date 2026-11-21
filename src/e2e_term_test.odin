@@ -85,6 +85,32 @@ e2e_term_hidden_drains :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_term_flood_bounded :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+
+	f, ok := term_create(&e.ed, {name = "yes", cmd = "yes"})
+	if !testing.expect(t, ok, "yes starts") {
+		return
+	}
+	time.sleep(100 * time.Millisecond)
+	more := 0
+	for _ in 0 ..< 20 {
+		start := time.tick_now()
+		term_pump(&e.ed)
+		testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 200, "a pump returns while the session floods")
+		if e.ed.terminal.more {
+			more += 1
+		}
+	}
+	testing.expect(t, more > 0, "a flooding session reports more to drain")
+	testing.expect(t, e2e_term_screen_has(f, "y"), "the flood keeps reaching the emulator")
+	term_kill(&e.ed, f)
+	term_pump(&e.ed)
+	testing.expect(t, !e.ed.terminal.more, "nothing left once it is killed")
+}
+
+@(test)
 e2e_term_kill_group :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)

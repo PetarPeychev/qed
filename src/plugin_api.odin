@@ -2556,6 +2556,12 @@ api_proc_result :: proc(L: ^lua.State, p: ^Plugins, id: u64) -> c.int {
 		return api_fail(L, "process is gone")
 	}
 	pr := &p.procs[i]
+	if pr.too_big {
+		if len(plugin_waiters(p, .Proc, id)) == 0 {
+			plugin_proc_free(p, i)
+		}
+		return api_fail(L, "output too large")
+	}
 	lua.createtable(L, 0, 3)
 	lua.pushinteger(L, lua.Integer(pr.sp.exit_code))
 	lua.setfield(L, -2, "code")

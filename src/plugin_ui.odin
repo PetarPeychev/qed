@@ -329,7 +329,6 @@ plugin_view_handles :: proc(p: ^Plugins) -> []u64 {
 	return hs
 }
 
-// Enter waits for a due query, or for a running one that has not shown anything yet
 plugin_view_waiting :: proc(p: ^Plugins, pn: ^Pane, vi: int) -> bool {
 	return pane_query(pn) != nil && (pn.query_due || (!pn.landed && plugin_task_alive(p, p.views[vi].query_task)))
 }
@@ -498,7 +497,9 @@ qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 1, "options table expected")
 	}
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Dirs, path = strings.clone(path), dotfiles = dotfiles})
+	src := api_list_push(L, editor, .Dirs)
+	src.path = strings.clone(path)
+	src.dotfiles = dotfiles
 	return 1
 }
 
@@ -520,10 +521,10 @@ qed_fs_walk :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 1, "options table expected")
 	}
 	lua.settop(L, 0)
-	w := walk_acquire(editor, root, dotfiles, ignored)
+	src := api_list_push(L, editor, .Walk)
+	src.walk = walk_acquire(editor, root, dotfiles, ignored)
 	// a new handle sees the disk as of now
-	walk_refresh(editor, w)
-	api_list_push(L, editor, {kind = .Walk, walk = w})
+	walk_refresh(editor, src.walk)
 	return 1
 }
 
@@ -602,9 +603,11 @@ qed_walk_within :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	paths := api_paths(L, editor, 2)
 	w := src.walk
-	w.refs += 1
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Walk, walk = w, wscope = walk_scope_new(w.root, nil, paths, nil)})
+	dst := api_list_push(L, editor, .Walk)
+	w.refs += 1
+	dst.walk = w
+	dst.wscope = walk_scope_new(w.root, nil, paths, nil)
 	return 1
 }
 
@@ -614,12 +617,13 @@ qed_walk_union :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	src := api_walk_handle(L, editor)
 	paths := api_paths(L, editor, 2)
-	w := src.walk
-	w.refs += 1
-	scope := walk_scope_new(w.root, src.wscope, nil, paths)
-	scope.all = src.wscope == nil || src.wscope.all
+	w, parent := src.walk, src.wscope
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Walk, walk = w, wscope = scope})
+	dst := api_list_push(L, editor, .Walk)
+	w.refs += 1
+	dst.walk = w
+	dst.wscope = walk_scope_new(w.root, parent, nil, paths)
+	dst.wscope.all = parent == nil || parent.all
 	return 1
 }
 
@@ -630,12 +634,12 @@ qed_buf_line_list :: proc "c" (L: ^lua.State) -> c.int {
 	b, _ := api_buf(L, editor, 1)
 	id := b.id
 	lua.settop(L, 0)
-	api_list_push(L, editor, {kind = .Lines, buf = id})
+	api_list_push(L, editor, .Lines).buf = id
 	return 1
 }
 
-// takes ownership of src
-api_list_push :: proc(L: ^lua.State, editor: ^Editor, src: ListSource) {
+// The record goes in after the last call that can raise, so the caller acquires what src owns only then.
+api_list_push :: proc(L: ^lua.State, editor: ^Editor, kind: ListSourceKind) -> ^ListSource {
 	p := &editor.plugins
 	pl := api_loaded(L, editor)
 	id := plugin_next_id(p)
@@ -653,14 +657,15 @@ api_list_push :: proc(L: ^lua.State, editor: ^Editor, src: ListSource) {
 		lua.setfield(L, lua.REGISTRYINDEX, QED_LIST_META)
 	}
 	lua.setmetatable(L, -2)
-	if src.kind == .Walk {
+	if kind == .Walk {
 		for m in qed_walk_methods {
 			lua.pushvalue(L, lua.upvalueindex(1))
 			lua.pushcclosure(L, m.func, 1)
 			lua.setfield(L, -2, m.name)
 		}
 	}
-	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = src})
+	append(&p.lists, PluginList{id = id, owner = plugin_name_intern(p, pl.name), src = {kind = kind}})
+	return &p.lists[len(p.lists) - 1].src
 }
 
 qed_list_release :: proc "c" (L: ^lua.State) -> c.int {
@@ -832,18 +837,11 @@ api_pane_lines :: proc(L: ^lua.State, idx: c.int) -> []PaneLine {
 			out[i - 1].text, _ = api_field_string(L, t, "text")
 			out[i - 1].color, _ = api_field_string(L, t, "color")
 		case:
-			plugin_raise(L, fmt.tprintf("lines[%d] must be a string or {text, color}", i))
+			plugin_raise(L, fmt.tprintf("lines[%d] must be a string or {{text, color}}", i))
 		}
 		lua.pop(L, 1)
 	}
 	return out
-}
-
-api_items_copy :: proc(L: ^lua.State, src: c.int, dst: c.int, from, n: int) {
-	for i in 1 ..= n {
-		lua.rawgeti(L, src, lua.Integer(i))
-		lua.rawseti(L, dst, lua.Integer(from + i))
-	}
 }
 
 api_items_order :: proc(items: []PaneItem, sort: bool) -> []int {
@@ -1390,7 +1388,7 @@ api_hints :: proc(L: ^lua.State, t: c.int) -> ([]PaneHint, bool) {
 	out := make([]PaneHint, int(lua.rawlen(L, h)), context.temp_allocator)
 	for i in 0 ..< len(out) {
 		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
-			plugin_raise(L, fmt.tprintf("hints[%d] must be a table {label, cmd?}", i + 1))
+			plugin_raise(L, fmt.tprintf("hints[%d] must be a table {{label, cmd?}}", i + 1))
 		}
 		out[i].label, _ = api_field_string(L, lua.gettop(L), "label")
 		out[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
@@ -1412,7 +1410,7 @@ api_chips :: proc(L: ^lua.State, t: c.int) -> ([]PaneChip, bool) {
 	out := make([]PaneChip, int(lua.rawlen(L, h)), context.temp_allocator)
 	for i in 0 ..< len(out) {
 		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
-			plugin_raise(L, fmt.tprintf("chips[%d] must be a table {label, cmd, on?}", i + 1))
+			plugin_raise(L, fmt.tprintf("chips[%d] must be a table {{label, cmd, on?}}", i + 1))
 		}
 		ct := lua.gettop(L)
 		out[i].label, _ = api_field_string(L, ct, "label")
@@ -1446,7 +1444,7 @@ api_tab_list :: proc(L: ^lua.State, h: c.int) -> []PaneTab {
 			out[i].label, _ = api_field_string(L, lua.gettop(L), "label")
 			out[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
 		case:
-			plugin_raise(L, fmt.tprintf("tabs[%d] must be a label or {label, cmd?}", i + 1))
+			plugin_raise(L, fmt.tprintf("tabs[%d] must be a label or {{label, cmd?}}", i + 1))
 		}
 		lua.pop(L, 1)
 	}
@@ -1466,7 +1464,7 @@ api_columns :: proc(L: ^lua.State, t: c.int) -> []PaneColumn {
 	out := make([]PaneColumn, int(lua.rawlen(L, h)), context.temp_allocator)
 	for i in 0 ..< len(out) {
 		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
-			plugin_raise(L, fmt.tprintf("columns[%d] must be a table {width?, right?}", i + 1))
+			plugin_raise(L, fmt.tprintf("columns[%d] must be a table {{width?, right?}}", i + 1))
 		}
 		ct := lua.gettop(L)
 		w, _ := api_field_int(L, ct, "width")

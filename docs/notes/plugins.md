@@ -221,7 +221,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 ### Processes, timers
 | Function | Notes |
 |---|---|
-| ⏳ `qed.spawn{cmd \| argv, stdin?, cwd?, env?, on_line?} -> {code, stdout, stderr}` | Async on `subprocess.odin`. `cwd` defaults to the root. |
+| ⏳ `qed.spawn{cmd \| argv, stdin?, cwd?, env?, on_line?} -> {code, stdout, stderr}` | Async on `subprocess.odin`. `cwd` defaults to the root. Past 32 MiB of stored output the process group is killed and it returns `nil, "output too large"`. |
 | `qed.spawn_bg{...} -> proc` | `proc:kill()`, ⏳ `proc:wait()`. Killed on unload and on quit. |
 | ⏳ `qed.sleep(ms)` | |
 | `qed.defer(ms, fn)`, `qed.every(ms, fn) -> timer` | Stop with `timer:stop()`. |
@@ -312,11 +312,11 @@ load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*,
 
   | Entry | Soft (Debug log) | Hard |
   |---|---|---|
-  | events, timers | 50 ms | `plugin_slice_max_ms` (1 s): the task stops, a warning is logged |
+  | events, timers | 50 ms | `plugin_slice_max_ms` (1 s): the task stops, a warning is logged; a repeating timer or hook stopped 3 times in a row is removed with an error |
   | commands, `when` | n/a | `plugin_command_max_ms` (5 s): the task stops, a warning is logged |
   | `setup` | 2 ms | 1 s: the plugin is marked errored |
 
-  A stopped task, a task's out-of-memory error and a task's own Lua error leave the plugin loaded. An exported function runs under its caller's task budget.
+  A stopped task, a task's out-of-memory error and a task's own Lua error leave the plugin loaded. The memory cap is shared by every plugin, so after a task runs out of memory qed runs a full collection, and if usage is still above 7/8 of the cap it disables the plugin that owns the failing task. An exported function runs under its caller's task budget.
 
 - **Startup budget.**
   - perf.md has no cold-start target today. Its known pre-paint costs are cold `git_gutter_update` (~45-56 ms) and `buffer_open` on huge files.

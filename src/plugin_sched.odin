@@ -11,6 +11,9 @@ PLUGIN_HOOK_COUNT :: 100_000
 PLUGIN_POOL_MAX :: 16
 PLUGIN_FLUSH_ROUNDS :: 16
 PLUGIN_LINE_READ_MAX :: 64 * 1024
+PLUGIN_SPAWN_READ_MAX :: 1024 * 1024
+PLUGIN_SPAWN_OUTPUT_MAX :: 32 * 1024 * 1024
+PLUGIN_KILLS_MAX :: 3
 
 PluginKind :: enum {
 	Command,
@@ -119,6 +122,7 @@ PluginTask :: struct {
 	wait:    PluginWait,
 	command: u64,
 	view:    u64,
+	source:  u64,
 	user:    bool,
 	running: bool,
 	doomed:  bool,
@@ -130,6 +134,7 @@ PluginHook :: struct {
 	name:  string,
 	owner: string,
 	ref:   i32,
+	kills: int,
 }
 
 PluginTimer :: struct {
@@ -139,6 +144,7 @@ PluginTimer :: struct {
 	every_ms: int,
 	due:      time.Tick,
 	task:     u64,
+	kills:    int,
 }
 
 PluginProc :: struct {
@@ -151,6 +157,7 @@ PluginProc :: struct {
 	fake:     bool,
 	killed:   bool,
 	orphan:   bool,
+	too_big:  bool,
 	due:      time.Tick,
 }
 
@@ -216,6 +223,7 @@ PluginStart :: struct {
 	view_ref: i32,
 	command:  u64,
 	view:     u64,
+	source:   u64,
 	user:     bool,
 }
 
@@ -286,8 +294,10 @@ plugin_slice_end :: proc(editor: ^Editor, prev: PluginSlice, owner: string, kind
 		lua.sethook(p.slice.hot, plugin_hook, lua.MASKCOUNT, PLUGIN_HOOK_COUNT)
 	}
 	p.slice = prev
-	if prev.hard_ms > 0 {
-		p.slice.start = time.tick_add(prev.start, elapsed)
+	// the outer slice may be past its limit with too few of its own instructions left for the count hook to see it
+	if prev.hard_ms > 0 && !prev.killed && prev.hot == nil && ms_since(prev.start) > prev.hard_ms && p.current != nil && plugin_thread_anchored(p, p.current) {
+		p.slice.hot = p.current
+		lua.sethook(p.current, plugin_hook, lua.MASKCOUNT, 1)
 	}
 	soft := plugin_budget(kind).soft_ms
 	when ODIN_TEST {
@@ -506,7 +516,7 @@ plugin_task_start :: proc(editor: ^Editor, owner: string, kind: PluginKind, star
 		return 0, true
 	}
 	id = plugin_next_id(p)
-	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command, view = start.view, user = start.user})
+	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command, view = start.view, source = start.source, user = start.user})
 	start := start
 	lua.pushcfunction(th.co, plugin_co_main)
 	lua.pushlightuserdata(th.co, &start)
@@ -554,7 +564,7 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 		return
 	}
 	t := &p.tasks[i]
-	co, kind, owner, ev := t.co, t.kind, t.owner, t.event
+	co, kind, owner, ev, source := t.co, t.kind, t.owner, t.event, t.source
 	t.running = true
 	t.wait = {}
 	p.resumes += 1
@@ -590,6 +600,9 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 		return
 	case status == .OK:
 		plugin_task_free(editor, i)
+		if source != 0 {
+			plugin_source_clean(p, source)
+		}
 		return
 	case:
 		message, traceback = plugin_task_error(editor, co)
@@ -598,16 +611,44 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	if i >= 0 {
 		plugin_task_free(editor, i)
 	}
-	if pl := plugin_find(p, owner); pl == nil {
-	} else if ended {
-		delete(pl.last_error)
-		pl.last_error = strings.clone(message)
-		editor_log(editor, .Warn, pl.display, message)
-		if traceback != "" {
-			editor_log(editor, .Debug, pl.display, traceback)
+	pl := plugin_find(p, owner)
+	if pl != nil {
+		plugin_error(editor, pl, message, traceback, false, .Warn if ended else .Error)
+	}
+	if status == .ERRMEM && pl != nil && pl.state == .Enabled && p.mem != nil && p.mem.cap > 0 {
+		lua.gc(p.L, .COLLECT)
+		if p.mem.used > p.mem.cap / 8 * 7 {
+			plugin_error(editor, pl, fmt.tprintf("disabled: Lua memory stays at the %d MB cap after a full collection", p.mem.cap / (1024 * 1024)), "", true)
+			return
 		}
-	} else {
-		plugin_error(editor, pl, message, traceback, false)
+	}
+	if killed && source != 0 && plugin_source_killed(p, source) && pl != nil {
+		plugin_error(editor, pl, fmt.tprintf("%s was stopped by its budget %d times in a row and was removed", label, PLUGIN_KILLS_MAX), "", false)
+	}
+}
+
+plugin_source_killed :: proc(p: ^Plugins, source: u64) -> (removed: bool) {
+	if i := plugin_timer_index(p, source); i >= 0 {
+		p.timers[i].kills += 1
+		if p.timers[i].kills >= PLUGIN_KILLS_MAX {
+			plugin_timer_remove(p, i)
+			return true
+		}
+	} else if i := plugin_hook_index(p, source); i >= 0 {
+		p.hooks[i].kills += 1
+		if p.hooks[i].kills >= PLUGIN_KILLS_MAX {
+			plugin_hook_remove(p, i)
+			return true
+		}
+	}
+	return false
+}
+
+plugin_source_clean :: proc(p: ^Plugins, source: u64) {
+	if i := plugin_timer_index(p, source); i >= 0 {
+		p.timers[i].kills = 0
+	} else if i := plugin_hook_index(p, source); i >= 0 {
+		p.hooks[i].kills = 0
 	}
 }
 
@@ -660,7 +701,7 @@ plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = n
 		if ref == 0 {
 			continue
 		}
-		id, finished := plugin_task_start(editor, owner, kind, {ref = ref, args = .Event, ev = q})
+		id, finished := plugin_task_start(editor, owner, kind, {ref = ref, args = .Event, ev = q, source = hid})
 		if !finished && pending != nil {
 			append(pending, id)
 		}
@@ -1059,7 +1100,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		} else {
 			ordered_remove(&p.timers, i)
 		}
-		task, finished := plugin_task_start(editor, t.owner, .Timer, {ref = t.ref})
+		task, finished := plugin_task_start(editor, t.owner, .Timer, {ref = t.ref, source = t.id if t.every_ms > 0 else 0})
 		if t.every_ms == 0 {
 			lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(t.ref))
 		} else if i = plugin_timer_index(p, id); i >= 0 && !finished {
@@ -1095,9 +1136,19 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 			}
 			continue
 		}
-		eof := subprocess_drain(&pr.sp, PLUGIN_LINE_READ_MAX if pr.line_ref != 0 else 0)
+		eof := subprocess_drain(&pr.sp, PLUGIN_LINE_READ_MAX if pr.line_ref != 0 else PLUGIN_SPAWN_READ_MAX, PLUGIN_SPAWN_READ_MAX)
 		plugin_proc_lines(editor, id, false)
-		if i = plugin_proc_index(p, id); i >= 0 && eof && subprocess_reap(&p.procs[i].sp) {
+		if i = plugin_proc_index(p, id); i < 0 {
+			continue
+		}
+		if pr = &p.procs[i]; len(pr.sp.out.buf) + len(pr.sp.err.buf) > PLUGIN_SPAWN_OUTPUT_MAX {
+			pr.too_big = true
+			pr.killed = true
+			plugin_proc_stop(pr)
+			plugin_proc_finish(editor, id)
+			continue
+		}
+		if eof && subprocess_reap(&pr.sp) {
 			plugin_proc_finish(editor, id)
 		}
 	}
@@ -1141,12 +1192,12 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		for owner in plugin_pending_owners(p, s.tasks[:]) {
 			editor_log(editor, .Warn, plugin_label(&editor.plugins, owner), fmt.tprintf("buf_pre_save handler still running after %d ms, stopped it and saving", PLUGIN_HOOK_TIMEOUT_MS))
 		}
-		for task in s.tasks {
+		buf, tasks := s.buf, s.tasks
+		ordered_remove(&p.saves, i)
+		for task in tasks {
 			plugin_task_kill(editor, task)
 		}
-		buf := s.buf
-		delete(s.tasks)
-		ordered_remove(&p.saves, i)
+		delete(tasks)
 		editor_save_id(editor, buf)
 		for w in plugin_waiters(p, .Save, id) {
 			plugin_task_resume(editor, w, 0)

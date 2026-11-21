@@ -41,9 +41,6 @@ LanguageInfo :: struct {
 	injections: []u8,
 }
 
-// LANGUAGE_DEFAULTS is compiled-in wiring only (name, comment token, lsp id,
-// grammar, queries); the user-facing fields — patterns, lsp_server —
-// are seeded from the embedded config/config.json `languages` section.
 LANGUAGE_DEFAULTS := [Language]LanguageInfo {
 	.Plain      = {"text", "//", "", "", nil, nil, nil},
 	.Odin       = {"odin", "//", "", "odin", ts.tree_sitter_odin, #load("../lib/tree_sitter/odin/highlights.scm"), nil},

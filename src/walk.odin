@@ -550,12 +550,6 @@ walk_scope_release :: proc(s: ^WalkScope) {
 	free(s)
 }
 
-walk_set_add :: proc(set: ^map[string]bool, path: string) {
-	if path not_in set^ {
-		set^[strings.clone(path)] = true
-	}
-}
-
 walk_set_clear :: proc(set: ^map[string]bool) {
 	for key in set^ {
 		delete(key)
@@ -563,7 +557,7 @@ walk_set_clear :: proc(set: ^map[string]bool) {
 	clear(set)
 }
 
-// ancestors are prefixes of path, so they share its storage; returns path's index in dirs
+// ancestors are prefixes of path, so they share its storage
 walk_closure_add :: proc(s: ^WalkScope, root, path: string) -> i32 {
 	if i, ok := s.closure[path]; ok {
 		return i
@@ -904,8 +898,7 @@ walk_scope_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynami
 	return rows
 }
 
-// every path the scope chain names, by parent dir, repeats included; only a closure path can have
-// children, and a listed path's parent was indexed when the scope was built, so only dirs are hashed here
+// a listed path's parent was indexed when the scope was built, so only closure dirs are hashed here
 walk_scope_kids :: proc(s: ^WalkScope, root: string, a: runtime.Allocator) -> map[string][dynamic]WalkRow {
 	kids := make(map[string][dynamic]WalkRow, a)
 	group :: proc(kids: ^map[string][dynamic]WalkRow, dir: string, a: runtime.Allocator) -> ^[dynamic]WalkRow {
@@ -953,8 +946,7 @@ walk_scope_kids :: proc(s: ^WalkScope, root: string, a: runtime.Allocator) -> ma
 	return kids
 }
 
-// rows of an uncovered dir straight from the scope, which names every row it can show; the dir's link
-// count (2 + subdirs) must match the scope's dirs there, or a listed dir or a missing one needs the disk
+// trusted only when the dir's link count (2 + subdirs) matches the scope's dirs there
 walk_scope_known_rows :: proc(s: ^WalkScope, dir: string, a: runtime.Allocator) -> []WalkRow {
 	for q := dir; true; {
 		for sc := s; sc != nil; sc = sc.base {

@@ -135,7 +135,7 @@ plugin_load_error_disables :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(crash.last_error, "boom"), "runtime error message kept")
 	testing.expect(t, !strings.contains(crash.last_error, "stack traceback"), "last error is the message, not the traceback")
 	testing.expect(t, plugin_test_logged(ed, .Debug, "Crash", "stack traceback"), "traceback goes to the Debug log")
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "notable").last_error, "must return a table"), "spec shape enforced")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "notable").last_error, "must return a table {setup}"), "spec shape enforced")
 	_, half := plugin_test_command(ed, "Halfway: Cmd")
 	testing.expect(t, !half, "a failed setup unregisters what it registered")
 	_, fine := plugin_test_command(ed, "Fine: Cmd")
@@ -262,6 +262,29 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 	testing.expect_value(t, evhog.state, PluginState.Enabled)
 	testing.expect(t, strings.contains(evhog.last_error, "not enough memory"), evhog.last_error)
 	testing.expect(t, plugin_test_logged(ed, .Warn, "Evhog", "not enough memory"), "a task out of memory is a warning")
+}
+
+@(test)
+plugin_memory_hog_disabled :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"keep.lua", `return {setup = function()
+			qed.command{name = "Grow", run = function() big = big or {} for i = 1, 1e7 do big[#big + 1] = string.rep("x", 64) .. i end end}
+		end}`},
+		{"small.lua", `return {setup = function() qed.command{name = "Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
+	}, mem_cap = 4 * 1024 * 1024)
+	defer plugin_test_destroy(ed)
+
+	grow, ok := plugin_test_command(ed, "Keep: Grow")
+	testing.expect(t, ok, "grow registered")
+	command_run(ed, grow)
+	keep := plugin_find(&ed.plugins, "keep")
+	testing.expect_value(t, keep.state, PluginState.Errored)
+	testing.expect(t, plugin_test_logged(ed, .Error, "Keep", "disabled: Lua memory stays at the 4 MB cap"), "the disable is an error naming the plugin")
+	testing.expect(t, ed.plugins.mem.used < ed.plugins.mem.cap / 2, "unloading the hog frees its memory")
+	cmd, found := plugin_test_command(ed, "Small: Cmd")
+	testing.expect(t, found, "other plugins stay")
+	command_run(ed, cmd)
+	testing.expect_value(t, ed.message, "yyy")
 }
 
 @(test)

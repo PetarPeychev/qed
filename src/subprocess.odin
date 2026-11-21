@@ -6,7 +6,6 @@ import "core:os"
 import "core:strings"
 import "core:sync"
 import "core:sys/posix"
-import "core:time"
 
 Subprocess :: struct {
 	id:        u64,
@@ -28,9 +27,7 @@ fd_set_nonblock :: proc(file: ^os.File) {
 	posix.fcntl(fd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
 }
 
-// The body goes through a temp file (not a pipe) so a large body can't deadlock
-// before the child reads; the temp is unlinked at once, so a command must read
-// stdin, never a `@file` reference to it.
+// a temp file, not a pipe, so a large body can't deadlock; it is unlinked at once, so the command must read stdin
 subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: string, env: []string = nil, capture_stderr := false, group := false) -> (Subprocess, os.Error, bool) {
 	posix.sigignore(.SIGPIPE)
 
@@ -116,7 +113,6 @@ subprocess_exe_path :: proc(name: string) -> (string, bool) {
 	return "", false
 }
 
-// Like os.process_start, but the child leads its own process group so a kill reaches its descendants.
 subprocess_start_group :: proc(command: []string, env: []string, working_dir: string, stdin, stdout, stderr: ^os.File) -> (os.Process, os.Error) {
 	exe, found := subprocess_exe_path(command[0])
 	if !found {
@@ -186,11 +182,9 @@ subprocess_kill_group :: proc(p: ^Subprocess) {
 	_ = os.process_kill(p.process)
 }
 
-// Drain whatever is readable now into `p.out`; returns true once stdout hits EOF
-// (the child closed it / exited) so the caller can collect the full output.
-subprocess_drain :: proc(p: ^Subprocess, max_out := 0) -> (done: bool) {
+subprocess_drain :: proc(p: ^Subprocess, max_out := 0, max_err := 0) -> (done: bool) {
 	done = subprocess_drain_file(p.stdout, &p.out, max_out)
-	if p.stderr != nil && !subprocess_drain_file(p.stderr, &p.err) {
+	if p.stderr != nil && !subprocess_drain_file(p.stderr, &p.err, max_err) {
 		done = false
 	}
 	return
@@ -232,27 +226,6 @@ subprocess_reap :: proc(p: ^Subprocess) -> (exited: bool) {
 	p.exit_code = state.exit_code
 	p.running = false
 	return true
-}
-
-// After a drain reported done: reap the child and return the accumulated output.
-// The string is backed by `p.out`, valid until subprocess_destroy.
-subprocess_output :: proc(p: ^Subprocess) -> string {
-	subprocess_close_pipes(p)
-	state, _ := os.process_wait(p.process, time.Second)
-	p.exit_code = state.exit_code
-	p.running = false
-	return strings.to_string(p.out)
-}
-
-subprocess_kill :: proc(p: ^Subprocess) {
-	if !p.running {
-		return
-	}
-	_ = os.process_kill(p.process)
-	subprocess_close_pipes(p)
-	_, _ = os.process_wait(p.process, time.Second)
-	p.running = false
-	subprocess_destroy(p)
 }
 
 subprocess_destroy :: proc(p: ^Subprocess) {

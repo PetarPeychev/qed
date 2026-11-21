@@ -257,8 +257,9 @@ member group is no longer on top).
   up to the previous one; when the old file, the buffer or the new file reaches `big_file_bytes`, undo/redo are cleared instead), drop the parse tree, re-sync LSP via `didClose`→lazy `didOpen`,
   map the cursor through the hunks); a **dirty** one sets `disk_conflict` + warns, and a `Ctrl+S`
   onto it opens the conflict dialog (Cancel / Overwrite / Reload) instead of
-  clobbering; Reload is the same undoable step, so the discarded edits come back with Ctrl+Z. Reload skips a buffer while its highlight parse thread is busy
-  (retries next poll). Deletion on disk is ignored (buffer stays; save recreates).
+  clobbering; Reload is the same undoable step, so the discarded edits come back with Ctrl+Z. The poll skips a buffer while its highlight parse thread is busy
+  (retries next poll); `highlight_jobs_pump` (main loop) adopts every buffer's finished parse, not only the shown one's, and
+  `buffer_reload` joins and discards an in-flight parse (the conflict dialog's Reload). Deletion on disk is ignored (buffer stays; save recreates).
 - **Startup arg:** file → open it; directory → set working root + welcome screen;
   absent → welcome screen.
 - **Working root change**: the bundled `workspace` plugin's *Workspace: Open Directory* (`Ctrl+o`) is a
@@ -559,13 +560,16 @@ started at the end of `editor_init`. Invariants the code can't show:
   thread, checks the slice in `Plugins.slice` against `plugin_budget(kind)` (`plugin_command_max_ms` for
   commands, `plugin_slice_max_ms` for events and timers). Past the
   hard limit it yields from the hook when it can (pcall cannot catch that), else
-  raises and drops the hook count to 1 until the slice ends; the task is stopped with a warning and the plugin
-  stays loaded. A task's own Lua error (or out-of-memory) is logged at Error and the plugin stays loaded too;
+  raises and drops the hook count to 1 until the slice ends; the task is stopped with a warning (through
+  `plugin_error`'s rate limiter) and the plugin stays loaded. A repeating timer or hook stopped
+  `PLUGIN_KILLS_MAX` (3) times in a row (`PluginTask.source`, reset by a clean run) is removed with an error. A task's own Lua error is logged at Error and the plugin stays loaded too; out of memory is a warning, then a full
+  collection, and a plugin whose task failed while memory stays above 7/8 of the cap is disabled with an error;
   only load and setup errors mark it errored. `plugin_error` rate-limits per plugin (`PluginErrors`): at most
   `PLUGIN_ERRORS_PER_SECOND` entries per window, the rest summarized by the pump as `(N more errors suppressed)`;
   a known message shows `(N times)` and only its first occurrence logs the traceback. The soft limit
-  (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry's time is credited back to
-  the outer slice. `__close` handlers run by `closethread` get the event budget.
+  (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry (e.g. `buf_pre_save` handlers under
+  `qed.save`) has its own budget and its time also counts toward the outer slice; when it returns with the outer slice
+  past its limit, the outer thread's count hook drops to 1, so a loop of nested calls stops at its next instruction. `__close` handlers run by `closethread` get the event budget.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
   (`.Lsp`, bounded by `plugin_hook_timeout_ms` → `"timeout"`); `plugin_lsp_done`
   queues the outcome, `plugin_pump` resumes the task. A response nobody waits for
@@ -631,8 +635,11 @@ started at the end of `editor_init`. Invariants the code can't show:
   non-blocking `process_wait`). The child leads its own process group
   (`subprocess_start_group`, a fork/exec like `os.process_start`) and every kill signals
   the group, so a cancelled shell takes its descendants. Argv and env strings over
-  128 KiB raise before forking (Linux `MAX_ARG_STRLEN`). With `on_line`, delivered lines are cut from `out`
-  and reads are capped per pump, so a streaming process stays bounded. A
+  128 KiB raise before forking (Linux `MAX_ARG_STRLEN`). Reads are capped per pump (1 MiB per stream, stdout 64 KiB
+  with `on_line`); with `on_line`, delivered lines are cut from `out`. Past `PLUGIN_SPAWN_OUTPUT_MAX` (32 MiB) stored
+  stdout + stderr the group is killed and the result is `nil, "output too large"`. **External quirk:** Odin's heap
+  allocator frees the old block when a resize fails, leaving the dynamic array dangling, so an uncapped
+  buffer that hits an allocation failure segfaults on the next append instead of failing cleanly. A
   `spawn_bg` record is freed when its result is handed out by `wait()`, or once
   done after its handle's `__gc` (which only marks it; the pump frees).
   `Plugins.fakes` (`e2e_spawn_fake`) answers a matching command without forking.
@@ -807,7 +814,7 @@ child still unreaped is parked in `Terminals.zombies` for `term_pump`. Writes to
 PTY never spin: what the program does not read waits in `Terminal.pending` (flushed
 by `term_pump`, capped at 1 MiB, overflow dropped with a warning).
 `term_pump` (main loop, next to `lsp_pump`) drains every live session's PTY
-(non-blocking `read` → `vterm_input_write`) whether shown or not, then reaps with
+(non-blocking `read` → `vterm_input_write`, at most `TERM_DRAIN_MAX` (256 KiB) or `TERM_DRAIN_MS` (8 ms) per session per pump, since libvterm moves the whole grid per scrolled line; a session left with more sets `Terminals.more`, which drops the next peek timeout to 0 so a flood keeps draining between input events) whether shown or not, then reaps with
 `waitpid(WNOHANG)`; a reaped child marks the session exited (code, 128 + signal when
 killed) and queues `term_exit` (`term_open`/`term_close` on spawn and close). The loop's fast-poll gate carries `term_alive` (any
 live session) so a hidden session never blocks on a full PTY. Only the shown
@@ -845,7 +852,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
-`confirm` (quit/close/conflict dialogs, `dialog_pane`) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Message Log: Open* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
+`confirm` (quit/close/conflict dialogs) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Message Log: Open* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).

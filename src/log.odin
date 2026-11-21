@@ -51,8 +51,7 @@ editor_clear_message :: proc(editor: ^Editor) {
 	editor.message_level = .Info
 }
 
-// Copy text and source into owned storage: callers pass temp-allocator strings, and the
-// main loop's free_all would leave them dangling into reused temp memory.
+// callers pass temp strings, which the main loop's free_all would leave dangling
 editor_message_show :: proc(editor: ^Editor, level: LogLevel, source, text: string) {
 	clear(&editor.message_store)
 	append(&editor.message_store, ..transmute([]u8)source)
@@ -209,7 +208,6 @@ editor_log_disk :: proc(editor: ^Editor, entry: LogEntry) {
 		return
 	}
 	editor_log_write(editor, log_line(entry))
-	// rotation used to happen only at session start, so a long session could grow the file without bound
 	if editor.log_bytes > LOG_ROTATE_BYTES {
 		os.close(editor.log_file)
 		editor.log_file = nil

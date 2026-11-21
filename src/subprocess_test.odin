@@ -10,6 +10,6 @@ subprocess_reports_exit_code :: proc(t: ^testing.T) {
 	defer subprocess_destroy(&sub)
 
 	for !subprocess_drain(&sub) {}
-	_ = subprocess_output(&sub)
+	for !subprocess_reap(&sub) {}
 	testing.expect_value(t, sub.exit_code, 7)
 }

@@ -5,6 +5,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:sys/posix"
 import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
@@ -76,6 +77,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	// headless: a test has already brought up the termbox backend (init_fd on a
 	// PTS) and owns its teardown; skip the real-terminal bring-up here.
 	if !headless {
+		crash_restore_install()
 		tb2.init()
 		tb2.set_output_mode(.Truecolor)
 		tb2.set_input_mode(.Mouse)
@@ -182,6 +184,31 @@ editor_shutdown :: proc(editor: ^Editor) {
 		log_tz_shutdown()
 		tb2.shutdown()
 	}
+}
+
+@(private = "file")
+g_crash_termios: posix.termios
+@(private = "file")
+g_crash_fd: posix.FD = -1
+
+crash_restore_install :: proc() {
+	fd := posix.open("/dev/tty", {.RDWR, .CLOEXEC})
+	if fd < 0 || posix.tcgetattr(fd, &g_crash_termios) != .OK {
+		return
+	}
+	g_crash_fd = fd
+	act := posix.sigaction_t{sa_handler = crash_restore, sa_flags = {.RESETHAND}}
+	for sig in ([]posix.Signal{.SIGSEGV, .SIGBUS, .SIGFPE, .SIGILL, .SIGTRAP, .SIGABRT}) {
+		posix.sigaction(sig, &act, nil)
+	}
+}
+
+// Only async-signal-safe calls; the raised signal is delivered under SIG_DFL once the handler returns.
+crash_restore :: proc "c" (sig: posix.Signal) {
+	reset := "\x1b[?1006l\x1b[?1015l\x1b[?1002l\x1b[?1000l\x1b[?2004l\x1b[0m\x1b[?25h\x1b[?1l\x1b>\x1b[?1049l"
+	posix.write(g_crash_fd, raw_data(reset), len(reset))
+	posix.tcsetattr(g_crash_fd, .TCSAFLUSH, &g_crash_termios)
+	posix.raise(sig)
 }
 
 editor_buffer :: proc(editor: ^Editor) -> ^Buffer {
@@ -598,8 +625,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	#partial switch ev.key {
 	case .Esc:
-		// Passive inspector close, slotted last: overlays, completion and the inline
-		// ghost all consume Esc before reaching here, so nothing existing changes.
+		// last: overlays, completion and the inline ghost consume Esc first
 		if editor.inspect.active {
 			inspect_close(editor)
 		}
@@ -864,7 +890,6 @@ editor_save :: proc(editor: ^Editor) {
 editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
 	id := b.id
 	if plugin_save_pending(&editor.plugins, id) {
-		editor_save_intent_clear(editor)
 		editor_log(editor, .Info, "", "Save is waiting for plugins")
 		return
 	}
@@ -1519,8 +1544,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	b.wrap_width = w
 	wrapping := b.wrap && w > 0
 	gap := inline_gap(editor)
-	// While a ghost shows, the cursor line is drawn only up to the caret; the
-	// suffix is relocated after the ghost by inline_render (else it'd paint over it).
+	// inline_render draws the cursor line's suffix after the ghost, so the line stops at the caret
 	ghost_cut := inline_active(editor)
 	screen_y := 0
 	for row := editor.scroll_row; row < len(b.lines) && screen_y < h; row += 1 {
@@ -1618,8 +1642,6 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				}
 			}
 		} else {
-			// Unwrapped: ghost + suffix stay on one row (clipped), drawn by
-			// inline_render, so cut the real line at the caret and reserve gap rows.
 			text_end := b.cursor.col if ghost_row else len(text)
 			editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, false, drow.glyph, drow.glyph_fg)
 			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])

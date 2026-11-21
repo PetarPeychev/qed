@@ -25,7 +25,6 @@ MdLine :: struct {
 	src, block:       int,
 }
 
-// a cluster of spans[span], text[off:][:n]; a tab expands to space cells with n = 0
 MdCell :: struct {
 	span, off, n: i32,
 	w:            i16,
@@ -2046,7 +2045,6 @@ md_wrap_hard :: proc(spans: []MdSpan, width: int) -> [][]MdSpan {
 	return out[:]
 }
 
-// GitHub heading anchors: lowercase, spaces to '-', punctuation dropped, repeats get -1, -2
 md_slug :: proc(r: ^MdRender, text: string) -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	for c in strings.to_lower(text, context.temp_allocator) {

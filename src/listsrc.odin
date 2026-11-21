@@ -63,9 +63,7 @@ list_source_free :: proc(s: ^ListSource) {
 	delete(s.cache)
 	delete(s.ids)
 	delete(s.rows)
-	if s.walk != nil {
-		s.walk.refs -= 1
-	}
+	walk_release(s.walk)
 	walk_scope_release(s.wscope)
 	delete(s.entries)
 	vmem.arena_destroy(&s.names)
@@ -108,7 +106,6 @@ list_restores :: proc(kind: ListSourceKind) -> bool {
 	return kind != .Lines
 }
 
-// 0: the source is gone or never changes
 list_stamp :: proc(editor: ^Editor, p: ^Pane) -> u64 {
 	src := &p.list.source
 	#partial switch src.kind {
@@ -160,7 +157,6 @@ list_count :: proc(editor: ^Editor, p: ^Pane) -> int {
 	return 0
 }
 
-// borrowed: valid until the source changes; a stale index (the source shrank or went away) reads as ""
 list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
 	if i < 0 || i >= list_count(editor, p) {
 		return ""
@@ -186,7 +182,6 @@ list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
 	return ""
 }
 
-// strings are temp or borrowed; a stale index reads as an empty item
 list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
 	if i < 0 || i >= list_count(editor, p) {
 		return
@@ -285,7 +280,6 @@ list_commands_fill :: proc(editor: ^Editor, p: ^Pane) {
 	}
 }
 
-// rows name a core command by label and a plugin command by id, so a removed command just goes dead
 list_command :: proc(editor: ^Editor, s: ^ListSource, i: int) -> (Command, bool) {
 	if i < 0 || i >= len(s.cache) {
 		return {}, false
@@ -338,7 +332,6 @@ list_dirs_fill :: proc(editor: ^Editor, p: ^Pane) {
 	}
 }
 
-// rows hold entry seqs, so eviction from the ring front is counted (`evicted`) and the pane shifts its positions
 list_log_rows :: proc(editor: ^Editor, src: ^ListSource) -> []int {
 	v := &editor.logview
 	stamp := editor.log_seq << 8 | u64(v.history)

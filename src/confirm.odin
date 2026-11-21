@@ -3,7 +3,6 @@ package main
 import "core:fmt"
 import "core:path/filepath"
 import "core:strings"
-import "lib:tb2"
 
 quit_actions := [?]string{"Save All", "Discard All", "Cancel"}
 close_actions := [?]string{"Save", "Discard", "Cancel"}
@@ -124,10 +123,4 @@ conflict_dialog_execute :: proc(editor: ^Editor, p: ^Pane) {
 	case 2:
 		editor_reload_buffer(editor, b)
 	}
-}
-
-dialog_pane :: proc(question: string, actions: []string, selected: int) -> Pane {
-	text := make([]PaneLine, 1, context.temp_allocator)
-	text[0].text = question
-	return {text = text, has_list = true, list = {items = pane_labels(actions), sel = selected}}
 }

@@ -233,7 +233,7 @@ Pane :: struct {
 	modal:        bool,
 	dead:         bool,
 	parent:       u64,
-	over:         ^bool, // legacy Overlay this child sits on; goes away once every overlay is a Pane
+	over:         ^bool,
 	place:        PanePlace,
 	size:         PaneSize,
 	ctx:          PaneCtx,
@@ -507,8 +507,7 @@ pane_tabs_set :: proc(p: ^Pane, tabs: []PaneTab) {
 	p.tab = clamp(p.tab, 0, max(0, len(tabs) - 1))
 }
 
-// keys and suffixes live in the pane's arena: a 50k-mark push is a few block allocations, not 50k;
-// bar and fg are interned theme keys (Plugins.colors) that outlive every pane
+// keys and suffixes live in the pane's arena; bar and fg are interned theme keys that outlive every pane
 pane_marks_clear :: proc(p: ^Pane) {
 	clear(&p.marks)
 	vmem.arena_free_all(&p.marks_arena)

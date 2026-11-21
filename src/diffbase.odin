@@ -16,9 +16,6 @@ DiffMark :: enum u8 {
 	Deleted,
 }
 
-// One changed region: `old` lines (base_text[lo:hi]) shown as ghost text.
-// `above` renders them above `row` (modification), else below it (pure deletion).
-// `new_n` is the count of current rows starting at `row` paired for word diff.
 DiffHunk :: struct {
 	row:    int,
 	above:  bool,
@@ -26,9 +23,6 @@ DiffHunk :: struct {
 	new_n:  int,
 }
 
-// One contiguous change as a revert unit: current rows [new_lo,new_hi) restore to
-// base_text[old_lo:old_hi). A pure addition has old_lo==old_hi; a pure deletion has
-// new_lo==new_hi (its base lines re-insert at row new_lo).
 DiffChange :: struct {
 	new_lo, new_hi: int,
 	old_lo, old_hi: int,
@@ -292,8 +286,7 @@ diff_mark_deletion :: proc(marks: []DiffMark, ci: int) {
 	}
 }
 
-// Deleted old lines render below the line before the gap; if the gap is at the
-// file top (ci == 0), there is no such line, so render them above row 0 instead.
+// a deletion at the file top has no line before the gap, so it renders above row 0
 diff_hunk_deletion :: proc(hunks: ^[dynamic]DiffHunk, ci, nrows, lo, hi: int) {
 	if lo >= hi || nrows == 0 {
 		return
@@ -396,7 +389,7 @@ diff_myers :: proc(a, b: []u64, allocator := context.temp_allocator, max_d := DI
 	return ops[:], true
 }
 
-// 0-based {a, a_count, b, b_count} runs; an Equal op on differing text (a hash collision) counts as a change
+// an Equal op on differing text (a hash collision) counts as a change
 diff_runs :: proc(ops: []DiffOp, a, b: []string) -> [][4]int {
 	out := make([dynamic][4]int, context.temp_allocator)
 	ai, bi, i := 0, 0, 0
@@ -456,8 +449,7 @@ diffbase_goto :: proc(editor: ^Editor, dir: int) {
 	editor_goto(editor, target, 0)
 }
 
-// A pure deletion has no current row; its glyph sits on the line before the gap
-// (or row 0 at the file top), so a cursor there targets it.
+// a pure deletion has no row of its own; its glyph sits on the line before the gap (row 0 at the top)
 diff_change_touched :: proc(c: DiffChange, r0, r1: int) -> bool {
 	if c.new_lo < c.new_hi {
 		return c.new_lo <= r1 && c.new_hi > r0
@@ -482,8 +474,7 @@ diffbase_revert_change :: proc(b: ^Buffer, g: ^DiffBase, c: DiffChange) {
 			}
 			return
 		}
-		// Change reaches EOF: the last row stores no trailing newline, so consume
-		// the newline before it and re-emit the base lines with a leading one.
+		// the last row has no trailing newline, so take the one before it and lead the base lines with it
 		at := Cursor{0, 0}
 		if c.new_lo > 0 {
 			at = {c.new_lo - 1, len(b.lines[c.new_lo - 1].text)}
@@ -597,7 +588,6 @@ diff_below :: proc(b: ^Buffer, row: int) -> int {
 	return b.base.below[row]
 }
 
-// The hunk whose old lines render above/below `row` (nil if none).
 diff_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (DiffHunk, bool) {
 	if !diff_view_on() {
 		return {}, false
@@ -610,8 +600,6 @@ diff_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (DiffHunk, bool) {
 	return {}, false
 }
 
-// For a live (current-buffer) row inside a modification, the base line it is
-// paired with for word-level diffing.
 diff_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
 	if !diff_view_on() {
 		return "", false
@@ -628,8 +616,6 @@ diff_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
 	return "", false
 }
 
-// Changed byte span [from,to) in each of `old` and `new` after trimming the
-// common prefix and suffix (rune-boundary safe). from==to means no change.
 diff_word_span :: proc(old, new: string) -> (old_span, new_span: [2]int) {
 	p := 0
 	for p < len(old) && p < len(new) && old[p] == new[p] {
@@ -673,6 +659,3 @@ diff_split_lines :: proc(s: string, allocator := context.temp_allocator) -> [dyn
 	}
 	return out
 }
-
-// Base-vs-worktree diff for an arbitrary file (not an open buffer). Reuses the
-// gutter's line-hash diff so a preview renders identically to the inline diff view.

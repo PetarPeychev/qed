@@ -455,3 +455,36 @@ e2e_walk_tree_filter_after_write :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expectf(t, len(ft_entries(&e.ed)) > 0, "filtered rows after writes: cands %d built %v stale %v", len(w.cands), w.built, w.stale)
 }
+
+@(test)
+e2e_walk_raise_keeps_no_ref :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	src := e2e_plugin(&e, "src", `return {setup = function()
+		qed.command{name = "Give", run = function() qed.emit("src:give", {walk = qed.fs.walk, dirs = qed.fs.dirs}) end}
+	end}`)
+	e2e_plugin(&e, "dst", `local got
+	return {setup = function()
+		qed.on("src:give", function(d) got = d end)
+		qed.command{name = "Call", run = function()
+			local a = select(2, pcall(got.walk, {root = "/tmp"}))
+			local b = select(2, pcall(got.dirs))
+			qed.log("info", tostring(a) .. "|" .. tostring(b))
+		end}
+	end}`)
+	give, _ := plugin_test_command(&e.ed, "Src: Give")
+	plugin_command_run(&e.ed, give)
+	plugin_flush(&e.ed)
+	plugin_unload(&e.ed, src)
+	src.state = .Disabled
+	walks, lists := len(e.ed.walks), len(e.ed.plugins.lists)
+	call, _ := plugin_test_command(&e.ed, "Dst: Call")
+	plugin_command_run(&e.ed, call)
+	found := false
+	for l in e.ed.log {
+		found ||= l.source == "Dst" && strings.count(l.text, "plugin is not loaded") == 2
+	}
+	testing.expect(t, found, "a call from an unloaded plugin raises")
+	testing.expect_value(t, len(e.ed.walks), walks)
+	testing.expect_value(t, len(e.ed.plugins.lists), lists)
+}
