@@ -317,6 +317,7 @@ gate_panes :: proc(has_rg: bool) {
 		test_slice_on = true
 		defer test_slice_on = false
 		clear(&test_slice_max)
+		test_gc_max = 0
 		e, _ := gate_open("")
 		defer gate_close(&e)
 		gate_settle(&e)
@@ -354,6 +355,7 @@ gate_panes :: proc(has_rg: bool) {
 		gate_record(50, one(test_slice_max["git"]), "plugin slice git, Git tab (50k changed)")
 		gate_frame(&e, key(.Esc))
 		gate_settle(&e)
+		gate_record(16, one(test_gc_max), "plugin GC step, repo panes (50k changed)")
 
 		start = time.tick_now()
 		gate_frame(&e, key(.Ctrl_P))

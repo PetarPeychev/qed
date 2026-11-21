@@ -14,6 +14,7 @@ PLUGIN_LINE_READ_MAX :: 64 * 1024
 PLUGIN_SPAWN_READ_MAX :: 1024 * 1024
 PLUGIN_SPAWN_OUTPUT_MAX :: 32 * 1024 * 1024
 PLUGIN_KILLS_MAX :: 3
+PLUGIN_GC_STEP_MS :: 2
 
 PluginKind :: enum {
 	Command,
@@ -1219,7 +1220,33 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		editor.jump_lock = false
 		ran = true
 	}
+	plugin_gc_step(editor)
 	return
+}
+
+// a cycle starts once the heap doubles, as Lua's default pause; a heap outgrowing it gets more time per step
+plugin_gc_step :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	if p.L == nil || (!p.gc_active && p.mem.used < 2 * p.gc_base) {
+		return
+	}
+	p.gc_active = true
+	budget := PLUGIN_GC_STEP_MS * f64(clamp(p.mem.used / max(2 * p.gc_base, 1), 1, 3))
+	entry: PluginEntry
+	prev := plugin_enter(editor, &entry)
+	start := time.tick_now()
+	for ms_since(start) < budget {
+		if lua.gc(p.L, .STEP, c.int(0)) != 0 {
+			p.gc_active, p.gc_base = false, p.mem.used
+			break
+		}
+	}
+	plugin_leave(editor, prev)
+	when ODIN_TEST {
+		if test_slice_on {
+			test_gc_max = max(test_gc_max, ms_since(start))
+		}
+	}
 }
 
 editor_plugins_quit :: proc(editor: ^Editor) {

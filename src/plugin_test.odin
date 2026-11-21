@@ -749,3 +749,23 @@ plugin_ctx_selection_lazy :: proc(t: ^testing.T) {
 	command_run(ed, late)
 	testing.expect_value(t, ed.message, "nil")
 }
+
+@(test)
+plugin_gc_runs_between_slices :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"junk.lua", `return {setup = function()
+			qed.command{name = "Junk", run = function() local t = {} for i = 1, 100000 do t[i] = {i} end end}
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	cmd, ok := plugin_test_command(ed, "Junk: Junk")
+	testing.expect(t, ok, "junk registered")
+	before := ed.plugins.mem.used
+	command_run(ed, cmd)
+	testing.expect(t, ed.plugins.mem.used > before + 4 * 1024 * 1024, "a slice leaves its garbage for later")
+	for i := 0; i < 10_000 && ed.plugins.mem.used > before + 1024 * 1024; i += 1 {
+		plugin_pump(ed)
+	}
+	testing.expect(t, ed.plugins.mem.used < before + 1024 * 1024, "pumps collect it")
+}

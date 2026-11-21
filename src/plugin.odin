@@ -85,6 +85,8 @@ Plugins :: struct {
 	fakes:    [dynamic]PluginFake,
 	lsp_results: [dynamic]PluginLspResult,
 	slice:    PluginSlice,
+	gc_base:  int,
+	gc_active: bool,
 	seq:      u64,
 	presave:  u64,
 	resumes:  int,
@@ -230,6 +232,9 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 	}
 	lua.atpanic(p.L, plugin_panic)
 	lua.getextraspace(p.L)^ = nil
+	// one allocation can owe a whole mark of a big heap; plugin_gc_step pays it between slices instead
+	lua.gc(p.L, .STOP)
+	p.gc_base, p.gc_active = 0, false
 	lua.sethook(p.L, plugin_hook, lua.MASKCOUNT, PLUGIN_HOOK_COUNT)
 	lua.pushcfunction(p.L, plugin_openlibs)
 	ok := lua.pcall(p.L, 0, 0, 0) == .OK

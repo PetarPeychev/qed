@@ -56,7 +56,7 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || highlight_jobs_busy(&editor) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) {
+			if lsp_running() || highlight_jobs_busy(&editor) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) || editor.plugins.gc_active {
 				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_stepping(&editor) || editor.terminal.more else LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
