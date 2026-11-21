@@ -312,7 +312,7 @@ load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*,
 
   | Entry | Soft (Debug log) | Hard |
   |---|---|---|
-  | events, timers | 50 ms | `plugin_slice_max_ms` (1 s): the task stops, a warning is logged |
+  | events, timers | 50 ms | `plugin_slice_max_ms` (1 s): the task stops, a warning is logged; a repeating timer or hook stopped 3 times in a row is removed with an error |
   | commands, `when` | n/a | `plugin_command_max_ms` (5 s): the task stops, a warning is logged |
   | `setup` | 2 ms | 1 s: the plugin is marked errored |
 

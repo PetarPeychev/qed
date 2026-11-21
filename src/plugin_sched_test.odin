@@ -312,6 +312,48 @@ plugin_sched_budgets :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_sched_runaway_removed :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"spin.lua", `
+			return {setup = function()
+				qed.every(1, function() while true do end end)
+				local n = 0
+				qed.on("buf_changed", function()
+					n = n + 1
+					if n == 3 then return end
+					while true do end
+				end)
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	pl := plugin_find(&ed.plugins, "spin")
+	start := time.tick_now()
+	for len(ed.plugins.timers) > 0 && ms_since(start) < 10000 {
+		time.sleep(2 * time.Millisecond)
+		plugin_pump(ed)
+	}
+	testing.expect_value(t, len(ed.plugins.timers), 0)
+	testing.expect(t, plugin_test_logged(ed, .Error, "Spin", "timer was stopped by its budget 3 times in a row and was removed"), "the removal is an error naming the timer")
+	testing.expect_value(t, pl.state, PluginState.Enabled)
+
+	b := editor_buffer(ed)
+	hooks := len(ed.plugins.hooks)
+	for _ in 0 ..< 3 {
+		buffer_insert_rune(b, 'x')
+		plugin_flush(ed)
+	}
+	testing.expect_value(t, len(ed.plugins.hooks), hooks)
+	for _ in 0 ..< 3 {
+		buffer_insert_rune(b, 'x')
+		plugin_flush(ed)
+	}
+	testing.expect_value(t, len(ed.plugins.hooks), hooks - 1)
+	testing.expect(t, plugin_test_logged(ed, .Error, "Spin", "buf_changed handler was stopped by its budget 3 times in a row and was removed"), "the removal names the hook")
+	testing.expect_value(t, ed.plugins.subs[.Buf_Changed], 0)
+}
+
+@(test)
 plugin_sched_coalesce :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"quiet.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},

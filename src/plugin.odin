@@ -642,7 +642,7 @@ plugin_call :: proc(editor: ^Editor, nargs, nresults: c.int) -> (ok: bool, messa
 	return false, full, ""
 }
 
-plugin_error :: proc(editor: ^Editor, pl: ^Plugin, message, traceback: string, disable: bool) {
+plugin_error :: proc(editor: ^Editor, pl: ^Plugin, message, traceback: string, disable: bool, level := LogLevel.Error) {
 	delete(pl.last_error)
 	pl.last_error = strings.clone(message)
 	if disable {
@@ -675,7 +675,7 @@ plugin_error :: proc(editor: ^Editor, pl: ^Plugin, message, traceback: string, d
 		return
 	}
 	e.logged += 1
-	editor_log(editor, .Error, pl.display, message if n == 1 else fmt.tprintf("%s (%d times)", message, n))
+	editor_log(editor, level, pl.display, message if n == 1 else fmt.tprintf("%s (%d times)", message, n))
 	if n == 1 && traceback != "" {
 		editor_log(editor, .Debug, pl.display, traceback)
 	}

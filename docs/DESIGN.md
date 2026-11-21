@@ -559,8 +559,9 @@ started at the end of `editor_init`. Invariants the code can't show:
   thread, checks the slice in `Plugins.slice` against `plugin_budget(kind)` (`plugin_command_max_ms` for
   commands, `plugin_slice_max_ms` for events and timers). Past the
   hard limit it yields from the hook when it can (pcall cannot catch that), else
-  raises and drops the hook count to 1 until the slice ends; the task is stopped with a warning and the plugin
-  stays loaded. A task's own Lua error (or out-of-memory) is logged at Error and the plugin stays loaded too;
+  raises and drops the hook count to 1 until the slice ends; the task is stopped with a warning (through
+  `plugin_error`'s rate limiter) and the plugin stays loaded. A repeating timer or hook stopped
+  `PLUGIN_KILLS_MAX` (3) times in a row (`PluginTask.source`, reset by a clean run) is removed with an error. A task's own Lua error (or out-of-memory) is logged at Error and the plugin stays loaded too;
   only load and setup errors mark it errored. `plugin_error` rate-limits per plugin (`PluginErrors`): at most
   `PLUGIN_ERRORS_PER_SECOND` entries per window, the rest summarized by the pump as `(N more errors suppressed)`;
   a known message shows `(N times)` and only its first occurrence logs the traceback. The soft limit

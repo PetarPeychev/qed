@@ -13,6 +13,7 @@ PLUGIN_FLUSH_ROUNDS :: 16
 PLUGIN_LINE_READ_MAX :: 64 * 1024
 PLUGIN_SPAWN_READ_MAX :: 1024 * 1024
 PLUGIN_SPAWN_OUTPUT_MAX :: 32 * 1024 * 1024
+PLUGIN_KILLS_MAX :: 3
 
 PluginKind :: enum {
 	Command,
@@ -121,6 +122,7 @@ PluginTask :: struct {
 	wait:    PluginWait,
 	command: u64,
 	view:    u64,
+	source:  u64,
 	user:    bool,
 	running: bool,
 	doomed:  bool,
@@ -132,6 +134,7 @@ PluginHook :: struct {
 	name:  string,
 	owner: string,
 	ref:   i32,
+	kills: int,
 }
 
 PluginTimer :: struct {
@@ -141,6 +144,7 @@ PluginTimer :: struct {
 	every_ms: int,
 	due:      time.Tick,
 	task:     u64,
+	kills:    int,
 }
 
 PluginProc :: struct {
@@ -219,6 +223,7 @@ PluginStart :: struct {
 	view_ref: i32,
 	command:  u64,
 	view:     u64,
+	source:   u64,
 	user:     bool,
 }
 
@@ -509,7 +514,7 @@ plugin_task_start :: proc(editor: ^Editor, owner: string, kind: PluginKind, star
 		return 0, true
 	}
 	id = plugin_next_id(p)
-	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command, view = start.view, user = start.user})
+	append(&p.tasks, PluginTask{id = id, thread = th, owner = owner, kind = kind, event = start.ev.event, command = start.command, view = start.view, source = start.source, user = start.user})
 	start := start
 	lua.pushcfunction(th.co, plugin_co_main)
 	lua.pushlightuserdata(th.co, &start)
@@ -557,7 +562,7 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 		return
 	}
 	t := &p.tasks[i]
-	co, kind, owner, ev := t.co, t.kind, t.owner, t.event
+	co, kind, owner, ev, source := t.co, t.kind, t.owner, t.event, t.source
 	t.running = true
 	t.wait = {}
 	p.resumes += 1
@@ -593,6 +598,9 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 		return
 	case status == .OK:
 		plugin_task_free(editor, i)
+		if source != 0 {
+			plugin_source_clean(p, source)
+		}
 		return
 	case:
 		message, traceback = plugin_task_error(editor, co)
@@ -601,16 +609,37 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	if i >= 0 {
 		plugin_task_free(editor, i)
 	}
-	if pl := plugin_find(p, owner); pl == nil {
-	} else if ended {
-		delete(pl.last_error)
-		pl.last_error = strings.clone(message)
-		editor_log(editor, .Warn, pl.display, message)
-		if traceback != "" {
-			editor_log(editor, .Debug, pl.display, traceback)
+	pl := plugin_find(p, owner)
+	if pl != nil {
+		plugin_error(editor, pl, message, traceback, false, .Warn if ended else .Error)
+	}
+	if killed && source != 0 && plugin_source_killed(p, source) && pl != nil {
+		plugin_error(editor, pl, fmt.tprintf("%s was stopped by its budget %d times in a row and was removed", label, PLUGIN_KILLS_MAX), "", false)
+	}
+}
+
+plugin_source_killed :: proc(p: ^Plugins, source: u64) -> (removed: bool) {
+	if i := plugin_timer_index(p, source); i >= 0 {
+		p.timers[i].kills += 1
+		if p.timers[i].kills >= PLUGIN_KILLS_MAX {
+			plugin_timer_remove(p, i)
+			return true
 		}
-	} else {
-		plugin_error(editor, pl, message, traceback, false)
+	} else if i := plugin_hook_index(p, source); i >= 0 {
+		p.hooks[i].kills += 1
+		if p.hooks[i].kills >= PLUGIN_KILLS_MAX {
+			plugin_hook_remove(p, i)
+			return true
+		}
+	}
+	return false
+}
+
+plugin_source_clean :: proc(p: ^Plugins, source: u64) {
+	if i := plugin_timer_index(p, source); i >= 0 {
+		p.timers[i].kills = 0
+	} else if i := plugin_hook_index(p, source); i >= 0 {
+		p.hooks[i].kills = 0
 	}
 }
 
@@ -663,7 +692,7 @@ plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = n
 		if ref == 0 {
 			continue
 		}
-		id, finished := plugin_task_start(editor, owner, kind, {ref = ref, args = .Event, ev = q})
+		id, finished := plugin_task_start(editor, owner, kind, {ref = ref, args = .Event, ev = q, source = hid})
 		if !finished && pending != nil {
 			append(pending, id)
 		}
@@ -1062,7 +1091,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		} else {
 			ordered_remove(&p.timers, i)
 		}
-		task, finished := plugin_task_start(editor, t.owner, .Timer, {ref = t.ref})
+		task, finished := plugin_task_start(editor, t.owner, .Timer, {ref = t.ref, source = t.id if t.every_ms > 0 else 0})
 		if t.every_ms == 0 {
 			lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(t.ref))
 		} else if i = plugin_timer_index(p, id); i >= 0 && !finished {
