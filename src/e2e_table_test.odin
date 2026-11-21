@@ -35,6 +35,13 @@ return {setup = function()
 	qed.command{name = "Off", run = function()
 		v = qed.ui.open{place = "full", list = {items = rows("k150-a-sampled-but-offscreen-name-that-is-really-quite-long", 50), columns = {{title = "Name", width = "fit"}, {title = "X", width = "fill"}}}}
 	end}
+	for _, place in ipairs({"Full", "Split", "Center"}) do
+		qed.command{name = "Rich " .. place, run = function()
+			qed.ui.open{place = place:lower(), preview = place == "Split" and "auto" or nil, title = place == "Center" and "Rich" or nil,
+				tabs = place ~= "Center" and {"One", "Two"} or nil, fields = {{}}, footer = {hints = {{label = "hint"}}},
+				list = {items = rows(), columns = {{title = "Name", width = 4}, {title = "X"}}}}
+		end}
+	end
 	qed.command{name = "Center", run = function()
 		qed.ui.open{list = {items = {{cells = {"a", "b"}}}, columns = {{title = "One", width = "fit"}, {width = "fill"}}}}
 	end}
@@ -259,10 +266,33 @@ e2e_table_borders :: proc(t: ^testing.T) {
 	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.rule_y), '┼')
 	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.list.y), '│')
 	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.list.y + g.list.h - 1), '│')
+	testing.expect_value(t, g.head_y - 1, g.box.y)
+	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.box.y), '┬')
+	testing.expect_value(t, g.list.y + g.list.h, g.box.y + g.box.h - 1)
+	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.box.y + g.box.h - 1), '┴')
 	e2e_key(&e, .Esc)
 
+	for name in ([]string{"Tbl: Rich Full", "Tbl: Rich Split", "Tbl: Rich Center"}) {
+		e2e_resize(&e, 160, 40)
+		table_run(&e, name)
+		p = test_view(&e.ed)
+		e2e_render(&e)
+		g = pane_geom(&e.ed, p)
+		sx := g.list.x + 1 + 4 + 1
+		testing.expectf(t, e2e_cell(&e, sx, g.head_y - 1) == '┬', "%s: joins the line above the header", name)
+		testing.expectf(t, e2e_cell(&e, sx, g.rule_y) == '┼', "%s: crosses the header rule", name)
+		testing.expectf(t, e2e_cell(&e, sx, g.list.y + g.list.h) == '┴', "%s: joins the line below the list", name)
+		testing.expectf(t, e2e_cell(&e, sx, g.list.y) == '│', "%s: separates the cells", name)
+		e2e_key(&e, .Esc)
+	}
+	e2e_resize(&e, E2E_W, E2E_H)
+
 	table_run(&e, "Tbl: Center")
-	testing.expect_value(t, pane_geom(&e.ed, test_view(&e.ed)).box, pane_center(&e.ed, PALETTE_WIDTH, 1 + 1 + 1))
+	g = pane_geom(&e.ed, test_view(&e.ed))
+	testing.expect_value(t, g.box, pane_center(&e.ed, PALETTE_WIDTH, 1 + 1 + 1))
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, g.list.x + 1 + 3 + 1, g.box.y), '┬')
+	testing.expect_value(t, e2e_cell(&e, g.list.x + 1 + 3 + 1, g.box.y + g.box.h - 1), '┴')
 	e2e_key(&e, .Esc)
 	PANE_TABLE_BORDERS = .None
 	table_run(&e, "Tbl: Sorted")

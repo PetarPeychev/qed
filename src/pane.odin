@@ -1764,6 +1764,12 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	for r in len(drawn) ..< g.list.h {
 		pane_seps_draw(seps, g.list.y + r, COLOR_PANE_BG)
 	}
+	if g.head_y >= 0 {
+		for x in seps {
+			tb2.set_cell(i32(x), i32(g.head_y - 1), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
+			tb2.set_cell(i32(x), i32(g.list.y + g.list.h), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		}
+	}
 	addw, delw := 0, 0
 	if len(p.marks) > 0 {
 		for it in drawn {
