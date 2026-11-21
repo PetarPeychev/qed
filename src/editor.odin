@@ -1083,7 +1083,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor_retheme(editor)
 	lsp_enabled_sync(editor)
 	plugins_config_apply(editor, theme_changed, !g_config_user_broken)
-	if message == "" && own_write && !theme_changed {
+	if own_write && !theme_changed {
 		return true
 	}
 	if message == "" {
