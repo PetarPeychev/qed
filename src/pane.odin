@@ -1688,7 +1688,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		for c, i in cols {
 			titles[i] = c.title
 		}
-		pane_render_cells(titles, cols, widths, g.list.x + 1, g.head_y, lw, color_attr(COLOR_PANE_SHORTCUT_FG, .Bold), COLOR_PANE_BG, header = true)
+		pane_render_cells(titles, cols, widths, g.list.x + 1, g.head_y, lw, color_attr(COLOR_PANE_FG, .Bold), COLOR_PANE_BG, header = true)
 	}
 	addw, delw := 0, 0
 	if len(p.marks) > 0 {

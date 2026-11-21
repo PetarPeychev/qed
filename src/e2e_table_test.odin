@@ -55,7 +55,7 @@ e2e_table_columns :: proc(t: ^testing.T) {
 	x := g.list.x + 1
 	head := e2e_row_text(&e, g.head_y)
 	testing.expect(t, strings.contains(head, "Name             Kind  Note"), "titles sit over columns sized by the sampled widest cell")
-	testing.expect_value(t, e2e_cell_fg(&e, x, g.head_y), color_attr(COLOR_PANE_SHORTCUT_FG, .Bold))
+	testing.expect_value(t, e2e_cell_fg(&e, x, g.head_y), color_attr(COLOR_PANE_FG, .Bold))
 	testing.expect_value(t, e2e_cell(&e, x + 15 + 2, g.head_y), 'K')
 	testing.expect_value(t, e2e_cell(&e, x + 15 + 2 + 2, g.list.y), 'k')
 

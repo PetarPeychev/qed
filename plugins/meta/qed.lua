@@ -321,7 +321,7 @@ function List:release() end
 ---@field columns? qed.UiColumn[] items draw their `cells` in these columns, two spaces apart; a title on any column adds a header row that stays put while the list scrolls
 
 ---@class qed.UiColumn
----@field title? string header text, drawn dim and bold
+---@field title? string header text, drawn bold
 ---@field width? integer|"fit"|"fill" a positive integer is fixed; `"fit"` grows to the widest cell seen (title included, the first 1000 items and every drawn row; it never shrinks while the pane is open); `"fill"` (default) shares what is left with the other fill columns. Too narrow a pane shrinks fill columns first, then fit columns down to their `min`; cells that do not fit end in `…`
 ---@field min? integer `"fit"` or `"fill"`: never narrower than this (a fit column's default is its title width)
 ---@field max? integer `"fit"`: never wider than this
