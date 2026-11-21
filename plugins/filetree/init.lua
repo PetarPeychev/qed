@@ -281,7 +281,7 @@ local function preview_changed(item, blank, reuse)
 		return
 	end
 	if not ok then
-		qed.log("debug", "preview: " .. tostring(base))
+		qed.log("preview: " .. tostring(base), "debug")
 	end
 	base = ok and type(base) == "string" and base or nil
 	based = {path = item.path, base = base}

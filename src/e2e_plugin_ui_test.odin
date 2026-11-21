@@ -30,7 +30,7 @@ return {setup = function()
 		show(r and r.value)
 	end)
 	cmd("Change", function()
-		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item) qed.log("info", "chg " .. item) end}
+		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item) qed.log("chg " .. item) end}
 		show(r)
 	end)
 	cmd("Multi", function()
@@ -58,7 +58,7 @@ return {setup = function()
 	cmd("Slow", function()
 		local r = qed.pick{items = {"a", "b", "c"}, on_change = function(item)
 			qed.sleep(40)
-			qed.log("info", "applied " .. item)
+			qed.log("applied " .. item)
 		end}
 		show("picked " .. tostring(r))
 	end)
@@ -72,12 +72,12 @@ return {setup = function()
 		show(tostring(ok) .. " " .. tostring(err))
 	end)
 	qed.command{name = "Query", key = "Alt+q", run = function()
-		local r, err, q = qed.pick{query = "ab", on_change = function(it) qed.log("info", "chg " .. it.label) end, on_query = function(q, picker)
-			qed.log("info", "query " .. q)
+		local r, err, q = qed.pick{query = "ab", on_change = function(it) qed.log("chg " .. it.label) end, on_query = function(q, picker)
+			qed.log("query " .. q)
 			last = picker
 			if q == "slow" then
 				qed.spawn{cmd = "sleep 5"}
-				qed.log("info", "slow done")
+				qed.log("slow done")
 			end
 			if q == "" then
 				picker:set({}, {hint = "type something"})

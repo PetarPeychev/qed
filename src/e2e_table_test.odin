@@ -55,7 +55,7 @@ return {setup = function()
 			local ok, err = pcall(qed.ui.open, {list = {items = {}, columns = {c}}})
 			errs[#errs + 1] = tostring(err):match("columns[^\n]*")
 		end
-		qed.log("info", table.concat(errs, ";"))
+		qed.log(table.concat(errs, ";"))
 	end}
 end}`
 

@@ -457,11 +457,11 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 plugin_unload_cleans :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"keep.lua", `
-			sentinel = setmetatable({}, {__gc = function() qed.log("info", "keep finalized") end})
+			sentinel = setmetatable({}, {__gc = function() qed.log("keep finalized") end})
 			return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},
 		{"drop.lua", `
 			big = string.rep("z", 1024 * 1024)
-			sentinel = setmetatable({}, {__gc = function() qed.log("info", "drop finalized") end})
+			sentinel = setmetatable({}, {__gc = function() qed.log("drop finalized") end})
 			return {setup = function()
 				qed.command{name = "One", run = function() qed.message(big) end}
 				qed.command{name = "Two", when = function() return #big > 0 end, run = function() qed.message(big) end}

@@ -11,7 +11,7 @@ import "lib:tb2"
 @(private = "file")
 VIEW_PLUGIN :: `
 local v
-local function note(s) qed.log("info", s) end
+local function note(s) qed.log(s) end
 local function cmd(name, run, key) qed.command{name = name, run = run, key = key} end
 return {setup = function()
 	qed.meta{display_name = "V"}
@@ -603,7 +603,7 @@ e2e_ui_open_shape_errors :: proc(t: ^testing.T) {
 				local ok, err = pcall(qed.ui.open, o)
 				errs[#errs + 1] = tostring(err):match("must be [^\n]*")
 			end
-			qed.log("info", table.concat(errs, ";"))
+			qed.log(table.concat(errs, ";"))
 		end}
 	end}`)
 	cmd, ok := plugin_test_command(&e.ed, "Shape: Bad")

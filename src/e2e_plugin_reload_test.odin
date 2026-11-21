@@ -111,7 +111,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	defer e2e_reload_stop(&e, dir)
 
 	reload_write(dir, "alpha.lua", `return {setup = function()
-		qed.log("info", "alpha says hi")
+		qed.log("alpha says hi")
 		qed.command{name = "Cmd", run = function() end}
 	end}`)
 	plugins_poll(&e.ed)

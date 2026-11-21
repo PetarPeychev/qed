@@ -7,7 +7,7 @@ import lua "lib:lua"
 @(private = "file")
 LIST_PLUGIN :: `
 local h
-local function note(s) qed.log("info", s) end
+local function note(s) qed.log(s) end
 local function show(it) return it.label .. "=" .. (it.path or "") end
 return {setup = function()
 	qed.meta{display_name = "L"}

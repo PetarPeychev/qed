@@ -348,12 +348,12 @@ plugin_reload_keeps_order :: proc(t: ^testing.T) {
 	dir := reload_dir()
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
 	for name in ([?]string{"a", "b"}) {
-		reload_write(dir, fmt.tprintf("%s.lua", name), `return {setup = function() qed.on("config_changed", function() qed.log("info", "cc") end) end}`)
+		reload_write(dir, fmt.tprintf("%s.lua", name), `return {setup = function() qed.on("config_changed", function() qed.log("cc") end) end}`)
 	}
 	ed := reload_editor({}, dir)
 	defer plugin_test_destroy(ed)
 
-	reload_write(dir, "a.lua", `return {setup = function() qed.on("config_changed", function() qed.log("info", "cc!") end) end}`)
+	reload_write(dir, "a.lua", `return {setup = function() qed.on("config_changed", function() qed.log("cc!") end) end}`)
 	plugins_poll(ed)
 	clear_log := len(ed.log)
 	plugins_config_apply(ed, false)

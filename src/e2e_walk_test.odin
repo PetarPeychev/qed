@@ -94,7 +94,7 @@ test_walk_within_union_ignored :: proc(t: ^testing.T) {
 @(private = "file")
 WALK_PLUGIN :: `
 local v, h, hw, hd
-local function note(s) qed.log("info", s) end
+local function note(s) qed.log(s) end
 local function cmd(name, run) qed.command{name = name, run = run} end
 local function res(ok, err) return tostring(ok) .. ":" .. tostring(err) end
 return {setup = function()
@@ -469,7 +469,7 @@ e2e_walk_raise_keeps_no_ref :: proc(t: ^testing.T) {
 		qed.command{name = "Call", run = function()
 			local a = select(2, pcall(got.walk, {root = "/tmp"}))
 			local b = select(2, pcall(got.dirs))
-			qed.log("info", tostring(a) .. "|" .. tostring(b))
+			qed.log(tostring(a) .. "|" .. tostring(b))
 		end}
 	end}`)
 	give, _ := plugin_test_command(&e.ed, "Src: Give")

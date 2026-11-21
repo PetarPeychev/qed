@@ -167,15 +167,15 @@ end
 
 local function apply(e, r)
 	local raw = r.stdout
-	qed.log("debug", ("response (%dB):\n%s"):format(#raw, raw))
+	qed.log(("response (%dB):\n%s"):format(#raw, raw), "debug")
 	if r.code ~= 0 then
-		qed.log("debug", ("command exited %d (%dB reply)"):format(r.code, #raw))
+		qed.log(("command exited %d (%dB reply)"):format(r.code, #raw), "debug")
 		qed.message(("Command failed (exit %d)"):format(r.code), "error")
 		return
 	end
 	local core = extract(raw)
 	if core == "" then
-		qed.log("debug", ("no usable code block in reply (%dB raw)"):format(#raw))
+		qed.log(("no usable code block in reply (%dB raw)"):format(#raw), "debug")
 		qed.message("Empty result, discarded", "error")
 		return
 	end
@@ -189,7 +189,7 @@ local function apply(e, r)
 		qed.message("Edit discarded: block changed", "error")
 		return
 	end
-	qed.log("debug", ("applied at %d:%d (%dB)"):format(from.row, from.col, #core))
+	qed.log(("applied at %d:%d (%dB)"):format(from.row, from.col, #core), "debug")
 	local cursor = qed.buf.cursor(b)
 	local sel_from, sel_to = qed.buf.selection(b)
 	local anchor
@@ -246,10 +246,10 @@ local function edit_selection(ctx)
 		return abandon("plugins.ai.edit_command is empty")
 	end
 	local prompt, selection = build_prompt(b, instruction, from, to)
-	qed.log("debug", ("prompt (%dB):\n%s"):format(#prompt, prompt))
+	qed.log(("prompt (%dB):\n%s"):format(#prompt, prompt), "debug")
 	local ok, proc = pcall(qed.spawn_bg, {cmd = cfg.edit_command, stdin = prompt})
 	if not ok then
-		qed.log("debug", ("spawn failed: %s (%s)"):format(cfg.edit_command, proc))
+		qed.log(("spawn failed: %s (%s)"):format(cfg.edit_command, proc), "debug")
 		return abandon("Could not start command")
 	end
 	local e = {proc = proc, buf = b, original = selection, mark = mark}
@@ -257,7 +257,7 @@ local function edit_selection(ctx)
 	retint(b)
 	status()
 	sync_hook()
-	qed.log("debug", ("request sent: %s (%dB prompt)"):format(cfg.edit_command, #prompt))
+	qed.log(("request sent: %s (%dB prompt)"):format(cfg.edit_command, #prompt), "debug")
 	qed.message(("Edit sent (%d running)"):format(#edits))
 	local r = proc:wait()
 	if e.done or not r then
@@ -401,11 +401,11 @@ local function fim_request(b, gen, typed_at, typed_rev)
 		:format(qed.shell_quote(cfg.completion_endpoint), env)
 	local ok, proc = pcall(qed.spawn_bg, {cmd = cmd, stdin = body})
 	if not ok then
-		qed.log("debug", ("spawn failed: curl (%s)"):format(proc))
+		qed.log(("spawn failed: curl (%s)"):format(proc), "debug")
 		return
 	end
 	fim.proc = proc
-	qed.log("debug", ("request fired: prefix=%dB suffix=%dB"):format(#prefix, #suffix))
+	qed.log(("request fired: prefix=%dB suffix=%dB"):format(#prefix, #suffix), "debug")
 	local r = proc:wait()
 	if gen ~= fim.gen or not r then
 		return
@@ -415,9 +415,9 @@ local function fim_request(b, gen, typed_at, typed_rev)
 	local now = qed.buf.valid(b) and qed.buf.cursor(b)
 	local moved = not now or qed.buf.current() ~= b or qed.buf.rev(b) ~= rev or now.row ~= pos.row or now.col ~= pos.col
 	if r.code ~= 0 then
-		qed.log("debug", ("curl exited %d (%dB reply)"):format(r.code, #r.stdout))
+		qed.log(("curl exited %d (%dB reply)"):format(r.code, #r.stdout), "debug")
 	else
-		qed.log("debug", ("response %dB -> %dB suggestion, moved=%s, raw=%q"):format(#r.stdout, #text, tostring(moved), r.stdout:sub(1, 200)))
+		qed.log(("response %dB -> %dB suggestion, moved=%s, raw=%q"):format(#r.stdout, #text, tostring(moved), r.stdout:sub(1, 200)), "debug")
 	end
 	if not moved and text:find("%S") then
 		spaces()

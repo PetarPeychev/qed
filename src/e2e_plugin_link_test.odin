@@ -172,9 +172,9 @@ e2e_plugin_custom_events :: proc(t: ^testing.T) {
 		qed.command{name = "Pong", run = function() qed.emit("src:pong") end}
 	end}`)
 	dst := link_plugin(&e, "dst", `return {setup = function()
-		qed.on("src:ping", function(d) qed.log("info", "ping " .. d.n) end)
-		qed.on("src:pong", function(d) qed.log("info", "pong " .. tostring(d)) end)
-		qed.on("other:ping", function() qed.log("info", "wrong") end)
+		qed.on("src:ping", function(d) qed.log("ping " .. d.n) end)
+		qed.on("src:pong", function(d) qed.log("pong " .. tostring(d)) end)
+		qed.on("other:ping", function() qed.log("wrong") end)
 	end}`)
 	e2e_git_settle(&e)
 	subs := e.ed.plugins.subs[.Custom]
@@ -202,8 +202,8 @@ e2e_plugin_lifecycle_events :: proc(t: ^testing.T) {
 	e.ed.working_root = strings.clone(e.dir)
 	nav_write(e.path, "two\n")
 	link_plugin(&e, "rec", `return {setup = function()
-		qed.on("plugin_loaded", function(id) qed.log("info", "loaded " .. id) end)
-		qed.on("plugin_unloaded", function(id) qed.log("info", "unloaded " .. id) end)
+		qed.on("plugin_loaded", function(id) qed.log("loaded " .. id) end)
+		qed.on("plugin_unloaded", function(id) qed.log("unloaded " .. id) end)
 	end}`)
 	e2e_git_settle(&e)
 	testing.expect_value(t, link_logged(&e, "Rec", "loaded rec"), 0)
@@ -281,7 +281,7 @@ return {setup = function()
 	qed.export{
 		park = function()
 			qed.sleep(30)
-			qed.log("info", "parked code still runs")
+			qed.log("parked code still runs")
 		end,
 		stash = function()
 			return function() return pcall(qed.defer, 0, function() end) end
@@ -342,7 +342,7 @@ e2e_plugin_export_unload_mid_open :: proc(t: ^testing.T) {
 			end
 			ft.set_tab{label = "Big", paths = paths}
 			ft.open("Big")
-			qed.log("info", "opened")
+			qed.log("opened")
 		end}
 	end}`)
 	e2e_git_settle(&e)

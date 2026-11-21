@@ -570,19 +570,22 @@ plugin_api_edit_error_traceback :: proc(t: ^testing.T) {
 plugin_api_message_source :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		qed.message("plain")
-		local ok, err = pcall(qed.message, "x", {level = "warn", source = ""})
-		assert(not ok and tostring(err):find("unknown option 'source'"), "the source option is gone")
-		assert(not pcall(qed.message, "x", {level = "loud"}), "bad level")
-		qed.message("warned", {level = "warn"})
+		assert(not pcall(qed.message, "x", {level = "warn"}), "the table form is gone")
+		assert(not pcall(qed.message, "x", "loud"), "bad level")
+		assert(not pcall(qed.log, "x", "loud"), "bad log level")
+		qed.log("logged", "debug")
+		qed.message("warned", "warn")
 	`, "abc")
 	defer api_test_destroy(ed)
 	api_test_run(t, ed)
 	testing.expect_value(t, ed.message, "warned")
 	testing.expect_value(t, ed.message_source, "T")
 	testing.expect_value(t, ed.message_level, LogLevel.Warn)
-	found := false
+	found, logged := false, false
 	for e in ed.log {
-		found ||= e.text == "plain" && e.source == "T"
+		found ||= e.text == "plain" && e.source == "T" && e.level == .Info
+		logged ||= e.text == "logged" && e.level == .Debug
 	}
 	testing.expect(t, found, "messages are attributed to the plugin's display name")
+	testing.expect(t, logged, "qed.log takes the level last")
 }

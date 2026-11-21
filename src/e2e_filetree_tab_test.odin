@@ -18,7 +18,7 @@ local function tab(paths)
 		virtual = {root .. "/sub/gone.txt"},
 		detail = true,
 		preview = function(path)
-			qed.log("info", "preview " .. qed.path.rel(path))
+			qed.log("preview " .. qed.path.rel(path))
 			if path:find("gone", 1, true) then
 				return "x\ny\n"
 			elseif path:find("a.txt", 1, true) then

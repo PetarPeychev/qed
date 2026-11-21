@@ -46,14 +46,14 @@ qed = {}
 qed.version = ""
 
 ---Writes `text` to the Message Log (Alt+L) under this plugin's display name; never shown on the status line. Raises on an unknown level.
----@param level qed.Level
 ---@param text any
-function qed.log(level, text) end
+---@param level? qed.Level default `"info"`
+function qed.log(text, level) end
 
----Shows `text` on the message line as `<display name>: text`; `""` clears the message line. Raises on an unknown level or option.
+---Shows `text` on the message line as `<display name>: text` and logs it; `""` clears the message line. Raises on an unknown level.
 ---@param text any
----@param opts? qed.Level|{level?: qed.Level}
-function qed.message(text, opts) end
+---@param level? qed.Level default `"info"`
+function qed.message(text, level) end
 
 ---@class qed.CommandHandle
 ---@field id integer

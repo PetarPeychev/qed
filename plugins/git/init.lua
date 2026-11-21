@@ -58,7 +58,7 @@ local function push()
 		ft.set_ignored(ignored)
 	end)
 	if not ok then
-		qed.log("debug", "file tree: " .. tostring(err))
+		qed.log("file tree: " .. tostring(err), "debug")
 		ft = nil
 	end
 end
@@ -120,7 +120,7 @@ local function scan()
 		job = {}
 		local ok, files, ignored, full, found, failed = pcall(tree.scan, qed.root(), base, job)
 		if not ok then
-			qed.log("error", "scan: " .. tostring(files))
+			qed.log("scan: " .. tostring(files), "error")
 			files = nil
 		end
 		if files and not dirty then
@@ -177,12 +177,12 @@ local function poll()
 	local moved = stat.known and sha ~= stat.sha
 	stat.known, stat.sha = true, sha
 	if moved then
-		qed.log("debug", "diff base moved to " .. sha)
+		qed.log("diff base moved to " .. sha, "debug")
 		fetch_all()
 		scan()
 	end
 	if moved or branch ~= stat.branch or ahead ~= stat.ahead or behind ~= stat.behind or added ~= stat.added or deleted ~= stat.deleted then
-		qed.log("debug", ("branch %s ahead %d behind %d diff +%d -%d"):format(branch, ahead, behind, added, deleted))
+		qed.log(("branch %s ahead %d behind %d diff +%d -%d"):format(branch, ahead, behind, added, deleted), "debug")
 	end
 	stat.branch, stat.ahead, stat.behind, stat.added, stat.deleted = branch, ahead, behind, added, deleted
 	show()

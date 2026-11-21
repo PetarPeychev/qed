@@ -58,7 +58,7 @@ local function fixups(b)
 			end
 		end
 	end)
-	qed.log("debug", ("fixups: trimmed %d line(s), final-newline=%s"):format(#cuts, tostring(newline)))
+	qed.log(("fixups: trimmed %d line(s), final-newline=%s"):format(#cuts, tostring(newline)), "debug")
 end
 
 local function external(b, cmd, on_save)
@@ -78,10 +78,10 @@ local function external(b, cmd, on_save)
 		else
 			qed.message(tool .. " failed", "error")
 		end
-		qed.log("debug", ("%s: %s"):format(tool, ok and ("exit " .. r.code .. " " .. r.stderr) or r))
+		qed.log(("%s: %s"):format(tool, ok and ("exit " .. r.code .. " " .. r.stderr) or r), "debug")
 		return
 	end
-	qed.log("debug", ("ran %s: %dB in, %dB out"):format(tool, #input, #r.stdout))
+	qed.log(("ran %s: %dB in, %dB out"):format(tool, #input, #r.stdout), "debug")
 	local out = r.stdout:gsub("\r\n", "\n")
 	if out == input then
 		if not on_save then

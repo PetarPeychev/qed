@@ -1210,6 +1210,18 @@ plugin_print :: proc "c" (L: ^lua.State) -> c.int {
 	return 0
 }
 
+api_log_level :: proc(L: ^lua.State, idx: c.int) -> LogLevel {
+	if lua.type(L, idx) <= .NIL {
+		return .Info
+	}
+	s, _ := lua.toodinstring(L, idx)
+	level, ok := plugin_log_level(s)
+	if lua.type(L, idx) != .STRING || !ok {
+		lua.L_argerror(L, idx, "level must be \"debug\", \"info\", \"warn\" or \"error\"")
+	}
+	return level
+}
+
 qed_log :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
 	if entry == nil {
@@ -1217,12 +1229,9 @@ qed_log :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	context = entry.ctx
 	pl := plugin_owner(L, entry.editor)
-	lvl_s, _ := lua.toodinstring(L, 1)
-	level, ok := plugin_log_level(lvl_s)
-	if lua.type(L, 1) != .STRING || !ok {
-		return lua.L_argerror(L, 1, "level must be \"debug\", \"info\", \"warn\" or \"error\"")
-	}
-	text, _ := lua.toodinstring_any(L, 2)
+	lua.settop(L, 2)
+	level := api_log_level(L, 2)
+	text, _ := lua.toodinstring_any(L, 1)
 	if pl != nil {
 		editor_log(entry.editor, level, pl.display, text, show = false)
 	}
@@ -1237,33 +1246,8 @@ qed_message :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	pl := plugin_owner(L, entry.editor)
 	lua.settop(L, 2)
+	level := api_log_level(L, 2)
 	text, _ := lua.toodinstring_any(L, 1)
-	text = strings.clone(text, context.temp_allocator)
-	level := LogLevel.Info
-	lvl_idx: c.int = 2
-	if lua.type(L, 2) == .TABLE {
-		lua.pushnil(L)
-		for lua.next(L, 2) != 0 {
-			k: string
-			if lua.type(L, -2) == .STRING {
-				k, _ = lua.toodinstring(L, -2)
-			}
-			if k != "level" {
-				return plugin_raise(L, fmt.tprintf("qed.message: unknown option '%s'", lua.L_tostring(L, -2)))
-			}
-			lua.pop(L, 1)
-		}
-		lua.getfield(L, 2, "level")
-		lvl_idx = lua.gettop(L)
-	}
-	if lua.type(L, lvl_idx) > .NIL {
-		lvl_s, _ := lua.toodinstring(L, lvl_idx)
-		lvl, ok := plugin_log_level(lvl_s)
-		if lua.type(L, lvl_idx) != .STRING || !ok {
-			return lua.L_argerror(L, 2, "level must be \"debug\", \"info\", \"warn\" or \"error\"")
-		}
-		level = lvl
-	}
 	if pl != nil {
 		editor_log(entry.editor, level, pl.display, text)
 	}
