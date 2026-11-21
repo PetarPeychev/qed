@@ -53,15 +53,16 @@ local function open_directory()
 end
 
 local function open_selected(ctx)
-	if not ctx.file then
+	local path = ctx.item and ctx.item.path
+	if not path then
 		return
 	end
-	local st = qed.fs.stat(ctx.file)
+	local st = qed.fs.stat(path)
 	if not st then
 		qed.message("Deleted file: restore it first")
 		return
 	end
-	switch(st.type == "dir" and ctx.file or qed.path.dir(ctx.file))
+	switch(st.type == "dir" and path or qed.path.dir(path))
 end
 
 return {

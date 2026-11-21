@@ -345,7 +345,7 @@ e2e_scope_ctx_snapshot :: proc(t: ^testing.T) {
 			qed.sleep(20)
 			local labels = {}
 			for _, it in ipairs(ctx.items) do labels[#labels + 1] = it.label end
-			qed.message(("%s|%s|%s"):format(table.concat(labels, ","), table.concat(ctx.files, ","), tostring(ctx.file)))
+			qed.message(("%s|%s|%s"):format(table.concat(labels, ","), table.concat(ctx.files, ","), tostring(ctx.item.path) .. "," .. tostring(ctx.item == ctx.items[2])))
 		end}
 	end}`)
 	e2e_alt(&e, 'k')
@@ -354,5 +354,5 @@ e2e_scope_ctx_snapshot :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Esc)
 	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
-	testing.expect_value(t, e.ed.message, "a,b|/x/a,/x/b|/x/b")
+	testing.expect_value(t, e.ed.message, "a,b|/x/a,/x/b|/x/b,true")
 }

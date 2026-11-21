@@ -257,7 +257,7 @@ return {
 		qed.meta{description = "Diff base, gutter marks and status for git repos"}
 		show()
 		qed.command{name = "Set Diff Base", run = set_base, when = when}
-		qed.command{name = "Restore File", scope = "filetree", run = function(ctx) restore_path(ctx.file) end, when = when}
+		qed.command{name = "Restore File", scope = "filetree", run = function(ctx) restore_path(ctx.item and ctx.item.path) end, when = when}
 		qed.command{name = "Changes", key = "Alt+g", welcome = true, when = function() return ready and ft ~= nil end, run = function()
 			ft.open("Git")
 		end}

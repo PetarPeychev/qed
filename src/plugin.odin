@@ -1641,7 +1641,7 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, snapshot 
 		lua.setmetatable(L, -2)
 		return
 	}
-	for key in ([?]cstring{"file", "items"}) {
+	for key in ([?]cstring{"item", "items"}) {
 		if plugin_ctx_field_push(L, editor, string(key)) {
 			lua.setfield(L, -2, key)
 		}
@@ -1785,16 +1785,19 @@ plugin_ctx_field_push :: proc(L: ^lua.State, editor: ^Editor, key: string) -> bo
 			return false
 		}
 		lua.pushodinstring(L, buffer_text_range(b, from, to))
-	case "file":
+	case "item":
 		f := pane_focus(editor)
 		if f == nil || !f.has_list || pane_count(editor, f) == 0 {
 			return false
 		}
-		it := list_item(editor, f, pane_item_index(f, f.list.sel))
-		if it.path == "" {
-			return false
+		idx := pane_item_index(f, f.list.sel)
+		if vi := plugin_view_index(&editor.plugins, f.handle) if f.list.source.kind == .None else -1; vi >= 0 {
+			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].items_ref))
+			lua.rawgeti(L, -1, lua.Integer(idx + 1))
+			lua.remove(L, -2)
+		} else {
+			api_pane_item_push(L, list_item(editor, f, idx))
 		}
-		lua.pushodinstring(L, it.path)
 	case "items":
 		f := pane_focus(editor)
 		if f == nil || !f.has_list {

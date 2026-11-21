@@ -483,7 +483,7 @@ end
 
 local function cursor(ctx)
 	for _, it in ipairs(ctx.items or {}) do
-		if it.path == ctx.file then
+		if ctx.item and it.path == ctx.item.path then
 			return it
 		end
 	end

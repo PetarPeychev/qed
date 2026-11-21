@@ -15,7 +15,7 @@
 ---@field root string
 ---@field selection_text string|nil the selected text, read on first access; nil once the buffer changed since the command was invoked
 ---@field items (string|qed.UiItem)[]|nil while a pane with a list has focus (any plugin's command, e.g. a scoped one): its selection, the range with `multi`
----@field file string|nil while a pane with a list has focus (the file tree or any other): the highlighted item's path (absolute), nil when it has none
+---@field item string|qed.UiItem|nil while a pane with a list has focus (the file tree or any other): the item under the cursor, shaped like an entry of `items`
 ---@field view qed.View|nil a view of this plugin that has focus (a `scope` command's chord or its scoped Ctrl+P)
 ---@field files string[]|nil the focused pane's selected items' paths, else in the file tree every selected path, in tree order; on a scoped tab (Open, Changed, Unsaved) a selected dir stands for its in-scope files
 
