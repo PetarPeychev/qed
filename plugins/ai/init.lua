@@ -283,6 +283,8 @@ local function cancel_all()
 	sync_hook()
 	if n > 0 then
 		qed.message(("Cancelled %d edit(s)"):format(n))
+	else
+		qed.message("No edits running")
 	end
 end
 

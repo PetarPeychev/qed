@@ -92,6 +92,7 @@ end
 function T.language_same_is_silent(t)
 	local b = t.open("a.py", "x = 1")
 	qed.run("Settings: Language")
+	t.eq(t.ui().selected, "python", "the current language is preselected")
 	t.type("python")
 	t.key("Enter")
 	t.eq(qed.buf.language(b), "python")

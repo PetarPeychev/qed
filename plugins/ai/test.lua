@@ -193,6 +193,8 @@ function T.tint_marks_the_range_while_running(t)
 	qed.run("AI: Cancel Edits")
 	t.eq(t.message(), "Cancelled 1 edit(s)")
 	t.eq(t.procs(), 0)
+	qed.run("AI: Cancel Edits")
+	t.eq(t.message(), "No edits running")
 	t.eq(t.bg(10, 1), plain, "the tint goes with the request")
 end
 

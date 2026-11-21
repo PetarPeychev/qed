@@ -640,7 +640,7 @@ local function delete(ctx)
 	if failed > 0 then
 		qed.message(("Deleted %d, %d failed: %s"):format(n, failed, tostring(reason)), "error")
 	elseif n == 1 then
-		qed.message("Deleted")
+		qed.message("Deleted " .. qed.path.base(items[1].path) .. (items[1].dir and "/" or ""))
 	else
 		qed.message(("Deleted %d items"):format(n))
 	end
