@@ -1720,6 +1720,9 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 		case .Pgdn:
 			d = max(1, page)
 		}
+		if (ev.key == .Arrow_Up || ev.key == .Arrow_Down) && (p.body_preview || (!p.has_list && len(p.fields) == 0)) {
+			d *= editor_accel_step(editor, ev.key)
+		}
 		if p.body_preview {
 			preview_scroll_by(&p.preview, d, g.text.h)
 			return .None

@@ -468,6 +468,18 @@ e2e_ui_open_markdown :: proc(t: ^testing.T) {
 	testing.expect_value(t, test_view(&e.ed).scroll, rows - g.text.h)
 	e2e_key(&e, .Home)
 	testing.expect_value(t, test_view(&e.ed).scroll, 0)
+	for _ in 0 ..< 10 {
+		e.ed.accel_tick = {}
+		e2e_key(&e, .Arrow_Down)
+	}
+	testing.expect_value(t, test_view(&e.ed).scroll, 10)
+	e2e_key(&e, .Home)
+	e.ed.accel_tick = {}
+	for _ in 0 ..< 30 {
+		e2e_key(&e, .Arrow_Down)
+	}
+	testing.expect(t, test_view(&e.ed).scroll > 30, "held arrows accelerate like the buffer")
+	e2e_key(&e, .Home)
 	view_run(t, &e, "V: Md Set")
 	plugin_flush(&e.ed)
 	testing.expect(t, view_logged(&e, "md true"), "markdown replaces the body")
