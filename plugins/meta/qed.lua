@@ -917,7 +917,7 @@ function qed.buf.indent(b) end
 ---@return boolean active true when this plugin's base is the one shown
 function qed.buf.set_base(b, text, opts) end
 
----A list handle over the buffer's lines. An edit, a disk reload or the buffer closing shows on the next frame: a filter is recomputed keeping the selected line (a `:N` past the end clamps), a closed buffer empties the list. Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching. A view over it opens on the match nearest the cursor.
+---A list handle over the buffer's lines. An edit, a disk reload or the buffer closing shows on the next frame: a filter is recomputed keeping the selected line (a `:N` past the end clamps), a closed buffer empties the list. Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching; a bare number lists row N first, then the text matches. A view over it opens on the match nearest the cursor.
 ---@param b qed.Buf
 ---@return qed.List
 function qed.buf.line_list(b) end

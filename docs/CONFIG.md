@@ -240,7 +240,7 @@ with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
 ### Go to line
 
 *Go to: Line* (`Ctrl+g`) comes from the bundled `goto` plugin: a filter over the
-buffer's lines in file order with a preview, `:N` or `:N:M` jumps to a line (and column).
+buffer's lines in file order with a preview, `:N` or `:N:M` jumps to a line (and column), and a bare number lists that line first.
 Rebind with `plugins.goto.keybinds["Line"]`; the old top-level `keybinds."Find Line"`
 warns where it moved, and a `plugins.lines` section warns that it was renamed.
 

@@ -4,6 +4,7 @@ package main
 import "core:fmt"
 import vmem "core:mem/virtual"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
@@ -916,8 +917,19 @@ pane_refilter :: proc(editor: ^Editor, p: ^Pane) {
 	if query == "" {
 		return
 	}
+	n := list_count(editor, p)
+	lead := -1
+	if p.list.source.kind == .Lines && all_digits(query) && n > 0 {
+		if v, ok := strconv.parse_int(query, 10); ok {
+			lead = clamp(v - 1, 0, n - 1)
+			append(&p.list.matches, lead)
+		}
+	}
 	entries := make([dynamic]ScoreIdx, 0, 64, context.temp_allocator)
-	for i in 0 ..< list_count(editor, p) {
+	for i in 0 ..< n {
+		if i == lead {
+			continue
+		}
 		if score, ok := fuzzy_match(query, list_text(editor, p, i)); ok {
 			append(&entries, ScoreIdx{score, i})
 		}

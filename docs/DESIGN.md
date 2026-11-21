@@ -372,7 +372,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
   command at activate and draw (`list_command`), so a removed command's row goes dead). `.Dirs` lists
   `path`'s subdirs, or under a `path` field the dir its text names, prefix-matched smart-case on the last
   segment (base dir's entries cached until its segment changes). `.Lines` is live over a buffer: matches
-  stay in buffer order, `:N[:M]` (`lines_goto`) selects one row, the view opens on the match nearest the
+  stay in buffer order, `:N[:M]` (`lines_goto`) selects one row, a bare number leads with row N, the view opens on the match nearest the
   cursor, items carry `buf` so the auto preview shows the buffer. `.Log` holds entry seqs passing the
   filters, recomputed when `Editor.log_seq` or a filter changes. `.Plugins` reads `Plugins.list`.
   `.Walk` is a walk handle (see Walk service), self-filtering with a debounced refill.
