@@ -982,7 +982,6 @@ qed_config_set :: proc "c" (L: ^lua.State) -> c.int {
 		return plugin_raise(L, err)
 	}
 	v, _ := json.parse_string(strings.to_string(sb), parse_integers = true, allocator = context.temp_allocator)
-	// an empty Lua table is written as a list: an empty object would only be an empty diff
 	if o, ok := v.(json.Object); ok && len(o) == 0 {
 		v = json.Array{}
 	}

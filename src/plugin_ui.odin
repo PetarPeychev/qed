@@ -80,6 +80,7 @@ qed_view_methods := [?]lua.L_Reg {
 	{"append", qed_view_append},
 	{"update", qed_view_update},
 	{"text", qed_view_text},
+	{"info", qed_view_info},
 	{"markdown", qed_view_markdown},
 	{"anchor", qed_view_anchor},
 	{"scroll", qed_view_scroll},
@@ -1066,6 +1067,12 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 			plugin_raise(L, `markdown needs place = "full" and no list or text`)
 		}
 		spec.md, spec.has_md = md, true
+	}
+	if info, ok := api_field_string(L, 1, "info"); ok {
+		if spec.place == .Center {
+			plugin_raise(L, `info needs place = "full" or "split"`)
+		}
+		spec.info = info
 	}
 	backdrop, _ := api_field_string(L, 1, "backdrop")
 	switch backdrop {
@@ -2059,6 +2066,23 @@ qed_view_update :: proc "c" (L: ^lua.State) -> c.int {
 		pane_refilter_keep(editor, pn, pane_geom(editor, pn).list.h, sel, anchor)
 	}
 	pane_preview_sync(editor, pn)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_info :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	text := api_string(L, 2)
+	pn, _ := api_view_live(L, entry.editor)
+	if pn == nil {
+		return api_fail(L, "closed")
+	}
+	if pn.place == .Center {
+		plugin_raise(L, `info needs place = "full" or "split"`)
+	}
+	delete(pn.info)
+	pn.info = strings.clone(text)
 	lua.pushboolean(L, true)
 	return 1
 }

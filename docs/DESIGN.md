@@ -410,7 +410,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - **Tabs** (`Pane.tabs`) fill the title row: Left/Right, a click, or a tab's `cmd` chord switch (the active
   tab's chord closes), then `on.tab`. **Marks** (`Pane.marks`, by item key) draw a `▌` bar, an fg, a suffix,
   a right-aligned `+N -N` (padded over the visible rows, dropped when the label would go under 8 columns)
-  and `dim` (a tree inherits it downward). A **footer input** takes every key until Enter/Esc (`on.submit`); in `chord` mode the next bindable key ends it, formatted by `bind_format` (`settings.odin`, the inverse of `parse_bind`: `Ctrl+<lowercase>`, `Alt+<rune>`, a bare rune; Tab and Enter refused), so Lua never sees raw keys.
+  and `dim` (a tree inherits it downward). An **info strip** (`Pane.info`, full/split only) sits above the footer, wrapped by `line_wrap`, keeping at least `PANE_INFO_LIST_MIN` list rows. A **footer input** takes every key until Enter/Esc (`on.submit`); in `chord` mode the next bindable key ends it, formatted by `bind_format` (`settings.odin`, the inverse of `parse_bind`: `Ctrl+<lowercase>`, `Alt+<rune>`, a bare rune; Tab and Enter refused), so Lua never sees raw keys.
 - A **tree list** (`list.tree`, walk sources) draws indent and expand icons from `PaneList.expanded`
   (saved by `id`); Enter or double-click on one dir toggles it before `activate` (under a filter it clears
   the filter and reveals the dir), firing `on.expand`. Open buffers get the accent fg, unsaved ones `●`.
@@ -812,10 +812,13 @@ menu, and a multi-line ghost floats the popup above the caret (`completion_rende
 ## Settings menu
 
 `plugins/settings/menu.lua`, *Settings: Open*: a `full` pane (`plugins.settings.max_width`, `backdrop`) with
-Options and Keybinds tabs over a filter field; each tab swaps `list.columns` (`v:set{columns}`). Options lists every
-leaf of the embedded config (keybinds aside; scalars before nested keys; `lsp.*` under source `lsp`), then per plugin
-`enabled` and every `qed.options` leaf (an object option's user-added keys too), described by the embedded
-`config/schema.json` (`qed.config_schema`, completeness test-enforced) or the plugin's `qed.options` info. Values are
+Options (Key | Value) and Keybinds (Command | Chord) tabs over a filter field; each tab swaps `list.columns`
+(`v:set{columns}`). Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
+nested keys; `lsp.enabled`, `languages.go.lsp`), then per plugin `<id>.enabled` and every `qed.options` leaf as
+`<id>.<key>` (an object option's user-added keys too). The info strip (`v:info` from `on.change`) shows the selected
+option's description, from the embedded `config/schema.json` (`qed.config_schema`, completeness test-enforced) or the
+plugin's `qed.options` info, and its default; on Keybinds the command name, default chord and scope. Core keybinds show
+their config name. Values are
 the user config.json read from disk over the defaults; a row whose key the file sets gets a `git_modified` bar.
 Enter edits by the default's type: a bool toggles, choices (schema, info, the theme list) open a `qed.pick`, numbers,
 strings and lists (as JSON) edit in a footer input prefilled with the value and validated (whole number, `min`,

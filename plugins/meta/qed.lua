@@ -417,6 +417,7 @@ function List:release() end
 ---@field markdown? string full only, without list or text: the body is this markdown, rendered by core at the pane width (the LSP hover renderer); arrows, PgUp/PgDn, Home/End and the wheel scroll it
 ---@field toggle? string|false visible name of the command whose chord closes the pane (default: the command that opened it); needed when opening from a handler; `false`: no chord closes it (tabs' chords still do)
 ---@field jump_closes? boolean `qed.jump` closes the pane (a hub like the file tree, left once a child picker jumps)
+---@field info? string full or split only: a strip above the footer showing this text wrapped to the pane width (never truncated while 3 list rows remain), e.g. the selected item's description; `View:info` replaces it
 ---@field backdrop? "none"|"dim"|"blank" what happens to everything drawn under the pane (the editor and panes below, never the status rows): left alone (default), faded (theme tint `pane_backdrop`) or cleared to the background
 ---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
 ---@field footer? {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[]} bottom row; a hint or chip with `cmd` (visible command name) is prefixed with that command's live shortcut; chips are right-aligned, lit when `on`, and a click runs `cmd`
@@ -449,6 +450,11 @@ function View:update(key, fields) end
 ---@return true|nil ok
 ---@return "closed"|nil err
 function View:text(lines) end
+---Replaces the info strip text (`""` hides the strip). Full or split panes only.
+---@param text string
+---@return true|nil ok
+---@return "closed"|nil err
+function View:info(text) end
 ---Replaces the markdown body, keeping the scroll position. Raises for a view opened without `markdown`.
 ---@param text string
 ---@return true|nil ok

@@ -594,6 +594,8 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushinteger(L, lua.Integer(pn.tab + 1))
 	lua.setfield(L, -2, "tab")
+	lua.pushodinstring(L, pn.info)
+	lua.setfield(L, -2, "info")
 	return 1
 }
 

@@ -277,6 +277,7 @@ Pane :: struct {
 	preview:      Preview,
 	preview_buf:  u64,
 	footer:       []PaneHint,
+	info:         string,
 	chips:        []PaneChip,
 	tabs:         []PaneTab,
 	tab:          int,
@@ -379,6 +380,7 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	for h, i in spec.footer {
 		p.footer[i] = {strings.clone(h.label), strings.clone(h.cmd)}
 	}
+	p.info = strings.clone(spec.info)
 	p.chips = nil
 	pane_chips_set(&p, spec.chips)
 	p.tabs = nil
@@ -482,6 +484,7 @@ pane_free :: proc(p: ^Pane) {
 		delete(h.cmd)
 	}
 	delete(p.footer)
+	delete(p.info)
 	pane_chips_set(p, nil)
 	pane_tabs_set(p, nil)
 	delete(p.marks)
@@ -1193,9 +1196,9 @@ PaneGeom :: struct {
 	title_y, footer_y, head_y: int,
 	rule_y:                    int,
 	field_x, field_y, field_w: int,
-	text, list, preview:       Rect,
+	text, list, preview, info: Rect,
 	has_preview:               bool,
-	seps:                      [3]int,
+	seps:                      [4]int,
 	nsep:                      int,
 	left_sep:                  int,
 	div_x:                     int,
@@ -1280,6 +1283,12 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		pane_geom_sep(&g, bottom - 2)
 		bottom -= 2
 	}
+	if p.info != "" {
+		rows := min(len(pane_info_wrap(p, g.inner.w - 2)), max(1, bottom - y - PANE_INFO_LIST_MIN - nf - 1))
+		g.info = {g.inner.x + 1, bottom - rows, g.inner.w - 2, rows}
+		pane_geom_sep(&g, bottom - rows - 1)
+		bottom -= rows + 1
+	}
 	g.div_x = g.inner.x + lay.left_w
 	if split {
 		g.has_preview = lay.preview
@@ -1310,6 +1319,12 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		g.text = {g.inner.x + 1, y, g.inner.w - 2, max(0, bottom - y)}
 	}
 	return
+}
+
+PANE_INFO_LIST_MIN :: 3
+
+pane_info_wrap :: proc(p: ^Pane, w: int) -> [dynamic]int {
+	return line_wrap(transmute([]u8)p.info, w)
 }
 
 pane_has_footer :: proc(p: ^Pane) -> bool {
@@ -1664,6 +1679,13 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	}
 	if g.footer_y >= 0 {
 		pane_render_footer(editor, p, g)
+	}
+	if g.info.h > 0 {
+		segs := pane_info_wrap(p, g.info.w)
+		for r in 0 ..< g.info.h {
+			from, to := wrap_segment(segs[:], len(p.info), r)
+			pane_text(g.info.x, g.info.y + r, g.info.w, strings.trim_space(p.info[from:to]), COLOR_PANE_FG, COLOR_PANE_BG)
+		}
 	}
 	if g.has_preview {
 		preview_render(&p.preview, g.preview.x + 1, g.preview.y, g.preview.w - 1, g.preview.h)

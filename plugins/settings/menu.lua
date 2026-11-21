@@ -1,17 +1,8 @@
 local M = {}
 
 local COLUMNS = {
-	{
-		{title = "Source", width = "fit"},
-		{title = "Key", width = "fit", max = 36},
-		{title = "Value", width = "fit", max = 30},
-		{title = "Description"},
-	},
-	{
-		{title = "Source", width = "fit"},
-		{title = "Command", width = "fit", max = 50},
-		{title = "Chord"},
-	},
+	{{title = "Key", width = "fit", max = 48}, {title = "Value"}},
+	{{title = "Command", width = "fit", max = 60}, {title = "Chord"}},
 }
 
 local opts
@@ -113,7 +104,7 @@ local function option_row(out, user, source, name, path, default, info)
 	local row = {
 		key = "opt\t" .. table.concat(path, "\t"),
 		source = source,
-		name = name,
+		name = source == "core" and name or source .. "." .. name,
 		path = path,
 		default = default,
 		description = info.description or "",
@@ -219,6 +210,7 @@ local function keybind_rows(user)
 					key = "kb\t" .. id,
 					source = source,
 					name = cmd.owner and cmd.name or cmd.keybind,
+					scope = cmd.scope,
 					path = path,
 					default = cmd.key,
 					user = set ~= nil,
@@ -245,15 +237,22 @@ end
 
 local function item_of(row)
 	if tab == 1 then
-		return {
-			key = row.key,
-			label = row.source .. " " .. row.name,
-			cells = {row.source, row.name, show(row.value), row.description},
-		}
+		return {key = row.key, label = row.name, cells = {row.name, show(row.value)}}
 	end
 	local chord = type(row.value) == "string" and row.value or show(row.value)
-	local label = row.source .. " " .. row.name
-	return {key = row.key, label = chord == "" and label or label .. " " .. chord, cells = {row.source, row.name, chord}}
+	return {key = row.key, label = chord == "" and row.name or row.name .. " " .. chord, cells = {row.name, chord}}
+end
+
+local function info_of(row)
+	if not row then
+		return ""
+	end
+	if tab == 1 then
+		local text = row.description ~= "" and row.description .. ". " or ""
+		return text .. "Default: " .. (row.default == nil and "none" or show(row.default))
+	end
+	local default = row.default ~= "" and row.default or "none"
+	return ("%s. Default: %s. Scope: %s"):format(row.name, default, row.scope)
 end
 
 local function build()
@@ -474,10 +473,14 @@ function M.open()
 		tab = tab,
 		fields = {{mode = "filter", hint = "type to filter", esc_clears = true}},
 		list = {items = items, columns = COLUMNS[tab]},
+		info = info_of(by_key[keys[1]]),
 		footer = {hints = {{label = "Enter edit"}, {label = "reset", cmd = "Settings: Reset"}}},
 		on = {
 			activate = activate,
 			submit = submit,
+			change = function(v, item)
+				v:info(info_of(type(item) == "table" and rows[item.key] or nil))
+			end,
 			tab = function(_, i)
 				tab = i
 				pending = nil
