@@ -90,7 +90,7 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_reload_select(&e, "fine")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Fine       user     enabled"), "a healthy plugin row")
-	testing.expect(t, e2e_grid_has(&e, "Plugin     Source   Status      Load"), "the header row titles the columns")
+	testing.expect(t, e2e_grid_has(&e, "Plugin     Source   Status   Load"), "the header row titles the columns")
 	e2e_reload_select(&e, "broken")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Broken     user     errored"), "an errored plugin row")

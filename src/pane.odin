@@ -1493,7 +1493,7 @@ pane_columns_fit :: proc(editor: ^Editor, p: ^Pane, cols: []PaneColumn, drawn: [
 	return columns_layout(cols, p.list.fit[:], cap)
 }
 
-pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x, y, w: int, fg, bg: tb2.Color) {
+pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x, y, w: int, fg, bg: tb2.Color, header := false) {
 	cx := x
 	for c, i in cols {
 		if i >= len(cells) || cx >= x + w {
@@ -1508,7 +1508,7 @@ pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x,
 				text = status_clip(text[:col_at_visual(b, cw + 1)], cw)
 				sw = cw
 			}
-			off := cw - sw if c.right else 0
+			off := cw - sw if c.right && !header else 0
 			pane_text(cx + off, y, cw - off, text, fg, bg)
 		}
 		cx += widths[i] + COLUMN_GAP
@@ -1688,7 +1688,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 		for c, i in cols {
 			titles[i] = c.title
 		}
-		pane_render_cells(titles, cols, widths, g.list.x + 1, g.head_y, lw, color_attr(COLOR_PANE_SHORTCUT_FG, .Bold), COLOR_PANE_BG)
+		pane_render_cells(titles, cols, widths, g.list.x + 1, g.head_y, lw, color_attr(COLOR_PANE_SHORTCUT_FG, .Bold), COLOR_PANE_BG, header = true)
 	}
 	addw, delw := 0, 0
 	if len(p.marks) > 0 {

@@ -15,7 +15,7 @@ return {setup = function()
 		end
 		items[2].cells[1] = "row-two-is-wide"
 		qed.ui.open{place = "full", list = {items = items, columns = {
-			{title = "Name", width = "fit", max = 40}, {title = "Kind", width = 4}, {title = "Note"},
+			{title = "Name", width = "fit", max = 40}, {title = "Kind", width = 4, right = true}, {title = "Note"},
 		}}}
 	end}
 	qed.command{name = "Center", run = function()
@@ -56,15 +56,16 @@ e2e_table_columns :: proc(t: ^testing.T) {
 	head := e2e_row_text(&e, g.head_y)
 	testing.expect(t, strings.contains(head, "Name             Kind  Note"), "titles sit over columns sized by the sampled widest cell")
 	testing.expect_value(t, e2e_cell_fg(&e, x, g.head_y), color_attr(COLOR_PANE_SHORTCUT_FG, .Bold))
-	testing.expect_value(t, e2e_cell(&e, x + 15 + 2, g.list.y), 'k')
+	testing.expect_value(t, e2e_cell(&e, x + 15 + 2, g.head_y), 'K')
+	testing.expect_value(t, e2e_cell(&e, x + 15 + 2 + 2, g.list.y), 'k')
 
 	p.list.scroll = 1195
 	e2e_render(&e)
 	testing.expect(t, strings.contains(e2e_row_text(&e, g.head_y), fmt.tprintf("Name%*s  Kind  Note", 32 - 4, "")), "the header stays put while the list scrolls and follows the grown column")
-	testing.expect(t, e2e_grid_has(&e, "a-much-longer-name-than-the-rest  k0"), "a drawn row past the sample grows the fit column")
+	testing.expect(t, e2e_grid_has(&e, "a-much-longer-name-than-the-rest    k0"), "a drawn row past the sample grows the fit column")
 	p.list.scroll = 0
 	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, fmt.tprintf("item1%*s  k1", 32 - 5, "")), "the fit column never shrinks back")
+	testing.expect(t, e2e_grid_has(&e, fmt.tprintf("item1%*s    k1", 32 - 5, "")), "the fit column never shrinks back")
 
 	sel := p.list.sel
 	e2e_mouse(&e, x + 2, g.head_y)
@@ -78,7 +79,7 @@ e2e_table_columns :: proc(t: ^testing.T) {
 	testing.expect(t, lw - 8 < 32 && lw - 8 > 15, "the pane is narrower than the table")
 	row := e2e_row_text(&e, g.list.y)
 	testing.expect(t, strings.contains(e2e_row_text(&e, g.list.y + 1), "row-two-is-wide"), "a cell that still fits stays whole")
-	testing.expect(t, strings.contains(row, fmt.tprintf("item1%*s  k1", lw - 8 - 5, "")) && !strings.contains(row, "note"), "the fill column goes first, then the fit column shrinks")
+	testing.expect(t, strings.contains(row, fmt.tprintf("item1%*s    k1", lw - 8 - 5, "")) && !strings.contains(row, "note"), "the fill column goes first, then the fit column shrinks")
 	e2e_resize(&e, 24, E2E_H)
 	e2e_render(&e)
 	g = pane_geom(&e.ed, p)

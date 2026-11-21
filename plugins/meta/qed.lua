@@ -325,7 +325,7 @@ function List:release() end
 ---@field width? integer|"fit"|"fill" a positive integer is fixed; `"fit"` grows to the widest cell seen (title included, the first 1000 items and every drawn row; it never shrinks while the pane is open); `"fill"` (default) shares what is left with the other fill columns. Too narrow a pane shrinks fill columns first, then fit columns down to their `min`; cells that do not fit end in `…`
 ---@field min? integer `"fit"` or `"fill"`: never narrower than this (a fit column's default is its title width)
 ---@field max? integer `"fit"`: never wider than this
----@field right? boolean right-align cells and title
+---@field right? boolean right-align the cells; the title stays left-aligned
 
 ---@class qed.UiHandlers
 ---@field activate? fun(v: qed.View, items: (string|qed.UiItem)[]) Enter or double-click: the selection (the range with `multi`), `{}` for a pane without a list; the pane stays open
