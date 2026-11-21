@@ -187,3 +187,10 @@ test_columns_layout_narrow :: proc(t: ^testing.T) {
 	testing.expect_value(t, w[0], 6)
 	testing.expect_value(t, w[1], 4)
 }
+
+@(test)
+test_cell_clip_wide_at_edge :: proc(t: ^testing.T) {
+	testing.expect_value(t, cell_clip("abcde中f", 5), "abcd…")
+	testing.expect_value(t, cell_clip("abc中", 4), "abc…")
+	testing.expect_value(t, cell_clip("abcdefgh", 5), "abcd…")
+}

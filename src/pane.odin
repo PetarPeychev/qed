@@ -211,6 +211,7 @@ PaneList :: struct {
 	columns:  []PaneColumn,
 	fit:      [dynamic]int,
 	fit_n:    int,
+	fit_cap:  int,
 	source:   ListSource,
 }
 
@@ -373,7 +374,7 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 		p.list.columns[i] = c
 		p.list.columns[i].title = strings.clone(c.title)
 	}
-	p.list.fit, p.list.fit_n = {}, 0
+	p.list.fit, p.list.fit_n, p.list.fit_cap = {}, 0, 0
 	p.footer_field = {anchor = -1}
 	p.preview_key = ""
 	p.notified_key = ""
@@ -1393,12 +1394,24 @@ pane_run_command :: proc(editor: ^Editor, p: ^Pane, name: string) {
 COLUMN_GAP :: 2
 COLUMN_FIT_SAMPLE :: 1000
 
-cell_width :: proc(s: string, cap: int) -> int {
+cell_measure :: proc(s: string, cap: int) -> int {
 	b := transmute([]u8)s
 	if c := col_at_visual(b, cap + 1); c < len(b) {
 		return max(visual_width(b[:c]), cap + 1)
 	}
 	return visual_width(b)
+}
+
+cell_clip :: proc(text: string, w: int) -> string {
+	if w <= 0 {
+		return ""
+	}
+	b := transmute([]u8)text
+	c := col_at_visual(b, w - 1)
+	if visual_width(b[:c]) > w - 1 {
+		c = col_at_visual(b, w - 2)
+	}
+	return fmt.tprintf("%s…", text[:c])
 }
 
 columns_layout :: proc(cols: []PaneColumn, seen: []int, w: int) -> []int {
@@ -1448,7 +1461,7 @@ columns_layout :: proc(cols: []PaneColumn, seen: []int, w: int) -> []int {
 	return out
 }
 
-columns_header :: proc(cols: []PaneColumn) -> bool {
+columns_titled :: proc(cols: []PaneColumn) -> bool {
 	for c in cols {
 		if c.title != "" {
 			return true
@@ -1458,13 +1471,13 @@ columns_header :: proc(cols: []PaneColumn) -> bool {
 }
 
 pane_has_header :: proc(editor: ^Editor, p: ^Pane) -> bool {
-	return p.has_list && columns_header(list_columns(editor, p))
+	return p.has_list && columns_titled(list_columns(editor, p))
 }
 
 pane_columns_seen :: proc(p: ^Pane, cols: []PaneColumn, it: PaneItem, cap: int) {
 	for c, i in cols {
 		if c.size == .Fit && i < len(it.cells) {
-			p.list.fit[i] = max(p.list.fit[i], cell_width(it.cells[i], min(cap, c.max) if c.max > 0 else cap))
+			p.list.fit[i] = max(p.list.fit[i], cell_measure(it.cells[i], min(cap, c.max) if c.max > 0 else cap))
 		}
 	}
 }
@@ -1479,8 +1492,8 @@ pane_columns_fit :: proc(editor: ^Editor, p: ^Pane, cols: []PaneColumn, drawn: [
 	}
 	if fit {
 		n := min(list_count(editor, p), COLUMN_FIT_SAMPLE)
-		if n < p.list.fit_n {
-			p.list.fit_n = 0
+		if n < p.list.fit_n || cap > p.list.fit_cap {
+			p.list.fit_n, p.list.fit_cap = 0, cap
 		}
 		for i in p.list.fit_n ..< n {
 			pane_columns_seen(p, cols, list_item(editor, p, i), cap)
@@ -1502,10 +1515,9 @@ pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x,
 		cw := min(widths[i], x + w - cx)
 		if cw > 0 {
 			text := cells[i]
-			sw := cell_width(text, cw)
+			sw := cell_measure(text, cw)
 			if sw > cw {
-				b := transmute([]u8)text
-				text = status_clip(text[:col_at_visual(b, cw + 1)], cw)
+				text = cell_clip(text, cw)
 				sw = cw
 			}
 			off := cw - sw if c.right && !header else 0

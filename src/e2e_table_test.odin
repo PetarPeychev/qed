@@ -18,6 +18,23 @@ return {setup = function()
 			{title = "Name", width = "fit", max = 40}, {title = "Kind", width = 4, right = true}, {title = "Note"},
 		}}}
 	end}
+	local function rows(wide, at)
+		local items = {}
+		for i = 1, 100 do
+			local name = i == at and wide or ("k" .. (100 + i))
+			items[i] = {label = name, cells = {name, "x"}}
+		end
+		return items
+	end
+	local v
+	qed.command{name = "Sorted", run = function()
+		v = qed.ui.open{place = "full", list = {items = rows(), sort = true, columns = {{title = "Name", width = "fit"}, {title = "X", width = "fill"}}}}
+	end}
+	qed.command{name = "Reset", run = function() v:set(rows("k150-reset-wide-reset-wide", 50)) end}
+	qed.command{name = "Add", run = function() v:append({{label = "k150-append-wide-append-wide-append", cells = {"k150-append-wide-append-wide-append", "x"}}}) end}
+	qed.command{name = "Off", run = function()
+		v = qed.ui.open{place = "full", list = {items = rows("k150-a-sampled-but-offscreen-name-that-is-really-quite-long", 50), columns = {{title = "Name", width = "fit"}, {title = "X", width = "fill"}}}}
+	end}
 	qed.command{name = "Center", run = function()
 		qed.ui.open{list = {items = {{cells = {"a", "b"}}}, columns = {{title = "One", width = "fit"}, {width = "fill"}}}}
 	end}
@@ -120,4 +137,36 @@ e2e_table_column_errors :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect_value(t, got, want)
+}
+
+@(private = "file")
+table_x_col :: proc(e: ^E2E, p: ^Pane) -> int {
+	e2e_render(e)
+	g := pane_geom(&e.ed, p)
+	return strings.index(e2e_row_text(e, g.head_y), "X") - strings.index(e2e_row_text(e, g.head_y), "Name")
+}
+
+@(test)
+e2e_table_fit_resample :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "tbl", TABLE_PLUGIN)
+	table_run(&e, "Tbl: Sorted")
+	p := test_view(&e.ed)
+	testing.expect_value(t, table_x_col(&e, p), 4 + 2)
+	table_run(&e, "Tbl: Reset")
+	plugin_flush(&e.ed)
+	testing.expect_value(t, table_x_col(&e, p), len("k150-reset-wide-reset-wide") + 2)
+	table_run(&e, "Tbl: Add")
+	plugin_flush(&e.ed)
+	testing.expect_value(t, table_x_col(&e, p), len("k150-append-wide-append-wide-append") + 2)
+	e2e_key(&e, .Esc)
+
+	e2e_resize(&e, 40, E2E_H)
+	table_run(&e, "Tbl: Off")
+	p = test_view(&e.ed)
+	e2e_render(&e)
+	e2e_resize(&e, 120, E2E_H)
+	testing.expect_value(t, table_x_col(&e, p), len("k150-a-sampled-but-offscreen-name-that-is-really-quite-long") + 2)
+	e2e_key(&e, .Esc)
 }

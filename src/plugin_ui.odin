@@ -1319,7 +1319,7 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	list_source_free(&pn.list.source)
 	pane_items_clear(pn)
 	pane_items_add(pn, api_items_ordered(items, perm))
-	pn.list.more = more
+	pn.list.more, pn.list.fit_n = more, 0
 	pn.landed = true
 	delete(pn.list.hint)
 	pn.list.hint = strings.clone(hint)
@@ -1367,7 +1367,7 @@ api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
 	list_source_free(&pn.list.source)
 	pane_items_clear(pn)
 	pn.list.source = list_source_clone(src)
-	pn.list.more, pn.landed = false, true
+	pn.list.more, pn.landed, pn.list.fit_n = false, true, 0
 	pane_list_load(editor, pn)
 	if selected != "" {
 		keep = selected
@@ -1496,24 +1496,28 @@ api_columns :: proc(L: ^lua.State, t: c.int) -> []PaneColumn {
 			plugin_raise(L, fmt.tprintf(`columns[%d].width must be a positive integer, "fit" or "fill"`, i + 1))
 		}
 		lua.pop(L, 1)
-		bounds := [2]cstring{"min", "max"}
-		for key, k in bounds {
-			if lua.getfield(L, ct, key) != .NIL {
-				n, ok := api_field_int(L, ct, string(key))
-				if !ok || n < k {
-					plugin_raise(L, fmt.tprintf("columns[%d].%s must be a %s integer", i + 1, key, "non-negative" if k == 0 else "positive"))
-				}
-				if col.size == .Fixed || (k == 1 && col.size == .Fill) {
-					plugin_raise(L, fmt.tprintf(`columns[%d].%s needs width = "fit"%s`, i + 1, key, ` or "fill"` if k == 0 else ""))
-				}
-				if k == 0 {
-					col.min = n
-				} else {
-					col.max = n
-				}
+		if lua.getfield(L, ct, "min") != .NIL {
+			n, ok := api_field_int(L, ct, "min")
+			if !ok || n < 0 {
+				plugin_raise(L, fmt.tprintf("columns[%d].min must be a non-negative integer", i + 1))
 			}
-			lua.pop(L, 1)
+			if col.size == .Fixed {
+				plugin_raise(L, fmt.tprintf(`columns[%d].min needs width = "fit" or "fill"`, i + 1))
+			}
+			col.min = n
 		}
+		lua.pop(L, 1)
+		if lua.getfield(L, ct, "max") != .NIL {
+			n, ok := api_field_int(L, ct, "max")
+			if !ok || n < 1 {
+				plugin_raise(L, fmt.tprintf("columns[%d].max must be a positive integer", i + 1))
+			}
+			if col.size != .Fit {
+				plugin_raise(L, fmt.tprintf(`columns[%d].max needs width = "fit"`, i + 1))
+			}
+			col.max = n
+		}
+		lua.pop(L, 1)
 		if col.max > 0 && col.min > col.max {
 			plugin_raise(L, fmt.tprintf("columns[%d].min is above its max", i + 1))
 		}
@@ -1961,6 +1965,10 @@ qed_view_append :: proc "c" (L: ^lua.State) -> c.int {
 		lua.rawgeti(L, 2, lua.Integer(k + 1))
 		lua.rawseti(L, 3, lua.Integer(pos + 1))
 		inject_at(&pn.list.items, pos, pane_item_clone(it))
+		if pos < pn.list.fit_n {
+			pane_columns_seen(pn, pn.list.columns, it, pn.list.fit_cap)
+			pn.list.fit_n = min(pn.list.fit_n + 1, COLUMN_FIT_SAMPLE)
+		}
 		if !filtered && pn.list.moved && pos < pn.list.scroll {
 			pn.list.scroll += 1
 		}
