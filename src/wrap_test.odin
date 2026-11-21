@@ -21,10 +21,10 @@ test_buffer_line_wrap_memo_never_stale :: proc(t: ^testing.T) {
 	same(t, &b, 0, 40)
 	delete(buffer_delete(&b, {0, 0}, {0, 7}))
 	same(t, &b, 0, 40)
-	saved := TAB_WIDTH
-	TAB_WIDTH = 8
-	same(t, &b, 0, 40)
-	TAB_WIDTH = saved
+	for &m in g_wrap_memo {
+		m.tab = TAB_WIDTH + 1
+		append(&m.segs, 1)
+	}
 	same(t, &b, 0, 40)
 	c := test_buffer(strings.repeat("x ", 4000, context.temp_allocator))
 	defer buffer_destroy(&c)
