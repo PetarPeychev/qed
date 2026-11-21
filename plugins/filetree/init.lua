@@ -109,6 +109,13 @@ local function push_marks(my)
 	if not m or not alive(my, view) then
 		return false
 	end
+	-- a big push starts in a slice of its own, not on top of the open or refill that asked for it
+	if built.count > CHUNK then
+		qed.sleep(0)
+		if not alive(my, view) or marks_gen ~= gen then
+			return false
+		end
+	end
 	local chunk, n, first = {}, 0, true
 	for path, e in pairs(m) do
 		chunk[path] = e
