@@ -101,6 +101,48 @@ function qed.config_path() end
 ---@return string
 function qed.config_defaults() end
 
+---The embedded `config/schema.json` text: per core key (dotted, `*` matches one segment) `{description, choices?, min?}`.
+---@return string
+function qed.config_schema() end
+
+---Writes one key into the user config.json (a sparse diff; nothing else is touched, defaults never materialize); the config hot reload applies it. `keys` is a top-level key or a path (`{"plugins", "ai", "enabled"}`). An empty table is written as a list.
+---@param keys string|string[]
+---@param value any
+---@return true|nil ok
+---@return string|nil err "no config file" or "cannot write config.json (unwritable or not valid JSON)"
+function qed.config_set(keys, value) end
+
+---Removes one key from the user config.json, restoring its default; empty parent objects go too.
+---@param keys string|string[]
+---@return true|nil ok
+---@return string|nil err
+function qed.config_unset(keys) end
+
+---@class qed.CommandInfo
+---@field name string visible name
+---@field shortcut string the live bind, `""` when unbound
+---@field scope string `"editor"`, `"filetree"`, `"log"`, `"plugins"` or a pane's scope
+---@field owner? string plugin id; nil for core commands
+---@field keybind? string its key in `keybinds` (core) or `plugins.<owner>.keybinds`; nil for a core command borrowing another's bind
+---@field key? string the default bind (with `keybind`)
+
+---Every core and plugin command.
+---@return qed.CommandInfo[]
+function qed.commands() end
+
+---@class qed.PluginInfo
+---@field id string
+---@field display string
+---@field description string
+---@field state "enabled"|"disabled"|"errored"
+---@field bundled boolean
+---@field options? table its `qed.options` defaults (a copy), once loaded
+---@field info? table<string, string|qed.OptionInfo> its `qed.options` info (a copy)
+
+---Every plugin, bundled then user, in load order.
+---@return qed.PluginInfo[]
+function qed.plugins() end
+
 ---Save through the full pipeline. Fails without saving if the file changed on disk
 ---(the conflict dialog opens only for the current buffer). Waits for `buf_pre_save` handlers.
 ---@param b qed.Buf
@@ -145,12 +187,18 @@ function qed.open_url(url) end
 ---@return qed.Unsaved|nil info with `"unsaved"`
 function qed.set_root(path, opts) end
 
+---@class qed.OptionInfo
+---@field description? string one line for the settings menu
+---@field choices? string[] the allowed values of a string option (the default must be one)
+
 ---Declares this plugin's config keys and defaults; returns the merged config (`plugins.<id>` over `defaults`; `enabled` and `keybinds` are reserved). Setup only, once per load.
 ---Objects merge per key, lists and other values replace; a user value whose type differs from the default's warns and keeps the default, and `null` drops a default.
+---`info` maps option keys to a description or `{description?, choices?}` (the settings menu shows them); a key not in `defaults` raises.
 ---@generic T: table
 ---@param defaults T
+---@param info? table<string, string|qed.OptionInfo>
 ---@return T
-function qed.options(defaults) end
+function qed.options(defaults, info) end
 
 ---Sets plugin metadata. Setup only, once per load, before any `qed.command`. Unknown fields, a display name another loaded plugin uses, and core log labels ("LSP", "Plugins", ...) raise.
 ---@param meta qed.Meta
@@ -349,7 +397,7 @@ function List:release() end
 ---@field link? fun(v: qed.View, target: string) a click on a link in a `markdown` body: the raw destination (URL, relative path, `path#anchor`); `#anchor` links come here too when this handler is set (call `View:anchor`), else core scrolls them
 ---@field tab? fun(v: qed.View, i: integer) the user switched tabs (Left/Right, a click or a tab's chord)
 ---@field expand? fun(v: qed.View, item: qed.UiItem, open: boolean) the user expanded or collapsed a dir of a tree list
----@field submit? fun(v: qed.View, text: string|nil) the footer input (`View:footer{input}`) was submitted, or cancelled with Esc (`nil`)
+---@field submit? fun(v: qed.View, text: string|nil) the footer input (`View:footer{input}`) was submitted (a `chord` input: the captured chord), or cancelled with Esc (`nil`)
 
 ---@class qed.UiSpec
 ---@field id? string the selected item's key, a tree's expanded dirs and the text body's scroll persist (never the fields' text) under it across opens (and plugin reloads); a field given a non-empty `text` skips restoring the selection
@@ -369,6 +417,7 @@ function List:release() end
 ---@field markdown? string full only, without list or text: the body is this markdown, rendered by core at the pane width (the LSP hover renderer); arrows, PgUp/PgDn, Home/End and the wheel scroll it
 ---@field toggle? string|false visible name of the command whose chord closes the pane (default: the command that opened it); needed when opening from a handler; `false`: no chord closes it (tabs' chords still do)
 ---@field jump_closes? boolean `qed.jump` closes the pane (a hub like the file tree, left once a child picker jumps)
+---@field info? string full or split only: a strip above the footer showing this text wrapped to the pane width (never truncated while 3 list rows remain), e.g. the selected item's description; `View:info` replaces it
 ---@field backdrop? "none"|"dim"|"blank" what happens to everything drawn under the pane (the editor and panes below, never the status rows): left alone (default), faded (theme tint `pane_backdrop`) or cleared to the background
 ---@field max_width? integer center or full: the box is at most this many columns wide, borders included, and stays centered (e.g. from the plugin's own option)
 ---@field footer? {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[]} bottom row; a hint or chip with `cmd` (visible command name) is prefixed with that command's live shortcut; chips are right-aligned, lit when `on`, and a click runs `cmd`
@@ -379,9 +428,9 @@ function List:release() end
 ---@class qed.View
 ---@field id integer
 local View = {}
----Replaces the items, or swaps in a list handle (then `selected` is an item key, a path for a walk). `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty.
+---Replaces the items, or swaps in a list handle (then `selected` is an item key, a path for a walk). `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty, `columns` replaces `list.columns` (items, not handles).
 ---@param items (string|qed.UiItem)[]|qed.List
----@param opts? {selected?: integer|string, more?: boolean, hint?: string}
+---@param opts? {selected?: integer|string, more?: boolean, hint?: string, columns?: qed.UiColumn[]}
 ---@return true|nil ok
 ---@return "closed"|nil err
 function View:set(items, opts) end
@@ -401,6 +450,11 @@ function View:update(key, fields) end
 ---@return true|nil ok
 ---@return "closed"|nil err
 function View:text(lines) end
+---Replaces the info strip text (`""` hides the strip). Full or split panes only.
+---@param text string
+---@return true|nil ok
+---@return "closed"|nil err
+function View:info(text) end
 ---Replaces the markdown body, keeping the scroll position. Raises for a view opened without `markdown`.
 ---@param text string
 ---@return true|nil ok
@@ -436,8 +490,8 @@ function View:close() end
 ---@return true|nil ok
 ---@return "closed"|nil err
 function View:marks(marks, opts) end
----Replaces the footer `hints` and/or `chips` (e.g. a chip's `on`), or turns the footer into an input field (`input = {prompt?, text?}`; Enter or Esc fires `on.submit`; `input = false` drops it).
----@param spec {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[], input?: {prompt?: string, text?: string}|false}
+---Replaces the footer `hints` and/or `chips` (e.g. a chip's `on`), or turns the footer into an input field (`input = {prompt?, text?}`; Enter or Esc fires `on.submit`; `input = false` drops it). `mode = "chord"` captures the next bindable key instead: `on.submit` gets its config string (`"Ctrl+k"`, `"Alt+F"`, `"x"`), Esc cancels.
+---@param spec {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[], input?: {prompt?: string, text?: string, mode?: "input"|"chord"}|false}
 ---@return true|nil ok
 ---@return "closed"|nil err
 function View:footer(spec) end

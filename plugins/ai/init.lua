@@ -464,7 +464,7 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "AI", description = "Selection edits and inline completion from an LLM"}
-		configure(qed.options{
+		configure(qed.options({
 			edit_command = "claude -p",
 			edit_prompt = "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region, and nothing else, inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}",
 			completion_enabled = false,
@@ -474,7 +474,17 @@ return {
 			completion_max_tokens = 256,
 			completion_debounce_ms = 350,
 			completion_context_lines = 200,
-		})
+		}, {
+			edit_command = "Command that answers an edit request on stdin",
+			edit_prompt = "Edit request template: {path}, {instruction}, {file}",
+			completion_enabled = "Inline completion while typing",
+			completion_endpoint = "FIM endpoint for inline completion",
+			completion_model = "Model sent to the FIM endpoint",
+			completion_api_key_env = "Environment variable holding the FIM API key",
+			completion_max_tokens = "Max tokens per completion",
+			completion_debounce_ms = "Typing pause before a completion is requested",
+			completion_context_lines = "Lines of context before and after the cursor",
+		}))
 		qed.command{
 			name = "Edit Selection",
 			key = "Ctrl+k",

@@ -382,6 +382,41 @@ plugin_options_misuse :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_options_info :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"good.lua", `return {setup = function()
+			qed.options({a = 1, mode = "x", nested = {k = "v"}}, {a = "The a knob", mode = {description = "Mode", choices = {"x", "y"}}})
+		end}`},
+		{"unknown.lua", `return {setup = function() qed.options({a = 1}, {b = "nope"}) end}`},
+		{"field.lua", `return {setup = function() qed.options({a = 1}, {a = {desc = "typo"}}) end}`},
+		{"choice.lua", `return {setup = function() qed.options({mode = "z"}, {mode = {choices = {"x", "y"}}}) end}`},
+		{"empty.lua", `return {setup = function() qed.options({mode = "x"}, {mode = {choices = {}}}) end}`},
+		{"probe.lua", `return {setup = function()
+			qed.command{name = "Probe", run = function()
+				for _, p in ipairs(qed.plugins()) do
+					if p.id == "good" then
+						probe = p.state .. " " .. p.options.a .. " " .. p.options.nested.k .. " " .. p.info.a .. " " .. p.info.mode.choices[2]
+					elseif p.id == "unknown" then
+						probe_unknown = p.state .. " " .. tostring(p.options)
+					end
+				end
+			end}
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	testing.expect_value(t, plugin_find(&ed.plugins, "good").state, PluginState.Enabled)
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "unknown").last_error, "info for unknown option 'b'"), "info must name a declared option")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "field").last_error, "unknown field 'desc'"), "info fields are checked")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "choice").last_error, "default must be one of the choices"), "the default is one of the choices")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "empty").last_error, "non-empty list of strings"), "choices must not be empty")
+	cmd, _ := plugin_test_command(ed, "Probe: Probe")
+	command_run(ed, cmd)
+	testing.expect_value(t, sched_var(ed, "probe"), "enabled 1 v The a knob y")
+	testing.expect_value(t, sched_var(ed, "probe_unknown"), "errored nil")
+}
+
+@(test)
 plugin_commands_dispatch :: proc(t: ^testing.T) {
 	cfg := plugin_test_cfg(`{"plugins": {"cmd": {"keybinds": {"A": "Alt+k", "Unbound": ""}}}}`)
 	ed := plugin_test_editor({

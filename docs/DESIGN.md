@@ -410,7 +410,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - **Tabs** (`Pane.tabs`) fill the title row: Left/Right, a click, or a tab's `cmd` chord switch (the active
   tab's chord closes), then `on.tab`. **Marks** (`Pane.marks`, by item key) draw a `▌` bar, an fg, a suffix,
   a right-aligned `+N -N` (padded over the visible rows, dropped when the label would go under 8 columns)
-  and `dim` (a tree inherits it downward). A **footer input** takes every key until Enter/Esc (`on.submit`).
+  and `dim` (a tree inherits it downward). An **info strip** (`Pane.info`, full/split only) sits above the footer, wrapped by `line_wrap`, keeping at least `PANE_INFO_LIST_MIN` list rows. A **footer input** takes every key until Enter/Esc (`on.submit`); in `chord` mode the next bindable key ends it, formatted by `bind_format` (`settings.odin`, the inverse of `parse_bind`: `Ctrl+<lowercase>`, `Alt+<rune>`, a bare rune; Tab and Enter refused), so Lua never sees raw keys.
 - A **tree list** (`list.tree`, walk sources) draws indent and expand icons from `PaneList.expanded`
   (saved by `id`); Enter or double-click on one dir toggles it before `activate` (under a filter it clears
   the filter and reveals the dir), firing `on.expand`. Open buffers get the accent fg, unsaved ones `●`.
@@ -809,6 +809,29 @@ The ghost and the LSP completion popup coexist: `Tab` takes the ghost (and close
 menu, and a multi-line ghost floats the popup above the caret (`completion_render`). See
 [notes/ai.md](notes/ai.md).
 
+## Settings menu
+
+`plugins/settings/menu.lua`, *Settings: Open*: a `full` pane (`plugins.settings.max_width`, `backdrop`) with
+Options (Key | Value) and Keybinds (Command | Chord) tabs over a filter field; each tab swaps `list.columns`
+(`v:set{columns}`). Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
+nested keys; `lsp.enabled`, `languages.go.lsp`), then per plugin `<id>.enabled` and every `qed.options` leaf as
+`<id>.<key>` (an object option's user-added keys too). The info strip (`v:info` from `on.change`) shows the selected
+option's description, from the embedded `config/schema.json` (`qed.config_schema`, completeness test-enforced) or the
+plugin's `qed.options` info, and its default; on Keybinds the command name, default chord and scope. Core keybinds show
+their config name. Values are
+the user config.json read from disk over the defaults; a row whose key the file sets gets a `git_modified` bar.
+Enter edits by the default's type: a bool toggles, choices (schema, info, the theme list) open a `qed.pick`, numbers,
+strings and lists (as JSON) edit in a footer input prefilled with the value and validated (whole number, `min`,
+list of strings; bad input writes nothing); a multi-line string is refused. Keybinds lists every command with a bind
+key (`qed.commands`), one row per shared key; Enter captures a chord (footer `chord` input), a single key is refused
+in the editor and tree scopes, and a chord another command holds in the same scope asks Cancel / Replace (Replace
+writes `""` for the other, or unsets it when its default is empty). Every edit writes one key with `qed.config_set`,
+or `config_unset` when it equals the default; *Settings: Reset* (`Ctrl+d`, scoped) unsets the selected row. The view
+refreshes after each write and on `config_changed`, `theme_changed`, `plugin_loaded` and `plugin_unloaded`, updating
+changed rows in place (`v:update`) so the selection and scroll stay. `qed.config_set` marks the write as the
+editor's own and zeroes the disk-poll clock (the idle wait is the time to the next poll), so the hot reload applies
+it on the next loop without a "reloaded" message.
+
 ## Terminal pane
 
 *Floating embedded terminal* (`terminal.odin`, `Alt+t`): named sessions
@@ -870,7 +893,7 @@ defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
+Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -895,7 +918,7 @@ plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns 
 table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `hook_timeout`, `lsp`, `bg` (rendered cell background), `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected, hint), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `hook_timeout`, `lsp`, `bg` (rendered cell background), `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected and its cells and mark bar, hint, footer input, tab), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/scope/workspace/walk_test.odin` (`ai`: the inline ghost and the LSP popup together); scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
@@ -971,15 +994,17 @@ the shell prompt), runtime working-root change (`workspace` plugin: `Ctrl+o` pat
 (back/forward), runtime config (**sparse overlays**: embedded `config/config.json`
 is every default, none in Odin source, completeness test-enforced; user
 `~/.config/qed/config.json` is a per-key diff, never materialized; only the theme
-picker's Enter (`theme`) and the Plugins pane's `e` (`plugins.<id>.enabled`,
-removed when it returns to the default) write it, one key each; unknown keys get a
+picker's Enter (`theme`), the Plugins pane's `e` (`plugins.<id>.enabled`,
+removed when it returns to the default) and `qed.config_set`/`config_unset` (the settings menu) write it, one key each; unknown keys get a
 one-shot warning, malformed JSON falls back to defaults without crashing; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
 their command), `lsp.enabled` (live toggle-off tears servers down; git is
 `plugins.git`, auto-off when the binary is absent; AI is `plugins.ai`), JSON themes (sparse overlay chain over the embedded `default.json`
 base, see Rendering; *Settings: Theme* fuzzy picker with instant preview,
-Enter persists / Esc reverts), selection pre-fill (a single-line selection
+Enter persists / Esc reverts), settings menu (*Settings: Open*: every core and plugin option
+with its description and every keybind, edited in place by type, chord capture with a conflict
+confirm, overrides marked, `Ctrl+d` resets; see Settings menu), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
 typing replaces; multi-line/whitespace selections do not pre-fill). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in

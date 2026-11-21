@@ -1,0 +1,519 @@
+local M = {}
+
+local COLUMNS = {
+	{{title = "Key", width = "fit", max = 48}, {title = "Value"}},
+	{{title = "Command", width = "fit", max = 60}, {title = "Chord"}},
+}
+
+local opts
+local schema
+local view
+local tab = 1
+local rows = {}
+local order = {}
+local labels = {}
+local pending
+
+local function split(s)
+	local out = {}
+	for part in s:gmatch("[^.]+") do
+		out[#out + 1] = part
+	end
+	return out
+end
+
+local function lookup(t, path)
+	for _, k in ipairs(path) do
+		if type(t) ~= "table" then
+			return nil
+		end
+		t = t[k]
+	end
+	return t
+end
+
+local function is_object(v)
+	return type(v) == "table" and next(v) ~= nil and #v == 0
+end
+
+local function user_config()
+	local path = qed.config_path()
+	if path == "" or not qed.fs.exists(path) then
+		return {}
+	end
+	local text = qed.fs.read(path) or ""
+	if text:match("^%s*$") then
+		return {}
+	end
+	local cfg = qed.json.decode(text)
+	return type(cfg) == "table" and cfg or {}
+end
+
+local function schema_entry(dotted)
+	if schema[dotted] then
+		return schema[dotted]
+	end
+	local parts = split(dotted)
+	for pattern, e in pairs(schema) do
+		local ps = split(pattern)
+		local ok = #ps == #parts
+		for i = 1, ok and #ps or 0 do
+			ok = ok and (ps[i] == "*" or ps[i] == parts[i])
+		end
+		if ok then
+			return e
+		end
+	end
+	return {}
+end
+
+local function kind_of(v, choices)
+	if choices then
+		return "choice"
+	elseif type(v) == "boolean" then
+		return "bool"
+	elseif math.type(v) == "integer" then
+		return "int"
+	elseif type(v) == "number" then
+		return "number"
+	elseif type(v) == "table" then
+		return "list"
+	end
+	return "string"
+end
+
+local function show(v)
+	if v == nil then
+		return ""
+	elseif type(v) == "table" then
+		return qed.json.encode(v)
+	elseif v == "" then
+		return '""'
+	end
+	return (tostring(v):gsub("\n", "\\n"))
+end
+
+local function same(a, b)
+	if type(a) == "table" and type(b) == "table" then
+		return qed.json.encode(a) == qed.json.encode(b)
+	end
+	return a == b
+end
+
+local function option_row(out, user, source, name, path, default, info)
+	local row = {
+		key = "opt\t" .. table.concat(path, "\t"),
+		source = source,
+		name = source == "core" and name or source .. "." .. name,
+		path = path,
+		default = default,
+		description = info.description or "",
+		choices = info.choices,
+		min = info.min,
+	}
+	local set = lookup(user, path)
+	row.user = set ~= nil
+	row.value = set
+	if set == nil then
+		row.value = default
+	end
+	local basis = default
+	if basis == nil then
+		basis = row.value
+	end
+	row.kind = kind_of(basis, row.choices)
+	out[#out + 1] = row
+end
+
+local function option_leaves(out, user, source, prefix, path, def, maps, info_of)
+	local keys = {}
+	for k in pairs(def) do
+		keys[#keys + 1] = k
+	end
+	local usr = lookup(user, path)
+	if not is_object(usr) then
+		usr = {}
+	elseif maps and prefix ~= "" then
+		for k in pairs(usr) do
+			if def[k] == nil then
+				keys[#keys + 1] = k
+			end
+		end
+	end
+	local function nested(k)
+		return is_object(def[k]) or is_object(usr[k])
+	end
+	table.sort(keys, function(a, b)
+		if nested(a) ~= nested(b) then
+			return nested(b)
+		end
+		return a < b
+	end)
+	for _, k in ipairs(keys) do
+		local p = {table.unpack(path)}
+		p[#p + 1] = k
+		local name = prefix == "" and k or prefix .. "." .. k
+		local v = def[k]
+		if is_object(v) or (v == nil and is_object(usr[k])) then
+			option_leaves(out, user, source, name, p, v or {}, maps, info_of)
+		else
+			option_row(out, user, source, name, p, v, info_of(name))
+		end
+	end
+end
+
+local function option_rows(user)
+	local out = {}
+	local defaults = qed.json.decode(qed.config_defaults())
+	local core = {}
+	for k, v in pairs(defaults) do
+		if k ~= "keybinds" and k ~= "plugins" and k ~= "lsp" then
+			core[k] = v
+		end
+	end
+	option_leaves(out, user, "core", "", {}, core, false, function(name)
+		local e = schema_entry(name)
+		if name == "theme" then
+			e = {description = e.description, choices = qed.theme.list()}
+		end
+		return e
+	end)
+	option_leaves(out, user, "lsp", "", {"lsp"}, defaults.lsp, false, function(name)
+		return schema_entry("lsp." .. name)
+	end)
+	for _, p in ipairs(qed.plugins()) do
+		local on = lookup(defaults, {"plugins", p.id, "enabled"})
+		if on == nil then
+			on = true
+		end
+		option_row(out, user, p.id, "enabled", {"plugins", p.id, "enabled"}, on, schema_entry("plugins.*.enabled"))
+		local info = p.info or {}
+		option_leaves(out, user, p.id, "", {"plugins", p.id}, p.options or {}, true, function(name)
+			local i = info[name:match("^[^.]+")]
+			return type(i) == "string" and {description = i} or i or {}
+		end)
+	end
+	return out
+end
+
+local function keybind_rows(user)
+	local out, groups = {}, {}
+	for _, cmd in ipairs(qed.commands()) do
+		if cmd.keybind then
+			local source = cmd.owner or "core"
+			local id = source .. "\t" .. cmd.keybind
+			local row = groups[id]
+			if not row then
+				local path = cmd.owner and {"plugins", cmd.owner, "keybinds", cmd.keybind} or {"keybinds", cmd.keybind}
+				local set = lookup(user, path)
+				row = {
+					key = "kb\t" .. id,
+					source = source,
+					name = cmd.owner and cmd.name or cmd.keybind,
+					scope = cmd.scope,
+					path = path,
+					default = cmd.key,
+					user = set ~= nil,
+					value = set == nil and cmd.key or set,
+					scopes = {},
+				}
+				groups[id] = row
+				out[#out + 1] = row
+			end
+			row.scopes[cmd.scope] = true
+		end
+	end
+	table.sort(out, function(a, b)
+		if (a.source == "core") ~= (b.source == "core") then
+			return a.source == "core"
+		end
+		if a.source ~= b.source then
+			return a.source < b.source
+		end
+		return a.name < b.name
+	end)
+	return out
+end
+
+local function item_of(row)
+	if tab == 1 then
+		return {key = row.key, label = row.name, cells = {row.name, show(row.value)}}
+	end
+	local chord = type(row.value) == "string" and row.value or show(row.value)
+	return {key = row.key, label = chord == "" and row.name or row.name .. " " .. chord, cells = {row.name, chord}}
+end
+
+local function info_of(row)
+	if not row then
+		return ""
+	end
+	if tab == 1 then
+		local text = row.description ~= "" and row.description .. ". " or ""
+		return text .. "Default: " .. (row.default == nil and "none" or show(row.default))
+	end
+	local default = row.default ~= "" and row.default or "none"
+	return ("%s. Default: %s. Scope: %s"):format(row.name, default, row.scope)
+end
+
+local function build()
+	local user = user_config()
+	local list = tab == 1 and option_rows(user) or keybind_rows(user)
+	local items, marks, keys, by_key = {}, {}, {}, {}
+	for i, row in ipairs(list) do
+		items[i] = item_of(row)
+		keys[i] = row.key
+		by_key[row.key] = row
+		marks[row.key] = row.user and {bar = "git_modified"} or false
+	end
+	return items, marks, keys, by_key
+end
+
+local function adopt(items, marks, keys, by_key)
+	view:marks(marks, {replace = true})
+	rows, order, labels = by_key, keys, {}
+	for i, it in ipairs(items) do
+		labels[it.label] = keys[i]
+	end
+end
+
+local function refresh(columns)
+	if not view then
+		return
+	end
+	local items, marks, keys, by_key = build()
+	local same_rows = not columns and #keys == #order
+	for i = 1, same_rows and #keys or 0 do
+		same_rows = same_rows and keys[i] == order[i]
+	end
+	if same_rows then
+		for i, key in ipairs(keys) do
+			local old, new = rows[key], by_key[key]
+			if show(old.value) ~= show(new.value) or old.user ~= new.user then
+				view:update(key, {label = items[i].label, cells = items[i].cells})
+			end
+		end
+	else
+		local item = view:selection()
+		local prev = item and labels[item.label]
+		local selected
+		for i, key in ipairs(keys) do
+			if key == prev then
+				selected = i
+			end
+		end
+		view:set(items, {selected = selected, columns = columns})
+	end
+	adopt(items, marks, keys, by_key)
+end
+
+local function write(row, value)
+	local ok, err
+	if same(value, row.default) then
+		ok, err = qed.config_unset(row.path)
+	else
+		ok, err = qed.config_set(row.path, value)
+	end
+	if not ok then
+		qed.message(err, "error")
+		return false
+	end
+	qed.message(row.name .. " set to " .. show(value))
+	refresh()
+	return true
+end
+
+local function parse(row, text)
+	if row.kind == "string" then
+		return text
+	elseif row.kind == "list" then
+		local v = qed.json.decode(text)
+		if type(v) ~= "table" or is_object(v) then
+			return nil, row.name .. " needs a JSON list"
+		end
+		for _, e in ipairs(v) do
+			if type(e) ~= "string" then
+				return nil, row.name .. " needs a JSON list of strings"
+			end
+		end
+		return v
+	end
+	local n = tonumber(text)
+	if not n or (row.kind == "int" and math.type(n) ~= "integer") then
+		return nil, row.name .. (row.kind == "int" and " needs a whole number" or " needs a number")
+	end
+	if row.min and n < row.min then
+		return nil, ("%s must be at least %d"):format(row.name, row.min)
+	end
+	return n
+end
+
+local function edit_option(v, row)
+	if row.kind == "bool" then
+		write(row, not row.value)
+	elseif row.kind == "choice" then
+		local choice = qed.pick{items = row.choices, selected = type(row.value) == "string" and row.value or nil}
+		if choice and choice ~= row.value then
+			write(row, choice)
+		end
+	elseif type(row.value) == "string" and row.value:find("\n") then
+		qed.message(row.name .. " spans lines: edit it in config.json", "error")
+	else
+		pending = row
+		local text = type(row.value) == "table" and qed.json.encode(row.value) or tostring(row.value)
+		v:footer{input = {prompt = row.name .. ": ", text = text}}
+	end
+end
+
+local function normalize(chord)
+	return chord:match("^Ctrl%+") and chord:lower():gsub("^ctrl", "Ctrl") or chord
+end
+
+local function conflict(row, chord)
+	local want = normalize(chord)
+	for _, cmd in ipairs(qed.commands()) do
+		local mine = cmd.keybind and (cmd.owner or "core") == row.source and cmd.keybind == row.path[#row.path]
+		if not mine and row.scopes[cmd.scope] and cmd.shortcut ~= "" and normalize(cmd.shortcut) == want then
+			return cmd
+		end
+	end
+end
+
+local function bind(row, chord)
+	if #chord == 1 and (row.scopes.editor or row.scopes.filetree) then
+		qed.message(row.name .. ": a single key binds only in a pane", "error")
+		return
+	end
+	if type(row.value) == "string" and normalize(row.value) == normalize(chord) then
+		qed.message(row.name .. " is already " .. chord)
+		return
+	end
+	local other = conflict(row, chord)
+	if other then
+		local choice = qed.confirm{question = chord .. " is bound to " .. other.name, choices = {"Cancel", "Replace"}}
+		if choice ~= 2 then
+			return
+		end
+		local path = other.owner and {"plugins", other.owner, "keybinds", other.keybind} or {"keybinds", other.keybind}
+		local ok, err
+		if other.keybind then
+			ok, err = (other.key == "" and qed.config_unset or qed.config_set)(path, "")
+		end
+		if not ok then
+			qed.message(err or (other.name .. " borrows its bind and cannot be unbound here"), "error")
+			return
+		end
+	end
+	if write(row, chord) and other then
+		qed.message(("%s set to %s, %s unbound"):format(row.name, chord, other.name))
+	end
+end
+
+local function activate(v, items)
+	local row = items and items[1] and rows[items[1].key]
+	if not row then
+		return
+	end
+	if tab == 1 then
+		edit_option(v, row)
+	else
+		pending = row
+		v:footer{input = {prompt = "Press a chord for " .. row.name .. " (Esc cancels)", mode = "chord"}}
+	end
+end
+
+local function submit(_, text)
+	local row = pending
+	pending = nil
+	if not row or not text then
+		return
+	end
+	if tab == 2 then
+		bind(row, text)
+		return
+	end
+	local value, err = parse(row, text)
+	if err then
+		qed.message(err, "error")
+		return
+	end
+	if not same(value, row.value) then
+		write(row, value)
+	end
+end
+
+function M.reset(ctx)
+	local row = type(ctx.item) == "table" and rows[ctx.item.key]
+	if not row then
+		return
+	end
+	if not row.user then
+		qed.message(row.name .. " is already the default")
+		return
+	end
+	local ok, err = qed.config_unset(row.path)
+	if not ok then
+		qed.message(err, "error")
+		return
+	end
+	qed.message(row.name .. " reset to " .. show(row.default))
+	refresh()
+end
+
+function M.open()
+	schema = schema or qed.json.decode(qed.config_schema())
+	pending = nil
+	local items, marks, keys, by_key = build()
+	view = qed.ui.open{
+		id = "settings",
+		place = "full",
+		max_width = opts.max_width,
+		backdrop = opts.backdrop,
+		scope = "settings",
+		tabs = {"Options", "Keybinds"},
+		tab = tab,
+		fields = {{mode = "filter", hint = "type to filter", esc_clears = true}},
+		list = {items = items, columns = COLUMNS[tab]},
+		info = info_of(by_key[keys[1]]),
+		footer = {hints = {{label = "Enter edit"}, {label = "reset", cmd = "Settings: Reset"}}},
+		on = {
+			activate = activate,
+			submit = submit,
+			change = function(v, item)
+				v:info(info_of(type(item) == "table" and rows[item.key] or nil))
+			end,
+			tab = function(_, i)
+				tab = i
+				pending = nil
+				refresh(COLUMNS[tab])
+			end,
+			close = function(v)
+				if view == v then
+					view, pending = nil, nil
+				end
+			end,
+		},
+	}
+	if view then
+		adopt(items, marks, keys, by_key)
+	end
+end
+
+function M.setup()
+	opts = qed.options({max_width = 120, backdrop = "none"}, {
+		max_width = "Max width of the settings pane",
+		backdrop = {description = "What the settings pane does to the screen behind it", choices = {"none", "dim", "blank"}},
+	})
+	qed.on("config_changed", function()
+		opts = qed.config()
+		refresh()
+	end)
+	for _, event in ipairs({"theme_changed", "plugin_loaded", "plugin_unloaded"}) do
+		qed.on(event, function()
+			refresh()
+		end)
+	end
+	qed.command{name = "Open", welcome = true, run = M.open}
+	qed.command{name = "Reset", scope = "settings", key = "Ctrl+d", run = M.reset}
+end
+
+return M

@@ -375,12 +375,45 @@ parse_bind :: proc(s: string) -> (key: tb2.Key, alt_ch, ch: rune, ok: bool) {
 	return
 }
 
+bind_format :: proc(ev: tb2.Event, allocator := context.temp_allocator) -> (string, bool) {
+	if ev.type != .Key {
+		return "", false
+	}
+	if ev.ch != 0 {
+		if ev_alt(ev) {
+			return fmt.aprintf("Alt+%c", ev.ch, allocator = allocator), true
+		}
+		if ev.ch > ' ' && ev.ch != utf8.RUNE_ERROR {
+			return fmt.aprintf("%c", ev.ch, allocator = allocator), true
+		}
+		return "", false
+	}
+	if ev_alt(ev) {
+		return "", false
+	}
+	#partial switch ev.key {
+	case .Ctrl_Tilde:
+		return "Ctrl+~", true
+	case .Ctrl_Slash:
+		return "Ctrl+/", true
+	case .Ctrl_Backslash:
+		return "Ctrl+\\", true
+	case .Tab, .Enter:
+		return "", false
+	}
+	if ev.key >= .Ctrl_A && ev.key <= .Ctrl_Z {
+		return fmt.aprintf("Ctrl+%c", 'a' + rune(ev.key) - 1, allocator = allocator), true
+	}
+	return "", false
+}
+
 // a bare key would swallow typing in the editor; in a pane it fires only without a field
 bind_bare_ok :: proc(scope: string) -> bool {
 	return scope != ""
 }
 
 embedded_config_data := #load("../config/config.json")
+embedded_schema_data := #load("../config/schema.json")
 
 g_config_defaults: json.Object
 g_theme_defaults: json.Object

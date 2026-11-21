@@ -93,7 +93,7 @@ main :: proc() {
 					free_all(context.temp_allocator)
 				}
 			} else {
-				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, DISK_POLL_MS))) == .Ok {
+				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, editor_poll_wait_ms(&editor)))) == .Ok {
 					got_event = true
 				} else {
 					pumped := plugin_pump(&editor)

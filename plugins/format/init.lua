@@ -144,7 +144,7 @@ end
 return {
 	setup = function()
 		qed.meta{description = "Formats on save and trims whitespace"}
-		apply(qed.options{
+		apply(qed.options({
 			on_save = false,
 			trim_whitespace_on_save = false,
 			final_newline_on_save = false,
@@ -156,7 +156,12 @@ return {
 				toml = "taplo fmt --stdin-filepath {file} -",
 				json = "prettier --parser json --stdin-filepath {file}",
 			},
-		})
+		}, {
+			on_save = "Format on save",
+			trim_whitespace_on_save = "Trim trailing whitespace on save",
+			final_newline_on_save = "End the file with a newline on save",
+			commands = "Formatter per language: a stdin to stdout command, {file} is the path",
+		}))
 		qed.command{
 			name = "Document",
 			when = function(ctx) return ctx.buf ~= nil end,

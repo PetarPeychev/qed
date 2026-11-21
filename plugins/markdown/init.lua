@@ -177,7 +177,10 @@ end
 return {
 	setup = function()
 		qed.meta{description = "Rendered markdown preview"}
-		cfg = qed.options{max_width = 120, backdrop = "dim"}
+		cfg = qed.options({max_width = 120, backdrop = "dim"}, {
+			max_width = "Max width of the preview pane",
+			backdrop = {description = "What the preview does to the screen behind it", choices = {"none", "dim", "blank"}},
+		})
 		qed.command{
 			name = "Preview",
 			key = "Alt+p",

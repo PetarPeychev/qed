@@ -361,6 +361,36 @@ test_config_keybind :: proc(t: ^testing.T) {
 	testing.expect(t, !bad2, "unprefixed rejected")
 }
 
+@(test)
+test_bind_format_round_trip :: proc(t: ^testing.T) {
+	events := [?]tb2.Event {
+		{type = .Key, key = .Ctrl_K},
+		{type = .Key, key = .Ctrl_A},
+		{type = .Key, key = .Ctrl_Z},
+		{type = .Key, key = .Ctrl_H},
+		{type = .Key, key = .Ctrl_Slash},
+		{type = .Key, key = .Ctrl_Backslash},
+		{type = .Key, key = .Ctrl_Tilde},
+		{type = .Key, ch = 'f', mod = .Alt},
+		{type = .Key, ch = 'F', mod = .Alt},
+		{type = .Key, ch = '.', mod = .Alt},
+		{type = .Key, ch = 'x'},
+	}
+	want := [?]string{"Ctrl+k", "Ctrl+a", "Ctrl+z", "Ctrl+h", "Ctrl+/", "Ctrl+\\", "Ctrl+~", "Alt+f", "Alt+F", "Alt+.", "x"}
+	for ev, i in events {
+		s, ok := bind_format(ev)
+		testing.expectf(t, ok && s == want[i], "event %d formats as %q, got %q", i, want[i], s)
+		key, alt_ch, ch, pok := parse_bind(s)
+		testing.expectf(t, pok, "%q parses", s)
+		matched := command_bind_matches(key, alt_ch, ch, s, ev, true)
+		testing.expectf(t, matched, "%q matches the event it came from", s)
+	}
+	for ev in ([?]tb2.Event{{type = .Key, key = .Enter}, {type = .Key, key = .Tab}, {type = .Key, key = .Esc}, {type = .Key, key = .Arrow_Up}, {type = .Key, ch = ' '}, {type = .Key, key = .Ctrl_K, mod = .Alt}, {type = .Mouse, key = .Mouse_Left}}) {
+		_, ok := bind_format(ev)
+		testing.expectf(t, !ok, "%v is not bindable", ev)
+	}
+}
+
 // One sequential test: the file scenarios mutate shared config globals (colors,
 // language rules, keybinds), so they must not run concurrently with anything
 // else that touches those globals — including the e2e sessions, which hold the
@@ -694,4 +724,72 @@ test_config_files :: proc(t: ^testing.T) {
 	pe, pe_ok := p_obj["enabled"].(json.Boolean)
 	testing.expect(t, len(obj) == 2 && pe_ok && !bool(pe), "nested persist sets only plugins.p.enabled")
 	testing.expect(t, !os.exists(fmt.tprintf("%s.qed-tmp", fresh_path)), "the atomic temp file is gone")
+}
+
+@(private = "file")
+schema_leaves :: proc(obj: json.Object, prefix: string, out: ^map[string]json.Value) {
+	for k, v in obj {
+		path := k if prefix == "" else fmt.tprintf("%s.%s", prefix, k)
+		if path == "keybinds" {
+			continue
+		}
+		if sub, ok := v.(json.Object); ok {
+			schema_leaves(sub, path, out)
+		} else {
+			out[path] = v
+		}
+	}
+}
+
+@(private = "file")
+schema_matches :: proc(pattern, path: string) -> bool {
+	ps := strings.split(pattern, ".", context.temp_allocator)
+	ks := strings.split(path, ".", context.temp_allocator)
+	if len(ps) != len(ks) {
+		return false
+	}
+	for p, i in ps {
+		if p != "*" && p != ks[i] {
+			return false
+		}
+	}
+	return true
+}
+
+@(test)
+test_config_schema_complete :: proc(t: ^testing.T) {
+	v, err := json.parse(embedded_schema_data, parse_integers = true, allocator = context.temp_allocator)
+	testing.expect(t, err == nil, "config/schema.json parses")
+	schema, ok := v.(json.Object)
+	testing.expect(t, ok, "config/schema.json is an object")
+	leaves := make(map[string]json.Value, context.temp_allocator)
+	schema_leaves(g_config_defaults, "", &leaves)
+	for path, val in leaves {
+		found := false
+		for pattern, entry in schema {
+			if !schema_matches(pattern, path) {
+				continue
+			}
+			found = true
+			e, eok := entry.(json.Object)
+			desc, dok := e["description"].(json.String)
+			testing.expectf(t, eok && dok && desc != "", "schema %q has a description", pattern)
+			if choices, cok := e["choices"].(json.Array); cok {
+				def := val.(json.String) or_else ""
+				in_choices := false
+				for c in choices {
+					in_choices = in_choices || (c.(json.String) or_else "") == def
+				}
+				testing.expectf(t, in_choices, "default of %q is one of its choices", path)
+			}
+		}
+		testing.expectf(t, found, "config key %q has a schema entry", path)
+	}
+	for pattern in schema {
+		used := false
+		for path in leaves {
+			used = used || schema_matches(pattern, path)
+		}
+		testing.expectf(t, used, "schema entry %q names a config key", pattern)
+	}
 }

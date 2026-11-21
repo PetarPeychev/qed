@@ -1043,6 +1043,10 @@ editor_display_path :: proc(editor: ^Editor, path: string) -> string {
 	return path
 }
 
+editor_poll_wait_ms :: proc(editor: ^Editor) -> int {
+	return clamp(DISK_POLL_MS - int(time.duration_milliseconds(time.tick_since(editor.disk_poll))), 0, DISK_POLL_MS)
+}
+
 editor_maybe_poll_disk :: proc(editor: ^Editor) -> bool {
 	if time.duration_milliseconds(time.tick_since(editor.disk_poll)) < f64(DISK_POLL_MS) {
 		return false

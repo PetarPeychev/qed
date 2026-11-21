@@ -34,6 +34,7 @@ Plugin :: struct {
 	env:        c.int,
 	cfg:        c.int,
 	defaults:   c.int,
+	info:       c.int,
 	load_ms:    f64,
 	last_error: string,
 	stamp:      u64,
@@ -135,6 +136,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
 	{"goto/init.lua", #load("../plugins/goto/init.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
+	{"settings/menu.lua", #load("../plugins/settings/menu.lua", string)},
 	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
 	{"workspace/init.lua", #load("../plugins/workspace/init.lua", string)},
@@ -486,6 +488,7 @@ plugins_add :: proc(p: ^Plugins, pl: Plugin, bundled: bool) -> ^Plugin {
 		env      = lua.NOREF,
 		cfg      = lua.NOREF,
 		defaults = lua.NOREF,
+		info     = lua.NOREF,
 		exports  = lua.NOREF,
 	})
 	pl := &p.list[len(p.list) - 1]
@@ -893,7 +896,7 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 			}
 		}
 		if found < 0 {
-			append(&next, Plugin{name = plugin_name_intern(p, w.name), bundled = w.bundled, dir = strings.clone(w.dir), main = strings.clone(w.main), stamp = w.stamp, env = lua.NOREF, cfg = lua.NOREF, defaults = lua.NOREF, exports = lua.NOREF})
+			append(&next, Plugin{name = plugin_name_intern(p, w.name), bundled = w.bundled, dir = strings.clone(w.dir), main = strings.clone(w.main), stamp = w.stamp, env = lua.NOREF, cfg = lua.NOREF, defaults = lua.NOREF, info = lua.NOREF, exports = lua.NOREF})
 			plugin_display_reset(&next[len(next) - 1])
 			append(&loads, w.name)
 			append(&reloads, false)
@@ -1083,6 +1086,10 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	if pl.defaults != lua.NOREF {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.defaults)
 		pl.defaults = lua.NOREF
+	}
+	if pl.info != lua.NOREF {
+		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.info)
+		pl.info = lua.NOREF
 	}
 	if pl.exports != lua.NOREF {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.exports)
@@ -1553,8 +1560,7 @@ plugin_bind_taken :: proc(key: tb2.Key, alt_ch, ch: rune, scope: string) -> stri
 	return ""
 }
 
-plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -> (problem: string, from_user: bool) {
-	label := fmt.tprintf("plugins/%s/keybinds/%s", cmd.owner, cmd.config_name)
+plugin_command_default :: proc(p: ^Plugins, cmd: ^Command) -> string {
 	bind := cmd.key_default
 	// a borrowed bind is read from the core command at every rebind, so it follows that command's config
 	if bind == "" && cmd.bind_from != "" {
@@ -1572,6 +1578,12 @@ plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -
 			bind = other.key_default
 		}
 	}
+	return bind
+}
+
+plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -> (problem: string, from_user: bool) {
+	label := fmt.tprintf("plugins/%s/keybinds/%s", cmd.owner, cmd.config_name)
+	bind := plugin_command_default(p, cmd)
 	if v, ok := plugin_keybind(cfg_user, cmd.owner, cmd.config_name); ok {
 		s, is_str := v.(json.String)
 		_, _, ch, parses := parse_bind(string(s))

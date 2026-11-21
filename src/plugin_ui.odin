@@ -80,6 +80,7 @@ qed_view_methods := [?]lua.L_Reg {
 	{"append", qed_view_append},
 	{"update", qed_view_update},
 	{"text", qed_view_text},
+	{"info", qed_view_info},
 	{"markdown", qed_view_markdown},
 	{"anchor", qed_view_anchor},
 	{"scroll", qed_view_scroll},
@@ -1067,6 +1068,12 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		spec.md, spec.has_md = md, true
 	}
+	if info, ok := api_field_string(L, 1, "info"); ok {
+		if spec.place == .Center {
+			plugin_raise(L, `info needs place = "full" or "split"`)
+		}
+		spec.info = info
+	}
 	backdrop, _ := api_field_string(L, 1, "backdrop")
 	switch backdrop {
 	case "", "none":
@@ -1287,6 +1294,7 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	selected := 0
 	more := false
 	hint := ""
+	columns: Maybe([]PaneColumn)
 	if lua.type(L, 3) == .TABLE {
 		if lua.getfield(L, 3, "selected") != .NIL {
 			selected = api_int(L, -1, "selected must be an item index")
@@ -1294,6 +1302,10 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pop(L, 1)
 		more = api_opt_bool(L, 3, "more")
 		hint, _ = api_field_string(L, 3, "hint")
+		if lua.getfield(L, 3, "columns") != .NIL {
+			columns = api_columns(L, 3)
+		}
+		lua.pop(L, 1)
 	}
 	pn, vi := api_view_live(L, editor)
 	if pn == nil {
@@ -1316,6 +1328,9 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	list_source_free(&pn.list.source)
 	pane_items_clear(pn)
 	pane_items_add(pn, api_items_ordered(items, perm))
+	if cols, ok := columns.?; ok {
+		pane_columns_set(pn, cols)
+	}
 	pn.list.more, pn.list.fit_n = more, 0
 	pn.landed = true
 	delete(pn.list.hint)
@@ -1643,19 +1658,27 @@ qed_view_footer :: proc "c" (L: ^lua.State) -> c.int {
 	chips, has_chips := api_chips(L, 2)
 	input := 0
 	prompt, text: string
+	mode := PaneFieldMode.Input
 	#partial switch lua.getfield(L, 2, "input") {
 	case .TABLE:
 		input = 1
 		prompt, _ = api_field_string(L, 3, "prompt")
 		text, _ = api_field_string(L, 3, "text")
+		switch m, _ := api_field_string(L, 3, "mode"); m {
+		case "", "input":
+		case "chord":
+			mode = .Chord
+		case:
+			plugin_raise(L, `input mode must be "input" or "chord"`)
+		}
 	case .BOOLEAN:
 		if lua.toboolean(L, -1) {
-			plugin_raise(L, "input must be a table {prompt?, text?} or false")
+			plugin_raise(L, "input must be a table {prompt?, text?, mode?} or false")
 		}
 		input = -1
 	case .NIL:
 	case:
-		plugin_raise(L, "input must be a table {prompt?, text?} or false")
+		plugin_raise(L, "input must be a table {prompt?, text?, mode?} or false")
 	}
 	lua.pop(L, 1)
 	pn, _ := api_view_live(L, editor)
@@ -1678,7 +1701,7 @@ qed_view_footer :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	switch input {
 	case 1:
-		pane_footer_input(pn, prompt, text)
+		pane_footer_input(pn, prompt, "" if mode == .Chord else text, mode)
 	case -1:
 		pn.footer_input = false
 	}
@@ -2043,6 +2066,23 @@ qed_view_update :: proc "c" (L: ^lua.State) -> c.int {
 		pane_refilter_keep(editor, pn, pane_geom(editor, pn).list.h, sel, anchor)
 	}
 	pane_preview_sync(editor, pn)
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_view_info :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	text := api_string(L, 2)
+	pn, _ := api_view_live(L, entry.editor)
+	if pn == nil {
+		return api_fail(L, "closed")
+	}
+	if pn.place == .Center {
+		plugin_raise(L, `info needs place = "full" or "split"`)
+	}
+	delete(pn.info)
+	pn.info = strings.clone(text)
 	lua.pushboolean(L, true)
 	return 1
 }

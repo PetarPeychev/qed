@@ -160,6 +160,7 @@ PaneFieldMode :: enum {
 	Filter,
 	Query,
 	Path,
+	Chord,
 }
 
 PaneField :: struct {
@@ -276,6 +277,7 @@ Pane :: struct {
 	preview:      Preview,
 	preview_buf:  u64,
 	footer:       []PaneHint,
+	info:         string,
 	chips:        []PaneChip,
 	tabs:         []PaneTab,
 	tab:          int,
@@ -378,18 +380,15 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	for h, i in spec.footer {
 		p.footer[i] = {strings.clone(h.label), strings.clone(h.cmd)}
 	}
+	p.info = strings.clone(spec.info)
 	p.chips = nil
 	pane_chips_set(&p, spec.chips)
 	p.tabs = nil
 	pane_tabs_set(&p, spec.tabs)
 	p.marks = {}
 	p.list.expanded = {}
-	p.list.columns = make([]PaneColumn, len(spec.list.columns))
-	for c, i in spec.list.columns {
-		p.list.columns[i] = c
-		p.list.columns[i].title = strings.clone(c.title)
-	}
-	p.list.fit, p.list.fit_n, p.list.fit_cap = {}, 0, 0
+	p.list.columns, p.list.fit = nil, {}
+	pane_columns_set(&p, spec.list.columns)
 	p.footer_field = {anchor = -1}
 	p.preview_key = ""
 	p.notified_key = ""
@@ -485,6 +484,7 @@ pane_free :: proc(p: ^Pane) {
 		delete(h.cmd)
 	}
 	delete(p.footer)
+	delete(p.info)
 	pane_chips_set(p, nil)
 	pane_tabs_set(p, nil)
 	delete(p.marks)
@@ -555,10 +555,24 @@ pane_mark_drop :: proc(p: ^Pane, key: string) {
 	delete_key(&p.marks, key)
 }
 
-pane_footer_input :: proc(p: ^Pane, prompt, text: string) {
+pane_columns_set :: proc(p: ^Pane, cols: []PaneColumn) {
+	for c in p.list.columns {
+		delete(c.title)
+	}
+	delete(p.list.columns)
+	p.list.columns = make([]PaneColumn, len(cols))
+	for c, i in cols {
+		p.list.columns[i] = c
+		p.list.columns[i].title = strings.clone(c.title)
+	}
+	clear(&p.list.fit)
+	p.list.fit_n, p.list.fit_cap = 0, 0
+}
+
+pane_footer_input :: proc(p: ^Pane, prompt, text: string, mode := PaneFieldMode.Input) {
 	delete(p.footer_field.prompt)
 	p.footer_field.prompt = strings.clone(prompt)
-	p.footer_field.mode = .Input
+	p.footer_field.mode = mode
 	textfield_set(&p.footer_field.field, text)
 	p.footer_input = true
 }
@@ -1082,7 +1096,7 @@ pane_field_changed :: proc(editor: ^Editor, p: ^Pane, f: ^PaneField) {
 		p.query_at = time.tick_add(time.tick_now(), PANE_QUERY_DEBOUNCE_MS * time.Millisecond)
 	case .Path:
 		pane_list_load(editor, p)
-	case .Input:
+	case .Input, .Chord:
 	}
 }
 
@@ -1182,9 +1196,9 @@ PaneGeom :: struct {
 	title_y, footer_y, head_y: int,
 	rule_y:                    int,
 	field_x, field_y, field_w: int,
-	text, list, preview:       Rect,
+	text, list, preview, info: Rect,
 	has_preview:               bool,
-	seps:                      [3]int,
+	seps:                      [4]int,
 	nsep:                      int,
 	left_sep:                  int,
 	div_x:                     int,
@@ -1269,6 +1283,12 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		pane_geom_sep(&g, bottom - 2)
 		bottom -= 2
 	}
+	if p.info != "" {
+		rows := min(len(pane_info_wrap(p, g.inner.w - 2)), max(1, bottom - y - PANE_INFO_LIST_MIN - nf - 1))
+		g.info = {g.inner.x + 1, bottom - rows, g.inner.w - 2, rows}
+		pane_geom_sep(&g, bottom - rows - 1)
+		bottom -= rows + 1
+	}
 	g.div_x = g.inner.x + lay.left_w
 	if split {
 		g.has_preview = lay.preview
@@ -1299,6 +1319,12 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		g.text = {g.inner.x + 1, y, g.inner.w - 2, max(0, bottom - y)}
 	}
 	return
+}
+
+PANE_INFO_LIST_MIN :: 3
+
+pane_info_wrap :: proc(p: ^Pane, w: int) -> [dynamic]int {
+	return line_wrap(transmute([]u8)p.info, w)
 }
 
 pane_has_footer :: proc(p: ^Pane) -> bool {
@@ -1654,6 +1680,13 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	if g.footer_y >= 0 {
 		pane_render_footer(editor, p, g)
 	}
+	if g.info.h > 0 {
+		segs := pane_info_wrap(p, g.info.w)
+		for r in 0 ..< g.info.h {
+			from, to := wrap_segment(segs[:], len(p.info), r)
+			pane_text(g.info.x, g.info.y + r, g.info.w, strings.trim_space(p.info[from:to]), COLOR_PANE_FG, COLOR_PANE_BG)
+		}
+	}
 	if g.has_preview {
 		preview_render(&p.preview, g.preview.x + 1, g.preview.y, g.preview.w - 1, g.preview.h)
 		top, bottom := g.preview.y - 1, g.preview.y + g.preview.h
@@ -1819,6 +1852,15 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 }
 
 pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
+	if p.footer_input && p.footer_field.mode == .Chord {
+		if ev.key == .Esc && ev.ch == 0 && !ev_alt(ev) {
+			pane_footer_end(editor, p, false)
+		} else if chord, ok := bind_format(ev); ok {
+			textfield_set(&p.footer_field.field, chord)
+			pane_footer_end(editor, p, true)
+		}
+		return .None
+	}
 	if p.footer_input {
 		#partial switch ev.key {
 		case .Esc:
@@ -2149,7 +2191,9 @@ pane_md_reset :: proc(p: ^Pane) {
 
 pane_paste :: proc(editor: ^Editor, p: ^Pane, text: string) {
 	if p.footer_input {
-		textfield_insert_flat(&p.footer_field.field, text)
+		if p.footer_field.mode != .Chord {
+			textfield_insert_flat(&p.footer_field.field, text)
+		}
 		return
 	}
 	if len(p.fields) == 0 {
