@@ -159,8 +159,8 @@ Per [panes.md](panes.md) §6 (D10). Setup registers only; cross-plugin calls hap
 | `qed.emit(name, data?)` | `name` is `"<own id>:<event>"` (anything else raises). Queued like core events, one task per `qed.on(name)` handler, all given the same `data`; a no-op without subscribers. Handlers go with their plugin. |
 
 Exports of the bundled `filetree` plugin (all per caller): `set_tab{label, paths, virtual?, cmd?, detail?, preview?,
-missing?}` (adds or replaces the caller's tab; `preview(path)` returns a base string or nil and runs in the tree's
-task; `missing(path)` runs on Enter over a listed path missing on disk), `remove_tab(label)`, `set_marks(marks)`,
+missing?, empty?}` (adds or replaces the caller's tab; `preview(path)` returns a base string or nil and runs in the tree's
+task; `missing(path)` runs on Enter over a listed path missing on disk; `empty` is the hint while the tab lists nothing), `remove_tab(label)`, `set_marks(marks)`,
 `set_ignored(paths|false)`, `open(label)`, `dotfiles()` (the live show-dotfiles state, toggles included). It emits `filetree:refresh` when it opens and after its file operations.
 
 ### UI

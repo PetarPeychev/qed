@@ -576,6 +576,7 @@ local FileTree = {}
 ---@field detail? boolean show mark suffixes and `+N -N` sizes on this tab
 ---@field preview? fun(path: string): string|nil runs in the tree's task after the preview debounce; a string is the base the file is diffed against, nil previews it plainly
 ---@field missing? fun(path: string) Enter on a listed path missing on disk
+---@field empty? string dim hint while the tab lists nothing
 
 ---Adds the caller's tab, or replaces the one with this label.
 ---@param tab filetree.Tab

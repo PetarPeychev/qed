@@ -12,6 +12,7 @@ local stat = {branch = "", ahead = 0, behind = 0, added = 0, deleted = 0, gen = 
 local scanning, dirty, job = false, false, nil
 local renames = {}
 local published, ft
+local inrepo = false
 
 local function fetch(b)
 	local path = qed.buf.path(b)
@@ -45,11 +46,16 @@ local function push()
 	if not ft then
 		return
 	end
-	local pub = published or {paths = {}, marks = {}}
+	local pub = published or {paths = {}, marks = {}, empty = "Loading git status"}
+	local ignored = pub.ignored or false
+	-- outside a repo the nested repo search can take minutes; the walk must not wait for it
+	if not ignored and not inrepo then
+		ignored = {}
+	end
 	local ok, err = pcall(function()
-		ft.set_tab{label = "Git", cmd = "Git: Changes", paths = pub.paths, virtual = pub.virtual, detail = true, preview = preview, missing = restore_path}
+		ft.set_tab{label = "Git", cmd = "Git: Changes", paths = pub.paths, virtual = pub.virtual, detail = true, preview = preview, missing = restore_path, empty = pub.empty}
 		ft.set_marks(pub.marks)
-		ft.set_ignored(pub.ignored or false)
+		ft.set_ignored(ignored)
 	end)
 	if not ok then
 		qed.log("debug", "file tree: " .. tostring(err))
@@ -66,12 +72,19 @@ local function stopped()
 	return dirty
 end
 
-local function publish(files, ignored, full)
+local function publish(files, ignored, full, empty)
 	if full then
 		qed.message(("Over %d changed files: the Git tab lists the first %d"):format(tree.MAX, tree.MAX), "warn")
 	end
 	local how = published and tree.compare({files = files, ignored = ignored}, published, stopped) or "paths"
-	if how == nil or how == "same" then
+	if how == nil then
+		return
+	end
+	if how == "same" then
+		if published.empty ~= empty then
+			published.empty = empty
+			push()
+		end
 		return
 	end
 	local view = tree.view(files, ignored, stopped)
@@ -86,7 +99,7 @@ local function publish(files, ignored, full)
 	if how == "fields" then
 		paths, virtual = published.paths, published.virtual
 	end
-	published = {files = files, ignored = ignored, paths = paths, virtual = virtual, marks = view.marks}
+	published = {files = files, ignored = ignored, paths = paths, virtual = virtual, marks = view.marks, empty = empty}
 	push()
 end
 
@@ -105,15 +118,15 @@ local function scan()
 	repeat
 		dirty = false
 		job = {}
-		local ok, files, ignored, full = pcall(tree.scan, qed.root(), base, job)
+		local ok, files, ignored, full, found, failed = pcall(tree.scan, qed.root(), base, job)
 		if not ok then
 			qed.log("error", "scan: " .. tostring(files))
 			files = nil
 		end
 		if files and not dirty then
-			publish(files, ignored, full)
+			publish(files, ignored, full, failed and "Git status failed" or found == 0 and "Not a git repository" or "No changes")
 		elseif not ok and not published then
-			published = {files = {}, ignored = {}, paths = {}, marks = {}}
+			published = {files = {}, ignored = {}, paths = {}, marks = {}, empty = "Git status failed"}
 			push()
 		end
 	until not dirty
@@ -253,6 +266,7 @@ return {
 			if not ready then
 				return
 			end
+			inrepo = repo.out(qed.root(), {"rev-parse", "--show-toplevel"}) ~= ""
 			attach()
 			fetch_all()
 			poll()
@@ -272,6 +286,7 @@ return {
 		qed.on("root_changed", function()
 			if ready then
 				published, renames = nil, {}
+				inrepo = repo.out(qed.root(), {"rev-parse", "--show-toplevel"}) ~= ""
 				push()
 				restart({})
 				scan()

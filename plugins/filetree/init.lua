@@ -242,7 +242,8 @@ local function show_source(my, view)
 			return false
 		end
 	end
-	view:set(h)
+	local t = tab_of(scope)
+	view:set(h, {hint = t and t.empty})
 	shown.h = h
 	return true
 end
@@ -827,11 +828,11 @@ local exports = {
 			t = {owner = id, label = spec.label}
 			added[#added + 1] = t
 		end
-		if t.paths ~= spec.paths or t.virtual ~= spec.virtual then
+		if t.paths ~= spec.paths or t.virtual ~= spec.virtual or t.empty ~= spec.empty then
 			stamps = stamps + 1
 			t.stamp = stamps
 		end
-		t.cmd, t.paths, t.virtual, t.detail, t.preview, t.missing = spec.cmd, spec.paths, spec.virtual, spec.detail, spec.preview, spec.missing
+		t.cmd, t.paths, t.virtual, t.detail, t.preview, t.missing, t.empty = spec.cmd, spec.paths, spec.virtual, spec.detail, spec.preview, spec.missing, spec.empty
 		based = {}
 		schedule()
 	end,

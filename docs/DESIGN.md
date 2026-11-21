@@ -1053,8 +1053,10 @@ expansion.
 
 **Git tab** (`plugins/git`): at `startup` and on `plugin_loaded("filetree")` git takes the tree's exports and
 publishes its last scan: `set_tab{label = "Git", cmd = "Git: Changes", paths, virtual = deleted, detail, preview =
-blob at the base, missing = restore}`, `set_marks` (bars propagated up the dirs with a deleted file shown as modified
-above it, deleted fg, rename suffix, sizes, dim ignored) and `set_ignored` (`false` until the first scan). A scan
+blob at the base, missing = restore, empty = loading / not a repo / no changes / status failed}`, `set_marks` (bars
+propagated up the dirs with a deleted file shown as modified above it, deleted fg, rename suffix, sizes, dim ignored)
+and `set_ignored` (`false` until the first scan inside a repo; outside one `{}` at once, so the walk never waits on
+the nested repo search). A scan
 runs on `filetree:refresh`, a root change, a base move, *Set Diff Base* and a restore; it is compared with the last
 one and a scan that only moved sizes or marks keeps the path tables, so the tree keeps its narrowed handle.
 *Git: Changes* (`Alt+g`) opens the tree on the tab and hides without the tree. Without `filetree` git still does

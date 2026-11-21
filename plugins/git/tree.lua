@@ -186,7 +186,7 @@ function M.parse(files, ignored, top, out)
 	return st.full
 end
 
-local function run(job, spec)
+local function run(job, spec, partial)
 	if job.cancelled then
 		return nil
 	end
@@ -200,7 +200,7 @@ local function run(job, spec)
 	if job.cancelled then
 		return nil
 	end
-	return r.code == 0 and r.stdout or ""
+	return (r.code == 0 or partial) and r.stdout or "", r.code == 0
 end
 
 local function git(job, top, args)
@@ -211,13 +211,13 @@ local function git(job, top, args)
 	return run(job, {argv = argv, cwd = top})
 end
 
--- pruned at each repo so an ignored node_modules is never walked
+-- pruned at each repo so an ignored node_modules is never walked; find fails on any unreadable dir but its hits still count
 local function repos(root, job)
 	local top = repo.out(root, {"rev-parse", "--show-toplevel"})
 	if top ~= "" then
 		return {top}
 	end
-	local found = run(job, {argv = {"find", root, "-type", "d", "-exec", "sh", "-c", 'test -e "$0/.git"', "{}", ";", "-prune", "-print"}})
+	local found = run(job, {argv = {"find", root, "-type", "d", "-exec", "sh", "-c", 'test -e "$0/.git"', "{}", ";", "-prune", "-print"}}, true)
 	local out = {}
 	for line in repo.each(found or "") do
 		out[#out + 1] = line
@@ -226,8 +226,9 @@ local function repos(root, job)
 end
 
 function M.scan(root, base, job)
-	local files, ignored, full, count = {}, {}, false, 0
-	for _, top in ipairs(repos(root, job)) do
+	local files, ignored, full, count, failed = {}, {}, false, 0, false
+	local tops = repos(root, job)
+	for _, top in ipairs(tops) do
 		local st = state(files, ignored, top)
 		st.count = count
 		local rev = repo.rev(top, base)
@@ -239,10 +240,12 @@ function M.scan(root, base, job)
 			end
 			parse_base(st, text)
 		end
-		text = git(job, top, {"status", "--porcelain", "--find-renames", "--ignored=matching", "--untracked-files=all"})
+		local ok
+		text, ok = git(job, top, {"status", "--porcelain", "--find-renames", "--ignored=matching", "--untracked-files=all"})
 		if not text then
 			return nil
 		end
+		failed = failed or not ok
 		parse_status(st, text)
 		text = git(job, top, {"diff", rev, "--numstat", "--find-renames"})
 		if not text then
@@ -259,7 +262,7 @@ function M.scan(root, base, job)
 	if job.cancelled then
 		return nil
 	end
-	return files, ignored, full
+	return files, ignored, full, #tops, failed
 end
 
 local CHUNK = 2000

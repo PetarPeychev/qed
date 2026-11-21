@@ -332,7 +332,7 @@ plugins load) and on `plugin_loaded`. No dependency declarations and no third in
 by `qed.options`, `postinit` is `startup`.
 
 Git and the file tree do not depend on each other. The file tree exports `set_tab{label, paths, virtual?, cmd?,
-detail?, preview?, missing?}`, `remove_tab(label)`, `set_marks(marks)`, `set_ignored(paths|false)` and `open(label)`,
+detail?, preview?, missing?, empty?}`, `remove_tab(label)`, `set_marks(marks)`, `set_ignored(paths|false)` and `open(label)`,
 all kept per caller. Git, when `qed.plugin("filetree")` is non-nil at `startup` or on `plugin_loaded("filetree")`,
 sets a tab labeled "Git" whose `paths` are its changed files and `virtual` its deleted ones, pushes status marks and
 its ignored set, and answers `preview(path)` with the base text (M6 as built).
@@ -493,7 +493,7 @@ Communication is in DESIGN.md (Plugins, File tree, Git tab) and plugins.md (Plug
 | Callbacks | `preview` and `missing` are plain functions in the spec, called by the tree (`preview` under pcall, falling back to a plain preview). The tree drops them on `plugin_unloaded`. | Fewer moving parts than an event round trip; the window between an unload and that event is covered by the pcall and by task errors no longer disabling a plugin. |
 | Sync | Exports only store state and defer one `sync` (`qed.defer(0)`), so the 50k-mark push runs in the tree's own task, chunked as in M5. | Keeps the tree's work out of the caller's slices. |
 | Tabs at runtime | `v:tab(i, tabs)` replaces the tab row in place; added tabs sit between Open and Unsaved. A tab coming or going no longer reopens the view. | Git attaches at `startup`, possibly after the tree opened; a reopen dropped the typed filter. |
-| Ignore set | `set_ignored(paths\|false)` export; the tree feeds its walks. Without a caller the set is `{}`. | The tree owns its walks; the set dies with them (walks are freed when unreferenced). |
+| Ignore set | `set_ignored(paths\|false)` export; the tree feeds its walks. Without a caller the set is `{}`. Git holds the walk (`false`) only when the root is inside a repo; outside one it sends `{}` at once and the nested repos' set when its scan lands. | The tree owns its walks; the set dies with them (walks are freed when unreferenced). |
 | Refresh | The tree emits `filetree:refresh` (custom event) on open and after its file operations; git scans on it. | The provider's `refresh` callback, as an event. |
 | Marks, propagation | Git computes the marks (bars propagated up dirs, deleted fg, rename suffix, sizes, dim ignored) and the path lists, chunked every 2000 paths; the tree only merges callers' marks and pushes them. `detail` per tab shows suffix and sizes. | Status semantics are git's; the tree stays generic. |
 | Chord | *Git: Changes* (`Alt+g`, `plugins.git.keybinds.Changes`, `welcome`), hidden while `filetree` is not loaded; it is the Git tab's `cmd`, so over the tree it switches or closes like any tab chord. *File Tree: Changed* is gone; the old top-level `File Tree: Changed` bind warns it moved to `plugins/git/keybinds/"Changes"`. | The tab is git's. |

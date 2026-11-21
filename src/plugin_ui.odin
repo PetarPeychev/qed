@@ -1345,11 +1345,12 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
 	p := &editor.plugins
 	src := p.lists[li].src
-	selected := ""
+	selected, hint := "", ""
 	if lua.type(L, 3) == .TABLE {
 		if k, ok := api_field_string(L, 3, "selected"); ok {
 			selected = api_path(editor, k) if src.kind == .Walk else k
 		}
+		hint, _ = api_field_string(L, 3, "hint")
 	}
 	pn, vi := api_view_live(L, editor)
 	if pn == nil {
@@ -1368,6 +1369,8 @@ api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
 	pane_items_clear(pn)
 	pn.list.source = list_source_clone(src)
 	pn.list.more, pn.landed, pn.list.fit_n = false, true, 0
+	delete(pn.list.hint)
+	pn.list.hint = strings.clone(hint)
 	pane_list_load(editor, pn)
 	if selected != "" {
 		keep = selected

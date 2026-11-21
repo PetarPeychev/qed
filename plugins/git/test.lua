@@ -392,4 +392,33 @@ function T.git_vanishes_mid_session(t)
 	t.eq(seg(t, "diff").text, "")
 end
 
+local function tree_labels(t)
+	return table.concat(t.ui().labels, ",")
+end
+
+function T.walk_starts_outside_a_repo(t)
+	t.ok(t.sh("mkdir -p proj/sub && echo x > proj/sub/b.txt"))
+	t.fake_spawn("find ", {delay_ms = 4000})
+	t.ok(qed.set_root(qed.path.join(qed.root(), "proj")))
+	t.pump(300)
+	qed.run("File Tree: All")
+	t.key("Alt+e")
+	t.eq(tree_labels(t), "sub,b.txt", "expand all runs before the nested repo search ends")
+	t.key("Alt+g")
+	t.eq(t.ui().hint, "Loading git status")
+	t.wait(function() return t.ui().hint == "Not a git repository" end, 8000)
+end
+
+function T.status_failure_releases_the_walk(t)
+	t.ok(t.sh("mkdir -p proj/sub && echo x > proj/sub/b.txt && git -C proj init -q"))
+	t.fake_spawn("status --porcelain", {code = 128, stderr = "fatal: broken"})
+	t.ok(qed.set_root(qed.path.join(qed.root(), "proj")))
+	t.settle()
+	qed.run("File Tree: All")
+	t.key("Alt+e")
+	t.eq(tree_labels(t), "sub,b.txt", "the walk is not held after a failed status")
+	t.key("Alt+g")
+	t.eq(t.ui().hint, "Git status failed")
+end
+
 return T
