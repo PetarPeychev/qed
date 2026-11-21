@@ -109,6 +109,7 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Performance
 
+- [ ] File tree plugin slice on tree open / Git tab runs 30-67 ms (budget 50), mostly `show_source` -> `view:set`; cut it below budget with margin.
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Git tab nested-repo discovery outside a repo spawns one `sh` per directory (`plugins/git/tree.lua` `repos`): ~13 s in /tmp, minutes in $HOME. Replace with one walk that stops at each repo (core or a single `find`).
 
