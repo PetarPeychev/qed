@@ -44,6 +44,10 @@ E2E :: struct {
 // the shell session runs $SHELL -i; the developer's rc files must not run (they touch real state, e.g. pyenv's shim lock)
 @(init)
 e2e_shell_hermetic :: proc "contextless" () {
+	// _test.odin files are compiled into ./qed too
+	when !ODIN_TEST {
+		return
+	}
 	context = runtime.default_context()
 	defer free_all(context.temp_allocator)
 	tmp, _ := os.temp_dir(context.temp_allocator)
