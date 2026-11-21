@@ -36,7 +36,7 @@ local function query(v, text, args)
 		return
 	end
 	local root, n, seen = qed.root(), 0, {}
-	local ok, proc = pcall(qed.spawn_bg, {cmd = rg_cmd(text, args), on_line = function(line)
+	local proc, err = qed.spawn_bg{cmd = rg_cmd(text, args), on_line = function(line)
 		local file, row, col, hit = line:match("^(.-):(%d+):(%d+):(.*)$")
 		if not file or file == "" then
 			return
@@ -61,9 +61,9 @@ local function query(v, text, args)
 		if n > MAX then
 			stop()
 		end
-	end})
-	if not ok then
-		v:set({}, {hint = "Search failed: " .. tostring(proc)})
+	end}
+	if not proc then
+		v:set({}, {hint = "Search failed: " .. err})
 		return
 	end
 	running = proc

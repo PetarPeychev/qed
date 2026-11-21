@@ -58,8 +58,7 @@ function qed.message(text, level) end
 ---@class qed.CommandHandle
 ---@field id integer
 local CommandHandle = {}
----Unregisters the command. Returns false if it is already gone.
----@return boolean
+---Unregisters the command. A no-op if it is already gone.
 function CommandHandle:remove() end
 
 ---Registers `<display name>: <name>`. A visible name may be registered once per scope (one editor and one file tree command); taken names and bare names equal to a core command of that scope raise.
@@ -67,9 +66,10 @@ function CommandHandle:remove() end
 ---@return qed.CommandHandle
 function qed.command(spec) end
 
----Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command (bare names never equal a core command).
+---Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command (bare names never equal a core command). `nil, "unavailable"` when a core command does not apply now; raises on an unknown name.
 ---@param name string
----@return boolean ran
+---@return true|nil ok
+---@return "unavailable"|nil err
 function qed.run(name) end
 
 ---The live shortcut of a core or plugin editor command by visible name (`""` when unbound), `nil` for an unknown name.
@@ -78,11 +78,12 @@ function qed.run(name) end
 function qed.shortcut(name) end
 
 ---Every change to `b` while `fn` runs is one undo step; an error inside `fn` rolls it back.
----Returns false without calling `fn` if `opts.rev` is stale.
+---Returns `nil, "stale"` without calling `fn` if `opts.rev` is stale.
 ---@param b qed.Buf
 ---@param fn fun()
 ---@param opts? {rev?: integer}
----@return boolean
+---@return true|nil ok
+---@return "stale"|nil err
 function qed.edit(b, fn, opts) end
 
 ---Open (or switch to) a file. Relative paths resolve against `qed.root()`.
@@ -91,9 +92,10 @@ function qed.edit(b, fn, opts) end
 ---@return string|nil err
 function qed.open(path) end
 
----Opens a new unnamed buffer (the untouched welcome scratch is replaced) holding `text` as its clean content, and switches to it. Saving it asks for a file name. Raises on an unknown `language`.
+---Opens a new unnamed buffer (the untouched welcome scratch is replaced) holding `text` as its clean content, and switches to it. Saving it asks for a file name. `nil, err` on an unknown `language`.
 ---@param opts {text?: string, language?: string}
----@return integer b
+---@return integer|nil b
+---@return string|nil err
 function qed.new_buf(opts) end
 
 ---The user config file path (`$XDG_CONFIG_HOME/qed/config.json`, else `~/.config/qed/config.json`); `""` without a home.
@@ -107,20 +109,21 @@ function qed.config_defaults() end
 ---Save through the full pipeline. Fails without saving if the file changed on disk
 ---(the conflict dialog opens only for the current buffer). Waits for `buf_pre_save` handlers.
 ---@param b qed.Buf
----@return boolean|nil ok
----@return string|nil err "no file name" or "changed on disk"
+---@return true|nil ok
+---@return "no file name"|"changed on disk"|"save in progress"|nil err
 function qed.save(b) end
 
----Close a buffer. Returns false and keeps it open if it has unsaved changes, unless its id is in `discard` (approved, e.g. by a confirm).
+---Close a buffer. Returns `nil, "unsaved"` and keeps it open if it has unsaved changes, unless its id is in `discard` (approved, e.g. by a confirm).
 ---@param b qed.Buf
 ---@param opts? {discard?: integer[]}
----@return boolean
+---@return true|nil ok
+---@return "unsaved"|nil err
 function qed.close(b, opts) end
 
 ---Switch to buffer `target` or open the path `target` (relative to `qed.root()`), move the cursor to `pos` (clamped, a col inside a UTF-8 sequence snaps back), and record the jump from where you were. Closes the file tree if it is open.
 ---@param target qed.Buf|string
 ---@param pos qed.Pos
----@return nil
+---@return true|nil ok
 ---@return string|nil err "cannot open <path>" when a path fails to open
 function qed.jump(target, pos) end
 
@@ -233,9 +236,10 @@ function qed.caller() end
 ---@field stdout string
 ---@field stderr string
 
----Waits for the process to exit. Raises `cannot start <cmd>: <err>` when the process cannot start (an `argv` program or the `cwd` missing); under `cmd` a missing program is the shell's exit 127.
+---Waits for the process to exit. `nil, "cannot start <cmd>: <err>"` when the process cannot start (an `argv` program or the `cwd` missing); under `cmd` a missing program is the shell's exit 127.
 ---@param spec qed.SpawnSpec
----@return qed.SpawnResult
+---@return qed.SpawnResult|nil
+---@return string|nil err
 function qed.spawn(spec) end
 
 ---@class qed.Proc
@@ -249,9 +253,10 @@ function Proc:kill() end
 ---@return string|nil err
 function Proc:wait() end
 
----Runs in the background; killed when the plugin unloads and on quit. Raises like `qed.spawn` when it cannot start.
+---Runs in the background; killed when the plugin unloads and on quit. `nil, err` like `qed.spawn` when it cannot start.
 ---@param spec qed.SpawnSpec
----@return qed.Proc
+---@return qed.Proc|nil
+---@return string|nil err
 function qed.spawn_bg(spec) end
 
 ---Waits `ms` milliseconds. `qed.sleep(0)` yields until the next main-loop iteration: a long loop calls it now and then to stay inside the slice budget.
@@ -375,79 +380,93 @@ function List:release() end
 ---@field scope? string commands registered with this `scope` run on their chord while the pane has focus (with `ctx.view`), and Ctrl+P opens a palette of just them
 ---@field on? qed.UiHandlers handlers run as tasks after input dispatch, before the next frame
 
+---Methods that change the view return `true`, or `nil, "closed"` once it is closed; methods that return a value return `nil, "closed"` instead of it.
 ---@class qed.View
 ---@field id integer
 local View = {}
----Replaces the items, or swaps in a list handle (then `selected` is an item key, a path for a walk). `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty. Returns false once closed.
+---Replaces the items, or swaps in a list handle (then `selected` is an item key, a path for a walk). `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty.
 ---@param items (string|qed.UiItem)[]|qed.List
 ---@param opts? {selected?: integer|string, more?: boolean, hint?: string}
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:set(items, opts) end
----Adds items at the end and keeps the selection. Returns false once closed. Raises on a list backed by a `qed.List` (replace it with `View:set`).
+---Adds items at the end and keeps the selection. Raises on a list backed by a `qed.List` (replace it with `View:set`).
 ---@param items (string|qed.UiItem)[]
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:append(items) end
----Merges `fields` into the item whose key is `key` (a string item becomes `{label = s}` first). Returns false if closed or not found. Raises on a list backed by a `qed.List`.
+---Merges `fields` into the item whose key is `key` (a string item becomes `{label = s}` first). `nil, "not found"` when no item has that key. Raises on a list backed by a `qed.List`.
 ---@param key string
 ---@param fields qed.UiItem
----@return boolean
+---@return true|nil ok
+---@return "not found"|"closed"|nil err
 function View:update(key, fields) end
----Replaces the text lines. Returns false once closed.
+---Replaces the text lines.
 ---@param lines qed.PaneLine[]
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:text(lines) end
----Replaces the markdown body, keeping the scroll position. Raises for a view opened without `markdown`; returns false once closed.
+---Replaces the markdown body, keeping the scroll position. Raises for a view opened without `markdown`.
 ---@param text string
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:markdown(text) end
----Scrolls a markdown body to the heading with this GitHub slug. Returns whether it found one, and the heading's source line.
+---Scrolls a markdown body to the heading with this GitHub slug and returns the heading's source line, or `nil, "not found"`. Raises for a view opened without `markdown`.
 ---@param slug string
----@return boolean found
 ---@return integer|nil source
+---@return "not found"|"closed"|nil err
 function View:anchor(slug) end
----Top row (1-based) of a text or markdown body, clamped to what can show; scrolls there first when `row` is given. Returns false once closed (a markdown body's `close` handler still reads its last top row).
+---Top row (1-based) of a text or markdown body, clamped to what can show; scrolls there first when `row` is given. Once closed, a markdown body's `close` handler still reads its last top row.
 ---@param row? integer
----@return integer|false
+---@return integer|nil
+---@return "closed"|nil err
 function View:scroll(row) end
 ---Source line (1-based buffer row) of the markdown line shown on terminal row `row` (1-based; default the body's top, clamped to the shown rows), and the terminal row used. Code and table rows map to their own line, other blocks (reflowed text) to their first. Works in the `close` handler on the last shown rows; nil when nothing is shown.
 ---@param row? integer
 ---@return integer|nil source
 ---@return integer|nil row
 function View:source_line(row) end
----Scrolls a markdown body so the block holding source line `source` starts on terminal row `row` (1-based; default and clamp: the body's rows), clamped at the document ends. Returns the new top row, or false once closed.
+---Scrolls a markdown body so the block holding source line `source` starts on terminal row `row` (1-based; default and clamp: the body's rows), clamped at the document ends. Returns the new top row.
 ---@param source integer
 ---@param row? integer
----@return integer|false
+---@return integer|nil
+---@return "closed"|nil err
 function View:source_scroll(source, row) end
 ---Closes the pane and its children; a no-op once closed.
 function View:close() end
----Per-row styling by item key (a walk list's keys are paths, relative ones resolved against the root): `bar` (theme color of a `▌` in the left column), `fg` (theme color), `suffix` (drawn after the label), `added`/`removed` (a right-aligned `+N -N`), `dim` (dims the row and, in a tree, everything under it unless selected). `false` drops a key; `replace` clears the rest first. Validated before anything changes. Returns false once closed.
+---Per-row styling by item key (a walk list's keys are paths, relative ones resolved against the root): `bar` (theme color of a `▌` in the left column), `fg` (theme color), `suffix` (drawn after the label), `added`/`removed` (a right-aligned `+N -N`), `dim` (dims the row and, in a tree, everything under it unless selected). `false` drops a key; `replace` clears the rest first. Validated before anything changes.
 ---@param marks table<string, {bar?: string, fg?: string, suffix?: string, added?: integer, removed?: integer, dim?: boolean}|false>
 ---`detail = false` hides every `suffix` and `added`/`removed` until `detail = true` (no marks resent); `total` sizes the store for a push split into chunks.
 ---@param opts? {replace?: boolean, detail?: boolean, total?: integer}
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:marks(marks, opts) end
----Replaces the footer `hints` and/or `chips` (e.g. a chip's `on`), or turns the footer into an input field (`input = {prompt?, text?}`; Enter or Esc fires `on.submit`; `input = false` drops it). Returns false once closed.
+---Replaces the footer `hints` and/or `chips` (e.g. a chip's `on`), or turns the footer into an input field (`input = {prompt?, text?}`; Enter or Esc fires `on.submit`; `input = false` drops it).
 ---@param spec {hints?: {label: string, cmd?: string}[], chips?: {label: string, cmd: string, on?: boolean}[], input?: {prompt?: string, text?: string}|false}
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:footer(spec) end
----The active tab; with `i`, switches to it first (no `on.tab`); with `tabs`, replaces the tab row first. Returns false once closed.
+---The active tab; with `i`, switches to it first (no `on.tab`); with `tabs`, replaces the tab row first.
 ---@param i? integer
 ---@param tabs? (string|{label: string, cmd?: string})[]
----@return integer|false
+---@return integer|nil
+---@return "closed"|nil err
 function View:tab(i, tabs) end
----`false` stops the auto preview (the plugin shows its own), `"auto"` resumes it; a table shows `path` now, diffed against `base` (raw bytes) when given, only the changed hunks unless `diff_only = false`. Returns false once closed.
+---`false` stops the auto preview (the plugin shows its own), `"auto"` resumes it; a table shows `path` now, diffed against `base` (raw bytes) when given, only the changed hunks unless `diff_only = false`.
 ---@param spec false|"auto"|{path: string, base?: string, diff_only?: boolean}
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:preview(spec) end
----Tree lists: `true`/`false` expands or collapses every dir (false while the walk's ignore set is still loading); no argument collapses every dir when a shown one is expanded, else expands all; a path and a boolean (default true) sets one dir. Returns false once closed.
+---Tree lists: `true`/`false` expands or collapses every dir (`nil, "loading"` while the walk's ignore set is still loading); no argument collapses every dir when a shown one is expanded, else expands all; a path and a boolean (default true) sets one dir.
 ---@param what? boolean|string
 ---@param open? boolean
----@return boolean
+---@return true|nil ok
+---@return "loading"|"closed"|nil err
 function View:expand(what, open) end
----Tree lists: clears the filter, expands `path`'s ancestors and selects it. Returns whether it is listed.
+---Tree lists: clears the filter, expands `path`'s ancestors and selects it. `nil, "not listed"` when it is not in the list.
 ---@param path string
----@return boolean
+---@return true|nil ok
+---@return "not listed"|"closed"|nil err
 function View:reveal(path) end
 ---The highlighted item, its row, the range's other end (`multi`) and the row count (rows are 1-based visible positions; a tree's rows follow its expanded dirs). Returns nothing once closed.
 ---@return qed.UiItem|string|nil item
@@ -455,15 +474,17 @@ function View:reveal(path) end
 ---@return integer|nil anchor
 ---@return integer|nil count
 function View:selection() end
----Selects `row` (clamped); `anchor` makes a range (`multi`). Returns false once closed.
+---Selects `row` (clamped); `anchor` makes a range (`multi`). Raises on a view without a list.
 ---@param row integer
 ---@param anchor? integer
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:select(row, anchor) end
 ---Sets (`fn`) or drops (`false`) a handler after open, e.g. `change` only while it has work to do.
 ---@param event "activate"|"change"|"query"|"close"|"link"|"tab"|"expand"|"submit"
 ---@param fn function|false
----@return boolean
+---@return true|nil ok
+---@return "closed"|nil err
 function View:on(event, fn) end
 ---Waits for the next `activate` or the close. Returns the activated items and the first one's index, or `nil, nil` on close, then the first field's text (also on close). Returns `nil` at once when already closed.
 ---@return (string|qed.UiItem)[]|nil items
@@ -544,10 +565,10 @@ function qed.languages() end
 
 qed.theme = {}
 
----Applies a theme. With `persist`, also writes it as config `theme` (only that key); fails on an unknown name or a failed write.
+---Applies a theme. With `persist`, also writes it as config `theme` (only that key); `nil, err` on an unknown name or a failed write.
 ---@param name string
 ---@param opts? {persist?: boolean}
----@return boolean|nil ok
+---@return true|nil ok
 ---@return string|nil err
 function qed.theme.set(name, opts) end
 
@@ -621,13 +642,13 @@ qed.term = {}
 ---Starts a named session in the background (PTY + emulator, not shown). Fails with `nil, "already running"` unless `restart`.
 ---An exited session of the same name is replaced.
 ---@param spec qed.TermSpec
----@return string|nil name
+---@return true|nil ok
 ---@return "already running"|"cannot start"|nil err
 function qed.term.create(spec) end
 
 ---Shows the session in the terminal pane overlay (`"shell"` starts the default shell if needed, like Alt+t). Raises during `setup`.
 ---@param name string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "no such session"|"terminal unavailable"|nil err
 function qed.term.show(name) end
 
@@ -636,20 +657,20 @@ function qed.term.hide() end
 
 ---Kills the session's process group. Its output stays; `term_exit` fires. Raises for `"shell"`.
 ---@param name string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "no such session"|nil err
 function qed.term.kill(name) end
 
 ---Kills (without `term_exit`) and respawns with the same spec on a fresh screen. Raises for `"shell"`.
 ---@param name string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "no such session"|"cannot start"|nil err
 function qed.term.restart(name) end
 
 ---Writes raw bytes to the session's input (`"\r"` is Enter). Unread input is buffered up to 1 MiB, the rest dropped.
 ---@param name string
 ---@param text string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "no such session"|"not running"|nil err
 function qed.term.send(name, text) end
 
@@ -664,7 +685,7 @@ function qed.term.list() end
 
 ---Kills the session and frees its scrollback. Raises for `"shell"`.
 ---@param name string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "no such session"|nil err
 function qed.term.close(name) end
 
@@ -733,13 +754,14 @@ function qed.deco.mark(b, ns, from, to) end
 function qed.deco.range(b, ns, id) end
 
 ---Dimmed inline text at the cursor, not part of the buffer (one per buffer). Shown while the cursor stays at `pos` without a selection; core handles the keys: Tab inserts it, Ctrl+Right its next word, any other key, a click or an edit drops it.
----Returns false (nothing shown) when `pos` is not the cursor, a selection is active, `text` is empty or `opts.rev` is stale.
+---Fails (nothing shown) when `opts.rev` is stale, `pos` is not the cursor, a selection is active or `text` is empty.
 ---@param b qed.Buf
 ---@param ns integer
 ---@param pos qed.Pos
 ---@param text string may span lines
 ---@param opts? {rev?: integer}
----@return boolean shown
+---@return true|nil ok
+---@return "stale"|"not at cursor"|"selection"|"empty"|nil err
 function qed.deco.inline(b, ns, pos, text, opts) end
 
 ---Removes the namespace's decorations, marks and inline text touching rows from_row..to_row (all when omitted).
@@ -880,11 +902,12 @@ function qed.buf.delete(b, from, to) end
 function qed.buf.replace(b, from, to, text) end
 
 ---Replace the whole text with a minimal line diff, so the cursor, undo and highlight
----keep their place. One undo step. Returns false without editing if `opts.rev` is stale.
+---keep their place. One undo step. Returns `nil, "stale"` without editing if `opts.rev` is stale.
 ---@param b qed.Buf
 ---@param text string
 ---@param opts? {rev?: integer}
----@return boolean
+---@return true|nil ok
+---@return "stale"|nil err
 function qed.buf.set_text(b, text, opts) end
 
 ---The caret position.
@@ -903,11 +926,12 @@ function qed.buf.set_cursor(b, pos) end
 ---@return integer|nil
 function qed.buf.screen_row(b, row) end
 
----Scrolls the editor so buffer row `row` sits on terminal row `screen_row` (clamped to the text area), clamped at the buffer ends. False if `b` is not current.
+---Scrolls the editor so buffer row `row` sits on terminal row `screen_row` (clamped to the text area), clamped at the buffer ends. `nil, "not current"` if `b` is not current.
 ---@param b qed.Buf
 ---@param row integer
 ---@param screen_row integer
----@return boolean
+---@return true|nil ok
+---@return "not current"|nil err
 function qed.buf.set_screen_row(b, row, screen_row) end
 
 ---Selection as `from, to` in document order, or nil when nothing is selected.
@@ -922,10 +946,11 @@ function qed.buf.selection(b) end
 ---@param cursor qed.Pos
 function qed.buf.set_selection(b, anchor, cursor) end
 
----Set the buffer's language by name and re-highlight. Raises on an unknown name; false if it was already that language.
+---Set the buffer's language by name and re-highlight. `nil, err` on an unknown name.
 ---@param b qed.Buf
 ---@param name string language name as `qed.buf.language` returns it
----@return boolean changed
+---@return true|nil ok
+---@return string|nil err
 function qed.buf.set_language(b, name) end
 
 ---`"auto"` detects from the content. `width` defaults to the current width.
@@ -966,7 +991,7 @@ function qed.fs.read(path) end
 ---@param path string
 ---@param data string
 ---@param opts? {exclusive?: boolean}
----@return boolean|nil ok
+---@return true|nil ok
 ---@return string|nil err
 function qed.fs.write(path, data, opts) end
 
@@ -1001,26 +1026,26 @@ function qed.fs.walk(opts) end
 ---Copies a file or dir tree (modes kept, symlinks copied as links, fifos and devices skipped). Refuses an existing `dst`, a `dst` inside `src` and a special `src`; creates missing parent dirs.
 ---@param src string
 ---@param dst string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "exists"|"not found"|string|nil err
 function qed.fs.copy(src, dst) end
 
 ---Moves a file or dir, across filesystems too (mtimes kept), and repaths open buffers under it. Refuses an existing `dst` or a `dst` inside `src`.
 ---@param src string
 ---@param dst string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "exists"|"not found"|string|nil err
 function qed.fs.rename(src, dst) end
 
 ---Deletes a file or a dir tree; symlinks are removed, never followed. Refuses the root and its ancestors. Open buffers stay.
 ---@param path string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "not found"|string|nil err
 function qed.fs.remove(path) end
 
 ---Creates a dir and its missing parents. Refuses an existing path.
 ---@param path string
----@return boolean|nil ok
+---@return true|nil ok
 ---@return "exists"|string|nil err
 function qed.fs.mkdir(path) end
 
@@ -1073,7 +1098,7 @@ qed.lsp = {}
 ---formatting support), "stale" (buffer changed meanwhile), "timeout" (no reply within
 ---`plugin_hook_timeout_ms`) or "error" (already logged).
 ---@param b qed.Buf
----@return boolean ok
+---@return true|nil ok
 ---@return "disabled"|"no server"|"unavailable"|"stale"|"timeout"|"error"|nil err
 function qed.lsp.format(b) end
 

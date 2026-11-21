@@ -247,9 +247,9 @@ local function edit_selection(ctx)
 	end
 	local prompt, selection = build_prompt(b, instruction, from, to)
 	qed.log(("prompt (%dB):\n%s"):format(#prompt, prompt), "debug")
-	local ok, proc = pcall(qed.spawn_bg, {cmd = cfg.edit_command, stdin = prompt})
-	if not ok then
-		qed.log(("spawn failed: %s (%s)"):format(cfg.edit_command, proc), "debug")
+	local proc, err = qed.spawn_bg{cmd = cfg.edit_command, stdin = prompt}
+	if not proc then
+		qed.log(("spawn failed: %s (%s)"):format(cfg.edit_command, err), "debug")
 		return abandon("Could not start command")
 	end
 	local e = {proc = proc, buf = b, original = selection, mark = mark}
@@ -399,9 +399,9 @@ local function fim_request(b, gen, typed_at, typed_rev)
 	-- The key reaches curl through a here-doc on fd 3, never through argv (visible in /proc).
 	local cmd = ("curl -s --max-time 10 -X POST %s -H 'Content-Type: application/json' -H @/dev/fd/3 --data-binary @- 3<<EOF\nAuthorization: Bearer $%s\nEOF")
 		:format(qed.shell_quote(cfg.completion_endpoint), env)
-	local ok, proc = pcall(qed.spawn_bg, {cmd = cmd, stdin = body})
-	if not ok then
-		qed.log(("spawn failed: curl (%s)"):format(proc), "debug")
+	local proc, err = qed.spawn_bg{cmd = cmd, stdin = body}
+	if not proc then
+		qed.log(("spawn failed: curl (%s)"):format(err), "debug")
 		return
 	end
 	fim.proc = proc

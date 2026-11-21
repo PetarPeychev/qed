@@ -67,7 +67,7 @@ plugin_api_set_text_and_lsp_format :: proc(t: ^testing.T) {
 		assert(c.row == 4 and c.col == 2, "the cursor follows its line")
 		assert(not pcall(qed.buf.set_text, b, "\xff"), "invalid UTF-8 rejected")
 		local ok, err = qed.lsp.format(b)
-		assert(ok == false and err == "no server", "no server: " .. tostring(err))
+		assert(ok == nil and err == "no server", "no server: " .. tostring(err))
 		assert(not pcall(qed.edit, b, function() qed.lsp.format(b) end), "cannot wait inside qed.edit")
 	`, "one", "two", "three")
 	defer api_test_destroy(ed)
@@ -164,8 +164,8 @@ plugin_api_edit_group :: proc(t: ^testing.T) {
 			qed.edit(b, function() qed.buf.insert(b, {row = 1, col = 1}, "3") end)
 		end, {rev = rev}) == true, "edit returns true")
 		assert(qed.buf.line(b, 1) == "321bc", "edits applied " .. qed.buf.line(b, 1))
-		local stale = qed.edit(b, function() error("must not run") end, {rev = rev})
-		assert(stale == false, "stale rev returns false without running fn")
+		local stale, why = qed.edit(b, function() error("must not run") end, {rev = rev})
+		assert(stale == nil and why == "stale", "stale rev fails without running fn")
 		local ok, err = pcall(qed.edit, b, function()
 			qed.buf.insert(b, {row = 1, col = 1}, "zzz")
 			error("halfway")
@@ -193,7 +193,8 @@ plugin_api_closed_buffer :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local ids = qed.buf.list()
 		local second, third = ids[2], ids[3]
-		assert(qed.close(third) == false, "a modified buffer stays open")
+		local kept, why = qed.close(third)
+		assert(kept == nil and why == "unsaved", "a modified buffer stays open")
 		assert(qed.close(second) == true, "an unmodified buffer closes")
 		assert(not qed.buf.valid(second), "closed id is invalid")
 		local ok, err = pcall(qed.buf.line, second, 1)
@@ -223,10 +224,11 @@ plugin_api_cursor_selection :: proc(t: ^testing.T) {
 		assert(from.col == 4 and to.col == 3, "marks follow an insert before them")
 		qed.buf.set_cursor(b, {row = 2, col = 4})
 		assert(qed.buf.selection(b) == nil, "set_cursor clears the selection")
-		assert(qed.buf.set_language(b, "lua") == true, "set_language reports a change")
+		assert(qed.buf.set_language(b, "lua") == true, "set_language")
 		assert(qed.buf.language(b) == "lua", "set_language")
-		assert(qed.buf.set_language(b, "lua") == false, "same language is no change")
-		assert(not pcall(qed.buf.set_language, b, "Klingon"), "unknown language")
+		assert(qed.buf.set_language(b, "lua") == true, "the same language succeeds")
+		local ok, err = qed.buf.set_language(b, "Klingon")
+		assert(ok == nil and err:find("unknown language"), "unknown language fails softly")
 		local langs = qed.languages()
 		local has_lua = false
 		for _, l in ipairs(langs) do has_lua = has_lua or l == "lua"; assert(l ~= "markdown_inline", "injection-only languages hidden") end
@@ -244,7 +246,7 @@ plugin_api_cursor_selection :: proc(t: ^testing.T) {
 		for _, n in ipairs(names) do has_default = has_default or n == "default" end
 		assert(has_default, "theme.list includes the bundled default")
 		assert(type(qed.theme.current()) == "string", "theme.current")
-		local ok, err = qed.theme.set("no-such-theme")
+		ok, err = qed.theme.set("no-such-theme")
 		assert(ok == nil and err:find("unknown theme"), "unknown theme fails softly")
 	`, "abcd", "efgh")
 	defer api_test_destroy(ed)
@@ -588,4 +590,67 @@ plugin_api_message_source :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, found, "messages are attributed to the plugin's display name")
 	testing.expect(t, logged, "qed.log takes the level last")
+}
+
+@(test)
+plugin_api_return_conventions :: proc(t: ^testing.T) {
+	ed := api_test_editor(`
+		local b = qed.buf.current()
+		local ids = qed.buf.list()
+		local spare, dirty = ids[2], ids[3]
+		local ns = qed.deco.ns("t")
+		local rev = qed.buf.rev(b)
+		local v = assert(qed.ui.open{list = {items = {"a"}}})
+		v:close()
+		local cases = {
+			{"close unsaved", "unsaved", function() return qed.close(dirty) end},
+			{"close", true, function() return qed.close(spare) end},
+			{"set_text stale", "stale", function() return qed.buf.set_text(b, "x", {rev = rev + 1}) end},
+			{"set_text", true, function() return qed.buf.set_text(b, "abc") end},
+			{"edit stale", "stale", function() return qed.edit(b, function() end, {rev = -1}) end},
+			{"edit", true, function() return qed.edit(b, function() end) end},
+			{"set_language unknown", "unknown language", function() return qed.buf.set_language(b, "Klingon") end},
+			{"set_language", true, function() return qed.buf.set_language(b, "lua") end},
+			{"new_buf unknown language", "unknown language", function() return qed.new_buf{language = "Klingon"} end},
+			{"theme.set unknown", "unknown theme", function() return qed.theme.set("no-such-theme") end},
+			{"save unnamed", "no file name", function() return qed.save(b) end},
+			{"jump", true, function() return qed.jump(b, {row = 1, col = 1}) end},
+			{"spawn missing", "cannot start", function() return qed.spawn{argv = {"/no/such/qed-prog"}} end},
+			{"spawn_bg missing", "cannot start", function() return qed.spawn_bg{argv = {"/no/such/qed-prog"}} end},
+			{"set_screen_row not current", "not current", function() return qed.buf.set_screen_row(dirty, 1, 1) end},
+			{"inline off cursor", "not at cursor", function() return qed.deco.inline(b, ns, {row = 1, col = 3}, "x") end},
+			{"inline", true, function() return qed.deco.inline(b, ns, qed.buf.cursor(b), "x") end},
+			{"view closed set", "closed", function() return v:set({"b"}) end},
+			{"view closed text", "closed", function() return v:text({"b"}) end},
+			{"view closed select", "closed", function() return v:select(1) end},
+			{"view closed scroll", "closed", function() return v:scroll(1) end},
+			{"close bad arg", "raise", function() return qed.close("x") end},
+			{"closed buffer", "raise", function() return qed.buf.line(spare, 1) end},
+			{"run unknown", "raise", function() return qed.run("No Such Command") end},
+			{"spawn bad spec", "raise", function() return qed.spawn{} end},
+		}
+		local bad = {}
+		for _, c in ipairs(cases) do
+			local name, want, fn = c[1], c[2], c[3]
+			local ok, r, err = pcall(fn)
+			local good
+			if want == "raise" then
+				good = not ok
+			elseif want == true then
+				good = ok and r == true and err == nil
+			else
+				good = ok and r == nil and type(err) == "string" and err:find(want, 1, true) ~= nil
+			end
+			if not good then
+				bad[#bad + 1] = ("%s: %s %s %s"):format(name, tostring(ok), tostring(r), tostring(err))
+			end
+		end
+		assert(#bad == 0, table.concat(bad, "; "))
+	`, "abc")
+	defer api_test_destroy(ed)
+	defer delete(ed.panes)
+	append(&ed.buffers, test_buffer("two"))
+	append(&ed.buffers, test_buffer("three"))
+	ed.buffers[2].modified = true
+	api_test_run(t, ed)
 }

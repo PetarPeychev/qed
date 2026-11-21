@@ -68,17 +68,17 @@ local function external(b, cmd, on_save)
 	local run = cmd:gsub("{file}", function() return qed.shell_quote(file) end)
 	local rev = qed.buf.rev(b)
 	local input = qed.buf.text(b)
-	local ok, r = pcall(qed.spawn, {cmd = run, stdin = input, cwd = qed.path.dir(file)})
+	local r, err = qed.spawn{cmd = run, stdin = input, cwd = qed.path.dir(file)}
 	if not qed.buf.valid(b) then
 		return
 	end
-	if not ok or r.code ~= 0 or r.stdout == "" then
-		if ok and r.code == 127 then
+	if not r or r.code ~= 0 or r.stdout == "" then
+		if r and r.code == 127 then
 			qed.message("Formatter not found: " .. tool, "error")
 		else
 			qed.message(tool .. " failed", "error")
 		end
-		qed.log(("%s: %s"):format(tool, ok and ("exit " .. r.code .. " " .. r.stderr) or r), "debug")
+		qed.log(("%s: %s"):format(tool, r and ("exit " .. r.code .. " " .. r.stderr) or err), "debug")
 		return
 	end
 	qed.log(("ran %s: %dB in, %dB out"):format(tool, #input, #r.stdout), "debug")

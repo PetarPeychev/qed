@@ -17,7 +17,7 @@ end
 function T.exit_code_and_event(t)
 	local seen = {}
 	qed.on("term_exit", function(name, code) seen[#seen + 1] = name .. ":" .. code end)
-	t.eq(qed.term.create{name = "ex", cmd = "echo hi; exit 3"}, "ex")
+	t.eq(qed.term.create{name = "ex", cmd = "echo hi; exit 3"}, true)
 	t.wait(exited("ex"))
 	t.eq(qed.term.state("ex").code, 3, "exit code")
 	t.wait(function() return #seen == 1 end)
@@ -39,12 +39,12 @@ end
 function T.create_rules(t)
 	t.ok(not pcall(qed.term.create, {name = "shell", cmd = "true"}), "the default shell name is refused")
 	t.ok(not pcall(qed.term.create, {cmd = "true"}), "a name is required")
-	t.eq(qed.term.create{name = "live", cmd = "sleep 30"}, "live")
+	t.eq(qed.term.create{name = "live", cmd = "sleep 30"}, true)
 	local pid = qed.term.state("live").pid
 	local ok, err = qed.term.create{name = "live", cmd = "sleep 30"}
 	t.eq(ok, nil)
 	t.eq(err, "already running")
-	t.eq(qed.term.create{name = "live", cmd = "sleep 31", restart = true}, "live")
+	t.eq(qed.term.create{name = "live", cmd = "sleep 31", restart = true}, true)
 	t.ok(qed.term.state("live").running and qed.term.state("live").pid ~= pid, "restart = true replaces a live session")
 	t.eq(qed.term.state("nope"), nil)
 	for _, f in ipairs({qed.term.kill, qed.term.restart, qed.term.close}) do

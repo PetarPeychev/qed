@@ -1299,8 +1299,7 @@ qed_view_set :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	pn, vi := api_view_live(L, editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	handle := pn.handle
 	keep := len(items)
@@ -1354,8 +1353,7 @@ api_view_set_handle :: proc(L: ^lua.State, editor: ^Editor, li: int) -> c.int {
 	}
 	pn, vi := api_view_live(L, editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	if pn.list.tree && src.kind != .Walk {
 		plugin_raise(L, "a tree list needs a qed.fs.walk handle")
@@ -1614,8 +1612,7 @@ qed_view_marks :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pop(L, 1)
 	}
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	if d, ok := detail.?; ok {
 		pn.marks_plain = !d
@@ -1665,8 +1662,7 @@ qed_view_footer :: proc "c" (L: ^lua.State) -> c.int {
 	lua.pop(L, 1)
 	pn, _ := api_view_live(L, editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	if has_hints {
 		for h in pn.footer {
@@ -1700,8 +1696,7 @@ qed_view_tab :: proc "c" (L: ^lua.State) -> c.int {
 	tabs := api_tab_list(L, 3) if lua.type(L, 3) > .NIL else nil
 	pn, _ := api_view_live(L, entry.editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	count := len(tabs) if lua.type(L, 3) > .NIL else len(pn.tabs)
 	if set && (i < 0 || i >= count) {
@@ -1749,8 +1744,7 @@ qed_view_preview :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	pn, _ := api_view_live(L, editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	g := pane_geom(editor, pn)
 	#partial switch mode {
@@ -1790,8 +1784,7 @@ qed_view_expand :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	pn, _ := api_view_live(L, editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	if !pn.list.tree {
 		plugin_raise(L, "expand needs a list.tree view")
@@ -1806,7 +1799,10 @@ qed_view_expand :: proc "c" (L: ^lua.State) -> c.int {
 		pane_tree_set(pn, path, on)
 		list_walk_fill(editor, pn)
 	}
-	lua.pushboolean(L, b32(ok))
+	if !ok {
+		return api_fail(L, "loading")
+	}
+	lua.pushboolean(L, true)
 	return 1
 }
 
@@ -1817,8 +1813,7 @@ qed_view_reveal :: proc "c" (L: ^lua.State) -> c.int {
 	path := api_path(editor, api_string(L, 2))
 	pn, _ := api_view_live(L, editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	if !pn.list.tree {
 		plugin_raise(L, "reveal needs a list.tree view")
@@ -1826,7 +1821,10 @@ qed_view_reveal :: proc "c" (L: ^lua.State) -> c.int {
 	if f := pane_filter(pn); f != nil {
 		textfield_reset(&f.field)
 	}
-	lua.pushboolean(L, b32(pane_tree_reveal(editor, pn, path)))
+	if !pane_tree_reveal(editor, pn, path) {
+		return api_fail(L, "not listed")
+	}
+	lua.pushboolean(L, true)
 	return 1
 }
 
@@ -1866,9 +1864,11 @@ qed_view_select :: proc "c" (L: ^lua.State) -> c.int {
 		anchor = api_int(L, 3, "anchor must be an integer")
 	}
 	pn, _ := api_view_live(L, editor)
-	if pn == nil || !pn.has_list {
-		lua.pushboolean(L, false)
-		return 1
+	if pn == nil {
+		return api_fail(L, "closed")
+	}
+	if !pn.has_list {
+		plugin_raise(L, "select needs a view with a list")
 	}
 	if n := pane_count(editor, pn); n > 0 {
 		pn.list.sel = clamp(row - 1, 0, n - 1)
@@ -1906,8 +1906,7 @@ qed_view_on :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	_, vi := api_view_live(L, entry.editor)
 	if vi < 0 {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	if old := p.views[vi].on[e]; old != 0 {
 		lua.L_unref(L, lua.REGISTRYINDEX, c.int(old))
@@ -1933,8 +1932,7 @@ qed_view_append :: proc "c" (L: ^lua.State) -> c.int {
 	api_view_handle_check(L, pn)
 	items := api_view_items(L, editor, 2)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	n := len(pn.list.items)
 	room := len(items)
@@ -2016,9 +2014,11 @@ qed_view_update :: proc "c" (L: ^lua.State) -> c.int {
 			}
 		}
 	}
+	if pn == nil {
+		return api_fail(L, "closed")
+	}
 	if idx < 0 {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "not found")
 	}
 	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(editor.plugins.views[vi].items_ref))
 	if lua.rawgeti(L, 4, lua.Integer(idx + 1)) != .TABLE {
@@ -2054,11 +2054,12 @@ qed_view_text :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	lines := api_pane_lines(L, 2)
 	pn, _ := api_view_live(L, entry.editor)
-	if pn != nil {
-		pane_lines_free(pn.text)
-		pn.text = pane_lines_clone(lines)
+	if pn == nil {
+		return api_fail(L, "closed")
 	}
-	lua.pushboolean(L, b32(pn != nil))
+	pane_lines_free(pn.text)
+	pn.text = pane_lines_clone(lines)
+	lua.pushboolean(L, true)
 	return 1
 }
 
@@ -2067,15 +2068,16 @@ qed_view_markdown :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	src := api_string(L, 2)
 	pn, _ := api_view_live(L, entry.editor)
-	if pn != nil && !pn.has_md {
+	if pn == nil {
+		return api_fail(L, "closed")
+	}
+	if !pn.has_md {
 		plugin_raise(L, "view has no markdown body")
 	}
-	if pn != nil {
-		pane_md_reset(pn)
-		delete(pn.md)
-		pn.md = strings.clone(src)
-	}
-	lua.pushboolean(L, b32(pn != nil))
+	pane_md_reset(pn)
+	delete(pn.md)
+	pn.md = strings.clone(src)
+	lua.pushboolean(L, true)
 	return 1
 }
 
@@ -2125,19 +2127,21 @@ qed_view_anchor :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	slug := strings.clone(api_string(L, 2), context.temp_allocator)
 	pn, _ := api_view_live(L, entry.editor)
-	if pn != nil && pn.has_md {
-		pane_md_lines(pn, pane_geom(entry.editor, pn).text.w)
-		for line, i in pn.md_lines {
-			if line.slug != "" && line.slug == slug {
-				pn.scroll = i
-				lua.pushboolean(L, true)
-				lua.pushinteger(L, lua.Integer(line.src + 1))
-				return 2
-			}
+	if pn == nil {
+		return api_fail(L, "closed")
+	}
+	if !pn.has_md {
+		plugin_raise(L, "view has no markdown body")
+	}
+	pane_md_lines(pn, pane_geom(entry.editor, pn).text.w)
+	for line, i in pn.md_lines {
+		if line.slug != "" && line.slug == slug {
+			pn.scroll = i
+			lua.pushinteger(L, lua.Integer(line.src + 1))
+			return 1
 		}
 	}
-	lua.pushboolean(L, false)
-	return 1
+	return api_fail(L, "not found")
 }
 
 qed_view_scroll :: proc "c" (L: ^lua.State) -> c.int {
@@ -2152,10 +2156,9 @@ qed_view_scroll :: proc "c" (L: ^lua.State) -> c.int {
 	if pn == nil {
 		if v := api_view_closed(L, entry.editor); v != nil && !set {
 			lua.pushinteger(L, lua.Integer(v.md_scroll + 1))
-		} else {
-			lua.pushboolean(L, false)
+			return 1
 		}
-		return 1
+		return api_fail(L, "closed")
 	}
 	if set {
 		pn.scroll = row - 1
@@ -2213,8 +2216,7 @@ qed_view_source_scroll :: proc "c" (L: ^lua.State) -> c.int {
 	at := api_int(L, 3, "row must be an integer") if set_at else 0
 	pn, _ := api_view_live(L, entry.editor)
 	if pn == nil {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "closed")
 	}
 	if !pn.has_md {
 		plugin_raise(L, "view has no markdown body")

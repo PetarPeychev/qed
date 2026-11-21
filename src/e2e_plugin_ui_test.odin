@@ -312,7 +312,7 @@ e2e_plugin_ui_pane :: proc(t: ^testing.T) {
 	ui_run(t, &e, "UI: Pane Close")
 	testing.expect(t, !ui_open(&e), "pane:close closes")
 	ui_run(t, &e, "UI: Pane Set")
-	testing.expect_value(t, e.ed.message, "false")
+	testing.expect_value(t, e.ed.message, "nil")
 
 	ui_run(t, &e, "UI: Pane")
 	e2e_key(&e, .Esc)
@@ -791,7 +791,7 @@ e2e_plugin_ui_query_set :: proc(t: ^testing.T) {
 	testing.expect_value(t, pl.last_error, "")
 
 	ui_run(t, &e, "UI: Stale")
-	testing.expect_value(t, e.ed.message, "false")
+	testing.expect_value(t, e.ed.message, "nil")
 }
 
 @(test)

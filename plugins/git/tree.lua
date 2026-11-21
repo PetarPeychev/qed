@@ -190,8 +190,8 @@ local function run(job, spec, partial)
 	if job.cancelled then
 		return nil
 	end
-	local ok, proc = pcall(qed.spawn_bg, spec)
-	if not ok then
+	local proc = qed.spawn_bg(spec)
+	if not proc then
 		return ""
 	end
 	job.proc = proc

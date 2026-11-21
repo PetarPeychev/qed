@@ -53,8 +53,8 @@ local function preview(b, anchor)
 	end
 	v:source_scroll(qed.buf.cursor(b).row, qed.buf.screen_row(b))
 	if anchor and anchor ~= "" then
-		local found, src = v:anchor(anchor)
-		if found then
+		local src = v:anchor(anchor)
+		if src then
 			qed.buf.set_cursor(b, {row = src, col = 1})
 		end
 	end

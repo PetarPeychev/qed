@@ -710,8 +710,7 @@ qed_buf_set_text :: proc "c" (L: ^lua.State) -> c.int {
 	b, idx := api_buf(L, editor, 1)
 	text := api_text_arg(L, 2)
 	if api_rev_stale(L, 3, b) {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "stale")
 	}
 	if buffer_set_text(b, text) && idx == editor.current {
 		editor_scroll(editor)
@@ -733,9 +732,7 @@ qed_lsp_format :: proc "c" (L: ^lua.State) -> c.int {
 		reason = "unavailable"
 	}
 	if reason != "" {
-		lua.pushboolean(L, false)
-		lua.pushodinstring(L, reason)
-		return 2
+		return api_fail(L, reason)
 	}
 	p.tasks[plugin_task_index(p, task)].wait = {kind = .Lsp, id = token, until = plugin_tick_add(time.tick_now(), PLUGIN_HOOK_TIMEOUT_MS)}
 	return lua.yieldk(L, 0, lua.KContext(token), qed_lsp_format_k)
@@ -752,9 +749,7 @@ qed_lsp_format_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -
 		lua.pushboolean(L, true)
 		return 1
 	}
-	lua.pushboolean(L, false)
-	lua.pushodinstring(L, r.reason if found else "error")
-	return 2
+	return api_fail(L, r.reason if found else "error")
 }
 
 qed_buf_cursor :: proc "c" (L: ^lua.State) -> c.int {
@@ -812,8 +807,7 @@ qed_buf_set_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 	row := clamp(api_int(L, 2, "row must be an integer") - 1, 0, len(b.lines) - 1)
 	at := api_int(L, 3, "screen row must be an integer")
 	if idx != editor.current {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "not current")
 	}
 	w, h := editor_viewport(editor)
 	top_r, top_s := vpos_up(b, w, row, 0, clamp(at, 1, max(1, h)) - 1)
@@ -856,22 +850,26 @@ qed_buf_set_selection :: proc "c" (L: ^lua.State) -> c.int {
 	return 0
 }
 
-api_language :: proc(L: ^lua.State, name: string) -> Language {
+api_language :: proc(name: string) -> (Language, bool) {
 	for info, lang in LANGUAGES {
 		if lang != .MarkdownInline && info.name == name {
-			return lang
+			return lang, true
 		}
 	}
-	plugin_raise(L, fmt.tprintf("unknown language '%s'", name))
-	return .Plain
+	return .Plain, false
 }
 
 qed_buf_set_language :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	b, _ := api_buf(L, entry.editor, 1)
-	lang := api_language(L, api_string(L, 2))
-	lua.pushboolean(L, b32(editor_set_language(entry.editor, b, lang)))
+	name := api_string(L, 2)
+	lang, ok := api_language(name)
+	if !ok {
+		return api_fail(L, fmt.tprintf("unknown language '%s'", name))
+	}
+	editor_set_language(entry.editor, b, lang)
+	lua.pushboolean(L, true)
 	return 1
 }
 
@@ -883,10 +881,15 @@ qed_new_buf :: proc "c" (L: ^lua.State) -> c.int {
 		return plugin_raise(L, "qed.new_buf expects an options table")
 	}
 	text, _ := api_field_string(L, 1, "text")
+	name, has_lang := api_field_string(L, 1, "language")
+	lang, known := api_language(name)
+	if has_lang && !known {
+		return api_fail(L, fmt.tprintf("unknown language '%s'", name))
+	}
 	b := buffer_new()
 	buffer_set_content(&b, transmute([]u8)text)
-	if name, ok := api_field_string(L, 1, "language"); ok {
-		b.language = api_language(L, name)
+	if has_lang {
+		b.language = lang
 	}
 	id := b.id
 	plugin_queue(editor, {event = .Buf_Open, buf = id})
@@ -958,8 +961,7 @@ qed_edit :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 2, "function expected")
 	}
 	if api_rev_stale(L, 3, b) {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "stale")
 	}
 	id := b.id
 	lua.settop(L, 2)
@@ -1097,8 +1099,7 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pop(L, 1)
 	}
 	if b.modified && !discard {
-		lua.pushboolean(L, false)
-		return 1
+		return api_fail(L, "unsaved")
 	}
 	lock := entry.editor.jump_lock
 	editor_close_index(entry.editor, idx)
@@ -1144,7 +1145,8 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	editor_goto(editor, r, cl)
 	jump_record(editor, origin)
-	return 0
+	lua.pushboolean(L, true)
+	return 1
 }
 
 LOCATION_SPACE :: " \t\n\v\f\r"
@@ -1593,7 +1595,7 @@ qed_term_create :: proc "c" (L: ^lua.State) -> c.int {
 			return api_fail(L, "cannot start")
 		}
 	}
-	lua.pushodinstring(L, name)
+	lua.pushboolean(L, true)
 	return 1
 }
 
@@ -2561,7 +2563,7 @@ api_spawn_opts :: proc(L: ^lua.State, editor: ^Editor) -> (o: ApiSpawn) {
 	return
 }
 
-api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn, id: u64, bg: bool) {
+api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn, id: u64, bg: bool) -> string {
 	p := &editor.plugins
 	line_ref: i32
 	if o.on_line {
@@ -2574,7 +2576,7 @@ api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn
 			strings.write_string(&sp.out, f.stdout)
 			strings.write_string(&sp.err, f.stderr)
 			append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg, fake = true, due = plugin_tick_add(time.tick_now(), f.delay_ms)})
-			return
+			return ""
 		}
 	}
 	sp, err, ok := subprocess_spawn(o.argv, transmute([]u8)o.stdin, o.cwd, o.env, true, group = true)
@@ -2582,9 +2584,10 @@ api_spawn_start :: proc(L: ^lua.State, editor: ^Editor, pl: ^Plugin, o: ApiSpawn
 		if line_ref != 0 {
 			lua.L_unref(L, lua.REGISTRYINDEX, c.int(line_ref))
 		}
-		plugin_raise(L, fmt.tprintf("cannot start %s: %v", o.label, err))
+		return fmt.tprintf("cannot start %s: %v", o.label, err)
 	}
 	append(&p.procs, PluginProc{id = id, owner = pl.name, sp = sp, line_ref = line_ref, bg = bg})
+	return ""
 }
 
 qed_spawn :: proc "c" (L: ^lua.State) -> c.int {
@@ -2596,7 +2599,9 @@ qed_spawn :: proc "c" (L: ^lua.State) -> c.int {
 	pl := api_loaded(L, editor)
 	task := api_await(L, p, "qed.spawn").id
 	id := plugin_next_id(p)
-	api_spawn_start(L, editor, pl, o, id, false)
+	if err := api_spawn_start(L, editor, pl, o, id, false); err != "" {
+		return api_fail(L, err)
+	}
 	p.tasks[plugin_task_index(p, task)].wait = {kind = .Proc, id = id}
 	return lua.yieldk(L, 0, lua.KContext(id), qed_spawn_k)
 }
@@ -2650,7 +2655,9 @@ qed_spawn_bg :: proc "c" (L: ^lua.State) -> c.int {
 	lua.pushcclosure(L, qed_proc_gc, 2)
 	lua.setfield(L, -2, "__gc")
 	lua.setmetatable(L, -2)
-	api_spawn_start(L, editor, pl, o, id, true)
+	if err := api_spawn_start(L, editor, pl, o, id, true); err != "" {
+		return api_fail(L, err)
+	}
 	if !p.procs[len(p.procs) - 1].fake {
 		lua.pushinteger(L, lua.Integer(p.procs[len(p.procs) - 1].sp.process.pid))
 		lua.setfield(L, 2, "pid")
@@ -2867,12 +2874,18 @@ qed_deco_inline :: proc "c" (L: ^lua.State) -> c.int {
 	ns := api_ns(L, editor, 2)
 	at := api_pos(L, 3, b)
 	text := api_text_arg(L, 4)
-	stale := api_rev_stale(L, 5, b)
-	shown := !stale && at == b.cursor && !selection_active(b) && len(text) > 0
-	if shown {
-		inline_set(b, ns, at, text)
+	switch {
+	case api_rev_stale(L, 5, b):
+		return api_fail(L, "stale")
+	case at != b.cursor:
+		return api_fail(L, "not at cursor")
+	case selection_active(b):
+		return api_fail(L, "selection")
+	case len(text) == 0:
+		return api_fail(L, "empty")
 	}
-	lua.pushboolean(L, b32(shown))
+	inline_set(b, ns, at, text)
+	lua.pushboolean(L, true)
 	return 1
 }
 

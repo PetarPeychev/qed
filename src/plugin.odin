@@ -1383,12 +1383,10 @@ qed_command_remove :: proc "c" (L: ^lua.State) -> c.int {
 	for cmd, i in p.commands {
 		if cmd.id == id {
 			plugin_command_remove(editor, i)
-			lua.pushboolean(L, true)
-			return 1
+			return 0
 		}
 	}
-	lua.pushboolean(L, false)
-	return 1
+	return 0
 }
 
 plugin_command_remove :: proc(editor: ^Editor, i: int) {
@@ -1417,11 +1415,11 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	name, _ := lua.toodinstring(L, 1)
 	for cmd in commands {
 		if cmd.name == name {
-			ran := command_available(editor, name)
-			if ran {
-				cmd.run(editor)
+			if !command_available(editor, name) {
+				return api_fail(L, "unavailable")
 			}
-			lua.pushboolean(L, b32(ran))
+			cmd.run(editor)
+			lua.pushboolean(L, true)
 			return 1
 		}
 	}

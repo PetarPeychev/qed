@@ -11,11 +11,8 @@ function M.git(dir, args)
 	for _, a in ipairs(args) do
 		argv[#argv + 1] = a
 	end
-	local ok, r = pcall(qed.spawn, {argv = argv, cwd = dir})
-	if not ok then
-		return {code = -1, stdout = "", stderr = tostring(r)}
-	end
-	return r
+	local r, err = qed.spawn{argv = argv, cwd = dir}
+	return r or {code = -1, stdout = "", stderr = err}
 end
 
 function M.out(dir, args)
@@ -95,8 +92,8 @@ end
 M.UNTRACKED = "git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' -- 2>/dev/null"
 
 function M.untracked(top)
-	local ok, r = pcall(qed.spawn, {cmd = M.UNTRACKED, cwd = top})
-	return ok and r.stdout or ""
+	local r = qed.spawn{cmd = M.UNTRACKED, cwd = top}
+	return r and r.stdout or ""
 end
 
 function M.diffsize(top, rev)

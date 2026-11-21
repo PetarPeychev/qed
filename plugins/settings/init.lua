@@ -28,7 +28,7 @@ end
 
 local function set_language(ctx)
 	local name = qed.pick{items = qed.languages(), initial = qed.buf.language(ctx.buf)}
-	if name and qed.buf.valid(ctx.buf) and qed.buf.set_language(ctx.buf, name) then
+	if name and qed.buf.valid(ctx.buf) and name ~= qed.buf.language(ctx.buf) and qed.buf.set_language(ctx.buf, name) then
 		qed.message("Language set to " .. name)
 	end
 end
