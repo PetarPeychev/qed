@@ -185,3 +185,22 @@ e2e_plugin_pre_save_spawn :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_Z)
 	testing.expect_value(t, string(b.lines[0].text[:]), "!messy")
 }
+
+@(test)
+e2e_plugin_close_save_while_pending :: proc(t: ^testing.T) {
+	e := e2e_start("text")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "slow", `return {setup = function() qed.on("buf_pre_save", function() qed.sleep(40) end) end}`)
+	id := editor_buffer(&e.ed).id
+	e2e_key(&e, tb2.Key(0), {}, '!')
+	e2e_key(&e, .Ctrl_S)
+	testing.expect(t, plugin_save_pending(&e.ed.plugins, id), "the first save waits")
+	close_dialog_open(&e.ed)
+	e2e_key(&e, .Enter)
+	pending :: proc(e: ^E2E) -> bool {return len(e.ed.plugins.saves) > 0}
+	testing.expect(t, e2e_pump_while(&e, pending), "the save completes")
+	data, _ := os.read_entire_file(e.path, context.temp_allocator)
+	testing.expect_value(t, string(data), "!text")
+	b, _ := api_buf_find(&e.ed, id)
+	testing.expect(t, b == nil, "the close dialog's Save closes the buffer once the waiting save lands")
+}

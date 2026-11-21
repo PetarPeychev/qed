@@ -891,7 +891,6 @@ editor_save :: proc(editor: ^Editor) {
 editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
 	id := b.id
 	if plugin_save_pending(&editor.plugins, id) {
-		editor_save_intent_clear(editor)
 		editor_log(editor, .Info, "", "Save is waiting for plugins")
 		return
 	}
