@@ -135,7 +135,7 @@ plugin_load_error_disables :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(crash.last_error, "boom"), "runtime error message kept")
 	testing.expect(t, !strings.contains(crash.last_error, "stack traceback"), "last error is the message, not the traceback")
 	testing.expect(t, plugin_test_logged(ed, .Debug, "Crash", "stack traceback"), "traceback goes to the Debug log")
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "notable").last_error, "must return a table"), "spec shape enforced")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "notable").last_error, "must return a table {setup}"), "spec shape enforced")
 	_, half := plugin_test_command(ed, "Halfway: Cmd")
 	testing.expect(t, !half, "a failed setup unregisters what it registered")
 	_, fine := plugin_test_command(ed, "Fine: Cmd")

@@ -949,7 +949,7 @@ plugin_load_c :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setupvalue(L, -2, 1)
 	lua.call(L, 0, 1)
 	if lua.type(L, -1) != .TABLE {
-		return plugin_raise(L, fmt.tprintf("%s must return a table {setup}", pl.main))
+		return plugin_raise(L, fmt.tprintf("%s must return a table {{setup}}", pl.main))
 	}
 	spec := lua.gettop(L)
 	lua.pushodinstring(L, "setup")

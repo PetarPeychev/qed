@@ -832,7 +832,7 @@ api_pane_lines :: proc(L: ^lua.State, idx: c.int) -> []PaneLine {
 			out[i - 1].text, _ = api_field_string(L, t, "text")
 			out[i - 1].color, _ = api_field_string(L, t, "color")
 		case:
-			plugin_raise(L, fmt.tprintf("lines[%d] must be a string or {text, color}", i))
+			plugin_raise(L, fmt.tprintf("lines[%d] must be a string or {{text, color}}", i))
 		}
 		lua.pop(L, 1)
 	}
@@ -1390,7 +1390,7 @@ api_hints :: proc(L: ^lua.State, t: c.int) -> ([]PaneHint, bool) {
 	out := make([]PaneHint, int(lua.rawlen(L, h)), context.temp_allocator)
 	for i in 0 ..< len(out) {
 		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
-			plugin_raise(L, fmt.tprintf("hints[%d] must be a table {label, cmd?}", i + 1))
+			plugin_raise(L, fmt.tprintf("hints[%d] must be a table {{label, cmd?}}", i + 1))
 		}
 		out[i].label, _ = api_field_string(L, lua.gettop(L), "label")
 		out[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
@@ -1412,7 +1412,7 @@ api_chips :: proc(L: ^lua.State, t: c.int) -> ([]PaneChip, bool) {
 	out := make([]PaneChip, int(lua.rawlen(L, h)), context.temp_allocator)
 	for i in 0 ..< len(out) {
 		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
-			plugin_raise(L, fmt.tprintf("chips[%d] must be a table {label, cmd, on?}", i + 1))
+			plugin_raise(L, fmt.tprintf("chips[%d] must be a table {{label, cmd, on?}}", i + 1))
 		}
 		ct := lua.gettop(L)
 		out[i].label, _ = api_field_string(L, ct, "label")
@@ -1446,7 +1446,7 @@ api_tab_list :: proc(L: ^lua.State, h: c.int) -> []PaneTab {
 			out[i].label, _ = api_field_string(L, lua.gettop(L), "label")
 			out[i].cmd, _ = api_field_string(L, lua.gettop(L), "cmd")
 		case:
-			plugin_raise(L, fmt.tprintf("tabs[%d] must be a label or {label, cmd?}", i + 1))
+			plugin_raise(L, fmt.tprintf("tabs[%d] must be a label or {{label, cmd?}}", i + 1))
 		}
 		lua.pop(L, 1)
 	}
@@ -1466,7 +1466,7 @@ api_columns :: proc(L: ^lua.State, t: c.int) -> []PaneColumn {
 	out := make([]PaneColumn, int(lua.rawlen(L, h)), context.temp_allocator)
 	for i in 0 ..< len(out) {
 		if lua.rawgeti(L, h, lua.Integer(i + 1)) != .TABLE {
-			plugin_raise(L, fmt.tprintf("columns[%d] must be a table {width?, right?}", i + 1))
+			plugin_raise(L, fmt.tprintf("columns[%d] must be a table {{width?, right?}}", i + 1))
 		}
 		ct := lua.gettop(L)
 		w, _ := api_field_int(L, ct, "width")
