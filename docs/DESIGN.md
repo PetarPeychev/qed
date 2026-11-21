@@ -567,8 +567,9 @@ started at the end of `editor_init`. Invariants the code can't show:
   only load and setup errors mark it errored. `plugin_error` rate-limits per plugin (`PluginErrors`): at most
   `PLUGIN_ERRORS_PER_SECOND` entries per window, the rest summarized by the pump as `(N more errors suppressed)`;
   a known message shows `(N times)` and only its first occurrence logs the traceback. The soft limit
-  (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry's time is credited back to
-  the outer slice. `__close` handlers run by `closethread` get the event budget.
+  (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry (e.g. `buf_pre_save` handlers under
+  `qed.save`) has its own budget and its time also counts toward the outer slice; when it returns with the outer slice
+  past its limit, the outer thread's count hook drops to 1, so a loop of nested calls stops at its next instruction. `__close` handlers run by `closethread` get the event budget.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
   (`.Lsp`, bounded by `plugin_hook_timeout_ms` → `"timeout"`); `plugin_lsp_done`
   queues the outcome, `plugin_pump` resumes the task. A response nobody waits for

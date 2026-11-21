@@ -354,6 +354,40 @@ plugin_sched_runaway_removed :: proc(t: ^testing.T) {
 }
 
 @(test)
+plugin_sched_nested_budget :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	path := fmt.tprintf("%s/qed_nested_budget_%d.txt", tmp, posix.getpid())
+	_ = os.write_entire_file(path, transmute([]u8)string("v1"))
+	defer os.remove(path)
+
+	ed := plugin_test_editor({
+		{"loop.lua", `return {setup = function()
+			qed.on("buf_pre_save", function()
+				local t = os.clock()
+				while os.clock() - t < 0.02 do end
+			end)
+			qed.defer(0, function()
+				local b = qed.buf.list()[1]
+				while true do qed.save(b) end
+			end)
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+	b := editor_buffer(ed)
+	buffer_destroy(b)
+	b^ = buffer_new()
+	buffer_open(b, path)
+	start := time.tick_now()
+	plugin_pump(ed)
+	elapsed := ms_since(start)
+	testing.expect(t, elapsed < f64(PLUGIN_SLICE_MAX_MS) + 500, "a task looping over nested handlers is stopped by its own budget")
+	pl := plugin_find(&ed.plugins, "loop")
+	testing.expect(t, strings.contains(pl.last_error, "timer exceeded its"), pl.last_error)
+}
+
+@(test)
 plugin_sched_coalesce :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"quiet.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},

@@ -294,8 +294,10 @@ plugin_slice_end :: proc(editor: ^Editor, prev: PluginSlice, owner: string, kind
 		lua.sethook(p.slice.hot, plugin_hook, lua.MASKCOUNT, PLUGIN_HOOK_COUNT)
 	}
 	p.slice = prev
-	if prev.hard_ms > 0 {
-		p.slice.start = time.tick_add(prev.start, elapsed)
+	// the outer slice may be past its limit with too few of its own instructions left for the count hook to see it
+	if prev.hard_ms > 0 && !prev.killed && prev.hot == nil && ms_since(prev.start) > prev.hard_ms && p.current != nil && plugin_thread_anchored(p, p.current) {
+		p.slice.hot = p.current
+		lua.sethook(p.current, plugin_hook, lua.MASKCOUNT, 1)
 	}
 	soft := plugin_budget(kind).soft_ms
 	when ODIN_TEST {
