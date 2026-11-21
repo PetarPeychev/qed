@@ -52,7 +52,7 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 	editor_log(&e.ed, .Error, "LSP", "boom", show = false)
 	toggle, _ := plugin_test_command(&e.ed, "Format: Toggle on Save")
 	plugin_command_run(&e.ed, toggle)
-	testing.expect(t, strings.contains(e.ed.message, "Format on save"), "toggle sets the message line")
+	testing.expect(t, strings.contains(e.ed.message, "On save: on"), "toggle sets the message line")
 
 	cmd_message_log(&e.ed)
 	testing.expect(t, log_open(&e), "command opens the log pane")
@@ -61,7 +61,7 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 	screen := e2e_log_screen(&e)
 	testing.expect(t, strings.contains(screen, "Message Log"), "pane title renders")
 	testing.expect(t, strings.contains(screen, "LSP: boom"), "error entry row renders")
-	testing.expect(t, strings.contains(screen, "Format on save"), "info entry row renders")
+	testing.expect(t, strings.contains(screen, "Format: On save: on"), "info entry row renders")
 
 	// The error row (not the selected last row) paints with the error colour.
 	ey, ex := e2e_log_find(&e, "LSP: boom")
