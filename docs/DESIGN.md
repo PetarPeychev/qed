@@ -150,7 +150,7 @@ per write, rotated to `qed.log.old` past `LOG_ROTATE_BYTES` (4 MB) at session st
 session-start marker with version);
 disk logging is skipped when `headless`. *Message Log: Open* (`Alt+l`) opens a
 full core pane (`log`, scope `log`, see Panes) over the ring through the `.Log` source:
-timestamped rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
+Time/Source/Message columns under a header, rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
 arrow/wheel scroll + select, `Shift+↑↓` extends a contiguous selection, *Copy* copies it
 (newline-joined), `Enter` shows the selected entries in full, wrapped (child `log_entry`), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
 (`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history off by
@@ -383,7 +383,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
   cursor, items carry `buf` so the auto preview shows the buffer. `.Log` holds entry seqs passing the
   filters, recomputed when `Editor.log_seq` or a filter changes. `.Plugins` reads `Plugins.list`.
   `.Walk` is a walk handle (see Walk service), self-filtering with a debounced refill.
-  `list_columns` gives a source columns (Lines, Plugins, Lua `list.columns`). A reload resets the selection and `notified`,
+  `list_columns` gives a source columns (Lines, Log, Plugins, Lua `list.columns`). A reload resets the selection and `notified`,
   so `change` fires. A new source is an enum value plus accessor cases. Each source has a `list_stamp`
   (buffer `rev`, `log_seq` + filters, plugin count; 0 = gone or static); `pane_list_fit` (each render and
   before input) refilters keeping the selected item when it changes, and the accessors read a stale index

@@ -289,7 +289,7 @@ load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*,
 
 | Column / action | Behavior |
 |---|---|
-| Rows | Columns: display name, `bundled`/`user`, state (`enabled` / `disabled` / `errored`), load time in ms. The selected row's last error is shown in the footer. Click selects, double click is `Enter`. The selection persists by name. |
+| Rows | Columns under a header: Plugin (display name), Source (`bundled`/`user`), Status (`enabled` / `disabled` / `errored`), Load (ms). The selected row's last error is shown in the footer. Click selects, double click is `Enter`. The selection persists by name. |
 | `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view (a child pane over the same box; Esc returns), with a hint to fork it to the user dir. |
 | `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, atomic; refused when config.json doesn't parse) and loads or unloads the plugin. The config stamp is left alone, so the next poll runs the normal reload and finds the flip already applied. |
 | `r` | Reloads the plugin. |

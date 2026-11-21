@@ -60,12 +60,16 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 
 	screen := e2e_log_screen(&e)
 	testing.expect(t, strings.contains(screen, "Message Log"), "pane title renders")
-	testing.expect(t, strings.contains(screen, "LSP: boom"), "error entry row renders")
-	testing.expect(t, strings.contains(screen, "Format: On save: on"), "info entry row renders")
+	hy, _ := e2e_log_find(&e, "Time")
+	testing.expect(t, hy >= 0 && strings.contains(e2e_row_text(&e, hy), "Source") && strings.contains(e2e_row_text(&e, hy), "Message"), "header row renders")
+	testing.expect(t, strings.contains(screen, "On save: on"), "info entry row renders")
 
 	// The error row (not the selected last row) paints with the error colour.
-	ey, ex := e2e_log_find(&e, "LSP: boom")
+	ey, ex := e2e_log_find(&e, "boom")
 	testing.expect(t, ey >= 0, "found the error row")
+	testing.expect(t, strings.contains(e2e_row_text(&e, ey), "LSP"), "the source sits in its own column")
+	fy, _ := e2e_log_find(&e, "On save: on")
+	testing.expect(t, strings.contains(e2e_row_text(&e, fy), "Format"), "a plugin source sits in its column")
 	testing.expect_value(t, e2e_cell_fg(&e, ex, ey), COLOR_ERROR_FG)
 
 	// Select the error row and copy it; the headless gate routes it to the register
@@ -78,7 +82,7 @@ e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
 	}
 	e2e_key(&e, .Arrow_Up)
 	e2e_render(&e)
-	sy, sx := e2e_log_find(&e, "LSP: boom")
+	sy, sx := e2e_log_find(&e, "boom")
 	testing.expect_value(t, e2e_cell_fg(&e, sx, sy), COLOR_ERROR_FG)
 	testing.expect_value(t, e2e_cell_bg(&e, sx, sy), COLOR_PANE_SEL_BG)
 	e2e_key(&e, .Ctrl_C)
@@ -146,7 +150,7 @@ e2e_log_multiselect_copy :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Up, mod = .Shift)
 	e2e_render(&e)
 	oy, ox := e2e_log_find(&e, "one")
-	ey, ex := e2e_log_find(&e, "Git: two")
+	ey, ex := e2e_log_find(&e, "two")
 	ty, tx := e2e_log_find(&e, "three")
 	testing.expect(t, oy >= 0 && ey >= 0 && ty >= 0, "all three rows render")
 	testing.expect_value(t, e2e_cell_bg(&e, ox, oy), COLOR_PANE_SEL_BG)

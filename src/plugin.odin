@@ -2122,6 +2122,13 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	pl.unknown = strings.join(unknown[:], ", ")
 }
 
+PLUGIN_COLUMNS := [?]PaneColumn {
+	{size = .Fit, title = "Plugin"},
+	{size = .Fit, title = "Source"},
+	{size = .Fit, title = "Status"},
+	{size = .Fit, title = "Load", right = true},
+}
+
 pluginview_open :: proc(editor: ^Editor) {
 	p := &editor.plugins
 	editor_clear_message(editor)

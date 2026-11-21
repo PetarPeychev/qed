@@ -320,6 +320,12 @@ editor_log_seed_text :: proc(editor: ^Editor, data: string) {
 	}
 }
 
+LOG_COLUMNS := [?]PaneColumn {
+	{size = .Fixed, w = 8, title = "Time"},
+	{size = .Fit, max = 16, title = "Source"},
+	{title = "Message"},
+}
+
 LogView :: struct {
 	filter:  [LogLevel]bool,
 	history: bool,

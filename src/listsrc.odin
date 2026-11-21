@@ -224,12 +224,9 @@ list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
 		it.cells[0], it.cells[1] = fmt.tprintf("%d", i + 1), it.label
 	case .Log:
 		e := list_log_entry(editor, src, i)
-		if e.source != "" {
-			it.label = fmt.tprintf("%s  %s: %s", log_clock(e.time), e.source, e.text)
-		} else {
-			it.label = fmt.tprintf("%s  %s", log_clock(e.time), e.text)
-		}
-		it.color = log_level_color(e.level)
+		it.label, it.key, it.color = e.text, fmt.tprintf("%d", e.seq), log_level_color(e.level)
+		it.cells = make([]string, 3, context.temp_allocator)
+		it.cells[0], it.cells[1], it.cells[2] = log_clock(e.time), e.source, e.text
 	case .Plugins:
 		pl := editor.plugins.list[i]
 		it.label, it.key = pl.display, pl.name
@@ -261,12 +258,10 @@ list_columns :: proc(editor: ^Editor, p: ^Pane) -> []PaneColumn {
 		return p.list.columns
 	case .Lines:
 		return slice.clone([]PaneColumn{{size = .Fixed, w = digit_count(list_count(editor, p)), right = true}, {}}, context.temp_allocator)
+	case .Log:
+		return LOG_COLUMNS[:]
 	case .Plugins:
-		name_w := 4
-		for pl in editor.plugins.list {
-			name_w = max(name_w, len(pl.display))
-		}
-		return slice.clone([]PaneColumn{{size = .Fixed, w = name_w}, {size = .Fixed, w = 7}, {size = .Fixed, w = 8}, {size = .Fixed, w = 10, right = true}}, context.temp_allocator)
+		return PLUGIN_COLUMNS[:]
 	}
 	return nil
 }
