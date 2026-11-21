@@ -1191,8 +1191,6 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 		text := texts[i]
 		if given[i] {
 			restored = restored && text == ""
-		} else if saved != nil && i < len(saved.texts) {
-			text = saved.texts[i]
 		}
 		textfield_set(&f.field, text)
 		if f.mode != .Input && f.mode != .Path {

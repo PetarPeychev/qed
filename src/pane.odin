@@ -313,7 +313,6 @@ Pane :: struct {
 
 PaneSaved :: struct {
 	id:       string,
-	texts:    []string,
 	key:      string,
 	scroll:   int,
 	expanded: map[string]bool,
@@ -765,10 +764,6 @@ pane_stack_destroy :: proc(editor: ^Editor) {
 pane_saved_free :: proc(s: PaneSaved) {
 	s := s
 	delete(s.id)
-	for t in s.texts {
-		delete(t)
-	}
-	delete(s.texts)
 	delete(s.key)
 	walk_set_clear(&s.expanded)
 	delete(s.expanded)
@@ -792,15 +787,7 @@ pane_save :: proc(editor: ^Editor, p: ^Pane) {
 		append(&editor.pane_saved, PaneSaved{id = strings.clone(p.id)})
 		s = &editor.pane_saved[len(editor.pane_saved) - 1]
 	}
-	for t in s.texts {
-		delete(t)
-	}
-	delete(s.texts)
 	delete(s.key)
-	s.texts = make([]string, len(p.fields))
-	for &f, i in p.fields {
-		s.texts[i] = strings.clone(textfield_str(&f.field))
-	}
 	s.key = strings.clone(pane_selected_key(editor, p))
 	s.scroll = p.scroll
 	if p.list.tree {

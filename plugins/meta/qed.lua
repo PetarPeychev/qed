@@ -293,7 +293,7 @@ function qed.every(ms, fn) end
 
 ---@class qed.UiField
 ---@field prompt? string prefix, default `"> "`
----@field text? string initial text, fully selected unless `mode` is input or path; without it a pane with an `id` restores the last text
+---@field text? string initial text, fully selected unless `mode` is input or path
 ---@field mode? "filter"|"query"|"input"|"path" filter (default) fuzzy-filters the list per key; query fires `on.query` at open and 120 ms after typing stops; input submits its text on Enter; path drives a `qed.fs.dirs` list (Tab or `/` at the end drills into the highlighted dir, Backspace after `/` drops a segment) and submits on Enter, its text reported as an absolute path (`~` and relative to `qed.root()` resolved)
 ---@field count? boolean shows the match count (`N+` past `list.max` or after `set{more}`) at the end of the row
 ---@field hint? string dim placeholder while the field is empty
@@ -352,7 +352,7 @@ function List:release() end
 ---@field submit? fun(v: qed.View, text: string|nil) the footer input (`View:footer{input}`) was submitted, or cancelled with Esc (`nil`)
 
 ---@class qed.UiSpec
----@field id? string the fields' text, the selected item's key and the text body's scroll persist under it across opens (and plugin reloads); a field given a non-empty `text` skips restoring the selection
+---@field id? string the selected item's key, a tree's expanded dirs and the text body's scroll persist (never the fields' text) under it across opens (and plugin reloads); a field given a non-empty `text` skips restoring the selection
 ---@field modal? boolean exclusive opens are refused as busy while it is open (`qed.pick`, `qed.prompt` and `qed.confirm` set it); a non-modal pane is replaced and its waiters get `nil`
 ---@field place? "center"|"full"|"split" center (default) is a centered box, full fills the screen, split puts a full-height preview column beside the fields and list
 ---@field size? "palette"|"dialog"|"split:code"|"split:tree" center: palette (default, fixed width) or dialog (fits the content); split: split:code (default, the `split_code_*` widths) or split:tree (the `split_tree_*` widths)

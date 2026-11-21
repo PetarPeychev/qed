@@ -9,7 +9,7 @@ local function picker(text)
 	}
 end
 
--- reopen brings the picker back (text and selection restored by id) to host the confirm or a retry
+-- reopen brings the picker back on the typed path to host the confirm or a retry
 local function switch(target, reopen)
 	local opts
 	while true do
@@ -47,7 +47,7 @@ local function open_directory()
 		else
 			-- closed before the switch: restarting the servers can outlast the command's slice
 			v:close()
-			v = switch(target, picker)
+			v = switch(target, function() return picker(target) end)
 		end
 	end
 end

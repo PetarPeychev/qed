@@ -63,17 +63,15 @@ function T.bare_number_leads(t)
 	t.key("Esc")
 end
 
-function T.query_persists_fully_selected(t)
+function T.query_not_persisted(t)
 	t.open("a.txt", "xa\nxb\nyc")
 	qed.run(FIND)
 	t.type("x")
 	t.key("Esc")
 	qed.run(FIND)
 	local ui = t.ui()
-	t.eq(ui.query, "x", "the query comes back")
-	t.eq(ui.matches, 2)
-	t.type("y")
-	t.eq(t.ui().query, "y", "a keystroke replaces it")
+	t.eq(ui.query, "", "the filter does not come back")
+	t.eq(ui.matches, 3)
 	t.key("Esc")
 end
 

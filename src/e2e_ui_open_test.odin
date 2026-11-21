@@ -308,8 +308,8 @@ e2e_ui_open_exclusive_persist :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	view_run(t, &e, "V: Persist")
 	v := test_view(&e.ed)
-	testing.expect_value(t, textfield_str(&v.fields[0].field), "t")
-	testing.expect_value(t, v.fields[0].anchor, 0)
+	testing.expect_value(t, textfield_str(&v.fields[0].field), "")
+	testing.expect_value(t, pane_count(&e.ed, v), 3)
 	testing.expect_value(t, test_view_selected(&e.ed), "three")
 	e2e_key(&e, .Esc)
 }
@@ -445,8 +445,7 @@ e2e_ui_open_unload_saves :: proc(t: ^testing.T) {
 	e2e_type(&e, "th")
 	plugin_unload(&e.ed, pl)
 	s := pane_saved_find(&e.ed, "keep")
-	testing.expect(t, s != nil && len(s.texts) == 1 && s.texts[0] == "th", "an unload keeps the persisted text")
-	testing.expect(t, s != nil && s.key == "three", "and the selection")
+	testing.expect(t, s != nil && s.key == "three", "an unload keeps the selection")
 }
 
 @(test)

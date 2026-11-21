@@ -98,13 +98,13 @@ function T.short_query_hint(t)
 	t.key("Esc")
 	t.config({min_query = 1}, {hot = true})
 	open(t)
-	t.eq(t.ui().query, "q")
+	t.type("q")
 	results(t)
 	t.eq(t.ui().hint, "", "a search clears the hint")
 	t.key("Esc")
 end
 
-function T.query_and_selection_persist(t)
+function T.query_not_persisted(t)
 	if not rg(t) then
 		return
 	end
@@ -112,14 +112,10 @@ function T.query_and_selection_persist(t)
 	open(t)
 	t.type("needle_xyz")
 	results(t)
-	t.wait(function() return t.ui().matches >= 2 end)
-	t.key("Down")
-	local second = t.ui().selected
 	t.key("Esc")
 
 	open(t)
-	t.eq(t.ui().query, "needle_xyz", "the query persists")
-	t.wait(function() local ui = t.ui(); return ui.matches > 0 and ui.selected == second end)
+	t.eq(t.ui().query, "", "the query does not persist")
 	t.key("Esc")
 
 	qed.buf.set_selection(nil, {row = 1, col = 1}, {row = 1, col = 11})
@@ -127,18 +123,6 @@ function T.query_and_selection_persist(t)
 	t.eq(t.ui().query, "needle_xyz", "a single-line selection pre-fills")
 	local ui = results(t)
 	t.eq(ui.selected, t.ui().labels[1], "a pre-fill starts on the first match")
-	t.key("Esc")
-end
-
-function T.fast_close_keeps_query(t)
-	if not rg(t) then
-		return
-	end
-	open(t)
-	t.type("typed_fast")
-	t.key("Esc")
-	open(t)
-	t.eq(t.ui().query, "typed_fast", "keystrokes inside the debounce survive the close")
 	t.key("Esc")
 end
 
@@ -325,25 +309,6 @@ function T.dedupes_rows(t)
 	results(t)
 	t.pump(100)
 	t.eq(t.ui().matches, 1, "two hits on one row are one item")
-	t.key("Esc")
-end
-
-function T.selection_restored_while_streaming(t)
-	if not rg(t) then
-		return
-	end
-	write("a.txt", "needle_rs one\nneedle_rs two\n")
-	write("b.txt", "needle_rs three\n")
-	write("c.txt", "needle_rs four\n")
-	open(t)
-	t.type("needle_rs")
-	t.wait(function() return t.ui().matches == 4 end)
-	t.key("Down")
-	t.key("Down")
-	t.eq(t.ui().selected, "b.txt:1  needle_rs three")
-	t.key("Esc")
-	open(t)
-	t.wait(function() local ui = t.ui(); return ui.matches == 4 and ui.selected == "b.txt:1  needle_rs three" end)
 	t.key("Esc")
 end
 
