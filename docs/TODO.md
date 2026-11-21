@@ -52,7 +52,6 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] Permission/ownership-preserving saves.
 - [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified` → undo-state watermark, git gutter → debounce) — see [notes/refactors.md](notes/refactors.md) + [notes/perf.md](notes/perf.md).
 - [ ] Cheaper cold `git_gutter_update` + `buffer_open` per-line-allocation floor before first paint — see [notes/perf.md](notes/perf.md).
-- [ ] `subprocess_output` can block the main loop up to 1s in `process_wait` after stdout EOF — reap non-blocking.
 - [ ] config.json writer that preserves comments and key order (UI persistence strips them today).
 
 ## Post-1.0 — deferred
