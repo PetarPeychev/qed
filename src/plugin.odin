@@ -1440,7 +1440,11 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	if found < 0 {
 		return plugin_raise(L, fmt.tprintf("unknown command '%s'", name))
 	}
-	plugin_command_run(editor, editor.plugins.commands[found])
+	cmd := editor.plugins.commands[found]
+	if !plugin_command_when(editor, cmd) {
+		return api_fail(L, "unavailable")
+	}
+	plugin_command_run(editor, cmd)
 	lua.pushboolean(L, true)
 	return 1
 }

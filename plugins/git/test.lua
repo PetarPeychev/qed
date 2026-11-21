@@ -46,7 +46,7 @@ local function mark(t, b, row, want)
 end
 
 local function pick_base(t, query, selected)
-	qed.run("Git: Set Diff Base")
+	t.wait(function() return qed.run("Git: Set Diff Base") end)
 	t.wait(function() local ui = t.ui(); return ui ~= nil and ui.kind == "pick" end)
 	t.type(query)
 	if selected then
@@ -180,7 +180,7 @@ function T.parse_tree_status(t)
 end
 
 function T.not_a_repo_picker(t)
-	qed.run("Git: Set Diff Base")
+	t.wait(function() return qed.run("Git: Set Diff Base") end)
 	t.wait(function() return (t.message()) == "Working directory is not a git repository" end)
 	t.eq(t.ui(), nil, "no picker outside a repo")
 end
@@ -356,6 +356,8 @@ function T.stacking_with_another_plugin(t)
 	save(t, b)
 	t.eq(t.marks(b)[1], "modified", "git base")
 	t.eq(qed.buf.set_base(b, "oneX\ntwo\nthree\n"), true)
+	local mine = qed.buf.base(b)
+	t.ok(mine ~= nil and mine ~= "git", "the later plugin's base is shown")
 	t.eq(t.marks(b)[1], "", "the later plugin's base wins")
 	t.ok(t.sh("mv .git .git.off"))
 	save(t, b)
@@ -363,7 +365,8 @@ function T.stacking_with_another_plugin(t)
 	t.ok(t.sh("mv .git.off .git"))
 	save(t, b)
 	t.eq(t.marks(b)[1], "", "git setting its base again stays beneath")
-	t.eq(qed.buf.set_base(b, nil), false)
+	t.eq(qed.buf.set_base(b, nil), true)
+	t.eq(qed.buf.base(b), "git", "clearing reveals git's base")
 	t.eq(t.marks(b)[1], "modified", "clearing reveals git's base")
 end
 
