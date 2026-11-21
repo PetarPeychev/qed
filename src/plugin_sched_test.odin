@@ -765,7 +765,7 @@ plugin_sched_save_intent :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_save_pending(&ed.plugins, b.id), "parked")
 	editor_save_intent_set(ed, .Quit, "")
 	editor_save_full(ed, b)
-	testing.expect_value(t, ed.save_intent, SaveIntent.None)
+	testing.expect_value(t, ed.save_intent, SaveIntent.Quit)
 	editor_save_intent_set(ed, .Close, "x")
 	editor_save_id(ed, 999999)
 	testing.expect_value(t, ed.save_intent, SaveIntent.None)
