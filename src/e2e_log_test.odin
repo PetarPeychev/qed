@@ -280,3 +280,24 @@ e2e_log_history_filter :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, strings.contains(e2e_log_screen(&e), "a previous session line"), "history still visible after reopen")
 }
+
+@(test)
+e2e_log_full_entry :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_resize(&e, 60, 20)
+	long := strings.repeat("word ", 40, context.temp_allocator)
+	editor_log(&e.ed, .Warn, "", fmt.tprintf("%sTHE-END", long), show = false)
+	cmd_message_log(&e.ed)
+	e2e_render(&e)
+	testing.expect(t, !e2e_grid_has(&e, "THE-END"), "the row clips the long entry")
+	e2e_key(&e, .Enter)
+	e2e_render(&e)
+	p := pane_find(&e.ed, "log_entry")
+	testing.expect(t, p != nil, "Enter opens the entry")
+	e2e_key(&e, .End)
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "THE-END"), "the full text wraps into view")
+	e2e_key(&e, .Esc)
+	testing.expect(t, pane_find(&e.ed, "log_entry") == nil && pane_find(&e.ed, "log") != nil, "Esc returns to the log")
+}

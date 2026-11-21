@@ -148,7 +148,7 @@ disk logging is skipped when `headless`. *Message Log: Open* (`Alt+l`) opens a
 full core pane (`log`, scope `log`, see Panes) over the ring through the `.Log` source:
 timestamped rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
 arrow/wheel scroll + select, `Shift+↑↓` extends a contiguous selection, *Copy* copies it
-(newline-joined), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
+(newline-joined), `Enter` shows the selected entries in full, wrapped (child `log_entry`), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
 (`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history off by
 default, persisted for the session in `Editor.logview`; seeded entries carry `LogEntry.seeded`).
 Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
