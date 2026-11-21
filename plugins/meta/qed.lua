@@ -10,12 +10,13 @@
 
 ---@class qed.Ctx
 ---@field buf integer|nil current buffer id (nil on the welcome screen)
----@field path string|nil
+---@field path string|nil the current buffer's path, `""` for an unnamed buffer (nil on the welcome screen)
 ---@field language string|nil
 ---@field root string
 ---@field selection_text string|nil
 ---@field items (string|qed.UiItem)[]|nil while a pane with a list has focus (any plugin's command, e.g. a scoped one): its selection, the range with `multi`
----@field file string|nil file tree only: the entry under the cursor (absolute)
+---@field file string|nil while a pane with a list has focus (the file tree or any other): the highlighted item's path (absolute), nil when it has none
+---@field view qed.View|nil a view of this plugin that has focus (a `scope` command's chord or its scoped Ctrl+P)
 ---@field files string[]|nil the focused pane's selected items' paths, else in the file tree every selected path, in tree order; on a scoped tab (Open, Changed, Unsaved) a selected dir stands for its in-scope files
 
 ---@class qed.CommandSpec
@@ -48,7 +49,7 @@ qed.version = ""
 ---@param text any
 function qed.log(level, text) end
 
----Shows `text` on the message line as `<display name>: text`. Raises on an unknown level or option.
+---Shows `text` on the message line as `<display name>: text`; `""` clears the message line. Raises on an unknown level or option.
 ---@param text any
 ---@param opts? qed.Level|{level?: qed.Level}
 function qed.message(text, opts) end
@@ -133,6 +134,7 @@ function qed.open_url(url) end
 function qed.set_root(path, opts) end
 
 ---Declares this plugin's config keys and defaults; returns the merged config (`plugins.<id>` over `defaults`; `enabled` and `keybinds` are reserved). Setup only, once per load.
+---Objects merge per key, lists and other values replace; a user value whose type differs from the default's warns and keeps the default, and `null` drops a default.
 ---@generic T: table
 ---@param defaults T
 ---@return T
@@ -217,7 +219,7 @@ function qed.caller() end
 ---@field stdout string
 ---@field stderr string
 
----Waits for the process to exit.
+---Waits for the process to exit. Raises `cannot start <cmd>: <err>` when the process cannot start (an `argv` program or the `cwd` missing); under `cmd` a missing program is the shell's exit 127.
 ---@param spec qed.SpawnSpec
 ---@return qed.SpawnResult
 function qed.spawn(spec) end
@@ -233,12 +235,12 @@ function Proc:kill() end
 ---@return string|nil err
 function Proc:wait() end
 
----Runs in the background; killed when the plugin unloads and on quit.
+---Runs in the background; killed when the plugin unloads and on quit. Raises like `qed.spawn` when it cannot start.
 ---@param spec qed.SpawnSpec
 ---@return qed.Proc
 function qed.spawn_bg(spec) end
 
----Waits `ms` milliseconds.
+---Waits `ms` milliseconds. `qed.sleep(0)` yields until the next main-loop iteration: a long loop calls it now and then to stay inside the slice budget.
 ---@param ms integer
 function qed.sleep(ms) end
 
@@ -429,7 +431,7 @@ function View:reveal(path) end
 ---@return qed.UiItem|string|nil item
 ---@return integer|nil row
 ---@return integer|nil anchor
----@return integer count
+---@return integer|nil count
 function View:selection() end
 ---Selects `row` (clamped); `anchor` makes a range (`multi`). Returns false once closed.
 ---@param row integer
@@ -571,6 +573,10 @@ function FileTree.set_ignored(paths) end
 ---Opens the tree on a tab (a built-in label or an added one).
 ---@param label string
 function FileTree.open(label) end
+
+---The live show-dotfiles state, *Toggle Dotfiles* included.
+---@return boolean
+function FileTree.dotfiles() end
 
 qed.term = {}
 
@@ -1040,11 +1046,12 @@ function qed.path.abs(p) end
 qed.lsp = {}
 
 ---Waits for the language server to format `b` and applies the edits as one undo step.
----Fails with "disabled" (LSP module off), "no server", "unavailable" (not ready or no
----formatting support), "stale" (buffer changed meanwhile) or "error" (already logged).
+---Fails with "disabled" (`lsp.enabled` off), "no server", "unavailable" (not ready or no
+---formatting support), "stale" (buffer changed meanwhile), "timeout" (no reply within
+---`plugin_hook_timeout_ms`) or "error" (already logged).
 ---@param b qed.Buf
 ---@return boolean ok
----@return "disabled"|"no server"|"unavailable"|"stale"|"error"|nil err
+---@return "disabled"|"no server"|"unavailable"|"stale"|"timeout"|"error"|nil err
 function qed.lsp.format(b) end
 
 qed.text = {}

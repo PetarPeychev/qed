@@ -747,3 +747,67 @@ plugins_bundled_dirs_complete :: proc(t: ^testing.T) {
 		testing.expectf(t, !strings.has_suffix(b.path, "/test.lua"), "%s must not be embedded", b.path)
 	}
 }
+
+@(test)
+e2e_plugin_stub_methods :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_spawn_fake(&e, "stub-probe", "")
+	e2e_plugin(&e, "probe", `local handle
+return {setup = function()
+	handle = qed.command{name = "Probe", run = function()
+		local out = {}
+		local function add(cls, obj)
+			for k, v in pairs(obj) do
+				if type(v) == "function" then out[#out + 1] = cls .. ":" .. k end
+			end
+		end
+		add("CommandHandle", handle)
+		local h = qed.on("startup", function() end)
+		add("Handle", h)
+		h:off()
+		local tm = qed.defer(100000, function() end)
+		add("Timer", tm)
+		tm:stop()
+		local pr = qed.spawn_bg{cmd = "stub-probe"}
+		add("Proc", pr)
+		pr:kill()
+		local l = qed.fs.walk{}
+		add("List", l)
+		l:release()
+		local v = qed.ui.open{list = {items = {"a"}}}
+		add("View", v)
+		v:close()
+		local pn = qed.pane{title = "x", lines = {"a"}}
+		add("Pane", pn)
+		pn:close()
+		qed.pick{on_query = function(_, picker) add("Picker", picker) end}
+		table.sort(out)
+		qed.message(table.concat(out, " "))
+	end}
+end}`)
+	run_ok := false
+	for cmd in e.ed.plugins.commands {
+		if cmd.name == "Probe: Probe" {
+			plugin_command_run(&e.ed, cmd)
+			run_ok = true
+		}
+	}
+	testing.expect(t, run_ok, "the probe command registered")
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return plugin_busy(&e.ed) || plugin_views_due(&e.ed)}, 500)
+	plugin_flush(&e.ed)
+	e2e_key(&e, .Esc)
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
+	methods := strings.split(e.ed.message, " ", context.temp_allocator)
+	testing.expect(t, len(methods) > 30, "probed the method tables")
+	for m in methods {
+		testing.expectf(t, strings.contains(QED_STUB, fmt.tprintf("\nfunction %s(", m)), "plugins/meta/qed.lua is missing method `%s`", m)
+	}
+	for line in strings.split_lines(QED_STUB, context.temp_allocator) {
+		if !strings.has_prefix(line, "function ") || !strings.contains(line, ":") {
+			continue
+		}
+		decl := line[len("function "):strings.index_byte(line, '(')]
+		testing.expectf(t, slice.contains(methods, decl), "the stub declares method `%s` but no qed object has it", decl)
+	}
+}
