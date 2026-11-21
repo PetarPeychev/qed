@@ -73,8 +73,7 @@ nav_write :: proc(path, content: string) {
 	_ = os.write_entire_file(path, transmute([]u8)content)
 }
 
-// The git plugin pushes file tree status asynchronously; headless tests never reach
-// the main loop's pump, so drain it to completion before asserting on status.
+// headless tests never reach the main loop's pump, which delivers the git plugin's status
 nav_scan :: proc(e: ^E2E) {
 	e2e_git_settle(e)
 }

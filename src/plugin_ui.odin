@@ -329,7 +329,6 @@ plugin_view_handles :: proc(p: ^Plugins) -> []u64 {
 	return hs
 }
 
-// Enter waits for a due query, or for a running one that has not shown anything yet
 plugin_view_waiting :: proc(p: ^Plugins, pn: ^Pane, vi: int) -> bool {
 	return pane_query(pn) != nil && (pn.query_due || (!pn.landed && plugin_task_alive(p, p.views[vi].query_task)))
 }

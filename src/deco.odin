@@ -411,8 +411,6 @@ inline_active :: proc(editor: ^Editor) -> bool {
 	return len(b.deco.inline.text) > 0 && b.cursor == b.deco.inline.from && !selection_active(b)
 }
 
-// Extra screen rows the shown ghost reserves below the cursor line (its inline
-// first line adds none), so continuation lines land on blank rows.
 inline_gap :: proc(editor: ^Editor) -> int {
 	if !inline_active(editor) {
 		return 0
@@ -460,8 +458,6 @@ inline_accept_word :: proc(editor: ^Editor) {
 	editor_scroll(editor)
 }
 
-// One accept step: leading blanks + a single same-class token, or a newline plus
-// its following indentation. Rune-safe so a multibyte char is never split.
 inline_word_len :: proc(s: string) -> int {
 	i := 0
 	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
@@ -533,8 +529,7 @@ inline_render :: proc(editor: ^Editor, cx, cy: int) {
 		bx = emit(line, gutter, full_w, y, bx, COLOR_GHOST_FG, bg)
 	}
 
-	// The buffer render stopped the cursor line at the caret; re-emit its suffix
-	// after the ghost so a mid-line ghost no longer overwrites the rest of the line.
+	// the buffer render cut the cursor line at the caret, so the suffix is drawn after the ghost here
 	suffix := string(b.lines[b.cursor.row].text[b.cursor.col:])
 	if len(suffix) > 0 {
 		bg := line_bg if y == cy else COLOR_BG

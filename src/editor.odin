@@ -625,8 +625,7 @@ editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
 
 	#partial switch ev.key {
 	case .Esc:
-		// Passive inspector close, slotted last: overlays, completion and the inline
-		// ghost all consume Esc before reaching here, so nothing existing changes.
+		// last: overlays, completion and the inline ghost consume Esc first
 		if editor.inspect.active {
 			inspect_close(editor)
 		}
@@ -1515,8 +1514,7 @@ editor_render_buffer :: proc(editor: ^Editor) {
 	b.wrap_width = w
 	wrapping := b.wrap && w > 0
 	gap := inline_gap(editor)
-	// While a ghost shows, the cursor line is drawn only up to the caret; the
-	// suffix is relocated after the ghost by inline_render (else it'd paint over it).
+	// inline_render draws the cursor line's suffix after the ghost, so the line stops at the caret
 	ghost_cut := inline_active(editor)
 	screen_y := 0
 	for row := editor.scroll_row; row < len(b.lines) && screen_y < h; row += 1 {
@@ -1614,8 +1612,6 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				}
 			}
 		} else {
-			// Unwrapped: ghost + suffix stay on one row (clipped), drawn by
-			// inline_render, so cut the real line at the caret and reserve gap rows.
 			text_end := b.cursor.col if ghost_row else len(text)
 			editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, false, drow.glyph, drow.glyph_fg)
 			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])

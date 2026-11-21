@@ -153,9 +153,7 @@ e2e_lsp_start :: proc(seed: string) -> E2E {
 	return E2E{ed = ed, path = strings.clone(main), dir = dir}
 }
 
-// Restore LANGUAGES before e2e_stop unlocks (the running server keeps its own
-// pointer into the command, so free it only after editor_shutdown tore it down,
-// via a local: once unlocked, the next session owns g_fake_cmd).
+// the running server points into the command, and once unlocked the next session owns g_fake_cmd
 e2e_lsp_stop :: proc(e: ^E2E) {
 	LANGUAGES[.Plain] = g_fake_saved
 	cmd := g_fake_cmd

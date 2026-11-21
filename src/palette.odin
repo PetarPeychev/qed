@@ -39,9 +39,6 @@ command_config_name :: proc(cmd: Command) -> string {
 	return cmd.config_name if cmd.config_name != "" else cmd.name
 }
 
-// A pane command with `bind_from` set has no config key of its own; it derives
-// its key/alt/shortcut live from the named global command (one source of truth, so a
-// rebind of the global one moves both). Commands without it use their own fields.
 command_effective_bind :: proc(cmd: Command) -> (key: tb2.Key, alt_ch: rune, shortcut: string) {
 	if cmd.bind_from != "" {
 		for g in commands {

@@ -27,9 +27,7 @@ fd_set_nonblock :: proc(file: ^os.File) {
 	posix.fcntl(fd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK})
 }
 
-// The body goes through a temp file (not a pipe) so a large body can't deadlock
-// before the child reads; the temp is unlinked at once, so a command must read
-// stdin, never a `@file` reference to it.
+// a temp file, not a pipe, so a large body can't deadlock; it is unlinked at once, so the command must read stdin
 subprocess_spawn :: proc(command: []string, stdin_body: []u8, working_dir: string, env: []string = nil, capture_stderr := false, group := false) -> (Subprocess, os.Error, bool) {
 	posix.sigignore(.SIGPIPE)
 
@@ -115,7 +113,6 @@ subprocess_exe_path :: proc(name: string) -> (string, bool) {
 	return "", false
 }
 
-// Like os.process_start, but the child leads its own process group so a kill reaches its descendants.
 subprocess_start_group :: proc(command: []string, env: []string, working_dir: string, stdin, stdout, stderr: ^os.File) -> (os.Process, os.Error) {
 	exe, found := subprocess_exe_path(command[0])
 	if !found {

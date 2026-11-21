@@ -24,7 +24,7 @@ Highlight :: struct {
 	pending:  [dynamic]ts.InputEdit,
 	colors:   [dynamic][dynamic]tb2.Color,
 	job:      ^HighlightJob,
-	slow:     bool, // an incremental inline parse blew the frame budget: parse off-thread until one comes in under it
+	slow:     bool,
 }
 
 HighlightJob :: struct {

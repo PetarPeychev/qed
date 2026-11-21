@@ -429,8 +429,6 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(msg, `"filetree_show_dotfiles" moved to "plugins/filetree/show_dotfiles"`), "a core knob moved to a plugin")
 	testing.expectf(t, strings.contains(msg, `"preview_max_width" moved to "split_preview_max_width"`), "a renamed core knob: %s", msg)
 
-	// A rebind drives both dispatch and hints. The configured shortcut string renders
-	// verbatim. A pane command that borrows a global bind (log Copy) follows its rebind.
 	kb_path := fmt.tprintf("%s/keybinds.json", dir)
 	_ = os.write_entire_file(
 		kb_path,

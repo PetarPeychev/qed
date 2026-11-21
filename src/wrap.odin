@@ -108,8 +108,6 @@ wrap_segment :: proc(segs: []int, text_len, sub: int) -> (start, end: int) {
 	return
 }
 
-// Real (landable) visual rows a logical line occupies: soft-wrap segments when
-// wrapping, else 1. Ghost rows are counted separately (ghost_above/below).
 line_rows :: proc(b: ^Buffer, width, row: int) -> int {
 	if b.wrap && width > 0 {
 		return len(buffer_line_wrap(b, row, width))
@@ -117,9 +115,7 @@ line_rows :: proc(b: ^Buffer, width, row: int) -> int {
 	return 1
 }
 
-// Move k screen rows up from real (row, sub); clamps at the buffer top.
-// Ghost rows count as steps but are never landed on — a step into them snaps to
-// the adjacent real row.
+// ghost rows count as steps but are never landed on
 vpos_up :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 	row, sub, k := row, sub, k
 	for k > 0 {
@@ -172,11 +168,7 @@ vpos_down :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 	return row, sub
 }
 
-// Screen-row count from (r0,s0) down to (r1,s1); assumes the first precedes the
-// second. Includes ghost rows between them (above-ghosts of r0 are
-// hidden, since r0 anchors the viewport top). Stops early once the count reaches
-// `limit` — a caller that only cares about "on screen or not" avoids walking the
-// whole buffer when the target is far below.
+// r0's above-ghosts are hidden: r0 anchors the viewport top
 vpos_dist :: proc(b: ^Buffer, width, r0, s0, r1, s1: int, limit := max(int)) -> int {
 	if r0 == r1 {
 		return s1 - s0

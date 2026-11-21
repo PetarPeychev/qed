@@ -123,10 +123,6 @@ main_peek :: proc(ms: int) -> (tb2.Event, bool) {
 	return {}, false
 }
 
-// One iteration's post-event handling, split out of the main loop so the e2e
-// harness can drive it with synthetic events: after a bare Esc the ALT retag
-// peeks the next event (real peek_event in main, a queued event in tests) and
-// re-tags a buffered printable as Alt; a non-printable peek dispatches on its own.
 editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.Event, bool)) {
 	ev := ev
 	pending: tb2.Event
