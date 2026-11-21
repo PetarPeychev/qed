@@ -550,12 +550,6 @@ walk_scope_release :: proc(s: ^WalkScope) {
 	free(s)
 }
 
-walk_set_add :: proc(set: ^map[string]bool, path: string) {
-	if path not_in set^ {
-		set^[strings.clone(path)] = true
-	}
-}
-
 walk_set_clear :: proc(set: ^map[string]bool) {
 	for key in set^ {
 		delete(key)

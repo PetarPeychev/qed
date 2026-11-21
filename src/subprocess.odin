@@ -6,7 +6,6 @@ import "core:os"
 import "core:strings"
 import "core:sync"
 import "core:sys/posix"
-import "core:time"
 
 Subprocess :: struct {
 	id:        u64,
@@ -230,27 +229,6 @@ subprocess_reap :: proc(p: ^Subprocess) -> (exited: bool) {
 	p.exit_code = state.exit_code
 	p.running = false
 	return true
-}
-
-// After a drain reported done: reap the child and return the accumulated output.
-// The string is backed by `p.out`, valid until subprocess_destroy.
-subprocess_output :: proc(p: ^Subprocess) -> string {
-	subprocess_close_pipes(p)
-	state, _ := os.process_wait(p.process, time.Second)
-	p.exit_code = state.exit_code
-	p.running = false
-	return strings.to_string(p.out)
-}
-
-subprocess_kill :: proc(p: ^Subprocess) {
-	if !p.running {
-		return
-	}
-	_ = os.process_kill(p.process)
-	subprocess_close_pipes(p)
-	_, _ = os.process_wait(p.process, time.Second)
-	p.running = false
-	subprocess_destroy(p)
 }
 
 subprocess_destroy :: proc(p: ^Subprocess) {

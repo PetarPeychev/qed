@@ -845,13 +845,6 @@ api_pane_lines :: proc(L: ^lua.State, idx: c.int) -> []PaneLine {
 	return out
 }
 
-api_items_copy :: proc(L: ^lua.State, src: c.int, dst: c.int, from, n: int) {
-	for i in 1 ..= n {
-		lua.rawgeti(L, src, lua.Integer(i))
-		lua.rawseti(L, dst, lua.Integer(from + i))
-	}
-}
-
 api_items_order :: proc(items: []PaneItem, sort: bool) -> []int {
 	Keyed :: struct {
 		key: string,

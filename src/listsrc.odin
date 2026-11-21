@@ -63,9 +63,7 @@ list_source_free :: proc(s: ^ListSource) {
 	delete(s.cache)
 	delete(s.ids)
 	delete(s.rows)
-	if s.walk != nil {
-		s.walk.refs -= 1
-	}
+	walk_release(s.walk)
 	walk_scope_release(s.wscope)
 	delete(s.entries)
 	vmem.arena_destroy(&s.names)

@@ -580,21 +580,6 @@ config_apply_bools :: proc(obj: json.Object, tbl: []Config_Bool, prefix: string,
 	}
 }
 
-config_apply_strs :: proc(obj: json.Object, tbl: []Config_Str, prefix: string, invalid: ^[dynamic]string) {
-	for it in tbl {
-		v, present := obj[it.key]
-		if !present {
-			continue
-		}
-		if s, ok := v.(json.String); ok {
-			delete(it.ptr^, os.heap_allocator())
-			it.ptr^ = strings.clone(string(s), os.heap_allocator())
-		} else {
-			append(invalid, config_key_label(prefix, it.key))
-		}
-	}
-}
-
 config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	config_apply_ints(root, config_ints[:], "", invalid)
 	config_apply_bools(root, config_bools[:], "", invalid)
@@ -1401,17 +1386,6 @@ languages_patterns_apply :: proc(v: json.Value, lang: Language, rules: ^[dynamic
 		append(rules, LangRule{strings.clone(string(s), os.heap_allocator()), lang})
 	}
 	return true
-}
-
-// Sparse single-key persist: the only write qed makes to the user config. Reads
-// the existing user file, sets exactly `key`, writes it back — every other user
-// key is preserved, no defaults are ever emitted.
-config_persist_key :: proc(key: string, value: json.Value) -> bool {
-	path := config_path()
-	if path == "" {
-		return false
-	}
-	return config_persist_key_to(path, key, value)
 }
 
 config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> bool {

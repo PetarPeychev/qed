@@ -541,22 +541,6 @@ preview_scroll_by :: proc(p: ^Preview, delta, view_h: int) {
 	preview_ensure(p, view_h)
 }
 
-preview_wheel :: proc(p: ^Preview, ev: tb2.Event, right: Rect, view_h: int) -> bool {
-	#partial switch ev.key {
-	case .Mouse_Wheel_Up:
-		if mouse_in_rect(ev, right) {
-			preview_scroll_by(p, -WHEEL_SCROLL_LINES, view_h)
-			return true
-		}
-	case .Mouse_Wheel_Down:
-		if mouse_in_rect(ev, right) {
-			preview_scroll_by(p, WHEEL_SCROLL_LINES, view_h)
-			return true
-		}
-	}
-	return false
-}
-
 // Screen columns spanned by `text[:upto]`, tab-aware; every other cluster counts
 // as width 1 (the preview's simple model, matching `preview_draw_seg`).
 preview_vcol :: proc(text: string, upto: int) -> int {
