@@ -223,7 +223,7 @@ Cost (`bench_decorations`, debug build, 10k-line buffer): 10k decorations add ~4
 ### Processes, timers
 | Function | Notes |
 |---|---|
-| ⏳ `qed.spawn{cmd \| argv, stdin?, cwd?, env?, on_line?} -> {code, stdout, stderr}` | Async on `subprocess.odin`. `cwd` defaults to the root. Raises `cannot start <cmd>: <err>` when it cannot start (an `argv` program or the `cwd` missing); under `cmd` a missing program is exit 127. Past 32 MiB of stored output the process group is killed and it returns `nil, "output too large"`. |
+| ⏳ `qed.spawn{cmd \| argv, stdin?, cwd?, env?, on_line?} -> {code, stdout, stderr}` | Async on `subprocess.odin`. `cwd` defaults to the root. Raises `cannot start <cmd>: <err>` when it cannot start (an `argv` program or the `cwd` missing); under `cmd` a missing program is exit 127. Past 32 MiB of stored output the process group is killed and it returns `nil, "output too large"`. stderr is always stored until the result is collected, so a long-lived `on_line` or `spawn_bg` process is killed once its uncollected stderr reaches 32 MiB. |
 | `qed.spawn_bg{...} -> proc` | `proc:kill()`, ⏳ `proc:wait()`. Killed on unload and on quit. Raises like `spawn`. |
 | ⏳ `qed.sleep(ms)` | `qed.sleep(0)` yields to the next main-loop iteration: a long loop calls it now and then to stay inside the slice budget. |
 | `qed.defer(ms, fn)`, `qed.every(ms, fn) -> timer` | Stop with `timer:stop()`. |
