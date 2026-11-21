@@ -58,6 +58,13 @@ return {setup = function()
 	cmd("Persist", function()
 		v = qed.ui.open{id = "keep", fields = {{}}, list = {items = {"one", "two", "three"}}, on = {close = function() note("persist closed") end}}
 	end)
+	cmd("Stream", function()
+		v = qed.ui.open{id = "stream", fields = {{}}, list = {}}
+		v:append({"one"})
+		qed.sleep(30)
+		v:append({"two", "three"})
+		note("streamed")
+	end)
 	cmd("Other", function() qed.ui.open{list = {items = {"o"}}} end)
 	cmd("Child", function(ctx)
 		local c = qed.ui.open{parent = ctx.view, list = {items = {"c"}}}
@@ -434,6 +441,23 @@ e2e_ui_open_foreign_ask :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(e.ed.panes), 2)
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "now nil")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_ui_open_restore_while_streaming :: proc(t: ^testing.T) {
+	e, _ := view_start(t)
+	defer e2e_stop(&e)
+	view_run(t, &e, "V: Stream")
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return !view_logged(e, "streamed")})
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Arrow_Down)
+	testing.expect_value(t, test_view_selected(&e.ed), "three")
+	e2e_key(&e, .Esc)
+	view_run(t, &e, "V: Stream")
+	testing.expect_value(t, test_view_selected(&e.ed), "one")
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return view_count(e, "streamed") < 2})
+	testing.expect_value(t, test_view_selected(&e.ed), "three")
 	e2e_key(&e, .Esc)
 }
 

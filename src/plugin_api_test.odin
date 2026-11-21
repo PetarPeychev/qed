@@ -630,7 +630,13 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 			{"spawn bad spec", "raise", function() return qed.spawn{} end},
 			{"confirm positional", "raise", function() return qed.confirm("Sure?") end},
 			{"pick query handler", "raise", function() return qed.pick{items = {}, on = {query = function() end}} end},
-			{"pick initial", "raise", function() return qed.pick{items = {}, selected = {}} end},
+			{"pick bad selected", "raise", function() return qed.pick{items = {}, selected = {}} end},
+			{"pick old initial", "raise", function() return qed.pick{items = {}, initial = 1} end},
+			{"pick old multi", "raise", function() return qed.pick{items = {}, multi = true} end},
+			{"prompt unknown field", "raise", function() return qed.prompt{prompt = "x", query = "y"} end},
+			{"confirm unknown field", "raise", function() return qed.confirm{question = "x", text = "y"} end},
+			{"set_base", true, function() return qed.buf.set_base(b, "abc") end},
+			{"set_base clear", true, function() return qed.buf.set_base(b, nil) end},
 		}
 		local bad = {}
 		for _, c in ipairs(cases) do
@@ -650,6 +656,18 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 		end
 		assert(#bad == 0, table.concat(bad, "; "))
 		assert(qed.shortcut == nil and qed.pane == nil, "dead sugar is gone")
+		local ok, err = pcall(qed.pick, {items = {}, on_change = print})
+		assert(not ok and tostring(err):find("qed.pick: unknown field 'on_change'", 1, true), "the error names the field: " .. tostring(err))
+		for _, c in ipairs({
+			{"opts.alpha must be", function() qed.deco.tint(b, ns, 1, 1, {color = "git_added", alpha = 2}) end},
+			{"opts.alpha: unknown theme tint", function() qed.deco.tint(b, ns, 1, 1, {color = "git_added", alpha = "nope"}) end},
+			{"opts.color must be", function() qed.deco.eol(b, ns, 1, "x", {}) end},
+			{"opts.color must be", function() qed.deco.ghost(b, ns, 1, "x", {color = 1}) end},
+			{"style.alpha must be", function() qed.deco.span(b, ns, {row = 1, col = 1}, {row = 1, col = 2}, {bg = "git_added", alpha = 2}) end},
+		}) do
+			local ok, err = pcall(c[2])
+			assert(not ok and tostring(err):find(c[1], 1, true), "deco error reads: " .. tostring(err))
+		end
 	`, "abc")
 	defer api_test_destroy(ed)
 	defer delete(ed.panes)
@@ -657,4 +675,24 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 	append(&ed.buffers, test_buffer("three"))
 	ed.buffers[2].modified = true
 	api_test_run(t, ed)
+}
+
+@(test)
+plugin_api_run_respects_when :: proc(t: ^testing.T) {
+	ed := new(Editor)
+	ed.headless = true
+	ed.working_root = strings.clone("/tmp")
+	append(&ed.buffers, test_buffer("x"))
+	editor_plugins_start(ed, {{"t.lua", `return {setup = function()
+	qed.command{name = "Gated", when = function() return false end, run = function() qed.message("gated ran") end}
+	qed.command{name = "Open", when = function() return true end, run = function() end}
+	qed.command{name = "Run", run = function()
+		local ok, err = qed.run("Gated")
+		assert(ok == nil and err == "unavailable", "a false when refuses: " .. tostring(ok) .. " " .. tostring(err))
+		assert(qed.run("Open") == true, "a true when runs")
+	end}
+end}`}}, "", PLUGIN_TEST_MEM)
+	defer api_test_destroy(ed)
+	api_test_run(t, ed)
+	testing.expect(t, ed.message != "gated ran", "the gated command did not run")
 }
