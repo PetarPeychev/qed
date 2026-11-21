@@ -1024,7 +1024,12 @@ guarded by one `stat`: the dir's link count must equal 2 + the scope's subdirs t
 dir, a missing one, or a filesystem without dir link counts) it reads the disk (`posix` readdir, sorted, filtered).
 A listed file missing from disk in such a dir still shows (the disk read hid it unless virtual); entry paths and pane mark keys live in arenas. `h:release()` frees a handle before collection. `list_walk_fill` builds the rows: lazy per-dir `readdir`
 for the browsable tree, or under a filter a ranked, capped (`list.max`, 500) path list that narrows the previous
-hits as the query grows. `qed.fs.copy/rename/remove/mkdir` (`fs_*`) refuse an existing target, a target inside the
+hits as the query grows. A browsable fill caches each dir's rows on the source until its walk restales (reopening
+a dir rereads it) and reads uncached dirs for at most `walk_fill_slice_ms` (6); dirs left unread stay `pending`
+(drawn `…`) and the next pump splices them in after their rows (`list_walk_resume`), keeping the selected path
+and its screen offset. Expand All marks dirs open as the fill meets them (`expanding`, stopped at
+`WALK_EXPAND_MAX_ROWS`, 200k, with a warning), so it streams; Esc or Alt+e mid-stream closes the pending dirs.
+Symlinked dirs are leaves, so a cycle ends. `qed.fs.copy/rename/remove/mkdir` (`fs_*`) refuse an existing target, a target inside the
 source (`into itself`), special files (fifos, sockets, devices; skipped inside a copied dir) and removing the root or
 an ancestor; they never follow symlinks (copied as links), stream file data through a fixed buffer, fall back to
 copy + remove only on `EXDEV` (keeping mtimes; a failed remove drops the copy and fails) and repath buffers.

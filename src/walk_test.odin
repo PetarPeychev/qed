@@ -278,7 +278,7 @@ test_walk_prewarm_discard_on_mismatch :: proc(t: ^testing.T) {
 
 @(private = "file")
 scope_rows_match :: proc(t: ^testing.T, src: ^ListSource, dir: string, kids: ^map[string][dynamic]WalkRow, label: string) {
-	got := walk_scope_rows(src, dir, kids)
+	got, _ := walk_scope_rows(src, dir, kids)
 	want := list_walk_rows(src, dir, kids)
 	testing.expectf(t, len(got) == len(want), "%s: %s has %d rows, disk says %d", label, dir, len(got), len(want))
 	for w, i in want {

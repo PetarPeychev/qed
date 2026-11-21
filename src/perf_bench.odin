@@ -1,8 +1,10 @@
 package main
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -783,6 +785,7 @@ bench_decorations :: proc(t: ^testing.T) {
 
 @(test)
 bench_filetree_filter :: proc(t: ^testing.T) {
+	context.allocator = runtime.heap_allocator()
 	root := os.get_env("QED_BENCH_TREE", context.temp_allocator)
 	if root == "" {
 		return
@@ -815,6 +818,8 @@ bench_filetree_filter :: proc(t: ^testing.T) {
 
 @(test)
 bench_filetree_render :: proc(t: ^testing.T) {
+	// the runner's rollback stack is not thread-safe and the walk workers share context.allocator
+	context.allocator = runtime.heap_allocator()
 	root := os.get_env("QED_BENCH_TREE", context.temp_allocator)
 	if root == "" {
 		return
@@ -854,6 +859,33 @@ bench_filetree_render :: proc(t: ^testing.T) {
 		e2e_render(&e)
 	}
 	fmt.eprintfln("tree arrow + render: %.3f ms/step", ms_since(start) / FRAMES)
+	e2e_key(&e, .Esc)
+	e2e_render(&e)
+	start = time.tick_now()
+	nav_alt(&e, 'e')
+	e2e_render(&e)
+	frames := make([dynamic]f64, context.temp_allocator)
+	append(&frames, ms_since(start))
+	p := ft_pane(&e.ed)
+	for p != nil && pane_tree_loading(p) {
+		at := time.tick_now()
+		pane_stack_pump(&e.ed)
+		e2e_render(&e)
+		append(&frames, ms_since(at))
+	}
+	total := ms_since(start)
+	slice.sort(frames[:])
+	fmt.eprintfln("tree expand all: %d rows in %.0f ms, %d frames, p95 %.2f max %.2f ms", len(p.list.source.entries), total, len(frames), frames[len(frames) * 95 / 100], frames[len(frames) - 1])
+	at = time.tick_now()
+	e2e_key(&e, .Arrow_Down)
+	e2e_render(&e)
+	fmt.eprintfln("tree arrow, all expanded: %.2f ms", ms_since(at))
+	p.list.sel, p.list.scroll = 0, 0
+	at = time.tick_now()
+	e2e_key(&e, .Enter)
+	e2e_render(&e)
+	fmt.eprintfln("tree toggle a dir, all expanded: %.2f ms", ms_since(at))
+	fmt.eprintfln("rss %.0f MB, peak %.0f MB", test_rss_mb("VmRSS"), test_rss_mb("VmHWM"))
 }
 
 @(private = "file")

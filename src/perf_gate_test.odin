@@ -266,6 +266,45 @@ gate_pane_filter :: proc(e: ^E2E, text: string) -> GateStat {
 	return gate_keys(e, text, settle = true)
 }
 
+// rows stream in over frames: every frame while it runs carries an arrow, as a held key would
+@(private = "file")
+gate_expand_all :: proc(e: ^E2E) {
+	clear(&test_slice_max)
+	frames := make([dynamic]f64, context.allocator)
+	defer delete(frames)
+	rss := test_rss_mb("VmRSS")
+	start := time.tick_now()
+	gate_frame(e, char('e', .Alt))
+	append(&frames, ms_since(start))
+	p := ft_pane(&e.ed)
+	for p != nil && pane_tree_loading(p) && ms_since(start) < 20000 {
+		at := time.tick_now()
+		e2e_step(e, key(.Arrow_Down))
+		walk_pump(&e.ed)
+		pane_stack_pump(&e.ed)
+		plugin_pump(&e.ed)
+		editor_render(&e.ed)
+		free_all(context.temp_allocator)
+		append(&frames, ms_since(at))
+		p = ft_pane(&e.ed)
+	}
+	rows := len(p.list.source.entries) if p != nil else 0
+	gate_record(16, gate_stat(frames[:]), fmt.tprintf("file tree expand all, per frame (%d frames)", len(frames)))
+	gate_record(300, one(ms_since(start)), fmt.tprintf("file tree expand all complete (%d rows)", rows), .Info)
+	gate_record(64, one(test_rss_mb("VmRSS") - rss), "file tree expand all, RSS growth in MB")
+	gate_settle(e)
+	gate_record(50, one(test_slice_max["filetree"]), "plugin slice filetree, expand all")
+	gate_record(16, gate_mean(e, key(.Arrow_Down)), "file tree arrow, all expanded")
+	if p := ft_pane(&e.ed); p != nil {
+		p.list.sel, p.list.scroll = 0, 0
+	}
+	gate_record(16, gate_mean(e, key(.Enter)), "file tree toggle a dir, all expanded")
+	start = time.tick_now()
+	gate_frame(e, char('e', .Alt))
+	gate_record(16, one(ms_since(start)), "file tree collapse all")
+	gate_settle(e)
+}
+
 @(private = "file")
 gate_panes :: proc(has_rg: bool) {
 	repo := fmt.tprintf("%s/repo", gate_dir)
@@ -299,8 +338,10 @@ gate_panes :: proc(has_rg: bool) {
 		gate_record(50, one(test_slice_max["git"]), "plugin slice git, tree open (50k changed)", .Gate)
 		gate_record(50, gate_pane_filter(&e, "file0123"), "file tree filter keystroke")
 		gate_record(16, gate_mean(&e, key(.Arrow_Down)), "file tree arrow")
+		// this Esc only clears the filter: the tree stays open, so the next chord switches tabs as it always did
 		gate_frame(&e, key(.Esc))
 		gate_settle(&e)
+		gate_expand_all(&e)
 
 		clear(&test_slice_max)
 		start = time.tick_now()

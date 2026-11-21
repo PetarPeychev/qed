@@ -17,6 +17,9 @@ WALK_PREVIEW_DEBOUNCE_MS :: 80
 WALK_FILTER_MAX_RESULTS :: 500
 WALK_THREADS :: 0
 WALK_PREWARM :: true
+WALK_EXPAND_MAX_ROWS :: 200_000
+
+walk_fill_slice_ms := 6
 
 FileEntry :: struct {
 	path:   string,
@@ -675,6 +678,7 @@ pane_tree_expanded :: proc(p: ^Pane, path: string) -> bool {
 }
 
 pane_tree_set :: proc(p: ^Pane, path: string, on: bool) {
+	p.list.source.resume = false
 	if path in p.list.expanded {
 		p.list.expanded[path] = on
 	} else {
@@ -682,18 +686,25 @@ pane_tree_set :: proc(p: ^Pane, path: string, on: bool) {
 	}
 }
 
+// a fill reads uncached dirs for at most walk_fill_slice_ms; dirs left unread stay pending and the pane refills next pump
 list_walk_fill :: proc(editor: ^Editor, p: ^Pane) {
 	src := &p.list.source
 	p.refill_due = false
 	at := time.tick_now()
+	rows_h := pane_geom(editor, p).list.h
 	keep, keep_anchor := "", ""
-	if p.list.sel >= 0 && p.list.sel < len(src.entries) {
+	if src.keep != "" {
+		keep = strings.clone(src.keep, context.temp_allocator)
+	} else if p.list.sel >= 0 && p.list.sel < len(src.entries) {
 		keep = strings.clone(src.entries[p.list.sel].path, context.temp_allocator)
 	}
 	if a, ok := p.list.anchor.?; ok && a >= 0 && a < len(src.entries) {
 		keep_anchor = strings.clone(src.entries[a].path, context.temp_allocator)
 	}
+	old_sel := p.list.sel
+	off := clamp(p.list.sel - p.list.scroll, 0, max(0, rows_h - 1))
 	clear(&src.entries)
+	clear(&src.pending)
 	vmem.arena_free_all(&src.names)
 	p.list.anchor, p.list.more, p.list.filtered = nil, false, false
 	clear(&p.list.matches)
@@ -707,19 +718,37 @@ list_walk_fill :: proc(editor: ^Editor, p: ^Pane) {
 	} else {
 		walk_narrow_reset(src)
 		kids := walk_virtual_kids(src.wscope, src.walk.root)
-		list_walk_dir(editor, p, src.walk.root, 0, &kids)
+		fill := WalkFill {
+			kids     = &kids,
+			deadline = time.tick_add(at, time.Duration(walk_fill_slice_ms) * time.Millisecond),
+		}
+		list_walk_dir(editor, p, src.walk.root, 0, &fill)
+		if fill.capped {
+			editor_log(editor, .Warn, "Filetree", fmt.tprintf("Expand All stopped at %d rows", WALK_EXPAND_MAX_ROWS))
+		}
 	}
+	found := false
 	p.list.sel = 0
 	for e, i in src.entries {
 		if e.path == keep {
-			p.list.sel = i
+			p.list.sel, found = i, true
 		}
 		if e.path == keep_anchor {
 			p.list.anchor = i
 		}
 	}
+	delete(src.keep)
+	src.keep = ""
+	if found {
+		p.list.scroll = max(0, p.list.sel - off)
+	} else if keep != "" && len(src.pending) > 0 {
+		// the selected row sits under a dir not read yet: hold the row in place until it lands
+		src.keep = strings.clone(keep)
+		p.list.sel = clamp(old_sel, 0, max(0, len(src.entries) - 1))
+	}
+	list_walk_rearm(p)
 	p.list.stamp = list_stamp(editor, p)
-	pane_scroll_fit(p, pane_geom(editor, p).list.h)
+	pane_scroll_fit(p, rows_h)
 	if src.filtering {
 		note := fmt.tprintf(" (walk %.0fms)", src.walk.walk_ms) if src.walk.walk_ms > 0 else ""
 		ms := time.duration_milliseconds(time.tick_since(at))
@@ -768,6 +797,73 @@ list_walk_filter :: proc(editor: ^Editor, p: ^Pane, query: string) {
 	delete(src.narrow_q)
 	src.narrow_q = strings.clone(query)
 	src.narrow_builds = builds
+}
+
+list_walk_rearm :: proc(p: ^Pane) {
+	src := &p.list.source
+	src.resume = len(src.pending) > 0
+	if src.resume {
+		p.refill_due, p.refill_at = true, time.tick_now()
+	} else {
+		src.expanding = false
+	}
+}
+
+// a continuation splices the newly read dirs in after their rows instead of rebuilding the list
+list_walk_resume :: proc(editor: ^Editor, p: ^Pane) {
+	src := &p.list.source
+	query := ""
+	if f := pane_filter(p); f != nil {
+		query = textfield_str(&f.field)
+	}
+	if !src.resume || src.filtering || query != "" || list_stamp(editor, p) != p.list.stamp {
+		list_walk_fill(editor, p)
+		return
+	}
+	p.refill_due = false
+	at := time.tick_now()
+	rows_h := pane_geom(editor, p).list.h
+	off := clamp(p.list.sel - p.list.scroll, 0, max(0, rows_h - 1))
+	old_anchor, has_anchor := p.list.anchor.?
+	old, pending := src.entries, src.pending
+	src.entries, src.pending = make([dynamic]FileEntry, 0, len(old) + 1024), {}
+	kids := walk_virtual_kids(src.wscope, src.walk.root)
+	fill := WalkFill {
+		kids     = &kids,
+		deadline = time.tick_add(at, time.Duration(walk_fill_slice_ms) * time.Millisecond),
+	}
+	sel := 0
+	for e, i in old {
+		if i == p.list.sel {
+			sel = len(src.entries)
+		}
+		if has_anchor && i == old_anchor {
+			p.list.anchor = len(src.entries)
+		}
+		append(&src.entries, e)
+		if e.is_dir && e.path in pending && !list_walk_dir(editor, p, e.path, e.depth + 1, &fill) {
+			src.pending[e.path] = true
+		}
+	}
+	delete(old)
+	delete(pending)
+	if src.keep != "" {
+		for e, i in src.entries {
+			if e.path == src.keep {
+				sel = i
+				delete(src.keep)
+				src.keep = ""
+				break
+			}
+		}
+	}
+	p.list.sel = sel
+	p.list.scroll = max(0, sel - off)
+	if fill.capped {
+		editor_log(editor, .Warn, "Filetree", fmt.tprintf("Expand All stopped at %d rows", WALK_EXPAND_MAX_ROWS))
+	}
+	list_walk_rearm(p)
+	pane_scroll_fit(p, rows_h)
 }
 
 walk_rel :: proc(path, root: string) -> string {
@@ -874,7 +970,7 @@ list_walk_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynamic
 }
 
 // a narrowed tree refills on every view switch: its dirs are read and sorted once per restale
-walk_scope_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynamic]WalkRow) -> []WalkRow {
+walk_scope_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynamic]WalkRow, read := true) -> ([]WalkRow, bool) {
 	s := src.wscope
 	// a prewarm landing bumps gen without the disk changing; only a restale drops the rows
 	if s.rows_gen != src.walk.stales + 1 {
@@ -884,7 +980,10 @@ walk_scope_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynami
 		s.rows_gen = src.walk.stales + 1
 	}
 	if r, ok := s.rows[dir]; ok {
-		return r
+		return r, true
+	}
+	if !read {
+		return nil, false
 	}
 	a := vmem.arena_allocator(&s.rows_arena)
 	rows := walk_scope_known_rows(s, dir, a)
@@ -895,7 +994,29 @@ walk_scope_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynami
 		}
 	}
 	s.rows[strings.clone(dir, a)] = rows
-	return rows
+	return rows, true
+}
+
+// a browsable tree refills on every expand and restale: each dir is read once per restale of its walk
+list_walk_cached_rows :: proc(src: ^ListSource, dir: string, kids: ^map[string][dynamic]WalkRow, read: bool) -> ([]WalkRow, bool) {
+	if src.dirs_walk != src.walk || src.dirs_stales != src.walk.stales {
+		clear(&src.dirs)
+		vmem.arena_free_all(&src.dirs_arena)
+		src.dirs_walk, src.dirs_stales = src.walk, src.walk.stales
+	}
+	if r, ok := src.dirs[dir]; ok {
+		return r, true
+	}
+	if !read {
+		return nil, false
+	}
+	a := vmem.arena_allocator(&src.dirs_arena)
+	rows := slice.clone(list_walk_rows(src, dir, kids), a)
+	for &r in rows {
+		r.path = strings.clone(r.path, a)
+	}
+	src.dirs[strings.clone(dir, a)] = rows
+	return rows, true
 }
 
 // a listed path's parent was indexed when the scope was built, so only closure dirs are hashed here
@@ -1000,16 +1121,49 @@ walk_scope_known_rows :: proc(s: ^WalkScope, dir: string, a: runtime.Allocator) 
 	return rows
 }
 
-list_walk_dir :: proc(editor: ^Editor, p: ^Pane, dir: string, depth: int, kids: ^map[string][dynamic]WalkRow) {
+WalkFill :: struct {
+	kids:     ^map[string][dynamic]WalkRow,
+	deadline: time.Tick,
+	reads:    int,
+	capped:   bool,
+}
+
+list_walk_dir :: proc(editor: ^Editor, p: ^Pane, dir: string, depth: int, fill: ^WalkFill) -> bool {
 	src := &p.list.source
-	rows := walk_scope_rows(src, dir, kids) if src.wscope != nil else list_walk_rows(src, dir, kids)
+	rows_of :: proc(src: ^ListSource, dir: string, fill: ^WalkFill, read: bool) -> ([]WalkRow, bool) {
+		if src.wscope != nil {
+			return walk_scope_rows(src, dir, fill.kids, read)
+		}
+		return list_walk_cached_rows(src, dir, fill.kids, read)
+	}
+	rows, ok := rows_of(src, dir, fill, false)
+	// the first read always runs, so a fill whose cached part alone overruns the slice still advances
+	if !ok && (fill.reads == 0 || time.tick_diff(time.tick_now(), fill.deadline) > 0) {
+		rows, ok = rows_of(src, dir, fill, true)
+		fill.reads += 1
+	}
+	if !ok {
+		return false
+	}
 	for r in rows {
-		path := strings.clone(r.path, vmem.arena_allocator(&src.names))
+		// the source's own dir cache outlives the rows, which every restale rebuilds; a scope's is shared
+		path := r.path if src.wscope == nil else strings.clone(r.path, vmem.arena_allocator(&src.names))
 		append(&src.entries, FileEntry{path, path[r.name:], depth, r.is_dir})
-		if r.is_dir && pane_tree_expanded(p, path) {
-			list_walk_dir(editor, p, path, depth + 1, kids)
+		if !r.is_dir {
+			continue
+		}
+		if src.expanding && path not_in p.list.expanded {
+			if len(src.entries) < WALK_EXPAND_MAX_ROWS {
+				pane_tree_set(p, path, true)
+			} else {
+				fill.capped, src.expanding = true, false
+			}
+		}
+		if pane_tree_expanded(p, path) && !list_walk_dir(editor, p, path, depth + 1, fill) {
+			src.pending[path] = true
 		}
 	}
+	return true
 }
 
 WalkSelected :: struct {
@@ -1070,15 +1224,19 @@ pane_tree_reveal :: proc(editor: ^Editor, p: ^Pane, path: string) -> bool {
 		}
 		q = np
 	}
+	src := &p.list.source
+	delete(src.keep)
+	src.keep = strings.clone(path)
 	list_walk_fill(editor, p)
-	for e, i in p.list.source.entries {
+	for e, i in src.entries {
 		if e.path == path {
 			p.list.sel, p.list.anchor, p.list.moved = i, nil, true
 			pane_scroll_fit(p, pane_geom(editor, p).list.h)
 			return true
 		}
 	}
-	return false
+	// an ancestor is still being read: the fill selects the path once it lands
+	return src.keep != ""
 }
 
 pane_tree_enter :: proc(editor: ^Editor, p: ^Pane) -> bool {
@@ -1099,30 +1257,16 @@ pane_tree_enter :: proc(editor: ^Editor, p: ^Pane) -> bool {
 	} else {
 		on = !pane_tree_expanded(p, dir)
 		pane_tree_set(p, dir, on)
+		// reopening a dir is how a user rereads it
+		if on {
+			delete_key(&src.dirs, dir)
+		}
 		list_walk_fill(editor, p)
 	}
 	if p.on.expand != nil {
 		p.on.expand(editor, p, dir, on)
 	}
 	return true
-}
-
-pane_tree_mark_expanded :: proc(editor: ^Editor, p: ^Pane, dir: string) {
-	infos, err := os.read_directory_by_path(dir, -1, context.temp_allocator)
-	if err != nil {
-		return
-	}
-	w := p.list.source.walk
-	for info in infos {
-		if info.type != .Directory || walk_ignored(w, info.fullpath) {
-			continue
-		}
-		if !w.dotfiles && strings.has_prefix(info.name, ".") {
-			continue
-		}
-		pane_tree_set(p, info.fullpath, true)
-		pane_tree_mark_expanded(editor, p, info.fullpath)
-	}
 }
 
 pane_tree_any_expanded :: proc(p: ^Pane) -> bool {
@@ -1160,12 +1304,33 @@ pane_tree_expand_all :: proc(editor: ^Editor, p: ^Pane, on: bool) -> bool {
 		if !src.walk.ignore_ready && !src.walk.ignored {
 			return false
 		}
-		pane_tree_mark_expanded(editor, p, src.walk.root)
+		src.expanding = true
 	} else {
 		walk_set_clear(&p.list.expanded)
 	}
+	if !on {
+		src.expanding = false
+		delete(src.keep)
+		src.keep = ""
+	}
 	list_walk_fill(editor, p)
 	return true
+}
+
+pane_tree_loading :: proc(p: ^Pane) -> bool {
+	return p.list.source.kind == .Walk && len(p.list.source.pending) > 0
+}
+
+// dirs read so far stay open; the ones still pending close
+pane_tree_cancel :: proc(editor: ^Editor, p: ^Pane) {
+	src := &p.list.source
+	src.expanding = false
+	for dir in src.pending {
+		pane_tree_set(p, dir, false)
+	}
+	delete(src.keep)
+	src.keep = ""
+	list_walk_fill(editor, p)
 }
 
 FsError :: enum {

@@ -1,6 +1,8 @@
 package main
 
 import "core:fmt"
+import "core:os"
+import "core:strconv"
 import "core:strings"
 
 test_buffer :: proc(lines: ..string) -> Buffer {
@@ -252,4 +254,18 @@ buffer_snapshot_tmp :: proc(b: ^Buffer) -> string {
 	out := strings.clone(s, context.temp_allocator)
 	delete(s)
 	return out
+}
+
+test_rss_mb :: proc(field: string) -> f64 {
+	data, err := os.read_entire_file("/proc/self/status", context.temp_allocator)
+	if err != nil {
+		return 0
+	}
+	for line in strings.split_lines(string(data), context.temp_allocator) {
+		if strings.has_prefix(line, field) {
+			kb, _ := strconv.parse_f64(strings.fields(line[len(field) + 1:], context.temp_allocator)[0])
+			return kb / 1024
+		}
+	}
+	return 0
 }

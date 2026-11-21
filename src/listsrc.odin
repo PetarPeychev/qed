@@ -39,6 +39,14 @@ ListSource :: struct {
 	narrow_q:  string,
 	narrow_idx: [dynamic]int,
 	narrow_builds: u64,
+	dirs:      map[string][]WalkRow,
+	dirs_arena: vmem.Arena,
+	dirs_walk: ^Walk,
+	dirs_stales: u64,
+	pending:   map[string]bool,
+	keep:      string,
+	expanding: bool,
+	resume:    bool,
 }
 
 ColumnSize :: enum {
@@ -78,6 +86,10 @@ list_source_free :: proc(s: ^ListSource) {
 	vmem.arena_destroy(&s.names)
 	delete(s.narrow_q)
 	delete(s.narrow_idx)
+	delete(s.dirs)
+	vmem.arena_destroy(&s.dirs_arena)
+	delete(s.pending)
+	delete(s.keep)
 	s^ = {}
 }
 

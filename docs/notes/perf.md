@@ -172,6 +172,12 @@ big-file mode.
   119 -> 41-52 ms. The chunk itself is now 1-7 ms; the rest of a long slice is a Lua GC step.
 - File tree open with 50k marks: the first 4000-mark push no longer shares the open's slice
   (open call 25-50 -> 12-35 ms).
+- File tree Expand All (100k files): one 1.6 s slice (a recursive `os.read_directory_by_path` that
+  stat()ed every entry to mark dirs, 1.4 s, then a full `readdir` refill, 0.2 s). Dirs are now marked as the
+  fill meets them, rows come from a per-source dir cache, and reads are sliced at 6 ms with continuations
+  spliced in place: key frame 1601 -> ~6 ms, frames p95 ~12 ms, all rows in ~260-380 ms, toggling a dir in
+  the expanded tree ~2 ms. Peak RSS of the 100k bench 78 MB (the bench ran on the test runner's
+  rollback allocator, which walk threads corrupt: 2.7 GB on 100k files and an OOM on a 426k-file tree).
 - tmux smoke (default build): Git tab first arrow ~830 -> 6 ms; Alt+g to tab 238 ms; markdown
   preview frame 72 ms, content after ~1.2 s.
 

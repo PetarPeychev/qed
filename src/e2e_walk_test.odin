@@ -457,6 +457,85 @@ e2e_walk_tree_filter_after_write :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_walk_expand_all_streams :: proc(t: ^testing.T) {
+	e := e2e_root_start("m")
+	defer e2e_stop(&e)
+	for d in 0 ..< 5 {
+		os.make_directory_all(fmt.tprintf("%s/d%d/sub", e.dir, d))
+		nav_write(fmt.tprintf("%s/d%d/f.txt", e.dir, d), "x\n")
+		nav_write(fmt.tprintf("%s/d%d/sub/g.txt", e.dir, d), "x\n")
+	}
+	posix.symlink(strings.clone_to_cstring(e.dir, context.temp_allocator), strings.clone_to_cstring(fmt.tprintf("%s/d0/sub/loop", e.dir), context.temp_allocator))
+	filetree_open_all(&e.ed)
+	e2e_git_settle(&e)
+	e2e_render(&e)
+	p := ft_pane(&e.ed)
+	top := len(ft_entries(&e.ed))
+	testing.expect_value(t, top, 6)
+	saved := walk_fill_slice_ms
+	walk_fill_slice_ms = 0
+	defer walk_fill_slice_ms = saved
+
+	p.list.sel = 2
+	nav_alt(&e, 'e')
+	testing.expect(t, pane_tree_loading(p), "one dir per fill: the rest is pending")
+	testing.expect(t, len(ft_entries(&e.ed)) < top + 15, "rows stream in")
+	sel, _ := ft_selected(&e.ed)
+	testing.expect_value(t, walk_rel(sel.path, e.dir), "d2")
+	off := p.list.sel - p.list.scroll
+	loading := false
+	for i in 0 ..< len(ft_entries(&e.ed)) {
+		loading ||= strings.has_suffix(pane_tree_label(p, list_item(&e.ed, p, i)), "/ …")
+	}
+	testing.expect(t, loading, "a pending dir shows it is loading")
+	for i := 0; pane_tree_loading(p) && i < 100; i += 1 {
+		e2e_key(&e, .Arrow_Down)
+		e2e_key(&e, .Arrow_Up)
+		pane_stack_pump(&e.ed, true)
+		e2e_render(&e)
+		sel, _ = ft_selected(&e.ed)
+		testing.expect_value(t, walk_rel(sel.path, e.dir), "d2")
+		testing.expect_value(t, p.list.sel - p.list.scroll, off)
+	}
+	testing.expect(t, !pane_tree_loading(p) && !p.refill_due, "the expansion finishes")
+	testing.expect_value(t, len(ft_entries(&e.ed)), top + 16)
+	testing.expect(t, strings.contains(walk_rels(ft_entries(&e.ed), e.dir), "d4/sub/g.txt"), "the deepest rows land")
+	testing.expect(t, !strings.contains(walk_rels(ft_entries(&e.ed), e.dir), "loop/"), "a symlinked dir is a leaf, so a cycle ends")
+
+	nav_alt(&e, 'e')
+	testing.expect_value(t, len(ft_entries(&e.ed)), top)
+	testing.expect(t, !pane_tree_any_expanded(p), "a second Alt+e collapses")
+	nav_alt(&e, 'e')
+	testing.expect_value(t, len(ft_entries(&e.ed)), top + 16)
+	testing.expect(t, !pane_tree_loading(p), "read dirs are cached until the walk restales")
+	nav_alt(&e, 'e')
+
+	clear(&p.list.source.dirs)
+	nav_alt(&e, 'e')
+	testing.expect(t, pane_tree_loading(p), "expanding again")
+	nav_alt(&e, 'e')
+	testing.expect(t, !pane_tree_loading(p) && !p.refill_due, "Alt+e mid-stream collapses")
+	testing.expect_value(t, len(ft_entries(&e.ed)), top)
+
+	clear(&p.list.source.dirs)
+	nav_alt(&e, 'e')
+	pane_stack_pump(&e.ed, true)
+	testing.expect(t, pane_tree_loading(p), "still streaming")
+	shown := len(ft_entries(&e.ed))
+	e2e_key(&e, .Esc)
+	testing.expect(t, filetree_active(&e.ed), "Esc cancels the expansion before it closes the tree")
+	testing.expect(t, !pane_tree_loading(p) && !p.refill_due, "nothing left to read")
+	testing.expect_value(t, len(ft_entries(&e.ed)), shown)
+	for row in ft_entries(&e.ed) {
+		if row.is_dir && pane_tree_expanded(p, row.path) {
+			testing.expectf(t, row.path in p.list.source.dirs, "%s stays open only if read", row.path)
+		}
+	}
+	e2e_key(&e, .Esc)
+	testing.expect(t, !filetree_active(&e.ed), "then Esc closes")
+}
+
+@(test)
 e2e_walk_raise_keeps_no_ref :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)

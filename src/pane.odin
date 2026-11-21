@@ -1148,7 +1148,7 @@ pane_stack_pump :: proc(editor: ^Editor, force := false) -> (redraw: bool) {
 			continue
 		}
 		if p.refill_due && (force || plugin_tick_due(p.refill_at, now)) {
-			list_walk_fill(editor, p)
+			list_walk_resume(editor, p)
 			pane_preview_sync(editor, p)
 			redraw = true
 		}
@@ -1163,9 +1163,9 @@ pane_stack_pump :: proc(editor: ^Editor, force := false) -> (redraw: bool) {
 	return
 }
 
-pane_md_busy :: proc(editor: ^Editor) -> bool {
+pane_stepping :: proc(editor: ^Editor) -> bool {
 	for &p in editor.panes {
-		if p.md_job != nil && pane_live(editor, &p) {
+		if (p.md_job != nil || (p.refill_due && pane_tree_loading(&p))) && pane_live(editor, &p) {
 			return true
 		}
 	}
@@ -1588,6 +1588,9 @@ pane_tree_label :: proc(p: ^Pane, it: PaneItem) -> string {
 		strings.write_byte(&sb, ' ')
 		strings.write_string(&sb, it.label)
 		strings.write_byte(&sb, '/')
+		if open && it.path in p.list.source.pending {
+			strings.write_string(&sb, " …")
+		}
 	} else {
 		strings.write_string(&sb, "  ")
 		strings.write_string(&sb, it.label)
@@ -1863,6 +1866,10 @@ pane_key :: proc(editor: ^Editor, p: ^Pane, ev: tb2.Event) -> PaneAction {
 				}
 				return .None
 			}
+		}
+		if pane_tree_loading(p) {
+			pane_tree_cancel(editor, p)
+			return .None
 		}
 		return .Close
 	case .Arrow_Left, .Arrow_Right:
