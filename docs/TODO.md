@@ -69,6 +69,9 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 - [ ] Cross-session state (provisional — design TBD): a persisted state file (`~/.local/state/qed/`?) that could back restore-last-session buffers/viewport, persisted undo history, palette MRU, etc. Figure out scope + format before building.
 - [ ] Hex view/edit for binary files.
 - [ ] File browser: show more detail per entry (size, line count, other `ls -l`-style bits).
+- [ ] Look into: libghostty-vt (stable C ABI since 1.0) in place of vendored libvterm for the terminal pane. Weigh the Zig build or prebuilt per-platform libs against compliance, grapheme handling and reflow.
+- [ ] Look into: grapheme cluster mode (DEC 2027) where the terminal supports it, so widths of Devanagari and emoji sequences agree with the terminal, with today's rule as the fallback.
+- [ ] Look into: kitty keyboard protocol (needs a termbox patch) to tell apart Ctrl+I/Tab, Ctrl+Shift+letter, Ctrl+Enter.
 
 ### AI / LLM assist
 
