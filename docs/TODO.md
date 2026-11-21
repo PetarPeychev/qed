@@ -72,6 +72,7 @@ Enhancements beyond the daily-driver baseline; none blocks 1.0.
 - [ ] Look into: libghostty-vt (stable C ABI since 1.0) in place of vendored libvterm for the terminal pane. Weigh the Zig build or prebuilt per-platform libs against compliance, grapheme handling and reflow.
 - [ ] Ask the terminal for cluster widths instead of guessing: at startup query DEC 2027 and enable grapheme clustering where supported; otherwise measure each new non-trivial cluster once via an off-screen print plus cursor position report (cached per session, today's sum rule and a redraw until the answer lands); keep the defensive `tb_present` resends. Test matrix: tmux, foot, xterm, Ghostty/Wintty, WT direct.
 - [ ] Look into: kitty keyboard protocol (needs a termbox patch) to tell apart Ctrl+I/Tab, Ctrl+Shift+letter, Ctrl+Enter.
+- [ ] Look into: inline images in the markdown preview and the file preview via the kitty graphics protocol (Unicode placeholders, so images scroll and clip with text; works through tmux with allow-passthrough). Needs PNG/JPEG decode, protocol detection, and keeping termbox's diff off image cells. No WT support (sixel only there).
 
 ### AI / LLM assist
 
