@@ -370,6 +370,7 @@ logview_open :: proc(editor: ^Editor, source := "", parent: u64 = 0) {
 		title = fmt.tprintf("Message Log  ·  %s", source) if source != "" else "Message Log",
 		has_list = true,
 		backdrop = MESSAGE_LOG_BACKDROP,
+		max_width = max(PANE_MIN_WIDTH, MESSAGE_LOG_MAX_WIDTH),
 		list = {source = {kind = .Log}, multi = true, follow = true, stick = true, sel_bg = true, empty = "(no messages)"},
 		footer = []PaneHint{{label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "Enter full text"}, {label = "copy", cmd = "Copy"}},
 		chips = logview_chips(editor),
@@ -417,6 +418,7 @@ logview_show :: proc(editor: ^Editor, p: ^Pane) {
 	}
 	c := pane_open(editor, Pane {
 		id = "log_entry",
+		max_width = max(PANE_MIN_WIDTH, MESSAGE_LOG_MAX_WIDTH),
 		kind = .Child,
 		parent = p.handle,
 		place = .Full,

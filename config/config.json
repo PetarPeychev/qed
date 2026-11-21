@@ -28,6 +28,8 @@
   "diff_view": false,
   "message_log_backdrop": "none",
   "plugins_pane_backdrop": "none",
+  "message_log_max_width": 120,
+  "plugins_pane_max_width": 120,
   "pane_table_borders": "none",
   "lsp": {
     "enabled": true,

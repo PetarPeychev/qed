@@ -2146,6 +2146,7 @@ pluginview_open :: proc(editor: ^Editor) {
 		title = "Plugins (Lua failed to start)" if p.L == nil else fmt.tprintf("Plugins  ·  Lua init %.2f ms", p.init_ms),
 		has_list = true,
 		backdrop = PLUGINS_PANE_BACKDROP,
+		max_width = max(PANE_MIN_WIDTH, PLUGINS_PANE_MAX_WIDTH),
 		list = {source = {kind = .Plugins}, sel_bg = true, empty = "(no plugins)"},
 		footer = []PaneHint {
 			{label = "↑↓ select"},
@@ -2259,6 +2260,7 @@ pluginview_enter :: proc(editor: ^Editor, pn: ^Pane) {
 	main := strings.clone(pl.main, context.temp_allocator)
 	c := pane_open(editor, Pane {
 		id = "plugin_source",
+		max_width = max(PANE_MIN_WIDTH, PLUGINS_PANE_MAX_WIDTH),
 		kind = .Child,
 		parent = pn.handle,
 		place = .Full,

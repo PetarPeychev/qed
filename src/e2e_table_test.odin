@@ -174,6 +174,28 @@ e2e_table_fit_resample :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_table_core_max_width :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	e2e_resize(&e, 200, E2E_H)
+	full := overlay_layout(&e.ed).box
+	cmd_message_log(&e.ed)
+	box := pane_geom(&e.ed, pane_find(&e.ed, "log")).box
+	testing.expect_value(t, box.w, MESSAGE_LOG_MAX_WIDTH)
+	testing.expect_value(t, box.x, full.x + (full.w - MESSAGE_LOG_MAX_WIDTH) / 2)
+	e2e_key(&e, .Esc)
+
+	saved := PLUGINS_PANE_MAX_WIDTH
+	defer PLUGINS_PANE_MAX_WIDTH = saved
+	PLUGINS_PANE_MAX_WIDTH = 60
+	pluginview_open(&e.ed)
+	box = pane_geom(&e.ed, pane_find(&e.ed, "plugins")).box
+	testing.expect_value(t, box.w, 60)
+	testing.expect_value(t, box.x, full.x + (full.w - 60) / 2)
+	e2e_key(&e, .Esc)
+}
+
+@(test)
 e2e_table_borders :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)

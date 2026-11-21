@@ -55,6 +55,8 @@ PLUGIN_MEMORY_MB: int
 PLUGIN_SLICE_MAX_MS: int
 PLUGIN_COMMAND_MAX_MS: int
 PLUGIN_HOOK_TIMEOUT_MS: int
+MESSAGE_LOG_MAX_WIDTH: int
+PLUGINS_PANE_MAX_WIDTH: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -75,6 +77,8 @@ config_ints := [?]Config_Int {
 	{"split_code_max_width", &SPLIT_CODE_MAX_WIDTH},
 	{"split_preview_min_width", &SPLIT_PREVIEW_MIN_WIDTH},
 	{"split_preview_max_width", &SPLIT_PREVIEW_MAX_WIDTH},
+	{"message_log_max_width", &MESSAGE_LOG_MAX_WIDTH},
+	{"plugins_pane_max_width", &PLUGINS_PANE_MAX_WIDTH},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
 	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
 	{"plugin_slice_max_ms", &PLUGIN_SLICE_MAX_MS},
