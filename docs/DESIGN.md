@@ -1001,8 +1001,11 @@ stamp, so open walk lists refill keeping the selected and anchor paths. `within(
 through a refcounted `WalkScope` (listed paths keep their descendants and skip the dotfiles/ignored rules; virtual
 paths and their missing parents are injected when absent). A scope copies its paths into one buffer and keys its
 listed and ancestor sets by slices of it; `union` points at its base scope instead of copying it. A narrowed tree's
-dir rows (`posix` readdir, sorted, filtered) are cached on the scope until the walk restales, so a refill is a
-copy; entry paths and pane mark keys live in arenas. `h:release()` frees a handle before collection. `list_walk_fill` builds the rows: lazy per-dir `readdir`
+dir rows are cached on the scope until the walk restales, so a refill is a copy. A dir no listed path covers takes
+its rows from the scope chain's own paths (grouped by parent; a listed path's parent index is kept from creation),
+guarded by one `stat`: the dir's link count must equal 2 + the scope's subdirs there, else (a listed or symlinked
+dir, a missing one, or a filesystem without dir link counts) it reads the disk (`posix` readdir, sorted, filtered).
+A listed file missing from disk in such a dir still shows (the disk read hid it unless virtual); entry paths and pane mark keys live in arenas. `h:release()` frees a handle before collection. `list_walk_fill` builds the rows: lazy per-dir `readdir`
 for the browsable tree, or under a filter a ranked, capped (`list.max`, 500) path list that narrows the previous
 hits as the query grows. `qed.fs.copy/rename/remove/mkdir` (`fs_*`) refuse an existing target, a target inside the
 source (`into itself`), special files (fifos, sockets, devices; skipped inside a copied dir) and removing the root or

@@ -940,11 +940,24 @@ api_path :: proc(editor: ^Editor, path: string) -> string {
 	return joined
 }
 
+// one pass for "//", "/./", "/../" and a trailing "/." or "/..": a 50k-path list goes through here
 api_path_clean :: proc(path: string) -> bool {
 	if len(path) < 2 || path[0] != '/' || path[len(path) - 1] == '/' {
 		return false
 	}
-	return !strings.contains(path, "//") && !strings.contains(path, "/./") && !strings.contains(path, "/../") && !strings.has_suffix(path, "/.") && !strings.has_suffix(path, "/..")
+	for i in 0 ..< len(path) - 1 {
+		if path[i] != '/' {
+			continue
+		}
+		rest := path[i + 1:]
+		if rest[0] == '/' {
+			return false
+		}
+		if rest[0] == '.' && (len(rest) == 1 || rest[1] == '/' || (rest[1] == '.' && (len(rest) == 2 || rest[2] == '/'))) {
+			return false
+		}
+	}
+	return true
 }
 
 qed_open :: proc "c" (L: ^lua.State) -> c.int {
