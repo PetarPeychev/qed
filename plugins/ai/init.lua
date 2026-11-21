@@ -50,7 +50,6 @@ local function before(a, b)
 	return a.row < b.row or (a.row == b.row and a.col < b.col)
 end
 
--- Unlike a plain plugin edit, a position at `from` stays put, so a selection keeps covering the new text.
 local function translate(p, from, to, new_end)
 	if not before(from, p) then
 		return p
@@ -101,7 +100,6 @@ end
 
 local changed, reloaded, closed
 
--- Subscribed only while something listens, so an idle plugin costs no task per keystroke.
 local function sync_hook()
 	local want = #edits > 0 or fim.enabled
 	if want and not hook then
@@ -191,7 +189,7 @@ local function apply(e, r)
 		qed.message("Edit discarded: block changed", "error")
 		return
 	end
-	qed.log("debug", ("applied at %d:%d (%dB)"):format(from.row - 1, from.col - 1, #core))
+	qed.log("debug", ("applied at %d:%d (%dB)"):format(from.row, from.col, #core))
 	local cursor = qed.buf.cursor(b)
 	local sel_from, sel_to = qed.buf.selection(b)
 	local anchor
@@ -341,8 +339,8 @@ local function fim_dismiss()
 end
 
 local function fim_parse(raw)
-	local ok, val = pcall(qed.json.decode, raw)
-	if not ok or type(val) ~= "table" or type(val.choices) ~= "table" or type(val.choices[1]) ~= "table" then
+	local val = qed.json.decode(raw)
+	if type(val) ~= "table" or type(val.choices) ~= "table" or type(val.choices[1]) ~= "table" then
 		return ""
 	end
 	local c0 = val.choices[1]

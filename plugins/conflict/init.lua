@@ -79,7 +79,6 @@ end
 
 local changed
 
--- buf_changed is held only while a buffer has had conflicts, so a plain edit session runs no Lua per keystroke.
 local function sync_hook()
 	if next(armed) and not hook then
 		hook = qed.on("buf_changed", changed)
@@ -118,8 +117,6 @@ local function same(o, d, c)
 	return o.start + d == c.start and o.sep + d == c.sep and o.finish + d == c.finish and (o.base and o.base + d) == c.base
 end
 
--- Rows above lo are untouched and rows below hi only shifted, so a block outside the
--- dirty rows keeps its decorations when the new parse has it at the shifted rows.
 changed = function(b, rev, _, lo, hi)
 	local st = state[b]
 	if not armed[b] or not st or st.rev == rev or not qed.buf.valid(b) then
@@ -216,7 +213,7 @@ local function run(ctx)
 	if block_at(blocks, row) then
 		local keep, err = qed.confirm("Resolve merge conflict:", KEEP)
 		if err then
-			qed.message(err, "warn")
+			qed.message("Cannot resolve while another dialog is open", "warn")
 		end
 		if not keep or not qed.buf.valid(b) then
 			return
@@ -239,7 +236,6 @@ end
 
 return {
 	setup = function()
-		qed.meta{display_name = "Conflict"}
 		ns = qed.deco.ns("conflict")
 		qed.command{name = "Resolve", key = "Alt+m", run = run}
 		qed.on("startup", function()

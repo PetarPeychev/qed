@@ -24,10 +24,6 @@ local based = {}
 local sync_job, ask = 0, 0
 local due, ignore_moved = false, false
 
-local function say(text, level)
-	qed.message(text, level)
-end
-
 local function parent(p)
 	return p:match("^(.+)/[^/]*$") or p
 end
@@ -96,7 +92,6 @@ local function alive(my, view)
 	return my == sync_job and v ~= nil and v == view
 end
 
--- suffixes and sizes come and go with the tab's detail flag, so a tab switch pushes nothing
 local function push_marks(my)
 	local view, gen = v, marks_gen
 	local t = tab_of(scope)
@@ -179,7 +174,6 @@ local function ignore_push()
 	walk:ignore(all)
 end
 
--- handles with equal options share one core walk, so narrowed handles over it survive a new handle
 local function walk_new()
 	local opts = tostring(show.dotfiles) .. tostring(show.ignored)
 	if scopes.opts ~= opts then
@@ -208,7 +202,6 @@ local function buffer_paths()
 	return paths
 end
 
--- a narrowed handle is rebuilt only when its path set moved; fresh is true for a large rebuild
 local function source()
 	if scope == "All" then
 		return walk, false
@@ -238,7 +231,6 @@ local function source()
 	return h, #(paths or t.paths) > CHUNK
 end
 
--- narrowing and refilling are each one core call: a yield between keeps them in separate slices
 local function show_source(my, view)
 	local h, fresh = source()
 	if shown.h == h then
@@ -263,7 +255,6 @@ local function preview_show(path, base)
 	end
 end
 
--- reuse: the base asked last for this path still holds (a diff toggle, not new tab data)
 local function preview_changed(item, blank, reuse)
 	local t = v and tab_of(scope)
 	if not t or not t.preview then
@@ -301,7 +292,6 @@ local function on_change(_, item)
 	preview_changed(item, true)
 end
 
--- only a tab with a preview callback does work per highlighted item
 local function preview_mode()
 	local t = tab_of(scope)
 	if not t or not t.preview then
@@ -378,7 +368,7 @@ local handlers = {
 			if t and t.missing then
 				t.missing(it.path)
 			else
-				say("Deleted file")
+				qed.message("Deleted file")
 			end
 			return
 		end
@@ -404,7 +394,7 @@ local handlers = {
 		end
 		local name = text:gsub("^%s+", ""):gsub("%s+$", "")
 		if name == "" then
-			say("Empty name", "error")
+			qed.message("Empty name", "error")
 			return
 		end
 		if m == "rename" then
@@ -414,7 +404,7 @@ local handlers = {
 			end
 			local ok, err = qed.fs.rename(at, full)
 			if not ok then
-				say(err == "exists" and "Already exists" or "Rename failed: " .. tostring(err), "error")
+				qed.message(err == "exists" and "Already exists" or "Rename failed: " .. tostring(err), "error")
 				return
 			end
 			reveal(full)
@@ -423,12 +413,12 @@ local handlers = {
 		local dir = name:sub(-1) == "/"
 		local clean = name:gsub("/+$", "")
 		if clean == "" then
-			say("Empty name", "error")
+			qed.message("Empty name", "error")
 			return
 		end
 		local full = qed.path.join(at, clean)
 		if exists(full) then
-			say("Already exists", "error")
+			qed.message("Already exists", "error")
 			return
 		end
 		local ok, err
@@ -438,7 +428,7 @@ local handlers = {
 			ok, err = qed.fs.write(full, "", {exclusive = true})
 		end
 		if not ok then
-			say(err == "exists" and "Already exists" or "Create failed: " .. tostring(err), "error")
+			qed.message(err == "exists" and "Already exists" or "Create failed: " .. tostring(err), "error")
 			return
 		end
 		reveal(full)
@@ -509,7 +499,7 @@ end
 local function gone(items)
 	for _, it in ipairs(items) do
 		if not exists(it.path) then
-			say("Deleted file: restore it first")
+			qed.message("Deleted file: restore it first")
 			return true
 		end
 	end
@@ -550,9 +540,9 @@ local function capture(ctx, cut)
 	end
 	local verb = cut and "Cut" or "Copied"
 	if #clip == 1 then
-		say(verb .. " " .. qed.path.base(clip[1]))
+		qed.message(verb .. " " .. qed.path.base(clip[1]))
 	else
-		say(("%s %d items"):format(verb, #clip))
+		qed.message(("%s %d items"):format(verb, #clip))
 	end
 end
 
@@ -577,13 +567,13 @@ end
 
 local function paste(ctx)
 	if #clip == 0 then
-		say("Nothing to paste")
+		qed.message("Nothing to paste")
 		return
 	end
 	local dir = target_dir(ctx)
 	local s = qed.fs.stat(dir)
 	if not s or s.type ~= "dir" then
-		say("Deleted directory: restore a file in it first")
+		qed.message("Deleted directory: restore a file in it first")
 		return
 	end
 	local cut, done, failed, last = clip_cut, 0, 0, nil
@@ -595,7 +585,7 @@ local function paste(ctx)
 				done, last = done + 1, dest
 			else
 				failed = failed + 1
-				say(("Paste failed: %s: %s"):format(qed.path.base(src), tostring(err)), "error")
+				qed.message(("Paste failed: %s: %s"):format(qed.path.base(src), tostring(err)), "error")
 			end
 		end
 	end
@@ -612,9 +602,9 @@ local function paste(ctx)
 	end
 	local verb = cut and "Moved" or "Pasted"
 	if done == 1 then
-		say(verb .. " " .. qed.path.base(last))
+		qed.message(verb .. " " .. qed.path.base(last))
 	elseif done > 1 then
-		say(("%s %d items"):format(verb, done))
+		qed.message(("%s %d items"):format(verb, done))
 	end
 end
 
@@ -648,11 +638,11 @@ local function delete(ctx)
 	refresh()
 	local n = #items - failed
 	if failed > 0 then
-		say(("Deleted %d, %d failed: %s"):format(n, failed, tostring(reason)), "error")
+		qed.message(("Deleted %d, %d failed: %s"):format(n, failed, tostring(reason)), "error")
 	elseif n == 1 then
-		say("Deleted")
+		qed.message("Deleted")
 	else
-		say(("Deleted %d items"):format(n))
+		qed.message(("Deleted %d items"):format(n))
 	end
 end
 
@@ -676,7 +666,7 @@ local function close_buffers(ctx)
 		end
 	end
 	if #paths == 0 then
-		say("No open buffers in selection")
+		qed.message("No open buffers in selection")
 		return
 	end
 	if #approved > 0 then
@@ -696,9 +686,9 @@ local function close_buffers(ctx)
 		sync(false)
 	end
 	if closed == 1 then
-		say("Closed buffer")
+		qed.message("Closed buffer")
 	elseif closed > 1 then
-		say(("Closed %d buffers"):format(closed))
+		qed.message(("Closed %d buffers"):format(closed))
 	end
 end
 
@@ -715,7 +705,7 @@ local function prompt(ctx, m)
 		ctx.view:footer{input = {prompt = "New: ", text = ""}}
 	end
 	mode = m
-	say("")
+	qed.message("")
 end
 
 local function walk_changed()
@@ -916,7 +906,7 @@ return {
 		cmd{name = "Toggle Diff", key = "Alt+d", run = toggle_diff, when = has_preview}
 		cmd{name = "Expand/Collapse All", key = "Alt+e", run = function(ctx)
 			if not ctx.view:expand() then
-				say("File status is still loading")
+				qed.message("File status is still loading")
 			end
 		end}
 		qed.export(exports)

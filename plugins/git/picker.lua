@@ -52,12 +52,7 @@ function M.pick(root)
 	if not e.ref then
 		return {}
 	end
-	local sha
-	if e.merge then
-		sha = repo.out(root, {"merge-base", e.ref, "HEAD"})
-	else
-		sha = repo.out(root, {"rev-parse", "-q", "--verify", e.ref .. "^0"})
-	end
+	local sha = repo.resolve(root, e)
 	if sha == "" then
 		return nil, "Cannot resolve " .. e.label
 	end

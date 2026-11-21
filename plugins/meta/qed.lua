@@ -379,9 +379,10 @@ function View:text(lines) end
 ---@param text string
 ---@return boolean
 function View:markdown(text) end
----Scrolls a markdown body to the heading with this GitHub slug. Returns whether it found one.
+---Scrolls a markdown body to the heading with this GitHub slug. Returns whether it found one, and the heading's source line.
 ---@param slug string
----@return boolean
+---@return boolean found
+---@return integer|nil source
 function View:anchor(slug) end
 ---Top row (1-based) of a text or markdown body, clamped to what can show; scrolls there first when `row` is given. Returns false once closed (a markdown body's `close` handler still reads its last top row).
 ---@param row? integer

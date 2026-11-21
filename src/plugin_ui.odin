@@ -2063,17 +2063,18 @@ qed_view_anchor :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	slug := strings.clone(api_string(L, 2), context.temp_allocator)
 	pn, _ := api_view_live(L, entry.editor)
-	found := false
 	if pn != nil && pn.has_md {
 		pane_md_lines(pn, pane_geom(entry.editor, pn).text.w)
 		for line, i in pn.md_lines {
 			if line.slug != "" && line.slug == slug {
-				pn.scroll, found = i, true
-				break
+				pn.scroll = i
+				lua.pushboolean(L, true)
+				lua.pushinteger(L, lua.Integer(line.src + 1))
+				return 2
 			}
 		}
 	}
-	lua.pushboolean(L, b32(found))
+	lua.pushboolean(L, false)
 	return 1
 }
 

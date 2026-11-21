@@ -23,21 +23,18 @@ function M.out(dir, args)
 	return r.code == 0 and trim(r.stdout) or ""
 end
 
--- resolved per call so a moved branch is followed; a repo lacking the ref falls back to HEAD
-function M.rev(dir, base)
-	if not base.ref then
-		return "HEAD"
-	end
-	local sha
+function M.resolve(dir, base)
 	if base.merge then
-		sha = M.out(dir, {"merge-base", base.ref, "HEAD"})
-	else
-		sha = M.out(dir, {"rev-parse", "-q", "--verify", base.ref .. "^0"})
+		return M.out(dir, {"merge-base", base.ref, "HEAD"})
 	end
+	return M.out(dir, {"rev-parse", "-q", "--verify", base.ref .. "^0"})
+end
+
+function M.rev(dir, base)
+	local sha = base.ref and M.resolve(dir, base) or ""
 	return sha ~= "" and sha or "HEAD"
 end
 
--- nil outside a repo; an untracked file has an empty base (every line added)
 function M.blob(path, base)
 	local dir, rel = M.anchor(path)
 	local r = M.git(dir, {"show", M.rev(dir, base) .. ":./" .. rel})
@@ -67,7 +64,6 @@ function M.anchor(path)
 	return dir, path:sub(#dir + 2)
 end
 
--- a long parse sleeps every YIELD_LINES lines so no slice outruns the event budget
 function M.each(s)
 	local next_line = s:gmatch("[^\n]+")
 	local n = 0
@@ -96,11 +92,11 @@ function M.numstat(out, untracked)
 	return added, deleted
 end
 
--- git diff skips untracked files, so grep counts their lines (-I: binaries count 0)
 M.UNTRACKED = "git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' -- 2>/dev/null"
 
 function M.untracked(top)
-	return qed.spawn{cmd = M.UNTRACKED, cwd = top}.stdout
+	local ok, r = pcall(qed.spawn, {cmd = M.UNTRACKED, cwd = top})
+	return ok and r.stdout or ""
 end
 
 function M.diffsize(top, rev)
