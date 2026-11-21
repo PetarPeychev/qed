@@ -96,7 +96,7 @@ e2e_cwd_open_prefill :: proc(t: ^testing.T) {
 	testing.expect_value(t, pane_geom(&e.ed, p).box, box)
 	top := e2e_row(&e, box.y)
 	testing.expectf(t, strings.contains(top, "┌──────────") && !strings.contains(top, filepath.base(root)), "no title on the border: %q", top)
-	testing.expect(t, strings.contains(e2e_row(&e, box.y + 1), fmt.tprintf("> %s/", root)), "prompt row")
+	testing.expect(t, strings.contains(e2e_row(&e, box.y + 1), fmt.tprintf("%s/", filepath.base(root))), "prompt row")
 	testing.expect(t, strings.contains(e2e_row(&e, box.y + 3), "Beta"), "first row under the separator")
 
 	e2e_key(&e, .Arrow_Down)

@@ -108,6 +108,7 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 		e2e_key(&e, .Arrow_Down)
 	}
 	testing.expect_value(t, pane_find(&e.ed, "plugins").list.sel, broken)
+	e2e_resize(&e, 400, E2E_H)
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Broken     user     errored"), "an errored plugin row")
 	testing.expect(t, e2e_grid_has(&e, "setup exploded"), "the selected row's last error shows in the footer")

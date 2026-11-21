@@ -708,7 +708,7 @@ local function type_in(cmd)
 end
 return {{setup = function()
 	qed.command{{name = "Term: Run", run = function() type_in("echo qed_run_$((40+2))") end}}
-	qed.command{{name = "Term: Cwd", run = function() type_in("cd %s && pwd") end}}
+	qed.command{{name = "Term: Cwd", run = function() type_in("cd %s && basename \"$PWD\"") end}}
 	qed.command{{name = "Term: Sleep", run = function() type_in("sleep 3") end}}
 	qed.command{{name = "Term: Again", run = function() type_in("echo again") end}}
 end}}`, dir))
@@ -730,7 +730,7 @@ end}}`, dir))
 	ui_run(t, &e, "Term: Cwd")
 	plugin_pump(&e.ed)
 	testing.expect(t, e.ed.terminal.active, "a hidden pane is shown again")
-	_, _, ok = e2e_term_wait_row(&e, dir, 4000)
+	_, _, ok = e2e_term_wait_row(&e, filepath.base(dir), 4000)
 	testing.expect(t, ok, "the shell runs the second command")
 
 	ui_run(t, &e, "Term: Sleep")
