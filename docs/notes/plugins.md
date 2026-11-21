@@ -119,7 +119,7 @@ The API is one global, `qed`.
 | `qed.shortcut(name)` | Live shortcut of a core or plugin editor command (`""` unbound, `nil` unknown). |
 | `qed.run(name)` | Run a builtin or plugin command by visible name. A bare name falls back to the caller's own editor command; bare names equal to a core command are refused at registration, so core names stay unambiguous. |
 | `qed.commands() -> {name, shortcut, owner}[]` | |
-| `ctx` | `{buf, path, language, root, selection_text}` (`path` is `""` for an unnamed buffer), plus `items` (the focused pane's selection, any plugin's command), `file` (the highlighted item's path in any focused list), `files` (all selected paths, in list order; on a narrowed walk a selected dir stands for its in-scope files) and `view` (this plugin's focused view). A command's ctx is taken when it is invoked, so it stays put across awaits; `files` on a walk keeps the selected rows and expands them on first access. |
+| `ctx` | `{buf, path, language, root, selection_text}` (`path` is `""` for an unnamed buffer), plus `items` (the focused pane's selection, any plugin's command), `file` (the highlighted item's path in any focused list), `files` (all selected paths, in list order; on a narrowed walk a selected dir stands for its in-scope files) and `view` (this plugin's focused view). A command's ctx is taken when it is invoked, so it stays put across awaits; `files` on a walk keeps the selected rows and expands them on first access, and `selection_text` is read on first access, nil once the buffer changed since the invocation. |
 
 ### Events
 `qed.on(event, fn) -> handle`, removed with `handle:off()`.

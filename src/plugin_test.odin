@@ -713,3 +713,38 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	_, a1 := plugin_command_for_event(ed, alt('1'), "")
 	testing.expect(t, !a1, "an invalid user bind leaves the command unbound")
 }
+
+@(test)
+plugin_ctx_selection_lazy :: proc(t: ^testing.T) {
+	lines := make([]string, 200_000)
+	defer delete(lines)
+	for &l in lines {
+		l = "abcdefghijabcdefghijabcdefghijabcdefghij"
+	}
+	ed := new(Editor)
+	ed.headless = true
+	append(&ed.buffers, test_buffer(..lines))
+	editor_plugins_start(ed, {{"lazy.lua", `return {setup = function()
+		qed.command{name = "Skip", run = function() qed.message("ran") end}
+		qed.command{name = "Read", run = function(ctx) qed.message(tostring(#ctx.selection_text)) end}
+		qed.command{name = "Late", run = function(ctx)
+			qed.edit(ctx.buf, function() qed.buf.insert(ctx.buf, {row = 1, col = 1}, "x") end)
+			qed.message(tostring(ctx.selection_text))
+		end}
+	end}`}}, "", 4 * 1024 * 1024)
+	defer plugin_test_destroy(ed)
+	cursor_select_all(&ed.buffers[0])
+	skip, _ := plugin_test_command(ed, "Lazy: Skip")
+	command_run(ed, skip)
+	testing.expect_value(t, ed.message, "ran")
+	testing.expect(t, ed.plugins.mem.used < 2 * 1024 * 1024, "a command that never reads the selection copies none of it")
+	cursor_select_all(&ed.buffers[0])
+	ed.buffers[0].selection = Cursor{0, 0}
+	ed.buffers[0].cursor = Cursor{0, 5}
+	read, _ := plugin_test_command(ed, "Lazy: Read")
+	command_run(ed, read)
+	testing.expect_value(t, ed.message, "5")
+	late, _ := plugin_test_command(ed, "Lazy: Late")
+	command_run(ed, late)
+	testing.expect_value(t, ed.message, "nil")
+}

@@ -1645,7 +1645,7 @@ plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, scope: string, 
 }
 
 plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, snapshot := false) {
-	lua.L_checkstack(L, 6, "ctx")
+	lua.L_checkstack(L, 8, "ctx")
 	lua.createtable(L, 0, 8)
 	lua.pushodinstring(L, editor.working_root)
 	lua.setfield(L, -2, "root")
@@ -1674,74 +1674,115 @@ plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, snapshot 
 		lua.setmetatable(L, -2)
 		return
 	}
-	for key in ([?]cstring{"selection_text", "file", "items"}) {
+	for key in ([?]cstring{"file", "items"}) {
 		if plugin_ctx_field_push(L, editor, string(key)) {
 			lua.setfield(L, -2, key)
 		}
 	}
-	if f == nil || !f.has_list {
-		return
-	}
-	sel := pane_selection(editor, f)
-	if f.list.source.kind != .Walk {
-		if plugin_ctx_field_push(L, editor, "files") {
+	walk := false
+	if f != nil && f.has_list {
+		if f.list.source.kind == .Walk {
+			walk = true
+		} else if plugin_ctx_field_push(L, editor, "files") {
 			lua.setfield(L, -2, "files")
 		}
-		return
 	}
-	// a selected dir on a scoped walk can stand for 100k files: keep the selected rows and expand on first access
-	src := &f.list.source
 	lua.createtable(L, 0, 1)
-	lua.createtable(L, c.int(len(sel)), 0)
-	n := 0
-	for i in sel {
-		if i < 0 || i >= len(src.entries) {
-			continue
+	// a selected dir on a scoped walk can stand for 100k files: keep the selected rows and expand on first access
+	if walk {
+		src := &f.list.source
+		sel := pane_selection(editor, f)
+		lua.createtable(L, c.int(2 * len(sel)), 0)
+		n := 0
+		for i in sel {
+			if i < 0 || i >= len(src.entries) {
+				continue
+			}
+			e := src.entries[i]
+			lua.pushodinstring(L, e.path)
+			lua.rawseti(L, -2, lua.Integer(2 * n + 1))
+			lua.pushboolean(L, b32(e.is_dir))
+			lua.rawseti(L, -2, lua.Integer(2 * n + 2))
+			n += 1
 		}
-		e := src.entries[i]
-		lua.pushodinstring(L, e.path)
-		lua.rawseti(L, -2, lua.Integer(2 * n + 1))
-		lua.pushboolean(L, b32(e.is_dir))
-		lua.rawseti(L, -2, lua.Integer(2 * n + 2))
-		n += 1
+		lua.pushinteger(L, lua.Integer(f.handle))
+	} else {
+		lua.pushnil(L)
+		lua.pushinteger(L, 0)
 	}
-	lua.pushinteger(L, lua.Integer(f.handle))
-	lua.pushcclosure(L, plugin_ctx_files_index, 2)
+	// the selection is read on first access, and only while the buffer is unchanged since the invocation
+	has_sel := false
+	if !(editor.welcome || len(editor.buffers) == 0) {
+		b := editor_buffer(editor)
+		if from, to, ok := selection_range(b); ok {
+			has_sel = true
+			lua.createtable(L, 6, 0)
+			for v, i in ([6]i64{i64(b.id), i64(b.rev), i64(from.row), i64(from.col), i64(to.row), i64(to.col)}) {
+				lua.pushinteger(L, lua.Integer(v))
+				lua.rawseti(L, -2, lua.Integer(i + 1))
+			}
+		}
+	}
+	if !has_sel {
+		lua.pushnil(L)
+	}
+	lua.pushcclosure(L, plugin_ctx_snap_index, 3)
 	lua.setfield(L, -2, "__index")
 	lua.setmetatable(L, -2)
 }
 
-plugin_ctx_files_index :: proc "c" (L: ^lua.State) -> c.int {
+plugin_ctx_snap_index :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
 	if entry == nil {
 		return plugin_unavailable(L)
 	}
 	context = entry.ctx
 	key, _ := lua.toodinstring(L, 2)
-	if key != "files" {
-		return 0
-	}
 	editor := entry.editor
-	rows := lua.upvalueindex(1)
-	n := int(lua.rawlen(L, rows)) / 2
-	sel := make([]WalkSelected, n, context.temp_allocator)
-	for i in 0 ..< n {
-		lua.rawgeti(L, rows, lua.Integer(2 * i + 1))
-		s, _ := lua.toodinstring(L, -1)
-		sel[i].path = strings.clone(s, context.temp_allocator)
-		lua.rawgeti(L, rows, lua.Integer(2 * i + 2))
-		sel[i].is_dir = bool(lua.toboolean(L, -1))
-		lua.pop(L, 2)
-	}
-	wp: ^Pane
-	if pi := pane_index(editor, u64(lua.tointeger(L, lua.upvalueindex(2)))); pi >= 0 && editor.panes[pi].list.source.kind == .Walk {
-		wp = &editor.panes[pi]
-	}
-	files := list_walk_files_of(wp, sel)
-	lua.createtable(L, c.int(len(files)), 0)
-	for path, i in files {
-		lua.pushodinstring(L, path)
-		lua.rawseti(L, -2, lua.Integer(i + 1))
+	switch key {
+	case "selection_text":
+		up := lua.upvalueindex(3)
+		if lua.type(L, up) != .TABLE {
+			return 0
+		}
+		v: [6]int
+		for i in 0 ..< 6 {
+			lua.rawgeti(L, up, lua.Integer(i + 1))
+			v[i] = int(lua.tointeger(L, -1))
+			lua.pop(L, 1)
+		}
+		b, _ := api_buf_find(editor, u64(v[0]))
+		if b == nil || b.rev != u64(v[1]) {
+			return 0
+		}
+		lua.pushodinstring(L, buffer_text_range(b, {v[2], v[3]}, {v[4], v[5]}))
+	case "files":
+		rows := lua.upvalueindex(1)
+		if lua.type(L, rows) != .TABLE {
+			return 0
+		}
+		n := int(lua.rawlen(L, rows)) / 2
+		sel := make([]WalkSelected, n, context.temp_allocator)
+		for i in 0 ..< n {
+			lua.rawgeti(L, rows, lua.Integer(2 * i + 1))
+			s, _ := lua.toodinstring(L, -1)
+			sel[i].path = strings.clone(s, context.temp_allocator)
+			lua.rawgeti(L, rows, lua.Integer(2 * i + 2))
+			sel[i].is_dir = bool(lua.toboolean(L, -1))
+			lua.pop(L, 2)
+		}
+		wp: ^Pane
+		if pi := pane_index(editor, u64(lua.tointeger(L, lua.upvalueindex(2)))); pi >= 0 && editor.panes[pi].list.source.kind == .Walk {
+			wp = &editor.panes[pi]
+		}
+		files := list_walk_files_of(wp, sel)
+		lua.createtable(L, c.int(len(files)), 0)
+		for path, i in files {
+			lua.pushodinstring(L, path)
+			lua.rawseti(L, -2, lua.Integer(i + 1))
+		}
+	case:
+		return 0
 	}
 	lua.pushvalue(L, 2)
 	lua.pushvalue(L, -2)

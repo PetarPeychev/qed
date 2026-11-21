@@ -13,7 +13,7 @@
 ---@field path string|nil the current buffer's path, `""` for an unnamed buffer (nil on the welcome screen)
 ---@field language string|nil
 ---@field root string
----@field selection_text string|nil
+---@field selection_text string|nil the selected text, read on first access; nil once the buffer changed since the command was invoked
 ---@field items (string|qed.UiItem)[]|nil while a pane with a list has focus (any plugin's command, e.g. a scoped one): its selection, the range with `multi`
 ---@field file string|nil while a pane with a list has focus (the file tree or any other): the highlighted item's path (absolute), nil when it has none
 ---@field view qed.View|nil a view of this plugin that has focus (a `scope` command's chord or its scoped Ctrl+P)

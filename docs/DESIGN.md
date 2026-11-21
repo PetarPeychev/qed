@@ -619,7 +619,8 @@ started at the end of `editor_init`. Invariants the code can't show:
   (set on load and config apply), so `startup` handlers can register first.
 - `ctx.selection_text`, `file` and `files` (the focused list's selection)
   are computed on first read through `__index` and cached on the ctx, so `when` stays
-  cheap.
+  cheap. A command's snapshot ctx keeps `selection_text` lazy too (buffer id, rev and range at invocation; nil
+  once the rev moved), so a huge selection costs nothing unless read.
 - `qed.term` wraps the core sessions (see Terminal pane); a session records its
   creating plugin as owner and unload closes it (after the plugin's tasks are freed)
   unless `detach`. `state.busy` is `tcgetpgrp` of the PTY differing from the session's pid.
