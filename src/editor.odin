@@ -868,6 +868,10 @@ editor_save_full :: proc(editor: ^Editor, b: ^Buffer) {
 		editor_log(editor, .Info, "", "Save is waiting for plugins")
 		return
 	}
+	if buffer_disk_changed(b) {
+		editor_save_id(editor, id)
+		return
+	}
 	if plugin_pre_save(editor, id) != 0 {
 		return
 	}
