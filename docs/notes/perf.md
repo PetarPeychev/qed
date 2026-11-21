@@ -178,6 +178,14 @@ big-file mode.
   spliced in place: key frame 1601 -> ~6 ms, frames p95 ~12 ms, all rows in ~260-380 ms, toggling a dir in
   the expanded tree ~2 ms. Peak RSS of the 100k bench 78 MB (the bench ran on the test runner's
   rollback allocator, which walk threads corrupt: 2.7 GB on 100k files and an OOM on a 426k-file tree).
+- Lua GC: with a 40 MB plugin heap one big allocation (a 1.2 MB `git status` string, a 64k-node table
+  resize) owed the incremental collector a whole cycle, paid inside the allocating slice (git tree open
+  63-98 ms at 37a3607, and already 63-76 ms at 4d7bb68: placement noise, not a commit). The collector is
+  stopped and `plugin_pump` steps it 2 ms at a time (single steps reach ~9 ms on a 64k-node table); the
+  git scan view also drops two 50k-entry tables. Git slices: startup 20-29 ms, tree open 22-24 ms; GC step
+  max ~8 ms.
+- Go to: Line, 1M lines: a query extending the last one rescans only its hits, and the scan uses the
+  match-only `fuzzy_has`. Filter keystroke p95 49-58 -> 20-30 ms (first key 39 -> 23 ms).
 - tmux smoke (default build): Git tab first arrow ~830 -> 6 ms; Alt+g to tab 238 ms; markdown
   preview frame 72 ms, content after ~1.2 s.
 
@@ -194,13 +202,8 @@ Measured with the gate (`-o:speed` unless noted); file:line is where the time go
   tables, lists, parse ~15%). A single huge top-level block (a 100k-line list or
   fence) is still one step. Options: highlight code blocks lazily at draw time, a
   "rendering" hint.
-- **Lua GC steps** add 20–50 ms to whatever slice triggers them once the plugin
-  heap holds 50k-entry tables (git, filetree); the git parse chunk itself is
-  1–7 ms. Fewer allocations per item, or GC tuning, would cut them.
-- **Git tab / tree open at 50k** sit near the budget: `within` (scope build ~20 ms
-  plus the Lua path list) ~45 ms, `view:set` ~39 ms; on tree open the filetree
-  and git slices land at 41–61 ms depending on GC (last gate: filetree 55 ms on
-  tree open, 51 ms on the Git tab, both over budget but under the limit).
+- **Filetree slices at 50k** sit near the budget with GC out of them: tree open
+  36-44 ms (`show_source`'s `view:set`), Git tab 31-41 ms.
 - **1M-line open** (~370 ms; 560 ms on `-o:minimal`): one `clone_to_dynamic`
   per line plus the `saved` snapshot. Fix candidates: line storage in one block
   (data-structure change, needs a decision) or a lighter saved-state watermark.

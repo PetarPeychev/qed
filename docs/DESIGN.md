@@ -578,6 +578,10 @@ started at the end of `editor_init`. Invariants the code can't show:
   (`PLUGIN_SOFT_MS`, 50) is a Debug line measured after the resume. A nested entry (e.g. `buf_pre_save` handlers under
   `qed.save`) has its own budget and its time also counts toward the outer slice; when it returns with the outer slice
   past its limit, the outer thread's count hook drops to 1, so a loop of nested calls stops at its next instruction. `__close` handlers run by `closethread` get the event budget.
+- GC: the Lua collector never runs inside a slice (one big allocation could owe it a whole mark of a 40 MB heap).
+  `plugins_open` stops it; `plugin_gc_step`, at the end of `plugin_pump`, starts a cycle once the heap doubles
+  since the last one and steps it for `PLUGIN_GC_STEP_MS` (2 ms, up to 3x while the heap outgrows that); `gc_active`
+  keeps the main loop polling until the cycle ends. Out of memory still runs Lua's emergency full collection.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
   (`.Lsp`, bounded by `plugin_hook_timeout_ms` → `"timeout"`); `plugin_lsp_done`
   queues the outcome, `plugin_pump` resumes the task. A response nobody waits for
@@ -945,7 +949,7 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`goto` plugin, *Go to: Line* `Ctrl+G`, filter over the list column,
-matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, `plugins.search.min_query`;
+matches in file order, a query extending the last one rescans only its hits; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
 file tree (`filetree` plugin, see File tree: `Alt+f`/`Alt+o`/`Alt+u` open it on the All/Open/Unsaved tab and

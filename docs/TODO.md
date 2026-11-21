@@ -111,7 +111,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Git tab nested-repo discovery outside a repo spawns one `sh` per directory (`plugins/git/tree.lua` `repos`): ~13 s in /tmp, minutes in $HOME. Replace with one walk that stops at each repo (core or a single `find`).
-- [ ] Lua GC steps add 20-50 ms to plugin slices once the heap holds 50k-entry tables (git, filetree at 50k changes); cut allocations or tune the GC ([notes/perf.md](notes/perf.md)).
 
 ### Refactors
 

@@ -310,6 +310,7 @@ load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*,
   - Handles are ids, and positions are values.
   - An edit after an await follows the pattern: read `rev`, await, then edit with `{rev = r}`. If the rev is stale, the edit returns `nil, "stale"` and the plugin drops the result, the same pattern LSP formatting already uses.
   - Edits validate before the first primitive runs, so a group never half-applies.
+- **GC.** Lua's collector is stopped; `plugin_pump` steps it between slices (2 ms per pump, a cycle per doubling of the heap), so a slice never pays for a collection.
 - **Hook budgets.** A `lua_sethook` count hook runs every 100k instructions and checks the wall time of the current resume slice. Time spent waiting in a yield doesn't count.
 
   | Entry | Soft (Debug log) | Hard |
