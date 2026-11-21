@@ -849,6 +849,10 @@ struct tb_global {
     struct bytebuf out;
     struct cellbuf back;
     struct cellbuf front;
+    /* qed patch: when each back cell was last written (see lib/tb2/PATCHES.md) */
+    uint64_t *stamps;
+    int stamps_w, stamps_h;
+    uint64_t stamp;
     struct termios orig_tios;
     int has_orig_tios;
     int last_errno;
@@ -2348,6 +2352,7 @@ static int bytebuf_free(struct bytebuf *b);
 static int tb_iswprint_ex(uint32_t ch, int *width);
 /* qed patch: see lib/tb2/PATCHES.md */
 static int cell_width(struct tb_cell *c, int *dumb);
+static uint64_t *cell_stamp(int x, int y);
 static int send_codepoints(uint32_t *ch, size_t nch);
 
 int tb_init(void) {
@@ -2444,6 +2449,22 @@ int tb_present(void) {
             int dumb;
             int raw = cell_width(back, &dumb);
             int w = raw < 1 ? 1 : raw;
+            if (w > 1) {
+                // a cell written inside a wide cell's span after it (an overlay
+                // edge) wins: the wide cell is broken and goes out blank
+                uint64_t *own = cell_stamp(x, y);
+                for (i = 1; own && i < w && x + i < global.front.width; i++) {
+                    uint64_t *st = cell_stamp(x + i, y);
+                    if (st && *st > *own) {
+                        uint32_t space = ' ';
+                        if_err_return(rv,
+                            cell_set(back, &space, 1, back->fg, back->bg));
+                        raw = cell_width(back, &dumb);
+                        w = 1;
+                        break;
+                    }
+                }
+            }
 
             if (cell_cmp(back, front) != 0) {
                 int odumb;
@@ -2587,6 +2608,8 @@ int tb_set_cell_ex(int x, int y, uint32_t *ch, size_t nch, uintattr_t fg,
     struct tb_cell *cell;
     if_err_return(rv, cellbuf_get(&global.back, x, y, &cell));
     if_err_return(rv, cell_set(cell, ch, nch, fg, bg));
+    uint64_t *st = cell_stamp(x, y);
+    if (st) *st = ++global.stamp;
     return TB_OK;
 }
 
@@ -2615,6 +2638,8 @@ int tb_extend_cell(int x, int y, uint32_t ch) {
     }
     cell->ech[nech] = '\0';
     cell->nech = nech;
+    uint64_t *st = cell_stamp(x, y);
+    if (st) *st = ++global.stamp;
     return TB_OK;
 #else
     (void)x;
@@ -3266,6 +3291,9 @@ static int tb_deinit(void) {
 
     cellbuf_free(&global.back);
     cellbuf_free(&global.front);
+    tb_free(global.stamps);
+    global.stamps = NULL;
+    global.stamps_w = global.stamps_h = 0;
     bytebuf_free(&global.in);
     bytebuf_free(&global.out);
 
@@ -4399,6 +4427,25 @@ int tb_cluster_width(uint32_t *ch, size_t nch) {
         else if (vs16 || ri >= 2 || wmax >= 2) return 2;
     }
     return sum;
+}
+
+/* qed patch: write stamp of a back cell, sized lazily to the back buffer */
+static uint64_t *cell_stamp(int x, int y) {
+    if (!cellbuf_in_bounds(&global.back, x, y)) return NULL;
+    if (global.stamps_w != global.back.width ||
+        global.stamps_h != global.back.height) {
+        size_t n = (size_t)global.back.width * global.back.height;
+        tb_free(global.stamps);
+        global.stamps = (uint64_t *)tb_malloc(n * sizeof(uint64_t));
+        if (!global.stamps) {
+            global.stamps_w = global.stamps_h = 0;
+            return NULL;
+        }
+        memset(global.stamps, 0, n * sizeof(uint64_t));
+        global.stamps_w = global.back.width;
+        global.stamps_h = global.back.height;
+    }
+    return &global.stamps[y * global.back.width + x];
 }
 
 /* qed patch: our width, plus in `dumb` what a terminal summing codepoint

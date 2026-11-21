@@ -291,7 +291,7 @@ test_pane_text_draws_clusters :: proc(t: ^testing.T) {
 	}
 	cases := []Case {
 		{"漢字ab", 6, {0x6f22, 0, 0x5b57, 0, 'a', 'b'}},
-		{"éx", 2, {'e', 'x'}},
+		{"e\u0301x", 2, {'e', 'x'}},
 		{"क्षेab", 4, {0x0915, 0, 'a', 'b'}},
 	}
 	for c in cases {
@@ -308,4 +308,40 @@ test_pane_text_draws_clusters :: proc(t: ^testing.T) {
 	}
 	tb2.clear()
 	testing.expect(t, pane_text(0, 0, 3, "ab漢", COLOR_FG, COLOR_BG) == 2, "a wide char past the width is left out")
+}
+
+// wide clusters of the row underneath straddle both edges of a box drawn over it
+@(test)
+test_box_edges_over_wide_clusters :: proc(t: ^testing.T) {
+	v := vt_begin()
+	defer vt_end(&v)
+
+	left, right := 10, 50
+	clusters := []string{"ली", "श्री", "漢", "👨\u200d👩\u200d👧\u200d👦", "🇧🇬", "❤️", "👍🏽"}
+	odd := strings.join(ODD_ROWS, "\n", context.temp_allocator)
+	code := strings.repeat("static int helper(struct state *s, const char *name, size_t len) {\n", E2E_H, context.temp_allocator)
+	for text, f in ([]string{odd, code, odd}) {
+		tb2.clear()
+		for c, y in clusters {
+			cw := md_text_width(c)
+			lead := strings.repeat("x", left - 1, context.temp_allocator)
+			mid := strings.repeat("y", right - left - cw + 1, context.temp_allocator)
+			draw_row(y, strings.concatenate({lead, c, mid, c, "zzz"}, context.temp_allocator))
+		}
+		for y in 0 ..< len(clusters) {
+			tb2.set_cell(i32(left), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+			tb2.set_cell(i32(right), i32(y), '│', COLOR_PANE_BORDER, COLOR_PANE_BG)
+		}
+		p: Preview
+		preview_set_text(&p, "corpus.txt", text, len(clusters))
+		preview_render(&p, left + 1, 0, right - left - 1, len(clusters))
+		preview_destroy(&p)
+		vt_present_check(t, &v, fmt.tprintf("frame %d", f), false)
+		for c, y in clusters {
+			for x in ([]int{left, right}) {
+				got := vterm_rune(v.screen, x, y)
+				testing.expectf(t, got == '│', "frame %d, %q row: col %d shows %q, want the border", f, c, x, got)
+			}
+		}
+	}
 }

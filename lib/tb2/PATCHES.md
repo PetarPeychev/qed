@@ -104,6 +104,14 @@ spacing codepoint.
 
    The extra output is limited to changed cells holding risky clusters.
 
+4. **A wide cell is broken by a later write inside its span.** Every
+   `tb_set_cell_ex`/`tb_extend_cell` stamps its back cell with a write counter
+   (`global.stamps`, sized lazily to the back buffer). When `tb_present` meets a
+   wide cell and a cell it covers was written after it (an overlay border drawn
+   over the second half of `ली` or an emoji), the wide cell goes out as a blank
+   and the covered cells are sent normally. Upstream sent the wide glyph and
+   skipped the covered cell, so the border never appeared.
+
 The width rule matches non-clustering terminals (tmux, xterm). Terminals that
 cluster graphemes (kitty, WezTerm, Ghostty, Windows Terminal's grapheme mode)
 draw an Indic cluster narrower: the result is blank cells after it, never
