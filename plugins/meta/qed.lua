@@ -332,7 +332,7 @@ function List:release() end
 ---@field selected? integer item index to start on
 ---@field sort? boolean keep the items ordered by key: `append` inserts in place and the selection follows its item once the user moved it
 ---@field tree? boolean a `qed.fs.walk` list shown as a tree: indent, expand icons, Enter or double-click on a dir toggles it (a filter shows ranked paths; Enter on a dir clears it and reveals the dir); open buffers get an accent, unsaved ones `●`
----@field columns? qed.UiColumn[] items draw their `cells` in these columns, two spaces apart; a title on any column adds a header row that stays put while the list scrolls
+---@field columns? qed.UiColumn[] items draw their `cells` in these columns, two spaces apart; a title on any column adds a header row and a rule under it that stay put while the list scrolls
 
 ---@class qed.UiColumn
 ---@field title? string header text, drawn bold

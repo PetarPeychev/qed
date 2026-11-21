@@ -118,26 +118,6 @@ config_backdrops := [?]Config_Backdrop {
 	{"plugins_pane_backdrop", &PLUGINS_PANE_BACKDROP},
 }
 
-TableBorders :: enum {
-	None,
-	Header,
-	All,
-}
-
-PANE_TABLE_BORDERS: TableBorders
-
-table_borders_parse :: proc(s: string) -> (TableBorders, bool) {
-	switch s {
-	case "none":
-		return .None, true
-	case "header":
-		return .Header, true
-	case "all":
-		return .All, true
-	}
-	return .None, false
-}
-
 backdrop_parse :: proc(s: string) -> (PaneBackdrop, bool) {
 	switch s {
 	case "none":
@@ -623,15 +603,6 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 		}
 	}
 
-	if v, present := root["pane_table_borders"]; present {
-		str, _ := v.(json.String)
-		if b, ok := table_borders_parse(string(str)); ok {
-			PANE_TABLE_BORDERS = b
-		} else {
-			append(invalid, "pane_table_borders")
-		}
-	}
-
 	if theme_val, present := root["theme"]; present {
 		if s, is_str := theme_val.(json.String); is_str {
 			delete(THEME, os.heap_allocator())
@@ -696,7 +667,6 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 		for it in config_backdrops {
 			known ||= it.key == key
 		}
-		known ||= key == "pane_table_borders"
 		if !known {
 			append(warnings, config_unknown_msg(key))
 		}

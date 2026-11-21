@@ -1229,7 +1229,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		if p.max_width > 0 {
 			w = min(w, p.max_width - 2)
 		}
-		g.box = pane_center(editor, w, top + (1 if head else 0) + (1 if head && PANE_TABLE_BORDERS != .None else 0) + rows + (1 if sep else 0) + (2 if pane_has_footer(p) else 0))
+		g.box = pane_center(editor, w, top + (2 if head else 0) + rows + (1 if sep else 0) + (2 if pane_has_footer(p) else 0))
 		g.inner = {g.box.x + 1, g.box.y + 1, g.box.w - 2, g.box.h - 2}
 		y := g.inner.y
 		if p.title != "" {
@@ -1245,12 +1245,8 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 			y += 1
 		}
 		if head {
-			g.head_y = y
-			y += 1
-			if PANE_TABLE_BORDERS != .None {
-				g.rule_y = y
-				y += 1
-			}
+			g.head_y, g.rule_y = y, y + 1
+			y += 2
 		}
 		g.list = {g.inner.x, y, g.inner.w, rows}
 		if pane_has_footer(p) {
@@ -1301,7 +1297,7 @@ pane_geom :: proc(editor: ^Editor, p: ^Pane) -> (g: PaneGeom) {
 		if head && y < bottom {
 			g.head_y = y
 			y += 1
-			if PANE_TABLE_BORDERS != .None && y < bottom {
+			if y < bottom {
 				g.rule_y = y
 				y += 1
 			}
@@ -1439,7 +1435,7 @@ cell_clip :: proc(text: string, w: int) -> string {
 	return fmt.tprintf("%s…", text[:c])
 }
 
-columns_layout :: proc(cols: []PaneColumn, seen: []int, w: int, gap := COLUMN_GAP) -> []int {
+columns_layout :: proc(cols: []PaneColumn, seen: []int, w: int) -> []int {
 	n := len(cols)
 	out := make([]int, n, context.temp_allocator)
 	floor := make([]int, n, context.temp_allocator)
@@ -1461,7 +1457,7 @@ columns_layout :: proc(cols: []PaneColumn, seen: []int, w: int, gap := COLUMN_GA
 		}
 		used += out[i]
 	}
-	avail := w - gap * max(0, n - 1)
+	avail := w - COLUMN_GAP * max(0, n - 1)
 	rest := max(0, avail - used)
 	k := 0
 	for c, i in cols {
@@ -1507,7 +1503,7 @@ pane_columns_seen :: proc(p: ^Pane, cols: []PaneColumn, it: PaneItem, cap: int) 
 	}
 }
 
-pane_columns_fit :: proc(editor: ^Editor, p: ^Pane, cols: []PaneColumn, drawn: []PaneItem, cap: int) -> (widths: []int, gap: int) {
+pane_columns_fit :: proc(editor: ^Editor, p: ^Pane, cols: []PaneColumn, drawn: []PaneItem, cap: int) -> []int {
 	fit := false
 	for c in cols {
 		fit ||= c.size == .Fit
@@ -1528,31 +1524,10 @@ pane_columns_fit :: proc(editor: ^Editor, p: ^Pane, cols: []PaneColumn, drawn: [
 			pane_columns_seen(p, cols, it, cap)
 		}
 	}
-	gap = COLUMN_GAP + (1 if PANE_TABLE_BORDERS == .All && columns_titled(cols) else 0)
-	return columns_layout(cols, p.list.fit[:], cap, gap), gap
+	return columns_layout(cols, p.list.fit[:], cap)
 }
 
-columns_seps :: proc(widths: []int, gap, x, w: int) -> []int {
-	seps := make([dynamic]int, context.temp_allocator)
-	cx := x
-	for cw, i in widths[:max(0, len(widths) - 1)] {
-		cx += cw
-		if cx + 1 >= x + w {
-			break
-		}
-		append(&seps, cx + 1)
-		cx += gap
-	}
-	return seps[:]
-}
-
-pane_seps_draw :: proc(seps: []int, y: int, bg: tb2.Color) {
-	for x in seps {
-		tb2.set_cell(i32(x), i32(y), '│', COLOR_PANE_BORDER, bg)
-	}
-}
-
-pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x, y, w: int, fg, bg: tb2.Color, header := false, gap := COLUMN_GAP) {
+pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x, y, w: int, fg, bg: tb2.Color, header := false) {
 	cx := x
 	for c, i in cols {
 		if i >= len(cells) || cx >= x + w {
@@ -1569,7 +1544,7 @@ pane_render_cells :: proc(cells: []string, cols: []PaneColumn, widths: []int, x,
 			off := cw - sw if c.right && !header else 0
 			pane_text(cx + off, y, cw - off, text, fg, bg)
 		}
-		cx += widths[i] + gap
+		cx += widths[i] + COLUMN_GAP
 	}
 }
 
@@ -1738,18 +1713,15 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	}
 	cols := list_columns(editor, p) if p.has_list else nil
 	widths: []int
-	gap := COLUMN_GAP
 	if len(cols) > 0 {
-		widths, gap = pane_columns_fit(editor, p, cols, drawn, lw)
+		widths = pane_columns_fit(editor, p, cols, drawn, lw)
 	}
-	seps := columns_seps(widths, gap, g.list.x + 1, lw) if gap > COLUMN_GAP else nil
 	if g.head_y >= 0 {
 		titles := make([]string, len(cols), context.temp_allocator)
 		for c, i in cols {
 			titles[i] = c.title
 		}
-		pane_render_cells(titles, cols, widths, g.list.x + 1, g.head_y, lw, color_attr(COLOR_PANE_FG, .Bold), COLOR_PANE_BG, true, gap)
-		pane_seps_draw(seps, g.head_y, COLOR_PANE_BG)
+		pane_render_cells(titles, cols, widths, g.list.x + 1, g.head_y, lw, color_attr(COLOR_PANE_FG, .Bold), COLOR_PANE_BG, true)
 	}
 	if g.rule_y >= 0 {
 		tb2.set_cell(i32(g.box.x), i32(g.rule_y), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
@@ -1757,22 +1729,6 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 			tb2.set_cell(i32(x), i32(g.rule_y), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)
 		}
 		tb2.set_cell(i32(g.div_x), i32(g.rule_y), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
-		for x in seps {
-			tb2.set_cell(i32(x), i32(g.rule_y), '┼' if n > 0 else '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
-		}
-	}
-	if n > 0 {
-		for r in len(drawn) ..< g.list.h {
-			pane_seps_draw(seps, g.list.y + r, COLOR_PANE_BG)
-		}
-	}
-	if g.head_y >= 0 {
-		for x in seps {
-			tb2.set_cell(i32(x), i32(g.head_y - 1), '┬', COLOR_PANE_BORDER, COLOR_PANE_BG)
-			if n > 0 {
-				tb2.set_cell(i32(x), i32(g.list.y + g.list.h), '┴', COLOR_PANE_BORDER, COLOR_PANE_BG)
-			}
-		}
 	}
 	addw, delw := 0, 0
 	if len(p.marks) > 0 {
@@ -1834,8 +1790,7 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 			}
 		}
 		if len(cols) > 0 {
-			pane_render_cells(it.cells, cols, widths, g.list.x + 1, y, label_w, fg, bg, false, gap)
-			pane_seps_draw(seps, y, bg)
+			pane_render_cells(it.cells, cols, widths, g.list.x + 1, y, label_w, fg, bg)
 		} else {
 			pane_text(g.list.x + 1, y, label_w, label, fg, bg)
 		}

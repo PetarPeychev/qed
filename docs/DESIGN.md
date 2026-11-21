@@ -351,7 +351,7 @@ M4: placement `center`/`full`/`split` (`pane_geom` computes every rect), size cl
 (`input`/`filter`/`query`/`path` modes), a styled text body or a `Preview` body (`body_preview`), a list
 (items with label/detail/path/row/col/buf/key/color/cells, matches under a filter field, multi range,
 `max` with `N+`, empty hint, `sel_bg`, `follow`, an optional core source, columns: fixed/`fit`/`fill` widths laid out by
-`columns_layout`, fit grow-only over a bounded sample plus drawn rows, a title header row above the scrolling list), an auto file or
+`columns_layout`, fit grow-only over a bounded sample plus drawn rows, a title header row and rule above the scrolling list), an auto file or
 buffer preview, footer hints and chips or a footer input, tabs, per-key marks, a tree list, a `scope`, a closing chord (`toggle` plugin command id or `chord`
 core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Editor.panes` is the stack:
 - The topmost non-passive pane takes keys, mouse and paste (`pane_stack_dispatch`). Passive panes

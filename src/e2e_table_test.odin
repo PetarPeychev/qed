@@ -75,7 +75,7 @@ e2e_table_columns :: proc(t: ^testing.T) {
 	testing.expect(t, p != nil, "the table opens")
 	e2e_render(&e)
 	g := pane_geom(&e.ed, p)
-	testing.expect_value(t, g.head_y, g.list.y - 1)
+	testing.expect_value(t, g.head_y, g.list.y - 2)
 	x := g.list.x + 1
 	head := e2e_row_text(&e, g.head_y)
 	testing.expect(t, strings.contains(head, "Name             Kind  Note"), "titles sit over columns sized by the sampled widest cell")
@@ -115,7 +115,7 @@ e2e_table_columns :: proc(t: ^testing.T) {
 	e2e_resize(&e, E2E_W, E2E_H)
 	table_run(&e, "Tbl: Center")
 	p = test_view(&e.ed)
-	testing.expect_value(t, pane_geom(&e.ed, p).box, pane_center(&e.ed, PALETTE_WIDTH, 1 + 1))
+	testing.expect_value(t, pane_geom(&e.ed, p).box, pane_center(&e.ed, PALETTE_WIDTH, 2 + 1))
 	e2e_key(&e, .Esc)
 }
 
@@ -217,29 +217,17 @@ e2e_table_list_accel :: proc(t: ^testing.T) {
 e2e_table_empty_hint :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
-	saved := PANE_TABLE_BORDERS
-	defer PANE_TABLE_BORDERS = saved
 	for &on in e.ed.logview.filter {
 		on = false
 	}
-	for mode in TableBorders {
-		PANE_TABLE_BORDERS = mode
-		cmd_message_log(&e.ed)
-		p := pane_find(&e.ed, "log")
-		e2e_render(&e)
-		g := pane_geom(&e.ed, p)
-		testing.expectf(t, pane_count(&e.ed, p) == 0, "%v: the log is empty", mode)
-		testing.expectf(t, strings.contains(e2e_row_text(&e, g.list.y), "│ (no messages)"), "%v: the hint spans the list", mode)
-		for r in 0 ..< g.list.h {
-			row := e2e_row_text(&e, g.list.y + r)
-			testing.expectf(t, strings.count(row, "│") <= 2, "%v: no separators on empty row %d: %s", mode, r, row)
-		}
-		if g.rule_y >= 0 {
-			testing.expectf(t, !strings.contains(e2e_row_text(&e, g.rule_y), "┼"), "%v: nothing crosses the rule below", mode)
-		}
-		testing.expectf(t, !strings.contains(e2e_row_text(&e, g.list.y + g.list.h), "┴") || mode != .All, "%v: no join under an empty list", mode)
-		e2e_key(&e, .Esc)
-	}
+	cmd_message_log(&e.ed)
+	p := pane_find(&e.ed, "log")
+	e2e_render(&e)
+	g := pane_geom(&e.ed, p)
+	testing.expect_value(t, pane_count(&e.ed, p), 0)
+	testing.expect(t, strings.contains(e2e_row_text(&e, g.list.y), "│ (no messages)"), "the hint spans the list")
+	testing.expect_value(t, g.rule_y, g.head_y + 1)
+	e2e_key(&e, .Esc)
 }
 
 @(test)
@@ -265,14 +253,10 @@ e2e_table_core_max_width :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_table_borders :: proc(t: ^testing.T) {
+e2e_table_header_rule :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
-	saved := PANE_TABLE_BORDERS
-	defer PANE_TABLE_BORDERS = saved
 	e2e_plugin(&e, "tbl", TABLE_PLUGIN)
-
-	PANE_TABLE_BORDERS = .Header
 	table_run(&e, "Tbl: Sorted")
 	p := test_view(&e.ed)
 	e2e_render(&e)
@@ -281,24 +265,8 @@ e2e_table_borders :: proc(t: ^testing.T) {
 	testing.expect_value(t, g.list.y, g.rule_y + 1)
 	testing.expect_value(t, e2e_cell(&e, g.box.x, g.rule_y), '├')
 	testing.expect_value(t, e2e_cell(&e, g.list.x + 3, g.rule_y), '─')
+	testing.expect_value(t, e2e_cell(&e, g.box.x + g.box.w - 1, g.rule_y), '┤')
 	testing.expect_value(t, table_x_col(&e, p), 4 + 2)
-	e2e_key(&e, .Esc)
-
-	PANE_TABLE_BORDERS = .All
-	table_run(&e, "Tbl: Sorted")
-	p = test_view(&e.ed)
-	e2e_render(&e)
-	g = pane_geom(&e.ed, p)
-	x := g.list.x + 1
-	testing.expect_value(t, table_x_col(&e, p), 4 + 3)
-	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.head_y), '│')
-	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.rule_y), '┼')
-	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.list.y), '│')
-	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.list.y + g.list.h - 1), '│')
-	testing.expect_value(t, g.head_y - 1, g.box.y)
-	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.box.y), '┬')
-	testing.expect_value(t, g.list.y + g.list.h, g.box.y + g.box.h - 1)
-	testing.expect_value(t, e2e_cell(&e, x + 4 + 1, g.box.y + g.box.h - 1), '┴')
 	e2e_key(&e, .Esc)
 
 	for name in ([]string{"Tbl: Rich Full", "Tbl: Rich Split", "Tbl: Rich Center"}) {
@@ -307,25 +275,13 @@ e2e_table_borders :: proc(t: ^testing.T) {
 		p = test_view(&e.ed)
 		e2e_render(&e)
 		g = pane_geom(&e.ed, p)
-		sx := g.list.x + 1 + 4 + 1
-		testing.expectf(t, e2e_cell(&e, sx, g.head_y - 1) == '┬', "%s: joins the line above the header", name)
-		testing.expectf(t, e2e_cell(&e, sx, g.rule_y) == '┼', "%s: crosses the header rule", name)
-		testing.expectf(t, e2e_cell(&e, sx, g.list.y + g.list.h) == '┴', "%s: joins the line below the list", name)
-		testing.expectf(t, e2e_cell(&e, sx, g.list.y) == '│', "%s: separates the cells", name)
+		testing.expectf(t, g.rule_y == g.head_y + 1 && g.list.y == g.rule_y + 1, "%s: the rule sits between header and list", name)
+		testing.expectf(t, e2e_cell(&e, g.list.x + 3, g.rule_y) == '─', "%s: draws the rule", name)
 		e2e_key(&e, .Esc)
 	}
 	e2e_resize(&e, E2E_W, E2E_H)
 
 	table_run(&e, "Tbl: Center")
-	g = pane_geom(&e.ed, test_view(&e.ed))
-	testing.expect_value(t, g.box, pane_center(&e.ed, PALETTE_WIDTH, 1 + 1 + 1))
-	e2e_render(&e)
-	testing.expect_value(t, e2e_cell(&e, g.list.x + 1 + 3 + 1, g.box.y), '┬')
-	testing.expect_value(t, e2e_cell(&e, g.list.x + 1 + 3 + 1, g.box.y + g.box.h - 1), '┴')
+	testing.expect_value(t, pane_geom(&e.ed, test_view(&e.ed)).box, pane_center(&e.ed, PALETTE_WIDTH, 1 + 1 + 1))
 	e2e_key(&e, .Esc)
-	PANE_TABLE_BORDERS = .None
-	table_run(&e, "Tbl: Sorted")
-	g = pane_geom(&e.ed, test_view(&e.ed))
-	testing.expect_value(t, g.rule_y, -1)
-	testing.expect_value(t, g.list.y, g.head_y + 1)
 }

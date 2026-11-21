@@ -105,7 +105,7 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 		e2e_key(&e, .Arrow_Down)
 	}
 	testing.expect_value(t, pane_find(&e.ed, "plugins").list.sel, broken)
-	e2e_resize(&e, 400, E2E_H)
+	e2e_resize(&e, 400, 40)
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has_words(&e, "Format Formats on save and trims whitespace bundled enabled"), "the bundled format plugin row")
 	testing.expect(t, e2e_grid_has_words(&e, "Settings Theme, language, indentation and config files bundled enabled"), "the bundled settings plugin row")
