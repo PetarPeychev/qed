@@ -1,6 +1,7 @@
 package main
 
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:thread"
 import "core:time"
@@ -9,6 +10,7 @@ import ts "lib:tree_sitter"
 
 HIGHLIGHT_ASYNC_BYTES :: 256 * 1024
 HIGHLIGHT_SLOW_MS :: 16
+HIGHLIGHT_CLIP_BYTES :: 4096
 
 // The tsx grammar has JSX nodes the shared typescript grammar lacks, so these
 // captures are appended to the typescript query for .tsx only (see the file).
@@ -23,8 +25,13 @@ Highlight :: struct {
 	tree:     ^ts.Tree,
 	pending:  [dynamic]ts.InputEdit,
 	colors:   [dynamic][dynamic]tb2.Color,
+	clips:    [dynamic]HighlightClip,
 	job:      ^HighlightJob,
 	slow:     bool, // an incremental inline parse blew the frame budget: parse off-thread until one comes in under it
+}
+
+HighlightClip :: struct {
+	row, lo, hi: int,
 }
 
 HighlightJob :: struct {
@@ -209,7 +216,7 @@ syntax_capture_color :: proc(lang_name, name: string) -> (tb2.Color, bool) {
 	return capture_resolve(g_captures, g_theme_colors, lang_name, name)
 }
 
-highlight_update :: proc(b: ^Buffer, top, bot: int) {
+highlight_update :: proc(b: ^Buffer, top, bot: int, clips: []HighlightClip = nil) {
 	language := b.language
 	if !syntax_ensure(language) {
 		clear(&b.hl.pending)
@@ -268,13 +275,14 @@ highlight_update :: proc(b: ^Buffer, top, bot: int) {
 	   b.hl.valid &&
 	   b.hl.rev == b.rev &&
 	   b.hl.top == vtop &&
-	   b.hl.bot == vbot {
+	   b.hl.bot == vbot &&
+	   slice.equal(b.hl.clips[:], clips) {
 		return
 	}
-	highlight_query_paint(b, s, vtop, vbot)
+	highlight_query_paint(b, s, vtop, vbot, clips)
 }
 
-highlight_query_paint :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
+highlight_query_paint :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int, clips: []HighlightClip = nil) {
 	for len(b.hl.colors) < len(b.lines) {
 		append(&b.hl.colors, make([dynamic]tb2.Color))
 	}
@@ -282,30 +290,56 @@ highlight_query_paint :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
 		row := pop(&b.hl.colors)
 		delete(row)
 	}
-	for r in vtop ..= vbot {
-		n := len(b.lines[r].text)
-		resize(&b.hl.colors[r], n)
-		for i in 0 ..< n {
-			b.hl.colors[r][i] = COLOR_FG
+
+	ranges := make([dynamic][2]ts.Point, context.temp_allocator)
+	from := ts.Point{u32(vtop), 0}
+	for c in clips {
+		if c.row < vtop || c.row > vbot {
+			continue
+		}
+		if from.row < u32(c.row) {
+			append(&ranges, [2]ts.Point{from, {u32(c.row), 0}})
+		}
+		append(&ranges, [2]ts.Point{{u32(c.row), u32(c.lo)}, {u32(c.row), u32(c.hi)}})
+		from = {u32(c.row) + 1, 0}
+	}
+	if from.row <= u32(vbot) {
+		append(&ranges, [2]ts.Point{from, {u32(vbot) + 1, 0}})
+	}
+
+	for rg in ranges {
+		for r in int(rg[0].row) ..= min(int(rg[1].row), vbot) {
+			n := len(b.lines[r].text)
+			resize(&b.hl.colors[r], n)
+			lo := int(rg[0].column) if r == int(rg[0].row) else 0
+			hi := int(rg[1].column) if r == int(rg[1].row) else n
+			for i in clamp(lo, 0, n) ..< clamp(hi, 0, n) {
+				b.hl.colors[r][i] = COLOR_FG
+			}
 		}
 	}
 
-	ts.query_cursor_set_point_range(s.cursor, {u32(vtop), 0}, {u32(vbot) + 1, 0})
-	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(b.hl.tree))
 	nt := NodeText{buffer = b}
 	match: ts.QueryMatch
-	for ts.query_cursor_next_match(s.cursor, &match) {
-		if int(match.pattern_index) < len(s.preds) && !predicate_pass(s.preds[match.pattern_index], &match, nt) {
-			continue
-		}
-		for i in 0 ..< int(match.capture_count) {
-			cap := match.captures[i]
-			if int(cap.index) >= len(s.paint) || !s.paint[cap.index] {
+	for rg in ranges {
+		ts.query_cursor_set_point_range(s.cursor, rg[0], rg[1])
+		ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(b.hl.tree))
+		for ts.query_cursor_next_match(s.cursor, &match) {
+			if int(match.pattern_index) < len(s.preds) && !predicate_pass(s.preds[match.pattern_index], &match, nt) {
 				continue
 			}
-			sp := ts.node_start_point(cap.node)
-			ep := ts.node_end_point(cap.node)
-			highlight_paint(&b.hl, int(sp.row), int(sp.column), int(ep.row), int(ep.column), s.colors[cap.index])
+			for i in 0 ..< int(match.capture_count) {
+				cap := match.captures[i]
+				if int(cap.index) >= len(s.paint) || !s.paint[cap.index] {
+					continue
+				}
+				// Each range paints only inside itself, so a node spanning two ranges cannot repaint over the other's nested captures.
+				sp := point_max(ts.node_start_point(cap.node), rg[0])
+				ep := point_min(ts.node_end_point(cap.node), rg[1])
+				if point_less(sp, ep) {
+					highlight_paint(&b.hl, int(sp.row), int(sp.column), int(ep.row), int(ep.column), s.colors[cap.index])
+				}
+			}
 		}
 	}
 
@@ -316,6 +350,20 @@ highlight_query_paint :: proc(b: ^Buffer, s: ^Syntax, vtop, vbot: int) {
 	b.hl.rev = b.rev
 	b.hl.top = vtop
 	b.hl.bot = vbot
+	clear(&b.hl.clips)
+	append(&b.hl.clips, ..clips)
+}
+
+point_less :: proc(a, b: ts.Point) -> bool {
+	return a.row < b.row || (a.row == b.row && a.column < b.column)
+}
+
+point_max :: proc(a, b: ts.Point) -> ts.Point {
+	return b if point_less(a, b) else a
+}
+
+point_min :: proc(a, b: ts.Point) -> ts.Point {
+	return a if point_less(a, b) else b
 }
 
 // Re-parse embedded languages inside the host tree and paint their colors over
@@ -670,6 +718,7 @@ highlight_destroy :: proc(hl: ^Highlight) {
 		hl.tree = nil
 	}
 	delete(hl.pending)
+	delete(hl.clips)
 	for &row in hl.colors {
 		delete(row)
 	}

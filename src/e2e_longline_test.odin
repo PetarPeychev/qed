@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:strings"
 import "core:testing"
+import "lib:tb2"
 
 @(private = "file")
 longline_text :: proc(n: int) -> string {
@@ -95,4 +96,106 @@ e2e_find_first_byte_skip_keeps_matches :: proc(t: ^testing.T) {
 	if len(e.ed.find.matches) == 1 {
 		testing.expect_value(t, e.ed.find.matches[0], FindMatch{0, 1, 4})
 	}
+}
+
+@(private = "file")
+clip_screen_fg :: proc() -> []tb2.Color {
+	w, h := int(tb2.width()), int(tb2.height()) - STATUS_ROWS
+	out := make([]tb2.Color, w * h, context.temp_allocator)
+	for y in 0 ..< h {
+		for x in 0 ..< w {
+			cell: ^tb2.Cell_Raw
+			if tb2.get_cell(i32(x), i32(y), 1, &cell) == .Ok {
+				out[y * w + x] = cell.fg
+			}
+		}
+	}
+	return out
+}
+
+@(private = "file")
+clip_check :: proc(t: ^testing.T, e: ^E2E, label: string) {
+	b := editor_buffer(&e.ed)
+	editor_scroll(&e.ed)
+	for &row in b.hl.colors {
+		clear(&row)
+	}
+	b.hl.top = -1
+	e2e_render(e)
+	testing.expectf(t, len(b.hl.clips) > 0, "%s: a long row is clipped", label)
+	clipped := clip_screen_fg()
+	colored := 0
+	for c in clipped {
+		if e2e_rgb(c) != e2e_rgb(COLOR_FG) && e2e_rgb(c) != e2e_rgb(COLOR_BG) {
+			colored += 1
+		}
+	}
+	testing.expectf(t, colored > 100, "%s: screen is highlighted (%d colored cells)", label, colored)
+
+	highlight_query_paint(b, syntax_for(b.language), b.hl.top, b.hl.bot)
+	tb2.clear()
+	editor_render_buffer(&e.ed)
+	full := clip_screen_fg()
+	w := int(tb2.width())
+	for c, i in clipped {
+		if c != full[i] {
+			testing.expectf(t, false, "%s: cell (%d,%d) clipped %v, full %v", label, i % w, i / w, c, full[i])
+			return
+		}
+	}
+}
+
+@(private = "file")
+clip_long_row :: proc(sb: ^strings.Builder, n: int) {
+	for i in 0 ..< n {
+		switch i % 4 {
+		case 0:
+			fmt.sbprintf(sb, "int v%d = 0x%x; ", i, i)
+		case 1:
+			fmt.sbprintf(sb, "char *s%d = \"a string \\n %d that runs well past one screen width of text, with \\t escapes\"; ", i, i)
+		case 2:
+			fmt.sbprintf(sb, "/* inline comment %d long enough to straddle a screen edge somewhere along the row */ ", i)
+		case:
+			fmt.sbprintf(sb, "return f%d(%d); ", i, i)
+		}
+	}
+	strings.write_byte(sb, '\n')
+}
+
+@(test)
+e2e_highlight_clip_matches_full :: proc(t: ^testing.T) {
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, "/* a block comment\n   that starts above\n   the viewport\n   and ends */ int z = 1;\n")
+	clip_long_row(&sb, 600)
+	strings.write_string(&sb, "int short_a;\n/* split\n comment */\n")
+	clip_long_row(&sb, 500)
+	for i in 0 ..< 40 {
+		fmt.sbprintf(&sb, "int tail%d = %d;\n", i, i)
+	}
+	e := e2e_start(strings.to_string(sb))
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.language = .C
+
+	b.wrap = false
+	e.ed.scroll_row, e.ed.scroll_sub = 2, 0
+	b.cursor = {4, 0}
+	clip_check(t, &e, "wrap off, column 0")
+	for col in ([]int{9000, 9001, 9017, 9033, 20000}) {
+		b.cursor = {4, col}
+		clip_check(t, &e, fmt.tprintf("wrap off, cursor at %d", col))
+		b.cursor = {8, col}
+		clip_check(t, &e, fmt.tprintf("wrap off, second long row at %d", col))
+	}
+
+	b.wrap = true
+	e.ed.scroll_row, e.ed.scroll_sub = 2, 0
+	b.cursor = {2, 0}
+	clip_check(t, &e, "wrap on, comment above")
+	for col in ([]int{9000, 9033, 20000, len(b.lines[4].text) - 1}) {
+		b.cursor = {4, col}
+		clip_check(t, &e, fmt.tprintf("wrap on, cursor at %d", col))
+	}
+	b.cursor = {8, 100}
+	clip_check(t, &e, "wrap on, second long row")
 }

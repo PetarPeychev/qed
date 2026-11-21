@@ -146,6 +146,15 @@ col_at_visual :: proc(text: []u8, target: int) -> int {
 	}
 	v, i := 0, 0
 	for i < len(text) {
+		c := text[i]
+		if c >= 0x20 && c < 0x7f && (i + 1 == len(text) || text[i + 1] < 0x80) {
+			if target == v {
+				return i
+			}
+			v += 1
+			i += 1
+			continue
+		}
 		e := cluster_end(text, i)
 		w := seg_width(text, i, e, v)
 		if target < v + w {

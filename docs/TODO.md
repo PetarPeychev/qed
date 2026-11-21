@@ -138,7 +138,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
 - [ ] Migrate remaining interactive-path blocking spawns (`format_external`, `git show`) to the async subprocess runner.
-- [ ] The frame that adopts a background reparse on a 1 MB highlighted line costs ~220 ms: `highlight_query_paint` queries the whole row; limit the query to the visible byte range.
 - [ ] Lua GC steps add 20-50 ms to plugin slices once the heap holds 50k-entry tables (git, filetree at 50k changes); cut allocations or tune the GC ([notes/perf.md](notes/perf.md)).
 
 ### Refactors

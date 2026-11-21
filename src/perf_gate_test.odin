@@ -246,7 +246,7 @@ gate_long :: proc(name: string, row: int, wrap: bool) {
 	mid := len(b.lines[row].text) / 2
 	gate_place(&e, row, mid)
 	gate_record(50, gate_mean(&e, char('x'), undo = true), fmt.tprintf("type %s", tag), open_wrap)
-	gate_record(50, one(gate_adopt(&e)), fmt.tprintf("frame adopting a reparse %s", tag), .Open if name == "longline1mb.json" else .Gate)
+	gate_record(50, one(gate_adopt(&e)), fmt.tprintf("frame adopting a reparse %s", tag))
 	gate_record(50, gate_mean(&e, key(.Arrow_Right)), fmt.tprintf("arrow right %s", tag))
 	gate_record(50, gate_mean(&e, key(.Arrow_Down)), fmt.tprintf("arrow down %s", tag))
 	gate_place(&e, row, len(b.lines[row].text))

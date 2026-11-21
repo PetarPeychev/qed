@@ -1175,6 +1175,35 @@ editor_goto :: proc(editor: ^Editor, row, col: int) {
 	editor_scroll(editor)
 }
 
+editor_highlight_clips :: proc(editor: ^Editor, top, bot: int) -> []HighlightClip {
+	b := editor_buffer(editor)
+	w, h := editor_viewport(editor)
+	clips := make([dynamic]HighlightClip, context.temp_allocator)
+	if w <= 0 {
+		return nil
+	}
+	ghost := inline_active(editor)
+	for row in max(top, 0) ..= min(bot, len(b.lines) - 1) {
+		text := b.lines[row].text[:]
+		if len(text) < HIGHLIGHT_CLIP_BYTES {
+			continue
+		}
+		lo, hi: int
+		if b.wrap {
+			// A ghost line wraps from its start, its text only pushing the line's bytes further down.
+			segs := buffer_line_wrap(b, row, w)
+			sub := clamp(editor.scroll_sub, 0, len(segs) - 1) if row == editor.scroll_row && !(ghost && row == b.cursor.row) else 0
+			lo = segs[sub]
+			hi = segs[sub + h + 1] if sub + h + 1 < len(segs) else len(text)
+		} else {
+			lo = col_at_visual(text, editor.scroll_col - 1)
+			hi = col_at_visual(text, editor.scroll_col + w + 1)
+		}
+		append(&clips, HighlightClip{row, lo, hi})
+	}
+	return clips[:]
+}
+
 editor_render :: proc(editor: ^Editor) {
 	tb2.clear()
 	if editor.welcome {
@@ -1182,7 +1211,8 @@ editor_render :: proc(editor: ^Editor) {
 	} else {
 		_, vh := editor_viewport(editor)
 		if !editor_buffer(editor).big {
-			highlight_update(editor_buffer(editor), editor.scroll_row, editor.scroll_row + vh - 1)
+			top, bot := editor.scroll_row, editor.scroll_row + vh - 1
+			highlight_update(editor_buffer(editor), top, bot, editor_highlight_clips(editor, top, bot))
 			if g_syntax_error != "" {
 				editor_log(editor, .Error, "Syntax", fmt.tprintf("failed to load %s grammar", g_syntax_error))
 				editor_log(editor, .Debug, "Syntax", fmt.tprintf("%s %s compile failed", g_syntax_error, g_syntax_error_detail))

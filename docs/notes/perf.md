@@ -139,6 +139,17 @@ big-file mode.
   keystroke used to wrap the cursor line 6–8 times. `line_wrap` also skips
   `cluster_end` for printable ASCII (5 MB line: ~36 → ~11 ms per wrap). 5 MB
   line, wrap on: type 272 → ~30 ms, search keystroke 164 → ~1 ms.
+- `highlight_query_paint` queried and painted whole visible rows, so the frame
+  adopting a reparse on a 1 MB JSON line ran the query over the full row. Rows ≥
+  `HIGHLIGHT_CLIP_BYTES` (4 KB) now get their own point range over the bytes that
+  can be on screen (`editor_highlight_clips`: wrap segments from `scroll_sub` plus
+  a screen's worth, or `scroll_col`..+width unwrapped; a ghost line from 0); runs of
+  short rows share one range. Each range paints only inside itself, so a node
+  spanning two ranges cannot repaint over the other's nested captures; colors
+  outside a window are left stale, and the clips join the repaint cache key.
+  `col_at_visual` gained the printable-ASCII fast path (the two window scans still add
+  1-3 ms to an unwrapped long-line keystroke). Adopt frame: wrap off
+  204 -> 10-12 ms, wrap on 195 -> 7-13 ms.
 - `buffer_recompute_modified` resumes from a clean-row watermark
   (`clean_rows`/`clean_pos`, lowered to the edited row by each insert/delete)
   instead of row 0. 1M-line keystroke: ~6 → ~1.2 ms (default build 34 → 10 ms).
@@ -184,9 +195,6 @@ Measured with the gate (`-o:speed` unless noted); file:line is where the time go
   plus the Lua path list) ~45 ms, `view:set` ~39 ms; on tree open the filetree
   and git slices land at 41–61 ms depending on GC (last gate: filetree 55 ms on
   tree open, 51 ms on the Git tab, both over budget but under the limit).
-- **Adopting a background reparse on a 1 MB highlighted line** (~180–220 ms frame):
-  `highlight_query_paint` (highlight.odin) runs the query over the whole visible
-  row. Fix: restrict the query cursor to the visible byte range of long rows.
 - **1M-line open** (~370 ms; 560 ms on `-o:minimal`): one `clone_to_dynamic`
   per line plus the `saved` snapshot. Fix candidates: line storage in one block
   (data-structure change, needs a decision) or a lighter saved-state watermark.

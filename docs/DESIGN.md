@@ -665,7 +665,8 @@ re-opens LSP).
   cached per pattern; unknown predicates are skipped, never reject a pattern —
   deviations in `lib/tree_sitter/PATCHES.md`). A
   grammar/query that fails to compile surfaces a one-shot status message. Parse is
-  incremental + async on big files — [notes/perf.md](notes/perf.md).
+  incremental + async on big files; the query covers only visible rows, and only the
+  on-screen byte window of rows ≥ `HIGHLIGHT_CLIP_BYTES` (`editor_highlight_clips`) — [notes/perf.md](notes/perf.md).
 - **Injection** (markdown + HTML): a `LANGUAGES` row may carry an `injections` query.
   After the host paint, `highlight_inject` runs it over the viewport, and for each
   region freshly re-parses the embedded language (synchronous, viewport-scoped —
