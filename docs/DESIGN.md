@@ -274,7 +274,7 @@ member group is no longer on top).
   refuses with `nil, "unsaved", info` while an unsaved buffer outside the target is not in its `discard`
   ids, so nothing unsaved closes unapproved (a buffer edited during the confirm is refused again). The
   plugin closes the picker before switching (restarting servers can outlast the command slice) and on
-  `"unsaved"` reopens it by `id` (text and selection restored) under the child `qed.confirm`.
+  `"unsaved"` reopens it on the typed path under the child `qed.confirm`.
   `editor_change_root` closes buffers outside the new root, restarts every LSP server and queues
   `root_changed` (the file tree plugin reopens an open tree on the new root). The process cwd never changes; subprocesses get the root explicitly.
 
@@ -443,7 +443,7 @@ the close event is flushed. Events (D8), no Lua during dispatch:
   `items_ref` stays empty: activate events clone the selected `PaneItem`s (`UiViewEvent.items`), change
   passes the highlighted one (`PluginStart.pitems`), and the task or `wait` continuation pushes them as
   `{label, path?, detail?}` (`api_pane_item_push`) inside the resume.
-`qed.pick/prompt/confirm/pane` are Lua sugar in `src/prelude.lua`, installed into every plugin's
+`qed.pick/prompt/confirm` are Lua sugar in `src/prelude.lua`, installed into every plugin's
 `qed` table by `plugin_qed_push`: `ui.open` + `view:wait()` + `view:close()`; pick/prompt/confirm
 open with `kind = "child"` and `modal` (a child of the focused pane or the active overlay, else
 exclusive). A child from a task not started by the user (`PluginTask.user`: commands) may only stack
@@ -862,7 +862,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict dialogs) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Message Log: Open* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
 `listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
-`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm`/`pane` sugar) · `perf_bench`.
+`diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Theme*, *Language*, *Indentation*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
@@ -935,7 +935,7 @@ rebind-aware pane self-close chords (`command_matches`), Debug-level internals
 instrumentation (startup context, subprocess/AI/FIM/save/config/clipboard/terminal trails,
 LSP request/response/diagnostics, completion counts, git branch + scan, disk reload/conflict —
 full AI prompt/response bodies logged at Debug, no env-var dumps), welcome screen, quit guard across
-modified buffers, pane model + stack (`qed.ui.open` plugin panes: center/full/split, filter/query/input/path fields, streaming lists, accessor-backed core list handles (`qed.fs.dirs`, `qed.buf.line_list`), pane-scoped commands with a scoped Ctrl+P, footer chips, queued events, exclusive panes persisted by `id`; pick/prompt/confirm stack over open panes, safety dialogs on top; tabs, marks, footer input and tree lists over `qed.fs.walk` handles; `qed.fs.copy/rename/remove/mkdir`), command palette (a core pane over the commands source; context-filtered via
+modified buffers, pane model + stack (`qed.ui.open` plugin panes: center/full/split, filter/query/input/path fields, streaming lists, accessor-backed core list handles (`qed.fs.dirs`, `qed.buf.line_list`), pane-scoped commands with a scoped Ctrl+P, footer chips, queued events, exclusive panes keep their selection by `id` (never the field text); pick/prompt/confirm stack over open panes, safety dialogs on top; tabs, marks, footer input and tree lists over `qed.fs.walk` handles; `qed.fs.copy/rename/remove/mkdir`), command palette (a core pane over the commands source; context-filtered via
 `command_available`: welcome lists only the working whitelist, big-file buffers
 hide the LSP/inspect commands),
 multiple buffers, close buffer (buffer switching folded into the file-tree **Open** tab —
@@ -945,7 +945,7 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`goto` plugin, *Go to: Line* `Ctrl+G`, filter over the list column,
-matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, query and selection persisted by `id`, `plugins.search.min_query`;
+matches in file order; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
 file tree (`filetree` plugin, see File tree: `Alt+f`/`Alt+o`/`Alt+u` open it on the All/Open/Unsaved tab and
@@ -975,8 +975,7 @@ their command), `lsp.enabled` (live toggle-off tears servers down; git is
 base, see Rendering; *Settings: Theme* fuzzy picker with instant preview,
 Enter persists / Esc reverts), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
-typing replaces; multi-line/whitespace selections keep each pane's persisted
-query). Every floating pane is
+typing replaces; multi-line/whitespace selections do not pre-fill). Every floating pane is
 mouse-driven (wheel scroll, click-select, double-click activate, caret/drag-select in
 prompt fields, click-away dismiss) and draws a scrollbar thumb
 (`pane_draw_scrollbar`, on the divider or right border) when its list overflows.
