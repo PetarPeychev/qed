@@ -23,10 +23,10 @@ e2e_deco_gutter_tint_eol_span :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.wrap = false
 	pl := deco_plugin(&e, "dp", `
-		qed.deco.gutter(nil, ns, 2, "●", "git_added")
-		qed.deco.tint(nil, ns, 3, 4, "error_foreground", 0.5)
-		qed.deco.eol(nil, ns, 1, "note", "warn_foreground")
-		qed.deco.eol(nil, ns, 1, "more", "git_deleted")
+		qed.deco.gutter(nil, ns, 2, "●", {color = "git_added"})
+		qed.deco.tint(nil, ns, 3, 4, {color = "error_foreground", alpha = 0.5})
+		qed.deco.eol(nil, ns, 1, "note", {color = "warn_foreground"})
+		qed.deco.eol(nil, ns, 1, "more", {color = "git_deleted"})
 		qed.deco.span(nil, ns, {row = 2, col = 2}, {row = 2, col = 4}, {fg = "git_modified", bold = true, underline = true})
 		qed.deco.span(nil, ns, {row = 3, col = 1}, {row = 3, col = 3}, {bg = "git_added"})`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
@@ -74,7 +74,7 @@ e2e_deco_eol_wide_and_wrap :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.wrap = false
 	b.cursor = {1, 0}
-	deco_plugin(&e, "dw", `qed.deco.eol(nil, ns, 1, "x日本", "warn_foreground")`)
+	deco_plugin(&e, "dw", `qed.deco.eol(nil, ns, 1, "x日本", {color = "warn_foreground"})`)
 	e2e_render(&e)
 	testing.expect_value(t, editor_gutter_width(&e.ed), gutter)
 	testing.expect_value(t, e2e_cell(&e, gutter + w - 3, 0), 'x')
@@ -90,7 +90,7 @@ e2e_deco_eol_wide_and_wrap :: proc(t: ^testing.T) {
 	b.wrap = true
 	wide := strings.repeat("word ", 20, context.temp_allocator)
 	buffer_insert(b, {1, 5}, fmt.tprintf(" %s", wide))
-	deco_plugin(&e, "dw2", `qed.deco.eol(nil, ns, 2, "tail", "warn_foreground")`)
+	deco_plugin(&e, "dw2", `qed.deco.eol(nil, ns, 2, "tail", {color = "warn_foreground"})`)
 	e2e_render(&e)
 	segs := line_wrap(b.lines[1].text[:], w)
 	testing.expect_value(t, len(segs), 2)
@@ -185,7 +185,7 @@ e2e_deco_line_bg_order :: proc(t: ^testing.T) {
 e2e_deco_default_tint_alpha :: proc(t: ^testing.T) {
 	e := e2e_start("a\nb\n")
 	defer e2e_stop(&e)
-	deco_plugin(&e, "da", `qed.deco.tint(nil, ns, 2, 2, "git_added")`)
+	deco_plugin(&e, "da", `qed.deco.tint(nil, ns, 2, 2, {color = "git_added"})`)
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)
 	testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, gutter + 3, 1)), e2e_rgb(color_over(COLOR_BG, COLOR_GIT_ADD, DECO_TINT)))
@@ -200,18 +200,19 @@ e2e_deco_namespaces_and_unload :: proc(t: ^testing.T) {
 		return {setup = function()
 			local a, b = qed.deco.ns("a"), qed.deco.ns("b")
 			assert(qed.deco.ns("a") == a, "same name, same id")
-			qed.deco.gutter(nil, a, 1, "x", "git_added")
-			qed.deco.gutter(nil, a, 2, "x", "git_added")
+			qed.deco.gutter(nil, a, 1, "x", {color = "git_added"})
+			qed.deco.gutter(nil, a, 2, "x", {color = "git_added"})
 			qed.deco.ghost(nil, a, 3, "ghost")
-			qed.deco.gutter(nil, b, 3, "y", "git_added")
+			qed.deco.gutter(nil, b, 3, "y", {color = "git_added"})
 			qed.deco.clear(nil, a, 2, 2)
-			assert(not pcall(qed.deco.gutter, nil, a, 1, "xx", "git_added"), "two-char glyph refused")
-			assert(not pcall(qed.deco.gutter, nil, a, 1, "日", "git_added"), "wide glyph refused")
-			assert(not pcall(qed.deco.gutter, nil, a, 9, "x", "git_added"), "row out of range refused")
-			assert(not pcall(qed.deco.gutter, nil, a, 1, "x", "#ff0000"), "hex color refused")
-			assert(not pcall(qed.deco.gutter, nil, 999, 1, "x", "git_added"), "unknown namespace refused")
-			assert(not pcall(qed.deco.tint, nil, a, 2, 1, "git_added"), "reversed tint refused")
-			assert(not pcall(qed.deco.tint, nil, a, 1, 1, "git_added", 2), "alpha out of range refused")
+			assert(not pcall(qed.deco.gutter, nil, a, 1, "xx", {color = "git_added"}), "two-char glyph refused")
+			assert(not pcall(qed.deco.eol, nil, a, 1, "x", "git_added"), "a positional color is refused")
+			assert(not pcall(qed.deco.gutter, nil, a, 1, "日", {color = "git_added"}), "wide glyph refused")
+			assert(not pcall(qed.deco.gutter, nil, a, 9, "x", {color = "git_added"}), "row out of range refused")
+			assert(not pcall(qed.deco.gutter, nil, a, 1, "x", {color = "#ff0000"}), "hex color refused")
+			assert(not pcall(qed.deco.gutter, nil, 999, 1, "x", {color = "git_added"}), "unknown namespace refused")
+			assert(not pcall(qed.deco.tint, nil, a, 2, 1, {color = "git_added"}), "reversed tint refused")
+			assert(not pcall(qed.deco.tint, nil, a, 1, 1, {color = "git_added", alpha = 2}), "alpha out of range refused")
 			_G.one_ns = a
 		end}`)
 	testing.expect_value(t, one.state, PluginState.Enabled)
@@ -221,7 +222,7 @@ e2e_deco_namespaces_and_unload :: proc(t: ^testing.T) {
 	two := e2e_plugin(&e, "two", `
 		return {setup = function()
 			local mine = qed.deco.ns("a")
-			qed.deco.gutter(nil, mine, 1, "z", "git_deleted")
+			qed.deco.gutter(nil, mine, 1, "z", {color = "git_deleted"})
 			assert(not pcall(qed.deco.clear, nil, mine - 1), "another plugin's namespace is refused")
 		end}`)
 	testing.expect_value(t, two.state, PluginState.Enabled)
@@ -454,9 +455,9 @@ e2e_deco_theme_tint_keys :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.cursor = {1, 0}
 	pl := deco_plugin(&e, "dk", `
-		qed.deco.tint(nil, ns, 1, 1, "git_added", "conflict")
+		qed.deco.tint(nil, ns, 1, 1, {color = "git_added", alpha = "conflict"})
 		qed.deco.span(nil, ns, {row = 1, col = 2}, {row = 1, col = 3}, {bg = "git_deleted", alpha = 0.5})
-		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, "git_added", "nope"), "unknown tint key refused")
+		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, {color = "git_added", alpha = "nope"}), "unknown tint key refused")
 		assert(not pcall(qed.deco.span, nil, ns, {row = 1, col = 1}, {row = 1, col = 2}, {alpha = 0.5}), "alpha needs bg")
 		assert(not pcall(qed.deco.span, nil, ns, {row = 1, col = 1}, {row = 1, col = 2}, {bg = "git_added", alpha = 2}), "alpha out of range refused")`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
@@ -530,8 +531,8 @@ e2e_deco_tint_theme_key :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.wrap = false
 	pl := deco_plugin(&e, "tk", `
-		qed.deco.tint(nil, ns, 2, 2, "ai_edit_background", "ai_edit")
-		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, "ai_edit_background", "nope"), "unknown tint")`)
+		qed.deco.tint(nil, ns, 2, 2, {color = "ai_edit_background", alpha = "ai_edit"})
+		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, {color = "ai_edit_background", alpha = "nope"}), "unknown tint")`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)

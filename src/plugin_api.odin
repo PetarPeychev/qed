@@ -2740,6 +2740,18 @@ api_color :: proc(L: ^lua.State, p: ^Plugins, idx: c.int) -> u16 {
 	return plugin_color_id(p, key)
 }
 
+api_deco_color :: proc(L: ^lua.State, p: ^Plugins, idx: c.int, fields: cstring) -> u16 {
+	if lua.type(L, idx) != .TABLE {
+		lua.L_argerror(L, idx, fields)
+	}
+	if lua.getfield(L, idx, "color") != .STRING {
+		lua.L_argerror(L, idx, "color must be a theme color key")
+	}
+	color := api_color(L, p, -1)
+	lua.pop(L, 1)
+	return color
+}
+
 api_ns :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> u32 {
 	n := api_int(L, idx, "namespace expected")
 	pl := api_loaded(L, editor)
@@ -2791,7 +2803,7 @@ qed_deco_gutter :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 4, "glyph must be one single-width character")
 	}
 	r, _ := utf8.decode_rune(text)
-	color := api_color(L, &editor.plugins, 5)
+	color := api_deco_color(L, &editor.plugins, 5, "options {color} expected")
 	deco_add(b, Deco{kind = .Gutter, ns = ns, from = {row, 0}, to = {row, 0}, glyph = r, color = color})
 	return 0
 }
@@ -2807,11 +2819,12 @@ qed_deco_tint :: proc "c" (L: ^lua.State) -> c.int {
 	if hi < lo {
 		lua.L_argerror(L, 4, "to_row is before from_row")
 	}
-	color := api_color(L, &editor.plugins, 5)
+	color := api_deco_color(L, &editor.plugins, 5, "options {color, alpha?} expected")
 	d := Deco{kind = .Tint, ns = ns, from = {lo, 0}, to = {hi, 0}, color = color, alpha = DECO_TINT}
-	if lua.type(L, 6) > .NIL {
-		d.alpha, d.tint = api_alpha(L, 6)
+	if lua.getfield(L, 5, "alpha") > .NIL {
+		d.alpha, d.tint = api_alpha(L, -1)
 	}
+	lua.pop(L, 1)
 	deco_add(b, d)
 	return 0
 }
@@ -2974,7 +2987,7 @@ qed_deco_eol :: proc "c" (L: ^lua.State) -> c.int {
 	ns := api_ns(L, editor, 2)
 	row := api_row(L, 3, b)
 	text := api_one_line(api_text_arg(L, 4))
-	color := api_color(L, &editor.plugins, 5)
+	color := api_deco_color(L, &editor.plugins, 5, "options {color} expected")
 	deco_add(b, Deco{kind = .Eol, ns = ns, from = {row, 0}, to = {row, 0}, text = text, color = color})
 	return 0
 }

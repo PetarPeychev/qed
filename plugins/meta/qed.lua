@@ -665,17 +665,16 @@ function qed.deco.ns(name) end
 ---@param ns integer
 ---@param row integer
 ---@param glyph string one single-width character
----@param color string theme color key
-function qed.deco.gutter(b, ns, row, glyph, color) end
+---@param opts {color: string} theme color key
+function qed.deco.gutter(b, ns, row, glyph, opts) end
 
 ---Line background tint, stacked over the diff hunk tint and under the current-line tint.
 ---@param b qed.Buf
 ---@param ns integer
 ---@param from_row integer
 ---@param to_row integer inclusive
----@param color string theme color key
----@param alpha? number|string 0..1, or a theme tint key (`"conflict"`, `"ai_edit"`) resolved per frame; default the theme's `decoration` tint
-function qed.deco.tint(b, ns, from_row, to_row, color, alpha) end
+---@param opts {color: string, alpha?: number|string} `color` a theme color key; `alpha` 0..1, or a theme tint key (`"conflict"`, `"ai_edit"`) resolved per frame, default the theme's `decoration` tint
+function qed.deco.tint(b, ns, from_row, to_row, opts) end
 
 ---Virtual rows below (or above) a row, one clipped screen row each.
 ---@param b qed.Buf
@@ -698,8 +697,8 @@ function qed.deco.span(b, ns, from, to, style) end
 ---@param ns integer
 ---@param row integer
 ---@param text string
----@param color string theme color key
-function qed.deco.eol(b, ns, row, text, color) end
+---@param opts {color: string} theme color key
+function qed.deco.eol(b, ns, row, text, opts) end
 
 ---A range anchor that follows edits: text inserted before it shifts it, an edit touching its inside (or a reload) removes it. Never drawn.
 ---@param b qed.Buf

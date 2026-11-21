@@ -202,16 +202,16 @@ unless they were created with `{detach = true}`.
 
 ### Decorations
 - Push only, namespaced per plugin: `ns = qed.deco.ns(name)` (same name, same id). A namespace is usable only by its plugin; unload clears all of them.
-- Colors are theme keys, never hex; an unknown key raises. They resolve per frame, so a theme change recolors.
+- Styling goes in the last argument, an options table (`{color}`, `{color, alpha?}`, `{above?, color?}`; `span` takes `{fg?, bg?, ...}` since it colors both). Colors are theme keys, never hex; an unknown key raises. They resolve per frame, so a theme change recolors.
 - Row anchors shift inside `buffer_insert`/`buffer_delete` (no Lua). An insert at col 0 pushes that row's decorations down with its text, unless the row was empty (a replaced hunk keeps them on its first row). A whole-line delete (col 0 to col 0) drops the deleted rows; a joining delete drops the rows joined into the first. Tints shrink instead of dropping. Spans on any edited row drop. Undo shifts anchors back but never restores dropped decorations. A reload applies its changed hunks through the same primitives, so decorations on untouched lines stay.
 
 | Function | Notes |
 |---|---|
-| `qed.deco.gutter(b, ns, row, glyph, color)` | Mark column, one single-width glyph. A diff-base mark on the row wins; among decorations the last pushed wins. |
-| `qed.deco.tint(b, ns, from_row, to_row, color, alpha?)` | Goes through the `editor_line_bg` stack: diff hunk, decoration tints (push order), current line. `alpha` is a number or a theme tint key (`"conflict"`, `"ai_edit"`, resolved per frame); default the theme tint `decoration`. |
+| `qed.deco.gutter(b, ns, row, glyph, {color})` | Mark column, one single-width glyph. A diff-base mark on the row wins; among decorations the last pushed wins. |
+| `qed.deco.tint(b, ns, from_row, to_row, {color, alpha?})` | Goes through the `editor_line_bg` stack: diff hunk, decoration tints (push order), current line. `alpha` is a number or a theme tint key (`"conflict"`, `"ai_edit"`, resolved per frame); default the theme tint `decoration`. |
 | `qed.deco.ghost(b, ns, row, lines, {above?, color?})` | Virtual rows, one clipped row each, folded into the screen-mapping walkers like the diff ghosts. Order: decoration ghosts above, diff ghosts above, the row, decoration ghosts below, diff ghosts below. Like the diff ghosts, ghosts above the top screen row are hidden. `color` defaults to `ghost_foreground`. |
 | `qed.deco.span(b, ns, from, to, style)` | `{fg?, bg?, alpha?, bold?, underline?}`, over syntax and diff word colors, under find matches and the selection. `alpha` (number or theme tint key, needs `bg`) blends `bg` over the line background. |
-| `qed.deco.eol(b, ns, row, text, color)` | Virtual text one cell after the line end (last wrapped row), clipped at the window edge (a wide char never splits). Several on a row join with a space. |
+| `qed.deco.eol(b, ns, row, text, {color})` | Virtual text one cell after the line end (last wrapped row), clipped at the window edge (a wide char never splits). Several on a row join with a space. |
 | `qed.deco.mark(b, ns, from, to) -> id`, `qed.deco.range(b, ns, id) -> from, to \| nil` | A range anchor, never drawn. Text inserted at or before `from` shifts it, at or after `to` leaves it; an edit overlapping its inside (a reload touching it included) or a clear removes it (`range` then returns nil). |
 | `qed.deco.inline(b, ns, pos, text, {rev?}) -> true \| nil, err` | One per buffer: dimmed text at the cursor, not in the buffer, continuation lines on reserved rows. Shown while the cursor stays at `pos` without a selection. Core handles its keys before anything else: `Tab` inserts it, `Ctrl+Right` its next word (the rest stays), any other key, a click or an edit drops it. Nothing is set and `err` is `stale`, `not at cursor`, `selection` or `empty` otherwise. |
 | `qed.deco.clear(b, ns, from_row?, to_row?)` | Decorations, marks and the inline ghost touching the rows; all when omitted. |

@@ -143,7 +143,7 @@ local function retint(b)
 				if to.col == 1 and to.row > from.row then
 					last = to.row - 1
 				end
-				qed.deco.tint(b, tints, from.row, last, "ai_edit_background", "ai_edit")
+				qed.deco.tint(b, tints, from.row, last, {color = "ai_edit_background", alpha = "ai_edit"})
 			end
 		end
 	end

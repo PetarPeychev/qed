@@ -38,13 +38,13 @@ local function scan(b)
 end
 
 local function decorate_marker(b, row, color)
-	qed.deco.tint(b, ns, row, row, color, "conflict_marker")
+	qed.deco.tint(b, ns, row, row, {color = color, alpha = "conflict_marker"})
 	qed.deco.span(b, ns, {row = row, col = 1}, {row = row, col = #qed.buf.line(b, row) + 1}, {fg = color})
 end
 
 local function decorate_body(b, lo, hi, color)
 	if lo <= hi then
-		qed.deco.tint(b, ns, lo, hi, color, "conflict")
+		qed.deco.tint(b, ns, lo, hi, {color = color, alpha = "conflict"})
 	end
 end
 
