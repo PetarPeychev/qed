@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 
-VERSION = "1"
+VERSION = "2"
 
 
 def write(path, data):
@@ -159,6 +159,7 @@ def odd_bytes(rng):
         "emoji: 😀👍🏽👨‍👩‍👧‍👦🇧🇬🏳️‍🌈 1️⃣ ❤️",
         "combining: é ǟ Z̵̡̛̰ ñ̃̃",
         "rtl: שלום עולם مرحبا بالعالم",
+        "devanagari: नेपाली भाषामा अनुवाद गरिएको सन्देश क्षेत्र श्रीमान् ज्ञान क़ क्\u200dष क्\u200cष",
         "zero width: a​b‌c‍d﻿e",
         "control: \x01\x02\x07\x08\x0b\x0c\x1b[31mnot color\x1b[0m\x7f",
         "nul: before\x00after",

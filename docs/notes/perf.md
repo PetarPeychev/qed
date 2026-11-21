@@ -34,7 +34,7 @@ Without `rg` the Find in Files rows skip.
 
 **Corpus.** `tools/gen-corpus.py DIR` (deterministic, ~860 MB, ~50 s; never in
 the repo): 100k-line C/Python/JS/Odin, 10 MB mixed C, 5 MB one-line minified JS,
-JSON with a 1 MB line, `odd.txt` (wide, emoji, combining, RTL, zero-width,
+JSON with a 1 MB line, `odd.txt` (wide, emoji, combining, RTL, Devanagari, zero-width,
 control and invalid bytes, CRLF, tabs, 200 KB emoji/combining lines), 100k-line
 markdown, 2000 Lua conflict blocks, a 1M-line file, and `repo/`: a git repo of
 100k files with 50k modified.
