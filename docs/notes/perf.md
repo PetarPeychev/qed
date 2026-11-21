@@ -129,6 +129,27 @@ big-file mode.
 - `buffer_set_content` walks newlines in place into a reserved array; the
   snapshot builder is presized (1M lines: 467 → ~300 ms).
 
+## Plugin paths (fixes shipped)
+
+- Markdown preview (100k lines): one 1.75 s slice. `md_render` is now an `MdJob` stepped by whole
+  top-level blocks, 10 ms per step (first step inline, then `pane_stack_pump`); the pane keeps the last
+  finished render and the layout-reading `v:` calls wait for it. Constant factor: 16-byte cells indexing
+  their spans, one wrap buffer, runs sliced from their span, footnote map, no grapheme iterator for
+  simple runes, inline text copied in runs (render 1.75 s -> ~0.6 s total, arena 715 -> 276 MB).
+  Gate: open 1753 -> 48 ms, slice 1750 -> 35 ms, content after ~0.75 s.
+- Git tab, 50k changed: `walk_scope_rows` read every expanded dir. An uncovered dir now takes its rows
+  from the scope's paths (parent indices kept from `walk_scope_new`), guarded by a dir link-count `stat`;
+  scope maps reserve past the load factor; `api_path_clean` is one pass (50k paths: 28 -> 5 ms).
+  Slices 247 -> 45 ms (`within`) and 39 ms (`view:set`); open 103 -> 45 ms; populated 365 -> 85 ms.
+- Format on save: `qed.buf.find_trailing` returns only the rows to trim. Slice 93 -> 0.5 ms, save 112 -> 20 ms.
+- git plugin parse: byte compares, untouched paths skip `clean`'s gsubs, sizes look up by the short
+  relative path. Standalone parse 283 -> 170 ms per 50k; gate slices startup 43 -> 26 ms, tree open
+  119 -> 41-52 ms. The chunk itself is now 1-7 ms; the rest of a long slice is a Lua GC step.
+- File tree open with 50k marks: the first 4000-mark push no longer shares the open's slice
+  (open call 25-50 -> 12-35 ms).
+- tmux smoke (default build): Git tab first arrow ~830 -> 6 ms; Alt+g to tab 238 ms; markdown
+  preview frame 72 ms, content after ~1.2 s.
+
 ## Still open (see TODO.md)
 
 Measured with the gate (`-o:speed` unless noted); file:line is where the time goes.
@@ -143,21 +164,17 @@ Measured with the gate (`-o:speed` unless noted); file:line is where the time go
 - **Default build is `-o:minimal`.** The same paths run 3–25× slower than
   `-o:speed` (Go to: Line filter on 1M lines: 40 ms vs 1.1 s; minified type with
   wrap: 200 ms vs 1.4 s). `build.sh` passing `-o:speed` is the cheapest win.
-- **Markdown preview renders the whole document** in one slice (100k lines:
-  1.7 s, `md_render` → `md_blocks` → `md_emit_wrapped`/`md_cells`, append churn in
-  mdrender.odin). Fix: render per block lazily for the visible range and cache
-  rendered blocks by source range, or at least yield between blocks.
-- **Git tab `view:set`** on a 50k-path scope takes one ~250 ms core call:
-  `walk_scope_rows` (walk.odin) readdirs every expanded dir and checks each entry
-  with `walk_scope_has`. Fix: build a narrowed scope's rows from its own sorted
-  path list (closure map already holds the ancestors), no readdir.
-- **git plugin parse chunks** (startup / refresh, 50k changes: 60–100 ms slices):
-  `repo.each` yields every 2000 lines but each line costs ~50 µs in Lua (pattern
-  parse, path concat, GC). Smaller chunks cut the slice but multiply wall time;
-  better a core `git status --porcelain` parser or fewer per-line allocations.
-- **format `buf_pre_save`** (100k lines: 83–105 ms): `fixups` materializes
-  `qed.buf.lines` and pattern-matches every line in Lua. Fix: a core helper that
-  returns only rows with trailing whitespace (like `qed.buf.find_lines`).
+- **Markdown preview time to content** (100k lines: ~0.75 s of blank pane, in
+  10 ms steps): the remaining cost is spread (tree-sitter per code block ~20%,
+  tables, lists, parse ~15%). A single huge top-level block (a 100k-line list or
+  fence) is still one step. Options: highlight code blocks lazily at draw time, a
+  "rendering" hint.
+- **Lua GC steps** add 20–50 ms to whatever slice triggers them once the plugin
+  heap holds 50k-entry tables (git, filetree); the git parse chunk itself is
+  1–7 ms. Fewer allocations per item, or GC tuning, would cut them.
+- **Git tab / tree open at 50k** sit near the budget: `within` (scope build ~20 ms
+  plus the Lua path list) ~45 ms, `view:set` ~39 ms; on tree open the filetree
+  and git slices land at 41–61 ms depending on GC.
 - **1M-line open** (~300–380 ms; 590 ms default build): one `clone_to_dynamic`
   per line plus the `saved` snapshot. Fix candidates: line storage in one block
   (data-structure change, needs a decision) or a lighter saved-state watermark.
