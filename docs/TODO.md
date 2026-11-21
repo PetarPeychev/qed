@@ -55,42 +55,13 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] `subprocess_output` can block the main loop up to 1s in `process_wait` after stdout EOF — reap non-blocking.
 - [ ] config.json writer that preserves comments and key order (UI persistence strips them today).
 
-## Plugin system
-
-Lua 5.4 plugins, built in phases. Scope of each phase: [notes/plugins.md](notes/plugins.md) §8.
-
-- [ ] Phase 0: vendored Lua, plugin loader, `qed.log/message/command/run`, dynamic commands, minimal Plugins pane.
-- [ ] Phase 1: `Buffer.id`, `qed.buf.*`, `qed.edit`, `qed.goto`, fs/json/path/config/opt, type stub + lua-ls settings.
-- [ ] Phase 2: coroutine scheduler, `spawn`/`spawn_bg`, timers, `plugin_pump`, budgets, events with hook timeouts, `test.lua` runner.
-- [ ] Phase 3: port `format` to a bundled plugin, delete the Odin formatter path.
-- [ ] Phase 4: `pick`/`prompt`/`confirm`/`pane`, port the pickers.
-- [ ] Phase 5: `commands` plugin (dropped in phase 10), file-tree `ctx.file/files`.
-- [ ] Phase 6: hot reload, live enable/disable, full Plugins pane.
-- [ ] Phase 7: N terminal sessions, `qed.term`, `tasks` plugin.
-- [ ] Phase 8: decoration store, `status.set`, diff-base primitive.
-- [ ] Phase 9: port `git`, `modules.git` becomes `plugins.git`.
-- [ ] Phase 10: drop the `commands` plugin, add `qed.parse_locations`.
-- [ ] Phase 11: file tree status provider (`qed.filetree`), Git tab moves to the `git` plugin, `.Git` module gone.
-- [ ] Phase 12: query-driven `qed.pick` (`query`, `on_query`, `picker:set`), project search moves to the `search` plugin.
-- [ ] Phase 13: `qed.meta` display names, automatic command prefix, `plugins.<id>.keybinds`, message attribution, Lua settings scoped to the config dir, `modules.lsp` becomes `lsp`, `pickers` becomes `settings`, `tasks` dropped.
-- [ ] Pane model M0: Odin `Pane` + stack + kinds; quit/close/conflict/merge dialogs and `qed.confirm`/`qed.prompt` on it ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M1: `qed.ui.open` (center/full/split, filter/query/input fields, set/append/update), queued events, exclusive panes persisted by `id`, `qed.pick/prompt/confirm/pane` as prelude sugar, `search` streams into a query pane ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M2: palette core-built on a commands list source, core list handles (`qed.fs.dirs`), `path` field, `qed.set_root`, the working-root picker becomes the `workspace` plugin ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M3: accessor-backed list sources, pane-scoped commands (bare keys, rebindable, scoped Ctrl+P, `ctx.view`), footer chips, columns, `sel = bg`, follow; Message Log, Plugins pane and LSP rename prompt core-built on the model; line find becomes the `goto` plugin on `qed.buf.line_list`; markdown preview Back/Forward; per-pane backdrop keys ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M4: walk service behind `qed.fs.walk` handles (`count`/`ready`/`within`/`union`), `qed.fs.copy/rename/remove/mkdir`, the file tree core-built on the model (tabs, tree list, marks, chips, footer input, child confirms and palette); Lua tabs, marks, footer, tree expand, preview ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M5: the file tree becomes the bundled `filetree` plugin over walk handles, `walk.odin` keeps only the walk service, the Changed tab through a temporary provider shim ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M6: plugin exports (`qed.export/plugin/caller`), namespaced custom events (`qed.emit`), `plugin_loaded`/`plugin_unloaded`; the `git` plugin adds the Git tab (*Git: Changes*, `Alt+g`) through `filetree` exports; the provider shim and `qed.filetree.*` are gone; task errors no longer disable a plugin ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M7: the merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`) and AI becomes the bundled `ai` plugin (`plugins.ai`); `qed.buf.find_lines`, `qed.buf.big`, `qed.text.diff`/`diff_rows`, `qed.deco.mark`/`range`/`inline`, theme tint keys as deco alphas, blended spans, `buf_changed`'s `typed`/`lo`/`hi`, hunk-applied reloads; `conflict.odin`, the core `merge` pane, `aiedit.odin`/`llm.odin`/`fim.odin`, `modules.ai` and `.Ai` are gone ([notes/panes.md](notes/panes.md) §7).
-- [ ] Pane model M8: the module system is gone (`module.odin`, `Module`, `module_enabled`, `Command.module`, `config_module_defs`, the `modules` parsing); the `modules.ai/git/lsp` moved-key hints stay ([notes/panes.md](notes/panes.md) §7).
-- [ ] Low priority: review every bundled plugin's config keys for naming and sense.
-
 ## Post-1.0 — deferred
 
 Enhancements beyond the daily-driver baseline; none blocks 1.0.
 
 ### Features
 
-- [ ] Discontinuous file-tree selection (pick non-adjacent files for a command) — deferred: mouse Ctrl/Shift-click is blocked (vendored termbox2 drops mouse modifier bits — patchable — and Windows Terminal itself eats Ctrl/Shift-click), so it needs a keyboard mark key (e.g. Insert toggles the current row) and/or the termbox mouse-mod patch; sound data model is a path-keyed selection set + prune-to-visible on rebuild.
+- [ ] Discontinuous file-tree selection (pick non-adjacent files for a command) — deferred: mouse Ctrl/Shift-click is blocked (vendored termbox2 drops mouse modifier bits — patchable — and Windows Terminal itself eats Ctrl/Shift-click), so it needs a keyboard mark key (likely Ctrl+Space toggles the current row) and/or the termbox mouse-mod patch; sound data model is a path-keyed selection set + prune-to-visible on rebuild.
 - [ ] Multi-line find (regex `\n` spanning rows) — current find is single-line, matching the per-line data model; needs whole-buffer scan + cross-row match/highlight.
 - [ ] Save all modified buffers in one command.
 - [ ] Settings-menu plugin: every option with its current value, editable in place (needs per-option description/type in `qed.options`).
@@ -136,8 +107,6 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 ### Performance
 
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
-- [ ] Cache `merge_scan`/`merge_word_map` per buffer rev — currently re-run every render.
-- [ ] Migrate remaining interactive-path blocking spawns (`format_external`, `git show`) to the async subprocess runner.
 - [ ] The frame that adopts a background reparse on a 1 MB highlighted line costs ~220 ms: `highlight_query_paint` queries the whole row; limit the query to the visible byte range.
 - [ ] Lua GC steps add 20-50 ms to plugin slices once the heap holds 50k-entry tables (git, filetree at 50k changes); cut allocations or tune the GC ([notes/perf.md](notes/perf.md)).
 
