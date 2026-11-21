@@ -214,6 +214,35 @@ e2e_table_list_accel :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_table_empty_hint :: proc(t: ^testing.T) {
+	e := e2e_start("abc")
+	defer e2e_stop(&e)
+	saved := PANE_TABLE_BORDERS
+	defer PANE_TABLE_BORDERS = saved
+	for &on in e.ed.logview.filter {
+		on = false
+	}
+	for mode in TableBorders {
+		PANE_TABLE_BORDERS = mode
+		cmd_message_log(&e.ed)
+		p := pane_find(&e.ed, "log")
+		e2e_render(&e)
+		g := pane_geom(&e.ed, p)
+		testing.expectf(t, pane_count(&e.ed, p) == 0, "%v: the log is empty", mode)
+		testing.expectf(t, strings.contains(e2e_row_text(&e, g.list.y), "│ (no messages)"), "%v: the hint spans the list", mode)
+		for r in 0 ..< g.list.h {
+			row := e2e_row_text(&e, g.list.y + r)
+			testing.expectf(t, strings.count(row, "│") <= 2, "%v: no separators on empty row %d: %s", mode, r, row)
+		}
+		if g.rule_y >= 0 {
+			testing.expectf(t, !strings.contains(e2e_row_text(&e, g.rule_y), "┼"), "%v: nothing crosses the rule below", mode)
+		}
+		testing.expectf(t, !strings.contains(e2e_row_text(&e, g.list.y + g.list.h), "┴") || mode != .All, "%v: no join under an empty list", mode)
+		e2e_key(&e, .Esc)
+	}
+}
+
+@(test)
 e2e_table_core_max_width :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
