@@ -1,6 +1,7 @@
 package main
 
 import "core:c"
+import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -809,5 +810,115 @@ end}`)
 		}
 		decl := line[len("function "):strings.index_byte(line, '(')]
 		testing.expectf(t, slice.contains(methods, decl), "the stub declares method `%s` but no qed object has it", decl)
+	}
+}
+
+@(private = "file")
+mk_core_bind :: proc(name: string) -> bool {
+	for cmd in commands {
+		if command_config_name(cmd) == name {
+			return true
+		}
+	}
+	for cmd in pane_commands {
+		if cmd.bind_from == "" && command_config_name(cmd) == name {
+			return true
+		}
+	}
+	return false
+}
+
+@(private = "file")
+mk_default :: proc(root: json.Object, path: string) -> bool {
+	v: json.Value = root
+	for seg in strings.split(path, "/", context.temp_allocator) {
+		obj, ok := v.(json.Object)
+		if !ok {
+			return false
+		}
+		v, ok = obj[seg]
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+@(private = "file")
+mk_exists :: proc(e: ^E2E, root: json.Object, path: string) -> bool {
+	segs := strings.split(path, "/", context.temp_allocator)
+	if segs[0] == "keybinds" && len(segs) >= 2 {
+		return mk_core_bind(strings.join(segs[1:], "/", context.temp_allocator))
+	}
+	if segs[0] != "plugins" || len(segs) < 2 {
+		return mk_default(root, path)
+	}
+	pl := plugin_find(&e.ed.plugins, segs[1])
+	if pl == nil || len(segs) == 2 {
+		return pl != nil
+	}
+	if segs[2] == "enabled" {
+		return len(segs) == 3
+	}
+	if segs[2] == "keybinds" && len(segs) >= 4 {
+		name := strings.join(segs[3:], "/", context.temp_allocator)
+		for cmd in e.ed.plugins.commands {
+			if cmd.owner == pl.name && cmd.config_name == name {
+				return true
+			}
+		}
+		return false
+	}
+	L := e.ed.plugins.L
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.cfg))
+	for seg in segs[2:] {
+		if lua.type(L, -1) != .TABLE {
+			lua.pop(L, 1)
+			return false
+		}
+		lua.pushstring(L, strings.clone_to_cstring(seg, context.temp_allocator))
+		lua.rawget(L, -2)
+		lua.remove(L, -2)
+	}
+	found := lua.type(L, -1) != .NIL
+	lua.pop(L, 1)
+	return found
+}
+
+@(test)
+e2e_config_master_keys_moved :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	v, err := json.parse(embedded_config_data, parse_integers = true, allocator = context.temp_allocator)
+	testing.expect(t, err == nil, "the embedded config parses")
+	root := v.(json.Object)
+	paths: for path in MASTER_CONFIG_PATHS {
+		if mk_exists(&e, root, path) {
+			continue
+		}
+		for other in MASTER_CONFIG_PATHS {
+			if strings.has_prefix(other, path) && strings.has_prefix(other[len(path):], "/") {
+				continue paths
+			}
+		}
+		dest, moved := config_moved(path)
+		if !testing.expectf(t, moved, "%q existed on master: it must still exist or have a CONFIG_MOVED entry", path) {
+			continue
+		}
+		if strings.has_prefix(path, "languages/") {
+			continue
+		}
+		testing.expectf(t, mk_exists(&e, root, dest), "%q moved to %q, which does not exist", path, dest)
+	}
+	moved_colors: [len(THEME_MOVED)]string
+	for m, i in THEME_MOVED {
+		moved_colors[i] = m[0]
+	}
+	for key in MASTER_THEME_COLORS {
+		found := slice.contains(moved_colors[:], key)
+		for c in config_colors {
+			found ||= c.key == key
+		}
+		testing.expectf(t, found, "theme color %q existed on master: it must still exist or be in THEME_MOVED", key)
 	}
 }

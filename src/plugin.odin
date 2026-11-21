@@ -1624,6 +1624,7 @@ plugins_rebind :: proc(editor: ^Editor) {
 		}
 	}
 	if len(problems) > 0 {
+		slice.sort(problems[:])
 		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
 	}
 	p.bound = true

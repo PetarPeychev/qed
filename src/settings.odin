@@ -472,6 +472,7 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			config_collect_unknown(root, &problems)
 			config_user_set(root)
 			if len(problems) > 0 {
+				slice.sort(problems[:])
 				list := strings.join(problems[:], ", ", context.temp_allocator)
 				message = fmt.tprintf("config.json: ignoring %s", list)
 				is_error = true
@@ -734,7 +735,14 @@ CONFIG_MOVED :: [?][2]string {
 	{"plugins/format/format_on_save", "plugins/format/on_save"},
 	{"plugins/format/trim_trailing_whitespace_on_save", "plugins/format/trim_whitespace_on_save"},
 	{"plugins/format/ensure_final_newline_on_save", "plugins/format/final_newline_on_save"},
+	{"projsearch_min_query", "plugins/search/min_query"},
+	{"plugins/pickers", "plugins/settings"},
 	{"keybinds/Diff: Toggle Diff View", "keybinds/Diff: Toggle View"},
+	{"keybinds/Git: Toggle Diff View", "keybinds/Diff: Toggle View"},
+	{"keybinds/Git: Next Change", "keybinds/Diff: Next Change"},
+	{"keybinds/Git: Previous Change", "keybinds/Diff: Previous Change"},
+	{"keybinds/Git: Revert Hunk", "keybinds/Diff: Revert Hunk"},
+	{"keybinds/File Tree: Git", "plugins/git/keybinds/Changes"},
 	{"keybinds/Debug: Message Log", "keybinds/Message Log: Open"},
 	{"keybinds/Debug: Plugins", "keybinds/Plugins: Open"},
 	{"keybinds/Find in Files", "plugins/search/keybinds/Find in Files"},
@@ -764,6 +772,10 @@ CONFIG_MOVED :: [?][2]string {
 	{"keybinds/AI: Edit Selection", "plugins/ai/keybinds/Edit Selection"},
 	{"keybinds/AI: Cancel Edits", "plugins/ai/keybinds/Cancel Edits"},
 	{"keybinds/AI: Toggle Inline Completion", "plugins/ai/keybinds/Toggle Inline Completion"},
+}
+
+THEME_MOVED :: [?][2]string {
+	{"filetree_ignored", "pane_dim_foreground"},
 }
 
 config_moved :: proc(path: string) -> (string, bool) {
@@ -1171,6 +1183,7 @@ theme_load :: proc(cfg_path: string) -> (message: string, is_error: bool) {
 		return fmt.tprintf("theme %q: no file %s, using defaults", THEME, path), true
 	}
 	if len(warnings) > 0 {
+		slice.sort(warnings[:])
 		list := strings.join(warnings[:], ", ", context.temp_allocator)
 		return fmt.tprintf("theme %q: ignoring %s", THEME, list), true
 	}
@@ -1271,6 +1284,13 @@ theme_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	}
 	// The colors section is deliberately open (captures may reference user-defined
 	// keys), so no per-key unknown check for it.
+	if col_obj, ok := root["colors"].(json.Object); ok {
+		for m in THEME_MOVED {
+			if m[0] in col_obj {
+				append(warnings, fmt.tprintf("%q moved to %q", fmt.tprintf("colors/%s", m[0]), fmt.tprintf("colors/%s", m[1])))
+			}
+		}
+	}
 	theme_captures_unknown(root, warnings)
 	if ic_obj, ok := root["icons"].(json.Object); ok {
 		for key in ic_obj {
