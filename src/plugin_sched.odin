@@ -623,6 +623,7 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	}
 	if status == .ERRMEM {
 		lua.gc(p.L, .COLLECT)
+		plugin_gc_rebase(p)
 		mb :: 1024 * 1024
 		message = fmt.tprintf("%s ran out of Lua memory and was stopped (cap %d MB, %.1f MB in use after a full collection)", label, p.mem.cap / mb, f64(p.mem.used) / mb)
 	}
@@ -1224,20 +1225,44 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 	return
 }
 
-// a cycle starts once the heap doubles, as Lua's default pause; a heap outgrowing it gets more time per step
+plugin_gc_rebase :: proc(p: ^Plugins) {
+	p.gc_base, p.gc_active = p.mem.used, false
+}
+
+// a cycle starts once the heap doubles, as Lua's default pause, or halfway from the last cycle's heap to the cap
+plugin_gc_threshold :: proc(p: ^Plugins) -> int {
+	at := 2 * p.gc_base
+	if p.mem.cap > 0 {
+		at = min(at, (p.gc_base + p.mem.cap) / 2)
+	}
+	return max(at, 1)
+}
+
+plugin_gc_due :: proc(p: ^Plugins) -> bool {
+	if p.L == nil {
+		return false
+	}
+	// an emergency or a plugin's own collection shrank the heap behind the pacer's back
+	if !p.gc_active && p.mem.used < p.gc_base {
+		p.gc_base = p.mem.used
+	}
+	return p.gc_active || p.mem.used >= plugin_gc_threshold(p)
+}
+
+// a heap outgrowing the threshold gets more time per step
 plugin_gc_step :: proc(editor: ^Editor) {
 	p := &editor.plugins
-	if p.L == nil || (!p.gc_active && p.mem.used < 2 * p.gc_base) {
+	if !plugin_gc_due(p) {
 		return
 	}
 	p.gc_active = true
-	budget := PLUGIN_GC_STEP_MS * f64(clamp(p.mem.used / max(2 * p.gc_base, 1), 1, 3))
+	budget := PLUGIN_GC_STEP_MS * f64(clamp(p.mem.used / plugin_gc_threshold(p), 1, 3))
 	entry: PluginEntry
 	prev := plugin_enter(editor, &entry)
 	start := time.tick_now()
 	for ms_since(start) < budget {
 		if lua.gc(p.L, .STEP, c.int(0)) != 0 {
-			p.gc_active, p.gc_base = false, p.mem.used
+			plugin_gc_rebase(p)
 			break
 		}
 	}

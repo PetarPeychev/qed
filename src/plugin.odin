@@ -217,7 +217,37 @@ plugin_panic :: proc "c" (L: ^lua.State) -> c.int {
 
 plugin_openlibs :: proc "c" (L: ^lua.State) -> c.int {
 	lua.L_openlibs(L)
+	lua.pushglobaltable(L)
+	lua.pushcfunction(L, plugin_collectgarbage)
+	lua.setfield(L, -2, "collectgarbage")
+	lua.pop(L, 1)
 	return 0
+}
+
+// the scheduler paces the collector, so a plugin may only collect, count or step it, never switch it
+plugin_collectgarbage :: proc "c" (L: ^lua.State) -> c.int {
+	opt := "collect"
+	if lua.type(L, 1) > .NIL {
+		opt, _ = lua.toodinstring(L, 1)
+	}
+	switch opt {
+	case "collect":
+		lua.gc(L, .COLLECT)
+		if entry := plugin_entry(L); entry != nil {
+			context = entry.ctx
+			plugin_gc_rebase(&entry.editor.plugins)
+		}
+		lua.pushinteger(L, 0)
+	case "count":
+		lua.pushnumber(L, lua.Number(lua.gc(L, .COUNT)) + lua.Number(lua.gc(L, .COUNTB)) / 1024)
+	case "step":
+		isnum: b32
+		n := lua.tointeger(L, 2, &isnum)
+		lua.pushboolean(L, lua.gc(L, .STEP, c.int(n)) != 0)
+	case:
+		return lua.L_argerror(L, 1, "only 'collect', 'count' and 'step' are allowed")
+	}
+	return 1
 }
 
 plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
@@ -1064,6 +1094,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 	// Twice: a __gc object survives one cycle and its closure keeps the env alive.
 	lua.gc(p.L, .COLLECT)
 	lua.gc(p.L, .COLLECT)
+	plugin_gc_rebase(p)
 }
 
 plugin_env_create :: proc(L: ^lua.State, pl: ^Plugin) {

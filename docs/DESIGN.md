@@ -579,9 +579,11 @@ started at the end of `editor_init`. Invariants the code can't show:
   `qed.save`) has its own budget and its time also counts toward the outer slice; when it returns with the outer slice
   past its limit, the outer thread's count hook drops to 1, so a loop of nested calls stops at its next instruction. `__close` handlers run by `closethread` get the event budget.
 - GC: the Lua collector never runs inside a slice (one big allocation could owe it a whole mark of a 40 MB heap).
-  `plugins_open` stops it; `plugin_gc_step`, at the end of `plugin_pump`, starts a cycle once the heap doubles
-  since the last one and steps it for `PLUGIN_GC_STEP_MS` (2 ms, up to 3x while the heap outgrows that); `gc_active`
-  keeps the main loop polling until the cycle ends. Out of memory still runs Lua's emergency full collection.
+  `plugins_open` stops it; `plugin_gc_step`, after `plugin_pump` and after `editor_step`'s flush, starts a cycle once
+  the heap doubles since the last one (or reaches halfway from there to the cap) and steps it for `PLUGIN_GC_STEP_MS`
+  (2 ms, up to 3x while the heap outgrows that); `plugin_gc_due` keeps the main loop polling. Every full collection
+  (unload, out of memory, a plugin's own, an emergency) rebases the pacer. `collectgarbage` allows only
+  `collect`/`count`/`step`, so no plugin can switch the mode or restart the collector inside slices.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits
   (`.Lsp`, bounded by `plugin_hook_timeout_ms` → `"timeout"`); `plugin_lsp_done`
   queues the outcome, `plugin_pump` resumes the task. A response nobody waits for

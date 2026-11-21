@@ -30,6 +30,7 @@ plugin_test_destroy :: proc(ed: ^Editor) {
 	}
 	delete(ed.buffers)
 	editor_log_destroy(ed)
+	jump_destroy(&ed.jumps)
 	delete(ed.message_store)
 	free(ed)
 }
@@ -768,4 +769,94 @@ plugin_gc_runs_between_slices :: proc(t: ^testing.T) {
 		plugin_pump(ed)
 	}
 	testing.expect(t, ed.plugins.mem.used < before + 1024 * 1024, "pumps collect it")
+}
+
+@(private = "file")
+gc_test_count :: proc(t: ^testing.T, ed: ^Editor, name: string) -> string {
+	cmd, ok := plugin_test_command(ed, name)
+	testing.expect(t, ok, name)
+	command_run(ed, cmd)
+	return ed.message
+}
+
+@(test)
+plugin_gc_paces_near_the_cap :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"fin.lua", `
+			hold = {}
+			for i = 1, 105 do hold[i] = string.rep(string.char(65 + i % 26), 100 * 1024) end
+			fins = 0
+			return {setup = function()
+				qed.command{name = "Drop", run = function() hold = nil end}
+				qed.command{name = "Junk", run = function()
+					local s = string.rep("j", 1024 * 1024)
+					setmetatable({}, {__gc = function() fins = fins + 1 end})
+				end}
+				qed.command{name = "Count", run = function() qed.message(fins >= 280 and "most" or tostring(fins)) end}
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	for i := 0; i < 10_000 && (ed.plugins.gc_active || ed.plugins.gc_base == 0); i += 1 {
+		plugin_pump(ed)
+	}
+	testing.expectf(t, ed.plugins.gc_base > PLUGIN_TEST_MEM / 2, "a cycle ended above half the cap (%d)", ed.plugins.gc_base)
+	gc_test_count(t, ed, "Fin: Drop")
+	junk, _ := plugin_test_command(ed, "Fin: Junk")
+	for _ in 0 ..< 300 {
+		command_run(ed, junk)
+		plugin_pump(ed)
+	}
+	for i := 0; i < 10_000 && ed.plugins.gc_active; i += 1 {
+		plugin_pump(ed)
+	}
+	testing.expect(t, ed.plugins.gc_base < PLUGIN_TEST_MEM / 2, "the pacer follows the heap down")
+	testing.expect_value(t, gc_test_count(t, ed, "Fin: Count"), "most")
+}
+
+@(test)
+plugin_gc_steps_while_typing :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"hog.lua", `return {setup = function()
+			qed.on("buf_changed", function() n = (n or 0) + 1 local s = string.rep("h", 1536 * 1024) end)
+			qed.command{name = "N", run = function() qed.message(tostring(n)) end}
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	no_peek :: proc(ms: int) -> (tb2.Event, bool) {return {}, false}
+	plugin_flush(ed)
+	peak := 0
+	for _ in 0 ..< 200 {
+		editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, no_peek)
+		peak = max(peak, ed.plugins.mem.used)
+	}
+	testing.expect_value(t, gc_test_count(t, ed, "Hog: N"), "200")
+	testing.expectf(t, peak < 4 * 1024 * 1024, "keystrokes alone keep the heap off the cap (peak %d)", peak)
+	testing.expect(t, !plugin_test_logged(ed, .Debug, "Hog", "took"), "no handler pays a collection")
+}
+
+@(test)
+plugin_gc_collectgarbage_options :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"gc.lua", `return {setup = function()
+			qed.command{name = "Try", run = function()
+				local out = {}
+				for _, opt in ipairs({"generational", "incremental", "restart", "stop", "isrunning", "setpause"}) do
+					out[#out + 1] = opt .. "=" .. tostring((pcall(collectgarbage, opt)))
+				end
+				out[#out + 1] = "count=" .. type(collectgarbage("count"))
+				out[#out + 1] = "step=" .. type(collectgarbage("step"))
+				junk = string.rep("g", 4 * 1024 * 1024)
+				junk = nil
+				out[#out + 1] = "collect=" .. tostring(collectgarbage())
+				qed.message(table.concat(out, " "))
+			end}
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	testing.expect_value(t, gc_test_count(t, ed, "Gc: Try"), "generational=false incremental=false restart=false stop=false isrunning=false setpause=false count=number step=boolean collect=0")
+	testing.expect(t, !ed.plugins.gc_active, "a plugin's collect ends any pacer cycle")
+	testing.expectf(t, ed.plugins.gc_base < 4 * 1024 * 1024, "and rebases it (%d)", ed.plugins.gc_base)
 }
