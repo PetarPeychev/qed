@@ -265,11 +265,13 @@ function qed.every(ms, fn) end
 ---@field detail? string shown dim, right-aligned
 ---@field value? any carried through untouched
 ---@field path? string previewed by a split pane with `preview = "auto"`; a `qed.pick` item with a path switches it to the list + file preview layout
----@field pos? qed.Pos preview focus row
+---@field pos? qed.Pos preview focus row (and column)
+---@field buf? qed.Buf previewed live from this open buffer (unsaved edits included) instead of `path`
 ---@field key? string identity for `View:update`, `View:marks` and for restoring the selection by `id` (default `label`; a walk item's is its path)
 ---@field cells? string[] one string per `list.columns` entry
 ---@field dir? boolean walk items: a directory
 ---@field depth? integer walk items: tree depth (0 at the root)
+---Other fields of a Lua item are kept: `activate`, `change` and `ctx.items` hand back the same table.
 
 ---@alias qed.PaneLine string|{text: string, color?: string} color is a theme color key, e.g. `"error_foreground"`
 

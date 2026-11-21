@@ -573,3 +573,23 @@ e2e_ui_open_links :: proc(t: ^testing.T) {
 	testing.expect_value(t, test_view(&e.ed).scroll, min(top, max(0, len(lines) - g.text.h)))
 	e2e_key(&e, .Esc)
 }
+
+@(test)
+e2e_ui_open_item_buf :: proc(t: ^testing.T) {
+	e := e2e_start("saved line\n")
+	defer e2e_stop(&e)
+	e2e_resize(&e, 160, 40)
+	e2e_type(&e, "unsaved ")
+	e2e_plugin(&e, "live", `return {setup = function()
+		qed.command{name = "Open", key = "Alt+k", run = function(ctx)
+			qed.ui.open{place = "split", preview = "auto", list = {items = {{label = "here", buf = ctx.buf, pos = {row = 1, col = 3}, tag = "kept"}}},
+				on = {activate = function(v, items) qed.message(items[1].tag .. " " .. items[1].pos.col); v:close() end}}
+		end}
+	end}`)
+	e2e_alt(&e, 'k')
+	e2e_render(&e)
+	testing.expect(t, e2e_grid_has(&e, "unsaved saved line"), "the preview shows the live buffer")
+	e2e_key(&e, .Enter)
+	plugin_flush(&e.ed)
+	testing.expect_value(t, e.ed.message, "kept 3")
+}

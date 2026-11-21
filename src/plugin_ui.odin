@@ -763,9 +763,18 @@ api_view_item :: proc(L: ^lua.State, editor: ^Editor, t: c.int) -> (it: PaneItem
 	#partial switch lua.getfield(L, t, "pos") {
 	case .TABLE:
 		it.row, _ = api_field_int(L, lua.gettop(L), "row")
+		it.col, _ = api_field_int(L, lua.gettop(L), "col")
 	case .NIL:
 	case:
 		plugin_raise(L, "pos must be a table {row, col}")
+	}
+	lua.pop(L, 1)
+	#partial switch lua.getfield(L, t, "buf") {
+	case .NUMBER:
+		it.buf = u64(max(0, lua.tointeger(L, -1)))
+	case .NIL:
+	case:
+		plugin_raise(L, "buf must be a buffer id")
 	}
 	lua.pop(L, 1)
 	#partial switch lua.getfield(L, t, "cells") {
