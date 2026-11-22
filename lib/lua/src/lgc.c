@@ -1482,16 +1482,15 @@ static void genstep (lua_State *L, global_State *g) {
 
 /*
 ** Enter first sweep phase.
-** The call to 'sweeptolive' makes the pointer point to an object
-** inside the list (instead of to the header), so that the real sweep do
-** not need to skip objects created between "now" and the start of the
-** real sweep.
+** qed: start at the list header instead of 'sweeptolive', which freed
+** every dead object at the head (all garbage made during the mark phase)
+** in one unbounded step; incremental sweep steps pay for them instead.
 */
 static void entersweep (lua_State *L) {
   global_State *g = G(L);
   g->gcstate = GCSswpallgc;
   lua_assert(g->sweepgc == NULL);
-  g->sweepgc = sweeptolive(L, &g->allgc);
+  g->sweepgc = &g->allgc;
 }
 
 

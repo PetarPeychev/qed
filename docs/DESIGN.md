@@ -586,7 +586,12 @@ started at the end of `editor_init`. Invariants the code can't show:
 - GC: the Lua collector never runs inside a slice (one big allocation could owe it a whole mark of a 40 MB heap).
   `plugins_open` stops it; `plugin_gc_step`, after `plugin_pump` and after `editor_step`'s flush, starts a cycle once
   the heap doubles since the last one (or reaches halfway from there to the cap) and steps it for `PLUGIN_GC_STEP_MS`
-  (2 ms, up to 3x while the heap outgrows that); `plugin_gc_due` keeps the main loop polling. Every full collection
+  (2 ms), then keeps paying the bytes allocated since the last call (`gc_debt`, 512 B per step) for at most
+  `PLUGIN_GC_DEBT_MS` (8 ms) or `PLUGIN_GC_DEBT_STEPS` (64) steps, 4x both past half the cap; unpaid debt carries
+  over, so garbage made with no idle time does not outrun the collector to the cap. A cycle starts at least
+  `PLUGIN_GC_HEADROOM` (1 MB) above the last one's heap. `plugin_gc_due` keeps the main loop stepping back to back while
+  idle. One `lua_gc` step is bounded: step size 512 B (`PLUGIN_GC_STEP_SIZE_LOG2`), a patched `entersweep`
+  (`lib/lua/PATCHES.md`), and glibc fastbins off at startup (`malloc.odin`). Every full collection
   (unload, out of memory, a plugin's own, an emergency) rebases the pacer. `collectgarbage` allows only
   `collect`/`count`/`step`, so no plugin can switch the mode or restart the collector inside slices.
 - `qed.lsp.format` sends a core LSP format request tagged with a token and waits

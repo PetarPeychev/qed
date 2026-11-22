@@ -47,6 +47,7 @@ GCWhat :: enum c.int {
 	COUNT   = 3,
 	COUNTB  = 4,
 	STEP    = 5,
+	INC     = 11,
 }
 
 Number :: distinct f64

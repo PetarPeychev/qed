@@ -874,6 +874,83 @@ plugin_gc_steps_while_typing :: proc(t: ^testing.T) {
 	testing.expectf(t, peak < PLUGIN_TEST_MEM / 2, "the heap stays far from the cap (peak %d)", peak)
 }
 
+@(private = "file")
+gc_test_no_idle :: proc(t: ^testing.T, live, rows, mem_cap, keys: int) -> (start, peak: int) {
+	ed := plugin_test_editor({
+		{"tree.lua", strings.concatenate({fmt.tprintf("LIVE, ROWS = %d, %d\n", live, rows), `
+			hold = {}
+			return {setup = function()
+				qed.on("buf_changed", function()
+					if #hold < LIVE then
+						for i = #hold + 1, math.min(LIVE, #hold + 50000) do hold[i] = {path = "dir/file" .. i, size = i} end
+						return
+					end
+					local rows = {}
+					for i = 1, ROWS do rows[i] = {key = i, spans = {{"a", "s"}, {"b", "t"}}} end
+				end)
+			end}`}, context.temp_allocator)},
+	}, mem_cap = mem_cap)
+	defer plugin_test_destroy(ed)
+
+	no_peek :: proc(ms: int) -> (tb2.Event, bool) {return {}, false}
+	plugin_flush(ed)
+	for _ in 0 ..< live / 50000 + 1 {
+		editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, no_peek)
+	}
+	start = ed.plugins.mem.used
+	test_alloc_refusals, test_gc_debt_steps_max = 0, 0
+	for _ in 0 ..< keys {
+		editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, no_peek)
+		peak = max(peak, ed.plugins.mem.used)
+	}
+	testing.expect_value(t, test_alloc_refusals, 0)
+	testing.expectf(t, peak < mem_cap * 7 / 8, "garbage made with no idle time never reaches the cap (peak %d MB)", peak / (1024 * 1024))
+	return
+}
+
+@(test)
+plugin_gc_keeps_up_without_idle :: proc(t: ^testing.T) {
+	gc_test_no_idle(t, 100_000, 10_000, 256 * 1024 * 1024, 200)
+}
+
+@(test)
+plugin_gc_bounded_near_the_cap :: proc(t: ^testing.T) {
+	cap := 128 * 1024 * 1024
+	start, _ := gc_test_no_idle(t, 450_000, 1000, cap, 100)
+	testing.expectf(t, start > cap / 2, "the heap starts past half the cap (%d MB)", start / (1024 * 1024))
+	testing.expectf(t, test_gc_debt_steps_max <= PLUGIN_GC_DEBT_STEPS * PLUGIN_GC_NEAR_CAP_SCALE, "one call pays a bounded share of the backlog (%d steps)", test_gc_debt_steps_max)
+}
+
+@(test)
+plugin_gc_step_frees_bounded :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"churn.lua", `
+			hold = {}
+			for i = 1, 20000 do hold[i] = {i} end
+			return {setup = function()
+				qed.command{name = "Junk", run = function() local t = {} for i = 1, 50000 do t[i] = {i} end end}
+			end}`},
+	})
+	defer plugin_test_destroy(ed)
+
+	for i := 0; i < 10_000 && plugin_gc_due(&ed.plugins); i += 1 {
+		plugin_gc_step(ed)
+	}
+	base := ed.plugins.mem.used
+	test_gc_step_frees_max, test_gc_cycles = 0, 0
+	junk, _ := plugin_test_command(ed, "Churn: Junk")
+	command_run(ed, junk)
+	plugin_gc_step(ed)
+	command_run(ed, junk)
+	for i := 0; i < 100_000 && test_gc_cycles < 2; i += 1 {
+		ed.plugins.gc_active = true
+		plugin_gc_step(ed)
+	}
+	testing.expect_value(t, test_gc_cycles, 2)
+	testing.expectf(t, ed.plugins.mem.used < base + 1024 * 1024, "and collects the garbage (%d over)", ed.plugins.mem.used - base)
+	testing.expectf(t, test_gc_step_frees_max > 0 && test_gc_step_frees_max < 10_000, "one collector step frees a bounded batch (%d)", test_gc_step_frees_max)
+}
+
 @(test)
 plugin_gc_collectgarbage_options :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({

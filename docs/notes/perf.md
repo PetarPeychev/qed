@@ -184,6 +184,21 @@ big-file mode.
   stopped and `plugin_pump` steps it 2 ms at a time (single steps reach ~9 ms on a 64k-node table); the
   git scan view also drops two 50k-entry tables. Git slices: startup 20-29 ms, tree open 22-24 ms; GC step
   max ~8 ms.
+- Lua GC step bound: the budget was checked only between `lua_gc` steps, and one step reached 48-81 ms on a
+  25 MB heap with a list tree rebuilt per key. Three unbounded costs: the default 8 KB step (51k frees),
+  `sweeptolive` freeing all mark-phase garbage in the atomic step (patched, `lib/lua/PATCHES.md`), and glibc's
+  `malloc_consolidate` on any >= 64 KB free walking every fastbin chunk (13-17 ms per cycle; fastbins off).
+  Step size is now 512 bytes (<= ~6600 frees per step). Standalone churn bench, 25 MB heap: max step
+  7-12 -> 2.7-3.1 ms. What remains indivisible is the atomic phase and one huge table's traversal.
+- Strict 2-6 ms steps let sustained garbage with no idle time (a 10k-row tree rebuilt per key, ~3 MB) reach the
+  256 MB cap and its emergency full GC; the time-ratio budget cannot see it because each cycle's floating garbage
+  raises the next threshold. Steps now also pay the bytes allocated since the last call (Lua's own pacing),
+  at most 8 ms / 64 steps per call (uncapped, the git scan made one call 43 ms), 32 ms / 256 steps past half the
+  cap (uncapped there, the carried backlog made calls of 100-170 ms). Cap 256 MB, no idle, peak / worst call:
+  10k rows per key 164 MB / 33 ms, 30k 205 MB / 42 ms, 140 MB live + 10k rows 239 MB / 38 ms, none reaching the
+  cap; 60k rows (~10 MB per key) needs more than 32 ms per key and still hits the cap a few times (47 ms worst).
+- Idle: while a cycle is due the main loop polls with 0 ms and steps back to back, one core busy for the cycle
+  (tens to low hundreds of ms on a 25 MB heap); input waits at most one 2-6 ms chunk.
 - Go to: Line, 1M lines: a query extending the last one rescans only its hits, and the scan uses the
   match-only `fuzzy_has`. Filter keystroke p95 49-58 -> 20-30 ms (first key 39 -> 23 ms).
 - tmux smoke (default build): Git tab first arrow ~830 -> 6 ms; Alt+g to tab 238 ms; markdown

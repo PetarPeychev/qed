@@ -14,6 +14,7 @@ print_help :: proc() {
 }
 
 main :: proc() {
+	malloc_fastbins_disable()
 	if len(os.args) > 2 {
 		fmt.println("Error: Too many arguments.")
 		print_help()
@@ -57,7 +58,7 @@ main :: proc() {
 		got_event := false
 		for !got_event {
 			if lsp_running() || highlight_jobs_busy(&editor) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) || plugin_gc_due(&editor.plugins) || image_busy() {
-				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_stepping(&editor) || editor.terminal.more else LSP_POLL_MS))) == .Ok {
+				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_stepping(&editor) || editor.terminal.more || plugin_gc_due(&editor.plugins) else LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
 				redraw := false

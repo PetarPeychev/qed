@@ -15,6 +15,11 @@ PLUGIN_SPAWN_READ_MAX :: 1024 * 1024
 PLUGIN_SPAWN_OUTPUT_MAX :: 32 * 1024 * 1024
 PLUGIN_KILLS_MAX :: 3
 PLUGIN_GC_STEP_MS :: 2
+PLUGIN_GC_STEP_SIZE_LOG2 :: 9
+PLUGIN_GC_HEADROOM :: 1024 * 1024
+PLUGIN_GC_DEBT_MS :: 8
+PLUGIN_GC_DEBT_STEPS :: 64
+PLUGIN_GC_NEAR_CAP_SCALE :: 4
 
 PluginKind :: enum {
 	Command,
@@ -1226,7 +1231,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 }
 
 plugin_gc_rebase :: proc(p: ^Plugins) {
-	p.gc_base, p.gc_active = p.mem.used, false
+	p.gc_base, p.gc_active, p.gc_debt = p.mem.used, false, 0
 }
 
 // a cycle starts once the heap doubles, as Lua's default pause, or halfway from the last cycle's heap to the cap
@@ -1235,7 +1240,7 @@ plugin_gc_threshold :: proc(p: ^Plugins) -> int {
 	if p.mem.cap > 0 {
 		at = min(at, (p.gc_base + p.mem.cap) / 2)
 	}
-	return max(at, 1)
+	return max(at, p.gc_base + PLUGIN_GC_HEADROOM)
 }
 
 plugin_gc_due :: proc(p: ^Plugins) -> bool {
@@ -1252,34 +1257,49 @@ plugin_gc_due :: proc(p: ^Plugins) -> bool {
 	return p.gc_active || p.mem.used >= plugin_gc_threshold(p)
 }
 
-// a heap outgrowing the threshold gets more time per step
 plugin_gc_step :: proc(editor: ^Editor) {
 	p := &editor.plugins
+	defer p.gc_seen = p.mem.used
 	if !plugin_gc_due(p) {
 		return
 	}
+	if p.gc_active {
+		p.gc_debt += max(p.mem.used - p.gc_seen, 0)
+	}
 	p.gc_active = true
-	budget := PLUGIN_GC_STEP_MS * f64(clamp(p.mem.used / plugin_gc_threshold(p), 1, 3))
+	scale := PLUGIN_GC_NEAR_CAP_SCALE if p.mem.cap > 0 && p.mem.used > p.mem.cap / 2 else 1
+	debt_steps := 0
 	entry: PluginEntry
 	prev := plugin_enter(editor, &entry)
 	start := time.tick_now()
 	// at least one step per call, so progress never depends on the clock
 	for {
+		when ODIN_TEST {
+			frees := test_alloc_frees
+		}
 		done := lua.gc(p.L, .STEP, c.int(0)) != 0
 		when ODIN_TEST {
 			test_gc_steps += 1
 			test_gc_cycles += int(done)
+			test_gc_step_frees_max = max(test_gc_step_frees_max, test_alloc_frees - frees)
 		}
 		if done {
 			plugin_gc_rebase(p)
 			break
 		}
-		if ms_since(start) >= budget {
+		p.gc_debt -= 1 << PLUGIN_GC_STEP_SIZE_LOG2
+		elapsed := ms_since(start)
+		if elapsed < PLUGIN_GC_STEP_MS {
+			continue
+		}
+		if p.gc_debt <= 0 || elapsed >= f64(PLUGIN_GC_DEBT_MS * scale) || debt_steps >= PLUGIN_GC_DEBT_STEPS * scale {
 			break
 		}
+		debt_steps += 1
 	}
 	plugin_leave(editor, prev)
 	when ODIN_TEST {
+		test_gc_debt_steps_max = max(test_gc_debt_steps_max, debt_steps)
 		if test_slice_on {
 			test_gc_max = max(test_gc_max, ms_since(start))
 		}

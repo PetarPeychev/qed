@@ -87,6 +87,8 @@ Plugins :: struct {
 	lsp_results: [dynamic]PluginLspResult,
 	slice:    PluginSlice,
 	gc_base:  int,
+	gc_seen:  int,
+	gc_debt:  int,
 	gc_active: bool,
 	seq:      u64,
 	presave:  u64,
@@ -181,10 +183,16 @@ plugin_alloc :: proc "c" (ud: rawptr, ptr: rawptr, osize, nsize: c.size_t) -> ra
 		if ptr != nil {
 			mem.used -= old
 			libc.free(ptr)
+			when ODIN_TEST {
+				test_alloc_frees += 1
+			}
 		}
 		return nil
 	}
 	if mem.cap > 0 && int(nsize) > old && mem.used - old + int(nsize) > mem.cap {
+		when ODIN_TEST {
+			test_alloc_refusals += 1
+		}
 		return nil
 	}
 	p := libc.realloc(ptr, nsize)
@@ -266,7 +274,8 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 	lua.getextraspace(p.L)^ = nil
 	// one allocation can owe a whole mark of a big heap; plugin_gc_step pays it between slices instead
 	lua.gc(p.L, .STOP)
-	p.gc_base, p.gc_active = 0, false
+	lua.gc(p.L, .INC, c.int(0), c.int(0), c.int(PLUGIN_GC_STEP_SIZE_LOG2))
+	p.gc_base, p.gc_active, p.gc_seen, p.gc_debt = 0, false, 0, 0
 	lua.sethook(p.L, plugin_hook, lua.MASKCOUNT, PLUGIN_HOOK_COUNT)
 	lua.pushcfunction(p.L, plugin_openlibs)
 	ok := lua.pcall(p.L, 0, 0, 0) == .OK

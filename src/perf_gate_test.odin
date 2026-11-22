@@ -454,6 +454,7 @@ gate_plugins :: proc() {
 bench_gate :: proc(t: ^testing.T) {
 	// the runner's per-test rollback stack is neither thread-safe (walk workers share context.allocator) nor what qed runs on
 	context.allocator = runtime.heap_allocator()
+	malloc_fastbins_disable()
 	gate_dir = os.get_env("QED_GATE", context.allocator)
 	defer delete(gate_dir)
 	if gate_dir == "" {
