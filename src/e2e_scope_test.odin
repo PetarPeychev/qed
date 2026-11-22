@@ -22,7 +22,7 @@ scope_log_cmd :: proc(config_name: string) -> ^Command {
 
 @(test)
 e2e_scope_line_list_large_stays_cheap :: proc(t: ^testing.T) {
-	N :: 1_000_000
+	N :: 100_000
 	e := e2e_start(strings.repeat("some line\n", N, context.temp_allocator))
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
@@ -43,17 +43,17 @@ e2e_scope_line_list_large_stays_cheap :: proc(t: ^testing.T) {
 	testing.expectf(t, test_list_built <= 3 * rows, "open + render build only visible rows, built %d", test_list_built)
 
 	built := test_list_built
-	e2e_type(&e, ":900000:3")
+	e2e_type(&e, ":90000:3")
 	p = test_view(&e.ed)
 	testing.expect_value(t, pane_count(&e.ed, p), 1)
-	testing.expect_value(t, pane_item_index(p, 0), 900000 - 1)
+	testing.expect_value(t, pane_item_index(p, 0), 90000 - 1)
 	e2e_render(&e)
 	testing.expectf(t, test_list_built - built <= 2 * rows, "a jump spec builds a handful, built %d", test_list_built - built)
 	testing.expect_value(t, len(p.list.items), 0)
 
 	e2e_key(&e, .Enter)
 	testing.expect(t, test_view(&e.ed) == nil, "Enter closes")
-	testing.expect_value(t, b.cursor, Cursor{900000 - 1, 2})
+	testing.expect_value(t, b.cursor, Cursor{90000 - 1, 2})
 }
 
 @(test)

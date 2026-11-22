@@ -432,6 +432,8 @@ plugin_sched_coalesce :: proc(t: ^testing.T) {
 
 @(test)
 plugin_sched_quit :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	ed := plugin_test_editor({
 		{"bye.lua", `
 			return {setup = function()
@@ -445,6 +447,8 @@ plugin_sched_quit :: proc(t: ^testing.T) {
 
 @(test)
 plugin_sched_pre_save :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	tmp, _ := os.temp_dir(context.temp_allocator)
 	dir := fmt.tprintf("%s/qed_presave_test_%d", tmp, posix.getpid())
 	os.make_directory(dir)
@@ -489,6 +493,9 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 plugin_sched_pre_save_timeout_close_saves :: proc(t: ^testing.T) {
 	sync.lock(&e2e_lock)
 	defer sync.unlock(&e2e_lock)
+	saved_timeout := PLUGIN_HOOK_TIMEOUT_MS
+	PLUGIN_HOOK_TIMEOUT_MS = 300
+	defer PLUGIN_HOOK_TIMEOUT_MS = saved_timeout
 	tmp, _ := os.temp_dir(context.temp_allocator)
 	ed := plugin_test_editor({
 		{"slow.lua", `return {setup = function()
@@ -545,6 +552,9 @@ plugin_sched_pre_save_timeout_close_saves :: proc(t: ^testing.T) {
 plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 	sync.lock(&e2e_lock)
 	defer sync.unlock(&e2e_lock)
+	saved_timeout := PLUGIN_HOOK_TIMEOUT_MS
+	PLUGIN_HOOK_TIMEOUT_MS = 300
+	defer PLUGIN_HOOK_TIMEOUT_MS = saved_timeout
 	tmp, _ := os.temp_dir(context.temp_allocator)
 	path := fmt.tprintf("%s/qed_presave_timeout_%d.txt", tmp, posix.getpid())
 	_ = os.write_entire_file(path, transmute([]u8)string("v1"))
@@ -796,6 +806,8 @@ plugin_sched_paste_and_nesting :: proc(t: ^testing.T) {
 
 @(test)
 plugin_sched_save_intent :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
 	ed := plugin_test_editor({
 		{"w.lua", `return {setup = function() qed.on("buf_pre_save", function() qed.sleep(60000) end) end}`},
 	})

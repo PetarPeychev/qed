@@ -556,12 +556,14 @@ e2e_nav_find_navigation :: proc(t: ^testing.T) {
 
 	// Enter/arrows step next with wrap-around.
 	testing.expect_value(t, b.cursor.row, 0)
-	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
 	testing.expect_value(t, b.cursor.row, 2)
 	e2e_key(&e, .Arrow_Down)
 	testing.expect_value(t, b.cursor.row, 0)
-	e2e_key(&e, .Arrow_Up)
+	e2e_key(&e, .Arrow_Down)
 	testing.expect_value(t, b.cursor.row, 2)
+	e2e_key(&e, .Arrow_Up)
+	testing.expect_value(t, b.cursor.row, 0)
 }
 
 @(test)

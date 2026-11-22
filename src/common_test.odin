@@ -101,7 +101,6 @@ filetree_close :: proc(ed: ^Editor) {
 
 filetree_toggle_ignored :: proc(ed: ^Editor) {ft_run(ed, "File Tree: Toggle Ignored")}
 filetree_toggle_dotfiles :: proc(ed: ^Editor) {ft_run(ed, "File Tree: Toggle Dotfiles")}
-filetree_toggle_diff :: proc(ed: ^Editor) {ft_run(ed, "File Tree: Toggle Diff")}
 
 ft_chip :: proc(ed: ^Editor, label: string) -> bool {
 	if p := ft_pane(ed); p != nil {

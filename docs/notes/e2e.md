@@ -21,7 +21,7 @@ rendered grid (`e2e_cell` glyph; `e2e_cell_fg`/`_bg` truecolor; attr bits under
 Harness capabilities: `e2e_key` / `e2e_type` / `e2e_step`, `e2e_mouse` (click /
 drag / wheel / multi-click), `e2e_paste` (bracketed), `e2e_resize` (TIOCSWINSZ +
 SIGWINCH, size restored on stop), `e2e_git_start` (temp git repo fixture),
-`e2e_stub_script` (fake external subprocess), and a fake stdio LSP server (canned JSON-RPC over Content-Length
+`e2e_spawn_fake` (fake `qed.spawn`), and a fake stdio LSP server (canned JSON-RPC over Content-Length
 framing, embedded in `e2e_lsp_test.odin`). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp_test.odin`.
 

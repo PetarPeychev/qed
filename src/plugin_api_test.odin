@@ -31,7 +31,6 @@ api_test_editor :: proc(code: string, lines: ..string, cfg_user: json.Object = n
 
 api_test_destroy :: proc(ed: ^Editor) {
 	delete(ed.working_root)
-	jump_destroy(&ed.jumps)
 	plugin_test_destroy(ed)
 }
 

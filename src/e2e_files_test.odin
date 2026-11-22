@@ -212,28 +212,6 @@ e2e_files_conflict_overwrite :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_files_conflict_reload :: proc(t: ^testing.T) {
-	e := e2e_start("first line\nsecond line\n")
-	defer e2e_stop(&e)
-
-	b := editor_buffer(&e.ed)
-	e2e_type(&e, "X")
-	_ = os.write_entire_file_from_string(e.path, "DISK\n")
-	editor_poll_disk(&e.ed)
-
-	e2e_key(&e, .Ctrl_S)
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Arrow_Down) // Cancel -> Overwrite -> Reload
-	e2e_key(&e, .Enter)
-
-	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "dialog closes after choosing")
-	testing.expect_value(t, b.modified, false)
-	testing.expect_value(t, len(b.lines), 2)
-	testing.expect_value(t, string(b.lines[0].text[:]), "DISK") // disk wins in the buffer
-	testing.expect_value(t, e2e_read_disk(e.path), "DISK\n")
-}
-
-@(test)
 e2e_files_reload_undo :: proc(t: ^testing.T) {
 	e := e2e_start("aaa\nbbb\nccc\n")
 	defer e2e_stop(&e)
@@ -271,7 +249,10 @@ e2e_files_conflict_reload_undo :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
+	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "dialog closes after choosing")
 	testing.expect_value(t, buffer_snapshot_tmp(b), "DISK\n")
+	testing.expect(t, !b.modified, "the reloaded buffer is clean")
+	testing.expect_value(t, e2e_read_disk(e.path), "DISK\n")
 
 	e2e_key(&e, .Ctrl_Z)
 	testing.expect_value(t, buffer_snapshot_tmp(b), "Xfirst line\nsecond line\n")

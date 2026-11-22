@@ -67,6 +67,7 @@ than 3 tags in one `git push` — GitHub silently skips the workflows.
 ./build.sh            # builds the vendored termbox2 static lib, then `qed`
 ./qed [PATH]          # PATH may be a file or a directory (see DESIGN.md)
 odin test src -collection:lib=lib   # unit tests
+tools/test.sh         # same suite, sharded across processes (~3x faster)
 ```
 
 The `lib=` collection exposes `lib/` so `import "lib:tb2"` resolves to the

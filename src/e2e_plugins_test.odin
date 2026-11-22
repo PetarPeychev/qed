@@ -54,6 +54,7 @@ pt_api := [?]lua.L_Reg {
 	{"marks", pt_marks},
 	{"deco", pt_deco},
 	{"settle", pt_settle},
+	{"tick", pt_tick},
 	{"procs", pt_procs},
 	{"bg", pt_bg},
 	{nil, nil},
@@ -504,6 +505,19 @@ pt_procs :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 @(private = "file")
+pt_tick :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	now := time.tick_now()
+	for &tm in g_pt.ed.plugins.timers {
+		if tm.every_ms > 0 && tm.owner == g_pt_target {
+			tm.due = now
+		}
+	}
+	plugin_pump(&g_pt.ed)
+	return 0
+}
+
+@(private = "file")
 pt_settle :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
 	e2e_git_settle(g_pt)
@@ -691,16 +705,44 @@ pt_plugin_dirs :: proc() -> []string {
 }
 
 @(test)
-e2e_plugins_test_lua :: proc(t: ^testing.T) {
-	testing.expect(t, len(pt_plugin_dirs()) > 0, "found the bundled plugin dirs")
+plugins_test_lua_runners :: proc(t: ^testing.T) {
+	src := #load("e2e_plugins_test.odin", string)
 	for name in pt_plugin_dirs() {
-		data, err := os.read_entire_file(fmt.tprintf("%s/%s/test.lua", PT_PLUGINS, name), context.temp_allocator)
-		if err != nil {
-			continue
+		if os.exists(fmt.tprintf("%s/%s/test.lua", PT_PLUGINS, name)) {
+			testing.expectf(t, strings.contains(src, fmt.tprintf("pt_run_dir(t, %q)", name)), "plugins/%s/test.lua: add an e2e_plugin_%s_lua test", name, name)
 		}
-		pt_run(t, name, PluginFile{fmt.tprintf("%s/test.lua", name), string(data)})
 	}
 }
+
+@(private = "file")
+pt_run_dir :: proc(t: ^testing.T, name: string) {
+	data, err := os.read_entire_file(fmt.tprintf("%s/%s/test.lua", PT_PLUGINS, name), context.temp_allocator)
+	if !testing.expectf(t, err == nil, "plugins/%s/test.lua: %v", name, err) {
+		return
+	}
+	pt_run(t, name, PluginFile{fmt.tprintf("%s/test.lua", name), string(data)})
+}
+
+@(test)
+e2e_plugin_ai_lua :: proc(t: ^testing.T) {pt_run_dir(t, "ai")}
+@(test)
+e2e_plugin_conflict_lua :: proc(t: ^testing.T) {pt_run_dir(t, "conflict")}
+@(test)
+e2e_plugin_filetree_lua :: proc(t: ^testing.T) {pt_run_dir(t, "filetree")}
+@(test)
+e2e_plugin_format_lua :: proc(t: ^testing.T) {pt_run_dir(t, "format")}
+@(test)
+e2e_plugin_git_lua :: proc(t: ^testing.T) {pt_run_dir(t, "git")}
+@(test)
+e2e_plugin_goto_lua :: proc(t: ^testing.T) {pt_run_dir(t, "goto")}
+@(test)
+e2e_plugin_markdown_lua :: proc(t: ^testing.T) {pt_run_dir(t, "markdown")}
+@(test)
+e2e_plugin_search_lua :: proc(t: ^testing.T) {pt_run_dir(t, "search")}
+@(test)
+e2e_plugin_settings_lua :: proc(t: ^testing.T) {pt_run_dir(t, "settings")}
+@(test)
+e2e_plugin_workspace_lua :: proc(t: ^testing.T) {pt_run_dir(t, "workspace")}
 
 @(test)
 e2e_term_api_lua :: proc(t: ^testing.T) {

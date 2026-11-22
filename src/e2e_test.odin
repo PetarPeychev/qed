@@ -94,7 +94,8 @@ e2e_backend_init :: proc() {
 				}
 				sync.mutex_unlock(&e2e_tap_lock)
 			}
-			thread.yield()
+			pfd := posix.pollfd{fd = posix.FD(fd), events = {.IN}}
+			posix.poll(&pfd, 1, 100)
 		}
 	})
 	e2e_slave = slave
@@ -284,15 +285,6 @@ e2e_plugin_yielding :: proc(e: ^E2E) -> bool {
 	return false
 }
 
-e2e_stub_script :: proc(body: string) -> string {
-	e2e_seq += 1
-	tmp, _ := os.temp_dir(context.temp_allocator)
-	path := fmt.aprintf("%s/qed_e2e_stub_%d_%d.sh", tmp, posix.getpid(), e2e_seq)
-	_ = os.write_entire_file(path, transmute([]u8)fmt.tprintf("#!/bin/sh\n%s\n", body))
-	e2e_run(fmt.tprintf("chmod +x %s", shell_quote(path)))
-	return path
-}
-
 e2e_plugin :: proc(e: ^E2E, name, src: string) -> ^Plugin {
 	e2e_seq += 1
 	tmp, _ := os.temp_dir(context.temp_allocator)
@@ -424,23 +416,6 @@ e2e_type_and_edit :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_find_flow :: proc(t: ^testing.T) {
-	e := e2e_start("foo\nbar\nfoo")
-	defer e2e_stop(&e)
-
-	b := editor_buffer(&e.ed)
-	b.cursor = {0, 0}
-
-	e2e_key(&e, .Ctrl_F)
-	testing.expect(t, e.ed.find.active, "Ctrl+F should open find")
-
-	e2e_type(&e, "foo")
-	e2e_key(&e, .Enter)
-	// Wrap from row 0 lands the cursor on the next match (row 2).
-	testing.expect_value(t, b.cursor.row, 2)
-}
-
-@(test)
 e2e_mouse_click_and_word :: proc(t: ^testing.T) {
 	e := e2e_start("hello world")
 	defer e2e_stop(&e)
@@ -506,23 +481,6 @@ e2e_resize_rewraps :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, gutter, 0), 'w')
 	testing.expect(t, e2e_cell(&e, gutter, 1) != 't', "long line should now occupy row 1")
-}
-
-@(test)
-e2e_git_gutter_mark :: proc(t: ^testing.T) {
-	if !shell_command_exists("git") {
-		return
-	}
-	e := e2e_git_start("line one\nline two\nline three\n")
-	defer e2e_stop(&e)
-
-	b := editor_buffer(&e.ed)
-	// Editing a committed line marks it modified in the gutter (computed in render).
-	b.cursor = {1, len(b.lines[1].text)}
-	e2e_type(&e, "X")
-	e2e_render(&e)
-	testing.expect_value(t, diff_mark_at(b, 1), DiffMark.Modified)
-	testing.expect_value(t, diff_mark_at(b, 0), DiffMark.None)
 }
 
 @(test)

@@ -7,6 +7,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:sync"
+import "core:sys/posix"
 import "core:testing"
 import "core:thread"
 import "core:time"
@@ -416,7 +417,8 @@ highlight_slow_flag :: proc(t: ^testing.T) {
 	for i := 0; strings.builder_len(sb) < 150 * 1024; i += 1 {
 		fmt.sbprintf(&sb, "static int helper_%d(struct state *s) {{\n    return s->table[%d]; // c\n}}\n\n", i, i % 251)
 	}
-	path := "/tmp/qed-test-slow-flag.c"
+	tmp, _ := os.temp_dir(context.temp_allocator)
+	path := fmt.tprintf("%s/qed-test-slow-flag-%d.c", tmp, posix.getpid())
 	testing.expect(t, os.write_entire_file(path, transmute([]u8)strings.to_string(sb)) == nil)
 	defer os.remove(path)
 	b: Buffer
@@ -428,11 +430,17 @@ highlight_slow_flag :: proc(t: ^testing.T) {
 	highlight_settle(&b, mid, mid + 60)
 	testing.expect(t, !b.hl.slow, "a cold parse does not mark the buffer slow")
 
-	b.hl.slow = true
-	buffer_insert(&b, Cursor{mid, 0}, "x")
-	highlight_update(&b, mid, mid + 60)
-	testing.expect(t, highlight_busy(&b), "a slow buffer reparses in the background")
-	highlight_settle(&b, mid, mid + 60)
+	// parse_ms is wall time on a worker thread: one descheduling under a loaded runner can exceed the budget
+	for _ in 0 ..< 3 {
+		b.hl.slow = true
+		buffer_insert(&b, Cursor{mid, 0}, "x")
+		highlight_update(&b, mid, mid + 60)
+		testing.expect(t, highlight_busy(&b), "a slow buffer reparses in the background")
+		highlight_settle(&b, mid, mid + 60)
+		if !b.hl.slow {
+			break
+		}
+	}
 	testing.expect(t, !b.hl.slow, "an adopted incremental parse under budget clears slow")
 
 	b.hl.slow = true

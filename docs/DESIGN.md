@@ -915,7 +915,7 @@ the process-global teardowns (termbox/syntax/clipboard/`g_language_rules`) so
 many sessions reuse them; a mutex serializes sessions (the termbox singleton
 doesn't survive re-init). Harness capabilities: `e2e_mouse` / `e2e_paste` /
 `e2e_resize` (TIOCSWINSZ + SIGWINCH, size restored on stop), a temp-git-repo
-fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
+fixture (`e2e_git_start`), a stub-subprocess fixture (plugin tests' `t.stub`: fake
 formatter / chat command / FIM endpoint), a fake stdio LSP server (canned
 JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` / `e2e_spawn_fake` /
 `e2e_plugin_config` (injects a user plugin / fakes a `qed.spawn` / overrides a
@@ -925,10 +925,12 @@ bytes recorded from real emulators). Each bundled `plugins/<name>/test.lua` retu
 table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `hook_timeout`, `lsp`, `bg` (rendered cell background), `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected and its cells and mark bar, hint, footer input, tab), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `tick` (fire the plugin's repeating timers now), `hook_timeout`, `lsp`, `bg` (rendered cell background), `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected and its cells and mark bar, hint, footer input, tab), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/scope/workspace/walk_test.odin` (`ai`: the inline ghost and the LSP popup together); scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
+`tools/test.sh` builds the test binary once and runs the suite across `QED_TEST_SHARDS` processes (default
+cores/2, at most 8), each with its own termbox backend and `e2e_lock`: same tests as `odin test`, ~3x faster.
 The headless e2e suite stays the main net. To smoke-test a visible change on the real binary,
 `tools/tmux-qed.sh` (`start` / `keys` / `capture [--color]` / `stop`) runs `./qed` in a detached
 tmux session with an isolated HOME; run `tools/tmux-qed.sh` bare for usage.
