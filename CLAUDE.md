@@ -103,6 +103,8 @@ repetition only once it exists in front of you.
 - **Naming:** procedures are `noun_verb` grouped by subject (`buffer_open`,
   `buffer_insert`, `editor_render`, `cursor_move_left`). The first parameter is
   the thing acted on, usually a pointer for mutation (`buffer: ^Buffer`).
+  Variables are descriptive words, in Odin and Lua alike: `local pane`, not
+  `local p`; a loop index `i` is the only single-letter name.
 - **Procedure size:** a longer proc that reads top-to-bottom beats scattering the
   same logic across single-use helpers. Extract to reuse or to flatten deep
   nesting, not by reflex.
@@ -142,14 +144,14 @@ repetition only once it exists in front of you.
 | Commands       | Direct CTRL keybinds (rebindable by name); floating command palette. |
 | Config         | Embedded `config/config.json` holds every core default (knobs, keybinds, language patterns/lsp) plus each bundled plugin's `enabled`, none in Odin source. Plugin defaults live in the plugin's `qed.options` call and its commands' `key=`. User `~/.config/qed/config.json` is a **sparse per-key diff** qed never writes (no materialization; UI persistence like the theme picker writes only its own key); unknown keys warn once, malformed JSON falls back to defaults; hot-reloaded on change. The repo files are the reference for all keys. |
 | Modules        | None: the module system is gone. LSP is a plain `lsp` config section gated on `lsp.enabled`; `git` and `ai` are plugins (`plugins.<id>`); new optional features are plugins. |
-| Plugins        | Lua 5.4, vendored and static. Global only: bundled `plugins/` (embedded) + `~/.config/qed/plugins/`, config and keybinds under `plugins.<id>`; commands show as `<display name>: <name>`. One `lua_State`, per-plugin `_ENV`. Lua never runs on a render or raw-keystroke path. See [docs/notes/plugins.md](docs/notes/plugins.md). |
+| Plugins        | Lua 5.4, vendored and static. Global only: bundled `plugins/` (embedded) + `~/.config/qed/plugins/`, config and keybinds under `plugins.<id>`; commands show as `<display name>: <name>`. One `lua_State`, per-plugin `_ENV`. Lua may handle UI events, keystrokes included (handlers stay light); it never runs on the render path. See [docs/notes/plugins.md](docs/notes/plugins.md). |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
+| UI             | One declarative node tree (`qed.ui`): positioned panes holding containers and leaves; core owns the engine (layout, render, diff, focus) and heavy leaves (editor, terminal, list, tree, markdown, preview); bundled plugins compose the default UI. Anything core's UI does, a plugin can do. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |
 | Startup arg    | File → open it; directory → set working root + welcome screen. |
 
 ## Out of scope (deliberately)
 
-Split panes, tabs, project-local plugins, a plugin package manager. There is
-exactly one visible text buffer; everything else (file tree, autocomplete, search
-overlay, inline diagnostics) is an auxiliary pane or floating window layered over
-it — built only when we get there.
+Project-local plugins, a plugin package manager. The bundled UI shows one editor
+view; split panes and buffer tabs are not shipped, but the node tree lets a plugin
+lay them out.
