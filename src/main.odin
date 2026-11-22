@@ -129,7 +129,7 @@ editor_step :: proc(editor: ^Editor, ev: tb2.Event, peek: proc(ms: int) -> (tb2.
 	pending_ok := false
 	if !editor.pasting && ev.type == .Key && ev.key == .Esc && ev.ch == 0 && u8(ev.mod) == 0 {
 		if next, ok := peek(ALT_ESC_TIMEOUT_MS); ok {
-			if next.type == .Key && next.ch != 0 {
+			if next.type == .Key && (next.ch != 0 || next.key != .Esc) && !ev_alt(next) {
 				next.mod = tb2.Mod(u8(next.mod) | u8(tb2.Mod.Alt))
 				ev = next
 			} else {

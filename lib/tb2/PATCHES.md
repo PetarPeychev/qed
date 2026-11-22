@@ -120,3 +120,38 @@ docs/TODO.md).
 
 Autowrap (DECAWM) is deliberately left on: tmux 3.4 drops a combining mark that
 follows a VS16 wide char (`1️⃣`) when autowrap is off.
+
+## Unrecognised CSI/SS3 sequences
+
+Upstream emits a lone `Esc` for any escape sequence its terminfo trie and mouse
+parser do not know, then types the tail as text: kitty's Ctrl+Shift+Z
+(`CSI 122;6u`) inserted `122;6u`. `extract_esc_unknown` runs last in
+`extract_esc`:
+
+- `CSI 27;mods;code~` (xterm modifyOtherKeys, foot) and `CSI code;mods u`
+  (kitty) decode via `csi_key_decode`: 13/9/27/127/8 become Enter, Tab
+  (Back_Tab with Shift), Esc, Backspace; Ctrl+letter becomes the legacy control
+  key (`Ctrl+Shift+z` = `TB_KEY_CTRL_Z` + Ctrl|Shift, what every legacy terminal
+  sends); other printables become `ch` with Shift/Alt mods.
+- `SS3 M` (Konsole Shift+Enter, keypad Enter) becomes Enter.
+- Any other complete sequence (CSI: parameter/intermediate bytes then a final
+  byte 0x40-0x7e, at most 32 bytes; SS3: one final byte) is consumed and
+  returns `TB_ERR_NO_EVENT`, which `extract_event` takes as "parse again from
+  the remaining input".
+- An incomplete sequence (any parser's `TB_ERR_NEED_MORE`) first pulls bytes
+  already queued on the fd (`esc_pull_pending`) and reparses. Only with
+  nothing queued does it wait, and `esc_stalled` marks that wait: real
+  sequences arrive in one write, so bytes completing it later are keystrokes.
+  While stalled, `extract_esc_unknown` declines and the input falls back to
+  upstream's Esc plus text, so Alt+[ or Alt+Shift+O followed by typing loses
+  nothing. Cleared when the leading `ESC` is consumed.
+- Known gaps: kitty release/repeat events (`:3`/`:2` subfield) decode as
+  presses and shifted non-letters keep the base key; qed never requests the
+  kitty flags that send them.
+
+## Missing terminfo key caps
+
+Upstream uses terminfo or the builtin table, never both: st-256color's terminfo
+has no `kcbt`, so Shift+Tab (`CSI Z`) leaked. `init_cap_trie` now adds the
+builtin xterm sequence for every key cap the loaded entry leaves empty, after
+the real caps so those win any collision.

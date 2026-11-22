@@ -30,6 +30,7 @@ e2e_lock: sync.Mutex
 e2e_once: sync.Once
 e2e_seq: int
 e2e_slave: int
+e2e_master: int
 e2e_peek_events: [8]tb2.Event
 e2e_peek_pos, e2e_peek_len: int
 e2e_tap_lock: sync.Mutex
@@ -97,6 +98,7 @@ e2e_backend_init :: proc() {
 		}
 	})
 	e2e_slave = slave
+	e2e_master = master
 	// CI runners leave TERM unset or `dumb`, which termbox2 can't map to any
 	// terminfo/builtin caps — init_fd then fails and the back buffer we read
 	// back stays blank. Force an xterm-family value (builtin caps, terminfo or

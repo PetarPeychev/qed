@@ -2322,6 +2322,10 @@ static int extract_esc_user(struct tb_event *event, int is_post);
 static int extract_esc_cap(struct tb_event *event);
 static int extract_esc_mouse(struct tb_event *event);
 static ssize_t esc_pull_pending(void);
+/* qed patch: see lib/tb2/PATCHES.md */
+static int extract_esc_unknown(struct tb_event *event);
+static int esc_stalled;
+static int csi_key_decode(struct tb_event *event, int code, int mods);
 static int resize_cellbufs(void);
 static void handle_resize(int sig);
 static int send_attr(uintattr_t fg, uintattr_t bg);
@@ -3037,6 +3041,15 @@ static int init_cap_trie(void) {
         if (rv != TB_OK && rv != TB_ERR_CAP_COLLISION) return rv;
     }
 
+    /* qed patch: a key cap the loaded terminfo lacks falls back to the builtin
+     * xterm sequence, added after the real caps so they win collisions (see
+     * lib/tb2/PATCHES.md) */
+    for (i = 0; i < TB_CAP__COUNT_KEYS; i++) {
+        if (global.caps[i][0] != '\0') continue;
+        rv = cap_trie_add(xterm_caps[i], tb_key_i(i), 0);
+        if (rv != TB_OK && rv != TB_ERR_CAP_COLLISION) return rv;
+    }
+
     // Add built-in mod caps
     //
     // Collisions are OK here as well. This can happen if global.caps collides
@@ -3642,7 +3655,21 @@ static int extract_event(struct tb_event *event) {
         // Escape sequence?
         // In TB_INPUT_ESC, skip if the buffer is a single escape char
         if (!((global.input_mode & TB_INPUT_ESC) && in->len == 1)) {
-            if_ok_or_need_more_return(rv, extract_esc(event));
+            rv = extract_esc(event);
+            /* qed patch: an incomplete sequence first takes bytes already
+             * queued; only then does it wait, marked as stalled so a later
+             * keystroke cannot complete an unknown CSI/SS3. An unrecognised
+             * one was consumed without an event (see lib/tb2/PATCHES.md) */
+            if (rv == TB_ERR_NEED_MORE && esc_pull_pending() > 0) {
+                memset(event, 0, sizeof(*event));
+                return extract_event(event);
+            }
+            esc_stalled = rv == TB_ERR_NEED_MORE;
+            if (rv == TB_ERR_NO_EVENT) {
+                memset(event, 0, sizeof(*event));
+                return extract_event(event);
+            }
+            if (rv == TB_OK || rv == TB_ERR_NEED_MORE) return rv;
         }
 
         // Escape key?
@@ -3693,7 +3720,102 @@ static int extract_esc(struct tb_event *event) {
     if_ok_or_need_more_return(rv, extract_esc_cap(event));
     if_ok_or_need_more_return(rv, extract_esc_mouse(event));
     if_ok_or_need_more_return(rv, extract_esc_user(event, 1));
-    return TB_ERR;
+    /* qed patch: see lib/tb2/PATCHES.md */
+    return extract_esc_unknown(event);
+}
+
+/* qed patch: a complete CSI or SS3 sequence nothing above matched. CSI
+ * 27;mods;code~ (xterm modifyOtherKeys) and CSI code;mods u (kitty) decode to
+ * a key; anything else is consumed and TB_ERR_NO_EVENT returned, so its tail
+ * never reaches the app as typed text. See lib/tb2/PATCHES.md. */
+static int extract_esc_unknown(struct tb_event *event) {
+    struct bytebuf *in = &global.in;
+    if (in->len < 3 || esc_stalled) return TB_ERR;
+
+    if (in->buf[1] == 'O') {
+        unsigned char f = (unsigned char)in->buf[2];
+        if (f < 0x40 || f > 0x7e) return TB_ERR;
+        bytebuf_shift(in, 3);
+        if (f != 'M') return TB_ERR_NO_EVENT;
+        event->type = TB_EVENT_KEY;
+        event->key = TB_KEY_ENTER;
+        event->ch = 0;
+        event->mod = 0;
+        return TB_OK;
+    }
+    if (in->buf[1] != '[') return TB_ERR;
+
+    int num[3] = {0, 0, 0};
+    int nnum = 0, sub = 0, priv = 0;
+    size_t i;
+    for (i = 2; i < in->len; i++) {
+        unsigned char c = (unsigned char)in->buf[i];
+        if (c >= 0x40 && c <= 0x7e) break;
+        if (c < 0x20 || c > 0x3f || i >= 32) return TB_ERR;
+        if (c >= '0' && c <= '9') {
+            if (!sub && nnum < 3 && num[nnum] < 0x110000) {
+                num[nnum] = num[nnum] * 10 + (c - '0');
+            }
+        } else if (c == ';') {
+            nnum++;
+            sub = 0;
+        } else if (c == ':') {
+            sub = 1;
+        } else {
+            priv = 1;
+        }
+    }
+    if (i >= in->len) return TB_ERR_NEED_MORE;
+
+    char final = in->buf[i];
+    bytebuf_shift(in, i + 1);
+    if (!priv && final == '~' && nnum == 2 && num[0] == 27) {
+        if (csi_key_decode(event, num[2], num[1]) == TB_OK) return TB_OK;
+    } else if (!priv && final == 'u' && nnum <= 1) {
+        if (csi_key_decode(event, num[0], nnum == 1 ? num[1] : 1) == TB_OK) {
+            return TB_OK;
+        }
+    }
+    return TB_ERR_NO_EVENT;
+}
+
+static int csi_key_decode(struct tb_event *event, int code, int mods) {
+    int m = mods > 0 ? mods - 1 : 0;
+    event->type = TB_EVENT_KEY;
+    event->key = 0;
+    event->ch = 0;
+    event->mod = 0;
+    if (m & 1) event->mod |= TB_MOD_SHIFT;
+    if (m & 2) event->mod |= TB_MOD_ALT;
+    if (m & 4) event->mod |= TB_MOD_CTRL;
+
+    switch (code) {
+        case 8: event->key = TB_KEY_BACKSPACE; return TB_OK;
+        case 9:
+            event->key = (m & 1) ? TB_KEY_BACK_TAB : TB_KEY_TAB;
+            return TB_OK;
+        case 13: event->key = TB_KEY_ENTER; return TB_OK;
+        case 27: event->key = TB_KEY_ESC; return TB_OK;
+        case 127: event->key = TB_KEY_BACKSPACE2; return TB_OK;
+    }
+    if (m & 4) {
+        if (code >= 0x40 && code <= 0x7e) {
+            event->key = (uint16_t)(code & 0x1f);
+            return TB_OK;
+        }
+        if (code == ' ') return TB_OK;
+        if (code == '/') {
+            event->key = TB_KEY_CTRL_SLASH;
+            return TB_OK;
+        }
+        return TB_ERR;
+    }
+    if (code < 0x20 || code > 0x10ffff || (code >= 0xe000 && code <= 0xf8ff)) {
+        return TB_ERR;
+    }
+    if ((m & 1) && code >= 'a' && code <= 'z') code -= 'a' - 'A';
+    event->ch = (uint32_t)code;
+    return TB_OK;
 }
 
 /* qed patch: recognize bracketed paste markers (see lib/tb2/PATCHES.md).

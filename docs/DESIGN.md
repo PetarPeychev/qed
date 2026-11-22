@@ -333,11 +333,16 @@ their field text fully selected (`textfield_select_all`) so a keystroke replaces
 item (not for a line list); a tree list also restores its expanded set. A field given an empty `text`
 (the file tree's filter) starts empty and keeps the restore.
 
-Two terminal workarounds, both
-documented in `lib/tb2/PATCHES.md`:
+Terminal workarounds, documented in `lib/tb2/PATCHES.md`:
 - **ALT keys:** termbox stays in ESC input mode; after a bare `Esc`, qed
-  `peek_event`s for `ALT_ESC_TIMEOUT_MS` and re-tags a buffered printable as
-  `Mod.Alt` (so `Alt+f`/`Alt+F` are distinct, unlike `Ctrl+letter`).
+  `peek_event`s for `ALT_ESC_TIMEOUT_MS` and re-tags the next key (a printable,
+  Backspace, Enter, arrows; not Esc or an already-Alt key) as `Mod.Alt` (so
+  `Alt+f`/`Alt+F` are distinct, unlike `Ctrl+letter`).
+- **Unknown sequences:** patched termbox decodes `CSI 27;m;k~` / `CSI k;m u`
+  (foot, kitty) and `SS3 M` to keys and swallows any other complete CSI/SS3;
+  key caps missing from terminfo fall back to the builtin xterm ones.
+- **Unknown TERM:** if `tb2.init` fails, `editor_terminal_init` retries as
+  `xterm-256color` (logged, `TERM` restored for children), else exits with the error.
 - **Bracketed paste:** patched termbox surfaces `Paste_Begin`/`Paste_End`; qed
   accumulates the keys between them and routes the whole paste to whatever has
   focus: the buffer (one undo group), the terminal pane, or the focused pane's
@@ -914,7 +919,9 @@ fixture (`e2e_git_start`), a stub-subprocess fixture (`e2e_stub_script`: fake
 formatter / chat command / FIM endpoint), a fake stdio LSP server (canned
 JSON-RPC, in `e2e_lsp_test.odin`), and `e2e_plugin(name, src)` / `e2e_spawn_fake` /
 `e2e_plugin_config` (injects a user plugin / fakes a `qed.spawn` / overrides a
-plugin's config and reloads it). Each bundled `plugins/<name>/test.lua` returns a
+plugin's config and reloads it), and `input_feed` (`e2e_input_test.odin`: writes raw
+bytes to the PTY master and collects termbox's parsed events; the fixture table holds
+bytes recorded from real emulators). Each bundled `plugins/<name>/test.lua` returns a
 table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,

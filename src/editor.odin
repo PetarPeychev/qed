@@ -74,12 +74,35 @@ Editor :: struct {
 	headless:        bool,
 }
 
+editor_terminal_init :: proc() -> (fallback: string) {
+	status := tb2.init()
+	if status == .Ok {
+		return ""
+	}
+	term, had_term := os.lookup_env("TERM", context.temp_allocator)
+	shown := term if term != "" else "(unset)"
+	os.set_env("TERM", "xterm-256color")
+	retry := tb2.init()
+	if had_term {
+		os.set_env("TERM", term)
+	} else {
+		os.unset_env("TERM")
+	}
+	if retry != .Ok {
+		crash_stderr_restore()
+		fmt.eprintfln("qed: cannot initialize the terminal (TERM=%s): %s", shown, tb2.strerror(status))
+		os.exit(1)
+	}
+	return shown
+}
+
 editor_init :: proc(path: string = "", headless := false) -> Editor {
 	// headless: a test has already brought up the termbox backend (init_fd on a
 	// PTS) and owns its teardown; skip the real-terminal bring-up here.
+	term_fallback := ""
 	if !headless {
 		crash_restore_install()
-		tb2.init()
+		term_fallback = editor_terminal_init()
 		tb2.set_output_mode(.Truecolor)
 		tb2.set_input_mode(.Mouse)
 		tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
@@ -93,6 +116,9 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	g_diff_view = DIFF_VIEW
 	if !headless {
 		editor_log_seed(&editor)
+	}
+	if term_fallback != "" {
+		editor_log(&editor, .Warn, "", fmt.tprintf("TERM=%s is unknown here; running as xterm-256color", term_fallback))
 	}
 	editor.config_stamp = buffer_disk_stamp(config_path())
 	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
