@@ -1,0 +1,60 @@
+qed-e2e snapshot 80x24 cursor 10,2
+-- text
+ 1 package main
+ 2
+ 3 import "fmt"
+ 4
+ 5 func main() {
+ 6     fmt.Println("hello") // greet
+ 7 }
+ 8
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ main.go                                                                 3:8 go
+Saved
+-- style
+aaabbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+dddbbbbbbceeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaabbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaacccccccccccccccceeeeeeeccffffffffcccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggghhh
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#ffdd33 bg=#181818
+c fg=#f4f4ff bg=#181818
+d fg=#d8d8d8 bg=#1b1b1b
+e fg=#73c936 bg=#181818
+f fg=#cc8c3c bg=#181818
+g fg=#f4f4ff bg=#2b2b2b
+h fg=#686868 bg=#2b2b2b

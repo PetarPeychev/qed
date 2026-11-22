@@ -22,50 +22,48 @@ qed-e2e snapshot 80x24 cursor hidden
  19 | key | action |
  20 |-----|--------|
  21 | Alt+p | preview |
- ≡ root/notes.md  1/25                                   ◆ markdown  ⇥ Spaces:2
+ notes.md                                                          1:1 markdown
 
 -- style
-abbbcdeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-aaaafffffggggggggffffffffffffhhhhhhhhffffffffffiiiiiiiiiiiiiffffffffffffffffffff
-aaaaffffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaakkfljjmmmmmmmmjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaffffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaakkffjjnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjoffffffff
-aaaakkffjjmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmjoffffffff
-aaaakkkkjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjoffffffff
-aaaakkkfjjoooooppppooooooooooooqqqqqqoooooooooorrrrrrrrrrrojjjjjjjjjjjjjffffffff
-aaaakkkfjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaffffjjnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaakkffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaffffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaffffjjmmooooooooojjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaiiiijjmmooooooooojjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaakkkkjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaiiifjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaffffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
-aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
+aaaabcdddddddddddddccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeecccccffffffffccccccccccccggggggggcccccccccchhhhhhhhhhhhhcccccccccccccccccccc
+eeeecccciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeebbcdiijjjjjjjjiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeecccciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeebbcciikkkkkkkkkkkkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiilcccccccc
+eeeebbcciijjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjilcccccccc
+eeeebbbbiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiilcccccccc
+eeeebbbciilllllmmmmllllllllllllnnnnnnlllllllllloooooooooooliiiiiiiiiiiiicccccccc
+eeeebbbciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeecccciikkkkkkkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeebbcciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeecccciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeecccciijjllllllllliiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeehhhhiijjllllllllliiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeebbbbiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeehhhciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeecccciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiicccccccc
+eeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllppppppppp
+qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
 -- legend
-a fg=#464646 bg=#1b1b1b
-b fg=#676767 bg=#1b1b1b
-c fg=#7d6f2b bg=#262626
-d fg=#78787d bg=#262626
-e fg=#7d6f2b bg=#262626 bold
-f fg=#707074 bg=#181818
-g fg=#707074 bg=#181818 bold
-h fg=#604626 bg=#181818 italic
-i fg=#4a524e bg=#181818
-j fg=#868686 bg=#2b2b2b
-k fg=#746723 bg=#181818
-l fg=#746723 bg=#181818 bold
-m fg=#ffdd33 bg=#2b2b2b
-n fg=#ffdd33 bg=#2b2b2b bold
-o fg=#f4f4ff bg=#2b2b2b
-p fg=#f4f4ff bg=#2b2b2b bold
-q fg=#f4f4ff bg=#2b2b2b italic
-r fg=#95a99f bg=#363636
-s fg=#f4f4ff bg=#181818
+a fg=#676767 bg=#1b1b1b
+b fg=#746723 bg=#181818
+c fg=#707074 bg=#181818
+d fg=#746723 bg=#181818 bold
+e fg=#464646 bg=#1b1b1b
+f fg=#707074 bg=#181818 bold
+g fg=#604626 bg=#181818 italic
+h fg=#4a524e bg=#181818
+i fg=#868686 bg=#2b2b2b
+j fg=#ffdd33 bg=#2b2b2b
+k fg=#ffdd33 bg=#2b2b2b bold
+l fg=#f4f4ff bg=#2b2b2b
+m fg=#f4f4ff bg=#2b2b2b bold
+n fg=#f4f4ff bg=#2b2b2b italic
+o fg=#95a99f bg=#363636
+p fg=#686868 bg=#2b2b2b
+q fg=#f4f4ff bg=#181818

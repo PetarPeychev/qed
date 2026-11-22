@@ -27,8 +27,7 @@ end
 
 local function build(buffer)
 	return ui.column{
-		ui.editor{id = "main_editor", buffer = buffer, scope = "editor", line_numbers = true, highlight = true,
-			current_line_style = {bg = "current_line_background"}},
+		ui.editor{id = "main_editor", buffer = buffer, scope = "editor", line_numbers = true, highlight = true},
 		status_row(buffer),
 		ui.text{id = "message", height = 1, fg = MESSAGE_COLORS[message_level] or "foreground", message_text},
 	}

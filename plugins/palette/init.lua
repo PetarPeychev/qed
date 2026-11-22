@@ -108,7 +108,7 @@ local function open_palette()
 	end
 	local commands = qed.list.new{key = "name"}
 	for _, command in ipairs(qed.commands()) do
-		if command.scope == "global" and command.name ~= "Palette: Open" then
+		if command.scope == "global" and command.name ~= "Palette: Open" and command.name ~= "Command Palette" then
 			commands:append{name = command.name, shortcut = command.shortcut}
 		end
 	end

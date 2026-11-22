@@ -42,6 +42,10 @@ e2e_ui_palette_filters_and_runs :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P, tb2.Mod.Ctrl)
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "the palette opens")
+	e2e_type(&e, "w")
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Backspace2)
+	e2e_ui_settle(&e)
 	e2e_type(&e, "togglelinewr")
 	e2e_ui_settle(&e)
 	row := e2e_ui_find_row(&e, "Toggle Line Wrap")
@@ -280,4 +284,17 @@ e2e_ui_palette_outside_click_and_esc :: proc(t: ^testing.T) {
 	testing.expect_value(t, editor_buffer(&e.ed).cursor, Cursor{0, 0})
 	e2e_key(&e, .Arrow_Down)
 	testing.expect_value(t, editor_buffer(&e.ed).cursor.row, 1)
+}
+
+@(test)
+e2e_ui_palette_fast_typing :: proc(t: ^testing.T) {
+	e := e2e_start("alpha")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	e2e_key(&e, .Ctrl_P, tb2.Mod.Ctrl)
+	for r in "wrap" {
+		e2e_step(&e, tb2.Event{type = .Key, ch = r})
+	}
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "Toggle Line Wrap") >= 0, "typing before a frame still filters")
 }

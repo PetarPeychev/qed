@@ -1,0 +1,23 @@
+# qed.ui layout plugin: editor node, status row and message line.
+file main.go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("hello")
+}
+end
+run main.go
+wait package main
+snap open
+key down*5 alt+right
+type  // greet
+snap typed
+key shift+up shift+up
+snap selected
+click 10 2
+snap clicked
+key ctrl+s
+wait Saved
+snap saved

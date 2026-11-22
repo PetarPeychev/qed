@@ -1275,6 +1275,7 @@ ui_prepare :: proc(editor: ^Editor) {
 		}
 	}
 	for pass in 0 ..< 3 {
+		ui_resolve(editor)
 		ui_layout(editor)
 		moved := false
 		for n in ui.virtuals {
@@ -1348,7 +1349,8 @@ ui_virtual_build :: proc(editor: ^Editor, node: ^UiNode) {
 		}
 		for k in stale {
 			key, item := delete_key(&node.items, k)
-			ui_node_free(editor, item.node)
+			append(&editor.ui.graveyard, item.node)
+			editor.ui.dirty = true
 			delete(key)
 		}
 	}

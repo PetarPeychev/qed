@@ -22,32 +22,32 @@ qed-e2e snapshot 80x24 cursor 38,2
 
 
 
- ≡ root/main.go  5/14                                              ◆ go  ⇥ Tabs
+ main.go                                                                5:16 go
 
 -- style
 aaaabbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaaccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
 aaaabbbbbbceeeeeccccccccccccdfffffggggdddddddddddddddddddddddddddddddgggddddddcc
 aaaaccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ahhhiiiijjjjjjjkkkkjlllllljjlllllljjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
-aaaaccccbbbbbbceeeeeeeeecccmmmmccccccccccccccccccccccccccccccccccccccccccccccccc
+hhhhbbbbccccccciiiicjjjjjjccjjjjjjcccccccccccccccccccccccccccccccccccccccccccccc
+aaaaccccbbbbbbceeeeeeeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaabbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-aaaaccccbbbccccmmmmccccbbbbbcccnnnnnnceeeeecceeeeeeecccccccccccccccccccccccccccc
-aaaaccccccccccccccccccccccccccmmmmcccccccccccccccccccccccccccccccccccccccccccccc
+aaaaccccbbbccccccccccccbbbbbcccjjjjjjceeeeecceeeeeeecccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggkkk
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -58,9 +58,6 @@ e fg=#73c936 bg=#181818
 f fg=#ffdd33 bg=#2b2b2b
 g fg=#f4f4ff bg=#2b2b2b
 h fg=#d8d8d8 bg=#1b1b1b
-i fg=#ffdd33 bg=#262626
-j fg=#f4f4ff bg=#262626
-k fg=#181818 bg=#f4f4ff
-l fg=#96a6c8 bg=#262626
-m fg=#f4f4ff bg=#453b1a
-n fg=#96a6c8 bg=#181818
+i fg=#181818 bg=#f4f4ff
+j fg=#96a6c8 bg=#181818
+k fg=#686868 bg=#2b2b2b
