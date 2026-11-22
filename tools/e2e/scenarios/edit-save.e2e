@@ -1,0 +1,20 @@
+# Open a file, edit it, save it, check the bytes on disk.
+file hello.txt
+hello world
+end
+run hello.txt
+wait hello world
+snap open
+key alt+}
+type second line
+key enter
+type third
+key enter
+snap edited
+key ctrl+s
+snap saved
+expect-file hello.txt
+hello world
+second line
+third
+end

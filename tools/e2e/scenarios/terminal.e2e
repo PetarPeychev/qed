@@ -1,0 +1,14 @@
+# Embedded terminal pane running /bin/sh.
+file a.txt
+x
+end
+run a.txt
+wait x
+key alt+t
+wait qed$
+type echo qed-e2e
+key enter
+wait qed-e2e
+snap shell
+key alt+t
+snap hidden

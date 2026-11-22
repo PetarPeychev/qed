@@ -53,6 +53,8 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified` → undo-state watermark, git gutter → debounce) — see [notes/refactors.md](notes/refactors.md) + [notes/perf.md](notes/perf.md).
 - [ ] Cheaper cold `git_gutter_update` + `buffer_open` per-line-allocation floor before first paint — see [notes/perf.md](notes/perf.md).
 - [ ] config.json writer that preserves comments and key order (UI persistence strips them today).
+- [ ] Pane footer hints are cut mid-word under the right-hand chips (file tree at 80x24); drop whole hints instead (`pane_chips_layout` / `pane_render_footer`).
+- [ ] Color fallback: qed always emits truecolor, even with `COLORTERM` unset or `TERM=linux`; degrade to 256/16 colors.
 
 ## Post-1.0 — deferred
 

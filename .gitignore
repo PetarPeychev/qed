@@ -2,3 +2,4 @@
 *.o
 qed
 *.bin
+tools/e2e/qed-e2e

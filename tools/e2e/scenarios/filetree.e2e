@@ -1,0 +1,27 @@
+# Welcome screen on a directory, the file tree, open a file from it.
+file src/app.py
+def main():
+    print("hi")
+end
+file src/util.py
+X = 1
+end
+file README.md
+# demo
+end
+file notes.txt
+todo
+end
+run
+wait qed dev
+snap welcome
+key alt+f
+wait README.md
+snap tree
+key enter
+wait app.py
+snap expanded
+key down
+key enter
+wait def main
+snap opened

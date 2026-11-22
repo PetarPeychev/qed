@@ -1,0 +1,26 @@
+# Syntax-highlighted Go file, incremental find, next match, close.
+file main.go
+package main
+
+import "fmt"
+
+func greet(name string) string {
+	return "hello, " + name
+}
+
+func main() {
+	for _, name := range []string{"ada", "linus"} {
+		fmt.Println(greet(name))
+	}
+}
+end
+run main.go
+wait func main
+snap open
+key ctrl+f
+type name
+snap query
+key enter
+snap next
+key esc
+snap closed

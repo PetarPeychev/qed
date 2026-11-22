@@ -1,0 +1,35 @@
+# Markdown preview pane.
+file notes.md
+# Release notes
+
+Some **bold** text, some *italic* text and `inline code`.
+
+## Features
+
+- soft wrap
+- file tree
+  - nested item
+1. first
+2. second
+
+> a quote that is long enough to wrap when the preview is narrow, so we see it
+
+```go
+func main() { fmt.Println("hi") }
+```
+
+| key | action |
+|-----|--------|
+| Alt+p | preview |
+| Ctrl+s | save |
+
+[link](#features)
+end
+run notes.md
+wait Release notes
+snap source
+key alt+p
+wait Features
+snap preview
+key esc
+snap closed

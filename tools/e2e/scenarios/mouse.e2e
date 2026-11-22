@@ -1,0 +1,16 @@
+# Click to place, drag to select, double-click a word, type over it.
+file words.txt
+alpha beta gamma
+delta epsilon zeta
+eta theta iota
+end
+run words.txt
+wait alpha
+click 9 1
+snap clicked
+drag 3 0 10 1
+snap dragged
+dclick 5 2
+snap word
+type KAPPA
+snap replaced

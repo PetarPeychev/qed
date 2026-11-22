@@ -1,0 +1,16 @@
+# Soft wrap on a long line, then the command palette turns it off.
+file long.txt
+short line
+The quick brown fox jumps over the lazy dog, and then it keeps running across the field, past the barn, over the hill, and far beyond the river until the sun goes down.
+another short line
+end
+run long.txt
+wait short line
+snap wrapped
+key ctrl+p
+type wrap
+snap palette
+key enter
+snap unwrapped
+key down alt+right
+snap scrolled

@@ -934,6 +934,9 @@ cores/2, at most 8), each with its own termbox backend and `e2e_lock`: same test
 The headless e2e suite stays the main net. To smoke-test a visible change on the real binary,
 `tools/tmux-qed.sh` (`start` / `keys` / `capture [--color]` / `stop`) runs `./qed` in a detached
 tmux session with an isolated HOME; run `tools/tmux-qed.sh` bare for usage.
+**Golden screen tests** on the real binary: `tools/e2e.sh verify|update|demo|matrix` (driver
+`tools/e2e/main.odin`, our libvterm as the terminal) replays `tools/e2e/scenarios/*.e2e` in a per-run
+sandbox and diffs text + per-cell style against `tools/e2e/golden`; DSL in [notes/e2e.md](notes/e2e.md).
 Performance budgets are gated headlessly by `bench_gate` (`perf_gate_test.odin`) over a generated
 stress corpus: `tools/perf-gate.sh`, standard and corpus in [notes/perf.md](notes/perf.md).
 

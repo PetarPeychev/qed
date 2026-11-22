@@ -1,0 +1,25 @@
+# clangd diagnostics and hover on a C file.
+requires clangd
+timeout 15000
+config
+{"lsp": {"enabled": true}, "line_wrap": false}
+end
+file main.c
+#include <stdio.h>
+
+int add(int a, int b) { return a + b; }
+
+int main(void) {
+    int x = add(1, 2);
+    printf("%d\n", y);
+    return 0;
+}
+end
+run main.c
+wait int main
+wait 7»
+snap diagnostics
+key down*5 right*13
+key alt+s
+wait Parameters
+snap hover

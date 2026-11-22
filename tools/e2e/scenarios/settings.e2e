@@ -1,0 +1,16 @@
+# Settings menu from the palette.
+file a.txt
+x
+end
+run a.txt
+wait x
+key ctrl+p
+type settings open
+snap palette
+key enter
+wait auto_close_pairs
+snap menu
+key down*3
+snap moved
+key esc
+snap closed

@@ -1,0 +1,60 @@
+qed-e2e snapshot 80x24 cursor 17,9
+-- text
+ 1 short line
+ 2 The quick brown fox jumps over the lazy dog, and then it keeps running
+   across the field, past the barn, over the hill, and far beyond the river
+   until the sun goes down.
+ 3 another short line
+ 4
+
+
+         ┌────────────────────────────────────────────────────────────┐
+         │ > wrap                                                     │
+         ├────────────────────────────────────────────────────────────┤
+         │ Toggle Line Wrap                                           │
+         │ Workspace: Open Directory                           Ctrl+o │
+         └────────────────────────────────────────────────────────────┘
+
+
+
+
+
+
+
+
+ ≡ root/long.txt  1/4                                        ◆ text  ⇥ Spaces:4
+
+-- style
+abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddeeffggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheddddddddd
+dddddddddeegggggggggggggggggggggggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#f4f4ff bg=#262626
+d fg=#f4f4ff bg=#181818
+e fg=#868686 bg=#2b2b2b
+f fg=#ffdd33 bg=#2b2b2b
+g fg=#f4f4ff bg=#2b2b2b
+h fg=#f4f4ff bg=#4a4a4a
