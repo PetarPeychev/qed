@@ -926,7 +926,10 @@ editor_load_buffer :: proc(editor: ^Editor, path: string) -> int {
 }
 
 editor_copy :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
+	buffer_copy(editor_buffer(editor))
+}
+
+buffer_copy :: proc(b: ^Buffer) {
 	if selection_active(b) {
 		from, to, _ := selection_range(b)
 		clipboard_set(buffer_text_range(b, from, to))
@@ -937,23 +940,29 @@ editor_copy :: proc(editor: ^Editor) {
 }
 
 editor_cut :: proc(editor: ^Editor) {
-	editor_copy(editor)
-	b := editor_buffer(editor)
+	buffer_cut(editor_buffer(editor))
+	editor_scroll(editor)
+}
+
+buffer_cut :: proc(b: ^Buffer) {
+	buffer_copy(b)
 	if selection_active(b) {
 		buffer_delete_selection(b)
 	} else {
 		buffer_delete_line(b)
 	}
-	editor_scroll(editor)
 }
 
 editor_paste :: proc(editor: ^Editor) {
-	text := clipboard_get(context.temp_allocator)
-	if len(text) == 0 {
-		return
-	}
-	buffer_paste(editor_buffer(editor), text)
+	buffer_paste_clipboard(editor_buffer(editor))
 	editor_scroll(editor)
+}
+
+buffer_paste_clipboard :: proc(b: ^Buffer) {
+	text := clipboard_get(context.temp_allocator)
+	if len(text) > 0 {
+		buffer_paste(b, text)
+	}
 }
 
 editor_save :: proc(editor: ^Editor) {

@@ -178,6 +178,12 @@ pane_commands := [?]Command {
 	{name = "Delete", scope = "editor", config_name = "Editor: Delete", run = ui_cmd_delete},
 	{name = "Indent", scope = "editor", config_name = "Editor: Indent", run = ui_cmd_indent},
 	{name = "Dedent", scope = "editor", config_name = "Editor: Dedent", run = ui_cmd_dedent},
+	{name = "Undo", scope = "editor", bind_from = "Undo", run = ui_cmd_undo},
+	{name = "Redo", scope = "editor", bind_from = "Redo", run = ui_cmd_redo},
+	{name = "Select All", scope = "editor", bind_from = "Select All", run = ui_cmd_select_all},
+	{name = "Copy", scope = "editor", bind_from = "Copy", run = ui_cmd_copy},
+	{name = "Cut", scope = "editor", bind_from = "Cut", run = ui_cmd_cut},
+	{name = "Paste", scope = "editor", bind_from = "Paste", run = ui_cmd_paste},
 }
 
 command_enabled :: proc(cmd: Command) -> bool {

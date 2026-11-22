@@ -298,3 +298,37 @@ e2e_ui_palette_fast_typing :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "Toggle Line Wrap") >= 0, "typing before a frame still filters")
 }
+
+@(test)
+e2e_ui_editor_scope_undo_targets_the_field :: proc(t: ^testing.T) {
+	e := e2e_start("alpha")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	e2e_type(&e, "x")
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Ctrl_P, tb2.Mod.Ctrl)
+	e2e_ui_settle(&e)
+	e2e_type(&e, "ab")
+	e2e_key(&e, .Ctrl_Z, tb2.Mod.Ctrl)
+	e2e_ui_settle(&e)
+	testing.expect(t, strings.contains(e2e_row_text(&e, e2e_ui_find_row(&e, "Command Palette") + 1), "Type a command"), "undo empties the query")
+	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "xalpha")
+}
+
+@(test)
+e2e_ui_mouse_falls_through_unhandled :: proc(t: ^testing.T) {
+	e := e2e_start("alpha\nbeta\ngamma")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	e2e_plugin(&e, "uitest", `
+return {setup = function()
+	qed.command{name = "Open", run = function()
+		qed.ui.mount("popup", qed.ui.text{float = "screen", anchor = "top_left", width = 10, height = 3, "overlay"})
+	end}
+end}`)
+	ut_run(&e, "Open")
+	testing.expect_value(t, e2e_row_text(&e, 0)[:7], "overlay")
+	e2e_mouse(&e, 5, 2)
+	e2e_mouse(&e, 5, 2, .Mouse_Release)
+	testing.expect_value(t, editor_buffer(&e.ed).cursor, Cursor{2, 2})
+}

@@ -399,6 +399,54 @@ ui_cmd_delete :: proc(editor: ^Editor) {
 	b.typed_rev = b.rev
 }
 
+ui_cmd_undo :: proc(editor: ^Editor) {
+	b := ui_target_buffer(editor, true)
+	if b == nil {
+		return
+	}
+	if !editor.welcome && b == editor_buffer(editor) {
+		editor_undo(editor)
+	} else {
+		buffer_undo(b)
+	}
+}
+
+ui_cmd_redo :: proc(editor: ^Editor) {
+	b := ui_target_buffer(editor, true)
+	if b == nil {
+		return
+	}
+	if !editor.welcome && b == editor_buffer(editor) {
+		editor_redo(editor)
+	} else {
+		buffer_redo(b)
+	}
+}
+
+ui_cmd_select_all :: proc(editor: ^Editor) {
+	if b := ui_target_buffer(editor); b != nil {
+		cursor_select_all(b)
+	}
+}
+
+ui_cmd_copy :: proc(editor: ^Editor) {
+	if b := ui_target_buffer(editor); b != nil {
+		buffer_copy(b)
+	}
+}
+
+ui_cmd_cut :: proc(editor: ^Editor) {
+	if b := ui_target_buffer(editor, true); b != nil {
+		buffer_cut(b)
+	}
+}
+
+ui_cmd_paste :: proc(editor: ^Editor) {
+	if b := ui_target_buffer(editor, true); b != nil {
+		buffer_paste_clipboard(b)
+	}
+}
+
 ui_cmd_indent :: proc(editor: ^Editor) {
 	if b := ui_target_buffer(editor, true); b != nil {
 		buffer_indent(b)
