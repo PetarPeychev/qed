@@ -128,7 +128,7 @@ plugin_sched_event_error_logs :: proc(t: ^testing.T) {
 			local n = 0
 			return {setup = function()
 				qed.command{name = "Cmd", run = function() end}
-				qed.on("startup", function()
+				qed:on("startup", function()
 					qed.every(1, function() error("tick boom") end)
 					qed.every(1, function() n = n + 1; error("tock " .. (n % 2)) end)
 					error("handler boom")
@@ -264,11 +264,11 @@ plugin_sched_budgets :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"busy.lua", `
 			return {setup = function()
-				qed.on("buf_changed", function() while true do end end)
+				qed:on("buf_changed", function() while true do end end)
 			end}`},
 		{"sneaky.lua", `
 			return {setup = function()
-				qed.on("cursor_moved", function()
+				qed:on("cursor_moved", function()
 					while true do pcall(function() while true do end end) end
 				end)
 			end}`},
@@ -318,7 +318,7 @@ plugin_sched_runaway_removed :: proc(t: ^testing.T) {
 			return {setup = function()
 				qed.every(1, function() while true do end end)
 				local n = 0
-				qed.on("buf_changed", function()
+				qed:on("buf_changed", function()
 					n = n + 1
 					if n == 3 then return end
 					while true do end
@@ -364,7 +364,7 @@ plugin_sched_nested_budget :: proc(t: ^testing.T) {
 
 	ed := plugin_test_editor({
 		{"loop.lua", `return {setup = function()
-			qed.on("buf_pre_save", function()
+			qed:on("buf_pre_save", function()
 				local t = os.clock()
 				while os.clock() - t < 0.02 do end
 			end)
@@ -406,11 +406,11 @@ plugin_sched_coalesce :: proc(t: ^testing.T) {
 	ed.plugins.bundled = {{"count.lua", `
 		return {setup = function()
 			changed, moved, last = 0, 0, ""
-			local h = qed.on("buf_changed", function(b, rev)
+			local h = qed:on("buf_changed", function(b, rev)
 				changed = changed + 1
 				last = b .. ":" .. rev
 			end)
-			qed.on("cursor_moved", function(b) moved = moved + 1 end)
+			qed:on("cursor_moved", function(b) moved = moved + 1 end)
 			qed.command{name = "Off", run = function() h:off() end}
 		end}`}}
 	plugin_load(ed, pl)
@@ -437,7 +437,7 @@ plugin_sched_quit :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"bye.lua", `
 			return {setup = function()
-				qed.on("quit", function() qed.sleep(5); said = "bye" end)
+				qed:on("quit", function() qed.sleep(5); said = "bye" end)
 			end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -459,12 +459,12 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"pre.lua", `
 			return {setup = function()
-				qed.on("buf_pre_save", function(b)
+				qed:on("buf_pre_save", function(b)
 					local rev = qed.buf.rev(b)
 					qed.sleep(5)
 					qed.edit(b, function() qed.buf.insert(b, {row = 1, col = 1}, "[fmt]") end, {rev = rev})
 				end)
-				qed.on("buf_save", function(b) saved = (saved or 0) + 1 end)
+				qed:on("buf_save", function(b) saved = (saved or 0) + 1 end)
 				qed.command{name = "Do Save", run = function(ctx)
 					local ok = qed.save(ctx.buf)
 					after = tostring(ok) .. " " .. tostring(qed.buf.modified(ctx.buf))
@@ -499,7 +499,7 @@ plugin_sched_pre_save_timeout_close_saves :: proc(t: ^testing.T) {
 	tmp, _ := os.temp_dir(context.temp_allocator)
 	ed := plugin_test_editor({
 		{"slow.lua", `return {setup = function()
-			qed.on("buf_pre_save", function(id)
+			qed:on("buf_pre_save", function(id)
 				if id == qed.buf.list()[1] then
 					local guard <close> = setmetatable({}, {__close = function()
 						for _, b in ipairs(qed.buf.list()) do
@@ -561,7 +561,7 @@ plugin_sched_pre_save_timeout :: proc(t: ^testing.T) {
 	defer os.remove(path)
 
 	ed := plugin_test_editor({
-		{"slow.lua", `return {setup = function() qed.on("buf_pre_save", function() qed.sleep(60000) end) end}`},
+		{"slow.lua", `return {setup = function() qed:on("buf_pre_save", function() qed.sleep(60000) end) end}`},
 	})
 	defer plugin_test_destroy(ed)
 	b := editor_buffer(ed)
@@ -763,7 +763,7 @@ plugin_sched_paste_and_nesting :: proc(t: ^testing.T) {
 		{"p.lua", `
 			return {setup = function()
 				changed = 0
-				qed.on("buf_changed", function()
+				qed:on("buf_changed", function()
 					changed = changed + 1
 					qed.run("P: Slow")
 				end)
@@ -775,7 +775,7 @@ plugin_sched_paste_and_nesting :: proc(t: ^testing.T) {
 			end}`},
 		{"edit.lua", `
 			return {setup = function()
-				qed.on("cursor_moved", function(b)
+				qed:on("cursor_moved", function(b)
 					qed.edit(b, function()
 						while true do pcall(function() while true do end end) end
 					end)
@@ -809,7 +809,7 @@ plugin_sched_save_intent :: proc(t: ^testing.T) {
 	sync.lock(&e2e_lock)
 	defer sync.unlock(&e2e_lock)
 	ed := plugin_test_editor({
-		{"w.lua", `return {setup = function() qed.on("buf_pre_save", function() qed.sleep(60000) end) end}`},
+		{"w.lua", `return {setup = function() qed:on("buf_pre_save", function() qed.sleep(60000) end) end}`},
 	})
 	defer plugin_test_destroy(ed)
 	b := editor_buffer(ed)

@@ -242,7 +242,7 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 			return {}`},
 		{"small.lua", `return {setup = function() qed.command{name = "Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
 		{"evhog.lua", `return {setup = function()
-			qed.on("buf_changed", function() local t = {} for i = 1, 1e7 do t[i] = string.rep("z", 64) .. i end end)
+			qed:on("buf_changed", function() local t = {} for i = 1, 1e7 do t[i] = string.rep("z", 64) .. i end end)
 		end}`},
 	}, mem_cap = 4 * 1024 * 1024)
 	defer plugin_test_destroy(ed)
@@ -702,7 +702,7 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 		{"c.lua", `return {setup = function() qed.command{name = "Whatever", run = function() end} end}`},
 		{"d.lua", `return {setup = function()
 			qed.command{name = "Clash", key = "Alt+2", run = function() end}
-			qed.on("startup", function() qed.command{name = "Later", run = function() end} end)
+			qed:on("startup", function() qed.command{name = "Later", run = function() end} end)
 		end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
@@ -853,7 +853,7 @@ plugin_gc_paces_near_the_cap :: proc(t: ^testing.T) {
 plugin_gc_steps_while_typing :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"hog.lua", `return {setup = function()
-			qed.on("buf_changed", function() n = (n or 0) + 1 local s = string.rep("h", 1536 * 1024) end)
+			qed:on("buf_changed", function() n = (n or 0) + 1 local s = string.rep("h", 1536 * 1024) end)
 			qed.command{name = "N", run = function() qed.message(tostring(n)) end}
 		end}`},
 	})
@@ -880,7 +880,7 @@ gc_test_no_idle :: proc(t: ^testing.T, live, rows, mem_cap, keys: int) -> (start
 		{"tree.lua", strings.concatenate({fmt.tprintf("LIVE, ROWS = %d, %d\n", live, rows), `
 			hold = {}
 			return {setup = function()
-				qed.on("buf_changed", function()
+				qed:on("buf_changed", function()
 					if #hold < LIVE then
 						for i = #hold + 1, math.min(LIVE, #hold + 50000) do hold[i] = {path = "dir/file" .. i, size = i} end
 						return

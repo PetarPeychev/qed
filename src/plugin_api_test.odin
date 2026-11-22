@@ -409,7 +409,8 @@ plugin_api_stub_complete :: proc(t: ^testing.T) {
 	testing.expect(t, len(want) > 50, "walked the qed table")
 	testing.expect(t, strings.has_prefix(QED_STUB, "---@meta"), "stub is a meta file")
 	for w in want {
-		testing.expectf(t, strings.contains(QED_STUB, w), "plugins/meta/qed.lua is missing `%s`", w)
+		method_form, _ := strings.replace(w, "function qed.", "function qed:", 1, context.temp_allocator)
+		testing.expectf(t, strings.contains(QED_STUB, w) || strings.contains(QED_STUB, method_form), "plugins/meta/qed.lua is missing `%s`", w)
 	}
 	have := strings.join(want[:], "\n", context.temp_allocator)
 	for line in strings.split_lines(QED_STUB, context.temp_allocator) {

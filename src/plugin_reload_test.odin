@@ -89,7 +89,7 @@ plugin_reload_file_edit :: proc(t: ^testing.T) {
 		return {setup = function()
 			qed.command{name = "Ver", run = function() qed.message("v1") end}
 			qed.every(1000, function() end)
-			qed.on("buf_save", function() end)
+			qed:on("buf_save", function() end)
 		end}`)
 	ed := reload_editor({{"base.lua", `return {}`}}, dir)
 	defer plugin_test_destroy(ed)
@@ -146,14 +146,14 @@ plugin_reload_add_remove :: proc(t: ^testing.T) {
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
 	reload_write(dir, "a.lua", `
 		starts = 0
-		return {setup = function() qed.on("startup", function() starts = starts + 1 end) end}`)
+		return {setup = function() qed:on("startup", function() starts = starts + 1 end) end}`)
 	ed := reload_editor({{"base.lua", `return {}`}}, dir)
 	defer plugin_test_destroy(ed)
 	testing.expect_value(t, sched_var(ed, "starts"), "1")
 
 	reload_write(dir, "c.lua", `return {setup = function()
 		qed.command{name = "Cmd", run = function() end}
-		qed.on("startup", function() c_started = true end)
+		qed:on("startup", function() c_started = true end)
 	end}`)
 	reload_write(dir, "b.lua", `big = string.rep("b", 1024 * 1024) return {setup = function() qed.command{name = "Cmd", run = function() end} end}`)
 	testing.expect(t, plugins_poll(ed), "added files load")
@@ -250,7 +250,7 @@ plugin_reload_config_change :: proc(t: ^testing.T) {
 			aware_loads = (aware_loads or 0) + 1
 			return {setup = function()
 				qed.options{greeting = "hi", list = {1}, other = 1}
-				qed.on("config_changed", function(changed)
+				qed:on("config_changed", function(changed)
 					local keys = {}
 					for k in pairs(changed) do keys[#keys + 1] = k end
 					table.sort(keys)
@@ -324,7 +324,7 @@ plugin_reload_keybind_order :: proc(t: ^testing.T) {
 			end
 			return {setup = function()
 				register(qed.options{list = {}}.list)
-				qed.on("config_changed", function() register(qed.config().list) end)
+				qed:on("config_changed", function() register(qed.config().list) end)
 			end}`},
 	}, dir)
 	defer plugin_test_destroy(ed)
@@ -348,12 +348,12 @@ plugin_reload_keeps_order :: proc(t: ^testing.T) {
 	dir := reload_dir()
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
 	for name in ([?]string{"a", "b"}) {
-		reload_write(dir, fmt.tprintf("%s.lua", name), `return {setup = function() qed.on("config_changed", function() qed.log("cc") end) end}`)
+		reload_write(dir, fmt.tprintf("%s.lua", name), `return {setup = function() qed:on("config_changed", function() qed.log("cc") end) end}`)
 	}
 	ed := reload_editor({}, dir)
 	defer plugin_test_destroy(ed)
 
-	reload_write(dir, "a.lua", `return {setup = function() qed.on("config_changed", function() qed.log("cc!") end) end}`)
+	reload_write(dir, "a.lua", `return {setup = function() qed:on("config_changed", function() qed.log("cc!") end) end}`)
 	plugins_poll(ed)
 	clear_log := len(ed.log)
 	plugins_config_apply(ed, false)
@@ -377,7 +377,7 @@ plugin_reload_refs_released :: proc(t: ^testing.T) {
 			qed.command{name = "Proc", run = function() p = qed.spawn_bg{cmd = "sleep 30"} end}
 			qed.command{name = "Term", run = function() qed.term.create{name = "rterm", cmd = "sleep 30"} end}
 			qed.every(20, function() end)
-			qed.on("buf_save", function() end)
+			qed:on("buf_save", function() end)
 		end}`
 	reload_write(dir, "r.lua", src)
 	ed := reload_editor({}, dir)

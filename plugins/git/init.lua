@@ -261,7 +261,7 @@ return {
 		qed.command{name = "Changes", key = "Alt+g", welcome = true, when = function() return ready and ft ~= nil end, run = function()
 			ft.open("Git")
 		end}
-		qed.on("startup", function()
+		qed:on("startup", function()
 			ready = repo.git(qed.root(), {"--version"}).code == 0
 			if not ready then
 				return
@@ -274,16 +274,16 @@ return {
 			scan()
 		end)
 		for _, ev in ipairs({"buf_open", "buf_save", "buf_reload"}) do
-			qed.on(ev, function(b)
+			qed:on(ev, function(b)
 				if ready and qed.buf.valid(b) then
 					fetch(b)
 				end
 			end)
 		end
-		qed.on("buf_close", function(b)
+		qed:on("buf_close", function(b)
 			fetched[b], gen[b] = nil, nil
 		end)
-		qed.on("root_changed", function()
+		qed:on("root_changed", function()
 			if ready then
 				published, renames = nil, {}
 				inrepo = repo.out(qed.root(), {"rev-parse", "--show-toplevel"}) ~= ""
@@ -292,18 +292,18 @@ return {
 				scan()
 			end
 		end)
-		qed.on("theme_changed", show)
-		qed.on("filetree:refresh", function()
+		qed:on("theme_changed", show)
+		qed:on("filetree:refresh", function()
 			if ready then
 				scan()
 			end
 		end)
-		qed.on("plugin_loaded", function(id)
+		qed:on("plugin_loaded", function(id)
 			if id == "filetree" and ready then
 				attach()
 			end
 		end)
-		qed.on("plugin_unloaded", function(id)
+		qed:on("plugin_unloaded", function(id)
 			if id == "filetree" then
 				ft = nil
 			end

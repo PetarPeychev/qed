@@ -47,7 +47,7 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 	defer ui.target = nil
 	gen := ui.gen
 	for n := focus; n != nil; n = n.parent {
-		ui.target = n if n.kind == .Editor else nil
+		ui.target = n
 		for scope in n.scope {
 			if ui_scope_run(editor, scope, chord) {
 				return
@@ -59,7 +59,7 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 		if ui.gen != gen {
 			return
 		}
-		if n.kind == .Editor && text != "" && !n.readonly {
+		if n.kind == .Editor && text != "" && !n.readonly && ui_node_edits(n) {
 			ui_editor_type(editor, n, ev.ch)
 			return
 		}
@@ -72,7 +72,7 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 		return false
 	}
 	for cmd in pane_commands {
-		if cmd.scope != scope || cmd.run == nil || (scope == "editor" && editor.ui.target == nil) {
+		if cmd.scope != scope || cmd.run == nil {
 			continue
 		}
 		_, _, shortcut := command_effective_bind(cmd)
@@ -91,23 +91,33 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 }
 
 ui_global_binds :: proc(editor: ^Editor, ev: tb2.Event) {
-	if pcmd, pok := plugin_command_for_event(editor, ev, ""); pok {
-		plugin_command_chord(editor, pcmd)
+	chord := ui_chord_of_event(ev)
+	if chord == "" {
 		return
 	}
-	if ev_alt(ev) && ev.ch != 0 {
-		if cmd, ok := command_for_alt(ev.ch); ok {
-			if command_enabled(cmd) {
-				cmd.run(editor)
+	for command in editor.plugins.commands {
+		if command.scope == "" && command.shortcut != "" && ui_chord_normalize(command.shortcut) == chord {
+			plugin_command_chord(editor, command)
+			return
+		}
+	}
+	for command in commands {
+		if command.shortcut != "" && ui_chord_normalize(command.shortcut) == chord {
+			if command_enabled(command) {
+				command.run(editor)
 			}
-		}
-		return
-	}
-	if ev.ch == 0 {
-		if cmd, ok := command_for_key(ev.key); ok && command_enabled(cmd) {
-			cmd.run(editor)
+			return
 		}
 	}
+}
+
+ui_node_edits :: proc(node: ^UiNode) -> bool {
+	for scope in node.scope {
+		if scope == "editor" {
+			return true
+		}
+	}
+	return false
 }
 
 ui_editor_type :: proc(editor: ^Editor, node: ^UiNode, r: rune) {
@@ -117,7 +127,7 @@ ui_editor_type :: proc(editor: ^Editor, node: ^UiNode, r: rune) {
 	}
 	buffer_type_rune(b, r)
 	b.typed_rev = b.rev
-	ui_state(&editor.ui, node.identity).reveal = true
+	ui_node_state(&editor.ui, node).reveal = true
 }
 
 ui_paste :: proc(editor: ^Editor, text: string) -> bool {
@@ -129,10 +139,10 @@ ui_paste :: proc(editor: ^Editor, text: string) -> bool {
 		if n.handlers[.Paste] != 0 && ui_handler_call(editor, n.owner, n.handlers[.Paste], {text = text}) {
 			return true
 		}
-		if n.kind == .Editor && !n.readonly {
+		if n.kind == .Editor && !n.readonly && ui_node_edits(n) {
 			if b := ui_buffer(editor, n.buffer); b != nil {
 				buffer_paste(b, text)
-				ui_state(&editor.ui, n.identity).reveal = true
+				ui_node_state(&editor.ui, n).reveal = true
 			}
 			return true
 		}
@@ -169,7 +179,7 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 					b.selection = b.cursor
 				}
 				b.cursor = ui_editor_point(editor, n, x, y)
-				ui_state(ui, n.identity).reveal = true
+				ui_node_state(ui, n).reveal = true
 			}
 		}
 		return true
@@ -185,19 +195,6 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 		}
 		editor.last_click_tick = time.tick_now()
 		editor.last_click_pos = {y, x}
-	}
-	if !wheel && ev.key == .Mouse_Left {
-		for i := len(ui.hits) - 1; i >= 0; i -= 1 {
-			if ui_rect_has(ui.hits[i].rect, x, y) {
-				for n := ui.hits[i].node; n != nil; n = n.parent {
-					if n.identity[0] == '#' {
-						ui_focus_set(editor, n.identity)
-						break
-					}
-				}
-				break
-			}
-		}
 	}
 	if event == .Double_Click {
 		clicked := ui_mouse_bubble(editor, ev, x, y, .Click, true)
@@ -242,7 +239,7 @@ ui_mouse_native :: proc(editor: ^Editor, n: ^UiNode, ev: tb2.Event, x, y: int, w
 	#partial switch n.kind {
 	case .Scroll:
 		if wheel {
-			state := ui_state(ui, n.identity)
+			state := ui_node_state(ui, n)
 			state.offset = max(state.offset + step, 0)
 			return true
 		}
@@ -251,7 +248,7 @@ ui_mouse_native :: proc(editor: ^Editor, n: ^UiNode, ev: tb2.Event, x, y: int, w
 		if b == nil {
 			return false
 		}
-		state := ui_state(ui, n.identity)
+		state := ui_node_state(ui, n)
 		if wheel {
 			state.scroll_row = clamp(state.scroll_row + step, 0, len(b.lines) - 1)
 			state.scroll_sub = 0
@@ -259,6 +256,9 @@ ui_mouse_native :: proc(editor: ^Editor, n: ^UiNode, ev: tb2.Event, x, y: int, w
 		}
 		if ev.key != .Mouse_Left {
 			return false
+		}
+		if n.id != "" {
+			ui_focus_set(editor, n.identity)
 		}
 		b.selection = nil
 		b.cursor = ui_editor_point(editor, n, x, y)
@@ -274,7 +274,7 @@ ui_mouse_native :: proc(editor: ^Editor, n: ^UiNode, ev: tb2.Event, x, y: int, w
 
 ui_editor_point :: proc(editor: ^Editor, node: ^UiNode, x, y: int) -> Cursor {
 	b := ui_buffer(editor, node.buffer)
-	state := ui_state(&editor.ui, node.identity)
+	state := ui_node_state(&editor.ui, node)
 	gutter := digit_count(len(b.lines)) + 2 if node.line_numbers else 0
 	w := ui_editor_text_width(node, b)
 	dy := max(y - node.rect.y, 0)
@@ -306,7 +306,7 @@ ui_target_buffer :: proc(editor: ^Editor, edits := false) -> ^Buffer {
 	}
 	b := ui_buffer(editor, n.buffer)
 	if b != nil {
-		ui_state(&editor.ui, n.identity).reveal = true
+		ui_node_state(&editor.ui, n).reveal = true
 	}
 	return b
 }

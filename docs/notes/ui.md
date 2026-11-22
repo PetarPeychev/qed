@@ -514,7 +514,7 @@ local function open_palette()
     palette = ui.mount("pane", build())
     palette:focus("palette_query")
 
-    subscription = qed.on("buf_changed", function(changed_buffer)
+    subscription = qed:on("buf_changed", function(changed_buffer)
         if changed_buffer ~= query_buffer then return end
         local query = query_buffer:text()
         results = query == "" and all_commands or qed.fuzzy.match(all_commands, query, {field = "name"})
@@ -599,7 +599,7 @@ local function open_file_finder()
     finder = ui.mount("pane", build())
     finder:focus("finder_query")
 
-    query_subscription = qed.on("buf_changed", function(changed_buffer)
+    query_subscription = qed:on("buf_changed", function(changed_buffer)
         if changed_buffer ~= query_buffer then return end
         local query = query_buffer:text()
         matches = query == "" and all_files or qed.fuzzy.match(all_files, query, {field = "path", limit = 500})

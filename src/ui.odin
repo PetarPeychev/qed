@@ -11,6 +11,7 @@ UI_LAYERS :: [?]string{"background", "base", "popup", "pane", "notification", "a
 UI_FOCUS_HISTORY_MAX :: 16
 UI_KEY_CHORD_ONLY :: tb2.Key(0xff00)
 UI_UNBOUNDED :: 1 << 30
+UI_ITEM_KEEP :: 64
 
 UiKind :: enum u8 {
 	Column,
@@ -147,7 +148,7 @@ UiNode :: struct {
 	buffer:          u64,
 	placeholder:     string,
 	line_numbers:    bool,
-	highlight:       bool,
+	syntax:          bool,
 	readonly:        bool,
 	current_line:    UiStyle,
 	list:            u64,
@@ -171,7 +172,9 @@ UiState :: struct {
 	scroll_col:  int,
 	reveal:      bool,
 	cursor_seen: Cursor,
-	rev_seen:    u64,
+	kept:        bool,
+	buffer:      u64,
+	kind:        UiKind,
 }
 
 UiMount :: struct {
@@ -212,6 +215,7 @@ Ui :: struct {
 	internal:      [dynamic]^Buffer,
 	internal_owner: map[u64]string,
 	builds:        int,
+	scopes_warned: map[string]bool,
 }
 
 ui_destroy :: proc(editor: ^Editor) {
@@ -248,6 +252,10 @@ ui_destroy :: proc(editor: ^Editor) {
 	}
 	delete(ui.internal)
 	delete(ui.internal_owner)
+	for scope, _ in ui.scopes_warned {
+		delete(scope)
+	}
+	delete(ui.scopes_warned)
 }
 
 ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
@@ -369,7 +377,14 @@ ui_unload :: proc(editor: ^Editor, owner: string) {
 			ui_mount_remove(editor, ui.mounts[i].handle)
 		}
 	}
-	ui_graveyard_flush(editor)
+	prefix := fmt.tprintf("#%s/", owner)
+	gone := make([dynamic]string, context.temp_allocator)
+	for key, _ in ui.states {
+		if strings.has_prefix(key, prefix) {
+			append(&gone, key)
+		}
+	}
+	ui_states_drop(ui, gone[:])
 	for i := len(ui.lists) - 1; i >= 0; i -= 1 {
 		if ui.lists[i].owner == owner {
 			ui_list_free(editor, ui.lists[i])
@@ -441,26 +456,72 @@ ui_tree_carry_walk :: proc(L: ^lua.State, node: ^UiNode, olds: ^map[string]^UiNo
 	}
 }
 
-ui_state :: proc(ui: ^Ui, identity: string) -> ^UiState {
-	if s, ok := &ui.states[identity]; ok {
-		return s
+ui_state_key :: proc(ui: ^Ui, key: string, kept: bool, buffer: u64 = 0) -> ^UiState {
+	if state, ok := &ui.states[key]; ok {
+		return state
 	}
-	ui.states[strings.clone(identity)] = {}
-	return &ui.states[identity]
+	ui.states[strings.clone(key)] = {kept = kept, buffer = buffer}
+	return &ui.states[key]
 }
 
-ui_state_prune :: proc(ui: ^Ui) {
-	gone := make([dynamic]string, context.temp_allocator)
-	for k, _ in ui.states {
-		if k[0] != '#' && k not_in ui.index {
-			append(&gone, k)
+ui_node_state :: proc(ui: ^Ui, node: ^UiNode) -> ^UiState {
+	state: ^UiState
+	if node.kind == .Editor {
+		state = ui_state_key(ui, fmt.tprintf("%s|%d", node.identity, node.buffer), node.id != "", node.buffer)
+	} else {
+		state = ui_state_key(ui, node.identity, node.id != "")
+	}
+	state.kind = node.kind
+	return state
+}
+
+ui_highlight_present :: proc(editor: ^Editor, node: ^UiNode, key: string) -> bool {
+	if node.kind == .Virtual_Column {
+		list := ui_list_find(&editor.ui, node.list)
+		if list == nil {
+			return false
+		}
+		ui_list_settle_all(editor, list)
+		_, present := ui_list_position(list, key)
+		return present
+	}
+	for child in node.expanded {
+		if child.key == key {
+			return true
 		}
 	}
-	for k in gone {
-		key, state := delete_key(&ui.states, k)
-		delete(key)
+	return false
+}
+
+ui_node_state_peek :: proc(ui: ^Ui, node: ^UiNode) -> UiState {
+	if node.kind == .Editor {
+		return ui.states[fmt.tprintf("%s|%d", node.identity, node.buffer)] or_else UiState{}
+	}
+	return ui.states[node.identity] or_else UiState{}
+}
+
+ui_states_drop :: proc(ui: ^Ui, gone: []string) {
+	for key in gone {
+		owned, state := delete_key(&ui.states, key)
+		delete(owned)
 		delete(state.highlighted)
 	}
+}
+
+ui_state_prune :: proc(editor: ^Editor) {
+	ui := &editor.ui
+	gone := make([dynamic]string, context.temp_allocator)
+	for key, state in ui.states {
+		identity := key
+		if bar := strings.index_byte(key, '|'); bar >= 0 {
+			identity = key[:bar]
+		}
+		buffer_gone := state.buffer != 0 && ui_buffer(editor, state.buffer) == nil
+		if buffer_gone || (!state.kept && identity not_in ui.index) {
+			append(&gone, key)
+		}
+	}
+	ui_states_drop(ui, gone[:])
 }
 
 ui_layer_used :: proc(ui: ^Ui, layer: string) -> bool {
@@ -499,7 +560,7 @@ ui_resolve :: proc(editor: ^Editor) {
 			}
 		}
 	}
-	ui_state_prune(ui)
+	ui_state_prune(editor)
 }
 
 ui_resolve_node :: proc(editor: ^Editor, node: ^UiNode, visiting: ^map[u64]bool) {
@@ -531,7 +592,6 @@ ui_resolve_node :: proc(editor: ^Editor, node: ^UiNode, visiting: ^map[u64]bool)
 			m.root.parent = node
 			append(&node.expanded, m.root)
 			ui_resolve_node(editor, m.root, visiting)
-			visiting[m.handle] = false
 		}
 	}
 	if node.header != nil {
@@ -675,6 +735,13 @@ ui_size_resolve :: proc(s: UiSize, avail, natural: int) -> int {
 		v = natural
 	}
 	return ui_size_clamp(s, v, avail)
+}
+
+ui_snap :: proc(size: UiSize, value, avail: int) -> int {
+	if size.form != .Percent || (avail - value) % 2 == 0 || value - 1 < size.min || value <= 0 {
+		return value
+	}
+	return value - 1
 }
 
 ui_grows :: proc(node: ^UiNode, axis: int) -> int {
@@ -823,20 +890,17 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (w,
 		if list != nil {
 			h = ui_list_count(list)
 		}
-		for _, item in node.items {
-			iw, _ := ui_measure_slot(editor, item.node, avail_w, 1)
-			w = max(w, iw)
+		if list != nil {
+			for i in node.window_lo ..< min(node.window_hi, ui_list_count(list)) {
+				if item, ok := node.items[ui_list_key(list, i)]; ok {
+					item_width, _ := ui_measure_slot(editor, item.node, avail_w, 1)
+					w = max(w, item_width)
+				}
+			}
 		}
 	case .Editor:
-		b := ui_buffer(editor, node.buffer)
-		if b != nil {
-			h = len(b.lines)
-			for line in b.lines {
-				w = max(w, visual_width(line.text[:]))
-			}
-			if node.line_numbers {
-				w += digit_count(len(b.lines)) + 2
-			}
+		if buffer := ui_buffer(editor, node.buffer); buffer != nil {
+			h = len(buffer.lines)
 		}
 	case .Outlet:
 	}
@@ -879,7 +943,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 			content.y += hh
 			content.h -= hh
 		}
-		state := ui_state(&editor.ui, node.identity)
+		state := ui_node_state(&editor.ui, node)
 		for c in node.expanded {
 			if c.float != .None {
 				continue
@@ -921,6 +985,20 @@ ui_layout_node :: proc(editor: ^Editor, node: ^UiNode, r, clip: Rect) {
 	node.clip = clip
 	node.hidden = false
 	ui_layout_children(editor, node)
+}
+
+ui_node_hide :: proc(node: ^UiNode) {
+	node.hidden = true
+	node.rect = {}
+	for child in node.expanded {
+		ui_node_hide(child)
+	}
+	if node.header != nil {
+		ui_node_hide(node.header)
+	}
+	for _, item in node.items {
+		ui_node_hide(item.node)
+	}
 }
 
 ui_layout_flow :: proc(editor: ^Editor, node: ^UiNode, content: Rect) {
@@ -1001,7 +1079,7 @@ ui_layout_flow :: proc(editor: ^Editor, node: ^UiNode, content: Rect) {
 	end := pos + avail[axis]
 	for c, i in kids {
 		if c.hidden {
-			c.rect = {}
+			ui_node_hide(c)
 			continue
 		}
 		lead := c.margin[0] if axis == 1 else c.margin[3]
@@ -1023,9 +1101,7 @@ ui_layout_flow :: proc(editor: ^Editor, node: ^UiNode, content: Rect) {
 		switch align {
 		case .Stretch, .Start:
 		case .Center:
-			if (cross_avail - cross) % 2 != 0 {
-				cross -= 1
-			}
+			cross = ui_snap(cross_form, cross, cross_avail)
 			cross_pos += (cross_avail - cross) / 2
 		case .End:
 			cross_pos += cross_avail - cross
@@ -1057,36 +1133,32 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 	}
 	h := ui_size_resolve(node.height, area.h, nh)
 	x, y := area.x, area.y
-	center_x :: proc(area: Rect, w: ^int) -> int {
-		if (area.w - w^) % 2 != 0 {
-			w^ -= 1
-		}
-		return area.x + (area.w - w^) / 2
+	center_x :: proc(node: ^UiNode, area: Rect, width: ^int) -> int {
+		width^ = ui_snap(node.width, width^, area.w)
+		return area.x + (area.w - width^) / 2
 	}
-	center_y :: proc(area: Rect, h: ^int) -> int {
-		if (area.h - h^) % 2 != 0 {
-			h^ -= 1
-		}
-		return area.y + (area.h - h^) / 2
+	center_y :: proc(node: ^UiNode, area: Rect, height: ^int) -> int {
+		height^ = ui_snap(node.height, height^, area.h)
+		return area.y + (area.h - height^) / 2
 	}
 	switch node.anchor {
 	case .Center:
-		x = center_x(area, &w)
-		y = center_y(area, &h)
+		x = center_x(node, area, &w)
+		y = center_y(node, area, &h)
 	case .Top_Left:
 	case .Top:
-		x = center_x(area, &w)
+		x = center_x(node, area, &w)
 	case .Top_Right:
 		x = area.x + area.w - w
 	case .Left:
-		y = center_y(area, &h)
+		y = center_y(node, area, &h)
 	case .Right:
 		x = area.x + area.w - w
-		y = center_y(area, &h)
+		y = center_y(node, area, &h)
 	case .Bottom_Left:
 		y = area.y + area.h - h
 	case .Bottom:
-		x = center_x(area, &w)
+		x = center_x(node, area, &w)
 		y = area.y + area.h - h
 	case .Bottom_Right:
 		x = area.x + area.w - w
@@ -1120,7 +1192,7 @@ ui_editor_caret_pos :: proc(editor: ^Editor, node: ^UiNode) -> (x, y: int, ok: b
 	if b == nil {
 		return
 	}
-	state := ui_state(&editor.ui, node.identity)
+	state := ui_node_state(&editor.ui, node)
 	gutter := digit_count(len(b.lines)) + 2 if node.line_numbers else 0
 	w := ui_editor_text_width(node, b)
 	text := b.lines[b.cursor.row].text[:]
@@ -1148,25 +1220,21 @@ ui_editor_caret_pos :: proc(editor: ^Editor, node: ^UiNode) -> (x, y: int, ok: b
 
 ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 	b := ui_buffer(editor, node.buffer)
-	state := ui_state(&editor.ui, node.identity)
 	if b == nil {
 		return
 	}
-	if b.cursor != state.cursor_seen || b.rev != state.rev_seen {
+	state := ui_node_state(&editor.ui, node)
+	if b.cursor != state.cursor_seen {
 		state.cursor_seen = b.cursor
-		state.rev_seen = b.rev
 		state.reveal = true
 	}
 	state.scroll_row = clamp(state.scroll_row, 0, len(b.lines) - 1)
-	if !state.reveal {
+	w := ui_editor_text_width(node, b)
+	h := node.rect.h
+	if !state.reveal || h <= 0 || w <= 0 {
 		return
 	}
 	state.reveal = false
-	w := ui_editor_text_width(node, b)
-	h := node.rect.h
-	if h <= 0 || w <= 0 {
-		return
-	}
 	if b.cursor.row < state.scroll_row {
 		state.scroll_row = b.cursor.row
 		state.scroll_sub = 0
@@ -1244,7 +1312,7 @@ ui_reveal_row :: proc(editor: ^Editor, node: ^UiNode, row_y, row_h: int) -> bool
 	if scroll == nil {
 		return false
 	}
-	state := ui_state(&editor.ui, scroll.identity)
+	state := ui_node_state(&editor.ui, scroll)
 	content := ui_scroll_content(editor, scroll)
 	top := row_y - (content.y - state.offset)
 	before := state.offset
@@ -1258,6 +1326,8 @@ ui_reveal_row :: proc(editor: ^Editor, node: ^UiNode, row_y, row_h: int) -> bool
 
 ui_prepare :: proc(editor: ^Editor) {
 	ui := &editor.ui
+	clear(&ui.hits)
+	ui.caret_shown = false
 	ui_graveyard_flush(editor)
 	ui_resolve(editor)
 	ui_focused(editor)
@@ -1278,7 +1348,8 @@ ui_prepare :: proc(editor: ^Editor) {
 		ui_resolve(editor)
 		ui_layout(editor)
 		moved := false
-		for n in ui.virtuals {
+		virtuals := slice.clone(ui.virtuals[:], context.temp_allocator)
+		for n in virtuals {
 			ui_virtual_build(editor, n)
 			if ui_virtual_reveal(editor, n) {
 				moved = true
@@ -1300,8 +1371,8 @@ ui_prepare :: proc(editor: ^Editor) {
 	}
 	for n in ui.editors {
 		b := ui_buffer(editor, n.buffer)
-		if b != nil && n.highlight && !b.big && n.rect.h > 0 {
-			state := ui_state(ui, n.identity)
+		if b != nil && n.syntax && !b.big && n.rect.h > 0 {
+			state := ui_node_state(ui, n)
 			highlight_update(b, state.scroll_row, state.scroll_row + n.rect.h - 1)
 			diffbase_update(b)
 		}
@@ -1356,7 +1427,11 @@ ui_virtual_build :: proc(editor: ^Editor, node: ^UiNode) {
 	}
 	lo, hi := ui_virtual_window(node, ui_list_count(list))
 	node.window_lo, node.window_hi = lo, hi
+	rev := list.rev
 	for i in lo ..< hi {
+		if list.rev != rev || i >= ui_list_count(list) {
+			break
+		}
 		key := ui_list_key(list, i)
 		item, cached := node.items[key]
 		if !cached {
@@ -1372,6 +1447,21 @@ ui_virtual_build :: proc(editor: ^Editor, node: ^UiNode) {
 		}
 		item.node.parent = node
 		ui_layout_node(editor, item.node, ui_rect_shrink({node.rect.x, node.rect.y + i, node.rect.w, 1}, item.node.margin), node.clip)
+	}
+	if len(node.items) > hi - lo + 2 * UI_ITEM_KEEP {
+		evicted := make([dynamic]string, context.temp_allocator)
+		for key, _ in node.items {
+			position, present := ui_list_position(list, key)
+			if !present || position < lo - UI_ITEM_KEEP || position >= hi + UI_ITEM_KEEP {
+				append(&evicted, key)
+			}
+		}
+		for key in evicted {
+			owned, item := delete_key(&node.items, key)
+			append(&editor.ui.graveyard, item.node)
+			editor.ui.dirty = true
+			delete(owned)
+		}
 	}
 }
 
@@ -1520,7 +1610,7 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		paint.bg = bg
 		ui_fill(&paint, node.rect, bg)
 	}
-	state := editor.ui.states[node.identity] or_else UiState{}
+	state := ui_node_state_peek(&editor.ui, node)
 	switch node.kind {
 	case .Text:
 		ui_render_text(&paint, node)
@@ -1698,7 +1788,7 @@ ui_render_editor :: proc(editor: ^Editor, p: ^UiPaint, node: ^UiNode) {
 	if b == nil {
 		return
 	}
-	state := ui_state(&editor.ui, node.identity)
+	state := ui_node_state(&editor.ui, node)
 	r := ui_rect_intersect(node.rect, p.clip)
 	if r.w <= 0 || r.h <= 0 {
 		return
@@ -1720,7 +1810,7 @@ ui_render_editor :: proc(editor: ^Editor, p: ^UiPaint, node: ^UiNode) {
 			_, line_bg = ui_style_colors(node.current_line, fg_base, bg)
 		}
 		colors: []tb2.Color
-		if node.highlight && !b.big {
+		if node.syntax && !b.big {
 			colors = highlight_colors(b, row)
 		}
 		if len(colors) == 0 && .Fg in base.set {
@@ -1841,7 +1931,7 @@ ui_chord_of_event :: proc(ev: tb2.Event, allocator := context.temp_allocator) ->
 			name = "PgUp"
 		case .Pgdn:
 			name = "PgDn"
-		case .F1 ..= .F12:
+		case .F12 ..= .F1:
 			name = fmt.tprintf("F%d", 0xffff - int(ev.key) + 1)
 		}
 	}

@@ -312,6 +312,7 @@ e2e_new_ui :: proc(e: ^E2E) {
 		plugin_load(&e.ed, pl)
 	}
 	plugin_flush(&e.ed)
+	plugin_pump(&e.ed)
 	e2e_render(e)
 }
 

@@ -61,7 +61,7 @@ local function preview(b, anchor)
 	end
 	synced = v:scroll()
 	current = {path = path, buf = b}
-	view, watch = v, qed.on("buf_changed", function(changed)
+	view, watch = v, qed:on("buf_changed", function(changed)
 		if changed == b then
 			v:markdown(qed.buf.text(b))
 		end
@@ -196,7 +196,7 @@ return {
 		}
 		qed.command{name = "Back", scope = "markdown", bind_from = "Jump Back", run = function() step(-1) end}
 		qed.command{name = "Forward", scope = "markdown", bind_from = "Jump Forward", run = function() step(1) end}
-		qed.on("config_changed", function()
+		qed:on("config_changed", function()
 			cfg = qed.config()
 			reopen()
 		end)

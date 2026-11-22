@@ -323,7 +323,7 @@ end}
 | Mechanism | API | Rules |
 |---|---|---|
 | Exports | `qed.export{fn = ...}` in setup; `qed.plugin(id) -> table \| nil` | `nil` when not loaded, which doubles as the installed check. Functions run against the owner's own state. Calls after the owner unloads raise. `qed.caller()` inside an export returns the calling plugin's id, so the owner can track per-caller registrations and drop them on `plugin_unloaded`. Tables received across plugins are read-only by convention. |
-| Custom events | `qed.emit("git:status", data)`, `qed.on("git:status", fn)` | Names are namespaced `<plugin>:<event>`. Queued like core events. Handlers are removed on unload. |
+| Custom events | `qed:emit("git:status", data)`, `qed:on("git:status", fn)` | Names are namespaced `<plugin>:<event>`. Queued like core events. Handlers are removed on unload. |
 | Lifecycle events | `plugin_loaded(id)`, `plugin_unloaded(id)` | For hot reload. |
 
 Lifecycle stays two-step. `setup` registers the plugin's own things (`qed.options`, `qed.meta`, `qed.export`,
@@ -349,7 +349,7 @@ Each step ships green with its e2e tests moved over. UX is unchanged except wher
 | M3 (done) | Line find becomes a Lua plugin on `qed.buf.line_list` (field moves over the list column). Message Log and Plugins pane core-built with pane-scoped commands (D4), chips, `sel = bg`, columns, text body swap. Rename prompt on the model (core caller). | scoped commands, footer chips |
 | M4 (done) | Extract the walk service from `filetree.odin` behind `qed.fs.walk` (`within`, `union`). Add `qed.fs.copy/rename/remove/mkdir`. Core file tree rebuilt on the model over walk handles (still Odin, provider API intact). | tree items, tabs, marks, footer field, prewarm under the model |
 | M5 (done) | File tree becomes a bundled `filetree` plugin (D7); core keeps only the walk service and pane machinery. The Changed tab keeps working through a temporary provider shim. | the model under the hardest pane |
-| M6 (done) | Plugin communication (D10): `qed.export/plugin/caller`, `qed.emit` + namespaced `qed.on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
+| M6 (done) | Plugin communication (D10): `qed.export/plugin/caller`, `qed:emit` + namespaced `qed:on`, `plugin_loaded/unloaded`. Git adds its tab and marks through filetree exports. Remove `qed.filetree.*` and the shim. | first real cross-plugin user |
 | M7 (done) | Conflict UI (the `conflict` plugin) and AI (the `ai` plugin: aiedit, then fim) ported onto the model and decorations. | range-anchored tints and spans, `confirm` choices, inline ghost with no Lua on the keystroke path (D8) |
 | M8 | Remove the module system (`modules.*`, `module_enabled`). | Done: `module.odin`, `Module`, `module_enabled`, `Command.module`, `config_module_defs` and the `modules` parsing are gone; the moved-key hints stay. |
 | M9 | Review every bundled plugin's config keys (existing TODO). | |

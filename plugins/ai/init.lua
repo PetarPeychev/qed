@@ -103,13 +103,13 @@ local changed, reloaded, closed
 local function sync_hook()
 	local want = #edits > 0 or fim.enabled
 	if want and not hook then
-		hook = qed.on("buf_changed", changed)
+		hook = qed:on("buf_changed", changed)
 	elseif not want and hook then
 		hook:off()
 		hook = nil
 	end
 	if #edits > 0 and not hooks then
-		hooks = {qed.on("buf_reload", reloaded), qed.on("buf_close", closed)}
+		hooks = {qed:on("buf_reload", reloaded), qed:on("buf_close", closed)}
 	elseif #edits == 0 and hooks then
 		hooks[1]:off()
 		hooks[2]:off()
@@ -501,6 +501,6 @@ return {
 			sync_hook()
 			qed.message("Inline completion: " .. (fim.enabled and "on" or "off"))
 		end}
-		qed.on("config_changed", function(changed) configure(qed.config(), changed) end)
+		qed:on("config_changed", function(changed) configure(qed.config(), changed) end)
 	end,
 }

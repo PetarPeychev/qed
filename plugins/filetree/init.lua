@@ -330,7 +330,7 @@ local function sync(blank)
 end
 
 local function refresh()
-	qed.emit("filetree:refresh")
+	qed:emit("filetree:refresh")
 end
 
 local function reveal(path)
@@ -915,9 +915,9 @@ return {
 			end
 		end}
 		qed.export(exports)
-		qed.on("plugin_unloaded", drop)
-		qed.on("config_changed", function(changed) apply(qed.config(), changed) end)
-		qed.on("root_changed", function()
+		qed:on("plugin_unloaded", drop)
+		qed:on("config_changed", function(changed) apply(qed.config(), changed) end)
+		qed:on("root_changed", function()
 			if v then
 				reopen()
 				-- dirs expanded under the old root mean nothing now: back to the tab's default

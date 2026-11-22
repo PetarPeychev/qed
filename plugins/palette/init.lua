@@ -1,10 +1,11 @@
 local ui = qed.ui
 
 local palette
+local options
 
-local function name_spans(record)
+local function name_spans(record, positions)
 	local matched = {}
-	for _, offset in ipairs(record.positions or {}) do
+	for _, offset in ipairs(positions or {}) do
 		matched[offset] = true
 	end
 	local spans = {}
@@ -62,7 +63,7 @@ local function move_highlight(step)
 end
 
 local function run_command(name)
-	if not palette or not name or not palette.matches:get(name) then
+	if not palette or not name then
 		return
 	end
 	close_palette()
@@ -73,24 +74,19 @@ local function run_highlighted()
 	run_command(highlighted_key())
 end
 
-local function focus_query()
-	ui.node("palette_query"):focus()
-	return true
-end
-
 local function command_row(record)
 	return ui.row{
 		on = {
 			click = function()
 				ui.node("palette_results"):set_state{highlighted = record.name}
-				return focus_query()
+				return true
 			end,
 			double_click = function()
 				run_command(record.name)
 				return true
 			end,
 		},
-		ui.text{grow = 1, " ", table.unpack(name_spans(record))},
+		ui.text{grow = 1, " ", table.unpack(name_spans(record, palette and palette.matches:positions(record.name)))},
 		ui.text{fg = "pane_shortcut_foreground", record.shortcut, " "},
 	}
 end
@@ -101,9 +97,10 @@ local function build(matches, query, empty)
 			close_palette()
 			return true
 		end},
-		ui.box{id = "palette", float = "screen", anchor = "top", width = 64, height = "fit", margin = {3, 2, 2, 2},
+		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit",
+			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
-			on = {click = focus_query},
+			on = {click = function() return true end},
 			ui.column{
 				ui.row{
 					ui.text{fg = "pane_prompt_foreground", "> "},
@@ -111,7 +108,7 @@ local function build(matches, query, empty)
 						scope = {"palette", "editor"}, placeholder = "Type a command"},
 				},
 				empty and ui.text{fg = "pane_dim_foreground", " No matching commands"} or false,
-				ui.scroll{height = {"fit", max = 12},
+				ui.scroll{height = {"fit", max = qed.opt("palette_max_rows")},
 					ui.virtual_column{id = "palette_results", data = matches, item = command_row,
 						highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 			},
@@ -138,6 +135,7 @@ local function open_palette()
 	local matches = qed.fuzzy.list(commands, {field = "name"})
 	local query = qed.buf.create{internal = true}
 	local empty = false
+	options = qed.config()
 	local handle = ui.mount("pane", build(matches, query, empty))
 	query:on("change", function()
 		matches:set_query(query:text())
@@ -148,13 +146,14 @@ local function open_palette()
 		highlight_first(matches)
 	end)
 	palette = {commands = commands, matches = matches, query = query, handle = handle}
-	focus_query()
+	ui.node("palette_query"):focus()
 	highlight_first(matches)
 end
 
 return {
 	setup = function()
 		qed.meta{display_name = "Palette", description = "Command palette on qed.ui"}
+		options = qed.options({width = 64}, {width = "Width of the palette box in cells"})
 		qed.command{name = "Open", bind_from = "Command Palette", run = open_palette}
 		qed.command{name = "Next", scope = "palette", key = "Down", run = function() move_highlight(1) end}
 		qed.command{name = "Previous", scope = "palette", key = "Up", run = function() move_highlight(-1) end}

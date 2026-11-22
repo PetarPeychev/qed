@@ -503,12 +503,12 @@ function M.setup()
 		max_width = "Max width of the settings pane",
 		backdrop = {description = "What the settings pane does to the screen behind it", choices = {"none", "dim", "blank"}},
 	})
-	qed.on("config_changed", function()
+	qed:on("config_changed", function()
 		opts = qed.config()
 		refresh()
 	end)
 	for _, event in ipairs({"theme_changed", "plugin_loaded", "plugin_unloaded"}) do
-		qed.on(event, function()
+		qed:on(event, function()
 			refresh()
 		end)
 	end

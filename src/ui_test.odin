@@ -90,8 +90,16 @@ ui_float_center_snap_and_margin :: proc(t: ^testing.T) {
 	box.width = {form = .Cells, value = 21}
 	box.height = {form = .Fit}
 	ut_mount(&e, box, "pane")
-	testing.expect_value(t, box.rect, Rect{30, 11, 20, 2})
-	testing.expect_value(t, e2e_cell(&e, 30, 11), '┌')
+	testing.expect_value(t, box.rect, Rect{29, 10, 21, 3})
+	testing.expect_value(t, e2e_cell(&e, 30, 11), 'h')
+
+	percent := ut_text("p")
+	percent.float = .Screen
+	percent.width = {form = .Percent, value = 49}
+	percent.height = {form = .Cells, value = 1}
+	ut_mount(&e, percent, "pane")
+	testing.expect_value(t, percent.rect.w, 38)
+	testing.expect_value(t, percent.rect.x, 21)
 
 	corner := ut_text("toast")
 	corner.float = .Screen
@@ -130,9 +138,9 @@ ui_scroll_clips_and_reserves_bar :: proc(t: ^testing.T) {
 	testing.expect_value(t, rows.rect.w, E2E_W - 1)
 	testing.expect_value(t, e2e_row_text(&e, 3)[:1], "3")
 	testing.expect_value(t, e2e_row_text(&e, 4), "")
-	ui_state(&e.ed.ui, scroll.identity).offset = 8
+	ui_node_state(&e.ed.ui, scroll).offset = 8
 	e2e_render(&e)
-	testing.expect_value(t, ui_state(&e.ed.ui, scroll.identity).offset, 6)
+	testing.expect_value(t, ui_node_state(&e.ed.ui, scroll).offset, 6)
 	testing.expect_value(t, e2e_row_text(&e, 0)[:1], "6")
 	testing.expect_value(t, e2e_cell(&e, E2E_W - 1, 3), '┃')
 }

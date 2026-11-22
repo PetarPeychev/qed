@@ -568,7 +568,7 @@ started at the end of `editor_init`. Invariants the code can't show:
   calls from a plugin's own coroutines are refused, and a message handler keeps the callee's frames in the traceback.
   Unloading the owner kills every task inside one of its calls. Each plugin's qed closures carry `"<id>\0<gen>"` as
   their first upvalue, so `plugin_owner` rejects code from an older load.
-  `qed.emit("<own id>:<event>", data)` queues a `.Custom` event (data held as a registry ref) for hooks of that
+  `qed:emit("<own id>:<event>", data)` queues a `.Custom` event (data held as a registry ref) for hooks of that
   name; `plugin_loaded`/`plugin_unloaded` are queued by `plugin_load`/`plugin_unload` after startup and skip their
   subject. Hooks of every kind go with their owner.
 - Budgets: one count hook (100k instructions) on the main state, inherited by every
@@ -1173,7 +1173,7 @@ User commands are `qed.command` calls in a user plugin; `qed.parse_locations` tu
 compiler/grep output into `qed.pick` items for a list + preview picker.
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
-rows, spans, end-of-line text, range marks, the inline ghost), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed.emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
+rows, spans, end-of-line text, range marks, the inline ghost), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed:emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
 and `enabled` flips; *Plugins: Open* pane with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only); `qed.meta` display names prefixing
 commands and labeling messages; per-plugin keybinds (`plugins.<id>.keybinds`); Lua

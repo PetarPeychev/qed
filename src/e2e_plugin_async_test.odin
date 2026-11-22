@@ -20,7 +20,7 @@ E2E_EVENT_PLUGIN :: `
 	return {setup = function()
 		for _, e in ipairs({"startup", "buf_open", "buf_close", "buf_enter", "buf_pre_save", "buf_save",
 				"buf_reload", "buf_changed", "cursor_moved", "language_changed", "root_changed"}) do
-			qed.on(e, rec(e))
+			qed:on(e, rec(e))
 		end
 		qed.command{name = "Clear", run = function() trace = "" end}
 	end}`
@@ -88,7 +88,7 @@ e2e_plugin_changed_range :: proc(t: ^testing.T) {
 	e2e_plugin(&e, "rng", `
 		got = ""
 		return {setup = function()
-			qed.on("buf_changed", function(_, _, _, lo, hi) got = got .. lo .. "-" .. hi .. ";" end)
+			qed:on("buf_changed", function(_, _, _, lo, hi) got = got .. lo .. "-" .. hi .. ";" end)
 		end}`)
 	plugin_flush(&e.ed)
 	b := editor_buffer(&e.ed)
@@ -113,7 +113,7 @@ e2e_plugin_flush_rounds_logged :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "loop", `return {setup = function()
-		qed.on("buf_changed", function(b) qed.buf.insert(b, {row = 1, col = 1}, "x") end)
+		qed:on("buf_changed", function(b) qed.buf.insert(b, {row = 1, col = 1}, "x") end)
 	end}`)
 	plugin_flush(&e.ed)
 	e2e_type(&e, "y")
@@ -136,7 +136,7 @@ e2e_plugin_coalesce :: proc(t: ^testing.T) {
 
 	e2e_plugin(&e, "count", `
 		changed = 0
-		return {setup = function() qed.on("buf_changed", function() changed = changed + 1 end) end}`)
+		return {setup = function() qed:on("buf_changed", function() changed = changed + 1 end) end}`)
 	plugin_pump(&e.ed)
 	for r in "abc" {
 		e2e_key(&e, tb2.Key(0), {}, r)
@@ -157,7 +157,7 @@ e2e_plugin_pre_save_spawn :: proc(t: ^testing.T) {
 	e2e_spawn_fake(&e, "fakefmt", "TIDY\n", delay_ms = 40)
 	pl := e2e_plugin(&e, "fmt", `
 		return {setup = function()
-			qed.on("buf_pre_save", function(b)
+			qed:on("buf_pre_save", function(b)
 				local rev = qed.buf.rev(b)
 				local r = qed.spawn{cmd = "fakefmt --stdin", stdin = qed.buf.text(b)}
 				local n = qed.buf.line_count(b)
@@ -190,7 +190,7 @@ e2e_plugin_pre_save_spawn :: proc(t: ^testing.T) {
 e2e_plugin_close_save_while_pending :: proc(t: ^testing.T) {
 	e := e2e_start("text")
 	defer e2e_stop(&e)
-	e2e_plugin(&e, "slow", `return {setup = function() qed.on("buf_pre_save", function() qed.sleep(40) end) end}`)
+	e2e_plugin(&e, "slow", `return {setup = function() qed:on("buf_pre_save", function() qed.sleep(40) end) end}`)
 	id := editor_buffer(&e.ed).id
 	e2e_key(&e, tb2.Key(0), {}, '!')
 	e2e_key(&e, .Ctrl_S)

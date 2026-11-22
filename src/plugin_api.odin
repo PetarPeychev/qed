@@ -95,7 +95,6 @@ qed_buf_api := [?]lua.L_Reg {
 	{"base", qed_buf_base},
 	{"line_list", qed_buf_line_list},
 	{"create", qed_buf_create},
-	{"close", qed_buf_close_internal},
 	{"on", qed_buf_on},
 	{nil, nil},
 }
@@ -1268,8 +1267,16 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	b, idx := api_buf(L, entry.editor, 1)
+	id := b.id
 	if b.internal {
-		return plugin_raise(L, "internal buffer: close it with buffer:close()")
+		pl := api_loaded(L, entry.editor)
+		if entry.editor.ui.internal_owner[id] != pl.name {
+			return plugin_raise(L, "another plugin's internal buffer")
+		}
+		plugin_buffer_hooks_drop(&entry.editor.plugins, id)
+		ui_internal_close(entry.editor, id)
+		lua.pushboolean(L, true)
+		return 1
 	}
 	discard := false
 	if lua.type(L, 2) == .TABLE {
@@ -1290,6 +1297,7 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 	lock := entry.editor.jump_lock
 	editor_close_index(entry.editor, idx)
 	entry.editor.jump_lock = lock
+	plugin_buffer_hooks_drop(&entry.editor.plugins, id)
 	lua.pushboolean(L, true)
 	return 1
 }
@@ -1314,7 +1322,9 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 			lua.pushodinstring(L, fmt.tprintf("cannot open %s", path))
 			return 2
 		}
-	} else if _, idx := api_buf(L, editor, 1); idx != editor.current {
+	} else if target, idx := api_buf(L, editor, 1); target.internal {
+		return plugin_raise(L, "internal buffer: show it in a qed.ui.editor node")
+	} else if idx != editor.current {
 		editor_switch_to(editor, idx)
 	}
 	for i := len(editor.panes) - 1; i >= 0; i -= 1 {
@@ -2459,10 +2469,18 @@ api_handle_id :: proc(L: ^lua.State) -> u64 {
 	return u64(lua.tointeger(L, lua.upvalueindex(2)))
 }
 
+api_self_drop :: proc(L: ^lua.State, call: string) {
+	if lua.type(L, 1) != .TABLE {
+		plugin_raise(L, fmt.tprintf("call it as %s", call))
+	}
+	lua.remove(L, 1)
+}
+
 qed_on :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
+	api_self_drop(L, "qed:on(event, handler)")
 	p := &editor.plugins
 	name := api_string(L, 1)
 	event: PluginEvent
@@ -2497,6 +2515,7 @@ qed_emit :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
+	api_self_drop(L, "qed:emit(event, data)")
 	p := &editor.plugins
 	name := api_string(L, 1)
 	pl := api_loaded(L, editor)

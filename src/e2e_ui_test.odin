@@ -15,6 +15,7 @@ e2e_ui_find_row :: proc(e: ^E2E, text: string) -> int {
 
 e2e_ui_settle :: proc(e: ^E2E) {
 	plugin_flush(&e.ed)
+	plugin_pump(&e.ed)
 	e2e_render(e)
 }
 
@@ -171,14 +172,15 @@ return {setup = function()
 		check(matches:count() == 4, "empty query keeps every record")
 		matches:set_query("mn")
 		check(matches:count() == 1 and matches:at(1).path == "src/main.odin", "filtered")
-		local positions = matches:at(1).positions
-		check(positions[1] == 5 and positions[2] == 8, "1-based matched byte offsets")
+		local positions = matches:positions("src/main.odin")
+		check(positions[1] == 5 and positions[2] == 8 and matches:at(1).positions == nil, "1-based matched byte offsets")
 		files:append{path = "lib/mine.lua", size = 9}
 		check(matches:count() == 2, "a live list follows its source")
-		files:set("lib/mine.lua", {path = "lib/other.lua"})
-		check(matches:count() == 1, "set refreshes the matched text")
+		check(not pcall(files.set, files, "lib/mine.lua", {path = "lib/other.lua"}), "set cannot change the key field")
+		files:remove("lib/mine.lua")
+		check(matches:count() == 1, "remove follows")
 		files:remove("src/main.odin")
-		check(matches:count() == 0, "remove follows")
+		check(matches:count() == 0, "remove follows again")
 		check(not pcall(matches.append, matches, {path = "z"}), "a fuzzy list is read-only")
 		files:clear()
 		check(files:count() == 0 and matches:count() == 0, "clear")

@@ -568,11 +568,11 @@ e2e_walk_raise_keeps_no_ref :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	src := e2e_plugin(&e, "src", `return {setup = function()
-		qed.command{name = "Give", run = function() qed.emit("src:give", {walk = qed.fs.walk, dirs = qed.fs.dirs}) end}
+		qed.command{name = "Give", run = function() qed:emit("src:give", {walk = qed.fs.walk, dirs = qed.fs.dirs}) end}
 	end}`)
 	e2e_plugin(&e, "dst", `local got
 	return {setup = function()
-		qed.on("src:give", function(d) got = d end)
+		qed:on("src:give", function(d) got = d end)
 		qed.command{name = "Call", run = function()
 			local a = select(2, pcall(got.walk, {root = "/tmp"}))
 			local b = select(2, pcall(got.dirs))

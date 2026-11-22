@@ -691,7 +691,7 @@ bench_plugin_keystroke :: proc(t: ^testing.T) {
 	run("plugin, no subscribers", {{"q.lua", `return {setup = function() qed.command{name = "Q: Cmd", run = function() end} end}`}})
 	run("one buf_changed subscriber", {{"s.lua", `
 		n = 0
-		return {setup = function() qed.on("buf_changed", function(b, rev) n = n + 1 end) end}`}})
+		return {setup = function() qed:on("buf_changed", function(b, rev) n = n + 1 end) end}`}})
 }
 
 @(private = "file")

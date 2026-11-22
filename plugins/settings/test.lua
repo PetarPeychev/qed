@@ -47,7 +47,7 @@ function T.theme_enter_persists_only_the_theme_key(t)
 	local original = qed.theme.current()
 	qed.fs.write(t.config_path(), '{"tab_width": 2}')
 	local fired = 0
-	local h = qed.on("theme_changed", function() fired = fired + 1 end)
+	local h = qed:on("theme_changed", function() fired = fired + 1 end)
 	qed.run("Settings: Theme")
 	t.type("nord")
 	t.pump(20)

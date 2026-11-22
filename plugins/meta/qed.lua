@@ -240,16 +240,16 @@ function Handle:off() end
 ---`config_changed(changed)`: `changed` is a set of this plugin's top-level config keys whose merged value changed (`{}` when only core config did); apply just those to keep live toggles of the others.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
 ---`plugin_loaded(id)` and `plugin_unloaded(id)` fire for other plugins after startup (hot reload, enable, disable, an error).
----A `"<plugin>:<event>"` name subscribes to that plugin's `qed.emit` and gets its `data`.
+---A `"<plugin>:<event>"` name subscribes to that plugin's `qed:emit` and gets its `data`.
 ---@param event qed.Event
 ---@param fn function
 ---@return qed.Handle
-function qed.on(event, fn) end
+function qed:on(event, fn) end
 
----Queues a custom event for `qed.on(name)` handlers. `name` must be `"<this plugin's id>:<event>"`; every handler gets the same `data` (read-only by convention).
+---Queues a custom event for `qed:on(name)` handlers. `name` must be `"<this plugin's id>:<event>"`; every handler gets the same `data` (read-only by convention).
 ---@param name string
 ---@param data? any
-function qed.emit(name, data) end
+function qed:emit(name, data) end
 
 ---Publishes functions other plugins reach through `qed.plugin(id)`. Setup only, once per load. They run in the caller's task against this plugin's state.
 ---@param fns table<string, function>
@@ -348,32 +348,32 @@ function qed.every(ms, fn) end
 ---@field esc_clears? boolean Esc clears the non-empty field instead of closing the pane
 
 ---A core-owned item source (`qed.fs.dirs`, `qed.buf.line_list`, `qed.fs.walk`). Items live in core and are built only when drawn; only activated or changed ones reach Lua, as `{label, path?, detail?, buf?, pos?, dir?, depth?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
----@class qed.List
+---@class qed.PaneSource
 ---@field id integer
-local List = {}
+local PaneSource = {}
 ---Walk handles: the number of items, or `nil, "pending"` while `ready()` is false (it starts the background walk; a `within` handle is always ready).
 ---@return integer|nil
 ---@return "pending"|nil err
-function List:count() end
+function PaneSource:count() end
 ---Walk handles: replaces the ignore set of every walk of this root (paths hidden unless `ignored`); a change reruns them. `false` marks it not known yet: no background walk runs and `View:expand(true)` refuses until a list arrives.
 ---@param paths string[]|false
-function List:ignore(paths) end
+function PaneSource:ignore(paths) end
 ---Walk handles: false while the walk (or its background prewarm) is still running.
 ---@return boolean
-function List:ready() end
+function PaneSource:ready() end
 ---Walk handles: a new handle keeping only `paths`, their ancestors and everything under a listed dir. Listed paths ignore the dotfiles and ignored rules. Raises on an already narrowed handle.
 ---@param paths string[]
----@return qed.List
-function List:within(paths) end
+---@return qed.PaneSource
+function PaneSource:within(paths) end
 ---Walk handles: a new handle that also lists `paths` (and their missing parent dirs) when they are not on disk, e.g. deleted files. It shares the narrowed handle's paths instead of copying them.
 ---@param paths string[]
----@return qed.List
-function List:union(paths) end
+---@return qed.PaneSource
+function PaneSource:union(paths) end
 ---Walk handles: frees the handle now instead of at collection; a view keeps its own copy.
-function List:release() end
+function PaneSource:release() end
 
 ---@class qed.UiList
----@field items? (string|qed.UiItem)[]|qed.List
+---@field items? (string|qed.UiItem)[]|qed.PaneSource
 ---@field multi? boolean Shift+Up/Down selects a range
 ---@field max? integer items past it are dropped and the count shows `N+`
 ---@field empty? string dim hint while the list is empty
@@ -430,17 +430,17 @@ function List:release() end
 ---@field id integer
 local View = {}
 ---Replaces the items, or swaps in a list handle (then `selected` is an item key, a path for a walk). `selected` is the item index to highlight (default 1, or the item restored by `id`), `more` shows the count as `N+`, `hint` replaces `list.empty` while the list is empty, `columns` replaces `list.columns` (items, not handles).
----@param items (string|qed.UiItem)[]|qed.List
+---@param items (string|qed.UiItem)[]|qed.PaneSource
 ---@param opts? {selected?: integer|string, more?: boolean, hint?: string, columns?: qed.UiColumn[]}
 ---@return true|nil ok
 ---@return "closed"|nil err
 function View:set(items, opts) end
----Adds items at the end and keeps the selection. Raises on a list backed by a `qed.List` (replace it with `View:set`).
+---Adds items at the end and keeps the selection. Raises on a list backed by a `qed.PaneSource` (replace it with `View:set`).
 ---@param items (string|qed.UiItem)[]
 ---@return true|nil ok
 ---@return "closed"|nil err
 function View:append(items) end
----Merges `fields` into the item whose key is `key` (a string item becomes `{label = s}` first). `nil, "not found"` when no item has that key. Raises on a list backed by a `qed.List`.
+---Merges `fields` into the item whose key is `key` (a string item becomes `{label = s}` first). `nil, "not found"` when no item has that key. Raises on a list backed by a `qed.PaneSource`.
 ---@param key string
 ---@param fields qed.UiItem
 ---@return true|nil ok
@@ -635,51 +635,71 @@ function qed.ui.virtual_column(props) end
 ---@return qed.Node
 function qed.ui.outlet(props) end
 
----@class qed.RecordList
-local RecordList = {}
+---@class qed.List
+local List = {}
 ---@param record table
-function RecordList:append(record) end
+function List:append(record) end
 ---@param position integer
 ---@param record table
-function RecordList:insert(position, record) end
+function List:insert(position, record) end
+---Merges `fields` into the record (not its key field) and rebuilds that record's item.
 ---@param key string|integer
 ---@param fields table
 ---@return true|nil
-function RecordList:set(key, fields) end
+function List:set(key, fields) end
 ---@param key string|integer
-function RecordList:remove(key) end
-function RecordList:clear() end
+function List:remove(key) end
+function List:clear() end
 ---@param key string|integer
 ---@return table|nil
-function RecordList:get(key) end
+function List:get(key) end
 ---@param index integer
 ---@return table|nil
-function RecordList:at(index) end
+function List:at(index) end
 ---@param key string|integer
 ---@return integer|nil
-function RecordList:index_of(key) end
+function List:index_of(key) end
 ---@return integer
-function RecordList:count() end
+function List:count() end
 ---@param field string
 ---@param opts? {reverse?: boolean}
-function RecordList:sort(field, opts) end
----Fuzzy lists only: re-filters in core; views update without a tree update.
+function List:sort(field, opts) end
+
+---A live filtered view of a `qed.List`, sorted by score; records are the source's own tables.
+---@class qed.FuzzyList
+local FuzzyList = {}
+---@param key string|integer
+---@return table|nil
+function FuzzyList:get(key) end
+---@param index integer
+---@return table|nil
+function FuzzyList:at(index) end
+---@param key string|integer
+---@return integer|nil
+function FuzzyList:index_of(key) end
+---@return integer
+function FuzzyList:count() end
+---Re-filters in core; views update without a tree update.
 ---@param query string
-function RecordList:set_query(query) end
+function FuzzyList:set_query(query) end
+---The record's matched byte offsets (1-based) for the current query; nil when it does not match.
+---@param key string|integer
+---@return integer[]|nil
+function FuzzyList:positions(key) end
 
 qed.list = {}
 
 ---A core-owned record list; `key` names the identity field.
 ---@param spec {key: string}
----@return qed.RecordList
+---@return qed.List
 function qed.list.new(spec) end
 
 qed.fuzzy = {}
 
----A live filtered view of `source` sorted by score; records carry `positions` (matched byte offsets).
----@param source qed.RecordList
+---A live filtered view of `source` sorted by score (`matches:positions(key)` gives the matched offsets).
+---@param source qed.List
 ---@param spec {field: string}
----@return qed.RecordList
+---@return qed.FuzzyList
 function qed.fuzzy.list(source, spec) end
 
 ---@class qed.PickSpec
@@ -1130,7 +1150,7 @@ function qed.buf.base(b) end
 
 ---A list handle over the buffer's lines. An edit, a disk reload or the buffer closing shows on the next frame: a filter is recomputed keeping the selected line (a `:N` past the end clamps), a closed buffer empties the list. Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching; a bare number lists row N first, then the text matches. A view over it opens on the match nearest the cursor.
 ---@param b qed.Buf
----@return qed.List
+---@return qed.PaneSource
 function qed.buf.line_list(b) end
 
 ---A new internal buffer (not in the buffer list, no LSP, git or autosave) as a buffer object: every `qed.buf.*` function is a method with the buffer bound (`buffer:text()`). The plugin owns it; `buffer:close()` frees it.
@@ -1142,10 +1162,6 @@ function qed.buf.create(spec) end
 ---@param b integer
 ---@return qed.BufferObject|nil
 function qed.buf.get(b) end
-
----Frees an internal buffer and its subscriptions.
----@param b qed.Buf
-function qed.buf.close(b) end
 
 ---Subscribes to a buffer's events (`"change"`); handlers get the `buf_changed` arguments. Internal buffers fire only these.
 ---@param b qed.Buf
@@ -1193,12 +1209,12 @@ function qed.fs.list(dir) end
 
 ---A list handle over the subdirectories of `path` (default `qed.root()`; symlinks to dirs included, dotfiles only with `dotfiles`), items `{label = name, path}` sorted by name. Under a `path` field it follows the field instead: the dir its text names, prefix-matched (smart case) against the last segment; a dir is read once while its segment stays the same.
 ---@param opts? {path?: string, dotfiles?: boolean}
----@return qed.List
+---@return qed.PaneSource
 function qed.fs.dirs(opts) end
 
 ---A list handle over every file and dir under `root` (default `qed.root()`): a threaded parallel walk, prewarmed in the background when a view opens over it, shared by handles with the same options, rerun after `qed.fs` writes under its root (serving the old items until the rerun lands). Dotfiles and the root's ignore set (`List:ignore`) are left out unless `dotfiles`/`ignored`. Items `{label, path, dir?, depth?}`. A filter field ranks paths (capped at `list.max`, default 500, narrowing the previous hits as the query grows), debounced.
 ---@param opts? {root?: string, dotfiles?: boolean, ignored?: boolean}
----@return qed.List
+---@return qed.PaneSource
 function qed.fs.walk(opts) end
 
 ---Copies a file or dir tree (modes kept, symlinks copied as links, fifos and devices skipped). Refuses an existing `dst`, a `dst` inside `src` and a special `src`; creates missing parent dirs.

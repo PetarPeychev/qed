@@ -170,8 +170,8 @@ return {
 		toggle("Toggle on Save", "format", "On save")
 		toggle("Toggle Trim Whitespace on Save", "trim", "Trim whitespace on save")
 		toggle("Toggle Final Newline on Save", "newline", "Final newline on save")
-		qed.on("config_changed", function(changed) apply(qed.config(), changed) end)
-		qed.on("buf_pre_save", function(b)
+		qed:on("config_changed", function(changed) apply(qed.config(), changed) end)
+		qed:on("buf_pre_save", function(b)
 			fixups(b)
 			if on.format then
 				format(b, true)

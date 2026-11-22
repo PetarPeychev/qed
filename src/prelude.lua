@@ -39,17 +39,24 @@ for _, name in ipairs(NODE_TYPES) do
 	node_metas[name] = {__node = name}
 end
 
-local function buffer_object(buf_api, id)
-	local methods = setmetatable({}, {__index = function(_, name)
-		local fn = buf_api[name]
-		if type(fn) ~= "function" then
-			return nil
-		end
-		return function(self, ...)
+local BUFFER_METHODS = {"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line",
+	"find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor",
+	"screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base",
+	"base", "line_list", "on"}
+
+local function buffer_meta(qed)
+	local methods = {}
+	for _, name in ipairs(BUFFER_METHODS) do
+		local fn = qed.buf[name]
+		methods[name] = function(self, ...)
 			return fn(self.id, ...)
 		end
-	end})
-	return setmetatable({id = id}, {__index = methods, __eq = function(a, b) return a.id == b.id end})
+	end
+	local close = qed.close
+	function methods:close(options)
+		return close(self.id, options)
+	end
+	return {__index = methods, __eq = function(left, right) return left.id == right.id end}
 end
 
 return function(qed)
@@ -70,14 +77,15 @@ return function(qed)
 
 	local buf_api = qed.buf
 	local create = buf_api.create
+	local meta = buffer_meta(qed)
 	function buf_api.create(spec)
-		return buffer_object(buf_api, create(spec))
+		return setmetatable({id = create(spec)}, meta)
 	end
 	function buf_api.get(id)
 		if not buf_api.valid(id) then
 			return nil
 		end
-		return buffer_object(buf_api, id)
+		return setmetatable({id = id}, meta)
 	end
 
 	function qed.pick(spec)

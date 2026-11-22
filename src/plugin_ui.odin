@@ -478,7 +478,7 @@ plugin_view_event :: proc(editor: ^Editor, ev: UiViewEvent) {
 	}
 }
 
-QED_LIST_META :: "qed.List"
+QED_LIST_META :: "qed.PaneSource"
 
 qed_fs_dirs :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)

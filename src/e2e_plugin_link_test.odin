@@ -38,7 +38,7 @@ return {setup = function()
 		end,
 	}
 	assert(not pcall(qed.export, {}), "qed.export once per load")
-	qed.on("plugin_unloaded", function(id)
+	qed:on("plugin_unloaded", function(id)
 		regs[id] = nil
 	end)
 	qed.command{name = "Late Export", run = function()
@@ -58,7 +58,7 @@ local function say(...)
 	qed.message(table.concat(out, " "))
 end
 return {setup = function()
-	qed.on("startup", function() own = qed.plugin("own") end)
+	qed:on("startup", function() own = qed.plugin("own") end)
 	qed.command{name = "Add", run = function() say(own.add("abc")) end}
 	qed.command{name = "List", run = function() say(own.list()) end}
 	qed.command{name = "Slow", run = function() say("slow", own.slow()) end}
@@ -149,11 +149,11 @@ e2e_plugin_export_misuse :: proc(t: ^testing.T) {
 		assert(not pcall(qed.export, {[1] = print}), "only names")
 		assert(not pcall(qed.export, "x"), "a table")
 		qed.command{name = "Emit", run = function()
-			local ok, err = pcall(qed.emit, "other:x")
+			local ok, err = pcall(qed.emit, qed, "other:x")
 			qed.message(err)
 		end}
 		qed.command{name = "Bad Event", run = function()
-			local ok, err = pcall(qed.on, "nope", print)
+			local ok, err = pcall(qed.on, qed, "nope", print)
 			qed.message(tostring(ok))
 		end}
 	end}`)
@@ -168,13 +168,13 @@ e2e_plugin_custom_events :: proc(t: ^testing.T) {
 	e := e2e_root_start("x")
 	defer e2e_stop(&e)
 	link_plugin(&e, "src", `return {setup = function()
-		qed.command{name = "Ping", run = function() qed.emit("src:ping", {n = 7}) end}
-		qed.command{name = "Pong", run = function() qed.emit("src:pong") end}
+		qed.command{name = "Ping", run = function() qed:emit("src:ping", {n = 7}) end}
+		qed.command{name = "Pong", run = function() qed:emit("src:pong") end}
 	end}`)
 	dst := link_plugin(&e, "dst", `return {setup = function()
-		qed.on("src:ping", function(d) qed.log("ping " .. d.n) end)
-		qed.on("src:pong", function(d) qed.log("pong " .. tostring(d)) end)
-		qed.on("other:ping", function() qed.log("wrong") end)
+		qed:on("src:ping", function(d) qed.log("ping " .. d.n) end)
+		qed:on("src:pong", function(d) qed.log("pong " .. tostring(d)) end)
+		qed:on("other:ping", function() qed.log("wrong") end)
 	end}`)
 	e2e_git_settle(&e)
 	subs := e.ed.plugins.subs[.Custom]
@@ -202,8 +202,8 @@ e2e_plugin_lifecycle_events :: proc(t: ^testing.T) {
 	e.ed.working_root = strings.clone(e.dir)
 	nav_write(e.path, "two\n")
 	link_plugin(&e, "rec", `return {setup = function()
-		qed.on("plugin_loaded", function(id) qed.log("loaded " .. id) end)
-		qed.on("plugin_unloaded", function(id) qed.log("unloaded " .. id) end)
+		qed:on("plugin_loaded", function(id) qed.log("loaded " .. id) end)
+		qed:on("plugin_unloaded", function(id) qed.log("unloaded " .. id) end)
 	end}`)
 	e2e_git_settle(&e)
 	testing.expect_value(t, link_logged(&e, "Rec", "loaded rec"), 0)
@@ -293,7 +293,7 @@ end}`
 PARK_USER :: `
 local own, stale
 return {setup = function()
-	qed.on("startup", function() own = qed.plugin("own") end)
+	qed:on("startup", function() own = qed.plugin("own") end)
 	qed.command{name = "Park", run = function() own.park() end}
 	qed.command{name = "Stash", run = function() stale = own.stash() end}
 	qed.command{name = "Stale", run = function() qed.message(tostring(stale())) end}

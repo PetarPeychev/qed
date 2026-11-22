@@ -29,7 +29,7 @@ ui_kind_props := [UiKind][]string {
 	.Box            = {"border", "title"},
 	.Scroll         = {"header"},
 	.Text           = {"wrap", "align"},
-	.Editor         = {"buffer", "placeholder", "line_numbers", "highlight", "wrap", "readonly", "current_line_style"},
+	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly", "current_line_style"},
 	.Virtual_Column = {"data", "item", "highlight_style"},
 	.Outlet         = {},
 }
@@ -134,22 +134,39 @@ ui_marshal_margin :: proc(m: ^UiMarshal, idx: c.int) -> (out: [4]int) {
 	idx := lua.absindex(L, idx)
 	#partial switch lua.type(L, idx) {
 	case .NUMBER:
-		n := int(lua.tointeger(L, idx))
-		return {n, n, n, n}
+		cells := int(lua.tointeger(L, idx))
+		return {cells, cells, cells, cells}
 	case .TABLE:
-		x, has_x := api_field_int(L, idx, "x")
-		y, has_y := api_field_int(L, idx, "y")
-		if has_x || has_y {
-			return {y, x, y, x}
-		}
-		for i in 0 ..< 4 {
-			lua.rawgeti(L, idx, lua.Integer(i + 1))
-			out[i] = int(lua.tointeger(L, -1))
+		sides := [?]string{"top", "right", "bottom", "left"}
+		lua.pushnil(L)
+		for lua.next(L, idx) != 0 {
+			name := ""
+			if lua.type(L, -2) == .STRING {
+				name, _ = lua.toodinstring(L, -2)
+			}
+			cells := int(lua.tointeger(L, -1))
+			switch name {
+			case "x":
+				out[1], out[3] = cells, cells
+			case "y":
+				out[0], out[2] = cells, cells
+			case:
+				known := false
+				for side, i in sides {
+					if side == name {
+						out[i] = cells
+						known = true
+					}
+				}
+				if !known {
+					ui_marshal_fail(m, "margin: a number, {x =, y =} or named sides {top =, right =, bottom =, left =}")
+				}
+			}
 			lua.pop(L, 1)
 		}
 		return
 	}
-	ui_marshal_fail(m, "margin: a number, {x =, y =} or {top, right, bottom, left} expected")
+	ui_marshal_fail(m, "margin: a number, {x =, y =} or named sides {top =, right =, bottom =, left =}")
 	return
 }
 
@@ -197,8 +214,9 @@ ui_marshal_style :: proc(m: ^UiMarshal, idx: c.int, what: string) -> (style: UiS
 	}
 	lua.pushnil(L)
 	for lua.next(L, idx) != 0 {
-		name, _ := lua.toodinstring(L, -2)
-		if lua.type(L, -2) != .STRING || !ui_marshal_style_field(m, &style, name, -1) {
+		if lua.type(L, -2) != .STRING {
+			ui_marshal_fail(m, fmt.tprintf("%s: style fields are named", what))
+		} else if name, _ := lua.toodinstring(L, -2); !ui_marshal_style_field(m, &style, name, -1) {
 			ui_marshal_fail(m, fmt.tprintf("%s: unknown style field '%s'", what, name))
 		}
 		lua.pop(L, 1)
@@ -388,16 +406,20 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 				ui_marshal_fail(m, fmt.tprintf("anchor: unknown '%s'", s))
 			}
 		case "align":
-			s, _ := lua.toodinstring(L, v)
-			switch s {
-			case "left", "top":
+			value, _ := lua.toodinstring(L, v)
+			start, finish := "left", "right"
+			if kind == .Row {
+				start, finish = "top", "bottom"
+			}
+			switch value {
+			case start:
 				node.align = .Start
 			case "center":
 				node.align = .Center
-			case "right", "bottom":
+			case finish:
 				node.align = .End
 			case:
-				ui_marshal_fail(m, fmt.tprintf("align: unknown '%s'", s))
+				ui_marshal_fail(m, fmt.tprintf("align: %s takes %s, center or %s, not '%s'", ui_kind_names[kind], start, finish, value))
 			}
 			if kind == .Text {
 				node.text_align = node.align
@@ -419,6 +441,12 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 				ui_marshal_fail(m, "scope: a scope name or a list of names")
 			}
 			node.scope = scopes[:]
+			for scope in scopes {
+				if scope == "editor" && kind != .Editor {
+					ui_marshal_fail(m, "scope 'editor' only goes on an editor node")
+				}
+				ui_scope_check(m.editor, scope)
+			}
 		case "on":
 			if lua.type(L, v) != .TABLE {
 				ui_marshal_fail(m, "on: table of handlers expected")
@@ -426,6 +454,11 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			}
 			lua.pushnil(L)
 			for lua.next(L, v) != 0 {
+				if lua.type(L, -2) != .STRING {
+					ui_marshal_fail(m, "on: handlers are named by event")
+					lua.pop(L, 1)
+					continue
+				}
 				ev_name, _ := lua.toodinstring(L, -2)
 				found := false
 				for n, e in ui_event_names {
@@ -453,8 +486,8 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			node.wrap_set = true
 		case "line_numbers":
 			node.line_numbers = bool(lua.toboolean(L, v))
-		case "highlight":
-			node.highlight = bool(lua.toboolean(L, v))
+		case "syntax":
+			node.syntax = bool(lua.toboolean(L, v))
 		case "readonly":
 			node.readonly = bool(lua.toboolean(L, v))
 		case "highlight_style":
@@ -482,9 +515,9 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 				ui_marshal_fail(m, "header: a floating node cannot be a header")
 			}
 		case "data":
-			list := api_ui_list(L, m.editor, v)
+			list, gone := api_ui_list_lookup(L, m.editor, v)
 			if list == nil {
-				ui_marshal_fail(m, "data: qed.list expected")
+				ui_marshal_fail(m, "data: the list is gone" if gone else "data: qed.list expected")
 				break
 			}
 			node.list = list.id
@@ -505,12 +538,19 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		return node
 	}
 	laid := 0
+	seen_keys := make(map[string]bool, 8, context.temp_allocator)
 	for k in ui_positional_keys(L, idx) {
 		lua.rawgeti(L, idx, lua.Integer(k))
 		child := ui_marshal(m, -1, depth + 1)
 		lua.pop(L, 1)
 		if child == nil {
 			continue
+		}
+		if child.key != "" {
+			if seen_keys[child.key] {
+				ui_marshal_fail(m, fmt.tprintf("duplicate key '%s' among siblings", child.key))
+			}
+			seen_keys[child.key] = true
 		}
 		append(&node.children, child)
 		append(&node.child_slots, k)
@@ -544,6 +584,24 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		ui_marshal_fail(m, "editor: buffer expected")
 	}
 	return node
+}
+
+ui_scope_check :: proc(editor: ^Editor, scope: string) {
+	if scope in editor.ui.scopes_warned {
+		return
+	}
+	for command in pane_commands {
+		if command.scope == scope {
+			return
+		}
+	}
+	for command in editor.plugins.commands {
+		if command.scope == scope {
+			return
+		}
+	}
+	editor.ui.scopes_warned[strings.clone(scope)] = true
+	editor_log(editor, .Warn, "UI", fmt.tprintf("scope '%s' has no commands", scope))
 }
 
 ui_marshal_tree :: proc(L: ^lua.State, editor: ^Editor, owner: string, idx: c.int, replacing: u64) -> (^UiNode, string) {
@@ -670,16 +728,20 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 	identity := ui_ref_identity(L)
 	ui_resolve(editor)
 	node := ui_find(&editor.ui, identity)
-	state, has := editor.ui.states[identity]
-	if node == nil && !has {
+	state: UiState
+	if node != nil {
+		state = ui_node_state_peek(&editor.ui, node)
+		state.kind = node.kind
+	} else if kept, has := editor.ui.states[identity]; has {
+		state = kept
+	} else {
 		lua.pushnil(L)
 		return 1
 	}
 	lua.createtable(L, 0, 3)
-	kind := node.kind if node != nil else UiKind.Column
-	#partial switch kind {
+	#partial switch state.kind {
 	case .Column, .Row, .Virtual_Column:
-		if state.highlighted != "" {
+		if state.highlighted != "" && (node == nil || ui_highlight_present(editor, node, state.highlighted)) {
 			lua.pushodinstring(L, state.highlighted)
 			lua.setfield(L, -2, "highlighted")
 		}
@@ -705,9 +767,18 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, patch, "state patch table expected")
 	}
 	identity := ui_ref_identity(L)
-	state := ui_state(&editor.ui, identity)
+	ui_resolve(editor)
+	state: ^UiState
+	if node := ui_find(&editor.ui, identity); node != nil {
+		state = ui_node_state(&editor.ui, node)
+	} else {
+		state = ui_state_key(&editor.ui, identity, true)
+	}
 	lua.pushnil(L)
 	for lua.next(L, patch) != 0 {
+		if lua.type(L, -2) != .STRING {
+			return plugin_raise(L, "set_state: field names are strings")
+		}
 		name, _ := lua.toodinstring(L, -2)
 		switch name {
 		case "highlighted":
@@ -869,6 +940,10 @@ ui_item_build :: proc(editor: ^Editor, vc: ^UiNode, list: ^UiList, pos: int) -> 
 		build.node = node
 	}
 	node := build.node
+	if pos >= ui_list_count(list) {
+		ui_node_free(editor, node)
+		return nil
+	}
 	key := ui_list_key(list, pos)
 	delete(node.key)
 	node.key = strings.clone(key)
@@ -898,24 +973,12 @@ qed_buf_create :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-qed_buf_close_internal :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	id := 0
-	if lua.type(L, 1) == .TABLE {
-		id, _ = api_field_int(L, 1, "id")
-	} else {
-		id = api_int(L, 1, "buffer expected")
-	}
-	p := &editor.plugins
-	for i := len(p.hooks) - 1; i >= 0; i -= 1 {
-		if p.hooks[i].buf == u64(id) {
-			plugin_hook_remove(p, i)
+plugin_buffer_hooks_drop :: proc(plugins: ^Plugins, buffer: u64) {
+	for i := len(plugins.hooks) - 1; i >= 0; i -= 1 {
+		if plugins.hooks[i].buf == buffer {
+			plugin_hook_remove(plugins, i)
 		}
 	}
-	ui_internal_close(editor, u64(id))
-	return 0
 }
 
 qed_buf_on :: proc "c" (L: ^lua.State) -> c.int {

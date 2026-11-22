@@ -81,7 +81,7 @@ local changed
 
 local function sync_hook()
 	if next(armed) and not hook then
-		hook = qed.on("buf_changed", changed)
+		hook = qed:on("buf_changed", changed)
 	elseif not next(armed) and hook then
 		hook:off()
 		hook = nil
@@ -239,15 +239,15 @@ return {
 		qed.meta{description = "Highlights and resolves merge conflict blocks"}
 		ns = qed.deco.ns("conflict")
 		qed.command{name = "Resolve", key = "Alt+m", run = run}
-		qed.on("startup", function()
+		qed:on("startup", function()
 			for _, b in ipairs(qed.buf.list()) do
 				full(b)
 			end
 		end)
-		qed.on("buf_open", full)
-		qed.on("buf_reload", function(b) full(b, true) end)
-		qed.on("buf_save", function(b) full(b, armed[b]) end)
-		qed.on("buf_close", function(b)
+		qed:on("buf_open", full)
+		qed:on("buf_reload", function(b) full(b, true) end)
+		qed:on("buf_save", function(b) full(b, armed[b]) end)
+		qed:on("buf_close", function(b)
 			state[b], armed[b] = nil, nil
 			sync_hook()
 		end)

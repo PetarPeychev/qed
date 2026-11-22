@@ -828,7 +828,7 @@ return {setup = function()
 			end
 		end
 		add("CommandHandle", handle)
-		local h = qed.on("startup", function() end)
+		local h = qed:on("startup", function() end)
 		add("Handle", h)
 		h:off()
 		local tm = qed.defer(100000, function() end)
@@ -838,7 +838,7 @@ return {setup = function()
 		add("Proc", pr)
 		pr:kill()
 		local l = qed.fs.walk{}
-		add("List", l)
+		add("PaneSource", l)
 		l:release()
 		local v = qed.ui.open{list = {items = {"a"}}}
 		add("View", v)
@@ -848,8 +848,12 @@ return {setup = function()
 		add("NodeRef", qed.ui.node("probe_text"))
 		mounted:unmount()
 		local records = qed.list.new{key = "name"}
-		for _, name in ipairs{"append", "insert", "set", "remove", "clear", "get", "at", "index_of", "count", "sort", "set_query"} do
-			if type(records[name]) == "function" then out[#out + 1] = "RecordList:" .. name end
+		for _, name in ipairs{"append", "insert", "set", "remove", "clear", "get", "at", "index_of", "count", "sort", "set_query", "positions"} do
+			if type(records[name]) == "function" then out[#out + 1] = "List:" .. name end
+		end
+		local matches = qed.fuzzy.list(records, {field = "name"})
+		for _, name in ipairs{"append", "insert", "set", "remove", "clear", "get", "at", "index_of", "count", "sort", "set_query", "positions"} do
+			if type(matches[name]) == "function" then out[#out + 1] = "FuzzyList:" .. name end
 		end
 		table.sort(out)
 		qed.message(table.concat(out, " "))
@@ -872,7 +876,7 @@ end}`)
 		testing.expectf(t, strings.contains(QED_STUB, fmt.tprintf("\nfunction %s(", m)), "plugins/meta/qed.lua is missing method `%s`", m)
 	}
 	for line in strings.split_lines(QED_STUB, context.temp_allocator) {
-		if !strings.has_prefix(line, "function ") || !strings.contains(line, ":") {
+		if !strings.has_prefix(line, "function ") || !strings.contains(line, ":") || strings.has_prefix(line, "function qed:") {
 			continue
 		}
 		decl := line[len("function "):strings.index_byte(line, '(')]

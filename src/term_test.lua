@@ -16,7 +16,7 @@ end
 
 function T.exit_code_and_event(t)
 	local seen = {}
-	qed.on("term_exit", function(name, code) seen[#seen + 1] = name .. ":" .. code end)
+	qed:on("term_exit", function(name, code) seen[#seen + 1] = name .. ":" .. code end)
 	t.eq(qed.term.create{name = "ex", cmd = "echo hi; exit 3"}, true)
 	t.wait(exited("ex"))
 	t.eq(qed.term.state("ex").code, 3, "exit code")
@@ -27,8 +27,8 @@ end
 
 function T.open_close_events(t)
 	local seen = {}
-	qed.on("term_open", function(name) seen[#seen + 1] = "open:" .. name end)
-	qed.on("term_close", function(name) seen[#seen + 1] = "close:" .. name end)
+	qed:on("term_open", function(name) seen[#seen + 1] = "open:" .. name end)
+	qed:on("term_close", function(name) seen[#seen + 1] = "close:" .. name end)
 	qed.term.create{name = "ev", cmd = "sleep 30"}
 	qed.term.restart("ev")
 	qed.term.close("ev")
@@ -56,7 +56,7 @@ end
 
 function T.restart_kill_list_close(t)
 	local exits = 0
-	qed.on("term_exit", function() exits = exits + 1 end)
+	qed:on("term_exit", function() exits = exits + 1 end)
 	qed.term.create{name = "r", cmd = "sleep 30"}
 	local pid = qed.term.state("r").pid
 	t.ok(qed.term.restart("r"))
