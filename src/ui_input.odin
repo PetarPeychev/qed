@@ -199,6 +199,16 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 			}
 		}
 	}
+	if event == .Double_Click {
+		clicked := ui_mouse_bubble(editor, ev, x, y, .Click, true)
+		return ui_mouse_bubble(editor, ev, x, y, .Double_Click, false) || clicked
+	}
+	return ui_mouse_bubble(editor, ev, x, y, event, true)
+}
+
+ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, x, y: int, event: UiEvent, native: bool) -> bool {
+	ui := &editor.ui
+	wheel := event == .Wheel
 	gen := ui.gen
 	visited := make(map[^UiNode]bool, 16, context.temp_allocator)
 	for i := len(ui.hits) - 1; i >= 0; i -= 1 {
@@ -212,16 +222,13 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 			}
 			visited[n] = true
 			args := UiHandlerArgs{mouse = true, x = x - n.rect.x + 1, y = y - n.rect.y + 1, button = ui_mouse_button(ev.key)}
-			if event == .Double_Click && n.handlers[.Click] != 0 && ui_handler_call(editor, n.owner, n.handlers[.Click], args) {
-				return true
-			}
 			if n.handlers[event] != 0 && ui_handler_call(editor, n.owner, n.handlers[event], args) {
 				return true
 			}
 			if ui.gen != gen {
 				return true
 			}
-			if ui_mouse_native(editor, n, ev, x, y, wheel) {
+			if native && ui_mouse_native(editor, n, ev, x, y, wheel) {
 				return true
 			}
 		}

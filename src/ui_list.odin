@@ -41,6 +41,7 @@ UiList :: struct {
 	sort_reverse: bool,
 	dependents:   [dynamic]u64,
 	source:       u64,
+	source_ref:   i32,
 	field:        string,
 	query:        string,
 	texts:        map[string]string,
@@ -63,6 +64,9 @@ ui_list_find :: proc(ui: ^Ui, id: u64) -> ^UiList {
 
 ui_list_free :: proc(editor: ^Editor, list: ^UiList) {
 	L := editor.plugins.L
+	if L != nil && list.source_ref != 0 {
+		lua.L_unref(L, lua.REGISTRYINDEX, c.int(list.source_ref))
+	}
 	for r in list.records {
 		if L != nil && r.ref != 0 {
 			lua.L_unref(L, lua.REGISTRYINDEX, c.int(r.ref))
@@ -429,7 +433,9 @@ ui_list_store :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, idx: c.int,
 	}
 	pos = clamp(pos, 0, len(list.records))
 	inject_at(&list.records, pos, r)
-	ui_list_reindex(list)
+	for i in pos ..< len(list.records) {
+		list.positions[list.records[i].key] = i
+	}
 	ui_list_changed(editor, list)
 }
 
@@ -726,9 +732,11 @@ qed_fuzzy_list :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 2, "field: the record field to match")
 	}
 	pl := api_loaded(L, editor)
-	lua.settop(L, 0)
+	lua.settop(L, 1)
+	source_ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
 	list := api_ui_list_push(L, editor, pl.name)
 	list.source = source.id
+	list.source_ref = source_ref
 	list.field = strings.clone(field)
 	list.fuzzy_dirty = true
 	append(&source.dependents, list.id)

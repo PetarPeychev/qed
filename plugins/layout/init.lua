@@ -53,7 +53,6 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Layout", description = "The main screen: editor, status bar, message line"}
-		qed.on("startup", refresh)
 		qed.on("buf_enter", refresh)
 		qed.on("buf_open", refresh)
 		qed.on("buf_close", refresh)
