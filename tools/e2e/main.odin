@@ -517,7 +517,6 @@ scenario_parse :: proc(path: string) -> (sc: Scenario, ok: bool) {
 		return
 	}
 	sc.name = strings.trim_suffix(filepath.base(path), ".e2e")
-	sc.w, sc.h = 80, 24
 	lines := strings.split_lines(string(data))
 	for i := 0; i < len(lines); i += 1 {
 		line := strings.trim_right(lines[i], " \t\r")
@@ -950,7 +949,7 @@ usage :: proc() {
 	fmt.eprintln(`usage: qed-e2e verify|update|demo|matrix|show [flags] [scenario...]
   verify            run scenarios, compare snaps to tools/e2e/golden (exit 1 on any diff)
   update            run scenarios, rewrite goldens
-  demo --out DIR    run scenarios, write DIR/<name>.cast (and .gif when agg is on PATH)
+  demo --out DIR    (--size COLSxROWS, default 160x45) run scenarios, write DIR/<name>.cast (and .gif when agg is on PATH)
   matrix            run every scenario per --sizes x --terms, compare TERM variants
   show FILE         print a snapshot file in color
 flags: --qed PATH (./qed)  --term T (xterm-256color)  --no-colorterm
@@ -964,6 +963,7 @@ main :: proc() {
 		usage()
 	}
 	run := Run{qed = "./qed", term = "xterm-256color", colorterm = true}
+	demo_size := "160x45"
 	sizes := "40x12,80x24,120x40,200x60"
 	terms := "xterm-256color,tmux-256color,screen,linux,xterm-256color:256"
 	names: [dynamic]string
@@ -992,7 +992,7 @@ main :: proc() {
 	}
 	for i := 1; i < len(args); i += 1 {
 		switch args[i] {
-		case "--qed", "--term", "--out", "--sizes", "--terms":
+		case "--qed", "--term", "--out", "--sizes", "--terms", "--size":
 			if i + 1 >= len(args) {
 				usage()
 			}
@@ -1004,6 +1004,8 @@ main :: proc() {
 				run.term = v
 			case "--out":
 				run.out = v
+			case "--size":
+				demo_size = v
 			case "--sizes":
 				sizes = v
 			case "--terms":
@@ -1043,6 +1045,12 @@ main :: proc() {
 	} else {
 		for &sc in list {
 			run.w, run.h = sc.w, sc.h
+			if sc.w == 0 {
+				run.w, run.h = 80, 24
+				if run.mode == .Demo {
+					run.w, run.h = size_parse(demo_size)
+				}
+			}
 			fmt.printfln("%s", sc.name)
 			scenario_run(&run, &sc)
 			if run.mode == .Demo {
@@ -1074,7 +1082,7 @@ demo_render :: proc(run: ^Run, name: string) {
 		return
 	}
 	gif := fmt.tprintf("%s/%s.gif", run.out, name)
-	cmd := fmt.tprintf("command -v agg >/dev/null && agg --quiet --idle-time-limit 2 --font-family 'DejaVu Sans Mono,Noto Sans Mono,Noto Sans Symbols 2' %s %s", arg_quote(cast_path), arg_quote(gif))
+	cmd := fmt.tprintf("command -v agg >/dev/null && agg --quiet --idle-time-limit 2 --font-size 16 --font-family 'DejaVu Sans Mono,Noto Sans Mono,Noto Sans Symbols 2' %s %s", arg_quote(cast_path), arg_quote(gif))
 	if libc.system(strings.clone_to_cstring(cmd, context.temp_allocator)) == 0 {
 		fmt.printfln("  gif %s", gif)
 	}

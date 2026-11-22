@@ -52,3 +52,4 @@ Scenario lines (`#` comments): `size WxH`, `requires TOOL`, `timeout MS`, `file 
 Snapshot file: header (size, cursor), `-- text` rows (right-trimmed), `-- style` rows (one symbol
 per cell, wide-char continuations skipped), `-- legend` (symbol to `fg= bg=` + attrs). Letters are
 assigned in order of appearance, so a diff compares decoded styles, not letters.
+Demos render at `--size COLSxROWS` (default 160x45, agg `--font-size 16`) unless a scenario sets `size`; verify/update default to 80x24; no scenario sets a size today.
