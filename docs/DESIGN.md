@@ -351,6 +351,8 @@ Terminal workarounds, documented in `lib/tb2/PATCHES.md`:
 
 ## Panes
 
+The declarative `qed.ui` node tree that replaces this model: [notes/ui.md](notes/ui.md).
+
 `Pane` (`pane.odin`) is the one UI model of [notes/panes.md](notes/panes.md), built so far to
 M4: placement `center`/`full`/`split` (`pane_geom` computes every rect), size class, title, fields
 (`input`/`filter`/`query`/`path` modes), a styled text body or a `Preview` body (`body_preview`), a list
