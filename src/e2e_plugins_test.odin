@@ -662,6 +662,7 @@ pt_session :: proc(e: ^E2E, name: string, test: PluginFile) -> (tests: c.int, na
 	file := fmt.aprintf("%s/start.txt", dir)
 	_ = os.write_entire_file(file, nil)
 	e^ = E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
+	e2e_old_ui(&e.ed)
 	e.ed.plugins.persist_path = fmt.aprintf("%s/config.json", dir)
 	delete(e.ed.working_root)
 	e.ed.working_root = strings.clone(dir)
@@ -842,6 +843,14 @@ return {setup = function()
 		local v = qed.ui.open{list = {items = {"a"}}}
 		add("View", v)
 		v:close()
+		local mounted = qed.ui.mount("notification", qed.ui.text{id = "probe_text", "probe"})
+		add("MountHandle", mounted)
+		add("NodeRef", qed.ui.node("probe_text"))
+		mounted:unmount()
+		local records = qed.list.new{key = "name"}
+		for _, name in ipairs{"append", "insert", "set", "remove", "clear", "get", "at", "index_of", "count", "sort", "set_query"} do
+			if type(records[name]) == "function" then out[#out + 1] = "RecordList:" .. name end
+		end
 		table.sort(out)
 		qed.message(table.concat(out, " "))
 	end}

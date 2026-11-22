@@ -68,6 +68,7 @@ PluginEvent :: enum {
 	Quit,
 	Plugin_Loaded,
 	Plugin_Unloaded,
+	Message,
 	Custom,
 }
 
@@ -91,6 +92,7 @@ plugin_event_names := [PluginEvent]string {
 	.Quit             = "quit",
 	.Plugin_Loaded    = "plugin_loaded",
 	.Plugin_Unloaded  = "plugin_unloaded",
+	.Message          = "message",
 	.Custom           = "",
 }
 
@@ -136,6 +138,7 @@ PluginTask :: struct {
 
 PluginHook :: struct {
 	id:    u64,
+	buf:   u64,
 	event: PluginEvent,
 	name:  string,
 	owner: string,
@@ -182,6 +185,7 @@ PluginQueued :: struct {
 	a, b:   string,
 	only:   string,
 	typed:  bool,
+	internal: bool,
 	lo, hi: int,
 }
 
@@ -499,7 +503,7 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 		lua.pushinteger(L, lua.Integer(q.buf))
 		lua.pushodinstring(L, q.a)
 		return 2
-	case .Root_Changed:
+	case .Root_Changed, .Message:
 		lua.pushodinstring(L, q.a)
 		lua.pushodinstring(L, q.b)
 		return 2
@@ -698,7 +702,7 @@ plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = n
 			continue
 		}
 		for h in p.hooks {
-			if h.event == q.event && h.owner == pl.name && (q.event != .Custom || h.name == q.a) {
+			if h.event == q.event && h.owner == pl.name && (q.event != .Custom || h.name == q.a) && (h.buf == q.buf || (h.buf == 0 && !q.internal)) {
 				append(&ids, h.id)
 			}
 		}
@@ -734,6 +738,17 @@ plugin_queue :: proc(editor: ^Editor, q: PluginQueued) {
 }
 
 plugin_buffers_check :: proc(editor: ^Editor) {
+	for b in editor.ui.internal {
+		if !b.plugin_seen {
+			b.plugin_seen = true
+			b.plugin_rev = b.rev
+			continue
+		}
+		if b.rev != b.plugin_rev {
+			b.plugin_rev = b.rev
+			plugin_queue(editor, {event = .Buf_Changed, buf = b.id, n = i64(b.rev), internal = true, lo = 1, hi = len(b.lines)})
+		}
+	}
 	if editor.welcome {
 		return
 	}

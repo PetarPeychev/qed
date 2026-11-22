@@ -371,6 +371,9 @@ parse_keybind :: proc(s: string) -> (key: tb2.Key, alt_ch: rune, ok: bool) {
 }
 
 parse_bind :: proc(s: string) -> (key: tb2.Key, alt_ch, ch: rune, ok: bool) {
+	if named, nok := ui_chord_named_key(s); nok {
+		return named, 0, 0, true
+	}
 	if r, sz := utf8.decode_rune_in_string(s); sz > 0 && sz == len(s) && r > ' ' && r != utf8.RUNE_ERROR {
 		return {}, 0, r, true
 	}
@@ -576,8 +579,8 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 			if j == i || other.scope != cmd.scope || (set[j] && j > i) {
 				continue
 			}
-			k, a, sc := command_effective_bind(other)
-			if sc == "" || k != cmd.key || a != cmd.alt_ch || other.ch != cmd.ch {
+			_, _, sc := command_effective_bind(other)
+			if sc == "" || ui_chord_normalize(sc) != ui_chord_normalize(cmd.shortcut) {
 				continue
 			}
 			append(invalid, fmt.tprintf("keybinds/%s (%s is %q)", command_config_name(cmd), cmd.shortcut, other.name))

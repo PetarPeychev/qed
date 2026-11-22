@@ -57,7 +57,13 @@
     "goto": {
       "enabled": true
     },
+    "layout": {
+      "enabled": true
+    },
     "markdown": {
+      "enabled": true
+    },
+    "palette": {
       "enabled": true
     },
     "settings": {
@@ -111,7 +117,24 @@
     "Message Log: Toggle History": "h",
     "Plugins: Enable/Disable": "e",
     "Plugins: Reload": "r",
-    "Plugins: Show Log": "l"
+    "Plugins: Show Log": "l",
+    "Editor: Left": "Left",
+    "Editor: Right": "Right",
+    "Editor: Up": "Up",
+    "Editor: Down": "Down",
+    "Editor: Select Left": "Shift+Left",
+    "Editor: Select Right": "Shift+Right",
+    "Editor: Select Up": "Shift+Up",
+    "Editor: Select Down": "Shift+Down",
+    "Editor: Word Left": "Ctrl+Left",
+    "Editor: Word Right": "Ctrl+Right",
+    "Editor: Line Start": "Alt+Left",
+    "Editor: Line End": "Alt+Right",
+    "Editor: Newline": "Enter",
+    "Editor: Backspace": "Backspace",
+    "Editor: Delete": "Delete",
+    "Editor: Indent": "Tab",
+    "Editor: Dedent": "Shift+Tab"
   },
   "languages": {
     "odin": {

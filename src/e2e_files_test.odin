@@ -28,6 +28,7 @@ e2e_files_start :: proc(content: string, create := true, mode := Maybe(os.Permis
 	}
 
 	ed := editor_init(path, headless = true)
+	e2e_old_ui(&ed)
 	return E2E{ed = ed, path = path}
 }
 

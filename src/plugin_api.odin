@@ -94,6 +94,9 @@ qed_buf_api := [?]lua.L_Reg {
 	{"set_base", qed_buf_set_base},
 	{"base", qed_buf_base},
 	{"line_list", qed_buf_line_list},
+	{"create", qed_buf_create},
+	{"close", qed_buf_close_internal},
+	{"on", qed_buf_on},
 	{nil, nil},
 }
 
@@ -191,6 +194,20 @@ qed_clipboard_api := [?]lua.L_Reg {
 @(private = "file")
 qed_ui_api := [?]lua.L_Reg {
 	{"open", qed_ui_open},
+	{"mount", qed_ui_mount},
+	{"node", qed_ui_node},
+	{nil, nil},
+}
+
+@(private = "file")
+qed_list_api := [?]lua.L_Reg {
+	{"new", qed_list_new},
+	{nil, nil},
+}
+
+@(private = "file")
+qed_fuzzy_api := [?]lua.L_Reg {
+	{"list", qed_fuzzy_list},
 	{nil, nil},
 }
 
@@ -211,7 +228,7 @@ plugin_qed_push :: proc(L: ^lua.State, pl: ^Plugin) {
 	subs := [?]struct {
 		name: cstring,
 		regs: []lua.L_Reg,
-	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"ui", qed_ui_api[:]}}
+	}{{"buf", qed_buf_api[:]}, {"fs", qed_fs_api[:]}, {"json", qed_json_api[:]}, {"path", qed_path_api[:]}, {"text", qed_text_api[:]}, {"lsp", qed_lsp_api[:]}, {"theme", qed_theme_api[:]}, {"term", qed_term_api[:]}, {"clipboard", qed_clipboard_api[:]}, {"deco", qed_deco_api[:]}, {"status", qed_status_api[:]}, {"ui", qed_ui_api[:]}, {"list", qed_list_api[:]}, {"fuzzy", qed_fuzzy_api[:]}}
 	for s in subs {
 		lua.newtable(L)
 		plugin_key_push(L, pl)
@@ -247,6 +264,11 @@ api_string :: proc(L: ^lua.State, idx: c.int) -> string {
 }
 
 api_buf_find :: proc(editor: ^Editor, id: u64) -> (^Buffer, int) {
+	for b in editor.ui.internal {
+		if b.id == id {
+			return b, -1
+		}
+	}
 	if editor.welcome {
 		return nil, -1
 	}
@@ -260,7 +282,13 @@ api_buf_find :: proc(editor: ^Editor, id: u64) -> (^Buffer, int) {
 
 api_buf :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> (^Buffer, int) {
 	id: u64
-	if lua.type(L, idx) > .NIL {
+	if lua.type(L, idx) == .TABLE {
+		n, _ := api_field_int(L, idx, "id")
+		if n <= 0 {
+			lua.L_argerror(L, idx, "buffer expected")
+		}
+		id = u64(n)
+	} else if lua.type(L, idx) > .NIL {
 		n := api_int(L, idx, "buffer id expected")
 		if n < 0 {
 			lua.L_argerror(L, idx, "buffer id expected")
@@ -1028,7 +1056,7 @@ api_command_push :: proc(L: ^lua.State, name, shortcut, owner, scope, keybind, k
 	lua.setfield(L, -2, "name")
 	lua.pushodinstring(L, shortcut)
 	lua.setfield(L, -2, "shortcut")
-	lua.pushodinstring(L, scope if scope != "" else "editor")
+	lua.pushodinstring(L, scope if scope != "" else "global")
 	lua.setfield(L, -2, "scope")
 	if owner != "" {
 		lua.pushodinstring(L, owner)
@@ -1240,6 +1268,9 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	b, idx := api_buf(L, entry.editor, 1)
+	if b.internal {
+		return plugin_raise(L, "internal buffer: close it with buffer:close()")
+	}
 	discard := false
 	if lua.type(L, 2) == .TABLE {
 		if lua.getfield(L, 2, "discard") == .TABLE {

@@ -6,7 +6,7 @@
 ---@field col integer
 
 ---Buffer id. `nil` or `0` means the current buffer.
----@alias qed.Buf integer|nil
+---@alias qed.Buf integer|qed.BufferObject|nil
 
 ---@class qed.Ctx
 ---@field buf integer|nil current buffer id (nil on the welcome screen)
@@ -25,7 +25,7 @@
 ---@field when? fun(ctx: qed.Ctx): boolean
 ---@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`; a bare key (`"x"`) is allowed outside the editor scope and fires only in a pane without fields
 ---@field bind_from? string without `key`: take the bind of this core command (e.g. `"Copy"`), re-read at every rebind so it follows that command's config
----@field scope? string `"editor"` (default), a core pane's scope (`"log"`, `"plugins"`) or a `qed.ui.open{scope}` (the file tree's is `"filetree"`): the command runs on its chord while a pane of that scope has focus and is listed in that pane's Ctrl+P
+---@field scope? string `"global"` (default), a core pane's scope (`"log"`, `"plugins"`), a `qed.ui.open{scope}` (the file tree's is `"filetree"`) or a `qed.ui` node scope: the command runs on its chord while focus is inside a node or pane of that scope
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
 ---@field keybind? string the key in `plugins.<id>.keybinds`, default `name`; commands sharing it share the bind and the first `key` among them
 
@@ -121,7 +121,7 @@ function qed.config_unset(keys) end
 ---@class qed.CommandInfo
 ---@field name string visible name
 ---@field shortcut string the live bind, `""` when unbound
----@field scope string `"editor"`, `"filetree"`, `"log"`, `"plugins"` or a pane's scope
+---@field scope string `"global"`, `"editor"` (editor nodes), `"filetree"`, `"log"`, `"plugins"` or a pane's or node's scope
 ---@field owner? string plugin id; nil for core commands
 ---@field keybind? string its key in `keybinds` (core) or `plugins.<owner>.keybinds`; nil for a core command borrowing another's bind
 ---@field key? string the default bind (with `keybind`)
@@ -225,7 +225,7 @@ function qed.shell_quote(s) end
 ---@return {label: string, path: string, pos: qed.Pos}[]
 function qed.parse_locations(text, opts) end
 
----@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"|"plugin_loaded"|"plugin_unloaded"|string
+---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"|"plugin_loaded"|"plugin_unloaded"|"message"|string
 
 ---@class qed.Handle
 ---@field id integer
@@ -550,6 +550,137 @@ qed.ui = {}
 ---@return qed.View|nil
 ---@return "busy"|"closed"|nil err
 function qed.ui.open(spec) end
+
+---@class qed.Node: table
+
+---@class qed.MountHandle
+---@field id integer
+local MountHandle = {}
+
+---Replaces the mounted tree; state survives for nodes with the same identity (id, key, or type + position).
+---@param tree qed.Node
+function MountHandle:update(tree) end
+
+---Removes the tree. A no-op when already unmounted.
+function MountHandle:unmount() end
+
+---@class qed.NodeRef
+local NodeRef = {}
+
+---Moves the global focus to this node. `nil, "no such node"` when it is not in the tree.
+---@return true|nil
+---@return string|nil err
+function NodeRef:focus() end
+
+---The node's widget state: `highlighted` (lists), `offset` (scroll), `scroll` (editor, 1-based top row).
+---@return table|nil
+function NodeRef:state() end
+
+---Changes only the named state fields (`highlighted`, `offset`, `scroll`); no rebuild. A new `highlighted` scrolls into view.
+---@param patch table
+function NodeRef:set_state(patch) end
+
+---The node's last laid-out rect, 1-based screen cells: `{x, y, width, height}`; nil when hidden or absent.
+---@return {x: integer, y: integer, width: integer, height: integer}|nil
+function NodeRef:rect() end
+
+---Mounts `tree` into an outlet: a layer (`background`, `base`, `popup`, `pane`, `notification`, `alert`) or a plugin's `qed.ui.outlet` id. Unmounted when the plugin unloads.
+---@param outlet string
+---@param tree qed.Node
+---@return qed.MountHandle
+function qed.ui.mount(outlet, tree) end
+
+---A reference to the node with this `id`.
+---@param id string
+---@return qed.NodeRef
+function qed.ui.node(id) end
+
+---Children stacked vertically. Props: `gap`, `align`, `separator`, `highlight_style`, plus common props (`id`, `key`, `width`, `height`, `grow`, `drop`, `margin`, `float`, `anchor`, `scope`, `on`, style fields).
+---@param props table
+---@return qed.Node
+function qed.ui.column(props) end
+
+---Children side by side. Props as `column`.
+---@param props table
+---@return qed.Node
+function qed.ui.row(props) end
+
+---Exactly one laid-out child. Props: `border`, `title`.
+---@param props table
+---@return qed.Node
+function qed.ui.box(props) end
+
+---Exactly one laid-out child, scrolled; slot `header` pinned above it. Takes the wheel.
+---@param props table
+---@return qed.Node
+function qed.ui.scroll(props) end
+
+---Strings and spans (`{fg = "...", bold = true, "text", ...}`) as children. Props: `wrap`, `align`.
+---@param props table
+---@return qed.Node
+function qed.ui.text(props) end
+
+---A view over a buffer. Props: `buffer`, `placeholder`, `line_numbers`, `highlight`, `wrap`, `readonly`, `current_line_style`. Typing inserts; movement and editing are the `editor` scope's commands.
+---@param props table
+---@return qed.Node
+function qed.ui.editor(props) end
+
+---Rows built by `item(record)` for the records of `data` (a `qed.list`) in view. Props: `data`, `item`, `highlight_style`.
+---@param props table
+---@return qed.Node
+function qed.ui.virtual_column(props) end
+
+---A transparent slot other plugins mount into with `qed.ui.mount(id, tree)`. Prop: `id`.
+---@param props table
+---@return qed.Node
+function qed.ui.outlet(props) end
+
+---@class qed.RecordList
+local RecordList = {}
+---@param record table
+function RecordList:append(record) end
+---@param position integer
+---@param record table
+function RecordList:insert(position, record) end
+---@param key string|integer
+---@param fields table
+---@return true|nil
+function RecordList:set(key, fields) end
+---@param key string|integer
+function RecordList:remove(key) end
+function RecordList:clear() end
+---@param key string|integer
+---@return table|nil
+function RecordList:get(key) end
+---@param index integer
+---@return table|nil
+function RecordList:at(index) end
+---@param key string|integer
+---@return integer|nil
+function RecordList:index_of(key) end
+---@return integer
+function RecordList:count() end
+---@param field string
+---@param opts? {reverse?: boolean}
+function RecordList:sort(field, opts) end
+---Fuzzy lists only: re-filters in core; views update without a tree update.
+---@param query string
+function RecordList:set_query(query) end
+
+qed.list = {}
+
+---A core-owned record list; `key` names the identity field.
+---@param spec {key: string}
+---@return qed.RecordList
+function qed.list.new(spec) end
+
+qed.fuzzy = {}
+
+---A live filtered view of `source` sorted by score; records carry `positions` (matched byte offsets).
+---@param source qed.RecordList
+---@param spec {field: string}
+---@return qed.RecordList
+function qed.fuzzy.list(source, spec) end
 
 ---@class qed.PickSpec
 ---@field items (string|qed.UiItem)[]
@@ -1001,6 +1132,30 @@ function qed.buf.base(b) end
 ---@param b qed.Buf
 ---@return qed.List
 function qed.buf.line_list(b) end
+
+---A new internal buffer (not in the buffer list, no LSP, git or autosave) as a buffer object: every `qed.buf.*` function is a method with the buffer bound (`buffer:text()`). The plugin owns it; `buffer:close()` frees it.
+---@param spec {internal: true}
+---@return qed.BufferObject
+function qed.buf.create(spec) end
+
+---A buffer object for an open buffer id, nil when closed.
+---@param b integer
+---@return qed.BufferObject|nil
+function qed.buf.get(b) end
+
+---Frees an internal buffer and its subscriptions.
+---@param b qed.Buf
+function qed.buf.close(b) end
+
+---Subscribes to a buffer's events (`"change"`); handlers get the `buf_changed` arguments. Internal buffers fire only these.
+---@param b qed.Buf
+---@param event "change"
+---@param handler function
+---@return {remove: fun()}
+function qed.buf.on(b, event, handler) end
+
+---@class qed.BufferObject
+---@field id integer
 
 qed.fs = {}
 

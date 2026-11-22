@@ -131,6 +131,7 @@ e2e_start :: proc(content := "") -> E2E {
 	_ = os.write_entire_file(path, transmute([]u8)content)
 
 	ed := editor_init(path, headless = true)
+	e2e_old_ui(&ed)
 	// the root is the test process's cwd (the qed repo); keep the git plugin's status out of these sessions
 	append(&ed.plugins.fakes, PluginFake{pattern = fmt.tprintf("git -C %s ", ed.working_root), code = 128})
 	append(&ed.plugins.fakes, PluginFake{pattern = fmt.tprintf("find %s ", ed.working_root)})
@@ -260,6 +261,7 @@ e2e_git_start :: proc(seed: string, name := "file.txt") -> E2E {
 		),
 	)
 	e := E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
+	e2e_old_ui(&e.ed)
 	e2e_git_settle(&e)
 	return e
 }
@@ -296,8 +298,26 @@ e2e_plugin :: proc(e: ^E2E, name, src: string) -> ^Plugin {
 	return pl
 }
 
+// The old suite drives the old editor path; tests of the qed.ui layout start it with e2e_new_ui.
+e2e_old_ui :: proc(ed: ^Editor) {
+	if pl := plugin_find(&ed.plugins, "layout"); pl != nil && pl.state == .Enabled {
+		plugin_unload(ed, pl)
+		pl.state = .Disabled
+	}
+}
+
+e2e_new_ui :: proc(e: ^E2E) {
+	if pl := plugin_find(&e.ed.plugins, "layout"); pl != nil && pl.state != .Enabled {
+		pl.state = .Enabled
+		plugin_load(&e.ed, pl)
+	}
+	plugin_flush(&e.ed)
+	e2e_render(e)
+}
+
 e2e_plugin_config :: proc(e: ^E2E, name, cfg: string, hot := false) {
-	src := fmt.tprintf(`{{"plugins": {{%q: %s}}}}`, name, cfg)
+	layout := "" if name == "layout" else `, "layout": {"enabled": false}`
+	src := fmt.tprintf(`{{"plugins": {{%q: %s%s}}}}`, name, cfg, layout)
 	v, err := json.parse_string(src, parse_integers = true)
 	assert(err == nil, "plugin test config parses")
 	json.destroy_value(e.cfg)

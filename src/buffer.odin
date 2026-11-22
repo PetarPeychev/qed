@@ -36,6 +36,7 @@ Buffer :: struct {
 	big:           bool,
 	wrap:          bool,
 	wrap_width:    int,
+	internal:      bool,
 	language:      Language,
 	disk:          DiskStamp,
 	disk_conflict: bool,

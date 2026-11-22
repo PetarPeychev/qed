@@ -32,8 +32,53 @@ local PICK = {items = true, prompt = true, selected = true, on = true}
 local PROMPT = {prompt = true, text = true}
 local CONFIRM = {question = true, choices = true}
 
+local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet"}
+
+local node_metas = {}
+for _, name in ipairs(NODE_TYPES) do
+	node_metas[name] = {__node = name}
+end
+
+local function buffer_object(buf_api, id)
+	local methods = setmetatable({}, {__index = function(_, name)
+		local fn = buf_api[name]
+		if type(fn) ~= "function" then
+			return nil
+		end
+		return function(self, ...)
+			return fn(self.id, ...)
+		end
+	end})
+	return setmetatable({id = id}, {__index = methods, __eq = function(a, b) return a.id == b.id end})
+end
+
 return function(qed)
 	local open = qed.ui.open
+
+	for _, name in ipairs(NODE_TYPES) do
+		local meta = node_metas[name]
+		qed.ui[name] = function(props)
+			if type(props) ~= "table" then
+				error(("qed.ui.%s expects a table"):format(name), 2)
+			end
+			if getmetatable(props) ~= nil then
+				error(("qed.ui.%s: the table is already a node"):format(name), 2)
+			end
+			return setmetatable(props, meta)
+		end
+	end
+
+	local buf_api = qed.buf
+	local create = buf_api.create
+	function buf_api.create(spec)
+		return buffer_object(buf_api, create(spec))
+	end
+	function buf_api.get(id)
+		if not buf_api.valid(id) then
+			return nil
+		end
+		return buffer_object(buf_api, id)
+	end
 
 	function qed.pick(spec)
 		if type(spec) ~= "table" then

@@ -379,7 +379,7 @@ local function conflict(row, chord)
 end
 
 local function bind(row, chord)
-	if #chord == 1 and (row.scopes.editor or row.scopes.filetree) then
+	if #chord == 1 and (row.scopes.global or row.scopes.editor or row.scopes.filetree) then
 		qed.message(row.name .. ": a single key binds only in a pane", "error")
 		return
 	end

@@ -72,6 +72,7 @@ Editor :: struct {
 	terminal:        Terminals,
 	inspect:         Inspect,
 	headless:        bool,
+	ui:              Ui,
 }
 
 editor_terminal_init :: proc() -> (fallback: string) {
@@ -199,6 +200,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	find_destroy(&editor.find)
 	jump_destroy(&editor.jumps)
 	term_destroy(editor)
+	ui_destroy(editor)
 	plugins_shutdown(&editor.plugins)
 	pane_stack_destroy(editor)
 	walk_destroy_all(editor)
@@ -389,6 +391,9 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	if pane_stack_dispatch(editor, ev) {
 		return
 	}
+	if editor_overlay_active(editor) == nil && ui_dispatch(editor, ev) {
+		return
+	}
 	for ov in editor_overlays(editor) {
 		if ov.active^ {
 			#partial switch ev.type {
@@ -449,6 +454,9 @@ editor_previews_sync :: proc(editor: ^Editor) {
 
 editor_paste_route :: proc(editor: ^Editor, text: string) {
 	if len(text) == 0 || pane_stack_paste(editor, text) {
+		return
+	}
+	if editor_overlay_active(editor) == nil && ui_paste(editor, text) {
 		return
 	}
 	for ov in editor_overlays(editor) {
@@ -1312,6 +1320,13 @@ editor_highlight_clips :: proc(editor: ^Editor, top, bot: int) -> []HighlightCli
 editor_render :: proc(editor: ^Editor) {
 	image_frame_begin()
 	tb2.clear()
+	ui_prepare(editor)
+	tree_base := ui_layer_used(&editor.ui, "base")
+	if tree_base {
+		ui_render(editor)
+		editor_render_overlays(editor, true)
+		return
+	}
 	if editor.welcome {
 		editor_render_welcome(editor)
 	} else {
@@ -1339,17 +1354,10 @@ editor_render :: proc(editor: ^Editor) {
 		inspect_render(editor)
 	}
 
-	pane_stack_render(editor, true)
-	covered := false
-	for ov in editor_overlays(editor) {
-		if ov.active^ {
-			ov.render(editor)
-			covered = true
-			break
-		}
+	if len(editor.ui.mounts) > 0 {
+		ui_render(editor)
 	}
-	if pane_stack_render(editor, false) || covered {
-		tb2.present()
+	if editor_render_overlays(editor, false) {
 		return
 	}
 	if editor.welcome {
@@ -1396,6 +1404,33 @@ editor_render :: proc(editor: ^Editor) {
 		}
 	}
 	tb2.present()
+}
+
+editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool) {
+	pane_stack_render(editor, true)
+	covered := false
+	for ov in editor_overlays(editor) {
+		if ov.active^ {
+			ov.render(editor)
+			covered = true
+			break
+		}
+	}
+	if pane_stack_render(editor, false) || covered {
+		tb2.present()
+		return true
+	}
+	if editor.ui.caret_shown {
+		tb2.set_cursor(i32(editor.ui.caret.x), i32(editor.ui.caret.y))
+		tb2.present()
+		return true
+	}
+	if tree_base || ui_focused(editor) != nil {
+		tb2.hide_cursor()
+		tb2.present()
+		return true
+	}
+	return false
 }
 
 editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {

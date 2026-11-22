@@ -161,6 +161,23 @@ pane_commands := [?]Command {
 	{name = "Enable/Disable", scope = "plugins", config_name = "Plugins: Enable/Disable", run = pluginview_toggle},
 	{name = "Reload", scope = "plugins", config_name = "Plugins: Reload", run = pluginview_reload},
 	{name = "Show Log", scope = "plugins", config_name = "Plugins: Show Log", run = pluginview_log},
+	{name = "Left", scope = "editor", config_name = "Editor: Left", run = ui_cmd_left},
+	{name = "Right", scope = "editor", config_name = "Editor: Right", run = ui_cmd_right},
+	{name = "Up", scope = "editor", config_name = "Editor: Up", run = ui_cmd_up},
+	{name = "Down", scope = "editor", config_name = "Editor: Down", run = ui_cmd_down},
+	{name = "Select Left", scope = "editor", config_name = "Editor: Select Left", run = ui_cmd_select_left},
+	{name = "Select Right", scope = "editor", config_name = "Editor: Select Right", run = ui_cmd_select_right},
+	{name = "Select Up", scope = "editor", config_name = "Editor: Select Up", run = ui_cmd_select_up},
+	{name = "Select Down", scope = "editor", config_name = "Editor: Select Down", run = ui_cmd_select_down},
+	{name = "Word Left", scope = "editor", config_name = "Editor: Word Left", run = ui_cmd_word_left},
+	{name = "Word Right", scope = "editor", config_name = "Editor: Word Right", run = ui_cmd_word_right},
+	{name = "Line Start", scope = "editor", config_name = "Editor: Line Start", run = ui_cmd_line_start},
+	{name = "Line End", scope = "editor", config_name = "Editor: Line End", run = ui_cmd_line_end},
+	{name = "Newline", scope = "editor", config_name = "Editor: Newline", run = ui_cmd_newline},
+	{name = "Backspace", scope = "editor", config_name = "Editor: Backspace", run = ui_cmd_backspace},
+	{name = "Delete", scope = "editor", config_name = "Editor: Delete", run = ui_cmd_delete},
+	{name = "Indent", scope = "editor", config_name = "Editor: Indent", run = ui_cmd_indent},
+	{name = "Dedent", scope = "editor", config_name = "Editor: Dedent", run = ui_cmd_dedent},
 }
 
 command_enabled :: proc(cmd: Command) -> bool {

@@ -18,6 +18,13 @@ LogLevel :: enum {
 	Error,
 }
 
+log_level_names := [LogLevel]string {
+	.Debug = "debug",
+	.Info  = "info",
+	.Warn  = "warn",
+	.Error = "error",
+}
+
 // source is a short subsystem tag ("LSP", "Format", …); it is always a compile-time
 // string literal at the call sites, so it is stored unowned. text is cloned and
 // freed when the entry is evicted from the ring (or at editor_shutdown).
@@ -45,6 +52,9 @@ log_level_tag :: proc(level: LogLevel) -> string {
 }
 
 editor_clear_message :: proc(editor: ^Editor) {
+	if editor.message != "" {
+		plugin_queue(editor, {event = .Message})
+	}
 	clear(&editor.message_store)
 	editor.message = ""
 	editor.message_source = ""
@@ -59,6 +69,7 @@ editor_message_show :: proc(editor: ^Editor, level: LogLevel, source, text: stri
 	editor.message_source = string(editor.message_store[:len(source)])
 	editor.message = string(editor.message_store[len(source):])
 	editor.message_level = level
+	plugin_queue(editor, {event = .Message, a = fmt.tprintf("%s: %s", source, text) if source != "" else text, b = log_level_names[level]})
 }
 
 editor_log :: proc(editor: ^Editor, level: LogLevel, source, msg: string, show := true) {

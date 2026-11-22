@@ -137,6 +137,8 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
 	{"goto/init.lua", #load("../plugins/goto/init.lua", string)},
+	{"layout/init.lua", #load("../plugins/layout/init.lua", string)},
+	{"palette/init.lua", #load("../plugins/palette/init.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"settings/menu.lua", #load("../plugins/settings/menu.lua", string)},
 	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
@@ -1073,6 +1075,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 			plugin_task_kill(editor, id)
 		}
 	}
+	ui_unload(editor, pl.name)
 	plugin_ui_unload(editor, pl.name)
 	plugin_sched_unload(editor, pl.name)
 	term_unload(editor, pl.name)
@@ -1343,7 +1346,7 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if (scope_t != .STRING && scope_t != .NIL) || (scope_t == .STRING && scope_s == "") {
 		return lua.L_argerror(L, 1, "scope must be a non-empty string")
 	}
-	scope := "" if scope_s == "editor" else scope_s
+	scope := "" if scope_s == "global" else scope_s
 	if key_t == .STRING && key_s != "" {
 		if _, _, ch, kok := parse_bind(key_s); !kok || (ch != 0 && !bind_bare_ok(scope)) {
 			return plugin_raise(L, fmt.tprintf("invalid key '%s' for command '%s'", key_s, name))
@@ -1615,11 +1618,11 @@ plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -
 	if !ok || (ch != 0 && !bind_bare_ok(cmd.scope)) {
 		return label, from_user
 	}
-	if taken := plugin_bind_taken(key, alt_ch, ch, cmd.scope); taken != "" {
+	if taken := plugin_bind_taken(key, alt_ch, ch, cmd.scope); taken != "" && taken != cmd.bind_from {
 		return fmt.tprintf("%s (%s is %q)", label, bind, taken), from_user
 	}
 	for other in p.commands {
-		if other.id != cmd.id && other.scope == cmd.scope && other.shortcut != "" && other.alt_ch == alt_ch && other.ch == ch && (alt_ch != 0 || ch != 0 || other.key == key) {
+		if other.id != cmd.id && other.scope == cmd.scope && other.shortcut != "" && ui_chord_normalize(other.shortcut) == ui_chord_normalize(bind) {
 			return fmt.tprintf("%s (%s is %q)", label, bind, other.name), from_user
 		}
 	}
