@@ -415,6 +415,7 @@ function List:release() end
 ---@field preview? "auto"|false split: previews the selected item's `path` at `pos.row`
 ---@field text? qed.PaneLine[] lines above the list (center) or the scrollable body (full or split without a list)
 ---@field markdown? string full only, without list or text: the body is this markdown, rendered by core at the pane width (the LSP hover renderer); arrows, PgUp/PgDn, Home/End and the wheel scroll it
+---@field markdown_dir? string with `markdown`: the directory relative image paths resolve against (images show through terminal graphics, see `image_protocol`)
 ---@field toggle? string|false visible name of the command whose chord closes the pane (default: the command that opened it); needed when opening from a handler; `false`: no chord closes it (tabs' chords still do)
 ---@field jump_closes? boolean `qed.jump` closes the pane (a hub like the file tree, left once a child picker jumps)
 ---@field info? string full or split only: a strip above the footer showing this text wrapped to the pane width (never truncated while 3 list rows remain), e.g. the selected item's description; `View:info` replaces it

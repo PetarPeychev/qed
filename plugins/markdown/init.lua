@@ -34,6 +34,7 @@ local function preview(b, anchor)
 		backdrop = cfg.backdrop,
 		title = path ~= "" and qed.path.base(path) or "untitled",
 		markdown = qed.buf.text(b),
+		markdown_dir = path ~= "" and qed.path.dir(path) or nil,
 		footer = {hints = {{label = "↑↓ PgUp PgDn scroll  click a link to open it"}, {label = "back", cmd = "Markdown: Back"}, {label = "forward", cmd = "Markdown: Forward"}, {label = "close", cmd = "Markdown: Preview"}}},
 		on = {
 			close = function(cv)

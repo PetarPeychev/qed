@@ -57,6 +57,7 @@ PLUGIN_COMMAND_MAX_MS: int
 PLUGIN_HOOK_TIMEOUT_MS: int
 MESSAGE_LOG_MAX_WIDTH: int
 PLUGINS_PANE_MAX_WIDTH: int
+IMAGE_MAX_ROWS: int
 
 config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
@@ -79,6 +80,7 @@ config_ints := [?]Config_Int {
 	{"split_preview_max_width", &SPLIT_PREVIEW_MAX_WIDTH},
 	{"message_log_max_width", &MESSAGE_LOG_MAX_WIDTH},
 	{"plugins_pane_max_width", &PLUGINS_PANE_MAX_WIDTH},
+	{"image_max_rows", &IMAGE_MAX_ROWS},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
 	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
 	{"plugin_slice_max_ms", &PLUGIN_SLICE_MAX_MS},
@@ -107,6 +109,7 @@ Config_Str :: struct {
 
 MESSAGE_LOG_BACKDROP: PaneBackdrop
 PLUGINS_PANE_BACKDROP: PaneBackdrop
+IMAGE_PROTOCOL: ImageSetting
 
 Config_Backdrop :: struct {
 	key: string,
@@ -635,6 +638,14 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 			append(invalid, it.key)
 		}
 	}
+	if v, present := root["image_protocol"]; present {
+		str, _ := v.(json.String)
+		if s, ok := image_setting_parse(string(str)); ok {
+			IMAGE_PROTOCOL = s
+		} else {
+			append(invalid, "image_protocol")
+		}
+	}
 
 	if theme_val, present := root["theme"]; present {
 		if s, is_str := theme_val.(json.String); is_str {
@@ -687,7 +698,7 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 	for key in root {
 		switch key {
-		case "theme", "keybinds", "languages", "lsp", "modules", "plugins":
+		case "theme", "keybinds", "languages", "lsp", "modules", "plugins", "image_protocol":
 			continue
 		}
 		known := false

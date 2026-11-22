@@ -106,6 +106,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		tb2.set_output_mode(.Truecolor)
 		tb2.set_input_mode(.Mouse)
 		tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
+		image_detect_begin()
 	}
 	clipboard_headless = headless
 	editor := Editor {
@@ -209,6 +210,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 		syntax_shutdown()
 		clipboard_shutdown()
 		log_tz_shutdown()
+		image_shutdown()
 		tb2.shutdown()
 		crash_stderr_restore()
 	}
@@ -353,6 +355,16 @@ editor_overlay_resize :: proc(editor: ^Editor) {
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	origin := jump_here(editor)
 	defer jump_record(editor, origin)
+	if ev.type == .Reply {
+		image_reply(editor)
+		return
+	}
+	if g_image_detect.pending && (ev.type == .Key || ev.type == .Mouse) {
+		image_detect_end(editor)
+	}
+	if ev.type == .Resize && !editor.headless {
+		image_cell_refresh(editor)
+	}
 	#partial switch ev.type {
 	case .Paste_Begin:
 		editor.pasting = true
@@ -1163,6 +1175,9 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
 	lsp_enabled_sync(editor)
+	if !editor.headless {
+		image_detect_sync()
+	}
 	plugins_config_apply(editor, theme_changed, !g_config_user_broken)
 	if own_write && !theme_changed {
 		return true
@@ -1295,6 +1310,7 @@ editor_highlight_clips :: proc(editor: ^Editor, top, bot: int) -> []HighlightCli
 }
 
 editor_render :: proc(editor: ^Editor) {
+	image_frame_begin()
 	tb2.clear()
 	if editor.welcome {
 		editor_render_welcome(editor)

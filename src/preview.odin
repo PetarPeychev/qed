@@ -9,6 +9,7 @@ import "lib:tb2"
 
 PREVIEW_HEX_BYTES :: 16
 PREVIEW_EMPTY_TEXT :: "(empty file)"
+PREVIEW_IMAGE_FAILED_TEXT :: "(image could not be decoded)"
 PREVIEW_MAX_LINES :: 4000
 PREVIEW_MAX_BYTES :: 4 * 1024 * 1024
 PREVIEW_PARSE_AHEAD :: 64
@@ -44,6 +45,8 @@ Preview :: struct {
 	width:        int,
 	hex:          bool,
 	empty:        bool,
+	image:        u32,
+	image_px:     [2]int,
 	max_key:      [3]int,
 	max_scroll:   int,
 	max_ok:       bool,
@@ -77,6 +80,7 @@ preview_reset :: proc(p: ^Preview) {
 	p.diff = false
 	p.no_highlight = false
 	p.hex = false
+	p.image, p.image_px = 0, {}
 	p.empty = false
 }
 
@@ -108,6 +112,12 @@ preview_set_file :: proc(p: ^Preview, path: string, focus, view_h: int) {
 	if len(data) == 0 {
 		p.empty = true
 		return
+	}
+	if image_enabled() && image_magic(data) {
+		if img := image_get(p.path); img != nil {
+			p.image, p.image_px = img.id, {img.w, img.h}
+			return
+		}
 	}
 	if preview_is_binary(data[:min(len(data), head)]) {
 		preview_hex_fill(p, data[:min(len(data), head)])
@@ -602,6 +612,25 @@ preview_render :: proc(p: ^Preview, x, y, w, h: int) {
 	p.width = w
 	if p.empty {
 		preview_draw_seg(x + 2, y, max(0, w - 2), PREVIEW_EMPTY_TEXT, nil, 0, len(PREVIEW_EMPTY_TEXT), 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
+		return
+	}
+	if p.image != 0 {
+		if _, known := image_state(p.image); !known {
+			img := image_get(p.path)
+			p.image = img.id if img != nil else 0
+		}
+		state, _ := image_state(p.image)
+		if p.image == 0 || state == .Failed {
+			preview_draw_seg(x + 2, y, max(0, w - 2), PREVIEW_IMAGE_FAILED_TEXT, nil, 0, len(PREVIEW_IMAGE_FAILED_TEXT), 0, COLOR_PANE_SHORTCUT_FG, COLOR_PANE_BG, {}, COLOR_PANE_BG)
+			return
+		}
+	}
+	if p.image != 0 {
+		cols, rows := image_cells(p.image_px.x, p.image_px.y, w - 2, h, g_image_cell.x, g_image_cell.y)
+		image_show({p.image, i32(cols), i32(rows)})
+		for r in 0 ..< rows {
+			md_draw_line(x + 2, y + r, w - 2, MdLine{spans = []MdSpan{{text = image_placeholder_row(r, cols), fg = image_color(p.image)}}}, COLOR_PANE_BG)
+		}
 		return
 	}
 	add_bg := color_over(COLOR_PANE_BG, COLOR_GIT_ADD, GIT_HUNK_TINT)

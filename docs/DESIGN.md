@@ -773,7 +773,7 @@ on the run color (`text.strong` is `foreground bold`, so bold never reads as a h
 `━` rule in the heading color, H2 a `─` rule. Code (blocks and inline) sits on a band: tint
 `markdown_code` of the pane selection color over the pane background, filled to the right edge
 via `MdLine.fill`; blocks are highlighted by `highlight_lines` and char-wrapped. Links show their
-text underlined (spans carry the target for click-to-follow). Images and `<img>` show `[image: alt]`; other HTML tags drop (`br` and block closers
+text underlined (spans carry the target for click-to-follow). Images and `<img>` show `[image: alt]` (but see Images); other HTML tags drop (`br` and block closers
 break lines; only real tag names count, so `Vec<T>` stays text). Plaintext hovers go through
 `md_escape_plain` (punctuation escaped, hard breaks, indent as no-break spaces); a MarkedString
 `{language, value}` becomes a fenced block. Front matter renders as a yaml code block. Containers
@@ -783,6 +783,15 @@ input stays linear and in bounds. Inline code falls back to the pane foreground 
 code color has under 3:1 contrast on the band. Tables fit columns to content, keep whole words when every column's longest word
 fits, share the rest evenly and wrap cells; below 3 columns per cell, rows become `header: value`
 lines.
+
+## Images
+
+`image.odin`: kitty graphics with Unicode placeholders, so termbox's diff owns every cell and images scroll,
+clip and hide under overlays like text. A `markdown` body with `markdown_dir` shows a block of nothing but
+local PNG/JPEG images as placeholder rows (anything else stays `[image: alt]`); the file preview shows image
+files. Size comes from the file header at render time; decoding runs on one background thread (`image_pump`),
+only images drawn recently keep pixels or a terminal copy (`IMAGE_CACHE_MAX`, LRU outside the current frame). Detection (config
+`image_protocol`) and the protocol details are in [notes/images.md](notes/images.md).
 
 ## AI plugin
 
@@ -895,7 +904,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict dialogs) · `pane` (Pane model + stack, box drawing) · `log` (message ring + disk log + *Message Log: Open* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `textfield` (shared single-line editable field) · `overlay` (shared fuzzy-list widget state) · `preview` (shared scrollable highlighted preview / diff) · `palette` · `walk` (walk service, tree lists, `qed.fs` writes) · `treeshim` (temporary provider shim, M6 removes it) · `fuzzy` ·
-`listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `completion` · `rename` ·
+`listsrc` (pane list sources, `path` field) · `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload, *Plugins: Open* pane) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (`qed.ui.open` views and events, `qed.theme`, `qed.status`) · `prelude.lua` (`qed.pick`/`prompt`/`confirm` sugar) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).

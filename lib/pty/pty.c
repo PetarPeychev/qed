@@ -81,6 +81,15 @@ int qed_pty_open(int rows, int cols, int *out_master, int *out_slave) {
     return 0;
 }
 
+void qed_pty_cell_pixels(int fd, int *w, int *h) {
+    struct winsize ws;
+    *w = *h = 0;
+    if (fd >= 0 && ioctl(fd, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0) {
+        *w = ws.ws_xpixel / ws.ws_col;
+        *h = ws.ws_ypixel / ws.ws_row;
+    }
+}
+
 void qed_pty_resize(int fd, int rows, int cols) {
     struct winsize ws;
     ws.ws_row = (unsigned short)rows;

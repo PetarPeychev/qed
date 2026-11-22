@@ -263,6 +263,7 @@ Pane :: struct {
 	focus:        int,
 	text:         []PaneLine,
 	md:           string,
+	md_dir:       string,
 	has_md:       bool,
 	md_w:         int,
 	md_lines:     []MdLine,
@@ -367,6 +368,7 @@ pane_open :: proc(editor: ^Editor, spec: Pane) -> ^Pane {
 	p.title = strings.clone(spec.title)
 	p.text = pane_lines_clone(spec.text)
 	p.md = strings.clone(spec.md)
+	p.md_dir = strings.clone(spec.md_dir)
 	p.md_w, p.md_lines, p.md_arena, p.md_job = -1, nil, {}, nil
 	p.has_list = spec.has_list || len(spec.list.items) > 0
 	p.list.items = {}
@@ -471,6 +473,7 @@ pane_free :: proc(p: ^Pane) {
 	pane_lines_free(p.text)
 	pane_md_reset(p)
 	delete(p.md)
+	delete(p.md_dir)
 	vmem.arena_destroy(&p.md_arena)
 	pane_items_clear(p)
 	delete(p.list.items)
@@ -1713,7 +1716,11 @@ pane_render :: proc(editor: ^Editor, p: ^Pane) {
 	p.scroll = clamp(p.scroll, 0, max(0, rows - g.text.h))
 	for i in 0 ..< min(g.text.h, rows - p.scroll) {
 		if p.has_md {
-			md_draw_line(g.text.x, g.text.y + i, g.text.w, p.md_lines[p.scroll + i], COLOR_PANE_BG)
+			line := p.md_lines[p.scroll + i]
+			if line.image.id != 0 {
+				image_show(line.image)
+			}
+			md_draw_line(g.text.x, g.text.y + i, g.text.w, line, COLOR_PANE_BG)
 			continue
 		}
 		l := p.text[p.scroll + i]
@@ -2154,7 +2161,7 @@ pane_md_lines :: proc(p: ^Pane, w: int) -> []MdLine {
 		j := new(PaneMdJob)
 		j.w = w
 		context.temp_allocator = vmem.arena_allocator(&j.arena)
-		md_job_start(&j.job, strings.clone(p.md, context.temp_allocator), w, .Plain)
+		md_job_start(&j.job, strings.clone(p.md, context.temp_allocator), w, .Plain, strings.clone(p.md_dir, context.temp_allocator))
 		p.md_job = j
 		pane_md_step(p, md_slice_ms)
 	}

@@ -1067,6 +1067,9 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 			plugin_raise(L, `markdown needs place = "full" and no list or text`)
 		}
 		spec.md, spec.has_md = md, true
+		if dir, dir_ok := api_field_string(L, 1, "markdown_dir"); dir_ok {
+			spec.md_dir = dir
+		}
 	}
 	if info, ok := api_field_string(L, 1, "info"); ok {
 		if spec.place == .Center {

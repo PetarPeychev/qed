@@ -11,6 +11,7 @@ foreign lib {
 	qed_pty_spawn :: proc(rows, cols: c.int, argv: [^]cstring, envp: [^]cstring, cwd: cstring, out_pid: ^c.int) -> c.int ---
 	qed_pty_resize :: proc(fd, rows, cols: c.int) ---
 	qed_pty_open :: proc(rows, cols: c.int, out_master, out_slave: ^c.int) -> c.int ---
+	qed_pty_cell_pixels :: proc(fd: c.int, w, h: ^c.int) ---
 }
 
 open :: proc(rows, cols: int) -> (master, slave: int, ok: bool) {
@@ -35,6 +36,12 @@ spawn :: proc(rows, cols: int, argv: []string, env: []string, cwd: string) -> (f
 	p: c.int
 	f := qed_pty_spawn(c.int(rows), c.int(cols), raw_data(cargv), raw_data(cenv), cw, &p)
 	return int(f), int(p)
+}
+
+cell_pixels :: proc(fd: int) -> (w, h: int) {
+	cw, ch: c.int
+	qed_pty_cell_pixels(c.int(fd), &cw, &ch)
+	return int(cw), int(ch)
 }
 
 resize :: proc(fd, rows, cols: int) {

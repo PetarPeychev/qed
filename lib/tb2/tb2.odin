@@ -83,6 +83,7 @@ Event_Kind :: enum u8 {
 	Mouse       = 3,
 	Paste_Begin = 4,
 	Paste_End   = 5,
+	Reply       = 6,
 }
 
 Input_Mode :: enum u8 {
@@ -215,7 +216,7 @@ foreign termboxlib {
 	set_output_mode :: proc(mode: Output_Mode) -> Status ---
 	peek_event :: proc(event: ^Event, timeout_ms: i32) -> Status ---
 	poll_event :: proc(event: ^Event) -> Status ---
-	get_fds :: proc(ttyfd, resizefd: i32) -> Status ---
+	get_fds :: proc(ttyfd, resizefd: ^i32) -> Status ---
 	print :: proc(x, y: i32, fg, bg: Color, str: cstring) -> Status ---
 	printf :: proc(x, y: i32, fg, bg: Color, fmt: cstring, #c_vararg args: ..any) -> Status ---
 	utf8_char_length :: proc(c: rune) -> Status ---
@@ -225,4 +226,6 @@ foreign termboxlib {
 	strerror :: proc(err: Status) -> cstring ---
 	attr_width :: proc() -> Status ---
 	version :: proc() -> cstring ---
+	send :: proc(buf: [^]u8, n: uint) -> Status ---
+	reply :: proc(buf: ^[^]u8) -> uint ---
 }

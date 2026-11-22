@@ -23,6 +23,7 @@ MdLine :: struct {
 	fill_fg, fill_bg: tb2.Color,
 	slug:             string,
 	src, block:       int,
+	image:            ImageRef,
 }
 
 MdCell :: struct {
@@ -105,6 +106,11 @@ MdRender :: struct {
 	depth:       int,
 	em, strong:  int,
 	src, block:  int,
+	dir:         string,
+}
+
+MdImage :: struct {
+	alt, dest: string,
 }
 
 MD_BULLETS := [?]string{"•", "◦", "▪"}
@@ -158,16 +164,16 @@ MdJob :: struct {
 	done:   bool,
 }
 
-md_render :: proc(src: string, width: int, default_lang: Language) -> []MdLine {
+md_render :: proc(src: string, width: int, default_lang: Language, dir := "") -> []MdLine {
 	job: MdJob
-	md_job_start(&job, src, width, default_lang)
+	md_job_start(&job, src, width, default_lang, dir)
 	return md_job_step(&job, {})
 }
 
-md_job_start :: proc(job: ^MdJob, src: string, width: int, default_lang: Language) {
+md_job_start :: proc(job: ^MdJob, src: string, width: int, default_lang: Language, dir := "") {
 	job^ = {}
 	r := &job.r
-	r.width, r.lang, r.style = width, default_lang, md_style()
+	r.width, r.lang, r.style, r.dir = width, default_lang, md_style(), dir
 	r.out = make([dynamic]MdLine, context.temp_allocator)
 	if width <= 0 {
 		job.done = true
@@ -888,6 +894,10 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 	switch b.kind {
 	case .Paragraph:
 		md_gap(r, b.src)
+		if imgs, ok := md_images(r, b.text); ok {
+			md_emit_images(r, imgs)
+			return
+		}
 		md_emit_wrapped(r, md_inline(r, b.text, r.style.fg))
 	case .Heading:
 		md_gap(r, b.src)
@@ -923,6 +933,11 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 		md_gap(r, b.src)
 		md_emit_table(r, b)
 	case .Html:
+		if imgs, ok := md_images(r, b.text); ok {
+			md_gap(r, b.src)
+			md_emit_images(r, imgs)
+			return
+		}
 		rows := md_wrap(md_inline(r, b.text, r.style.fg), md_avail(r))
 		if len(rows) == 0 {
 			return
@@ -932,6 +947,75 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 			if len(row) > 0 {
 				md_emit(r, row)
 			}
+		}
+	}
+}
+
+md_images :: proc(r: ^MdRender, text: string) -> (imgs: []MdImage, ok: bool) {
+	if r.dir == "" || !image_enabled() {
+		return nil, false
+	}
+	out := make([dynamic]MdImage, context.temp_allocator)
+	i := 0
+	for i < len(text) {
+		c := text[i]
+		switch {
+		case md_is_space(c):
+			i += 1
+		case c == '!' && i + 1 < len(text) && text[i + 1] == '[':
+			label_end, dest, end, found := md_link_at(r, text, i + 1)
+			if !found {
+				return nil, false
+			}
+			append(&out, MdImage{md_plain(text[i + 2:label_end]), dest})
+			i = end
+		case c == '[' && strings.has_prefix(text[i:], "[!["):
+			label_end, _, end, found := md_link_at(r, text, i)
+			if !found {
+				return nil, false
+			}
+			inner, inner_ok := md_images(r, text[i + 1:label_end])
+			if !inner_ok {
+				return nil, false
+			}
+			append(&out, ..inner)
+			i = end
+		case c == '<':
+			e := strings.index_byte(text[i:min(len(text), i + MD_SCAN_MAX)], '>')
+			if e < 0 {
+				return nil, false
+			}
+			tag := text[i + 1:i + e]
+			name := tag[1:] if strings.has_prefix(tag, "/") else tag
+			if sp := strings.index_any(name, " \t\n/"); sp >= 0 {
+				name = name[:sp]
+			}
+			name = strings.to_lower(name, context.temp_allocator)
+			if name == "img" {
+				append(&out, MdImage{md_html_attr(tag, "alt"), md_html_attr(tag, "src")})
+			} else if !md_html_known(name) {
+				return nil, false
+			}
+			i += e + 1
+		case:
+			return nil, false
+		}
+	}
+	return out[:], len(out) > 0
+}
+
+md_emit_images :: proc(r: ^MdRender, imgs: []MdImage) {
+	for im in imgs {
+		path := image_resolve(r.dir, im.dest)
+		img := image_get(path) if path != "" else nil
+		if img == nil {
+			md_emit(r, {MdSpan{text = fmt.tprintf("[image: %s]", im.alt) if im.alt != "" else "[image]", fg = r.style.dim}})
+			continue
+		}
+		cols, rows := image_cells(img.w, img.h, md_avail(r), IMAGE_MAX_ROWS, g_image_cell.x, g_image_cell.y)
+		for row in 0 ..< rows {
+			md_emit(r, {MdSpan{text = image_placeholder_row(row, cols), fg = image_color(img.id)}})
+			r.out[len(r.out) - 1].image = ImageRef{img.id, i32(cols), i32(rows)}
 		}
 	}
 }

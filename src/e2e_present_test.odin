@@ -10,12 +10,10 @@ import "core:time"
 import "lib:tb2"
 import "lib:vterm"
 
-@(private = "file")
 TAP_MARKER :: "\x1b]0;qed-tap\x07"
 
 // everything termbox wrote since the last call, up to a marker written behind it
-@(private = "file")
-tap_sync :: proc() -> []u8 {
+e2e_tap_sync :: proc() -> []u8 {
 	posix.write(posix.FD(e2e_slave), raw_data(string(TAP_MARKER)), len(TAP_MARKER))
 	start := time.tick_now()
 	for time.duration_seconds(time.tick_since(start)) < 5 {
@@ -81,7 +79,7 @@ vt_begin :: proc() -> Vt {
 	e2e_tapping = true
 	clear(&e2e_tap)
 	sync.mutex_unlock(&e2e_tap_lock)
-	tap_sync()
+	e2e_tap_sync()
 	tb2.invalidate()
 	return v
 }
@@ -101,7 +99,7 @@ vt_end :: proc(v: ^Vt) {
 @(private = "file")
 vt_present_check :: proc(t: ^testing.T, v: ^Vt, label: string, all: bool) -> (sent: int) {
 	tb2.present()
-	out := tap_sync()
+	out := e2e_tap_sync()
 	vterm_feed(v.vt, out)
 	for y in 0 ..< E2E_H {
 		for x := 0; x < E2E_W; {

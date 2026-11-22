@@ -155,3 +155,21 @@ Upstream uses terminfo or the builtin table, never both: st-256color's terminfo
 has no `kcbt`, so Shift+Tab (`CSI Z`) leaked. `init_cap_trie` now adds the
 builtin xterm sequence for every key cap the loaded entry leaves empty, after
 the real caps so those win any collision.
+
+## Query replies
+
+qed asks the terminal for kitty graphics support at startup (`src/image.odin`):
+a kitty graphics query, XTVERSION and DA1. Upstream would parse the answers as
+keys (`Alt+_`, `G`, `i=31;OK`, ...) into whatever has focus.
+
+`extract_esc_reply` (in `extract_esc`, after the paste markers, before the
+terminfo-cap parser) turns them into `TB_EVENT_REPLY` (6), bytes read back with
+`tb_reply`: `ESC[?<digits;>c` (DA1), `ESC_G...ESC\` (kitty graphics) and
+`ESCP>|...ESC\` (XTVERSION). It is always on, so a reply arriving late (over
+ssh, after the user already typed) is still swallowed.
+
+A terminal writes a reply in one go, so an incomplete one is completed only from
+bytes already queued on the fd (`esc_pull_pending`), never by waiting: a typed
+`Alt+_` or `Alt+P` stays a key at once, and anything that does not finish
+within the 256-byte reply buffer parses as keys. The Odin side is
+`Event_Kind.Reply`, `tb2.reply` and `tb2.send` (queries and image data).

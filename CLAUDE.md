@@ -40,7 +40,9 @@ Shipped list or the relevant section). Git history is the record of the work.
 Closing a ticket has a fixed sequence:
 
 1. Run `./build.sh` so the `qed` binary is fresh — Petar should only ever need to
-   run `./qed` to test, never rebuild himself.
+   run `./qed` to test, never rebuild himself. A user-visible feature or plugin
+   also gets an e2e scenario (`tools/e2e/scenarios/`) and its demo GIF
+   (`tools/e2e.sh demo`), so he can see it before running it.
 2. Tell him exactly what to **test manually** (a concrete checklist), then prompt
    him to confirm.
 3. **Only after Petar verifies it** — never self-check first — *you* remove the

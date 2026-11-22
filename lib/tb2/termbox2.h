@@ -311,6 +311,10 @@ extern "C" {
  * arrives as ordinary key events between these two bracketing events. */
 #define TB_EVENT_PASTE_BEGIN 4
 #define TB_EVENT_PASTE_END   5
+/* qed patch: terminal query replies (see lib/tb2/PATCHES.md): DA1
+ * (ESC[?...c), kitty graphics (ESC_G...ESC\\) and XTVERSION (ESCP>|...ESC\\);
+ * the bytes are read with tb_reply. */
+#define TB_EVENT_REPLY       6
 
 /* Key modifiers (bitwise) (`tb_event.mod`) */
 #define TB_MOD_ALT          1
@@ -716,6 +720,9 @@ int tb_sendf(const char *fmt, ...);
  */
 int tb_set_func(int fn_type, int (*fn)(struct tb_event *, size_t *));
 
+/* qed patch: see TB_EVENT_REPLY */
+size_t tb_reply(const char **buf);
+
 /* Return byte length of codepoint given first byte of UTF-8 sequence (1-6). */
 int tb_utf8_char_length(char c);
 
@@ -852,6 +859,9 @@ struct tb_global {
     /* qed patch: when each back cell was last written (see lib/tb2/PATCHES.md) */
     uint64_t *stamps;
     int stamps_w, stamps_h;
+    /* qed patch: last TB_EVENT_REPLY bytes */
+    char reply[256];
+    size_t reply_len;
     uint64_t stamp;
     struct termios orig_tios;
     int has_orig_tios;
@@ -2326,6 +2336,7 @@ static ssize_t esc_pull_pending(void);
 static int extract_esc_unknown(struct tb_event *event);
 static int esc_stalled;
 static int csi_key_decode(struct tb_event *event, int code, int mods);
+static int extract_esc_reply(struct tb_event *event);
 static int resize_cellbufs(void);
 static void handle_resize(int sig);
 static int send_attr(uintattr_t fg, uintattr_t bg);
@@ -3717,6 +3728,7 @@ static int extract_esc(struct tb_event *event) {
     int rv;
     if_ok_or_need_more_return(rv, extract_esc_user(event, 0));
     if_ok_or_need_more_return(rv, extract_esc_paste(event));
+    if_ok_or_need_more_return(rv, extract_esc_reply(event));
     if_ok_or_need_more_return(rv, extract_esc_cap(event));
     if_ok_or_need_more_return(rv, extract_esc_mouse(event));
     if_ok_or_need_more_return(rv, extract_esc_user(event, 1));
@@ -3838,6 +3850,55 @@ static int extract_esc_paste(struct tb_event *event) {
     event->ch = 0;
     bytebuf_shift(in, 6);
     return TB_OK;
+}
+
+/* qed patch: swallow query replies as TB_EVENT_REPLY (see lib/tb2/PATCHES.md).
+ * A reply arrives in one write, so an incomplete one is completed only from
+ * bytes already queued: a typed Alt+_ or Alt+P never waits for more input. */
+static int reply_end(struct bytebuf *in) {
+    size_t i;
+    if (in->len < 3) return 0;
+    if (in->buf[1] == '[') {
+        if (in->buf[2] != '?') return -1;
+        for (i = 3; i < in->len && i < sizeof(global.reply); i++) {
+            char c = in->buf[i];
+            if (c == 'c') return (int)(i + 1);
+            if (!((c >= '0' && c <= '9') || c == ';')) return -1;
+        }
+    } else {
+        const char *head = in->buf[1] == '_' ? "G" : ">|";
+        size_t nhead = strlen(head);
+        for (i = 0; i < nhead; i++) {
+            if (2 + i >= in->len) return 0;
+            if (in->buf[2 + i] != head[i]) return -1;
+        }
+        for (i = 2 + nhead; i + 1 < in->len && i + 1 < sizeof(global.reply); i++) {
+            if (in->buf[i] == '\x1b' && in->buf[i + 1] == '\\') return (int)(i + 2);
+        }
+    }
+    return in->len >= sizeof(global.reply) ? -1 : 0;
+}
+
+static int extract_esc_reply(struct tb_event *event) {
+    struct bytebuf *in = &global.in;
+    int end;
+    if (in->len < 2 || (in->buf[1] != '[' && in->buf[1] != '_' && in->buf[1] != 'P')) return TB_ERR;
+    end = reply_end(in);
+    while (end == 0 && esc_pull_pending() > 0) end = reply_end(in);
+    if (end <= 0) return TB_ERR;
+    memcpy(global.reply, in->buf, (size_t)end);
+    global.reply_len = (size_t)end;
+    event->type = TB_EVENT_REPLY;
+    event->mod = 0;
+    event->key = 0;
+    event->ch = 0;
+    bytebuf_shift(in, (size_t)end);
+    return TB_OK;
+}
+
+size_t tb_reply(const char **buf) {
+    *buf = global.reply;
+    return global.reply_len;
 }
 
 static int extract_esc_user(struct tb_event *event, int is_post) {
