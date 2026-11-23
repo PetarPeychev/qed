@@ -143,10 +143,8 @@ e2e_filetree_added_tab :: proc(t: ^testing.T) {
 
 	nav_preview(&e)
 	testing.expect(t, fttab_logged(&e, "preview sub/gone.txt"), "the preview asks the tab's plugin")
-	testing.expect_value(t, len(ft_pane(ed).preview.rows), 2)
-	for r in ft_pane(ed).preview.rows {
-		testing.expect_value(t, r.kind, PreviewRowKind.Ghost)
-	}
+	testing.expect_value(t, ft_preview_line(ed, 0), "x")
+	testing.expect_value(t, ft_preview_line(ed, 1), "y")
 
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
@@ -155,17 +153,18 @@ e2e_filetree_added_tab :: proc(t: ^testing.T) {
 
 	testing.expect(t, nav_select(ed, "a.txt"))
 	nav_preview(&e)
-	testing.expect(t, ft_pane(ed).preview.diff, "a base gives a diff preview")
-	added := false
-	for r in ft_pane(ed).preview.rows {
-		added ||= r.kind == .Added && r.text == "two"
+	preview := ft_preview(ed)
+	testing.expect(t, preview != nil && len(preview.base.slots) > 0, "a base gives a diff preview")
+	if preview != nil {
+		diffbase_update(preview)
+		testing.expect(t, len(preview.base.marks) > 1 && preview.base.marks[1] == .Added, "the added line against the base")
 	}
-	testing.expect(t, added, "the added line against the base")
 
 	testing.expect(t, nav_select(ed, "new.txt"))
 	nav_preview(&e)
-	testing.expect(t, !ft_pane(ed).preview.diff, "a nil base previews the file plainly")
-	testing.expect(t, len(ft_pane(ed).preview.src) > 0)
+	preview = ft_preview(ed)
+	testing.expect(t, preview != nil && len(preview.base.slots) == 0, "a nil base previews the file plainly")
+	testing.expect_value(t, ft_preview_line(ed, 0), "fresh")
 
 	fttab_run(&e, "Prov: Bad")
 	testing.expect(t, strings.contains(e.ed.message, `"All" is a built-in tab`), e.ed.message)
@@ -190,22 +189,22 @@ e2e_filetree_added_tab_unload :: proc(t: ^testing.T) {
 	fttab_run(&e, "Prov: Hold")
 	editor_dispatch(ed, tb2.Event{type = .Key, ch = 'f', mod = .Alt})
 	plugin_flush(ed)
-	testing.expect(t, !ft_pane(ed).list.source.walk.ignore_ready, "an ignore set not sent yet holds the prewarm back")
+	testing.expect(t, !ft_walk(ed).ignore_ready, "an ignore set not sent yet holds the prewarm back")
 	fttab_run(&e, "Prov: Attach")
-	testing.expect(t, ft_pane(ed).list.source.walk.ignore_ready)
-	testing.expect(t, len(ft_pane(ed).marks) > 0)
+	testing.expect(t, ft_walk(ed).ignore_ready)
+	a_txt := fmt.tprintf("%s/a.txt", e.dir)
+	testing.expect_value(t, ft_mark(ed, a_txt).bar, "git_modified")
 	nav_alt(&e, 'f')
 	nav_alt(&e, 'f')
 	fttab_run(&e, "Prov: Show")
-	n := len(ft_pane(ed).marks)
 	fttab_run(&e, "Prov: Attach")
 	testing.expect_value(t, ft_scope(ed), "Prov")
-	testing.expect_value(t, len(ft_pane(ed).marks), n)
+	testing.expect_value(t, ft_mark(ed, a_txt).bar, "git_modified")
 	fttab_run(&e, "Prov: Hold")
 	plugin_unload(&e.ed, pl)
 	e2e_git_settle(&e)
 	testing.expect_value(t, ft_tabs(ed), "All|Open|Unsaved")
 	testing.expect_value(t, ft_scope(ed), "All")
-	testing.expect_value(t, len(ft_pane(ed).marks), 0)
-	testing.expect(t, ft_pane(ed).list.source.walk.ignore_ready, "the unloaded plugin's hold goes with it")
+	testing.expect_value(t, ft_mark(ed, a_txt).bar, "")
+	testing.expect(t, ft_walk(ed).ignore_ready, "the unloaded plugin's hold goes with it")
 }

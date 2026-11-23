@@ -121,9 +121,21 @@ local function open_palette()
 		close_palette()
 		return
 	end
+	-- over a focused pane its own commands, else the global ones
+	local wanted = {}
+	for _, focus_scope in ipairs(qed.ui.focus_scopes()) do
+		if focus_scope ~= "editor" then
+			wanted[focus_scope] = true
+		end
+	end
+	local scoped = false
+	for _, command in ipairs(qed.commands()) do
+		scoped = scoped or wanted[command.scope] == true
+	end
 	local commands = qed.list.new{key = "name"}
 	for _, command in ipairs(qed.commands()) do
-		if command.scope == "global" and command.owner ~= "palette" and command.name ~= "Command Palette" then
+		local listed = scoped and wanted[command.scope] or (not scoped and command.scope == "global")
+		if listed and command.owner ~= "palette" and command.name ~= "Command Palette" then
 			commands:append{name = command.name, shortcut = command.shortcut}
 		end
 	end

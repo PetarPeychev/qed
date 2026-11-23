@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
+import "core:sys/posix"
+import "core:time"
 
 test_buffer :: proc(lines: ..string) -> Buffer {
 	b: Buffer
@@ -72,16 +74,49 @@ test_gc_steps, test_gc_cycles, test_gc_shrinks: int
 @(thread_local)
 test_alloc_frees, test_gc_step_frees_max, test_alloc_refusals, test_gc_debt_steps_max: int
 
-ft_pane :: proc(ed: ^Editor) -> ^Pane {
-	p := pane_find(ed, "filetree")
-	if p == nil || !pane_live(ed, p) {
+FT_HELPER :: `return {setup = function()
+	qed.command{name = "Eval", run = function(code)
+		local chunk = assert(load(code, "ft", "t", _ENV))
+		local ok, result = pcall(chunk)
+		qed.message(ok and tostring(result) or ("error: " .. tostring(result)))
+	end}
+end}`
+
+// runs Lua in a helper plugin and returns what it evaluates to, as a string; the message line is put back
+ft_lua :: proc(ed: ^Editor, code: string) -> string {
+	if plugin_find(&ed.plugins, "fthelper") == nil {
+		tmp, _ := os.temp_dir(context.temp_allocator)
+		path := fmt.tprintf("%s/qed_ft_helper_%d.lua", tmp, posix.getpid())
+		_ = os.write_entire_file(path, transmute([]u8)string(FT_HELPER))
+		defer os.remove(path)
+		pl := plugins_add(&ed.plugins, Plugin{name = "fthelper", main = path}, false)
+		plugin_load(ed, pl)
+	}
+	saved := strings.clone(ed.message, context.temp_allocator)
+	saved_source := strings.clone(ed.message_source, context.temp_allocator)
+	saved_level := ed.message_level
+	for command in ed.plugins.commands {
+		if command.owner == "fthelper" {
+			plugin_task_start(ed, command.owner, .Command, {ref = command.ref, args = .Line, line = code, command = command.id, user = true})
+		}
+	}
+	plugin_flush(ed)
+	result := strings.clone(ed.message, context.temp_allocator)
+	editor_message_show(ed, saved_level, saved_source, saved)
+	return result
+}
+
+ft_tree_list :: proc(ed: ^Editor) -> ^UiList {
+	ui_resolve(ed)
+	node := ui_find(&ed.ui, "#filetree/filetree_rows")
+	if node == nil {
 		return nil
 	}
-	return p
+	return ui_list_find(&ed.ui, node.list)
 }
 
 filetree_active :: proc(ed: ^Editor) -> bool {
-	return ft_pane(ed) != nil
+	return ft_tree_list(ed) != nil
 }
 
 ft_run :: proc(ed: ^Editor, name: string) {
@@ -96,24 +131,20 @@ filetree_open_all :: proc(ed: ^Editor) {
 }
 
 filetree_close :: proc(ed: ^Editor) {
-	if p := ft_pane(ed); p != nil {
-		pane_end(ed, p.handle, false)
-		plugin_flush(ed)
+	if filetree_active(ed) {
+		ft_lua(ed, `qed.plugin("filetree").close()`)
 	}
 }
 
 filetree_toggle_ignored :: proc(ed: ^Editor) {ft_run(ed, "File Tree: Toggle Ignored")}
 filetree_toggle_dotfiles :: proc(ed: ^Editor) {ft_run(ed, "File Tree: Toggle Dotfiles")}
 
+ft_state :: proc(ed: ^Editor, field: string) -> string {
+	return ft_lua(ed, fmt.tprintf(`local state = qed.plugin("filetree").state(); return state and %s`, field))
+}
+
 ft_chip :: proc(ed: ^Editor, label: string) -> bool {
-	if p := ft_pane(ed); p != nil {
-		for c in p.chips {
-			if c.label == label {
-				return c.on
-			}
-		}
-	}
-	return false
+	return ft_state(ed, fmt.tprintf("state.chips[%q]", label)) == "true"
 }
 
 ft_confirm_text :: proc(ed: ^Editor) -> string {
@@ -124,56 +155,83 @@ ft_confirm_text :: proc(ed: ^Editor) -> string {
 }
 
 ft_scope :: proc(ed: ^Editor) -> string {
-	p := ft_pane(ed)
-	if p == nil || p.tab < 0 || p.tab >= len(p.tabs) {
+	if !filetree_active(ed) {
 		return ""
 	}
-	return p.tabs[p.tab].label
+	return ft_state(ed, "state.tab")
 }
 
 ft_tabs :: proc(ed: ^Editor) -> string {
-	p := ft_pane(ed)
-	if p == nil {
+	if !filetree_active(ed) {
 		return ""
 	}
-	labels := make([dynamic]string, context.temp_allocator)
-	for t in p.tabs {
-		append(&labels, t.label)
-	}
-	return strings.join(labels[:], "|", context.temp_allocator)
+	return ft_state(ed, `table.concat(state.tabs, "|")`)
 }
 
-// the rows as the next frame shows them: a restaled walk refills at render or input
+// the rows as the next frame shows them: a changed walk refills at render or input
 ft_entries :: proc(ed: ^Editor) -> []FileEntry {
-	if p := ft_pane(ed); p != nil {
-		pane_list_fit(ed, p, pane_geom(ed, p).list.h)
-		return p.list.source.entries[:]
+	plugin_flush(ed)
+	list := ft_tree_list(ed)
+	if list == nil {
+		return nil
 	}
-	return nil
+	ft_trees_settle(ed)
+	return list.tree.source.entries[:]
+}
+
+ft_sel :: proc(ed: ^Editor) -> int {
+	plugin_flush(ed)
+	list := ft_tree_list(ed)
+	if list == nil {
+		return -1
+	}
+	walk_trees_settle(ed)
+	state := ed.ui.states["#filetree/filetree_rows"]
+	position, ok := ui_list_position(list, state.highlighted)
+	return position if ok else 0
 }
 
 ft_selected :: proc(ed: ^Editor) -> (FileEntry, bool) {
-	p := ft_pane(ed)
-	if p == nil || len(p.list.source.entries) == 0 {
+	entries := ft_entries(ed)
+	if len(entries) == 0 {
 		return {}, false
 	}
-	return p.list.source.entries[clamp(p.list.sel, 0, len(p.list.source.entries) - 1)], true
+	return entries[clamp(ft_sel(ed), 0, len(entries) - 1)], true
 }
 
 ft_sel_range :: proc(ed: ^Editor) -> (lo, hi: int) {
-	p := ft_pane(ed)
-	lo, hi = p.list.sel, p.list.sel
-	if a, ok := p.list.anchor.?; ok {
-		lo, hi = min(a, p.list.sel), max(a, p.list.sel)
+	list := ft_tree_list(ed)
+	lo, hi = ft_sel(ed), ft_sel(ed)
+	state := ed.ui.states["#filetree/filetree_rows"]
+	if anchor, ok := ui_list_position(list, state.anchor); ok && state.anchor != "" {
+		lo, hi = min(anchor, lo), max(anchor, hi)
 	}
 	return
 }
 
-ft_mark :: proc(ed: ^Editor, path: string) -> PaneMark {
-	if p := ft_pane(ed); p != nil {
-		return p.marks[path] or_else PaneMark{}
+// highlights a row through the plugin, so its preview and state follow as for a key press
+ft_select_path :: proc(ed: ^Editor, path: string) {
+	ft_lua(ed, fmt.tprintf(`qed.plugin("filetree").reveal(%q)`, path))
+}
+
+FtMark :: struct {
+	bar, fg, suffix: string,
+	dim, sizes:      bool,
+	added, removed:  int,
+}
+
+ft_mark :: proc(ed: ^Editor, path: string) -> FtMark {
+	code := strings.concatenate({fmt.tprintf("local mark = qed.plugin(\"filetree\").mark(%q)\n", path), `if not mark then return "" end
+		return table.concat({mark.bar or "", mark.fg or "", mark.suffix or "", tostring(mark.dim == true),
+			tostring((mark.added or 0) > 0 or (mark.removed or 0) > 0), tostring(mark.added or 0), tostring(mark.removed or 0)}, "\t")`}, context.temp_allocator)
+	text := ft_lua(ed, code)
+	parts := strings.split(text, "\t", context.temp_allocator)
+	if len(parts) < 7 {
+		return {}
 	}
-	return {}
+	added, _ := strconv.parse_int(parts[5])
+	removed, _ := strconv.parse_int(parts[6])
+	return {bar = parts[0], fg = parts[1], suffix = parts[2], dim = parts[3] == "true", sizes = parts[4] == "true", added = added, removed = removed}
 }
 
 ft_sel_deleted :: proc(ed: ^Editor) -> bool {
@@ -190,8 +248,7 @@ FtMode :: enum {
 }
 
 ft_mode :: proc(ed: ^Editor) -> FtMode {
-	p := ft_pane(ed)
-	if p == nil {
+	if !filetree_active(ed) {
 		return .Nav
 	}
 	if dialog, ok := test_dialog(ed); ok && dialog.kind == "confirm" {
@@ -202,8 +259,11 @@ ft_mode :: proc(ed: ^Editor) -> FtMode {
 			return .ConfirmClose
 		}
 	}
-	if p.footer_input {
-		return .New if p.footer_field.prompt == "New: " else .Rename
+	switch ft_state(ed, "state.input") {
+	case "new":
+		return .New
+	case "rename":
+		return .Rename
 	}
 	return .Nav
 }
@@ -217,35 +277,132 @@ FtLayout :: struct {
 }
 
 ft_layout :: proc(ed: ^Editor) -> FtLayout {
-	p := ft_pane(ed)
-	if p == nil {
+	if !filetree_active(ed) {
 		return {}
 	}
-	g := pane_geom(ed, p)
+	editor_render(ed)
+	rect_of :: proc(ed: ^Editor, id: string) -> Rect {
+		if node := ui_find(&ed.ui, fmt.tprintf("#filetree/%s", id)); node != nil {
+			return node.rect
+		}
+		return {}
+	}
+	box := rect_of(ed, "filetree")
+	rows := rect_of(ed, "filetree_rows")
+	query := rect_of(ed, "filetree_query")
+	preview := rect_of(ed, "filetree_preview")
+	scroll := rect_of(ed, "filetree_scroll")
+	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
 	return {
-		box = g.box,
-		inner = g.inner,
-		body_top = g.list.y,
-		body_h = g.list.h,
-		filter_y = g.field_y,
-		filter_sep_y = g.left_sep,
-		footer_y = g.footer_y,
-		tab_y = g.title_y,
-		title_sep_y = g.title_y + 1,
-		div_x = g.div_x,
-		left_w = g.list.w,
-		right_x = g.preview.x,
-		right_w = g.preview.w,
-		preview = g.has_preview,
+		box = box,
+		inner = inner,
+		body_top = scroll.y,
+		body_h = scroll.h,
+		filter_y = query.y,
+		filter_sep_y = query.y,
+		footer_y = inner.y + inner.h - 1,
+		tab_y = inner.y,
+		title_sep_y = box.y,
+		div_x = rows.x + rows.w,
+		left_w = rows.w,
+		right_x = preview.x,
+		right_w = preview.w,
+		preview = preview.w > 0,
 	}
 }
 
-ft_expanded_count :: proc(ed: ^Editor) -> int {
-	if p := ft_pane(ed); p != nil {
-		return len(p.list.expanded)
+ft_walk :: proc(ed: ^Editor) -> ^Walk {
+	if list := ft_tree_list(ed); list != nil {
+		return list.tree.source.walk
 	}
-	if s := pane_saved_find(ed, "filetree"); s != nil {
-		return len(s.expanded)
+	return nil
+}
+
+ft_set_sel :: proc(ed: ^Editor, index: int) {
+	entries := ft_entries(ed)
+	if index >= 0 && index < len(entries) {
+		ft_select_path(ed, entries[index].path)
+	}
+}
+
+ft_scroll :: proc(ed: ^Editor) -> int {
+	editor_render(ed)
+	return ed.ui.states["#filetree/filetree_scroll"].offset
+}
+
+ft_query :: proc(ed: ^Editor) -> string {
+	ui_resolve(ed)
+	if node := ui_find(&ed.ui, "#filetree/filetree_query"); node != nil {
+		if buffer := ui_buffer(ed, node.buffer); buffer != nil {
+			return string(buffer.lines[0].text[:])
+		}
+	}
+	return ""
+}
+
+ft_preview :: proc(ed: ^Editor) -> ^Buffer {
+	ui_resolve(ed)
+	if node := ui_find(&ed.ui, "#filetree/filetree_preview"); node != nil {
+		return ui_buffer(ed, node.buffer)
+	}
+	return nil
+}
+
+// the preview loads on a debounced timer after a move
+ft_preview_settle :: proc(ed: ^Editor) {
+	start := time.tick_now()
+	for ms_since(start) < 3000 {
+		plugin_flush(ed)
+		plugin_pump(ed)
+		pending := false
+		for timer in ed.plugins.timers {
+			pending ||= timer.owner == "filetree"
+		}
+		for task in ed.plugins.tasks {
+			pending ||= task.owner == "filetree"
+		}
+		if !pending {
+			break
+		}
+		time.sleep(time.Millisecond * 5)
+	}
+	editor_render(ed)
+}
+
+ft_preview_line :: proc(ed: ^Editor, row: int) -> string {
+	buffer := ft_preview(ed)
+	if buffer == nil || row >= len(buffer.lines) {
+		return ""
+	}
+	return string(buffer.lines[row].text[:])
+}
+
+ft_expand_all :: proc(ed: ^Editor, on: bool) -> bool {
+	list := ft_tree_list(ed)
+	if list == nil || !walk_tree_expand_all(list.tree, on) {
+		return false
+	}
+	ft_trees_settle(ed)
+	return true
+}
+
+// reads every pending dir: a tree list fills one slice per frame
+ft_trees_settle :: proc(ed: ^Editor) {
+	start := time.tick_now()
+	for walk_trees_busy(ed) && ms_since(start) < 3000 {
+		walk_pump(ed)
+		walk_trees_settle(ed)
+	}
+	editor_render(ed)
+}
+
+ft_expanded_count :: proc(ed: ^Editor) -> int {
+	if list := ft_tree_list(ed); list != nil {
+		count := 0
+		for _, on in list.tree.expanded {
+			count += int(on)
+		}
+		return count
 	}
 	return 0
 }
@@ -319,4 +476,24 @@ test_dialog :: proc(ed: ^Editor) -> (dialog: TestDialog, ok: bool) {
 		}
 	}
 	return
+}
+
+palette_ui_labels :: proc(e: ^E2E) -> string {
+	ui_resolve(&e.ed)
+	node := ui_find(&e.ed.ui, "#palette/palette_results")
+	if node == nil {
+		return ""
+	}
+	list := ui_list_find(&e.ed.ui, node.list)
+	if list == nil {
+		return ""
+	}
+	ui_list_settle_all(&e.ed, list)
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_byte(&sb, '|')
+	for match in list.matches {
+		strings.write_string(&sb, list.texts[match.key])
+		strings.write_byte(&sb, '|')
+	}
+	return strings.to_string(sb)
 }

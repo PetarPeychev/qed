@@ -198,6 +198,7 @@ qed_ui_api := [?]lua.L_Reg {
 	{"open", qed_ui_open},
 	{"mount", qed_ui_mount},
 	{"node", qed_ui_node},
+	{"focus_scopes", qed_ui_focus_scopes},
 	{nil, nil},
 }
 

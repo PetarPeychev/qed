@@ -172,9 +172,11 @@ e2e_mouse_open_tab_double_click :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, target >= 0, "main.txt is listed in the Open tab")
-	y := lay.body_top + (target - ft_pane(&e.ed).list.scroll)
+	y := lay.body_top + (target - ft_scroll(&e.ed))
 	e2e_mouse(&e, lay.inner.x + 1, y)
+	e2e_ui_settle(&e)
 	e2e_mouse(&e, lay.inner.x + 1, y)
+	e2e_ui_settle(&e)
 	testing.expect(t, !filetree_active(&e.ed), "double click activates and closes the tree")
 	testing.expect_value(t, e.ed.current, 0)
 }
@@ -199,8 +201,10 @@ e2e_mouse_filetree_click_away :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	testing.expect(t, filetree_active(&e.ed), "Alt+f opens the file tree")
 
-	// (0,0) is outside the centered pane box; a non-motion click there closes it.
+	// (0,0) is outside the pane box; a click there closes it.
+	e2e_render(&e)
 	e2e_mouse(&e, 0, 0)
+	e2e_ui_settle(&e)
 	testing.expect(t, !filetree_active(&e.ed), "click outside dismisses the file tree")
 }
 

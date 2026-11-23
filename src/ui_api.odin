@@ -787,6 +787,21 @@ qed_ui_node :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+qed_ui_focus_scopes :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	lua.createtable(L, 0, 0)
+	count: lua.Integer = 0
+	for node := ui_focused(entry.editor); node != nil; node = node.parent {
+		for scope in node.scope {
+			count += 1
+			lua.pushodinstring(L, scope)
+			lua.rawseti(L, -2, count)
+		}
+	}
+	return 1
+}
+
 ui_ref_identity :: proc(L: ^lua.State) -> string {
 	id, _ := lua.toodinstring(L, lua.upvalueindex(2))
 	plugin := api_loaded(L, plugin_entry(L).editor)
@@ -831,6 +846,10 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 			lua.pushodinstring(L, state.highlighted)
 			lua.setfield(L, -2, "highlighted")
 		}
+		if state.anchor != "" && (node == nil || ui_highlight_present(editor, node, state.anchor)) {
+			lua.pushodinstring(L, state.anchor)
+			lua.setfield(L, -2, "anchor")
+		}
 	case .Scroll:
 		lua.pushinteger(L, lua.Integer(state.offset))
 		lua.setfield(L, -2, "offset")
@@ -874,6 +893,13 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 				text, _ := lua.toodinstring(L, -1)
 				state.highlighted = strings.clone(text)
 				state.reveal = true
+			}
+		case "anchor":
+			delete(state.anchor)
+			state.anchor = ""
+			if lua.type(L, -1) == .STRING || lua.type(L, -1) == .NUMBER {
+				text, _ := lua.toodinstring(L, -1)
+				state.anchor = strings.clone(text)
 			}
 		case "offset":
 			state.offset = max(int(lua.tointeger(L, -1)), 0)

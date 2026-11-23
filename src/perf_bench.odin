@@ -874,21 +874,20 @@ bench_filetree_render :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	frames := make([dynamic]f64, context.temp_allocator)
 	append(&frames, ms_since(start))
-	p := ft_pane(&e.ed)
-	for p != nil && pane_tree_loading(p) {
+	for walk_trees_busy(&e.ed) {
 		at := time.tick_now()
-		pane_stack_pump(&e.ed)
+		walk_pump(&e.ed)
 		e2e_render(&e)
 		append(&frames, ms_since(at))
 	}
 	total := ms_since(start)
 	slice.sort(frames[:])
-	fmt.eprintfln("tree expand all: %d rows in %.0f ms, %d frames, p95 %.2f max %.2f ms", len(p.list.source.entries), total, len(frames), frames[len(frames) * 95 / 100], frames[len(frames) - 1])
+	fmt.eprintfln("tree expand all: %d rows in %.0f ms, %d frames, p95 %.2f max %.2f ms", len(ft_entries(&e.ed)), total, len(frames), frames[len(frames) * 95 / 100], frames[len(frames) - 1])
 	at = time.tick_now()
 	e2e_key(&e, .Arrow_Down)
 	e2e_render(&e)
 	fmt.eprintfln("tree arrow, all expanded: %.2f ms", ms_since(at))
-	p.list.sel, p.list.scroll = 0, 0
+	ft_set_sel(&e.ed, 0)
 	at = time.tick_now()
 	e2e_key(&e, .Enter)
 	e2e_render(&e)

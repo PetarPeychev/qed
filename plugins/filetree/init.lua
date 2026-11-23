@@ -185,17 +185,30 @@ local function highlighted_path()
 	return state and state.highlighted or nil
 end
 
+-- typed keys reach the query before its change event runs: catch up before acting on the rows
+local function query_sync()
+	local text = view.query:text()
+	if text ~= view.applied then
+		view.applied = text
+		view.tree:set_query(text)
+		local first = view.tree:at(1)
+		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, anchor = false}
+	end
+end
+
 local function selected_range()
 	local tree = view.tree
 	local cursor = tree:index_of(highlighted_path() or "")
 	if not cursor then
 		return nil
 	end
-	local anchor = view.anchor and tree:index_of(view.anchor) or cursor
+	local state = ui.node("filetree_rows"):state()
+	local anchor = state and state.anchor and tree:index_of(state.anchor) or cursor
 	return math.min(anchor, cursor), math.max(anchor, cursor)
 end
 
 local function selected_items()
+	query_sync()
 	local out = {}
 	local low, high = selected_range()
 	for index = low or 1, high or 0 do
@@ -206,18 +219,10 @@ local function selected_items()
 end
 
 local function cursor_item()
+	query_sync()
 	local path = highlighted_path()
 	local row = path and view.tree:get(path)
 	return row and {path = row.path, dir = row.dir} or nil
-end
-
-local function in_range(path)
-	if not view.anchor then
-		return false
-	end
-	local low, high = selected_range()
-	local index = view.tree:index_of(path)
-	return low ~= nil and index ~= nil and index >= low and index <= high
 end
 
 local build
@@ -246,15 +251,15 @@ local function tree_row(row)
 	if mark and mark.suffix and not row.dir then
 		label = label .. "  " .. mark.suffix
 	end
-	local sizes = ""
+	local sizes = false
 	if detail and mark and not row.dir and ((mark.added or 0) > 0 or (mark.removed or 0) > 0) then
-		sizes = ("+%d -%d "):format(mark.added or 0, mark.removed or 0)
+		sizes = ui.text{{fg = "git_added", "+" .. (mark.added or 0)}, "  ", {fg = "git_deleted", "-" .. (mark.removed or 0)}}
 	end
-	return ui.row{bg = in_range(row.path) and "pane_selection_background" or nil,
+	return ui.row{
 		on = {
 			click = function(args)
 				ui.node("filetree_rows"):set_state{highlighted = row.path}
-				view.anchor = nil
+				ui.node("filetree_rows"):set_state{anchor = false}
 				view.changed()
 				return true
 			end,
@@ -267,27 +272,26 @@ local function tree_row(row)
 		ui.text{width = 1, fg = mark and mark.bar or nil, mark and mark.bar and "▌" or " "},
 		ui.text{grow = 1, fg = fg, string.rep("  ", row.depth), icon, " ", label,
 			buffer and buffer:modified() and (" " .. qed.theme.icon("modified")) or ""},
-		ui.text{fg = "pane_dim_foreground", sizes},
+		sizes,
 	}
 end
 
 local function tab_row()
 	local row, at = tabs()
-	local chips_row = {}
+	local cells = {ui.text{" "}}
 	for index, tab in ipairs(row) do
 		local on = index == at
-		chips_row[#chips_row + 1] = ui.text{
+		if index > 1 then
+			cells[#cells + 1] = ui.text{fg = "pane_dim_foreground", " │ "}
+		end
+		cells[#cells + 1] = ui.text{
 			on = {click = function()
 				view.switch(tab.label)
 				return true
 			end},
-			" ", {fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, tab.label}, " "}
+			{fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, tab.label}}
 	end
-	chips_row[#chips_row + 1] = ui.text{grow = 1, ""}
-	for _, chip in ipairs(chips()) do
-		chips_row[#chips_row + 1] = ui.text{fg = chip.on and "pane_prompt_foreground" or "pane_dim_foreground", " ", chip.label, " "}
-	end
-	return ui.row{height = 1, table.unpack(chips_row)}
+	return ui.row{height = 1, table.unpack(cells)}
 end
 
 local function footer()
@@ -297,7 +301,11 @@ local function footer()
 			ui.editor{id = "filetree_input", buffer = view.input.buffer, height = 1, grow = 1, scope = {"filetree_input", "editor"}},
 		}
 	end
-	return ui.text{height = 1, fg = "pane_dim_foreground", " ←→ tabs  ↑↓ select  Shift+↑↓ extend  Enter open  Ctrl+P commands"}
+	local cells = {ui.text{grow = 1, fg = "pane_dim_foreground", " ←→ tabs  ↑↓ select  Shift+↑↓ extend  Enter open  Ctrl+P commands"}}
+	for _, chip in ipairs(chips()) do
+		cells[#cells + 1] = ui.text{fg = chip.on and "pane_prompt_foreground" or "pane_dim_foreground", bold = chip.on, " ", chip.label, " "}
+	end
+	return ui.row{height = 1, table.unpack(cells)}
 end
 
 build = function()
@@ -343,13 +351,65 @@ local function preview_close()
 	end
 end
 
+local DIFF_CONTEXT = 3
+
+local function split_lines(text)
+	local out = {}
+	for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+		out[#out + 1] = line
+	end
+	if out[#out] == "" then
+		out[#out] = nil
+	end
+	return out
+end
+
+-- diff-only: the changed rows of the file with a little context, runs apart marked by an ellipsis
+local function changed_rows(buffer, base)
+	local current = buffer:lines()
+	local hunks = qed.text.diff(split_lines(base), current)
+	if not hunks or #hunks == 0 then
+		return nil
+	end
+	local keep = {}
+	for _, hunk in ipairs(hunks) do
+		local first = math.max(1, hunk.b - DIFF_CONTEXT)
+		local last = math.min(#current, hunk.b + math.max(hunk.b_count, 1) - 1 + DIFF_CONTEXT)
+		for row = first, last do
+			keep[row] = true
+		end
+	end
+	local out, previous = {}, 0
+	for row = 1, #current do
+		if keep[row] then
+			if previous ~= 0 and row > previous + 1 then
+				out[#out + 1] = "…"
+			end
+			out[#out + 1] = current[row]
+			previous = row
+		end
+	end
+	return table.concat(out, "\n")
+end
+
+-- a deleted file previews its base: what the change removed
 local function preview_load(path, base)
 	preview_close()
-	local buffer = qed.buf.create{internal = true, path = path}
-	if base then
-		buffer:set_base(base)
+	local buffer
+	if exists(path) then
+		buffer = qed.buf.create{internal = true, path = path}
+		local only = base and show.diff and changed_rows(buffer, base)
+		if only then
+			buffer:set_text(only)
+			buffer:set_cursor({row = 1, col = 1})
+		elseif base then
+			buffer:set_base(base)
+		end
+	else
+		buffer = qed.buf.create{internal = true}
+		buffer:set_text(base or "")
 	end
-	view.preview = {path = path, buffer = buffer}
+	view.preview = {path = path, buffer = buffer, deleted = not exists(path)}
 end
 
 local function preview_sync()
@@ -357,7 +417,8 @@ local function preview_sync()
 		return
 	end
 	local item = cursor_item()
-	if not item or item.dir or not exists(item.path) then
+	local tab = tab_of(scope)
+	if not item or item.dir or (not exists(item.path) and not (tab and tab.preview)) then
 		if view.preview then
 			preview_close()
 			rebuild()
@@ -367,7 +428,6 @@ local function preview_sync()
 	if view.preview and view.preview.path == item.path and not view.preview.stale then
 		return
 	end
-	local tab = tab_of(scope)
 	local base
 	if tab and tab.preview then
 		local ok, result = pcall(tab.preview, item.path)
@@ -421,7 +481,8 @@ local function sync()
 		scope = "All"
 	end
 	view.tree = source()
-	view.tree:set_query(view.query:text())
+	view.applied = view.query:text()
+	view.tree:set_query(view.applied)
 	view.buffers = buffers_by_path()
 	local first = view.tree:at(1)
 	if not highlighted_path() or not view.tree:get(highlighted_path()) then
@@ -437,7 +498,9 @@ local function open_paths(paths)
 	end
 end
 
+
 local function activate()
+	query_sync()
 	local items = selected_items()
 	if #items > 1 then
 		local paths = {}
@@ -484,14 +547,19 @@ local function reveal(path)
 	if view then
 		view.tree:reveal(path)
 		ui.node("filetree_rows"):set_state{highlighted = path}
-		view.anchor = nil
+		ui.node("filetree_rows"):set_state{anchor = false}
 		changed()
 	end
 end
 
 local function open(tab)
 	if view then
+		-- the chord of the tab already shown closes the tree, as a toggle
+		local same = scope == tab
 		close()
+		if same then
+			return
+		end
 	end
 	scope = (builtin(tab) or tab_of(tab)) and tab or "All"
 	walk_new()
@@ -500,10 +568,11 @@ local function open(tab)
 		changed = changed, activate = activate, close = close}
 	view.switch = function(label)
 		scope = label
-		view.anchor = nil
+		ui.node("filetree_rows"):set_state{anchor = false}
 		sync()
 	end
 	view.tree = source()
+	view.applied = ""
 	view.buffers = buffers_by_path()
 	view.handle = ui.mount("pane", build())
 	local current = view
@@ -516,19 +585,12 @@ local function open(tab)
 			view.query:set_text((text:gsub("\r?\n", " ")))
 			return
 		end
-		view.tree:set_query(text)
-		local first = view.tree:at(1)
-		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false}
-		view.anchor = nil
+		query_sync()
 		changed()
 	end)
 	ui.node("filetree_query"):focus()
-	if view.current ~= "" and view.tree:reveal(view.current) then
-		ui.node("filetree_rows"):set_state{highlighted = view.current}
-	else
-		local first = view.tree:at(1)
-		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false}
-	end
+	local first = view.tree:at(1)
+	ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, anchor = false}
 	refresh()
 	changed()
 end
@@ -537,16 +599,18 @@ local function move(step, extend)
 	if not view then
 		return
 	end
+	query_sync()
 	local tree = view.tree
 	local count = tree:count()
 	if count == 0 then
 		return
 	end
 	local path = highlighted_path()
-	if extend and not view.anchor then
-		view.anchor = path
+	local state = ui.node("filetree_rows"):state()
+	if extend and not (state and state.anchor) then
+		ui.node("filetree_rows"):set_state{anchor = path}
 	elseif not extend then
-		view.anchor = nil
+		ui.node("filetree_rows"):set_state{anchor = false}
 	end
 	local index = tree:index_of(path or "") or 0
 	index = math.max(1, math.min(count, index + step))
@@ -565,6 +629,11 @@ end
 
 local function escape()
 	if not view then
+		return
+	end
+	if view.tree:loading() and view.query:text() == "" then
+		view.tree:expand_all(false)
+		rebuild()
 		return
 	end
 	if view.query:text() ~= "" then
@@ -728,7 +797,7 @@ local function delete()
 		end
 	end
 	refresh()
-	view.anchor = nil
+	ui.node("filetree_rows"):set_state{anchor = false}
 	local above = low and view.tree:at(math.max(1, low - 1))
 	if above then
 		ui.node("filetree_rows"):set_state{highlighted = above.path}
@@ -1043,6 +1112,45 @@ local exports = {
 	dotfiles = function()
 		return show.dotfiles
 	end,
+	reveal = function(path)
+		if view then
+			reveal(path)
+		end
+	end,
+	mark = function(path)
+		return merged_marks[path]
+	end,
+	close = function()
+		close()
+	end,
+	state = function()
+		if not view then
+			return nil
+		end
+		local row, at = tabs()
+		local labels = {}
+		for _, tab in ipairs(row) do
+			labels[#labels + 1] = tab.label
+		end
+		local chip_state = {}
+		for _, chip in ipairs(chips()) do
+			chip_state[chip.label] = chip.on == true
+		end
+		return {tab = row[at].label, tabs = labels, chips = chip_state, query = view.query:text(),
+			input = view.input and view.input.kind or nil, preview = view.preview and view.preview.path or nil,
+			walk = {dotfiles = show.dotfiles == true, ignored = show.ignored == true}}
+	end,
+	selection = function()
+		if not view then
+			return nil
+		end
+		local items = selected_items()
+		local files = {}
+		for _, item in ipairs(items) do
+			files[#files + 1] = item.path
+		end
+		return {items = items, item = cursor_item(), files = files}
+	end,
 }
 
 return {
@@ -1076,7 +1184,7 @@ return {
 		cmd{name = "Close Buffers", bind_from = "Close Buffer", run = close_buffers}
 		cmd{name = "Select All", bind_from = "Select All", run = function()
 			if view and view.tree:count() > 0 then
-				view.anchor = view.tree:at(1).path
+				ui.node("filetree_rows"):set_state{anchor = view.tree:at(1).path}
 				ui.node("filetree_rows"):set_state{highlighted = view.tree:at(view.tree:count()).path}
 				changed()
 			end

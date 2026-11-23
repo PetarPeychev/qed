@@ -173,6 +173,7 @@ UiNode :: struct {
 
 UiState :: struct {
 	highlighted: string,
+	anchor:      string,
 	offset:      int,
 	scroll_row:  int,
 	scroll_sub:  int,
@@ -241,6 +242,7 @@ ui_destroy :: proc(editor: ^Editor) {
 	for key, state in ui.states {
 		delete(key)
 		delete(state.highlighted)
+		delete(state.anchor)
 	}
 	delete(ui.states)
 	delete(ui.focus)
@@ -524,6 +526,7 @@ ui_states_drop :: proc(ui: ^Ui, gone: []string) {
 		owned, state := delete_key(&ui.states, key)
 		delete(owned)
 		delete(state.highlighted)
+		delete(state.anchor)
 	}
 }
 
@@ -708,7 +711,20 @@ ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string) {
 	if index := editor_find_buffer(editor, path); index >= 0 {
 		text = buffer_snapshot(&editor.buffers[index])
 	} else if data, ok := preview_file_bytes(path, PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES, PREVIEW_MAX_LINES); ok {
-		text = "(binary file)" if preview_is_binary(data) else string(data)
+		if preview_is_binary(data) {
+			sb := strings.builder_make(context.temp_allocator)
+			for offset := 0; offset < len(data) && offset < PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES; offset += PREVIEW_HEX_BYTES {
+				line := hex_dump_line(data[offset:min(offset + PREVIEW_HEX_BYTES, len(data))], offset)
+				strings.write_string(&sb, line)
+				strings.write_byte(&sb, '\n')
+				delete(line)
+			}
+			buffer_set_text(buffer, strings.to_string(sb))
+			buffer.cursor = {}
+			buffer.plugin_rev = buffer.rev
+			return
+		}
+		text = string(data)
 	}
 	buffer_set_text(buffer, text)
 	editor_set_language(editor, buffer, language_of(path))
@@ -1775,6 +1791,14 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 	case .Virtual_Column:
 		list := ui_list_find(&editor.ui, node.list)
 		if list != nil {
+			low, high := -1, -1
+			if state.anchor != "" {
+				anchor_at, anchor_ok := ui_list_position(list, state.anchor)
+				cursor_at, cursor_ok := ui_list_position(list, state.highlighted)
+				if anchor_ok && cursor_ok {
+					low, high = min(anchor_at, cursor_at), max(anchor_at, cursor_at)
+				}
+			}
 			for i in node.window_lo ..< min(node.window_hi, ui_list_count(list)) {
 				key := ui_list_key(list, i)
 				item, ok := node.items[key]
@@ -1782,7 +1806,7 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 					continue
 				}
 				child := paint
-				if state.highlighted != "" && key == state.highlighted {
+				if (state.highlighted != "" && key == state.highlighted) || (i >= low && i <= high) {
 					child.override = ui_style_over(paint.override, node.highlight_style)
 				}
 				ui_render_node(editor, item.node, &child, floats)

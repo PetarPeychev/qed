@@ -277,8 +277,7 @@ gate_expand_all :: proc(e: ^E2E) {
 	start := time.tick_now()
 	gate_frame(e, char('e', .Alt))
 	append(&frames, ms_since(start))
-	p := ft_pane(&e.ed)
-	for p != nil && pane_tree_loading(p) && ms_since(start) < 20000 {
+	for walk_trees_busy(&e.ed) && ms_since(start) < 20000 {
 		at := time.tick_now()
 		e2e_step(e, key(.Arrow_Down))
 		walk_pump(&e.ed)
@@ -287,18 +286,15 @@ gate_expand_all :: proc(e: ^E2E) {
 		editor_render(&e.ed)
 		free_all(context.temp_allocator)
 		append(&frames, ms_since(at))
-		p = ft_pane(&e.ed)
 	}
-	rows := len(p.list.source.entries) if p != nil else 0
+	rows := len(ft_entries(&e.ed))
 	gate_record(16, gate_stat(frames[:]), fmt.tprintf("file tree expand all, per frame (%d frames)", len(frames)))
 	gate_record(300, one(ms_since(start)), fmt.tprintf("file tree expand all complete (%d rows)", rows), .Info)
 	gate_record(64, one(test_rss_mb("VmRSS") - rss), "file tree expand all, RSS growth in MB")
 	gate_settle(e)
 	gate_record(50, one(test_slice_max["filetree"]), "plugin slice filetree, expand all")
 	gate_record(16, gate_mean(e, key(.Arrow_Down)), "file tree arrow, all expanded")
-	if p := ft_pane(&e.ed); p != nil {
-		p.list.sel, p.list.scroll = 0, 0
-	}
+	ft_set_sel(&e.ed, 0)
 	gate_record(16, gate_mean(e, key(.Enter)), "file tree toggle a dir, all expanded")
 	start = time.tick_now()
 	gate_frame(e, char('e', .Alt))

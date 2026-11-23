@@ -678,6 +678,10 @@ function qed.ui.terminal(props) end
 ---@return qed.Node
 function qed.ui.dismissable(props) end
 
+---The scopes of the focused node and its ancestors, innermost first (what a palette lists over a pane).
+---@return string[]
+function qed.ui.focus_scopes() end
+
 ---A transparent slot other plugins mount into with `qed.ui.mount(id, tree)`. Prop: `id`.
 ---@param props table
 ---@return qed.Node

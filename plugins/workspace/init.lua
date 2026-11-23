@@ -52,8 +52,10 @@ local function open_directory()
 	end
 end
 
-local function open_selected(ctx)
-	local path = ctx.item and ctx.item.path
+local function open_selected()
+	local tree = qed.plugin("filetree")
+	local selection = tree and tree.selection()
+	local path = selection and selection.item and selection.item.path
 	if not path then
 		return
 	end

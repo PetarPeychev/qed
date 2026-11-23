@@ -231,7 +231,7 @@ e2e_plugin_lifecycle_events :: proc(t: ^testing.T) {
 	e2e_git_settle(&e)
 	testing.expect_value(t, ft_tabs(&e.ed), "All|Open|Unsaved")
 	testing.expect_value(t, ft_scope(&e.ed), "All")
-	testing.expect_value(t, len(ft_pane(&e.ed).marks), 0)
+	testing.expect_value(t, ft_mark(&e.ed, e.path).bar, "")
 	plugin_load(&e.ed, git)
 	e2e_git_settle(&e)
 	testing.expect_value(t, ft_tabs(&e.ed), "All|Open|Git|Unsaved")

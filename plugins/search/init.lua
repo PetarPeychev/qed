@@ -108,9 +108,11 @@ local function search(ctx, scope)
 	}
 end
 
-local function search_tree(ctx)
+local function search_tree()
+	local tree = qed.plugin("filetree")
+	local selection = tree and tree.selection()
 	local paths, gone = {}, false
-	for _, file in ipairs(ctx.files or {}) do
+	for _, file in ipairs(selection and selection.files or {}) do
 		if not qed.fs.exists(file) then
 			gone = true
 		else

@@ -429,7 +429,8 @@ e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
 		}
 	}
 	plugin_command_run(&e.ed, cmd)
-	testing.expect(t, pane_focus(&e.ed) != nil, "a tree command can open a modal over the tree")
+	_, asked := test_dialog(&e.ed)
+	testing.expect(t, asked, "a tree command can open a modal over the tree")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Tree?"), "the dialog renders over the tree")
 	e2e_key(&e, .Arrow_Down)

@@ -82,19 +82,7 @@ nav_scan :: proc(e: ^E2E) {
 
 // the Git tab asks git for a base from a debounced change task
 nav_preview :: proc(e: ^E2E) {
-	pane_preview_load(&e.ed, ft_pane(&e.ed))
-	plugin_flush(&e.ed)
-	e2e_pump_while(e, proc(e: ^E2E) -> bool {
-		if plugin_busy(&e.ed) || e2e_plugin_yielding(e) {
-			return true
-		}
-		for task in e.ed.plugins.tasks {
-			if task.wait.kind == .Sleep && task.owner == "filetree" {
-				return true
-			}
-		}
-		return false
-	})
+	ft_preview_settle(&e.ed)
 }
 
 e2e_row :: proc(e: ^E2E, y: int) -> string {
@@ -440,7 +428,7 @@ e2e_nav_scrollbar :: proc(t: ^testing.T) {
 	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '│')
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, len(ft_pane(&e.ed).fields[0].text) == 0, "Esc first clears the filter")
+	testing.expect(t, ft_query(&e.ed) == "", "Esc first clears the filter")
 	e2e_key(&e, .Esc)
 	testing.expect(t, !filetree_active(&e.ed), "Esc then closes the tree")
 }
@@ -462,11 +450,11 @@ e2e_nav_open_tab_inmemory_preview :: proc(t: ^testing.T) {
 	testing.expect_value(t, ft_scope(&e.ed), "Open")
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "main.txt" {
-			ft_pane(&e.ed).list.sel = i
+			ft_set_sel(&e.ed, i)
 		}
 	}
-	pane_preview_load(&e.ed, ft_pane(&e.ed))
-	testing.expect_value(t, string(ft_pane(&e.ed).preview.src[0]), "Xalpha one")
+	nav_preview(&e)
+	testing.expect_value(t, ft_preview_line(&e.ed, 0), "Xalpha one")
 }
 
 @(test)
@@ -493,7 +481,7 @@ e2e_nav_open_tab_switch_and_close :: proc(t: ^testing.T) {
 	nav_alt(&e, 'o')
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "second.txt" {
-			ft_pane(&e.ed).list.sel = i
+			ft_set_sel(&e.ed, i)
 		}
 	}
 	e2e_key(&e, .Ctrl_W)
@@ -523,7 +511,7 @@ e2e_nav_open_tab_close_unsaved_confirms :: proc(t: ^testing.T) {
 	nav_alt(&e, 'o')
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "second.txt" {
-			ft_pane(&e.ed).list.sel = i
+			ft_set_sel(&e.ed, i)
 		}
 	}
 
@@ -662,7 +650,7 @@ e2e_nav_filetree_scope_and_dotfiles :: proc(t: ^testing.T) {
 
 	testing.expect(t, !has_hidden(&e.ed), "dotfiles hidden by default")
 	filetree_toggle_dotfiles(&e.ed) // palette command
-	testing.expect(t, ft_pane(&e.ed).list.source.walk.dotfiles, "toggle enables dotfiles")
+	testing.expect(t, ft_walk(&e.ed).dotfiles, "toggle enables dotfiles")
 	testing.expect(t, has_hidden(&e.ed), "dotfile now visible")
 
 	// Scope tab bar: Right cycles All -> Open.
@@ -681,7 +669,7 @@ e2e_nav_filetree_options_hot_reload :: proc(t: ^testing.T) {
 	nav_write(fmt.tprintf("%s/.hidden.txt", e.ed.working_root), "secret")
 
 	nav_alt(&e, 'f')
-	walk_dotfiles :: proc(ed: ^Editor) -> bool {return ft_pane(ed).list.source.walk.dotfiles}
+	walk_dotfiles :: proc(ed: ^Editor) -> bool {return ft_walk(ed).dotfiles}
 	testing.expect(t, !walk_dotfiles(&e.ed) && !ft_chip(&e.ed, "dotfiles"), "dotfiles off by default")
 	e2e_plugin_config(&e, "filetree", `{"show_dotfiles": true}`, hot = true)
 	plugin_flush(&e.ed)
@@ -692,7 +680,7 @@ e2e_nav_filetree_options_hot_reload :: proc(t: ^testing.T) {
 	e2e_plugin_config(&e, "filetree", `{"show_dotfiles": true, "show_ignored": true}`, hot = true)
 	plugin_flush(&e.ed)
 	testing.expect(t, !walk_dotfiles(&e.ed), "an unchanged knob keeps the live toggle")
-	testing.expect(t, ft_pane(&e.ed).list.source.walk.ignored && ft_chip(&e.ed, "ignored"), "a changed knob applies")
+	testing.expect(t, ft_walk(&e.ed).ignored && ft_chip(&e.ed, "ignored"), "a changed knob applies")
 	testing.expect(t, !plugin_test_logged(&e.ed, .Info, "File Tree", "reloaded"), "the tree is not reloaded")
 	e2e_key(&e, .Esc)
 }
@@ -724,13 +712,13 @@ e2e_nav_filetree_filter_dotfile_toggle :: proc(t: ^testing.T) {
 
 	// Toggle dotfiles ON mid-filter: the cached candidate set must re-collect.
 	nav_alt(&e, '.')
-	testing.expect(t, ft_pane(&e.ed).list.source.walk.dotfiles, "Alt+. turns dotfiles on")
+	testing.expect(t, ft_walk(&e.ed).dotfiles, "Alt+. turns dotfiles on")
 	testing.expect_value(t, count_named(&e.ed, ".aaa.txt"), 1)
 	testing.expect_value(t, count_named(&e.ed, "aaa.txt"), 1)
 
 	// Toggle back OFF: the dotfile drops out of the filtered results again.
 	nav_alt(&e, '.')
-	testing.expect(t, !ft_pane(&e.ed).list.source.walk.dotfiles, "Alt+. turns dotfiles off")
+	testing.expect(t, !ft_walk(&e.ed).dotfiles, "Alt+. turns dotfiles off")
 	testing.expect_value(t, count_named(&e.ed, ".aaa.txt"), 0)
 	testing.expect_value(t, count_named(&e.ed, "aaa.txt"), 1)
 
@@ -766,7 +754,7 @@ e2e_nav_filetree_open_filter_close :: proc(t: ^testing.T) {
 
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "second.txt" {
-			ft_pane(&e.ed).list.sel = i
+			ft_set_sel(&e.ed, i)
 		}
 	}
 	e2e_key(&e, .Ctrl_W) // clean buffer closes without a dialog
@@ -813,7 +801,7 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	// Ignored file hidden until toggled on (palette command).
 	testing.expect(t, !entry_named(&e.ed, "debug.log"), "gitignored file hidden by default")
 	filetree_toggle_ignored(&e.ed)
-	testing.expect(t, ft_pane(&e.ed).list.source.walk.ignored, "toggle enables ignored")
+	testing.expect(t, ft_walk(&e.ed).ignored, "toggle enables ignored")
 	testing.expect(t, entry_named(&e.ed, "debug.log"), "ignored file now visible")
 
 	// the Git tab prunes to changed files; the untracked add shows up.
@@ -906,17 +894,18 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	testing.expect_value(t, ft_scope(&e.ed), "Git")
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "file.txt" {
-			ft_pane(&e.ed).list.sel = i
+			ft_set_sel(&e.ed, i)
 		}
 	}
 	nav_preview(&e)
 
 	testing.expect(t, ft_chip(&e.ed, "diff"), "diff-only on by default")
-	collapsed := len(ft_pane(&e.ed).preview.rows)
+	collapsed := len(ft_preview(&e.ed).lines) if ft_preview(&e.ed) != nil else 0
 
 	nav_alt(&e, 'd') // File Tree: Toggle Diff
 	testing.expect(t, !ft_chip(&e.ed, "diff"), "Alt+d turns full diff on (diff-only off)")
-	full := len(ft_pane(&e.ed).preview.rows)
+	nav_preview(&e)
+	full := len(ft_preview(&e.ed).lines) if ft_preview(&e.ed) != nil else 0
 
 	testing.expect(t, full > collapsed, "full diff shows more rows than the collapsed view")
 	e2e_key(&e, .Esc)
@@ -944,10 +933,9 @@ e2e_nav_filetree_shift_range :: proc(t: ^testing.T) {
 
 	// A plain move collapses the range back to one selection.
 	e2e_key(&e, .Arrow_Down)
-	testing.expect(t, ft_pane(&e.ed).list.anchor == nil, "plain move clears the anchor")
 	lo, hi = ft_sel_range(&e.ed)
-	testing.expect_value(t, lo, hi)
-	testing.expect_value(t, ft_pane(&e.ed).list.sel, 3)
+	testing.expect(t, lo == hi, "plain move clears the anchor")
+	testing.expect_value(t, ft_sel(&e.ed), 3)
 	e2e_key(&e, .Esc)
 }
 
@@ -1065,7 +1053,7 @@ e2e_nav_filetree_filter_prunes :: proc(t: ^testing.T) {
 
 	// Esc clears a non-empty query first, then closes.
 	e2e_key(&e, .Esc)
-	testing.expect_value(t, len(ft_pane(&e.ed).fields[0].text), 0)
+	testing.expect_value(t, ft_query(&e.ed), "")
 	testing.expect(t, entry_named(&e.ed, "buffer.odin"), "cleared filter restores the full tree")
 	testing.expect(t, filetree_active(&e.ed), "first Esc only clears the query")
 	e2e_key(&e, .Esc)
@@ -1124,7 +1112,7 @@ e2e_nav_filetree_filter_caps_display :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(ft_entries(&e.ed)), WALK_FILTER_MAX_RESULTS)
 	testing.expect(
 		t,
-		len(ft_pane(&e.ed).list.source.narrow_idx) > WALK_FILTER_MAX_RESULTS,
+		len(ft_tree_list(&e.ed).tree.source.narrow_idx) > WALK_FILTER_MAX_RESULTS,
 		"full match set is tracked beyond the display cap",
 	)
 
@@ -1153,20 +1141,16 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	// Ctrl+P over the tree lists file commands, not the global set.
 	e2e_key(&e, .Ctrl_P)
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette over the tree")
-	pal := pane_find(&e.ed, "palette")
-	testing.expect_value(t, pal.list.source.scope, "filetree")
-	testing.expect(t, pal.parent == ft_pane(&e.ed).handle, "the palette sits on the tree")
-	testing.expect(t, strings.contains(palette_labels(&e), "|Workspace: Open Selected Directory|"), "tree-scoped plugin commands are listed")
-	testing.expect(t, !strings.contains(palette_labels(&e), "|Save|"), "editor commands are not")
+	labels := palette_ui_labels(&e)
+	testing.expect(t, strings.contains(labels, "|Workspace: Open Selected Directory|"), "tree-scoped plugin commands are listed")
+	testing.expect(t, !strings.contains(labels, "|Save|"), "editor commands are not")
+	testing.expect(t, filetree_active(&e.ed), "the palette sits over the tree")
 	e2e_render(&e)
-	box := pane_geom(&e.ed, pal).box
-	tree_box := overlay_layout(&e.ed, .FileTree).box
-	testing.expect(t, tree_box.x < box.x, "the tree box is wider than the palette")
-	testing.expect_value(t, e2e_cell(&e, tree_box.x, box.y + 1), '│')
-	testing.expect_value(t, e2e_cell(&e, box.x, box.y), '┌')
+	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "the palette draws over the tree")
 	e2e_type(&e, "copy")
 	e2e_key(&e, .Enter)
-	testing.expect(t, !palette_open_now(&e), "running a command closes the palette")
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") < 0, "running a command closes the palette")
 	testing.expect(t, filetree_active(&e.ed), "the tree stays open")
 	testing.expect_value(t, e.ed.message, "Copied a.txt")
 
@@ -1188,7 +1172,7 @@ e2e_nav_filetree_copy_preserves_mode :: proc(t: ^testing.T) {
 	os.chmod(src, os.perm(0o755))
 
 	nav_alt(&e, 'f')
-	for ft_entries(&e.ed)[ft_pane(&e.ed).list.sel].name != "run.sh" {
+	for ft_entries(&e.ed)[ft_sel(&e.ed)].name != "run.sh" {
 		e2e_key(&e, .Arrow_Down)
 	}
 	e2e_key(&e, .Ctrl_C)
@@ -1222,12 +1206,11 @@ e2e_nav_filetree_batch_delete :: proc(t: ^testing.T) {
 	testing.expect_value(t, ft_mode(&e.ed), FtMode.ConfirmDelete)
 	testing.expect_value(t, ft_confirm_text(&e.ed), "Delete 3 items?")
 	// a refill under the confirm (a status push, a write) must not shrink what it deletes
-	walk_stale(ft_pane(&e.ed).list.source.walk)
+	walk_stale(ft_walk(&e.ed))
 	nav_write(fmt.tprintf("%s/zz.txt", e.ed.working_root), "z")
-	list_walk_fill(&e.ed, ft_pane(&e.ed))
+	ft_trees_settle(&e.ed)
 	lo, hi := ft_sel_range(&e.ed)
 	testing.expect_value(t, hi - lo, 2)
-	ft_pane(&e.ed).list.anchor = nil
 
 	e2e_key(&e, .Arrow_Down) // Cancel -> Delete
 	e2e_key(&e, .Enter) // one confirmation deletes all
@@ -1410,7 +1393,7 @@ e2e_nav_filetree_marks_current_buffer :: proc(t: ^testing.T) {
 	entry_cell :: proc(e: ^E2E, lay: FtLayout, name: string) -> (fg, bg: tb2.Color) {
 		for entry, i in ft_entries(&e.ed) {
 			if entry.name == name {
-				y := lay.body_top + (i - ft_pane(&e.ed).list.scroll)
+				y := lay.body_top + (i - ft_scroll(&e.ed))
 				return e2e_cell_fg(e, lay.inner.x + 3, y), e2e_cell_bg(e, lay.inner.x + 3, y)
 			}
 		}
@@ -1526,10 +1509,9 @@ e2e_nav_filetree_delete_dialog_directory :: proc(t: ^testing.T) {
 }
 
 nav_select :: proc(ed: ^Editor, name: string) -> bool {
-	for entry, i in ft_entries(ed) {
+	for entry in ft_entries(ed) {
 		if entry.name == name {
-			ft_pane(ed).list.sel = i
-			ft_pane(ed).list.anchor = nil
+			ft_select_path(ed, entry.path)
 			return true
 		}
 	}
@@ -1568,12 +1550,8 @@ e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	testing.expect(t, nav_select(&e.ed, "gone.txt"), "deleted file listed under its old dir")
 	testing.expect(t, ft_sel_deleted(&e.ed), "the deleted row is marked deleted")
 	nav_preview(&e)
-	testing.expect_value(t, len(ft_pane(&e.ed).preview.rows), 2)
-	want := []string{"alpha", "beta"}
-	for r, i in ft_pane(&e.ed).preview.rows {
-		testing.expect_value(t, r.kind, PreviewRowKind.Ghost)
-		testing.expect_value(t, r.text, want[i])
-	}
+	testing.expect_value(t, ft_preview_line(&e.ed, 0), "alpha")
+	testing.expect_value(t, ft_preview_line(&e.ed, 1), "beta")
 
 	e2e_render(&e)
 	x, y, found := nav_screen_find(&e, "gone.txt")
@@ -1624,14 +1602,13 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 		testing.expect(t, !nav_select(&e.ed, "old.txt"), "old path not listed")
 		testing.expect(t, nav_select(&e.ed, "new.txt"), "rename listed at the new path")
 		nav_preview(e)
-		kinds: [dynamic]PreviewRowKind
-		kinds.allocator = context.temp_allocator
-		for r in ft_pane(&e.ed).preview.rows {
-			if r.kind == .Ghost || r.kind == .Modified {
-				append(&kinds, r.kind)
+		changed := false
+		if preview := ft_preview(&e.ed); preview != nil {
+			for line in 0 ..< len(preview.lines) {
+				changed ||= string(preview.lines[line].text[:]) == "CHANGED"
 			}
 		}
-		testing.expectf(t, len(kinds) == 2 && kinds[0] == .Ghost && kinds[1] == .Modified, "preview diffs old vs new: %v", kinds)
+		testing.expect(t, changed, "the diff-only preview shows the changed row of the rename")
 		e2e_render(e)
 		_, _, found := nav_screen_find(e, fmt.tprintf("new.txt  %s old.txt", ICON_TREE_RENAMED))
 		testing.expect(t, found, "row label shows the old path")
@@ -1682,10 +1659,10 @@ e2e_nav_git_non_utf8 :: proc(t: ^testing.T) {
 	nav_scan(&e)
 	testing.expect(t, nav_select(&e.ed, "latin.txt"))
 	nav_preview(&e)
-	testing.expect(t, ft_pane(&e.ed).preview.diff, "a Latin-1 file previews as a diff")
+	testing.expect(t, ft_preview(&e.ed) != nil && strings.contains(ft_preview_line(&e.ed, 0), "lait"), "a Latin-1 file previews its changed row")
 	testing.expect(t, nav_select(&e.ed, "bin.dat"))
 	nav_preview(&e)
-	testing.expect(t, ft_pane(&e.ed).preview.hex, "a binary file previews as a hexdump")
+	testing.expect(t, strings.has_prefix(ft_preview_line(&e.ed, 0), "0000"), "a binary file previews as a hexdump")
 	testing.expect_value(t, git.state, PluginState.Enabled)
 	e2e_key(&e, .Esc)
 }

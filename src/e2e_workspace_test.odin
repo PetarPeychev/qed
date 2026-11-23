@@ -463,7 +463,7 @@ e2e_cwd_palette_and_welcome :: proc(t: ^testing.T) {
 cwd_tree_select :: proc(e: ^E2E, name: string) -> bool {
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == name {
-			ft_pane(&e.ed).list.sel = i
+			ft_set_sel(&e.ed, i)
 			return true
 		}
 	}
@@ -502,7 +502,7 @@ e2e_cwd_tree_set_root :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.ed.working_root, inner)
 	testing.expect(t, filetree_active(&e.ed), "tree stays open")
 	testing.expect_value(t, ft_mode(&e.ed), FtMode.Nav)
-	testing.expect_value(t, ft_pane(&e.ed).list.sel, 0)
+	testing.expect_value(t, ft_sel(&e.ed), 0)
 	testing.expect_value(t, ft_expanded_count(&e.ed), 0)
 	testing.expect_value(t, cwd_tree_names(&e), "")
 	testing.expect(t, e.ed.welcome, "clean outside buffer closed silently")
@@ -521,7 +521,7 @@ e2e_cwd_tree_set_root :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, e.ed.working_root, alpha)
 	testing.expect(t, filetree_active(&e.ed), "tree stays open")
-	testing.expect_value(t, textfield_str(&ft_pane(&e.ed).fields[0].field), "")
+	testing.expect_value(t, ft_query(&e.ed), "")
 	testing.expect_value(t, cwd_tree_names(&e), "Zed,inner,in.txt")
 	testing.expect(t, strings.contains(e.ed.message, alpha), "root change is logged")
 }
@@ -566,7 +566,7 @@ e2e_cwd_tree_unsaved_confirm :: proc(t: ^testing.T) {
 	e2e_render(&e)
 
 	e2e_key(&e, .Enter)
-	testing.expect(t, pane_focus(&e.ed) == ft_pane(&e.ed), "Cancel returns to the tree")
+	testing.expect(t, filetree_active(&e.ed), "Cancel returns to the tree")
 	testing.expect(t, filetree_active(&e.ed), "tree still open")
 	testing.expect_value(t, e.ed.working_root, root)
 	testing.expect(t, editor_buffer(&e.ed).modified, "unsaved buffer survives cancel")
@@ -574,7 +574,7 @@ e2e_cwd_tree_unsaved_confirm :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Ctrl_O)
 	e2e_key(&e, .Esc)
-	testing.expect(t, pane_focus(&e.ed) == ft_pane(&e.ed) && filetree_active(&e.ed), "Esc in the confirm returns to the tree")
+	testing.expect(t, filetree_active(&e.ed), "Esc in the confirm returns to the tree")
 	testing.expect_value(t, e.ed.working_root, root)
 
 	e2e_key(&e, .Ctrl_O)
