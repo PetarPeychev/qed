@@ -313,6 +313,13 @@ e2e_walk_expand_all_streams :: proc(t: ^testing.T) {
 
 	clear(&ft_tree_list(&e.ed).tree.source.dirs)
 	nav_alt(&e, 'e')
+	testing.expect(t, walk_trees_busy(&e.ed), "streaming")
+	nav_alt(&e, 'e')
+	testing.expect(t, !ft_tree_list(&e.ed).tree.expanding, "Alt+e mid-stream stops Expand All")
+	testing.expect_value(t, len(ft_entries(&e.ed)), top)
+
+	clear(&ft_tree_list(&e.ed).tree.source.dirs)
+	nav_alt(&e, 'e')
 	testing.expect(t, walk_trees_busy(&e.ed), "expanding again")
 	opened := ft_expanded_count(&e.ed)
 	e2e_key(&e, .Esc)

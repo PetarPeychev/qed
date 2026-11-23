@@ -355,3 +355,25 @@ e2e_round7_bad_shapes_raise :: proc(t: ^testing.T) {
 		testing.expectf(t, strings.contains(got, c.want), "%s: got %q, want %q", c.tree, got, c.want)
 	}
 }
+
+@(test)
+e2e_round7_field_click_and_drag_place_the_caret :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_key(&e, .Ctrl_P)
+	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
+	e2e_type(&e, "hello world")
+	e2e_render(&e)
+	node := ui_find(&e.ed.ui, "#palette/palette_query")
+	testing.expect(t, node != nil, "the query field is mounted")
+	if node == nil {
+		return
+	}
+	buffer := ui_buffer(&e.ed, node.buffer)
+	e2e_mouse(&e, node.rect.x + 2, node.rect.y)
+	testing.expect_value(t, buffer.cursor, Cursor{0, 2})
+	e2e_mouse(&e, node.rect.x + 7, node.rect.y, motion = true)
+	e2e_mouse(&e, node.rect.x + 7, node.rect.y, .Mouse_Release)
+	from, to, ok := selection_range(buffer)
+	testing.expect(t, ok && from == Cursor{0, 2} && to == Cursor{0, 7}, "a drag selects in the field")
+}
