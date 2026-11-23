@@ -34,6 +34,7 @@ ui_kind_props := [UiKind][]string {
 	.Outlet         = {},
 	.Image          = {"path"},
 	.Terminal       = {"session"},
+	.Markdown       = {"text", "dir"},
 }
 
 UiMarshal :: struct {
@@ -349,6 +350,20 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			}
 			text, _ := lua.toodinstring(L, value_index)
 			node.session = strings.clone(text)
+		case "text":
+			if lua.type(L, value_index) != .STRING {
+				ui_marshal_fail(marshal, "text: string expected")
+				break
+			}
+			text, _ := lua.toodinstring(L, value_index)
+			node.source = strings.clone(text)
+		case "dir":
+			if lua.type(L, value_index) != .STRING {
+				ui_marshal_fail(marshal, "dir: string expected")
+				break
+			}
+			text, _ := lua.toodinstring(L, value_index)
+			node.path = strings.clone(api_path(marshal.editor, text))
 		case "path":
 			if lua.type(L, value_index) != .STRING {
 				ui_marshal_fail(marshal, "path: string expected")
@@ -578,7 +593,7 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		if laid != 1 {
 			ui_marshal_fail(marshal, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
 		}
-	case .Editor, .Virtual_Column, .Image, .Terminal:
+	case .Editor, .Virtual_Column, .Image, .Terminal, .Markdown:
 		limit = 0
 	case .Outlet:
 		if len(node.children) > 0 {
@@ -856,6 +871,24 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 	case .Editor:
 		lua.pushinteger(L, lua.Integer(state.scroll_row + 1))
 		lua.setfield(L, -2, "scroll")
+	case .Markdown:
+		lua.pushinteger(L, lua.Integer(state.scroll_row + 1))
+		lua.setfield(L, -2, "scroll")
+		if node != nil {
+			sources, rows := ui_markdown_sources(editor, node)
+			lua.pushinteger(L, lua.Integer(rows))
+			lua.setfield(L, -2, "rows")
+			lua.createtable(L, c.int(len(sources)), 0)
+			for source, i in sources {
+				lua.pushinteger(L, lua.Integer(source + 1))
+				lua.rawseti(L, -2, lua.Integer(i + 1))
+			}
+			lua.setfield(L, -2, "sources")
+		}
+		if state.md_found > 0 {
+			lua.pushinteger(L, lua.Integer(state.md_found))
+			lua.setfield(L, -2, "heading")
+		}
 	}
 	return 1
 }
@@ -906,10 +939,26 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 		case "scroll":
 			state.scroll_row = max(int(lua.tointeger(L, -1)) - 1, 0)
 			state.scroll_sub = 0
+			state.md_source, state.md_at = 0, 0
+		case "source":
+			state.md_source = max(int(lua.tointeger(L, -1)), 1)
+		case "at":
+			state.md_at = max(int(lua.tointeger(L, -1)), 0)
+		case "heading":
+			state.md_found = 0
+			delete(state.md_heading)
+			text, _ := lua.toodinstring(L, -1)
+			state.md_heading = strings.clone(text)
 		case:
 			return plugin_raise(L, fmt.tprintf("set_state: unknown state field '%s'", name))
 		}
 		lua.pop(L, 1)
+	}
+	// a shown markdown resolves a heading or source row now, so a following state() sees it
+	if node := ui_find(&editor.ui, identity); node != nil && node.kind == .Markdown && node.rect.h > 0 {
+		if md, found := editor.ui.markdowns[identity]; found {
+			ui_markdown_settle(md, state, node.rect)
+		}
 	}
 	return 0
 }
@@ -935,6 +984,7 @@ qed_ui_ref_rect :: proc "c" (L: ^lua.State) -> c.int {
 
 UiHandlerArgs :: struct {
 	chord, text: string,
+	target:      string,
 	x, y:        int,
 	button:      string,
 	mouse:       bool,
@@ -961,6 +1011,10 @@ ui_handler_c :: proc "c" (L: ^lua.State) -> c.int {
 		if args.text != "" {
 			lua.pushodinstring(L, args.text)
 			lua.setfield(L, -2, "text")
+		}
+		if args.target != "" {
+			lua.pushodinstring(L, args.target)
+			lua.setfield(L, -2, "target")
 		}
 	}
 	lua.call(L, 1, 1)

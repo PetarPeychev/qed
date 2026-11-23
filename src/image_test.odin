@@ -323,16 +323,13 @@ e2e_image_late_reply :: proc(t: ^testing.T) {
 
 @(private = "file")
 image_md_pending :: proc(e: ^E2E) -> bool {
-	if len(e.ed.panes) == 0 {
+	e2e_render(e)
+	node := ui_find(&e.ed.ui, "#markdown/markdown_body")
+	if node == nil {
 		return true
 	}
-	top := &e.ed.panes[len(e.ed.panes) - 1]
-	if !top.has_md || top.md_job != nil || len(top.md_lines) == 0 {
-		pane_stack_pump(&e.ed, true)
-		e2e_render(e)
-		return true
-	}
-	return false
+	md, found := e.ed.ui.markdowns[node.identity]
+	return !found || md.job != nil || len(md.lines) == 0
 }
 
 @(test)

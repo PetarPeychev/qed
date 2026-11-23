@@ -155,6 +155,8 @@ pt_wait :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		term_pump(&g_pt.ed)
 		plugin_pump(&g_pt.ed)
+		// as the main loop: every pass draws a frame
+		e2e_render(g_pt)
 		time.sleep(time.Millisecond)
 	}
 }

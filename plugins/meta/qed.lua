@@ -673,6 +673,11 @@ function qed.ui.image(props) end
 ---@return qed.Node
 function qed.ui.terminal(props) end
 
+---Rendered markdown (the preview's renderer); scrolls with the wheel and, focused, Up/Down/PgUp/PgDn/Space/Home/End. Props: `text`, `dir` (relative image and link base). `on.link(event)` gets `event.target` for a clicked link; unhandled `#slug` links scroll to the heading. State: `scroll`, `rows`, `sources` (source rows of the visible lines), `heading` (the source row of the last `heading` set); `set_state{scroll}`, `{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the document allows) or `{heading = slug}`.
+---@param props table
+---@return qed.Node
+function qed.ui.markdown(props) end
+
 ---A full-screen float holding panes: a click outside them calls `on_dismiss`, a click on one stays with it. Props: `on_dismiss`, `id`, and the panes as children.
 ---@param props table
 ---@return qed.Node

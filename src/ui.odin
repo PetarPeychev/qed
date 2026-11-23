@@ -26,6 +26,7 @@ UiKind :: enum u8 {
 	Outlet,
 	Image,
 	Terminal,
+	Markdown,
 }
 
 ui_kind_names := [UiKind]string {
@@ -39,6 +40,7 @@ ui_kind_names := [UiKind]string {
 	.Outlet         = "outlet",
 	.Image          = "image",
 	.Terminal       = "terminal",
+	.Markdown       = "markdown",
 }
 
 UiSizeForm :: enum u8 {
@@ -106,6 +108,7 @@ UiEvent :: enum u8 {
 	Click,
 	Double_Click,
 	Wheel,
+	Link,
 }
 
 ui_event_names := [UiEvent]string {
@@ -114,6 +117,7 @@ ui_event_names := [UiEvent]string {
 	.Click        = "click",
 	.Double_Click = "double_click",
 	.Wheel        = "wheel",
+	.Link         = "link",
 }
 
 UiItem :: struct {
@@ -155,6 +159,7 @@ UiNode :: struct {
 	buffer:          u64,
 	placeholder:     string,
 	path:            string,
+	source:          string,
 	session:         string,
 	line_numbers:    bool,
 	syntax:          bool,
@@ -184,6 +189,10 @@ UiState :: struct {
 	kept:        bool,
 	at_end:      bool,
 	buffer:      u64,
+	md_source:   int,
+	md_at:       int,
+	md_heading:  string,
+	md_found:    int,
 	kind:        UiKind,
 }
 
@@ -229,6 +238,7 @@ Ui :: struct {
 	scopes_warned: map[string]bool,
 	lists_dead:    [dynamic]u64,
 	chords:        map[string]string,
+	markdowns:     map[string]^UiMarkdown,
 }
 
 ui_destroy :: proc(editor: ^Editor) {
@@ -240,10 +250,12 @@ ui_destroy :: proc(editor: ^Editor) {
 	delete(ui.mounts)
 	ui_graveyard_flush(editor)
 	delete(ui.graveyard)
+	ui_markdowns_free(editor)
 	for key, state in ui.states {
 		delete(key)
 		delete(state.highlighted)
 		delete(state.anchor)
+		delete(state.md_heading)
 	}
 	delete(ui.states)
 	delete(ui.focus)
@@ -329,6 +341,7 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 	delete(node.title)
 	delete(node.placeholder)
 	delete(node.path)
+	delete(node.source)
 	delete(node.session)
 	free(node)
 }
@@ -529,6 +542,7 @@ ui_states_drop :: proc(ui: ^Ui, gone: []string) {
 		delete(owned)
 		delete(state.highlighted)
 		delete(state.anchor)
+		delete(state.md_heading)
 	}
 }
 
@@ -963,7 +977,7 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 		if buffer := ui_buffer(editor, node.buffer); buffer != nil {
 			height = len(buffer.lines)
 		}
-	case .Terminal:
+	case .Terminal, .Markdown:
 	case .Image:
 		if image := image_get(node.path); image != nil && image_enabled() {
 			width, height = image_cells(image.w, image.h, avail_w, avail_h, g_image_cell.x, g_image_cell.y)
@@ -1034,7 +1048,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 		}
 	case .Column, .Row:
 		ui_layout_flow(editor, node, content)
-	case .Text, .Editor, .Virtual_Column, .Outlet, .Image, .Terminal:
+	case .Text, .Editor, .Virtual_Column, .Outlet, .Image, .Terminal, .Markdown:
 	}
 	for child in node.expanded {
 		if child.float != .None {
@@ -1418,6 +1432,10 @@ ui_prepare :: proc(editor: ^Editor) {
 		return
 	}
 	walk_trees_settle(editor)
+	ui_markdowns_sweep(editor)
+	for _, md in ui.markdowns {
+		ui_markdown_step(md, md_slice_ms)
+	}
 	for node in ui.virtuals {
 		if list := ui_list_find(ui, node.list); list != nil {
 			ui_list_settle_all(editor, list)
@@ -1819,6 +1837,8 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		}
 	case .Image:
 		ui_render_image(&paint, node)
+	case .Markdown:
+		ui_render_markdown(editor, &paint, node)
 	case .Terminal:
 		if session := term_find(editor, node.session); session != nil {
 			focused := editor.ui.focus == node.identity
