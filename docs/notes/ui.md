@@ -75,17 +75,23 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `outlet` | none | `id` |
 | `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |
 | `image` | none | `path` (relative to the root); natural size from the pixel size and the cell size; `[image: name]` without graphics |
+| `markdown` | none | `text`, `dir` (relative links and images); rendered in slices, the last render stays up while a newer one runs |
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and
   paste insert, and the `editor` scope's core commands edit (`Editor: Left` ... `Dedent`, plus Undo, Redo, Copy,
   Cut, Paste, Select All borrowing the global binds). `scope = "editor"` on another node type raises.
+- `markdown`: focused, Up/Down/PgUp/PgDn/Space/Home/End scroll; the wheel scrolls; a link click fires
+  `on.link{target}`, an unhandled `#slug` scrolls to that heading. State: `scroll`, `rows`, `sources` (source rows
+  of the visible lines), `heading` (source row of the last `heading` set). `set_state{scroll}`,
+  `{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the document
+  allows) or `{heading = slug}`; a pending request resolves at the next render.
 - `virtual_column`: `item` runs in a batched step between layout passes, only for records coming into view, cached
   per record until that record changes, the query changes, or `data`/`item` identity changes on `update`. Items are
   one row; items far outside the window are evicted. An `item` error draws an error row.
 
 ## 5. Events, keys, focus
 
-- Handlers `on = {key, paste, click, double_click, wheel}`, `function(event) -> handled`, synchronous (no yields).
+- Handlers `on = {key, paste, click, double_click, wheel, link}`, `function(event) -> handled`, synchronous (no yields).
   Key events carry `chord` (`"Ctrl+s"`, `"Shift+Up"`, `"Esc"`, `"x"`) and `text`; mouse events `x`, `y` (1-based,
   node-relative) and `button`. A double click fires the `click` bubble, then the `double_click` bubble.
 - Keys: from the focused node up to the root; at each node its `scope` names in order (commands of that scope on
@@ -110,6 +116,8 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `list:sort(field, {reverse})` | numbers numeric, strings bytewise |
 | `qed.fuzzy.list(list, {field = "name"}) -> matches` | live filtered view sorted by score; follows its source |
 | `matches:set_query(text)`, `matches:positions(key)` | refilter in core; matched byte offsets (1-based) |
+| `buffer:line_list()` | live list over a buffer's lines, records `{key = row, row, col, label}` built when read; `set_query` keeps buffer order, `:N`/`:N:M` keeps row N alone, a bare number leads |
+| `walk:tree()` | a walk's visible rows `{path, name, depth, dir, expanded}`; `expand`, `toggle`, `reveal`, `expand_all`, `set_query`, `loading`, `more` |
 
 Views follow data with no `update`. Change records with `set`; mutating a record table directly is not seen.
 Lists are garbage-collected; mounts and buffers are closed explicitly (or on unload); subscriptions die with their
@@ -212,5 +220,6 @@ The full-screen column closes on an outside click; the box swallows clicks insid
 - Per-view editor state (cursor, wrap) instead of the buffer's.
 - List navigation helpers and the fuzzy span builder, once a second picker exists.
 - `qed.commands()`, `qed.fs.walk`, `qed.buffers()` returning `qed.List`; the palette listing the scope chain.
-- Deleting `qed.ui.open`, the remaining old panes (file tree, plugins, pick/prompt/confirm, safety dialogs) and the old key matcher.
+- Deleting `qed.ui.open`, the remaining old panes (core palette and rename prompt, safety dialogs), the old key
+  matcher and `qed.fs.dirs`/the old walk pane code. No bundled plugin uses `qed.ui.open` any more.
 - Completion and hover as `cursor`-anchored plugin floats (they are core-drawn at the caret today).
