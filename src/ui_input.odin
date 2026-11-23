@@ -292,6 +292,13 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 	ui := &editor.ui
 	step := -UI_WHEEL_STEP if ev.key == .Mouse_Wheel_Up else UI_WHEEL_STEP
 	#partial switch node.kind {
+	case .Preview:
+		if wheel {
+			if entry, ok := editor.ui.previews[node.identity]; ok {
+				preview_scroll_by(&entry.preview, step, node.rect.h)
+				return true
+			}
+		}
 	case .Terminal:
 		if session := term_find(editor, node.session); session != nil {
 			if ev.key == .Mouse_Left {

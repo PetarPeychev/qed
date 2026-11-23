@@ -1,12 +1,3 @@
-local function await(v)
-	local ok, items, index, text = pcall(v.wait, v)
-	v:close()
-	if not ok then
-		error(items, 0)
-	end
-	return items, index, text
-end
-
 local function label_of(it)
 	if type(it) == "table" then
 		return it.label or it.path
@@ -26,7 +17,7 @@ local PICK = {items = true, prompt = true, selected = true, on = true}
 local PROMPT = {prompt = true, text = true}
 local CONFIRM = {question = true, choices = true}
 
-local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet", "image", "terminal"}
+local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet", "image", "terminal", "preview"}
 
 local node_metas = {}
 for _, name in ipairs(NODE_TYPES) do
@@ -187,7 +178,7 @@ return function(qed)
 				error(("on.%s is not a pick handler (only change)"):format(tostring(k)), 2)
 			end
 		end
-		local index, split = nil, false
+		local index = nil
 		if type(selected) == "number" then
 			if math.type(selected) ~= "integer" then
 				error("selected must be an item index or label", 2)
@@ -197,21 +188,9 @@ return function(qed)
 			error("selected must be an item index or label", 2)
 		end
 		for i, it in ipairs(items) do
-			split = split or type(it) == "table" and it.path ~= nil
 			if index == nil and selected ~= nil and label_of(it) == selected then
 				index = i
 			end
-		end
-		if split then
-			-- path items keep the old list + preview pane until qed.ui has a preview node
-			local v, err = qed.ui.open{kind = "child", modal = true, place = "split", preview = "auto",
-				fields = {{prompt = spec.prompt and spec.prompt ~= "" and spec.prompt .. " " or nil, count = true}},
-				list = {items = items, selected = index}, on = {change = on and on.change}}
-			if not v then
-				return nil, err
-			end
-			local picked = await(v)
-			return picked and picked[1]
 		end
 		return dialogs(qed).pick{items = items, prompt = spec.prompt, selected = index or selected, on = on}
 	end

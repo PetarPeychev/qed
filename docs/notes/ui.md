@@ -13,7 +13,11 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 - **Ownership.** A plugin owns its trees. Others extend them only through `ui.outlet{id}` slots the owner declares;
   outlet ids are global, a mount waits until its outlet exists, the first outlet in resolve order takes it.
   Mounts, internal buffers and lists unmount/close when their plugin unloads.
-- **Draw order** per layer: laid-out content of every mount, then floats in tree order.
+- **Draw order** per layer: laid-out content of every mount, then floats in tree order. The `alert` layer draws
+  after the old panes and, while it has focus, takes keys and paste before them (dialogs over old panes); a mount
+  into `alert` fails with `busy` while a core safety dialog is open.
+- **Dialogs.** `qed.pick/prompt/confirm` are the bundled `dialog` plugin's exports (alert layer, one at a time,
+  `nil, "busy"` for a second; path items get a list + `preview` split; the asker's unload closes it).
 
 ## 2. Mounts, references, identity, state
 
@@ -21,7 +25,8 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 |---|---|
 | `ui.mount(outlet, tree) -> handle` | mount into a layer or an outlet id |
 | `handle:update(tree)` | replace the tree; state survives for nodes with the same identity |
-| `handle:unmount()` | remove; a no-op when gone |
+| `handle:unmount(result?)` | remove; a no-op when gone; `result` goes to a waiter |
+| `handle:wait() -> result` | wait (in a task) until unmounted; a stopped waiter takes its mount along |
 | `ui.node(id) -> ref` | `ref:focus()`, `ref:state()`, `ref:set_state(patch)`, `ref:rect()` |
 
 - Identity: `id` (per plugin: `ui.node` only sees the caller's nodes), else `key` among siblings, else type + raw
@@ -69,6 +74,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
 | `outlet` | none | `id` |
 | `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |
+| `preview` | none | `path`, `row`, `base` (diff against this text), `diff_only`; reloads when its key or the open buffer changes; wheel scrolls |
 | `image` | none | `path` (relative to the root); natural size from the pixel size and the cell size; `[image: name]` without graphics |
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and

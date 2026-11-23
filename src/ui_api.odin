@@ -34,6 +34,7 @@ ui_kind_props := [UiKind][]string {
 	.Outlet         = {},
 	.Image          = {"path"},
 	.Terminal       = {"session"},
+	.Preview        = {"path", "row", "base", "diff_only"},
 }
 
 UiMarshal :: struct {
@@ -342,6 +343,21 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			continue
 		}
 		switch name {
+		case "row":
+			if !lua.isinteger(L, value_index) {
+				ui_marshal_fail(marshal, "row: integer expected")
+				break
+			}
+			node.row = int(lua.tointeger(L, value_index))
+		case "base":
+			if lua.type(L, value_index) != .STRING {
+				ui_marshal_fail(marshal, "base: the base text expected")
+				break
+			}
+			text, _ := lua.toodinstring(L, value_index)
+			node.base, node.base_set = strings.clone(text), true
+		case "diff_only":
+			node.diff_only = bool(lua.toboolean(L, value_index))
 		case "session":
 			if lua.type(L, value_index) != .STRING {
 				ui_marshal_fail(marshal, "session: a qed.term session name expected")
@@ -578,7 +594,7 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		if laid != 1 {
 			ui_marshal_fail(marshal, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
 		}
-	case .Editor, .Virtual_Column, .Image, .Terminal:
+	case .Editor, .Virtual_Column, .Image, .Terminal, .Preview:
 		limit = 0
 	case .Outlet:
 		if len(node.children) > 0 {

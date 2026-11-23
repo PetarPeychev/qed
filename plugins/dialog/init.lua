@@ -18,10 +18,14 @@ local function highlighted_key()
 end
 
 local function notify()
+	local key = highlighted_key()
+	local record = key and dialog.matches:get(key)
+	local item = record and dialog.items[record.index] or nil
+	if dialog.split then
+		dialog.handle:update(dialog.split(item))
+	end
 	if dialog.on_change then
-		local key = highlighted_key()
-		local record = key and dialog.matches:get(key)
-		dialog.on_change(nil, record and dialog.items[record.index] or nil)
+		dialog.on_change(nil, item)
 	end
 end
 
@@ -151,6 +155,29 @@ local function query_row(prompt, scope)
 	}
 end
 
+local function split_frame(prompt, item)
+	local path = type(item) == "table" and item.path or nil
+	return ui.column{id = "dialog_pick", float = "screen", width = "100%", height = "100%",
+		on = {click = function()
+			finish(nil)
+			return true
+		end},
+		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
+			border = true, bg = "pane_background", fg = "pane_foreground",
+			on = {click = function() return true end},
+			ui.row{
+				ui.column{width = {"40%", min = 24, max = 70},
+					query_row(prompt, {"dialog_list", "dialog", "editor"}),
+					ui.scroll{grow = 1,
+						ui.virtual_column{id = "dialog_rows", data = dialog.matches, item = item_row,
+							highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
+				},
+				ui.preview{id = "dialog_preview", grow = 1, path = path or "", row = type(item) == "table" and item.row or 0},
+			},
+		},
+	}
+end
+
 local function records_of(items)
 	local list = qed.list.new{key = "key"}
 	for index, item in ipairs(items) do
@@ -182,10 +209,21 @@ local function pick(spec)
 			break
 		end
 	end
-	local handle, err = ui.mount("alert", frame("dialog_pick", {
-		query_row(spec.prompt, {"dialog_list", "dialog", "editor"}),
-		rows(nil),
-	}))
+	local has_paths = false
+	for _, item in ipairs(items) do
+		has_paths = has_paths or type(item) == "table" and item.path ~= nil
+	end
+	local tree
+	if has_paths then
+		dialog.split = function(item) return split_frame(spec.prompt, item) end
+		tree = dialog.split(selected_key and items[tonumber(selected_key)] or items[1])
+	else
+		tree = frame("dialog_pick", {
+			query_row(spec.prompt, {"dialog_list", "dialog", "editor"}),
+			rows(nil),
+		})
+	end
+	local handle, err = ui.mount("alert", tree)
 	if not handle then
 		dialog.query:close()
 		dialog = nil

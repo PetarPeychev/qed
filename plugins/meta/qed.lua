@@ -668,6 +668,11 @@ function qed.ui.image(props) end
 ---@return qed.Node
 function qed.ui.terminal(props) end
 
+---A file preview (syntax, open buffers live; with `base` a diff against that text). Props: `path`, `row` (line to center), `base`, `diff_only`.
+---@param props table
+---@return qed.Node
+function qed.ui.preview(props) end
+
 ---A transparent slot other plugins mount into with `qed.ui.mount(id, tree)`. Prop: `id`.
 ---@param props table
 ---@return qed.Node
