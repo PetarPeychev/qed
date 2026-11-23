@@ -668,11 +668,6 @@ function qed.ui.image(props) end
 ---@return qed.Node
 function qed.ui.terminal(props) end
 
----A file preview (syntax, open buffers live; with `base` a diff against that text). Props: `path`, `row` (line to center), `base`, `diff_only`.
----@param props table
----@return qed.Node
-function qed.ui.preview(props) end
-
 ---A transparent slot other plugins mount into with `qed.ui.mount(id, tree)`. Prop: `id`.
 ---@param props table
 ---@return qed.Node
@@ -1221,7 +1216,8 @@ function BufferObject:base() end
 function BufferObject:line_list() end
 
 ---A new internal buffer (not in the buffer list, no LSP, git or autosave) as a buffer object: every `qed.buf.*` function is a method with the buffer bound (`buffer:text()`). The plugin owns it; `buffer:close()` frees it.
----@param spec {internal: true}
+---With `path`, it holds a copy of that file (an open buffer's live text, else the head of the file on disk) in its language: a read-only preview under a `readonly` editor node.
+---@param spec {internal: true, path?: string}
 ---@return qed.BufferObject
 function qed.buf.create(spec) end
 

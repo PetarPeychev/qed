@@ -56,6 +56,9 @@ local function finish(result)
 	local closing = dialog
 	dialog = nil
 	closing.handle:unmount(result)
+	if closing.preview then
+		closing.preview.buffer:close()
+	end
 	if closing.query then
 		closing.query:close()
 	end
@@ -155,8 +158,27 @@ local function query_row(prompt, scope)
 	}
 end
 
-local function split_frame(prompt, item)
+local function preview_buffer(item)
 	local path = type(item) == "table" and item.path or nil
+	if dialog.preview and dialog.preview.path == path then
+		return dialog.preview.buffer
+	end
+	if dialog.preview then
+		dialog.preview.buffer:close()
+		dialog.preview = nil
+	end
+	if not path then
+		return nil
+	end
+	local buffer = qed.buf.create{internal = true, path = path}
+	local row = math.max(1, math.min(tonumber(item.row) or 1, buffer:line_count()))
+	buffer:set_cursor({row = row, col = 1})
+	dialog.preview = {path = path, buffer = buffer}
+	return buffer
+end
+
+local function split_frame(prompt, item)
+	local buffer = preview_buffer(item)
 	return ui.column{id = "dialog_pick", float = "screen", width = "100%", height = "100%",
 		on = {click = function()
 			finish(nil)
@@ -172,7 +194,8 @@ local function split_frame(prompt, item)
 						ui.virtual_column{id = "dialog_rows", data = dialog.matches, item = item_row,
 							highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 				},
-				ui.preview{id = "dialog_preview", grow = 1, path = path or "", row = type(item) == "table" and item.row or 0},
+				buffer and ui.editor{id = "dialog_preview", buffer = buffer, grow = 1, readonly = true, syntax = true,
+					line_numbers = true} or ui.text{grow = 1, ""},
 			},
 		},
 	}

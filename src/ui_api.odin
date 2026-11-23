@@ -34,7 +34,6 @@ ui_kind_props := [UiKind][]string {
 	.Outlet         = {},
 	.Image          = {"path"},
 	.Terminal       = {"session"},
-	.Preview        = {"path", "row", "base", "diff_only"},
 }
 
 UiMarshal :: struct {
@@ -343,21 +342,6 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			continue
 		}
 		switch name {
-		case "row":
-			if !lua.isinteger(L, value_index) {
-				ui_marshal_fail(marshal, "row: integer expected")
-				break
-			}
-			node.row = int(lua.tointeger(L, value_index))
-		case "base":
-			if lua.type(L, value_index) != .STRING {
-				ui_marshal_fail(marshal, "base: the base text expected")
-				break
-			}
-			text, _ := lua.toodinstring(L, value_index)
-			node.base, node.base_set = strings.clone(text), true
-		case "diff_only":
-			node.diff_only = bool(lua.toboolean(L, value_index))
 		case "session":
 			if lua.type(L, value_index) != .STRING {
 				ui_marshal_fail(marshal, "session: a qed.term session name expected")
@@ -594,7 +578,7 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		if laid != 1 {
 			ui_marshal_fail(marshal, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
 		}
-	case .Editor, .Virtual_Column, .Image, .Terminal, .Preview:
+	case .Editor, .Virtual_Column, .Image, .Terminal:
 		limit = 0
 	case .Outlet:
 		if len(node.children) > 0 {
@@ -1062,16 +1046,23 @@ qed_buf_create :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	editor := entry.editor
 	internal := false
+	path := ""
 	if lua.type(L, 1) == .TABLE {
 		lua.getfield(L, 1, "internal")
 		internal = bool(lua.toboolean(L, -1))
 		lua.pop(L, 1)
+		if text, ok := api_field_string(L, 1, "path"); ok && text != "" {
+			path = api_path(editor, text)
+		}
 	}
 	if !internal {
 		return plugin_raise(L, "qed.buf.create: only internal buffers exist so far ({internal = true})")
 	}
 	plugin := api_loaded(L, editor)
 	buffer := ui_internal_create(editor, plugin_name_intern(&editor.plugins, plugin.name))
+	if path != "" {
+		ui_internal_load(editor, buffer, path)
+	}
 	lua.pushinteger(L, lua.Integer(buffer.id))
 	return 1
 }

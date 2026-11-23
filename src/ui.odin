@@ -25,7 +25,6 @@ UiKind :: enum u8 {
 	Outlet,
 	Image,
 	Terminal,
-	Preview,
 }
 
 ui_kind_names := [UiKind]string {
@@ -39,7 +38,6 @@ ui_kind_names := [UiKind]string {
 	.Outlet         = "outlet",
 	.Image          = "image",
 	.Terminal       = "terminal",
-	.Preview        = "preview",
 }
 
 UiSizeForm :: enum u8 {
@@ -157,10 +155,6 @@ UiNode :: struct {
 	placeholder:     string,
 	path:            string,
 	session:         string,
-	base:            string,
-	base_set:        bool,
-	diff_only:       bool,
-	row:             int,
 	line_numbers:    bool,
 	syntax:          bool,
 	readonly:        bool,
@@ -191,11 +185,6 @@ UiState :: struct {
 	kind:        UiKind,
 }
 
-UiPreview :: struct {
-	preview: Preview,
-	key:     string,
-}
-
 UiMount :: struct {
 	handle: u64,
 	owner:  string,
@@ -224,7 +213,6 @@ Ui :: struct {
 	dirty:         bool,
 	graveyard:     [dynamic]^UiNode,
 	results:       map[u64]i32,
-	previews:      map[string]^UiPreview,
 	gen:           u64,
 	seq:           u64,
 	lists:         [dynamic]^UiList,
@@ -264,13 +252,6 @@ ui_destroy :: proc(editor: ^Editor) {
 	delete(ui.virtuals)
 	delete(ui.editors)
 	delete(ui.results)
-	for identity, entry in ui.previews {
-		preview_destroy(&entry.preview)
-		delete(entry.key)
-		delete(identity)
-		free(entry)
-	}
-	delete(ui.previews)
 	for list in ui.lists {
 		ui_list_free(editor, list)
 	}
@@ -345,7 +326,6 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 	delete(node.placeholder)
 	delete(node.path)
 	delete(node.session)
-	delete(node.base)
 	free(node)
 }
 
@@ -547,50 +527,6 @@ ui_states_drop :: proc(ui: ^Ui, gone: []string) {
 	}
 }
 
-ui_previews_sync :: proc(editor: ^Editor) {
-	ui := &editor.ui
-	for _, node in ui.index {
-		if node.kind != .Preview || node.hidden || node.rect.w <= 0 || node.rect.h <= 0 || node.path == "" {
-			continue
-		}
-		buffer_index := editor_find_buffer(editor, node.path)
-		rev := editor.buffers[buffer_index].rev if buffer_index >= 0 else 0
-		key := fmt.tprintf("%s|%d|%v|%v|%d|%d|%s", node.path, node.row, node.base_set, node.diff_only, rev, node.rect.h, node.base)
-		entry, ok := ui.previews[node.identity]
-		if !ok {
-			entry = new(UiPreview)
-			ui.previews[strings.clone(node.identity)] = entry
-		}
-		if entry.key == key {
-			continue
-		}
-		delete(entry.key)
-		entry.key = strings.clone(key)
-		switch {
-		case node.base_set:
-			preview_set_diff(&entry.preview, node.path, node.rect.h, node.diff_only, node.base)
-		case buffer_index >= 0:
-			preview_set_buffer(&entry.preview, &editor.buffers[buffer_index], node.row, node.rect.h)
-		case:
-			preview_set_file(&entry.preview, node.path, node.row, node.rect.h)
-		}
-	}
-	gone := make([dynamic]string, context.temp_allocator)
-	for identity in ui.previews {
-		if node, ok := ui.index[identity]; !ok || node.kind != .Preview {
-			append(&gone, identity)
-		}
-	}
-	for identity in gone {
-		entry := ui.previews[identity]
-		delete_key(&ui.previews, identity)
-		preview_destroy(&entry.preview)
-		delete(entry.key)
-		delete(identity)
-		free(entry)
-	}
-}
-
 ui_state_prune :: proc(editor: ^Editor) {
 	ui := &editor.ui
 	gone := make([dynamic]string, context.temp_allocator)
@@ -766,6 +702,20 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 	return buffer
 }
 
+// a copy for showing a file: an open buffer's live text, else the head of the file on disk
+ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string) {
+	text := ""
+	if index := editor_find_buffer(editor, path); index >= 0 {
+		text = buffer_snapshot(&editor.buffers[index])
+	} else if data, ok := preview_file_bytes(path, PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES, PREVIEW_MAX_LINES); ok {
+		text = "(binary file)" if preview_is_binary(data) else string(data)
+	}
+	buffer_set_text(buffer, text)
+	editor_set_language(editor, buffer, language_of(path))
+	buffer.cursor = {}
+	buffer.plugin_rev = buffer.rev
+}
+
 ui_internal_close :: proc(editor: ^Editor, id: u64) -> bool {
 	plugin_buffer_hooks_drop(&editor.plugins, id)
 	searches_buffer_closed(editor, id)
@@ -838,7 +788,7 @@ ui_grows :: proc(node: ^UiNode, axis: int) -> int {
 	if node.grow_set {
 		return node.grow
 	}
-	if node.kind == .Editor || node.kind == .Terminal || node.kind == .Preview {
+	if node.kind == .Editor || node.kind == .Terminal {
 		size := node.height if axis == 1 else node.width
 		return 1 if size.form == .Auto else 0
 	}
@@ -992,7 +942,7 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 		if buffer := ui_buffer(editor, node.buffer); buffer != nil {
 			height = len(buffer.lines)
 		}
-	case .Terminal, .Preview:
+	case .Terminal:
 	case .Image:
 		if image := image_get(node.path); image != nil && image_enabled() {
 			width, height = image_cells(image.w, image.h, avail_w, avail_h, g_image_cell.x, g_image_cell.y)
@@ -1063,7 +1013,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 		}
 	case .Column, .Row:
 		ui_layout_flow(editor, node, content)
-	case .Text, .Editor, .Virtual_Column, .Outlet, .Image, .Terminal, .Preview:
+	case .Text, .Editor, .Virtual_Column, .Outlet, .Image, .Terminal:
 	}
 	for child in node.expanded {
 		if child.float != .None {
@@ -1481,7 +1431,6 @@ ui_prepare :: proc(editor: ^Editor) {
 			break
 		}
 	}
-	ui_previews_sync(editor)
 	for _, node in ui.index {
 		if node.kind != .Terminal || node.hidden || node.rect.w <= 0 || node.rect.h <= 0 {
 			continue
@@ -1840,10 +1789,6 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		}
 	case .Image:
 		ui_render_image(&paint, node)
-	case .Preview:
-		if entry, ok := editor.ui.previews[node.identity]; ok && node.path != "" {
-			preview_render(&entry.preview, node.rect.x, node.rect.y, node.rect.w, node.rect.h)
-		}
 	case .Terminal:
 		if session := term_find(editor, node.session); session != nil {
 			focused := editor.ui.focus == node.identity

@@ -17,7 +17,7 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
   after the old panes and, while it has focus, takes keys and paste before them (dialogs over old panes); a mount
   into `alert` fails with `busy` while a core safety dialog is open.
 - **Dialogs.** `qed.pick/prompt/confirm` are the bundled `dialog` plugin's exports (alert layer, one at a time,
-  `nil, "busy"` for a second; path items get a list + `preview` split; the asker's unload closes it).
+  `nil, "busy"` for a second; path items get a list + readonly `editor` split over an internal copy; the asker's unload closes it).
 
 ## 2. Mounts, references, identity, state
 
@@ -74,7 +74,6 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
 | `outlet` | none | `id` |
 | `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |
-| `preview` | none | `path`, `row`, `base` (diff against this text), `diff_only`; reloads when its key or the open buffer changes; wheel scrolls |
 | `image` | none | `path` (relative to the root); natural size from the pixel size and the cell size; `[image: name]` without graphics |
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and
