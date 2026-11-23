@@ -704,6 +704,7 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 
 ui_internal_close :: proc(editor: ^Editor, id: u64) -> bool {
 	plugin_buffer_hooks_drop(&editor.plugins, id)
+	searches_buffer_closed(editor, id)
 	ui := &editor.ui
 	for buffer, i in ui.internal {
 		if buffer.id == id {

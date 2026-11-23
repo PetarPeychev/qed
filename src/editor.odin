@@ -803,6 +803,7 @@ editor_close_index :: proc(editor: ^Editor, idx: int) {
 	plugin_queue(editor, {event = .Buf_Close, buf = editor.buffers[idx].id, a = editor.buffers[idx].path})
 	lsp_did_close(editor, &editor.buffers[idx])
 	plugin_buffer_hooks_drop(&editor.plugins, editor.buffers[idx].id)
+	searches_buffer_closed(editor, editor.buffers[idx].id)
 	buffer_destroy(&editor.buffers[idx])
 	ordered_remove(&editor.buffers, idx)
 	if len(editor.buffers) == 0 {
@@ -850,6 +851,7 @@ editor_add_buffer :: proc(editor: ^Editor, b: Buffer) -> int {
 	scratch := editor.buffers[0]
 	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
 		plugin_buffer_hooks_drop(&editor.plugins, scratch.id)
+		searches_buffer_closed(editor, scratch.id)
 		buffer_destroy(&editor.buffers[0])
 		editor.buffers[0] = b
 		return 0

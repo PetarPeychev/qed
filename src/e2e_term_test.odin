@@ -320,3 +320,68 @@ e2e_term_kill_shell_job :: proc(t: ^testing.T) {
 	term_kill(&e.ed, sh)
 	testing.expect(t, e2e_group_gone(job), "the foreground job's group dies with the shell")
 }
+
+@(test)
+e2e_term_altscreen_esc_and_resize :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	program, ok := term_create(&e.ed, {name = "alt", cmd = "printf '\\033[?1049h'; exec cat -v"})
+	if !testing.expect(t, ok, "the program starts") {
+		return
+	}
+	e2e_term_show(&e, program)
+	testing.expect(t, e2e_term_until(&e, 4000, proc(t: ^Terminal) -> bool {return t.altscreen}, program), "it enters the alt-screen")
+	e2e_key(&e, .Esc)
+	e2e_term_sync(&e)
+	testing.expect(t, e.ed.terminal.active, "Esc in the alt-screen keeps the pane")
+	e2e_type(&e, "\n")
+	testing.expect(t, e2e_term_until(&e, 4000, proc(t: ^Terminal) -> bool {return e2e_term_screen_has(t, "^[")}, program), "the program got the Esc")
+	e2e_resize(&e, 70, 18)
+	e2e_term_sync(&e)
+	testing.expect_value(t, program.rows, e.ed.terminal.area.h)
+	testing.expect_value(t, program.cols, e.ed.terminal.area.w)
+	e2e_resize(&e, 80, 24)
+	e2e_term_sync(&e)
+	testing.expect_value(t, program.cols, e.ed.terminal.area.w)
+	term_kill(&e.ed, program)
+}
+
+@(test)
+e2e_term_escape_closes_off :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin_config(&e, "terminal", `{"escape_closes": false}`, hot = true)
+	plugin_flush(&e.ed)
+	program, ok := term_create(&e.ed, {name = "cat", cmd = "exec cat -v"})
+	if !testing.expect(t, ok, "the program starts") {
+		return
+	}
+	e2e_term_show(&e, program)
+	testing.expect(t, e.ed.terminal.active, "the pane shows")
+	e2e_key(&e, .Esc)
+	e2e_term_sync(&e)
+	testing.expect(t, e.ed.terminal.active, "with escape_closes off Esc keeps the pane")
+	e2e_type(&e, "\n")
+	testing.expect(t, e2e_term_until(&e, 4000, proc(t: ^Terminal) -> bool {return e2e_term_screen_has(t, "^[")}, program), "and goes to the program")
+	term_kill(&e.ed, program)
+}
+
+@(test)
+e2e_term_outside_click_closes_border_click_stays :: proc(t: ^testing.T) {
+	e := e2e_start("hello")
+	defer e2e_stop(&e)
+	program, ok := term_create(&e.ed, {name = "idle", cmd = "exec sleep 30"})
+	if !testing.expect(t, ok, "the program starts") {
+		return
+	}
+	e2e_term_show(&e, program)
+	area := e.ed.terminal.area
+	e2e_mouse(&e, area.x - 1, area.y - 1)
+	e2e_term_sync(&e)
+	testing.expect(t, e.ed.terminal.active, "a border click keeps the pane")
+	testing.expect_value(t, editor_buffer(&e.ed).cursor, Cursor{0, 0})
+	e2e_mouse(&e, 1, 1)
+	e2e_term_sync(&e)
+	testing.expect(t, !e.ed.terminal.active, "an outside click closes the pane")
+	term_kill(&e.ed, program)
+}

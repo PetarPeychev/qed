@@ -325,9 +325,12 @@ api_buf :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> (^Buffer, int) {
 api_buffer_id :: proc(L: ^lua.State, idx: c.int) -> u64 {
 	idx := lua.absindex(L, idx)
 	if lua.type(L, idx) != .TABLE {
-		lua.L_argerror(L, idx, "buffer object expected")
+		plugin_raise(L, "buffer object expected")
 	}
-	id, _ := api_field_int(L, idx, "id")
+	id, ok := api_field_int(L, idx, "id")
+	if !ok || id <= 0 {
+		plugin_raise(L, "buffer object expected")
+	}
 	return u64(id)
 }
 

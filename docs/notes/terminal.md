@@ -131,7 +131,7 @@ reserved chords. Pick it deliberately in the config `keybinds`.
   libvterm's `vterm_keyboard_{start,end}_paste` (emits DECSET 2004 markers only if the guest
   enabled them) and writes it to the PTY with `\n`→`\r`.
 - **Escape:** defocuses the pane at a plain shell prompt; forwarded to the guest on the
-  alt-screen so vim/htop/less/fzf keep it. Config `terminal_escape_closes` (default on)
+  alt-screen so vim/htop/less/fzf keep it. Option `plugins.terminal.escape_closes` (default on)
   disables even the prompt-level close (for readline vi-mode users).
 
 ## Not yet wired

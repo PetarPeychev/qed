@@ -1,6 +1,7 @@
 local ui = qed.ui
 
 local view
+local options
 
 local function hide()
 	if view then
@@ -26,9 +27,16 @@ local function build(session)
 	if not (state and state.running) then
 		on = {key = function() hide() return true end}
 	end
-	return ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 8, y = 3},
-		border = true, title = title_of(session), bg = "pane_background", fg = "pane_foreground",
-		ui.terminal{id = "terminal", session = session, grow = 1, scope = "terminal", on = on},
+	return ui.column{float = "screen", width = "100%", height = "100%",
+		on = {click = function()
+			hide()
+			return true
+		end},
+		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 8, y = 3},
+			border = true, title = title_of(session), bg = "pane_background", fg = "pane_foreground",
+			on = {click = function() return true end},
+			ui.terminal{id = "terminal", session = session, grow = 1, scope = "terminal", on = on},
+		},
 	}
 end
 
@@ -56,6 +64,14 @@ local function show_session(session)
 	return true
 end
 
+local function close()
+	if view and not options.escape_closes then
+		qed.term.send(view.session, "\27")
+		return
+	end
+	hide()
+end
+
 local function toggle()
 	if view then
 		hide()
@@ -66,9 +82,11 @@ end
 
 return {
 	setup = function()
+		options = qed.options({escape_closes = true}, {escape_closes = "Esc at a shell prompt closes the terminal pane (a full-screen program always gets Esc)"})
+		qed:on("config_changed", function() options = qed.config() end)
 		qed.command{name = "Toggle", key = "Alt+t", welcome = true, run = toggle}
 		qed.command{name = "Hide", scope = "terminal", keybind = "Toggle", run = hide}
-		qed.command{name = "Close", scope = "terminal", key = "Esc", run = hide}
+		qed.command{name = "Close", scope = "terminal", key = "Esc", run = close}
 		qed.export{show = show_session, hide = hide}
 		qed:on("term_exit", function(session)
 			if view and view.session == session then

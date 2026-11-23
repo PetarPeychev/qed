@@ -640,7 +640,7 @@ function qed.ui.virtual_column(props) end
 ---@return qed.Node
 function qed.ui.image(props) end
 
----A qed.term session's screen; it takes keys, paste and the mouse while focused (Esc goes to the program in alt-screen or when `terminal_escape_closes` is off). Prop: `session`.
+---A qed.term session's screen; it takes keys, paste and the mouse while focused (Esc goes to the program in alt-screen, otherwise through the scope). Prop: `session`.
 ---@param props table
 ---@return qed.Node
 function qed.ui.terminal(props) end
@@ -988,12 +988,12 @@ function qed.clipboard.set(text) end
 
 qed.buf = {}
 
----Id of the current buffer, or nil on the welcome screen.
----@return integer|nil
+---The current buffer, or nil on the welcome screen.
+---@return qed.BufferObject|nil
 function qed.buf.current() end
 
----Ids of all open buffers in tab order; empty on the welcome screen.
----@return integer[]
+---All open buffers in tab order; empty on the welcome screen.
+---@return qed.BufferObject[]
 function qed.buf.list() end
 
 ---@class qed.BufferObject
@@ -1046,8 +1046,7 @@ function Search:replace(text, opts) end
 ---Ends the search and its highlights.
 function Search:close() end
 
----True if `b` is the id of an open buffer. Unlike other `qed.buf` calls it never raises, and nil or 0 is not "current" here.
----@param b integer|nil
+---True while the buffer is open; never raises.
 ---@return boolean
 function BufferObject:valid() end
 

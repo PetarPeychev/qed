@@ -59,6 +59,15 @@ search_close :: proc(editor: ^Editor, id: u64) {
 	}
 }
 
+searches_buffer_closed :: proc(editor: ^Editor, buffer: u64) {
+	for i := len(editor.searches) - 1; i >= 0; i -= 1 {
+		if editor.searches[i].buffer == buffer {
+			search_free(editor.searches[i])
+			ordered_remove(&editor.searches, i)
+		}
+	}
+}
+
 searches_unload :: proc(editor: ^Editor, owner: string) {
 	for i := len(editor.searches) - 1; i >= 0; i -= 1 {
 		if editor.searches[i].owner == owner {
@@ -253,13 +262,14 @@ find_shows :: proc(editor: ^Editor, buffer: ^Buffer) -> bool {
 	if buffer == nil {
 		return false
 	}
+	shows := false
 	for search in editor.searches {
 		if search.buffer == buffer.id {
 			search_fresh(editor, search)
-			return true
+			shows = true
 		}
 	}
-	return false
+	return shows
 }
 
 search_result_push :: proc(L: ^lua.State, search: ^Search) -> c.int {

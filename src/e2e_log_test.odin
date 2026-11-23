@@ -60,8 +60,10 @@ e2e_log_select_copy_and_full_text :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_C, tb2.Mod.Ctrl)
 	e2e_ui_settle(&e)
 	testing.expect_value(t, clipboard_register, "entry 3\nentry 4")
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Arrow_Down)
+	for _ in 0 ..< 10 {
+		e2e_key(&e, .Arrow_Down)
+	}
+	e2e_key(&e, .Arrow_Up)
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "second line") >= 0, "Enter shows the full text")
@@ -109,4 +111,16 @@ e2e_log_history_and_source :: proc(t: ^testing.T) {
 	end}
 end}`)
 	testing.expect(t, strings.has_prefix(message, "1 true"), message)
+}
+
+@(test)
+e2e_log_outside_click_closes :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	log_open_now(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "Message Log") >= 0, "the log opens")
+	e2e_mouse(&e, 0, 0)
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "Message Log") < 0, "an outside click closes it")
 }

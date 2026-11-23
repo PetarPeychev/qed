@@ -12,6 +12,7 @@ local CHIPS = {
 local options
 local filters = {debug = false, info = true, warn = true, error = true, history = false}
 local view
+local close_all, mark_selection, toggle
 
 local function first_line(text)
 	return (text:match("^[^\n]*"))
@@ -26,6 +27,7 @@ local function message_row(record)
 		on = {click = function()
 			ui.node("log_rows"):set_state{highlighted = record.seq}
 			view.anchor = nil
+			mark_selection()
 			return true
 		end},
 		ui.text{width = 9, fg = "pane_dim_foreground", record.time},
@@ -48,7 +50,7 @@ local function chip_row()
 	for _, chip in ipairs(CHIPS) do
 		local on = filters[chip.key]
 		chips[#chips + 1] = ui.text{
-			on = {click = function() qed.run("Message Log: " .. chip.command) return true end},
+			on = {click = function() toggle(chip.key) return true end},
 			" ", {fg = "pane_shortcut_foreground", shortcut(chip.command)}, " ",
 			{fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, chip.label}}
 	end
@@ -58,15 +60,27 @@ end
 
 local function build()
 	local title = view.source and ("Message Log  ·  " .. view.source) or "Message Log"
-	return ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
-		margin = {x = 2, y = 1}, border = true, title = title, bg = "pane_background", fg = "pane_foreground",
-		ui.column{
-			ui.scroll{id = "log_scroll", grow = 1, follow = true,
-				header = ui.row{bold = true, ui.text{width = 9, "Time"}, ui.text{width = 12, "Source"}, ui.text{grow = 1, "Message"}},
-				ui.virtual_column{id = "log_rows", scope = "log", data = view.messages, item = message_row,
-					highlight_style = {bg = "pane_selection_background"}}},
-			chip_row(),
+	return ui.column{float = "screen", width = "100%", height = "100%",
+		on = {click = function()
+			close_all()
+			return true
+		end},
+		ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
+			margin = {x = 2, y = 1}, border = true, title = title, bg = "pane_background", fg = "pane_foreground",
+			on = {click = function() return true end},
+			ui.column{
+				ui.scroll{id = "log_scroll", grow = 1, follow = true,
+					header = ui.row{bold = true, ui.text{width = 9, "Time"}, ui.text{width = 12, "Source"}, ui.text{grow = 1, "Message"}},
+					ui.virtual_column{id = "log_rows", scope = "log", data = view.messages, item = message_row,
+						highlight_style = {bg = "pane_selection_background"}}},
+				chip_row(),
+			},
 		},
+		view.detail and ui.box{id = "log_detail", float = "screen", anchor = "center",
+			width = {"100%", max = options.max_width}, height = "100%", margin = {x = 2, y = 1}, border = true,
+			title = "Message Log", bg = "pane_background", fg = "pane_foreground", scope = "log_detail",
+			on = {click = function() return true end},
+			ui.scroll{id = "log_detail_scroll", ui.text{wrap = true, table.unpack(view.detail)}}} or false,
 	}
 end
 
@@ -85,7 +99,7 @@ local function selected_range()
 	return math.min(anchor, cursor), math.max(anchor, cursor)
 end
 
-local function mark_selection()
+function mark_selection()
 	local messages = view.messages
 	for seq in pairs(view.marked) do
 		if messages:get(seq) then
@@ -104,14 +118,22 @@ local function mark_selection()
 	end
 end
 
-local function reload()
-	view.messages = qed.messages{levels = {debug = filters.debug, info = filters.info, warn = filters.warn, error = filters.error},
-		history = filters.history, source = view.source}
-	view.marked, view.anchor = {}, nil
-	view.handle:update(build())
+local function messages_of(source)
+	return qed.messages{levels = {debug = filters.debug, info = filters.info, warn = filters.warn, error = filters.error},
+		history = filters.history, source = source}
+end
+
+local function show_end()
 	local last = view.messages:at(view.messages:count())
 	ui.node("log_rows"):set_state{highlighted = last and last.seq or false}
 	ui.node("log_scroll"):set_state{offset = 1e9}
+end
+
+local function reload()
+	view.messages = messages_of(view.source)
+	view.marked, view.anchor = {}, nil
+	view.handle:update(build())
+	show_end()
 end
 
 local function open_log(source)
@@ -124,21 +146,26 @@ local function open_log(source)
 		end
 		view.handle:unmount()
 	end
-	view = {source = source, marked = {}}
-	view.messages = qed.messages{levels = {debug = filters.debug, info = filters.info, warn = filters.warn, error = filters.error},
-		history = filters.history, source = source}
+	view = {source = source, marked = {}, messages = messages_of(source)}
 	view.handle = ui.mount("pane", build())
-	reload()
+	show_end()
 	ui.node("log_rows"):focus()
 end
 
 local function close_log()
 	if view and view.detail then
-		view.detail:unmount()
 		view.detail = nil
+		view.handle:update(build())
 		ui.node("log_rows"):focus()
 		return
 	end
+	if view then
+		view.handle:unmount()
+		view = nil
+	end
+end
+
+close_all = function()
 	if view then
 		view.handle:unmount()
 		view = nil
@@ -206,14 +233,12 @@ local function show_full()
 	if #spans == 0 then
 		return
 	end
-	view.detail = ui.mount("pane", ui.box{id = "log_detail", float = "screen", anchor = "center",
-		width = {"100%", max = options.max_width}, height = "100%", margin = {x = 2, y = 1}, border = true,
-		title = "Message Log", bg = "pane_background", fg = "pane_foreground", scope = "log_detail",
-		ui.scroll{id = "log_detail_scroll", ui.text{wrap = true, table.unpack(spans)}}})
+	view.detail = spans
+	view.handle:update(build())
 	ui.node("log_detail"):focus()
 end
 
-local function toggle(key)
+function toggle(key)
 	filters[key] = not filters[key]
 	if view then
 		reload()

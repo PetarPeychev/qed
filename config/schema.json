@@ -24,7 +24,6 @@
   "cursor_accel": {"description": "Speed up held arrow keys"},
   "auto_close_pairs": {"description": "Insert closing brackets and quotes"},
   "line_wrap": {"description": "Soft wrap long lines in new buffers"},
-  "terminal_escape_closes": {"description": "Esc at the shell prompt closes the terminal pane"},
   "diff_view": {"description": "Show removed lines and changed words inline against the diff base"},
   "plugins_pane_backdrop": {"description": "What the Plugins pane does to the screen behind it", "choices": ["none", "dim", "blank"]},
   "plugins_pane_max_width": {"description": "Max width of the Plugins pane", "min": 20},

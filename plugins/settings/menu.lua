@@ -322,8 +322,14 @@ end
 
 local function build()
 	local columns = COLUMNS[tab]
-	return ui.box{float = "screen", anchor = "center", width = {"100%", max = opts.max_width}, height = "100%",
+	return ui.column{float = "screen", width = "100%", height = "100%",
+		on = {click = function()
+			M.dismiss()
+			return true
+		end},
+		ui.box{float = "screen", anchor = "center", width = {"100%", max = opts.max_width}, height = "100%",
 		margin = {x = 2, y = 1}, border = true, title = "Settings", bg = "pane_background", fg = "pane_foreground",
+		on = {click = function() return true end},
 		ui.column{
 			tab_row(),
 			ui.row{height = 1,
@@ -338,7 +344,7 @@ local function build()
 			ui.row{ui.text{width = 1, " "}, ui.text{grow = 1, wrap = true, fg = "pane_dim_foreground", info_of(rows[highlighted() or ""])}},
 			footer(),
 		},
-	}
+	}}
 end
 
 function M.rebuild()
@@ -588,6 +594,16 @@ local function move(step)
 	M.rebuild()
 end
 
+function M.dismiss()
+	if not view then
+		return
+	end
+	local closing = view
+	view = nil
+	closing.handle:unmount()
+	closing.query:close()
+end
+
 local function close()
 	if not view then
 		return
@@ -596,10 +612,7 @@ local function close()
 		view.query:set_text("")
 		return
 	end
-	local closing = view
-	view = nil
-	closing.handle:unmount()
-	closing.query:close()
+	M.dismiss()
 end
 
 function M.reset()

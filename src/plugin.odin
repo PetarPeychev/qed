@@ -2308,7 +2308,9 @@ pluginview_reload :: proc(editor: ^Editor) {
 
 pluginview_log :: proc(editor: ^Editor) {
 	if pl := pluginview_selected(editor); pl != nil {
-		plugin_command_run_named(editor, "Message Log: Open", pl.display)
+		if !plugin_command_run_named(editor, "Message Log: Open", pl.display) {
+			return
+		}
 		if pn := pane_find(editor, "plugins"); pn != nil {
 			pane_end(editor, pn.handle, false)
 		}

@@ -63,7 +63,11 @@ e2e_find_paste_flattens_and_selection_rules :: proc(t: ^testing.T) {
 	buffer.cursor = {1, 2}
 	e2e_key(&e, .Ctrl_F, tb2.Mod.Ctrl)
 	e2e_ui_settle(&e)
-	testing.expect(t, strings.contains(find_box_row(&e), "Find    ") || !strings.contains(find_box_row(&e), "Find  "), "whitespace selections do not prefill")
+	query_node := ui_find(&e.ed.ui, "#find/find_query")
+	testing.expect(t, query_node != nil, "the find query shows")
+	if query_node != nil {
+		testing.expect_value(t, string(ui_buffer(&e.ed, query_node.buffer).lines[0].text[:]), "")
+	}
 	e2e_paste(&e, "a\nb")
 	e2e_ui_settle(&e)
 	testing.expect(t, strings.contains(find_box_row(&e), "a b"), find_box_row(&e))
@@ -199,4 +203,23 @@ end}`)
 	}
 	testing.expect_value(t, owners["own"], 1)
 	testing.expect_value(t, owners["uitest"], 1)
+}
+
+@(test)
+e2e_searches_refresh_together_and_close_with_the_buffer :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	message := ut_plugin_run(&e, `return {setup = function()
+	qed.command{name = "Run", run = function()
+		local buffer = qed.buf.create{internal = true}
+		buffer:set_text("a b a")
+		local first = buffer:find("a")
+		local second = buffer:find("b")
+		buffer:set_text("a b a b")
+		qed.message(select(2, first:result()) .. " " .. select(2, second:result()))
+		buffer:close()
+	end}
+end}`)
+	testing.expect_value(t, message, "2 2")
+	testing.expect_value(t, len(e.ed.searches), 0)
 }

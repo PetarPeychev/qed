@@ -76,8 +76,8 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 	for node := focus; node != nil; node = node.parent {
 		ui.target = node
 		session := term_find(editor, node.session) if node.kind == .Terminal else nil
-		// full-screen programs (alt-screen) own Escape; at a plain shell prompt it goes to the pane
-		program_escape := session != nil && ev.key == .Esc && !ev_alt(ev) && (session.altscreen || !TERMINAL_ESCAPE_CLOSES)
+		// full-screen programs (alt-screen) own Escape
+		program_escape := session != nil && ev.key == .Esc && !ev_alt(ev) && session.altscreen
 		for scope in node.scope {
 			if !program_escape && ui_scope_run(editor, scope, chord) {
 				return
@@ -213,6 +213,10 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	if ui.drag.active && (ev.key == .Mouse_Release || motion) {
 		if node := ui_find(ui, ui.drag.node); node != nil && node.kind == .Terminal {
 			term_dispatch_mouse(editor, ev)
+			if ev.key == .Mouse_Release {
+				ui.drag.active = false
+			}
+			return true
 		}
 	}
 	if ev.key == .Mouse_Release {

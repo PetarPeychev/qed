@@ -337,18 +337,21 @@ image_head :: proc(path: string) -> []u8 {
 
 image_get :: proc(path: string) -> ^Image {
 	g_image_tick += 1
-	stamp := buffer_disk_stamp(path)
 	for &img in g_images {
 		if img.path == path {
-			if img.stamp != stamp {
-				image_forget(&img)
-				img.stamp = stamp
-				image_probe(&img)
+			// one stat per image per frame: measure and render both ask
+			if img.used <= g_image_floor {
+				if stamp := buffer_disk_stamp(path); img.stamp != stamp {
+					image_forget(&img)
+					img.stamp = stamp
+					image_probe(&img)
+				}
 			}
 			img.used = g_image_tick
 			return nil if img.state == .Failed else &img
 		}
 	}
+	stamp := buffer_disk_stamp(path)
 	if g_images.allocator.procedure == nil {
 		g_images.allocator = os.heap_allocator()
 	}

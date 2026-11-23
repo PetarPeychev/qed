@@ -198,7 +198,7 @@ command_available :: proc(editor: ^Editor, name: string, scope := "") -> bool {
 	}
 	if editor.welcome {
 		switch name {
-		case "Plugins: Open", "Message Log: Open", "Quit":
+		case "Plugins: Open", "Quit":
 			return true
 		}
 		return false

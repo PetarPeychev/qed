@@ -166,5 +166,15 @@ return {
 		qed.command{name = "Replace All", scope = "find", key = "Alt+a", run = function() replace(true) end}
 		qed.command{name = "Replace Match", scope = "find_replace", key = "Enter", run = function() replace(false) end}
 		qed.command{name = "Switch Field", scope = "find", key = "Tab", run = switch_field}
+		qed:on("buf_close", function(buffer)
+			if finder and finder.target == buffer then
+				close_finder()
+			end
+		end)
+		qed:on("buf_enter", function(buffer)
+			if finder and finder.target ~= buffer then
+				close_finder()
+			end
+		end)
 	end,
 }

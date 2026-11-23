@@ -29,7 +29,6 @@ MASTER_CONFIG_PATHS := [?]string {
 	"line_wrap",
 	"filetree_show_dotfiles",
 	"filetree_show_ignored",
-	"terminal_escape_closes",
 	"modules",
 	"modules/git",
 	"modules/git/enabled",

@@ -89,14 +89,12 @@ CURSOR_ACCEL: bool
 AUTO_CLOSE_PAIRS: bool
 DIFF_VIEW: bool
 LINE_WRAP: bool
-TERMINAL_ESCAPE_CLOSES: bool
 LSP_ENABLED: bool
 
 config_bools := [?]Config_Bool {
 	{"cursor_accel", &CURSOR_ACCEL},
 	{"auto_close_pairs", &AUTO_CLOSE_PAIRS},
 	{"line_wrap", &LINE_WRAP},
-	{"terminal_escape_closes", &TERMINAL_ESCAPE_CLOSES},
 	{"diff_view", &DIFF_VIEW},
 }
 
@@ -745,6 +743,7 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 }
 
 CONFIG_MOVED :: [?][2]string {
+	{"terminal_escape_closes", "plugins/terminal/escape_closes"},
 	{"keybinds/Terminal: Toggle", "plugins/terminal/keybinds/Toggle"},
 	{"keybinds/Message Log: Open", "plugins/log/keybinds/Open"},
 	{"keybinds/Message Log: Toggle Debug", "plugins/log/keybinds/Toggle Debug"},

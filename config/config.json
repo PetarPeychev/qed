@@ -24,7 +24,6 @@
   "cursor_accel": true,
   "auto_close_pairs": true,
   "line_wrap": true,
-  "terminal_escape_closes": true,
   "diff_view": false,
   "plugins_pane_backdrop": "none",
   "plugins_pane_max_width": 120,

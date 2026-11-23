@@ -156,7 +156,7 @@ Time/Source/Message columns under a header, rows coloured by level (`sel_bg`), `
 arrow/wheel scroll + select, `Shift+↑↓` extends a contiguous selection, *Copy* copies it
 (newline-joined), `Enter` shows the selected entries in full, wrapped (child `log_entry`), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
 (`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history off by
-default, persisted for the session in `Editor.logview`; seeded entries carry `LogEntry.seeded`).
+default, kept for the session by the `log` plugin over `qed.messages`; seeded entries carry `LogEntry.seeded`).
 Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
 UTC fallback). At startup the ring seeds from the disk-log tail (parsed back,
 local→UTC via `datetime_to_utc`, never re-written), so the pane can show
@@ -315,8 +315,7 @@ returns whether the text changed (fuzzy callers re-filter); `textfield_render` d
 scrolled to the caret with the selection inverted (`COLOR_PANE_BG`/`FG`). Word/home
 motion is the same `word_left_col`/`word_right_col`/`home_smart_col` the buffer cursor
 uses. A `> ` prompt draws via `overlay_prompt_render`.
-Every pane is mouse-driven through `pane_mouse` or an optional `Overlay.mouse` handler (`editor_dispatch`
-routes `.Mouse` to it): wheel scrolls, single-click selects a row, double-click activates,
+Every old pane is mouse-driven through `pane_mouse` (qed.ui nodes through their `on` handlers): wheel scrolls, single-click selects a row, double-click activates,
 a click in the query/prompt field places the caret and a button-held drag selects, and a
 click outside the box dismisses (all drag/dismiss gated on the `Motion` flag). Shared row/
 field/scroll helpers live in `overlay.odin` (`overlay_list_mouse`, `fuzzy_list_center_mouse`,
@@ -345,8 +344,8 @@ Terminal workarounds, documented in `lib/tb2/PATCHES.md`:
   `xterm-256color` (logged, `TERM` restored for children), else exits with the error.
 - **Bracketed paste:** patched termbox surfaces `Paste_Begin`/`Paste_End`; qed
   accumulates the keys between them and routes the whole paste to whatever has
-  focus: the buffer (one undo group), the terminal pane, or the focused pane's
-  or active overlay's text field via `pane_paste` / `Overlay.paste` (flattened to one line,
+  focus: the buffer (one undo group), a focused `terminal` node, or the focused pane's
+  text field via `pane_paste` (flattened to one line,
   so a pasted newline can't fire Enter mid-paste); dialogs ignore it.
 
 ## Panes
@@ -424,8 +423,7 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - The **Message Log** (`log.odin`), the **Plugins pane** (`plugin.odin`, `keep`, `on.footer` shows the
   selected plugin's last error, selection saved by name; Enter on a bundled plugin opens a `plugin_source`
   child with a `body_preview`; `l` opens the log as its child) and the **LSP rename** prompt (`rename.odin`,
-  a center `input` pane, `modal`) are core panes (D1). The log and Plugins pane take
-  `message_log_backdrop` / `plugins_pane_backdrop`.
+  a center `input` pane, `modal`) are core panes (D1). The Plugins pane takes `plugins_pane_backdrop`.
 
 **Plugin views** (`plugin_ui.odin`): `qed.ui.open` builds a Pane plus a `UiView` in `Plugins.views`
 (registry refs: the view table, the item values, the `on` handlers; change/query task ids), keyed by
@@ -480,12 +478,8 @@ before the box, to every cell drawn so far except the status rows, so panes belo
 
 Ported: the quit/close/conflict dialogs, the merge-conflict resolve dialog (`conflict` plugin), the command palette, the Message Log, the Plugins pane, the LSP
 rename prompt, the working-root picker (`workspace` plugin), line find (`goto` plugin), the file tree (`filetree`
-plugin), the AI edit prompt (`ai` plugin) and every plugin pane. Still legacy overlays: terminal, find bar.
-**Migration coexistence** (shrinks each M step, gone after the last port): unported panes stay
-`Overlay` vtable entries (`editor_overlays`). The stack sits above them: an overlay gets input only
-when no pane has focus, and render draws the active overlay, then the stack. A child opened over
-a bare overlay records its `active` flag in `Pane.over`; `pane_stack_sync` closes a child whose
-overlay closed, and focus and render skip it until then. An exclusive pane does not close an open
+plugin), the AI edit prompt (`ai` plugin) and every plugin pane. The overlay vtable is gone: the terminal,
+find, log, settings and dialogs are qed.ui plugins (see notes/ui.md). An exclusive pane does not close an open
 overlay.
 
 ## Modules
@@ -902,7 +896,7 @@ the mouse — on a mouse-mode program (tracked via `PROP_MOUSE` settermprop) it 
 focused, `editor_dispatch` routes `Paste_Begin`/keys/`Paste_End` into `term_paste`, wrapping the
 body in libvterm's `keyboard_{start,end}_paste` (bracketed only if the guest enabled DECSET 2004)
 with `\n`→`\r`. **Escape** defocuses at a plain shell prompt but is forwarded on the alt-screen so
-full-TUI programs keep it (config `terminal_escape_closes`, default on).
+full-TUI programs keep it (`plugins.terminal.escape_closes`, default on).
 Deep-dive: [notes/terminal.md](notes/terminal.md).
 
 ## File layout

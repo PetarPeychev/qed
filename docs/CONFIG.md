@@ -93,9 +93,8 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `split_tree_min_width` / `split_tree_max_width` | `30` / `60` | List column of a `split:tree` pane (the file tree). |
 | `split_code_min_width` / `split_code_max_width` | `50` / `100` | List column of a `split:code` pane (the default split: line find, search). |
 | `split_preview_min_width` / `split_preview_max_width` | `70` / `130` | Preview column of any split pane. |
-| `message_log_backdrop` | `"none"` | What shows around *Message Log: Open*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
-| `plugins_pane_backdrop` | `"none"` | The same for *Plugins: Open*. |
-| `message_log_max_width` / `plugins_pane_max_width` | `120` / `120` | Widest the Message Log / Plugins pane gets, borders included (at least 20); the box stays centered. Applies from the next open. |
+| `plugins_pane_backdrop` | `"none"` | What shows around *Plugins: Open*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
+| `plugins_pane_max_width` | `120` | Widest the Plugins pane gets, borders included (at least 20); the box stays centered. Applies from the next open. |
 
 ## Search & navigation
 
@@ -114,7 +113,6 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `terminal_escape_closes` | `true` | At a shell prompt, Esc closes the terminal pane (forwarded on the alt-screen regardless). |
 | `diff_view` | `false` | Inline diff view (ghost rows for removed/replaced lines against the diff base). *Git: Toggle Diff View*. |
 
 ## Keybinds
