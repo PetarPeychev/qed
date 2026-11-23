@@ -1263,13 +1263,13 @@ e2e_nav_quit_guard :: proc(t: ^testing.T) {
 	testing.expect(t, b.modified, "buffer is now modified")
 
 	e2e_key(&e, .Ctrl_Q)
-	testing.expect(t, pane_find(&e.ed, "quit") != nil, "Ctrl+Q on a modified buffer opens the quit dialog")
+	testing.expect(t, safety_dialog(&e.ed) == "quit", "Ctrl+Q on a modified buffer opens the quit dialog")
 	testing.expect(t, !e.ed.quit, "editor does not quit yet")
 
 	// Choose the non-destructive Cancel action.
 	e2e_key(&e, .Arrow_Up)
 	e2e_key(&e, .Enter)
-	testing.expect(t, pane_find(&e.ed, "quit") == nil, "Cancel closes the dialog")
+	testing.expect(t, safety_dialog(&e.ed) != "quit", "Cancel closes the dialog")
 	testing.expect(t, !e.ed.quit, "editor stays open")
 	testing.expect(t, b.modified, "edit is preserved")
 }

@@ -33,26 +33,6 @@ e2e_pane_passive_takes_no_input :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(e.ed.panes), 0)
 }
 
-@(test)
-e2e_pane_safety_on_top :: proc(t: ^testing.T) {
-	e := e2e_start("abc")
-	defer e2e_stop(&e)
-	pane_test_hits = 0
-	items := []string{"Go"}
-	pane_open(&e.ed, {id = "a", list = {items = pane_labels(items)}, on = {close = pane_test_hit}})
-	editor_buffer(&e.ed).modified = true
-	editor_request_quit(&e.ed)
-	testing.expect_value(t, pane_focus(&e.ed).id, "quit")
-	pane_open(&e.ed, {id = "b", list = {items = pane_labels(items)}, on = {activate = pane_test_hit}})
-	testing.expect_value(t, pane_test_hits, 1)
-	testing.expect(t, pane_find(&e.ed, "a") == nil, "an exclusive pane replaces the open one")
-	testing.expect_value(t, pane_focus(&e.ed).id, "quit")
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, pane_focus(&e.ed).id, "b")
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, pane_test_hits, 2)
-	testing.expect_value(t, len(e.ed.panes), 0)
-}
 
 @(test)
 e2e_pane_safety_idempotent :: proc(t: ^testing.T) {
@@ -60,12 +40,13 @@ e2e_pane_safety_idempotent :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	editor_buffer(&e.ed).modified = true
 	editor_request_quit(&e.ed)
+	handle := e.ed.safety.handle
 	editor_request_quit(&e.ed)
-	testing.expect_value(t, len(e.ed.panes), 1)
+	testing.expect_value(t, e.ed.safety.handle, handle)
 	b := editor_buffer(&e.ed)
 	conflict_dialog_open(&e.ed, b)
-	conflict_dialog_open(&e.ed, b)
-	testing.expect_value(t, len(e.ed.panes), 2)
+	testing.expect_value(t, safety_dialog(&e.ed), "quit")
+	testing.expect_value(t, e.ed.safety.handle, handle)
 }
 
 @(test)
@@ -95,24 +76,3 @@ e2e_pane_close_dialog_targets_its_buffer :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(e.ed.buffers), 1)
 }
 
-@(test)
-e2e_pane_child_of_safety :: proc(t: ^testing.T) {
-	e := e2e_start("abc")
-	defer e2e_stop(&e)
-	editor_buffer(&e.ed).modified = true
-	editor_request_quit(&e.ed)
-	quit := pane_find(&e.ed, "quit").handle
-	items := []string{"Go"}
-	pane_open(&e.ed, {id = "child", kind = .Child, parent = quit, list = {items = pane_labels(items)}})
-	pane_open(&e.ed, {id = "root", list = {items = pane_labels(items)}})
-	testing.expect_value(t, e.ed.panes[0].id, "root")
-	testing.expect_value(t, e.ed.panes[1].id, "quit")
-	testing.expect_value(t, e.ed.panes[2].id, "child")
-	testing.expect_value(t, pane_focus(&e.ed).id, "child")
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, pane_focus(&e.ed).id, "quit")
-	pane_open(&e.ed, {id = "child", kind = .Child, parent = quit, list = {items = pane_labels(items)}})
-	pane_end(&e.ed, quit, false)
-	testing.expect_value(t, len(e.ed.panes), 1)
-	testing.expect_value(t, pane_focus(&e.ed).id, "root")
-}

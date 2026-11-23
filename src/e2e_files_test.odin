@@ -184,10 +184,10 @@ e2e_files_conflict_cancel :: proc(t: ^testing.T) {
 	testing.expect(t, b.disk_conflict, "poll should flag the conflict on a dirty buffer")
 
 	e2e_key(&e, .Ctrl_S)
-	testing.expect(t, pane_find(&e.ed, "conflict") != nil, "Ctrl+S should open the conflict dialog")
+	testing.expect(t, safety_dialog(&e.ed) == "conflict", "Ctrl+S should open the conflict dialog")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "Esc cancels the dialog")
+	testing.expect(t, safety_dialog(&e.ed) != "conflict", "Esc cancels the dialog")
 	testing.expect(t, b.modified, "buffer keeps its unsaved edit")
 	testing.expect_value(t, string(b.lines[0].text[:]), "Xfirst line")
 	testing.expect_value(t, e2e_read_disk(e.path), "DISK\n") // nothing written
@@ -207,7 +207,7 @@ e2e_files_conflict_overwrite :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down) // Cancel -> Overwrite
 	e2e_key(&e, .Enter)
 
-	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "dialog closes after choosing")
+	testing.expect(t, safety_dialog(&e.ed) != "conflict", "dialog closes after choosing")
 	testing.expect_value(t, b.modified, false)
 	testing.expect_value(t, e2e_read_disk(e.path), "Xfirst line\nsecond line\n") // buffer wins
 }
@@ -250,7 +250,7 @@ e2e_files_conflict_reload_undo :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
-	testing.expect(t, pane_find(&e.ed, "conflict") == nil, "dialog closes after choosing")
+	testing.expect(t, safety_dialog(&e.ed) != "conflict", "dialog closes after choosing")
 	testing.expect_value(t, buffer_snapshot_tmp(b), "DISK\n")
 	testing.expect(t, !b.modified, "the reloaded buffer is clean")
 	testing.expect_value(t, e2e_read_disk(e.path), "DISK\n")
@@ -375,7 +375,7 @@ e2e_files_conflict_before_pre_save :: proc(t: ^testing.T) {
 	_ = os.write_entire_file_from_string(e.path, "DISK\n")
 	editor_poll_disk(&e.ed)
 	e2e_key(&e, .Ctrl_S)
-	testing.expect(t, pane_find(&e.ed, "conflict") != nil, "Ctrl+S opens the conflict dialog")
+	testing.expect(t, safety_dialog(&e.ed) == "conflict", "Ctrl+S opens the conflict dialog")
 	e2e_key(&e, .Esc)
 	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
 	testing.expect_value(t, string(b.lines[0].text[:]), "Xfirst line   ")

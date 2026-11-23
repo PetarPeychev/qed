@@ -672,7 +672,7 @@ qed_ui_mount :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	outlet := api_string(L, 1)
 	plugin := api_loaded(L, editor)
-	if outlet == "alert" && pane_safety_open(editor) {
+	if outlet == "alert" && safety_open(editor) {
 		return api_fail(L, "busy")
 	}
 	root, err := ui_marshal_tree(L, editor, plugin_name_intern(&editor.plugins, plugin.name), 2, 0)

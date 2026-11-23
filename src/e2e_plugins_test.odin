@@ -357,8 +357,8 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "quit")
 	lua.pushboolean(L, b32(ed.welcome))
 	lua.setfield(L, -2, "welcome")
-	if p := pane_focus(ed); p != nil && p.safety {
-		lua.pushodinstring(L, p.id)
+	if name := safety_dialog(ed); name != "" {
+		lua.pushodinstring(L, name)
 	} else {
 		lua.pushnil(L)
 	}

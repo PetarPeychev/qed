@@ -546,7 +546,7 @@ plugin_api_save_conflict :: proc(t: ^testing.T) {
 	b.disk.mtime -= 1000
 	append(&ed.buffers, b)
 	api_test_run(t, ed)
-	testing.expect(t, pane_find(ed, "conflict") == nil, "no dialog for a non-current buffer")
+	testing.expect(t, safety_dialog(ed) != "conflict", "no dialog for a non-current buffer")
 }
 
 @(test)

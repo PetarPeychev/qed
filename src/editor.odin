@@ -17,6 +17,7 @@ DIAG_PANE_MARGIN_X :: 2
 DIAG_PANE_MAX_LINES :: 8
 
 Editor :: struct {
+	safety:          Safety,
 	buffers:         [dynamic]Buffer,
 	current:         int,
 	working_root:    string,
@@ -363,8 +364,12 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			return
 		}
 	}
-	// a dialog above the old panes takes every key and click, except while a core safety dialog shows
-	if !pane_safety_open(editor) && ui_layer_used(&editor.ui, "alert") && (ev.type == .Mouse || ui_focus_in_layer(editor, "alert")) {
+	if safety_open(editor) && (ev.type == .Key || ev.type == .Mouse) {
+		safety_dispatch(editor, ev)
+		return
+	}
+	// a dialog above the old panes takes every key and click
+	if ui_layer_used(&editor.ui, "alert") && (ev.type == .Mouse || ui_focus_in_layer(editor, "alert")) {
 		ui_dispatch(editor, ev)
 		return
 	}
@@ -406,7 +411,7 @@ editor_previews_sync :: proc(editor: ^Editor) {
 }
 
 editor_paste_route :: proc(editor: ^Editor, text: string) {
-	if len(text) == 0 || (!pane_safety_open(editor) && ui_focus_in_layer(editor, "alert") && ui_paste(editor, text)) || pane_stack_paste(editor, text) {
+	if len(text) == 0 || safety_open(editor) || (ui_focus_in_layer(editor, "alert") && ui_paste(editor, text)) || pane_stack_paste(editor, text) {
 		return
 	}
 	if ui_paste(editor, text) {
@@ -1389,13 +1394,8 @@ editor_syntax_errors_report :: proc(editor: ^Editor) {
 
 editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool) {
 	pane_stack_render(editor, true)
-	// a core safety dialog draws above a plugin dialog
-	safety := pane_safety_open(editor)
-	alert := safety && ui_render_alert(editor)
 	panes := pane_stack_render(editor, false)
-	if !safety {
-		alert = ui_render_alert(editor)
-	}
+	alert := ui_render_alert(editor)
 	if panes && !alert {
 		tb2.present()
 		return true

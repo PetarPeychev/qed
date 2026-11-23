@@ -125,7 +125,7 @@ e2e_dialog_takes_clicks_and_keys_over_an_old_pane :: proc(t: ^testing.T) {
 	editor_buffer(&e.ed).modified = true
 	e2e_key(&e, .Ctrl_Q, .Ctrl)
 	e2e_ui_settle(&e)
-	testing.expect(t, pane_find(&e.ed, "quit") == nil, "global keys do not reach under an open dialog")
+	testing.expect(t, safety_dialog(&e.ed) == "", "global keys do not reach under an open dialog")
 	e2e_key(&e, .Esc)
 	e2e_ui_settle(&e)
 }

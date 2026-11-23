@@ -1158,7 +1158,7 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pop(L, 1)
 
-	if pane_safety_open(editor) {
+	if safety_open(editor) {
 		return api_fail(L, "busy")
 	}
 	switch {
