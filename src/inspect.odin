@@ -25,6 +25,10 @@ inspect_close :: proc(editor: ^Editor) {
 	editor.inspect.active = false
 }
 
+inspect_open :: proc(editor: ^Editor) -> bool {
+	return editor.inspect.active
+}
+
 // Passive on-demand inspection: re-runs the highlight query over the cursor's
 // line/region (never the paint path) to report node ancestry, the capture stack
 // with each capture's resolution chain, and predicate near-misses. Recomputed

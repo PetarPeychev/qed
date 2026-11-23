@@ -218,13 +218,6 @@ word_range_at :: proc(b: ^Buffer, at: Cursor) -> (from, to: Cursor) {
 	return {at.row, start}, {at.row, end}
 }
 
-line_range_at :: proc(b: ^Buffer, row: int) -> (from, to: Cursor) {
-	if row < len(b.lines) - 1 {
-		return {row, 0}, {row + 1, 0}
-	}
-	return {row, 0}, {row, len(b.lines[row].text)}
-}
-
 cursor_move_left :: proc(b: ^Buffer) {
 	c := &b.cursor
 	if c.col > 0 {
@@ -457,4 +450,11 @@ cursor_move_word_right :: proc(b: ^Buffer) {
 		c.col = word_right_col(text, c.col)
 	}
 	cursor_goal_sync(b)
+}
+
+line_range_at :: proc(b: ^Buffer, row: int) -> (from, to: Cursor) {
+	if row < len(b.lines) - 1 {
+		return {row, 0}, {row + 1, 0}
+	}
+	return {row, 0}, {row, len(b.lines[row].text)}
 }

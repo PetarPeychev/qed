@@ -76,7 +76,6 @@ gate_open :: proc(path: string, wrap := true) -> (E2E, f64) {
 	LINE_WRAP = wrap
 	start := time.tick_now()
 	ed := editor_init(path, headless = true)
-	e2e_old_ui(&ed)
 	editor_render(&ed)
 	ms := ms_since(start)
 	LINE_WRAP = saved

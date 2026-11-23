@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 5,3
   │                                                                          │
   │                                                                          │
   │ ←→ tabs  ↑↓ select  Shift+↑↓ extend  Enter open  Ctrl… ignored  dotfiles │
- r└──────────────────────────────────────────────────────────────────────────┘v
+ /└──────────────────────────────────────────────────────────────────────────┘v
 
 -- style
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 38,2
 
 
 
- main.go                                                                5:16 go
+ ≡ root/main.go  5/14                                              ◆ go  ⇥ Tabs
 
 -- style
 aaaabbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddggg
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b

@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 6,2
 
 
 
- ● notes.txt                                                           3:4 text
+ ≡ root/notes.txt ●  3/4                                     ◆ text  ⇥ Spaces:4
 
 -- style
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -47,7 +47,7 @@ bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-ffggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggghhhhh
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -55,6 +55,4 @@ b fg=#f4f4ff bg=#181818
 c fg=#d8d8d8 bg=#1b1b1b
 d fg=#181818 bg=#f4f4ff
 e fg=#f4f4ff bg=#262626
-f fg=#ffdd33 bg=#2b2b2b
-g fg=#f4f4ff bg=#2b2b2b
-h fg=#686868 bg=#2b2b2b
+f fg=#f4f4ff bg=#2b2b2b

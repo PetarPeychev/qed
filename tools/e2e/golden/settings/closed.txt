@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 3,0
 
 
 
- a.txt                                                                 1:1 text
+ ≡ root/a.txt  1/2                                           ◆ text  ⇥ Spaces:4
 
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffff
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -55,4 +55,3 @@ b fg=#d8d8d8 bg=#1b1b1b
 c fg=#f4f4ff bg=#262626
 d fg=#f4f4ff bg=#181818
 e fg=#f4f4ff bg=#2b2b2b
-f fg=#686868 bg=#2b2b2b

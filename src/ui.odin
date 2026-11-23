@@ -6,6 +6,7 @@ import "core:io"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:time"
 import "core:sys/posix"
 import "core:unicode/utf8"
 import lua "lib:lua"
@@ -29,6 +30,7 @@ UiKind :: enum u8 {
 	Image,
 	Terminal,
 	Markdown,
+	Status,
 }
 
 ui_kind_names := [UiKind]string {
@@ -43,6 +45,7 @@ ui_kind_names := [UiKind]string {
 	.Image          = "image",
 	.Terminal       = "terminal",
 	.Markdown       = "markdown",
+	.Status         = "status",
 }
 
 UiSizeForm :: enum u8 {
@@ -241,6 +244,14 @@ Ui :: struct {
 	lists_dead:    [dynamic]u64,
 	chords:        map[string]string,
 	markdowns:     map[string]^UiMarkdown,
+	editor_clicks: UiClicks,
+}
+
+UiClicks :: struct {
+	count: int,
+	tick:  time.Tick,
+	pos:   Cursor,
+	node:  u64,
 }
 
 ui_destroy :: proc(editor: ^Editor) {
@@ -1016,6 +1027,8 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 			height = len(buffer.lines)
 		}
 	case .Terminal:
+	case .Status:
+		height = 1
 	case .Markdown:
 		height = len(ui_markdown_lines(ui_markdown_of(editor, node), avail_w))
 	case .Image:
@@ -1091,7 +1104,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 		}
 	case .Column, .Row:
 		ui_layout_flow(editor, node, content)
-	case .Text, .Editor, .Virtual_Column, .Outlet, .Image, .Terminal, .Markdown:
+	case .Text, .Editor, .Virtual_Column, .Outlet, .Image, .Terminal, .Markdown, .Status:
 	}
 	for child in node.expanded {
 		if child.float != .None {
@@ -1369,37 +1382,42 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 		return
 	}
 	state.reveal = false
-	if buffer.cursor.row < state.scroll_row {
-		state.scroll_row = buffer.cursor.row
-		state.scroll_sub = 0
-	}
+	sub := 0
 	if buffer.wrap {
 		state.scroll_col = 0
-		segs := buffer_line_wrap(buffer, buffer.cursor.row, width)
-		sub := wrap_subrow(segs, buffer.cursor.col)
-		if buffer.cursor.row == state.scroll_row && sub < state.scroll_sub {
-			state.scroll_sub = sub
-		}
-		for vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, buffer.cursor.row, sub, height + 1) >= height {
-			if state.scroll_sub + 1 < line_rows(buffer, width, state.scroll_row) {
-				state.scroll_sub += 1
-			} else {
-				state.scroll_row += 1
-				state.scroll_sub = 0
-			}
-		}
+		sub = wrap_subrow(buffer_line_wrap(buffer, buffer.cursor.row, width), buffer.cursor.col)
+	} else {
+		state.scroll_sub = 0
+	}
+	// every move is a jump measured from the cursor (O(height)); a jump target is centred, else the
+	// cursor keeps scroll_margin rows to the nearer edge
+	margin := clamp(SCROLL_MARGIN, 0, (height - 1) / 2)
+	row, sub_row := buffer.cursor.row, sub
+	top_limit_row, top_limit_sub := vpos_down(buffer, width, state.scroll_row, state.scroll_sub, margin)
+	if buffer.reveal_center {
+		buffer.reveal_center = false
+		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, height / 2)
+	} else if vpos_cmp(row, sub_row, top_limit_row, top_limit_sub) < 0 {
+		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, margin)
+	} else if vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, row, sub_row, height) >= height - margin {
+		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, height - 1 - margin)
+	}
+	last := len(buffer.lines) - 1
+	max_row, max_sub := vpos_up(buffer, width, last, line_rows(buffer, width, last) - 1, height - 1)
+	if vpos_cmp(state.scroll_row, state.scroll_sub, max_row, max_sub) > 0 && vpos_cmp(row, sub_row, max_row, max_sub) >= 0 {
+		state.scroll_row, state.scroll_sub = max_row, max_sub
+	}
+	if !buffer.wrap {
+		state.scroll_sub = 0
+	} else {
 		return
 	}
-	state.scroll_sub = 0
-	if buffer.cursor.row >= state.scroll_row + height {
-		state.scroll_row = buffer.cursor.row - height + 1
-	}
 	visual_x := visual_col(buffer.lines[buffer.cursor.row].text[:], buffer.cursor.col)
-	margin := min(SCROLL_MARGIN, width / 4)
-	if visual_x < state.scroll_col + margin {
-		state.scroll_col = max(visual_x - margin, 0)
-	} else if visual_x >= state.scroll_col + width - margin {
-		state.scroll_col = visual_x - width + margin + 1
+	side := min(SCROLL_MARGIN, width / 4)
+	if visual_x < state.scroll_col + side {
+		state.scroll_col = max(visual_x - side, 0)
+	} else if visual_x >= state.scroll_col + width - side {
+		state.scroll_col = visual_x - width + side + 1
 	}
 }
 
@@ -1882,6 +1900,8 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		ui_render_image(&paint, node)
 	case .Markdown:
 		ui_render_markdown(editor, &paint, node)
+	case .Status:
+		status_render(editor, ui_rect_intersect(node.rect, paint.clip), paint.bg)
 	case .Terminal:
 		if session := term_find(editor, node.session); session != nil {
 			focused := editor.ui.focus == node.identity

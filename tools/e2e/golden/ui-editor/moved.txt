@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 28,2
 
 
 
- ● notes.py                                                         3:26 python
+ ≡ root/notes.py ●  3/6                                    ◆ python  ⇥ Spaces:4
 
 -- style
 aaabbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-kklllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllmmmmmmm
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -60,6 +60,4 @@ g fg=#f4f4ff bg=#262626
 h fg=#73c936 bg=#262626
 i fg=#cc8c3c bg=#262626
 j fg=#cc8c3c bg=#262626 underline
-k fg=#ffdd33 bg=#2b2b2b
-l fg=#f4f4ff bg=#2b2b2b
-m fg=#686868 bg=#2b2b2b
+k fg=#f4f4ff bg=#2b2b2b

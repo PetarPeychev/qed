@@ -131,7 +131,6 @@ e2e_start :: proc(content := "") -> E2E {
 	_ = os.write_entire_file(path, transmute([]u8)content)
 
 	ed := editor_init(path, headless = true)
-	e2e_old_ui(&ed)
 	// the root is the test process's cwd (the qed repo); keep the git plugin's status out of these sessions
 	append(&ed.plugins.fakes, PluginFake{pattern = fmt.tprintf("git -C %s ", ed.working_root), code = 128})
 	append(&ed.plugins.fakes, PluginFake{pattern = fmt.tprintf("find %s ", ed.working_root)})
@@ -177,6 +176,8 @@ e2e_step :: proc(e: ^E2E, ev: tb2.Event, following: ..tb2.Event) {
 	for f, i in following {
 		e2e_peek_events[i] = f
 	}
+	// as the main loop: what a direct call queued runs before the next event
+	plugin_flush(&e.ed)
 	editor_step(&e.ed, ev, e2e_peek)
 }
 
@@ -261,7 +262,6 @@ e2e_git_start :: proc(seed: string, name := "file.txt") -> E2E {
 		),
 	)
 	e := E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
-	e2e_old_ui(&e.ed)
 	e2e_git_settle(&e)
 	return e
 }
@@ -298,10 +298,10 @@ e2e_plugin :: proc(e: ^E2E, name, src: string) -> ^Plugin {
 	return pl
 }
 
-// The old suite drives the old editor path; tests of the qed.ui layout start it with e2e_new_ui.
-e2e_old_ui :: proc(ed: ^Editor) {
-	if pl := plugin_find(&ed.plugins, "layout"); pl != nil && pl.state == .Enabled {
-		plugin_unload(ed, pl)
+// engine tests that check exact cells start with an empty screen: the shipped layout unloaded
+e2e_bare :: proc(e: ^E2E) {
+	if pl := plugin_find(&e.ed.plugins, "layout"); pl != nil && pl.state == .Enabled {
+		plugin_unload(&e.ed, pl)
 		pl.state = .Disabled
 	}
 }
@@ -317,8 +317,7 @@ e2e_new_ui :: proc(e: ^E2E) {
 }
 
 e2e_plugin_config :: proc(e: ^E2E, name, cfg: string, hot := false) {
-	layout := "" if name == "layout" else `, "layout": {"enabled": false}`
-	src := fmt.tprintf(`{{"plugins": {{%q: %s%s}}}}`, name, cfg, layout)
+	src := fmt.tprintf(`{{"plugins": {{%q: %s}}}}`, name, cfg)
 	v, err := json.parse_string(src, parse_integers = true)
 	assert(err == nil, "plugin test config parses")
 	json.destroy_value(e.cfg)
@@ -350,7 +349,9 @@ e2e_pump_while :: proc(e: ^E2E, busy: proc(e: ^E2E) -> bool, max_ms := 3000) -> 
 	return true
 }
 
+// a burst of keys: what a direct call queued runs first, the burst's own events coalesce until the next flush
 e2e_type :: proc(e: ^E2E, s: string) {
+	plugin_flush(&e.ed)
 	for r in s {
 		if r == '\n' {
 			e2e_key(e, .Enter)
@@ -360,7 +361,9 @@ e2e_type :: proc(e: ^E2E, s: string) {
 	}
 }
 
+// as the main loop: queued plugin events run before a frame
 e2e_render :: proc(e: ^E2E) {
+	plugin_flush(&e.ed)
 	editor_render(&e.ed)
 }
 

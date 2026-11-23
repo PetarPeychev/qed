@@ -861,7 +861,7 @@ plugin_gc_steps_while_typing :: proc(t: ^testing.T) {
 	test_gc_steps, test_gc_cycles, test_gc_shrinks = 0, 0, 0
 	peak := 0
 	for _ in 0 ..< 200 {
-		editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, no_peek)
+		gc_test_key(ed, no_peek)
 		peak = max(peak, ed.plugins.mem.used)
 	}
 	testing.expect_value(t, gc_test_count(t, ed, "Hog: N"), "200")
@@ -892,12 +892,12 @@ gc_test_no_idle :: proc(t: ^testing.T, live, rows, mem_cap, keys: int) -> (start
 	no_peek :: proc(ms: int) -> (tb2.Event, bool) {return {}, false}
 	plugin_flush(ed)
 	for _ in 0 ..< live / 50000 + 1 {
-		editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, no_peek)
+		gc_test_key(ed, no_peek)
 	}
 	start = ed.plugins.mem.used
 	test_alloc_refusals, test_gc_debt_steps_max = 0, 0
 	for _ in 0 ..< keys {
-		editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, no_peek)
+		gc_test_key(ed, no_peek)
 		peak = max(peak, ed.plugins.mem.used)
 	}
 	testing.expect_value(t, test_alloc_refusals, 0)
@@ -971,4 +971,11 @@ plugin_gc_collectgarbage_options :: proc(t: ^testing.T) {
 	testing.expect_value(t, gc_test_count(t, ed, "Gc: Try"), "generational=false incremental=false restart=false stop=false isrunning=false setpause=false count=number step=boolean collect=0")
 	testing.expect(t, !ed.plugins.gc_active, "a plugin's collect ends any pacer cycle")
 	testing.expectf(t, ed.plugins.gc_base < 4 * 1024 * 1024, "and rebases it (%d)", ed.plugins.gc_base)
+}
+
+// a keystroke without the layout plugin: the edit lands in the buffer, the step runs the plugin side
+@(private = "file")
+gc_test_key :: proc(ed: ^Editor, peek: proc(ms: int) -> (tb2.Event, bool)) {
+	buffer_type_rune(editor_buffer(ed), 'x')
+	editor_step(ed, tb2.Event{type = .Key, ch = 'x'}, peek)
 }

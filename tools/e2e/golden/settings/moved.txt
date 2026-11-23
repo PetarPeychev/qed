@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 5,3
   │ plugin_command_max_ms          5000                                      │
   │ Speed up held arrow keys. Default: true                                  │
   │ Enter edit  Ctrl+d reset                                                 │
- a└──────────────────────────────────────────────────────────────────────────┘t
+ ≡└──────────────────────────────────────────────────────────────────────────┘4
 
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ ccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddfffffffffffffffffffffffffffffffffffffffdddddddddddddddddddddddddddddddddddcc
 ccdfffffffffffffjjjjjjffffffddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b

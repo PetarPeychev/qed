@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 16,21
   │                                                                          │
   │ Display width of a literal tab and the default indent width. Default: 4  │
   │ tab_width: 4                                                             │
- a└──────────────────────────────────────────────────────────────────────────┘t
+ ≡└──────────────────────────────────────────────────────────────────────────┘4
 
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdddcc
 ccdggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b

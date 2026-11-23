@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 4,0
 
 
 
- main.c                                                                   1:1 c
+ ≡ root/main.c  1/10                                  ◆ c  ◈ clangd  ⇥ Spaces:4
 
 -- style
 abbbccccccccdeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -47,7 +47,7 @@ ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmnn
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -63,4 +63,3 @@ j fg=#f43841 bg=#1b1b1b
 k fg=#73c936 bg=#181818
 l fg=#f4f4ff bg=#181818 underline
 m fg=#f4f4ff bg=#2b2b2b
-n fg=#686868 bg=#2b2b2b

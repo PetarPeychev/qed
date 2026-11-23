@@ -27,7 +27,7 @@ e2e_long_line_wrapped_segments_render :: proc(t: ^testing.T) {
 	gutter := editor_gutter_width(&e.ed)
 	w := int(80) - gutter
 	segs := line_wrap(b.lines[0].text[:], w)
-	sub := e.ed.scroll_sub
+	sub := main_view(&e).scroll_sub
 	testing.expect(t, sub > 100, "viewport is deep inside the long line")
 	for y in 0 ..< 5 {
 		s := sub + y
@@ -67,7 +67,6 @@ clip_screen_fg :: proc() -> []tb2.Color {
 @(private = "file")
 clip_check :: proc(t: ^testing.T, e: ^E2E, label: string) {
 	b := editor_buffer(&e.ed)
-	editor_scroll(&e.ed)
 	for &row in b.hl.colors {
 		clear(&row)
 	}
@@ -84,6 +83,8 @@ clip_check :: proc(t: ^testing.T, e: ^E2E, label: string) {
 	testing.expectf(t, colored > 100, "%s: screen is highlighted (%d colored cells)", label, colored)
 
 	highlight_query_paint(b, syntax_for(b.language), b.hl.top, b.hl.bot)
+	view := main_view(e)
+	e.ed.scroll_row, e.ed.scroll_sub, e.ed.scroll_col = view.scroll_row, view.scroll_sub, view.scroll_col
 	tb2.clear()
 	editor_render_buffer(&e.ed)
 	full := clip_screen_fg()
@@ -129,7 +130,7 @@ e2e_highlight_clip_matches_full :: proc(t: ^testing.T) {
 	b.language = .C
 
 	b.wrap = false
-	e.ed.scroll_row, e.ed.scroll_sub = 2, 0
+	main_view(&e).scroll_row, main_view(&e).scroll_sub = 2, 0
 	b.cursor = {4, 0}
 	clip_check(t, &e, "wrap off, column 0")
 	for col in ([]int{9000, 9001, 9017, 9033, 20000}) {
@@ -140,7 +141,7 @@ e2e_highlight_clip_matches_full :: proc(t: ^testing.T) {
 	}
 
 	b.wrap = true
-	e.ed.scroll_row, e.ed.scroll_sub = 2, 0
+	main_view(&e).scroll_row, main_view(&e).scroll_sub = 2, 0
 	b.cursor = {2, 0}
 	clip_check(t, &e, "wrap on, comment above")
 	for col in ([]int{9000, 9033, 20000, len(b.lines[4].text) - 1}) {

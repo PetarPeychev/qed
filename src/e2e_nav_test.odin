@@ -23,7 +23,6 @@ e2e_root_start :: proc(primary := "") -> E2E {
 	file := fmt.aprintf("%s/main.txt", dir)
 	_ = os.write_entire_file(file, transmute([]u8)primary)
 	ed := editor_init(file, headless = true)
-	e2e_old_ui(&ed)
 	delete(ed.working_root)
 	ed.working_root = strings.clone(dir)
 	return E2E{ed = ed, path = file, dir = dir}
@@ -36,7 +35,6 @@ e2e_welcome_start :: proc() -> E2E {
 	dir := fmt.aprintf("%s/qed_e2e_welcome_%d_%d", tmp, posix.getpid(), e2e_seq)
 	os.make_directory(dir)
 	ed := editor_init("", headless = true)
-	e2e_old_ui(&ed)
 	delete(ed.working_root)
 	ed.working_root = strings.clone(dir)
 	return E2E{ed = ed, dir = dir}
@@ -235,8 +233,8 @@ e2e_nav_horizontal_scroll :: proc(t: ^testing.T) {
 
 	long := strings.repeat("a", 100, context.temp_allocator)
 	e2e_type(&e, long)
-	testing.expect(t, e.ed.scroll_col > 0, "cursor past the right edge scrolls horizontally")
-	testing.expect_value(t, e.ed.scroll_sub, 0)
+	testing.expect(t, main_view(&e).scroll_col > 0, "cursor past the right edge scrolls horizontally")
+	testing.expect_value(t, main_view(&e).scroll_sub, 0)
 }
 
 @(test)

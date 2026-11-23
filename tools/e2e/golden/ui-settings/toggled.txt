@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 14,3
   │                                                                          │
   │ Soft wrap long lines in new buffers. Default: true                       │
   │ Enter edit  Ctrl+d reset                                                 │
- a└──────────────────────────────────────────────────────────────────────────┘t
+ ≡└──────────────────────────────────────────────────────────────────────────┘4
 Settings: line_wrap set to false
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddffffffffffffffffffffffffffffffffffffffffffffffffffddddddddddddddddddddddddcc
 ccdfffffffffffffjjjjjjffffffddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b

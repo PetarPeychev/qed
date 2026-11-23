@@ -379,14 +379,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 		return
 	}
-	#partial switch ev.type {
-	case .Key:
-		editor_dispatch_key(editor, ev)
-	case .Mouse:
-		editor_dispatch_mouse(editor, ev)
-	case .Resize:
-		editor_scroll(editor)
-	}
 }
 
 editor_paste_route :: proc(editor: ^Editor, text: string) {
@@ -404,123 +396,11 @@ editor_paste_route :: proc(editor: ^Editor, text: string) {
 	editor_scroll(editor)
 }
 
-editor_mouse_cursor :: proc(editor: ^Editor, x, y: int) -> Cursor {
-	b := editor_buffer(editor)
-	gutter := editor_gutter_width(editor)
-	w, h := editor_viewport(editor)
-	if b.wrap && w > 0 {
-		row, sub := vpos_down(b, w, editor.scroll_row, editor.scroll_sub, clamp(y, 0, h - 1))
-		return {row, editor_wrap_col(b, w, row, sub, gutter, x)}
-	}
-	row, _ := vpos_down(b, w, editor.scroll_row, 0, clamp(y, 0, h - 1))
-	col := col_at_visual(b.lines[row].text[:], editor.scroll_col + max(0, x - gutter))
-	return {row, col}
-}
-
 editor_wrap_col :: proc(b: ^Buffer, w, row, sub, gutter, x: int) -> int {
 	text := b.lines[row].text[:]
 	seg_start, seg_end := wrap_segment(buffer_line_wrap(b, row, w), len(text), sub)
 	target := visual_col(text, seg_start) + max(0, x - gutter)
 	return clamp(col_at_visual(text, target), seg_start, seg_end)
-}
-
-editor_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	if editor.hover_active && mouse_in_rect(ev, editor.hover_rect) {
-		#partial switch ev.key {
-		case .Mouse_Wheel_Up:
-			editor.hover_scroll = max(0, editor.hover_scroll - WHEEL_SCROLL_LINES)
-			return
-		case .Mouse_Wheel_Down:
-			editor.hover_scroll += WHEEL_SCROLL_LINES
-			return
-		}
-	}
-	editor_clear_message(editor)
-	editor.hover_active = false
-	completion_dismiss(editor)
-	inline_dismiss(editor)
-	b := editor_buffer(editor)
-
-	#partial switch ev.key {
-	case .Mouse_Left:
-		buffer_undo_commit(b)
-		if ev_motion(ev) {
-			selection_set_anchor(b)
-			w, h := editor_viewport(editor)
-			gutter := editor_gutter_width(editor)
-			y := int(ev.y)
-			if b.wrap && w > 0 {
-				tr, ts: int
-				switch {
-				case y <= 0:
-					tr, ts = vpos_up(b, w, editor.scroll_row, editor.scroll_sub, 1)
-				case y >= h - 1:
-					tr, ts = vpos_down(b, w, editor.scroll_row, editor.scroll_sub, h)
-				case:
-					tr, ts = vpos_down(b, w, editor.scroll_row, editor.scroll_sub, y)
-				}
-				b.cursor = {tr, editor_wrap_col(b, w, tr, ts, gutter, int(ev.x))}
-				cursor_goal_sync(b)
-				editor_scroll(editor)
-				return
-			}
-			row: int
-			switch {
-			case y <= 0:
-				row, _ = vpos_up(b, w, editor.scroll_row, 0, 1)
-			case y >= h - 1:
-				row, _ = vpos_down(b, w, editor.scroll_row, 0, h)
-			case:
-				row, _ = vpos_down(b, w, editor.scroll_row, 0, y)
-			}
-			col := col_at_visual(b.lines[row].text[:], editor.scroll_col + max(0, int(ev.x) - gutter))
-			b.cursor = {row, col}
-			cursor_goal_sync(b)
-			editor_scroll(editor)
-			return
-		}
-		pos := editor_mouse_cursor(editor, int(ev.x), int(ev.y))
-		recent :=
-			editor.click_count > 0 &&
-			time.duration_milliseconds(time.tick_since(editor.last_click_tick)) <= f64(DOUBLE_CLICK_MS) &&
-			pos == editor.last_click_pos
-		editor.click_count = editor.click_count + 1 if recent else 1
-		if editor.click_count > 3 {
-			editor.click_count = 1
-		}
-		editor.last_click_tick = time.tick_now()
-		editor.last_click_pos = pos
-
-		switch editor.click_count {
-		case 2:
-			from, to := word_range_at(b, pos)
-			b.selection = from
-			b.cursor = to
-			cursor_goal_sync(b)
-		case 3:
-			from, to := line_range_at(b, pos.row)
-			b.selection = from
-			b.cursor = to
-			cursor_goal_sync(b)
-		case:
-			b.selection = nil
-			b.cursor = pos
-			cursor_goal_sync(b)
-		}
-		editor_scroll(editor)
-	case .Mouse_Wheel_Up:
-		w, _ := editor_viewport(editor)
-		editor.scroll_row, editor.scroll_sub = vpos_up(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
-	case .Mouse_Wheel_Down:
-		w, h := editor_viewport(editor)
-		last := len(b.lines) - 1
-		max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
-		r, s := vpos_down(b, w, editor.scroll_row, editor.scroll_sub, WHEEL_SCROLL_LINES)
-		if vpos_cmp(r, s, max_r, max_s) > 0 {
-			r, s = max_r, max_s
-		}
-		editor.scroll_row, editor.scroll_sub = r, s
-	}
 }
 
 editor_paste_accumulate :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -567,165 +447,6 @@ editor_accel_step :: proc(editor: ^Editor, key: tb2.Key) -> int {
 	step := int(editor.accel_rem)
 	editor.accel_rem -= f64(step)
 	return step
-}
-
-editor_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	if editor.completion.active {
-		if completion_key(editor, ev) {
-			editor_scroll(editor)
-			return
-		}
-		if !completion_keeps(ev) {
-			completion_dismiss(editor)
-		}
-	}
-	if inline_active(editor) {
-		if inline_key(editor, ev) {
-			return
-		}
-		inline_dismiss(editor)
-	}
-	editor_clear_message(editor)
-	editor.hover_active = false
-	b := editor_buffer(editor)
-	rev := b.rev
-	ctrl := ev_ctrl(ev)
-	shift := ev_shift(ev)
-	alt := ev_alt(ev)
-
-	if alt && ev.ch != 0 {
-		if cmd, ok := command_for_alt(ev.ch); ok {
-			if command_enabled(cmd) {
-				cmd.run(editor)
-			}
-		} else if pcmd, pok := plugin_command_for_event(editor, ev, ""); pok {
-			plugin_command_chord(editor, pcmd)
-		}
-		return
-	}
-
-	if cmd, ok := command_for_key(ev.key); ok {
-		if command_enabled(cmd) {
-			cmd.run(editor)
-		}
-		return
-	}
-
-	if pcmd, pok := plugin_command_for_event(editor, ev, ""); pok {
-		plugin_command_chord(editor, pcmd)
-		return
-	}
-
-	if alt {
-		#partial switch ev.key {
-		case .Arrow_Up:
-			buffer_move_lines(b, -1)
-			editor_scroll(editor)
-			return
-		case .Arrow_Down:
-			buffer_move_lines(b, +1)
-			editor_scroll(editor)
-			return
-		}
-	}
-
-	#partial switch ev.key {
-	case .Esc:
-		// last: overlays, completion and the inline ghost consume Esc first
-		if editor.inspect.active {
-			inspect_close(editor)
-		}
-		return
-	case .Enter:
-		if selection_active(b) {
-			buffer_replace_selection(b, "\n")
-		} else {
-			buffer_newline(b)
-		}
-	case .Tab:
-		buffer_indent(b)
-	case .Back_Tab:
-		buffer_dedent(b)
-	case .Backspace, .Backspace2:
-		if selection_active(b) {
-			buffer_delete_selection(b)
-		} else if !buffer_backspace_pair(b) {
-			buffer_backspace(b)
-		}
-	case .Delete:
-		if selection_active(b) {
-			buffer_delete_selection(b)
-		} else {
-			buffer_delete_forward(b)
-		}
-	case .Arrow_Left, .Arrow_Right, .Arrow_Up, .Arrow_Down:
-		buffer_undo_commit(b)
-		sel_from, sel_to, had_sel := selection_range(b)
-		if shift {
-			selection_set_anchor(b)
-		} else {
-			b.selection = nil
-		}
-		collapse := had_sel && !shift && !ctrl && !alt
-		step := 1 if ctrl || alt || collapse else editor_accel_step(editor, ev.key)
-		#partial switch ev.key {
-		case .Arrow_Left:
-			if alt {
-				cursor_move_home_smart(b)
-			} else if collapse {
-				b.cursor = sel_from
-				cursor_goal_sync(b)
-			} else if ctrl {
-				cursor_move_word_left(b)
-			} else {
-				for _ in 0 ..< step {
-					cursor_move_left(b)
-				}
-			}
-		case .Arrow_Right:
-			if alt {
-				cursor_move_end(b)
-			} else if collapse {
-				b.cursor = sel_to
-				cursor_goal_sync(b)
-			} else if ctrl {
-				cursor_move_word_right(b)
-			} else {
-				for _ in 0 ..< step {
-					cursor_move_right(b)
-				}
-			}
-		case .Arrow_Up:
-			if ctrl {
-				cursor_paragraph_prev(b)
-			} else {
-				cursor_move_up_n(b, step)
-			}
-		case .Arrow_Down:
-			if ctrl {
-				cursor_paragraph_next(b)
-			} else {
-				cursor_move_down_n(b, step)
-			}
-		}
-	case:
-		if ev.ch == 0 {
-			return
-		}
-		handled := buffer_type_pair(b, ev.ch)
-		if !handled && ev.ch <= 0x7f {
-			handled = buffer_close_dedent(b, u8(ev.ch))
-		}
-		if !handled {
-			buffer_type_rune(b, ev.ch)
-		}
-	}
-	editor_scroll(editor)
-	completion_after(editor, ev)
-	typed := ev.ch >= 0x20 || ev.key == .Enter || ev.key == .Backspace || ev.key == .Backspace2 || ev.key == .Delete
-	if b.rev != rev && typed && !ctrl && !alt {
-		b.typed_rev = b.rev
-	}
 }
 
 editor_request_quit :: proc(editor: ^Editor) {
@@ -1226,15 +947,7 @@ editor_goto :: proc(editor: ^Editor, row, col: int) {
 	b.selection = nil
 	b.cursor = {r, clamp(col, 0, len(b.lines[r].text))}
 	cursor_goal_sync(b)
-	_, h := editor_viewport(editor)
-	editor.scroll_row = r - h / 2
-	editor.scroll_sub = 0
-	editor_scroll(editor)
-}
-
-editor_highlight_clips :: proc(editor: ^Editor, top, bot: int) -> []HighlightClip {
-	w, h := editor_viewport(editor)
-	return highlight_clips_view(editor_buffer(editor), w, h, editor.scroll_row, editor.scroll_sub, editor.scroll_col, inline_active(editor), top, bot)
+	b.reveal_center = true
 }
 
 highlight_clips_view :: proc(b: ^Buffer, w, h, scroll_row, scroll_sub, scroll_col: int, ghost: bool, top, bot: int) -> []HighlightClip {
@@ -1278,74 +991,12 @@ editor_render :: proc(editor: ^Editor) {
 		editor_render_overlays(editor, true)
 		return
 	}
-	if !editor.welcome {
-		_, vh := editor_viewport(editor)
-		if !editor_buffer(editor).big {
-			top, bot := editor.scroll_row, editor.scroll_row + vh - 1
-			highlight_update(editor_buffer(editor), top, bot, editor_highlight_clips(editor, top, bot))
-			editor_syntax_errors_report(editor)
-			diffbase_update(editor_buffer(editor))
-		}
-		editor_render_buffer(editor)
-	}
-	if !(editor.welcome && ui_layer_used(&editor.ui, "background")) {
-		editor_render_status(editor)
-	}
-
-	if editor.inspect.active && !editor.welcome {
-		inspect_render(editor)
-	}
-
-	if len(editor.ui.mounts) > 0 {
-		ui_render(editor)
-	}
-	if editor_render_overlays(editor, false) {
-		return
-	}
-	if editor.welcome {
+	// without the layout plugin only other mounts draw (the welcome screen is its background mount)
+	ui_render(editor)
+	if !editor_render_overlays(editor, false) {
 		tb2.hide_cursor()
-	} else {
-		b := editor_buffer(editor)
-		gutter := editor_gutter_width(editor)
-		w, h := editor_viewport(editor)
-		text := b.lines[b.cursor.row].text[:]
-		cx, cy: int
-		above := false
-		cur_sub := 0
-		if b.wrap && w > 0 {
-			segs := buffer_line_wrap(b, b.cursor.row, w)
-			cur_sub = wrap_subrow(segs, b.cursor.col)
-			seg := segs[cur_sub]
-			cx = gutter + visual_col(text, b.cursor.col) - visual_col(text, seg)
-			above =
-				b.cursor.row < editor.scroll_row ||
-				(b.cursor.row == editor.scroll_row && cur_sub < editor.scroll_sub)
-		} else {
-			cx = gutter + visual_col(text, b.cursor.col) - editor.scroll_col
-			above = b.cursor.row < editor.scroll_row
-		}
-		cy = -1 if above else vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, b.cursor.row, cur_sub, h)
-		if above || cy < 0 || cy >= h || cx < gutter || cx >= gutter + w {
-			tb2.hide_cursor()
-		} else {
-			tb2.set_cursor(i32(cx), i32(cy))
-			ghost := inline_active(editor)
-			// A wrapped buffer draws the ghost inline in editor_render_buffer.
-			if ghost && !(b.wrap && w > 0) {
-				inline_render(editor, cx, cy)
-			}
-			if editor.completion.active {
-				completion_render(editor, cx, cy)
-			} else if !ghost {
-				if editor.hover_active {
-					editor_render_hover_pane(editor, cx, cy)
-				} else {
-					editor_render_diag_pane(editor, cx, cy)
-				}
-			}
-		}
+		tb2.present()
 	}
-	tb2.present()
 }
 
 editor_caret_area :: proc(editor: ^Editor) -> EditorView {
@@ -1370,12 +1021,7 @@ editor_syntax_errors_report :: proc(editor: ^Editor) {
 }
 
 editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool) {
-	panes := false
-	alert := ui_render_alert(editor)
-	if panes && !alert {
-		tb2.present()
-		return true
-	}
+	ui_render_alert(editor)
 	if editor.ui.caret_shown {
 		tb2.set_cursor(i32(editor.ui.caret.x), i32(editor.ui.caret.y))
 		tb2.present()
@@ -1939,65 +1585,58 @@ status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
 	}
 }
 
-editor_render_status :: proc(editor: ^Editor) {
-	full_w := int(tb2.width())
-	_, h := editor_viewport(editor)
-	left := make([dynamic]StatusSeg, context.temp_allocator)
-	right := make([dynamic]StatusSeg, context.temp_allocator)
+// the status bar's segments: core ones (path, row/total, language, LSP, indent, diff base, buffer index) and every
+// plugin's qed.status segment, in the order the bar fits them
+status_segments :: proc(editor: ^Editor, left, right: ^[dynamic]StatusSeg) {
 	fg := COLOR_PANE_FG
 	if editor.welcome {
-		append(&left, StatusSeg{text = " ", fg = fg})
-		append(&left, StatusSeg{text = editor.working_root, fg = fg, kind = .Path})
-		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("qed %s", VERSION), fg = fg, drop = 5})
+		append(left, StatusSeg{text = " ", fg = fg})
+		append(left, StatusSeg{text = editor.working_root, fg = fg, kind = .Path})
+		append(right, StatusSeg{sep = "  ", text = fmt.tprintf("qed %s", VERSION), fg = fg, drop = 5})
 	} else {
 		b := editor_buffer(editor)
 		name := editor_display_path(editor, b.path) if b.path != "" else "[No Name]"
-		append(&left, StatusSeg{text = fmt.tprintf(" %s", ICON_STATUS_FILE), fg = fg})
-		append(&left, StatusSeg{sep = " ", text = name, fg = fg, kind = .Path})
+		append(left, StatusSeg{text = fmt.tprintf(" %s", ICON_STATUS_FILE), fg = fg})
+		append(left, StatusSeg{sep = " ", text = name, fg = fg, kind = .Path})
 		if b.modified {
-			append(&left, StatusSeg{sep = " ", text = ICON_MODIFIED, fg = fg})
+			append(left, StatusSeg{sep = " ", text = ICON_MODIFIED, fg = fg})
 		}
-		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%d/%d", b.cursor.row + 1, len(b.lines)), fg = fg})
+		append(left, StatusSeg{sep = "  ", text = fmt.tprintf("%d/%d", b.cursor.row + 1, len(b.lines)), fg = fg})
 
-		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name), fg = fg, drop = 4})
+		append(right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LANG, LANGUAGES[b.language].name), fg = fg, drop = 4})
 		if b.big {
-			append(&right, StatusSeg{sep = "  ", text = "big", fg = fg, drop = 3})
+			append(right, StatusSeg{sep = "  ", text = "big", fg = fg, drop = 3})
 		} else if LSP_ENABLED {
 			if label, lsp_fg, ok := lsp_status_label(b); ok {
-				append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LSP, label), fg = lsp_fg, drop = 2})
+				append(right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_LSP, label), fg = lsp_fg, drop = 2})
 			}
 		}
 		indent := "Tabs" if b.indent == .Tabs else fmt.tprintf("Spaces:%d", b.indent_width)
-		append(&right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_INDENT, indent), fg = fg, drop = 1})
+		append(right, StatusSeg{sep = "  ", text = fmt.tprintf("%s %s", ICON_STATUS_INDENT, indent), fg = fg, drop = 1})
 	}
-	plugin_status_segs(&editor.plugins, &left, &right, true)
+	plugin_status_segs(&editor.plugins, left, right, true)
 	if !editor.welcome {
 		if base := diffbase_active(editor_buffer(editor)); base != nil && base.label != "" {
-			append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, base.label), fg = fg, drop = 8})
+			append(left, StatusSeg{sep = "  ", text = fmt.tprintf("%s%s", ICON_STATUS_DIFF_BASE, base.label), fg = fg, drop = 8})
 		}
 	}
 	if len(editor.buffers) > 1 {
-		append(&left, StatusSeg{sep = "  ", text = fmt.tprintf("[%d/%d]", editor.current + 1, len(editor.buffers)), fg = fg, drop = 10})
+		append(left, StatusSeg{sep = "  ", text = fmt.tprintf("[%d/%d]", editor.current + 1, len(editor.buffers)), fg = fg, drop = 10})
 	}
-	plugin_status_segs(&editor.plugins, &left, &right, false)
-	status_fit(left[:], right[:], full_w)
-	editor_render_row(0, h, full_w, "", fg, COLOR_PANE_BG)
-	status_draw(left[:], 0, h, full_w)
+	plugin_status_segs(&editor.plugins, left, right, false)
+}
+
+// the `status` node: the bar fitted to its rect
+status_render :: proc(editor: ^Editor, rect: Rect, bg: tb2.Color) {
+	left := make([dynamic]StatusSeg, context.temp_allocator)
+	right := make([dynamic]StatusSeg, context.temp_allocator)
+	status_segments(editor, &left, &right)
+	status_fit(left[:], right[:], rect.w)
+	editor_render_row(rect.x, rect.y, rect.w, "", COLOR_PANE_FG, bg)
+	status_draw(left[:], rect.x, rect.y, rect.x + rect.w)
 	if rw := status_width(right[:]); rw > 0 {
-		status_draw(right[:], full_w - rw - 1, h, full_w)
+		status_draw(right[:], rect.x + rect.w - rw - 1, rect.y, rect.x + rect.w)
 	}
-	message_fg := COLOR_FG
-	#partial switch editor.message_level {
-	case .Warn:
-		message_fg = COLOR_WARN_FG
-	case .Error:
-		message_fg = COLOR_ERROR_FG
-	}
-	msg := editor.message
-	if editor.message_source != "" && editor.message != "" {
-		msg = fmt.tprintf("%s: %s", editor.message_source, editor.message)
-	}
-	editor_render_row(0, h + 1, full_w, msg, message_fg, COLOR_BG)
 }
 
 editor_render_gutter :: proc(left, y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {

@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 4,0
  19 | key | action |
  20 |-----|--------|
  21 | Alt+p | preview |
- notes.md                                                          1:1 markdown
+ ≡ root/notes.md  1/25                                   ◆ markdown  ⇥ Spaces:2
 
 -- style
 abbbcdeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -47,7 +47,7 @@ aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmnnnnnnnnn
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -63,4 +63,3 @@ j fg=#ffdd33 bg=#181818
 k fg=#ffdd33 bg=#181818 bold
 l fg=#73c936 bg=#181818
 m fg=#f4f4ff bg=#2b2b2b
-n fg=#686868 bg=#2b2b2b

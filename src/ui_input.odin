@@ -5,9 +5,6 @@ import "core:strings"
 import "core:time"
 import "lib:tb2"
 
-UI_DOUBLE_CLICK_MS :: 400
-UI_WHEEL_STEP :: 3
-
 ui_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	ui := &editor.ui
 	#partial switch ev.type {
@@ -100,7 +97,7 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 		return false
 	}
 	for command in scoped_commands {
-		if command.scope != scope || command.run == nil {
+		if command.scope != scope || command.run == nil || (command.applies != nil && !command.applies(editor)) {
 			continue
 		}
 		_, _, shortcut := command_effective_bind(command)
@@ -204,6 +201,17 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	ui := &editor.ui
 	cell_x, cell_y := int(ev.x), int(ev.y)
 	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
+	// the hover box takes the wheel over it; any other click or wheel dismisses the caret popups
+	if editor.hover_active && ui_rect_has(editor.hover_rect, cell_x, cell_y) && (ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down) {
+		step := -WHEEL_SCROLL_LINES if ev.key == .Mouse_Wheel_Up else WHEEL_SCROLL_LINES
+		editor.hover_scroll = max(0, editor.hover_scroll + step)
+		return true
+	}
+	if !motion && ev.key != .Mouse_Release {
+		editor.hover_active = false
+		completion_dismiss(editor)
+		inline_dismiss(editor)
+	}
 	if ui.drag.active && (ev.key == .Mouse_Release || motion) {
 		if node := ui_find(ui, ui.drag.node); node != nil && node.kind == .Terminal {
 			term_dispatch_mouse(editor, ev)
@@ -228,6 +236,13 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 					buffer.selection = buffer.cursor
 				}
 				buffer.cursor = ui_editor_point(editor, node, cell_x, cell_y)
+				// dragging past an edge scrolls one row further
+				if cell_y < node.rect.y {
+					cursor_move_up_n(buffer, 1)
+				} else if cell_y >= node.rect.y + node.rect.h {
+					cursor_move_down_n(buffer, 1)
+				}
+				cursor_goal_sync(buffer)
 				ui_node_state(ui, node).reveal = true
 			}
 		}
@@ -236,7 +251,7 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	wheel := ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down
 	event := UiEvent.Wheel if wheel else UiEvent.Click
 	if !wheel {
-		if editor.click_count > 0 && editor.last_click_pos == {cell_y, cell_x} && ms_since(editor.last_click_tick) < UI_DOUBLE_CLICK_MS {
+		if editor.click_count > 0 && editor.last_click_pos == {cell_y, cell_x} && ms_since(editor.last_click_tick) < f64(DOUBLE_CLICK_MS) {
 			event = .Double_Click
 			editor.click_count = 0
 		} else {
@@ -284,7 +299,7 @@ ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, cell_x, cell_y: int, eve
 
 ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, cell_y: int, wheel: bool) -> bool {
 	ui := &editor.ui
-	step := -UI_WHEEL_STEP if ev.key == .Mouse_Wheel_Up else UI_WHEEL_STEP
+	step := -WHEEL_SCROLL_LINES if ev.key == .Mouse_Wheel_Up else WHEEL_SCROLL_LINES
 	#partial switch node.kind {
 	case .Terminal:
 		if session := term_find(editor, node.session); session != nil {
@@ -321,8 +336,23 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		}
 		state := ui_node_state(ui, node)
 		if wheel {
-			state.scroll_row = clamp(state.scroll_row + step, 0, len(buffer.lines) - 1)
-			state.scroll_sub = 0
+			width := ui_editor_text_width(node, buffer)
+			if !buffer.wrap || width <= 0 {
+				state.scroll_row = clamp(state.scroll_row + step, 0, len(buffer.lines) - 1)
+				state.scroll_sub = 0
+				return true
+			}
+			if step < 0 {
+				state.scroll_row, state.scroll_sub = vpos_up(buffer, width, state.scroll_row, state.scroll_sub, -step)
+				return true
+			}
+			last := len(buffer.lines) - 1
+			max_row, max_sub := vpos_up(buffer, width, last, line_rows(buffer, width, last) - 1, node.rect.h - 1)
+			row, sub := vpos_down(buffer, width, state.scroll_row, state.scroll_sub, step)
+			if vpos_cmp(row, sub, max_row, max_sub) > 0 {
+				row, sub = max_row, max_sub
+			}
+			state.scroll_row, state.scroll_sub = row, sub
 			return true
 		}
 		if ev.key != .Mouse_Left {
@@ -331,8 +361,26 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		if node.id != "" {
 			ui_focus_set(editor, node.identity)
 		}
-		buffer.selection = nil
-		buffer.cursor = ui_editor_point(editor, node, cell_x, cell_y)
+		// a second click on the same spot selects the word, a third the line
+		pos := ui_editor_point(editor, node, cell_x, cell_y)
+		clicks := &ui.editor_clicks
+		recent := clicks.count > 0 && ms_since(clicks.tick) <= f64(DOUBLE_CLICK_MS) && clicks.pos == pos && clicks.node == node.buffer
+		clicks.count = clicks.count + 1 if recent else 1
+		if clicks.count > 3 {
+			clicks.count = 1
+		}
+		clicks.tick, clicks.pos, clicks.node = time.tick_now(), pos, node.buffer
+		switch clicks.count {
+		case 2:
+			from, to := word_range_at(buffer, pos)
+			buffer.selection, buffer.cursor = from, to
+		case 3:
+			from, to := line_range_at(buffer, pos.row)
+			buffer.selection, buffer.cursor = from, to
+		case:
+			buffer.selection = nil
+			buffer.cursor = pos
+		}
 		cursor_goal_sync(buffer)
 		buffer_undo_commit(buffer)
 		state.reveal = true
@@ -350,22 +398,12 @@ ui_editor_point :: proc(editor: ^Editor, node: ^UiNode, cell_x, cell_y: int) -> 
 	width := ui_editor_text_width(node, buffer)
 	dy := max(cell_y - node.rect.y, 0)
 	dx := cell_x - node.rect.x
+	// vpos steps over ghost rows as the renderer draws them
 	if buffer.wrap && width > 0 {
-		row, sub := state.scroll_row, state.scroll_sub
-		for dy > 0 {
-			if sub + 1 < line_rows(buffer, width, row) {
-				sub += 1
-			} else if row + 1 < len(buffer.lines) {
-				row += 1
-				sub = 0
-			} else {
-				break
-			}
-			dy -= 1
-		}
+		row, sub := vpos_down(buffer, width, state.scroll_row, state.scroll_sub, dy)
 		return {row, editor_wrap_col(buffer, width, row, sub, gutter, dx)}
 	}
-	row := clamp(state.scroll_row + dy, 0, len(buffer.lines) - 1)
+	row, _ := vpos_down(buffer, width, state.scroll_row, 0, dy)
 	text := buffer.lines[row].text[:]
 	return {row, col_at_visual(text, state.scroll_col + max(dx - gutter, 0))}
 }
@@ -405,6 +443,8 @@ ui_command_left :: proc(editor: ^Editor) {
 		buffer.selection = nil
 		buffer.cursor = from
 		cursor_goal_sync(buffer)
+		// collapsing a selection ends a held-key streak
+		editor.accel_count, editor.accel_rem = 0, 0
 		return
 	}
 	ui_move_accelerated(editor, .Arrow_Left, cursor_move_left)
@@ -419,6 +459,8 @@ ui_command_right :: proc(editor: ^Editor) {
 		buffer.selection = nil
 		buffer.cursor = to
 		cursor_goal_sync(buffer)
+		// collapsing a selection ends a held-key streak
+		editor.accel_count, editor.accel_rem = 0, 0
 		return
 	}
 	ui_move_accelerated(editor, .Arrow_Right, cursor_move_right)
@@ -465,6 +507,14 @@ ui_command_word_left :: proc(editor: ^Editor) {ui_move(editor, false, cursor_mov
 ui_command_word_right :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_word_right)}
 ui_command_line_start :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_home_smart)}
 ui_command_line_end :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_end)}
+ui_command_paragraph_up :: proc(editor: ^Editor) {ui_move(editor, false, cursor_paragraph_prev)}
+ui_command_paragraph_down :: proc(editor: ^Editor) {ui_move(editor, false, cursor_paragraph_next)}
+ui_command_select_word_left :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_word_left)}
+ui_command_select_word_right :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_word_right)}
+ui_command_select_line_start :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_home_smart)}
+ui_command_select_line_end :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_end)}
+ui_command_select_paragraph_up :: proc(editor: ^Editor) {ui_move(editor, true, cursor_paragraph_prev)}
+ui_command_select_paragraph_down :: proc(editor: ^Editor) {ui_move(editor, true, cursor_paragraph_next)}
 
 ui_command_newline :: proc(editor: ^Editor) {
 	buffer := ui_target_buffer(editor, true)

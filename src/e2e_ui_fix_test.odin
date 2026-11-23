@@ -19,8 +19,11 @@ e2e_ui_hits_cleared_after_last_mount :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "the palette opens over the old editor")
 	e2e_key(&e, .Esc)
 	e2e_ui_settle(&e)
-	testing.expect_value(t, len(e.ed.ui.hits), 0)
-	testing.expect(t, !e.ed.ui.caret_shown, "no stale caret after the last mount closes")
+	e2e_render(&e)
+	for hit in e.ed.ui.hits {
+		testing.expect(t, hit.node.owner != "palette", "no hit of the closed palette stays")
+	}
+	testing.expect(t, e.ed.ui.caret_shown && ui_focused(&e.ed) != nil && ui_focused(&e.ed).owner == "layout", "the caret is the main editor's again")
 	e2e_plugin(&e, "uitest", `return {setup = function()
 	qed.command{name = "Run", run = function()
 		qed.ui.mount("notification", qed.ui.text{float = "screen", anchor = "bottom_right", width = 5, height = 1, "toast"})

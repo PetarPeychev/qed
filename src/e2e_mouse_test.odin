@@ -56,12 +56,12 @@ e2e_mouse_wheel_scroll :: proc(t: ^testing.T) {
 
 	// The wheel moves the viewport; the cursor stays put.
 	e2e_mouse(&e, g + 0, 3, .Mouse_Wheel_Down)
-	testing.expect(t, e.ed.scroll_row > 0, "wheel-down scrolls the viewport")
+	testing.expect(t, main_view(&e).scroll_row > 0, "wheel-down scrolls the viewport")
 	testing.expect_value(t, b.cursor.row, 0)
 	testing.expect_value(t, b.cursor.col, 0)
 
 	e2e_mouse(&e, g + 0, 3, .Mouse_Wheel_Up)
-	testing.expect_value(t, e.ed.scroll_row, 0)
+	testing.expect_value(t, main_view(&e).scroll_row, 0)
 	testing.expect_value(t, b.cursor.row, 0)
 }
 
@@ -78,18 +78,18 @@ e2e_mouse_wheel_coalesce :: proc(t: ^testing.T) {
 	up.key = .Mouse_Wheel_Up
 
 	e2e_step(&e, down, down, down, down)
-	testing.expect_value(t, e.ed.scroll_row, 4 * WHEEL_SCROLL_LINES)
+	testing.expect_value(t, main_view(&e).scroll_row, 4 * WHEEL_SCROLL_LINES)
 	testing.expect_value(t, e2e_peek_pos, e2e_peek_len)
 
 	e2e_step(&e, down, down, up, tb2.Event{type = .Key, key = .Arrow_Down})
-	testing.expect_value(t, e.ed.scroll_row, 6 * WHEEL_SCROLL_LINES - WHEEL_SCROLL_LINES)
+	testing.expect_value(t, main_view(&e).scroll_row, 6 * WHEEL_SCROLL_LINES - WHEEL_SCROLL_LINES)
 	testing.expect_value(t, e2e_peek_pos, 2)
 	testing.expect_value(t, b.cursor.row, 0)
 
 	moved := down
 	moved.y = 4
 	e2e_step(&e, up, up, moved)
-	testing.expect_value(t, e.ed.scroll_row, 5 * WHEEL_SCROLL_LINES - 2 * WHEEL_SCROLL_LINES + WHEEL_SCROLL_LINES)
+	testing.expect_value(t, main_view(&e).scroll_row, 5 * WHEEL_SCROLL_LINES - 2 * WHEEL_SCROLL_LINES + WHEEL_SCROLL_LINES)
 }
 
 @(test)

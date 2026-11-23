@@ -12,6 +12,8 @@ Buffer :: struct {
 	lines:         [dynamic]Line,
 	cursor:        Cursor,
 	selection:     Maybe(Cursor),
+	// the next reveal of the cursor centres it (a jump), then clears
+	reveal_center: bool,
 	goal_col:      int,
 	saved:         string,
 	modified:      bool,

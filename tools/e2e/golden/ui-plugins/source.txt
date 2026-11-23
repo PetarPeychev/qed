@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 3,2
   │    return state and state.highlighted or nil                             │
   │end                                                                       │
   │ Esc back  ·  fork: copy to ~/.config/qed/plugins/dialog                  │
- a└──────────────────────────────────────────────────────────────────────────┘t
+ ≡└──────────────────────────────────────────────────────────────────────────┘4
 
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ ccdddddeeeeedddddddddddddddddgggggggggggggddddddddddddddddddddddddddddddddddddcc
 ccdddddeeeeeedddddddeeedddddddddddddddddddeedfffddddddddddddddddddddddddddddddcc
 ccdeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhdddddddddddddddddddcc
-ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddhh
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b

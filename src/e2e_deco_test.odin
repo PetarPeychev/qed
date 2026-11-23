@@ -81,11 +81,11 @@ e2e_deco_eol_wide_and_wrap :: proc(t: ^testing.T) {
 	testing.expect_value(t, e2e_cell(&e, gutter + w - 2, 0), '日')
 	testing.expect(t, !strings.contains(e2e_row_text(&e, 0), "本"), "a wide char that would cross the edge is clipped")
 
-	e.ed.scroll_col = 10
+	main_view(&e).scroll_col = 10
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, gutter + w - 13, 0), 'x')
 	testing.expect_value(t, e2e_cell(&e, gutter + w - 10, 0), '本')
-	e.ed.scroll_col = 0
+	main_view(&e).scroll_col = 0
 
 	b.wrap = true
 	wide := strings.repeat("word ", 20, context.temp_allocator)
@@ -162,9 +162,9 @@ e2e_deco_ghost_scroll :: proc(t: ^testing.T) {
 	editor_scroll(&e.ed)
 	e2e_render(&e)
 	w, _ := editor_viewport(&e.ed)
-	cy := vpos_dist(b, w, e.ed.scroll_row, e.ed.scroll_sub, b.cursor.row, 0, h)
+	cy := vpos_dist(b, w, main_view(&e).scroll_row, main_view(&e).scroll_sub, b.cursor.row, 0, h)
 	testing.expect(t, cy >= 0 && cy < h - SCROLL_MARGIN, "ghost rows push the scroll so the cursor stays inside the margin")
-	testing.expect(t, e.ed.scroll_row > 0, "the view scrolled")
+	testing.expect(t, main_view(&e).scroll_row > 0, "the view scrolled")
 	row := e2e_row_text(&e, cy)
 	testing.expect(t, strings.has_suffix(row, "line 15"), "the cursor's row is where the mapping says")
 }

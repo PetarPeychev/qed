@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 24,4
 
 
 
- root                                                                   qed dev
+ /tmp/qed-e2e-XXXXXX/root                                               qed dev
 
 -- style
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

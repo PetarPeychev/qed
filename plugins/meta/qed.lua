@@ -488,6 +488,11 @@ function qed.ui.image(props) end
 ---@return qed.Node
 function qed.ui.terminal(props) end
 
+---The status bar: core segments (path, row/total, language, LSP, indent, diff base, `[n/m]`) and every plugin's `qed.status` segment, fitted to the node's width. No props of its own.
+---@param props table
+---@return qed.Node
+function qed.ui.status(props) end
+
 qed.markdown = {}
 
 ---The rendered document as a node to place in a `ui.scroll` (which owns its offset, bar and wheel). One core-rendered node, laid out at the scroll's width. `opts` are node props: `id`, `dir` (relative links and images), `margin`, `on.link(event)` (`event.target`; an unhandled `#slug` scrolls the holding scroll to that heading). State: `rows`, `sources` (source rows of the visible lines), `heading` (source row of the last `heading` set); `set_state{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the document allows) or `{heading = slug}` moves the holding scroll.

@@ -15,7 +15,6 @@ e2e_lang_start :: proc(content: string, name: string) -> E2E {
 	path := fmt.aprintf("%s/qed_e2e_lang_%d_%d_%s", tmp, posix.getpid(), e2e_seq, name)
 	_ = os.write_entire_file(path, transmute([]u8)content)
 	ed := editor_init(path, headless = true)
-	e2e_old_ui(&ed)
 	return E2E{ed = ed, path = path}
 }
 

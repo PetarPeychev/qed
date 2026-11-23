@@ -71,15 +71,16 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. The inline
 ghost (`qed.deco.inline`) on the cursor line renders through the same wrap layout
 (`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
 
-Layout, top to bottom: text area (`height - 2` rows) with a left gutter, then a
-1-row **status bar** (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
+Layout (the `layout` plugin's `base` mount), top to bottom: the main `editor` node with a left gutter, then a
+1-row **status bar**, the core `status` node (`ui.status{}`, `status_render`): one mechanism for core segments and
+every plugin's `qed.status.set` segment (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
 path + `●` modified flag + `line/total` + `early` plugin segments (the `git` plugin's branch, `↑ahead↓behind`, `±label`
 diff base and diff size) + `±label` of another plugin's base on the current buffer (its `set_base` label) + `[n/m]` + other
 plugin segments; right side: language + LSP + indent style / `big`). Both sides are
 `StatusSeg` lists fitted by `status_fit` (pure, unit-tested) to keep a 1-col gap (plugin right segments sit before the builtins): shorten the path from
 the left (`…/dir/name`, down to the bare name), then drop segments by `drop` rank (indent, LSP, `big`,
 language, then diff size, ahead/behind, diff base, branch, `[n/m]`), then clip the filename; then a
-1-row **message line** (transient errors / prompts / status). Gutter = mark column
+1-row **message line** (the layout's text node, fed by the `message` event). Gutter = mark column
 (git diff) + line numbers, width = digit count + padding, folded into every
 screen↔buffer column mapping (cursor placement, mouse).
 

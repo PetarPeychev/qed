@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 3,0
 
 
 
- main.go                                                                 1:1 go
+ ≡ root/main.go  1/8                                           ◆ go  ⇥ Spaces:4
 
 -- style
 abbcccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -47,7 +47,7 @@ eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
-hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhiii
+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -58,4 +58,3 @@ e fg=#f4f4ff bg=#181818
 f fg=#ffdd33 bg=#181818
 g fg=#73c936 bg=#181818
 h fg=#f4f4ff bg=#2b2b2b
-i fg=#686868 bg=#2b2b2b

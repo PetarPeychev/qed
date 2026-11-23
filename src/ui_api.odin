@@ -35,6 +35,7 @@ ui_kind_props := [UiKind][]string {
 	.Image          = {"path"},
 	.Terminal       = {"session"},
 	.Markdown       = {"text", "dir"},
+	.Status         = {},
 }
 
 UiMarshal :: struct {
@@ -593,7 +594,7 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		if laid != 1 {
 			ui_marshal_fail(marshal, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
 		}
-	case .Editor, .Virtual_Column, .Image, .Terminal, .Markdown:
+	case .Editor, .Virtual_Column, .Image, .Terminal, .Markdown, .Status:
 		limit = 0
 	case .Outlet:
 		if len(node.children) > 0 {

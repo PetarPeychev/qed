@@ -150,7 +150,6 @@ e2e_lsp_start :: proc(seed: string) -> E2E {
 	LANGUAGES[.Plain].lsp_id = "plaintext"
 
 	ed := editor_init(main, headless = true)
-	e2e_old_ui(&ed)
 	return E2E{ed = ed, path = strings.clone(main), dir = dir}
 }
 

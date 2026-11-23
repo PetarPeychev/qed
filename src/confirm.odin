@@ -157,7 +157,7 @@ safety_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			if node == nil || !ui_rect_has(node.rect, int(ev.x), int(ev.y)) {
 				continue
 			}
-			again := editor.safety.selected == i && editor.click_count > 0 && ms_since(editor.last_click_tick) < UI_DOUBLE_CLICK_MS
+			again := editor.safety.selected == i && editor.click_count > 0 && ms_since(editor.last_click_tick) < f64(DOUBLE_CLICK_MS)
 			editor.safety.selected = i
 			safety_highlight(editor)
 			editor.click_count = 1

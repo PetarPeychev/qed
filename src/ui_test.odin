@@ -31,6 +31,7 @@ ut_mount :: proc(e: ^E2E, root: ^UiNode, outlet := "base") -> u64 {
 ui_column_fixed_and_grow :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
+	e2e_bare(&e)
 	top := ut_text("top")
 	middle := ut_text("middle")
 	middle.grow, middle.grow_set = 1, true

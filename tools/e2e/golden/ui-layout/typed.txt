@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 36,5
 
 
 
- ● main.go                                                              6:34 go
+ ≡ root/main.go ●  6/8                                         ◆ go  ⇥ Spaces:4
 
 -- style
 aaabbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-iijjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjkkk
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -58,6 +58,4 @@ e fg=#d8d8d8 bg=#1b1b1b
 f fg=#f4f4ff bg=#262626
 g fg=#73c936 bg=#262626
 h fg=#cc8c3c bg=#262626
-i fg=#ffdd33 bg=#2b2b2b
-j fg=#f4f4ff bg=#2b2b2b
-k fg=#686868 bg=#2b2b2b
+i fg=#f4f4ff bg=#2b2b2b

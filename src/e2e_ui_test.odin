@@ -26,13 +26,13 @@ e2e_ui_layout_shows_editor_and_status :: proc(t: ^testing.T) {
 	e2e_new_ui(&e)
 	testing.expect(t, ui_layer_used(&e.ed.ui, "base"), "layout mounts into base")
 	testing.expect_value(t, e2e_row_text(&e, 0), " 1 alpha")
-	testing.expect(t, strings.contains(e2e_row_text(&e, E2E_H - 2), "1:1"), "status shows the position")
+	testing.expect(t, strings.contains(e2e_row_text(&e, E2E_H - 2), "1/2"), "status shows the position")
 	e2e_type(&e, "x")
 	e2e_key(&e, .Arrow_Down)
 	e2e_ui_settle(&e)
 	testing.expect_value(t, e2e_row_text(&e, 0), " 1 xalpha")
-	testing.expect(t, strings.contains(e2e_row_text(&e, E2E_H - 2), "2:2"), "status follows the cursor")
-	testing.expect(t, strings.contains(e2e_row_text(&e, E2E_H - 2), "●"), "modified flag")
+	testing.expect(t, strings.contains(e2e_row_text(&e, E2E_H - 2), "2/2"), "status follows the cursor")
+	testing.expect(t, strings.contains(e2e_row_text(&e, E2E_H - 2), ICON_MODIFIED), "modified flag")
 }
 
 @(test)
@@ -143,9 +143,10 @@ end}`)
 	testing.expect_value(t, e.ed.message, "middle:Ctrl+u middle:Ctrl+e scope:outer scope:inner |hXi")
 	main_before := editor_buffer(&e.ed).cursor
 	ut_run(&e, "Close")
-	testing.expect(t, ui_focused(&e.ed) == nil, "focus falls back to the root when the history is empty")
+	focused := ui_focused(&e.ed)
+	testing.expect(t, focused != nil && focused.id == "main_editor", "focus falls back to the main editor from the history")
 	e2e_key(&e, .Arrow_Right)
-	testing.expect(t, editor_buffer(&e.ed).cursor != main_before, "with no focused node keys reach the old editor path")
+	testing.expect(t, editor_buffer(&e.ed).cursor != main_before, "keys reach the main editor again")
 }
 
 @(test)
@@ -250,7 +251,9 @@ end}`)
 	e2e_render(&e)
 	testing.expect_value(t, e2e_row_text(&e, 0)[:9], "leftright")
 	plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "uitest"))
-	testing.expect_value(t, len(e.ed.ui.mounts), 0)
+	for mount in e.ed.ui.mounts {
+		testing.expect_value(t, mount.owner, "layout")
+	}
 }
 
 ut_run_owner :: proc(e: ^E2E, owner, bare: string) {

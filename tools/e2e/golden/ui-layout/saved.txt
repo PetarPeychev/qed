@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 10,2
 
 
 
- main.go                                                                 3:8 go
+ ≡ root/main.go  3/8                                           ◆ go  ⇥ Spaces:4
 Saved
 -- style
 aaabbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjkkk
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -60,4 +60,3 @@ g fg=#73c936 bg=#262626
 h fg=#73c936 bg=#181818
 i fg=#cc8c3c bg=#181818
 j fg=#f4f4ff bg=#2b2b2b
-k fg=#686868 bg=#2b2b2b

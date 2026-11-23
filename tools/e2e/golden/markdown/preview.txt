@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor hidden
  1│                                                                          │
  2│──────────────────────────────────────────────────────────────────────────│
  2│ ↑↓ PgUp PgDn scroll  click a link to open it  Alt+, back  Alt+. forward …│
- n└──────────────────────────────────────────────────────────────────────────┘n
+ ≡└──────────────────────────────────────────────────────────────────────────┘2
 
 -- style
 abbbcdeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -47,7 +47,7 @@ aaffllffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
 aaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
 aafllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllfdd
 aafmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmfdd
-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffmm
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 -- legend
 a fg=#868686 bg=#1b1b1b

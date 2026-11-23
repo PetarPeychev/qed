@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 37,2
 
 
 
- notes.txt                                                             1:4 text
+ ≡ root/notes.txt  1/4                                       ◆ text  ⇥ Spaces:4
 
 -- style
 abbcccdddddeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -47,7 +47,7 @@ dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffhhhhh
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 -- legend
 a fg=#868686 bg=#1b1b1b

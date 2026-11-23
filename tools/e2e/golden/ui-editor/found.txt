@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 39,2
 
 
 
- ● notes.py                                                         5:12 python
+ ≡ root/notes.py ●  5/6                                    ◆ python  ⇥ Spaces:4
 
 -- style
 aaabbbcdddddcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-hhfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffiiiiiii
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b

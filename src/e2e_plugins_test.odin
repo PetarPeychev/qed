@@ -677,7 +677,6 @@ pt_session :: proc(e: ^E2E, name: string, test: PluginFile) -> (tests: c.int, na
 	file := fmt.aprintf("%s/start.txt", dir)
 	_ = os.write_entire_file(file, nil)
 	e^ = E2E{ed = editor_init(file, headless = true), path = file, dir = dir}
-	e2e_old_ui(&e.ed)
 	e.ed.plugins.persist_path = fmt.aprintf("%s/config.json", dir)
 	delete(e.ed.working_root)
 	e.ed.working_root = strings.clone(dir)

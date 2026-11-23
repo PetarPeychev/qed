@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor hidden
   │                                                                          │
   │ Toggle Line Wrap. Default: none. Scope: global                           │
   │ Press a chord for Toggle Line Wrap (Esc cancels)                         │
- a└──────────────────────────────────────────────────────────────────────────┘t
+ ≡└──────────────────────────────────────────────────────────────────────────┘4
 
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddddddcc
 ccdgggggggggggggggggggggggggggggggggggggggggggggggggddddddddddddddddddddddddddcc
-ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddee
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b

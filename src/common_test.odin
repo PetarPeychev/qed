@@ -494,3 +494,15 @@ palette_ui_labels :: proc(e: ^E2E) -> string {
 	}
 	return strings.to_string(sb)
 }
+
+// the layout's main editor view state (its scroll), after a frame
+main_view :: proc(e: ^E2E) -> ^UiState {
+	e2e_render(e)
+	node := ui_find(&e.ed.ui, "#layout/main_editor")
+	if node == nil {
+		@(static) empty: UiState
+		empty = {}
+		return &empty
+	}
+	return ui_node_state(&e.ed.ui, node)
+}
