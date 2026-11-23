@@ -277,3 +277,20 @@ e2e_ui_typing_latency_gate :: proc(t: ^testing.T) {
 	per_key := ms_since(start) / 200
 	testing.expectf(t, per_key < 3, "typing with the layout costs %.2f ms per key", per_key)
 }
+
+@(test)
+e2e_ui_editor_parity_pairs_move_lines_gutter :: proc(t: ^testing.T) {
+	e := e2e_start("first\nsecond")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	e2e_key(&e, .Arrow_Right, tb2.Mod.Alt)
+	e2e_type(&e, "(")
+	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "first()")
+	e2e_key(&e, .Arrow_Down, tb2.Mod.Alt)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, string(editor_buffer(&e.ed).lines[1].text[:]), "first()")
+	buffer := editor_buffer(&e.ed)
+	append(&buffer.diags, Diagnostic{from = {1, 0}, to = {1, 3}, severity = 1, message = strings.clone("bad")})
+	e2e_render(&e)
+	testing.expect(t, strings.has_prefix(e2e_row_text(&e, 1), " 2»"), "the gutter shows the diagnostic through the shared view renderer")
+}

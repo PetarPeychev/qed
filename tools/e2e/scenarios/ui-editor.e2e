@@ -1,0 +1,20 @@
+# qed.ui editor node parity: auto-pairs, move lines, find highlights through the shared view renderer.
+file notes.py
+def greet(name):
+    return "hello " + name
+
+print(greet("ada"))
+print(greet("linus"))
+end
+run notes.py
+wait def greet
+key down*4 alt+right
+type  # (
+snap paired
+key alt+up alt+up
+snap moved
+key ctrl+f
+type greet
+snap found
+key esc
+snap closed

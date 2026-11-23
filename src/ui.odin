@@ -1580,6 +1580,20 @@ ui_render :: proc(editor: ^Editor) {
 		if cell_x, cell_y, ok := ui_editor_caret_pos(editor, focused); ok && ui_rect_has(focused.clip, cell_x, cell_y) {
 			ui.caret = {cell_x, cell_y}
 			ui.caret_shown = true
+			buffer := ui_buffer(editor, focused.buffer)
+			if ui_editor_shows_current(editor, buffer) {
+				ghost := inline_active(editor)
+				if ghost && !buffer.wrap {
+					inline_render(editor, cell_x, cell_y)
+				}
+				if editor.completion.active {
+					completion_render(editor, cell_x, cell_y)
+				} else if !ghost && editor.hover_active {
+					editor_render_hover_pane(editor, cell_x, cell_y)
+				} else if !ghost {
+					editor_render_diag_pane(editor, cell_x, cell_y)
+				}
+			}
 		}
 	}
 }
@@ -1783,93 +1797,46 @@ ui_render_text :: proc(paint: ^UiPaint, node: ^UiNode) {
 	}
 }
 
+ui_editor_shows_current :: proc(editor: ^Editor, buffer: ^Buffer) -> bool {
+	return buffer != nil && !editor.welcome && len(editor.buffers) > 0 && editor_buffer(editor) == buffer
+}
+
 ui_render_editor :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	buffer := ui_buffer(editor, node.buffer)
 	if buffer == nil {
 		return
 	}
-	state := ui_node_state(&editor.ui, node)
-	rect := ui_rect_intersect(node.rect, paint.clip)
-	if rect.w <= 0 || rect.h <= 0 {
+	visible := ui_rect_intersect(node.rect, paint.clip)
+	if visible.w <= 0 || visible.h <= 0 {
 		return
 	}
+	state := ui_node_state(&editor.ui, node)
 	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
-	width := ui_editor_text_width(node, buffer)
-	buffer.wrap_width = width
 	base := ui_style_over(paint.inherit, paint.override)
-	fg_base, bg := ui_style_colors(base, COLOR_FG, paint.bg)
-	sel_from, sel_to, sel_ok := selection_range(buffer)
+	foreground, background := ui_style_colors(base, COLOR_FG, paint.bg)
+	shows_current := ui_editor_shows_current(editor, buffer)
 	focused := editor.ui.focus == node.identity
-	cell_y := node.rect.y
-	bottom := node.rect.y + node.rect.h
-	for row := state.scroll_row; row < len(buffer.lines) && cell_y < bottom; row += 1 {
-		text := buffer.lines[row].text[:]
-		current := row == buffer.cursor.row && focused
-		line_bg := bg
-		if current && .Bg in node.current_line.set {
-			_, line_bg = ui_style_colors(node.current_line, fg_base, bg)
-		}
-		colors: []tb2.Color
-		if node.syntax && !buffer.big {
-			colors = highlight_colors(buffer, row)
-		}
-		if len(colors) == 0 && .Fg in base.set {
-			colors = make([]tb2.Color, len(text), context.temp_allocator)
-			slice.fill(colors, fg_base)
-		}
-		rs, re := -1, -1
-		if sel_ok && row >= sel_from.row && row <= sel_to.row {
-			rs = sel_from.col if row == sel_from.row else 0
-			re = sel_to.col if row == sel_to.row else len(text) + 1
-		}
-		segs: []int
-		if buffer.wrap && width > 0 {
-			segs = buffer_line_wrap(buffer, row, width)
-		} else {
-			segs = {0}
-		}
-		start_sub := state.scroll_sub if row == state.scroll_row && buffer.wrap else 0
-		x_origin := state.scroll_col if !buffer.wrap else (visual_col(text, segs[start_sub]) if start_sub < len(segs) else 0)
-		for segment in start_sub ..< len(segs) {
-			if cell_y >= bottom {
-				break
-			}
-			seg_start := segs[segment]
-			seg_end := segs[segment + 1] if segment + 1 < len(segs) else len(text)
-			if !buffer.wrap {
-				seg_start, seg_end = 0, len(text)
-			}
-			if node.line_numbers {
-				ui_render_gutter(paint, node.rect.x, cell_y, gutter, row + 1 if segment == start_sub || segment == 0 else 0, current)
-			}
-			if cell_y >= rect.y && cell_y < rect.y + rect.h {
-				editor_render_text_row(node.rect.x + gutter, cell_y, width, text, colors, x_origin, line_bg, rs, re, nil, seg_start, seg_end)
-			}
-			if buffer.wrap {
-				x_origin = visual_col_from(text, seg_start, x_origin, seg_end)
-			}
-			cell_y += 1
-		}
+	view := EditorView {
+		buffer       = buffer,
+		x            = node.rect.x,
+		y            = visible.y,
+		w            = ui_editor_text_width(node, buffer),
+		h            = visible.h,
+		gutter       = gutter,
+		scroll_row   = state.scroll_row,
+		scroll_sub   = state.scroll_sub,
+		scroll_col   = state.scroll_col,
+		bg           = background,
+		fg           = foreground,
+		fg_set       = .Fg in base.set,
+		syntax       = node.syntax && !buffer.big,
+		current_line = node.line_numbers && focused,
+		find         = shows_current && editor.find.active,
+		inline       = shows_current && focused,
 	}
-	for ; cell_y < bottom; cell_y += 1 {
-		if node.line_numbers {
-			ui_render_gutter(paint, node.rect.x, cell_y, gutter, 0, false)
-		}
-		ui_fill(paint, {node.rect.x + gutter, cell_y, width, 1}, bg)
-	}
+	editor_render_view(editor, &view)
 	if len(buffer.lines) == 1 && len(buffer.lines[0].text) == 0 && node.placeholder != "" {
-		ui_draw_text(paint, node.rect.x + gutter, node.rect.y, width, node.placeholder, COLOR_PANE_DIM_FG, bg)
-	}
-}
-
-ui_render_gutter :: proc(paint: ^UiPaint, cell_x, cell_y, width, number: int, current: bool) {
-	fg := COLOR_CURRENT_LINE_FG if current else COLOR_GUTTER_FG
-	for i in 0 ..< width {
-		ui_cell(paint, cell_x + i, cell_y, ' ', fg, COLOR_GUTTER_BG)
-	}
-	if number > 0 {
-		label := fmt.tprintf("%d", number)
-		ui_draw_text(paint, cell_x + width - 1 - len(label), cell_y, len(label), label, fg, COLOR_GUTTER_BG)
+		ui_draw_text(paint, node.rect.x + gutter, node.rect.y, view.w, node.placeholder, COLOR_PANE_DIM_FG, background)
 	}
 }
 

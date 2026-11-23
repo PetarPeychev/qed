@@ -178,6 +178,8 @@ pane_commands := [?]Command {
 	{name = "Delete", scope = "editor", config_name = "Editor: Delete", run = ui_command_delete},
 	{name = "Indent", scope = "editor", config_name = "Editor: Indent", run = ui_command_indent},
 	{name = "Dedent", scope = "editor", config_name = "Editor: Dedent", run = ui_command_dedent},
+	{name = "Move Line Up", scope = "editor", config_name = "Editor: Move Line Up", run = ui_command_move_line_up},
+	{name = "Move Line Down", scope = "editor", config_name = "Editor: Move Line Down", run = ui_command_move_line_down},
 	{name = "Undo", scope = "editor", bind_from = "Undo", run = ui_command_undo},
 	{name = "Redo", scope = "editor", bind_from = "Redo", run = ui_command_redo},
 	{name = "Select All", scope = "editor", bind_from = "Select All", run = ui_command_select_all},

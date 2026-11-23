@@ -44,6 +44,26 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 		text = fmt.tprintf("%c", ev.ch)
 	}
 	editor_clear_message(editor)
+	main_view := focus.kind == .Editor && ui_node_edits(focus) && ui_editor_shows_current(editor, ui_buffer(editor, focus.buffer))
+	if main_view {
+		editor.hover_active = false
+		if editor.completion.active {
+			if completion_key(editor, ev) {
+				ui_node_state(ui, focus).reveal = true
+				return
+			}
+			if !completion_keeps(ev) {
+				completion_dismiss(editor)
+			}
+		}
+		if inline_active(editor) {
+			if inline_key(editor, ev) {
+				return
+			}
+			inline_dismiss(editor)
+		}
+		defer completion_after(editor, ev)
+	}
 	defer ui.target = nil
 	gen := ui.gen
 	for node := focus; node != nil; node = node.parent {
@@ -125,7 +145,13 @@ ui_editor_type :: proc(editor: ^Editor, node: ^UiNode, character: rune) {
 	if buffer == nil {
 		return
 	}
-	buffer_type_rune(buffer, character)
+	handled := buffer_type_pair(buffer, character)
+	if !handled && character <= 0x7f {
+		handled = buffer_close_dedent(buffer, u8(character))
+	}
+	if !handled {
+		buffer_type_rune(buffer, character)
+	}
 	buffer.typed_rev = buffer.rev
 	ui_node_state(&editor.ui, node).reveal = true
 }
@@ -336,7 +362,7 @@ ui_command_left :: proc(editor: ^Editor) {
 		cursor_goal_sync(buffer)
 		return
 	}
-	ui_move(editor, false, cursor_move_left)
+	ui_move_accelerated(editor, .Arrow_Left, cursor_move_left)
 }
 
 ui_command_right :: proc(editor: ^Editor) {
@@ -350,14 +376,38 @@ ui_command_right :: proc(editor: ^Editor) {
 		cursor_goal_sync(buffer)
 		return
 	}
-	ui_move(editor, false, cursor_move_right)
+	ui_move_accelerated(editor, .Arrow_Right, cursor_move_right)
 }
 
 ui_cursor_up :: proc(buffer: ^Buffer) {cursor_move_up_n(buffer, 1)}
 ui_cursor_down :: proc(buffer: ^Buffer) {cursor_move_down_n(buffer, 1)}
 
-ui_command_up :: proc(editor: ^Editor) {ui_move(editor, false, ui_cursor_up)}
-ui_command_down :: proc(editor: ^Editor) {ui_move(editor, false, ui_cursor_down)}
+ui_move_accelerated :: proc(editor: ^Editor, key: tb2.Key, move: proc(buffer: ^Buffer)) {
+	buffer := ui_target_buffer(editor)
+	if buffer == nil {
+		return
+	}
+	buffer_undo_commit(buffer)
+	buffer.selection = nil
+	for _ in 0 ..< editor_accel_step(editor, key) {
+		move(buffer)
+	}
+}
+
+ui_command_up :: proc(editor: ^Editor) {ui_move_accelerated(editor, .Arrow_Up, ui_cursor_up)}
+ui_command_down :: proc(editor: ^Editor) {ui_move_accelerated(editor, .Arrow_Down, ui_cursor_down)}
+
+ui_command_move_line_up :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor, true); buffer != nil {
+		buffer_move_lines(buffer, -1)
+	}
+}
+
+ui_command_move_line_down :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor, true); buffer != nil {
+		buffer_move_lines(buffer, +1)
+	}
+}
 ui_command_select_left :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_left)}
 ui_command_select_right :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_right)}
 ui_command_select_up :: proc(editor: ^Editor) {ui_move(editor, true, ui_cursor_up)}

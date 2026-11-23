@@ -134,7 +134,9 @@
     "Editor: Backspace": "Backspace",
     "Editor: Delete": "Delete",
     "Editor: Indent": "Tab",
-    "Editor: Dedent": "Shift+Tab"
+    "Editor: Dedent": "Shift+Tab",
+    "Editor: Move Line Up": "Alt+Up",
+    "Editor: Move Line Down": "Alt+Down"
   },
   "languages": {
     "odin": {

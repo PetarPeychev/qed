@@ -337,7 +337,8 @@ deco_rows :: proc(b: ^Buffer, lo, hi: int, pal: []tb2.Color) -> []DecoRow {
 	return rows
 }
 
-editor_render_deco_ghosts :: proc(b: ^Buffer, row, gutter, w, h: int, above: bool, screen_y: int, pal: []tb2.Color) -> int {
+editor_render_deco_ghosts :: proc(b: ^Buffer, view: ^EditorView, row: int, above: bool, screen_y: int, pal: []tb2.Color) -> int {
+	gutter, w, h := view.gutter, view.w, view.y + view.h
 	sy := screen_y
 	for d in b.deco.ghosts {
 		if d.from.row != row || d.above != above {
@@ -353,8 +354,8 @@ editor_render_deco_ghosts :: proc(b: ^Buffer, row, gutter, w, h: int, above: boo
 			for &c in ccol {
 				c = fg
 			}
-			editor_render_ghost_gutter(sy, gutter, ' ')
-			editor_render_text_row(gutter, sy, w, text, ccol, 0, COLOR_BG, -1, -1, nil, 0, len(text))
+			editor_render_ghost_gutter(view.x, sy, gutter, ' ')
+			editor_render_text_row(view.x + gutter, sy, w, text, ccol, 0, view.bg, -1, -1, nil, 0, len(text))
 			sy += 1
 		}
 	}

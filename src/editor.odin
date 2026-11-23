@@ -1560,7 +1560,8 @@ wrap_text :: proc(text: string, width: int, allocator := context.temp_allocator)
 // renders it through the wrap machinery, so ghost and the relocated suffix obey
 // the same soft-wrap rules as real text. Ghost newlines are hard breaks. Returns
 // the next screen row.
-editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h, screen_y: int, colors: []tb2.Color, line_bg: tb2.Color) -> int {
+editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, view: ^EditorView, row, screen_y: int, colors: []tb2.Color, line_bg: tb2.Color) -> int {
+	gutter, w, h := view.gutter, view.w, view.y + view.h
 	text := b.lines[row].text[:]
 	cut := b.cursor.col
 	glines := strings.split(b.deco.inline.text, "\n", context.temp_allocator)
@@ -1600,8 +1601,10 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h,
 			}
 			seg_start := segs[s]
 			seg_end := segs[s + 1] if s + 1 < len(segs) else len(ct)
-			editor_render_gutter(sy, gutter, row + 1, true, 0, mark, !first_row)
-			editor_render_text_row(gutter, sy, w, ct, ccol[:], x_origin, line_bg, -1, -1, nil, seg_start, seg_end)
+			if gutter > 0 {
+				editor_render_gutter(view.x, sy, gutter, row + 1, true, 0, mark, !first_row)
+			}
+			editor_render_text_row(view.x + gutter, sy, w, ct, ccol[:], x_origin, line_bg, -1, -1, nil, seg_start, seg_end)
 			x_origin = visual_col_from(ct, seg_start, x_origin, seg_end)
 			sy += 1
 			first_row = false
@@ -1610,17 +1613,21 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h,
 	return sy
 }
 
-editor_render_ghost_gutter :: proc(y, width: int, mark: rune = '▌') {
-	tb2.set_cell(0, i32(y), mark, COLOR_GIT_DEL, COLOR_GUTTER_BG)
+editor_render_ghost_gutter :: proc(left, y, width: int, mark: rune = '▌') {
+	if width <= 0 {
+		return
+	}
+	tb2.set_cell(i32(left), i32(y), mark, COLOR_GIT_DEL, COLOR_GUTTER_BG)
 	for x in 1 ..< width {
-		tb2.set_cell(i32(x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
+		tb2.set_cell(i32(left + x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
 	}
 }
 
 // Draws a hunk's removed/base lines as dim-red, non-wrapping ghost rows (one
 // screen row each, clipped). Above-hunk lines paired with their live counterpart
 // get the changed span emphasized. Returns the next screen row.
-editor_render_hunk_ghosts :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h: int, above: bool, screen_y: int) -> int {
+editor_render_hunk_ghosts :: proc(b: ^Buffer, view: ^EditorView, row: int, above: bool, screen_y: int) -> int {
+	gutter, w, h := view.gutter, view.w, view.y + view.h
 	hunk, ok := diff_hunk_at(b, row, above)
 	if !ok {
 		return screen_y
@@ -1642,17 +1649,50 @@ editor_render_hunk_ghosts :: proc(editor: ^Editor, b: ^Buffer, row, gutter, w, h
 		for i in 0 ..< len(old) {
 			ccol[i] = COLOR_GHOST_FG
 		}
-		editor_render_ghost_gutter(sy, gutter)
-		editor_render_text_row(gutter, sy, w, old, ccol, 0, ghost_bg, -1, -1, nil, 0, len(old), df, dt, word_bg)
+		editor_render_ghost_gutter(view.x, sy, gutter)
+		editor_render_text_row(view.x + gutter, sy, w, old, ccol, 0, ghost_bg, -1, -1, nil, 0, len(old), df, dt, word_bg)
 		sy += 1
 	}
 	return sy
 }
 
+EditorView :: struct {
+	buffer:                             ^Buffer,
+	x, y, w, h:                         int,
+	gutter:                             int,
+	scroll_row, scroll_sub, scroll_col: int,
+	bg:                                 tb2.Color,
+	fg:                                 tb2.Color,
+	fg_set:                             bool,
+	syntax, current_line:               bool,
+	find, inline:                       bool,
+}
+
 editor_render_buffer :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
-	gutter := editor_gutter_width(editor)
 	w, h := editor_viewport(editor)
+	view := EditorView {
+		buffer       = editor_buffer(editor),
+		w            = w,
+		h            = h,
+		gutter       = editor_gutter_width(editor),
+		scroll_row   = editor.scroll_row,
+		scroll_sub   = editor.scroll_sub,
+		scroll_col   = editor.scroll_col,
+		bg           = COLOR_BG,
+		syntax       = true,
+		current_line = true,
+		find         = editor.find.active,
+		inline       = true,
+	}
+	editor_render_view(editor, &view)
+}
+
+editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
+	b := view.buffer
+	gutter := view.gutter
+	w := view.w
+	bottom := view.y + view.h
+	text_x := view.x + gutter
 
 	sel_from, sel_to, sel_ok := selection_range(b)
 
@@ -1662,17 +1702,16 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		bra, brm, br_ok = bracket_match(b)
 	}
 
-
 	pal := deco_palette(editor.plugins.colors[:])
-	drows := deco_rows(b, editor.scroll_row, editor.scroll_row + h, pal)
+	drows := deco_rows(b, view.scroll_row, view.scroll_row + view.h, pal)
 
 	b.wrap_width = w
 	wrapping := b.wrap && w > 0
-	gap := inline_gap(editor)
+	gap := inline_gap(editor) if view.inline else 0
 	// inline_render draws the cursor line's suffix after the ghost, so the line stops at the caret
-	ghost_cut := inline_active(editor)
-	screen_y := 0
-	for row := editor.scroll_row; row < len(b.lines) && screen_y < h; row += 1 {
+	ghost_cut := view.inline && inline_active(editor)
+	screen_y := view.y
+	for row := view.scroll_row; row < len(b.lines) && screen_y < bottom; row += 1 {
 		current := row == b.cursor.row
 		severity := 0
 		for d in b.diags {
@@ -1710,9 +1749,16 @@ editor_render_buffer :: proc(editor: ^Editor) {
 				append(&underlines, [2]int{brm.col, brm.col + 1})
 			}
 		}
-		colors := highlight_colors(b, row)
-		drow := drows[row - editor.scroll_row] if row - editor.scroll_row < len(drows) else DecoRow{}
-		line_bg := editor_line_bg(current, mark, diff_view_on(), drow.tints[:])
+		colors: []tb2.Color
+		if view.syntax {
+			colors = highlight_colors(b, row)
+		}
+		if len(colors) == 0 && view.fg_set {
+			colors = make([]tb2.Color, len(text), context.temp_allocator)
+			slice.fill(colors, view.fg)
+		}
+		drow := drows[row - view.scroll_row] if row - view.scroll_row < len(drows) else DecoRow{}
+		line_bg := editor_line_bg(current && view.current_line, mark, diff_view_on(), drow.tints[:], view.bg)
 
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
@@ -1726,16 +1772,16 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		}
 
 		match_spans: [][2]int
-		if editor.find.active {
+		if view.find {
 			match_spans = find_row_spans(editor, row)
 		}
 
 		// Deleted/replaced base lines render as dim-red ghost rows: above a
 		// modification, below a pure deletion. Hidden for the top line.
-		if row != editor.scroll_row {
-			screen_y = editor_render_deco_ghosts(b, row, gutter, w, h, true, screen_y, pal)
-			screen_y = editor_render_hunk_ghosts(editor, b, row, gutter, w, h, true, screen_y)
-			if screen_y >= h {
+		if row != view.scroll_row {
+			screen_y = editor_render_deco_ghosts(b, view, row, true, screen_y, pal)
+			screen_y = editor_render_hunk_ghosts(b, view, row, true, screen_y)
+			if screen_y >= bottom {
 				break
 			}
 		}
@@ -1745,22 +1791,24 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			if ghost_row {
 				// Ghost + suffix wrap as one flow, pushing lines below down by the
 				// rows they consume (no separate gap needed).
-				screen_y = editor_render_ghost_line(editor, b, row, gutter, w, h, screen_y, colors, line_bg)
+				screen_y = editor_render_ghost_line(editor, b, view, row, screen_y, colors, line_bg)
 			} else {
 				segs := buffer_line_wrap(b, row, w)
-				start_sub := editor.scroll_sub if row == editor.scroll_row else 0
+				start_sub := view.scroll_sub if row == view.scroll_row else 0
 				x_origin := visual_col(text[:], segs[start_sub]) if start_sub < len(segs) else 0
 				for s in start_sub ..< len(segs) {
-					if screen_y >= h {
+					if screen_y >= bottom {
 						break
 					}
 					seg_start := segs[s]
 					seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
 					x_end := visual_col_from(text[:], seg_start, x_origin, seg_end)
-					editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, s > 0, drow.glyph, drow.glyph_fg)
-					editor_render_text_row(gutter, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
+					if gutter > 0 {
+						editor_render_gutter(view.x, screen_y, gutter, row + 1, current, severity, mark, s > 0, drow.glyph, drow.glyph_fg)
+					}
+					editor_render_text_row(text_x, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
 					if s == len(segs) - 1 && len(drow.eols) > 0 {
-						editor_render_eol(gutter, screen_y, w, x_end - x_origin + 1, drow.eols[:], line_bg)
+						editor_render_eol(text_x, screen_y, w, x_end - x_origin + 1, drow.eols[:], line_bg)
 					}
 					x_origin = x_end
 					screen_y += 1
@@ -1768,21 +1816,23 @@ editor_render_buffer :: proc(editor: ^Editor) {
 			}
 		} else {
 			text_end := b.cursor.col if ghost_row else len(text)
-			editor_render_gutter(screen_y, gutter, row + 1, current, severity, mark, false, drow.glyph, drow.glyph_fg)
-			editor_render_text_row(gutter, screen_y, w, text[:], colors, editor.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
+			if gutter > 0 {
+				editor_render_gutter(view.x, screen_y, gutter, row + 1, current, severity, mark, false, drow.glyph, drow.glyph_fg)
+			}
+			editor_render_text_row(text_x, screen_y, w, text[:], colors, view.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
 			if !ghost_row && len(drow.eols) > 0 {
-				editor_render_eol(gutter, screen_y, w, visual_col(text[:], len(text)) - editor.scroll_col + 1, drow.eols[:], line_bg)
+				editor_render_eol(text_x, screen_y, w, visual_col(text[:], len(text)) - view.scroll_col + 1, drow.eols[:], line_bg)
 			}
 			screen_y += 1
 			if gap > 0 && row == b.cursor.row {
 				screen_y += gap
 			}
 		}
-		if screen_y < h {
-			screen_y = editor_render_deco_ghosts(b, row, gutter, w, h, false, screen_y, pal)
+		if screen_y < bottom {
+			screen_y = editor_render_deco_ghosts(b, view, row, false, screen_y, pal)
 		}
-		if screen_y < h {
-			screen_y = editor_render_hunk_ghosts(editor, b, row, gutter, w, h, false, screen_y)
+		if screen_y < bottom {
+			screen_y = editor_render_hunk_ghosts(b, view, row, false, screen_y)
 		}
 	}
 }
@@ -2057,10 +2107,10 @@ editor_render_welcome_line :: proc(x, y: int, text: string) {
 	pane_text(x, y, int(tb2.width()) - x, text, COLOR_FG, COLOR_BG)
 }
 
-editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
+editor_render_gutter :: proc(left, y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
 	if continuation {
 		for x in 0 ..< width {
-			tb2.set_cell(i32(x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
+			tb2.set_cell(i32(left + x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
 		}
 		return
 	}
@@ -2068,7 +2118,7 @@ editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int
 	if mark == .None && glyph != 0 {
 		mark_ch, mark_fg = glyph, glyph_fg
 	}
-	tb2.set_cell(0, i32(y), mark_ch, mark_fg, COLOR_GUTTER_BG)
+	tb2.set_cell(i32(left), i32(y), mark_ch, mark_fg, COLOR_GUTTER_BG)
 
 	label := fmt.tprintf("%d", number)
 	sb := strings.builder_make(context.temp_allocator)
@@ -2086,7 +2136,7 @@ editor_render_gutter :: proc(y, width, number: int, current: bool, severity: int
 		fg = diagnostic_color(severity)
 	}
 	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
-	tb2.print(1, i32(y), fg, COLOR_GUTTER_BG, cstr)
+	tb2.print(i32(left + 1), i32(y), fg, COLOR_GUTTER_BG, cstr)
 }
 
 color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {
@@ -2100,8 +2150,8 @@ color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {
 	return tb2.Color(chan(b, t, 16, alpha) | chan(b, t, 8, alpha) | chan(b, t, 0, alpha))
 }
 
-editor_line_bg :: proc(current: bool, mark: DiffMark, hunk: bool, tints: []RowTint = nil) -> tb2.Color {
-	bg := COLOR_BG
+editor_line_bg :: proc(current: bool, mark: DiffMark, hunk: bool, tints: []RowTint = nil, base := COLOR_BG) -> tb2.Color {
+	bg := base
 	if hunk {
 		#partial switch mark {
 		case .Added:
