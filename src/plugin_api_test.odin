@@ -664,7 +664,6 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 		end
 	`, "abc")
 	defer api_test_destroy(ed)
-	defer delete(ed.panes)
 	append(&ed.buffers, test_buffer("two"))
 	append(&ed.buffers, test_buffer("three"))
 	ed.buffers[2].modified = true

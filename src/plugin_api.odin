@@ -1409,11 +1409,6 @@ qed_jump :: proc "c" (L: ^lua.State) -> c.int {
 	} else if idx != editor.current {
 		editor_switch_to(editor, idx)
 	}
-	for i := len(editor.panes) - 1; i >= 0; i -= 1 {
-		if i < len(editor.panes) && editor.panes[i].jump_closes {
-			pane_end(editor, editor.panes[i].handle, false)
-		}
-	}
 	b := editor_buffer(editor)
 	r := clamp(row - 1, 0, len(b.lines) - 1)
 	text := b.lines[r].text[:]

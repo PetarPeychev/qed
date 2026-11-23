@@ -670,204 +670,9 @@ walk_narrow_reset :: proc(src: ^ListSource) {
 	clear(&src.narrow_idx)
 }
 
-pane_tree_expanded :: proc(p: ^Pane, path: string) -> bool {
-	if v, ok := p.list.expanded[path]; ok {
-		return v
-	}
-	return p.list.source.wscope != nil && !p.list.source.wscope.all
-}
-
-pane_tree_set :: proc(p: ^Pane, path: string, on: bool) {
-	p.list.source.resume = false
-	if path in p.list.expanded {
-		p.list.expanded[path] = on
-	} else {
-		p.list.expanded[strings.clone(path)] = on
-	}
-}
-
-// a fill reads uncached dirs for at most walk_fill_slice_ms; dirs left unread stay pending and the pane refills next pump
-list_walk_fill :: proc(editor: ^Editor, p: ^Pane) {
-	src := &p.list.source
-	p.refill_due = false
-	at := time.tick_now()
-	rows_h := pane_geom(editor, p).list.h
-	keep, keep_anchor := "", ""
-	if src.keep != "" {
-		keep = strings.clone(src.keep, context.temp_allocator)
-	} else if p.list.sel >= 0 && p.list.sel < len(src.entries) {
-		keep = strings.clone(src.entries[p.list.sel].path, context.temp_allocator)
-	}
-	if a, ok := p.list.anchor.?; ok && a >= 0 && a < len(src.entries) {
-		keep_anchor = strings.clone(src.entries[a].path, context.temp_allocator)
-	}
-	old_sel := p.list.sel
-	off := clamp(p.list.sel - p.list.scroll, 0, max(0, rows_h - 1))
-	clear(&src.entries)
-	clear(&src.pending)
-	vmem.arena_free_all(&src.names)
-	p.list.anchor, p.list.more, p.list.filtered = nil, false, false
-	clear(&p.list.matches)
-	query := ""
-	if f := pane_filter(p); f != nil {
-		query = textfield_str(&f.field)
-	}
-	src.filtering = query != ""
-	if src.filtering {
-		list_walk_filter(editor, p, query)
-	} else {
-		walk_narrow_reset(src)
-		kids := walk_virtual_kids(src.wscope, src.walk.root)
-		fill := WalkFill {
-			kids     = &kids,
-			deadline = time.tick_add(at, time.Duration(walk_fill_slice_ms) * time.Millisecond),
-		}
-		list_walk_dir(editor, p, src.walk.root, 0, &fill)
-		if fill.capped {
-			editor_log(editor, .Warn, "Filetree", fmt.tprintf("Expand All stopped at %d rows", WALK_EXPAND_MAX_ROWS))
-		}
-	}
-	found := false
-	p.list.sel = 0
-	for e, i in src.entries {
-		if e.path == keep {
-			p.list.sel, found = i, true
-		}
-		if e.path == keep_anchor {
-			p.list.anchor = i
-		}
-	}
-	list_walk_keep_clear(src)
-	if found {
-		p.list.scroll = max(0, p.list.sel - off)
-	} else if keep != "" && len(src.pending) > 0 {
-		// the selected row sits under a dir not read yet: hold the row in place until it lands
-		src.keep = strings.clone(keep)
-		p.list.sel = clamp(old_sel, 0, max(0, len(src.entries) - 1))
-	}
-	list_walk_rearm(p)
-	p.list.stamp = list_stamp(editor, p)
-	pane_scroll_fit(p, rows_h)
-	if src.filtering {
-		note := fmt.tprintf(" (walk %.0fms)", src.walk.walk_ms) if src.walk.walk_ms > 0 else ""
-		ms := time.duration_milliseconds(time.tick_since(at))
-		editor_log(editor, .Debug, "Filetree", fmt.tprintf("filter %q %.0fms%s  %d/%d", query, ms, note, len(src.entries), len(src.narrow_idx)))
-	}
-}
-
-list_walk_filter :: proc(editor: ^Editor, p: ^Pane, query: string) {
-	src := &p.list.source
-	cands := walk_source_cands(editor, src)
-	root := src.walk.root
-	builds := src.wscope.builds if src.wscope != nil else src.walk.builds
-	if len(cands) == 0 {
-		walk_narrow_reset(src)
-		return
-	}
-	// a longer query matches a subset of the shorter one's hits, so rank only those
-	incremental := src.narrow_q != "" && src.narrow_builds == builds && len(query) > len(src.narrow_q) && strings.has_prefix(query, src.narrow_q)
-	base := make([dynamic]int, 0, len(cands), context.temp_allocator)
-	if incremental {
-		append(&base, ..src.narrow_idx[:])
-	} else {
-		for i in 0 ..< len(cands) {
-			append(&base, i)
-		}
-	}
-	names := make([]string, len(base), context.temp_allocator)
-	for ci, i in base {
-		names[i] = walk_rel(cands[ci].path, root)
-	}
-	limit := p.list.max if p.list.max > 0 else WALK_FILTER_MAX_RESULTS
-	f := fuzzy_begin(names)
-	ranked := fuzzy_rank(&f, query)
-	clear(&src.narrow_idx)
-	for pos, i in ranked {
-		ci := base[pos]
-		append(&src.narrow_idx, ci)
-		if i >= limit {
-			continue
-		}
-		path := strings.clone(cands[ci].path, vmem.arena_allocator(&src.names))
-		append(&src.entries, FileEntry{path, walk_rel(path, root), 0, cands[ci].is_dir})
-	}
-	fuzzy_end(&f)
-	p.list.more = len(src.narrow_idx) > len(src.entries)
-	delete(src.narrow_q)
-	src.narrow_q = strings.clone(query)
-	src.narrow_builds = builds
-}
-
-list_walk_rearm :: proc(p: ^Pane) {
-	src := &p.list.source
-	src.resume = len(src.pending) > 0
-	if src.resume {
-		p.refill_due, p.refill_at = true, time.tick_now()
-	} else {
-		src.expanding = false
-		list_walk_keep_clear(src)
-	}
-}
-
 list_walk_keep_clear :: proc(src: ^ListSource) {
 	delete(src.keep)
 	src.keep = ""
-}
-
-// a continuation splices the newly read dirs in after their rows instead of rebuilding the list
-list_walk_resume :: proc(editor: ^Editor, p: ^Pane) {
-	src := &p.list.source
-	query := ""
-	if f := pane_filter(p); f != nil {
-		query = textfield_str(&f.field)
-	}
-	if !src.resume || src.filtering || query != "" || list_stamp(editor, p) != p.list.stamp {
-		list_walk_fill(editor, p)
-		return
-	}
-	p.refill_due = false
-	at := time.tick_now()
-	rows_h := pane_geom(editor, p).list.h
-	off := clamp(p.list.sel - p.list.scroll, 0, max(0, rows_h - 1))
-	old_anchor, has_anchor := p.list.anchor.?
-	old, pending := src.entries, src.pending
-	src.entries, src.pending = make([dynamic]FileEntry, 0, len(old) + 1024), {}
-	kids := walk_virtual_kids(src.wscope, src.walk.root)
-	fill := WalkFill {
-		kids     = &kids,
-		deadline = time.tick_add(at, time.Duration(walk_fill_slice_ms) * time.Millisecond),
-	}
-	sel := 0
-	for e, i in old {
-		if i == p.list.sel {
-			sel = len(src.entries)
-		}
-		if has_anchor && i == old_anchor {
-			p.list.anchor = len(src.entries)
-		}
-		append(&src.entries, e)
-		if e.is_dir && e.path in pending && !list_walk_dir(editor, p, e.path, e.depth + 1, &fill) {
-			src.pending[e.path] = true
-		}
-	}
-	delete(old)
-	delete(pending)
-	if src.keep != "" {
-		for e, i in src.entries {
-			if e.path == src.keep {
-				sel = i
-				list_walk_keep_clear(src)
-				break
-			}
-		}
-	}
-	p.list.sel = sel
-	p.list.scroll = max(0, sel - off)
-	if fill.capped {
-		editor_log(editor, .Warn, "Filetree", fmt.tprintf("Expand All stopped at %d rows", WALK_EXPAND_MAX_ROWS))
-	}
-	list_walk_rearm(p)
-	pane_scroll_fit(p, rows_h)
 }
 
 walk_rel :: proc(path, root: string) -> string {
@@ -1132,207 +937,9 @@ WalkFill :: struct {
 	capped:   bool,
 }
 
-list_walk_dir :: proc(editor: ^Editor, p: ^Pane, dir: string, depth: int, fill: ^WalkFill) -> bool {
-	src := &p.list.source
-	rows_of :: proc(src: ^ListSource, dir: string, fill: ^WalkFill, read: bool) -> ([]WalkRow, bool) {
-		if src.wscope != nil {
-			return walk_scope_rows(src, dir, fill.kids, read)
-		}
-		return list_walk_cached_rows(src, dir, fill.kids, read)
-	}
-	rows, ok := rows_of(src, dir, fill, false)
-	// the first read always runs, so a fill whose cached part alone overruns the slice still advances
-	if !ok && (fill.reads == 0 || time.tick_diff(time.tick_now(), fill.deadline) > 0) {
-		rows, ok = rows_of(src, dir, fill, true)
-		fill.reads += 1
-	}
-	if !ok {
-		return false
-	}
-	for r in rows {
-		// the source's own dir cache outlives the rows, which every restale rebuilds; a scope's is shared
-		path := r.path if src.wscope == nil else strings.clone(r.path, vmem.arena_allocator(&src.names))
-		append(&src.entries, FileEntry{path, path[r.name:], depth, r.is_dir})
-		if !r.is_dir {
-			continue
-		}
-		if src.expanding && path not_in p.list.expanded {
-			if len(src.entries) < WALK_EXPAND_MAX_ROWS {
-				pane_tree_set(p, path, true)
-			} else {
-				fill.capped, src.expanding = true, false
-			}
-		}
-		if pane_tree_expanded(p, path) && !list_walk_dir(editor, p, path, depth + 1, fill) {
-			src.pending[path] = true
-		}
-	}
-	return true
-}
-
 WalkSelected :: struct {
 	path:   string,
 	is_dir: bool,
-}
-
-list_walk_files :: proc(editor: ^Editor, p: ^Pane, sel: []int) -> []string {
-	src := &p.list.source
-	rows := make([dynamic]WalkSelected, 0, len(sel), context.temp_allocator)
-	for i in sel {
-		if i >= 0 && i < len(src.entries) {
-			append(&rows, WalkSelected{src.entries[i].path, src.entries[i].is_dir})
-		}
-	}
-	return list_walk_files_of(p, rows[:])
-}
-
-list_walk_files_of :: proc(p: ^Pane, sel: []WalkSelected) -> []string {
-	wscope := p.list.source.wscope if p != nil else nil
-	seen := make(map[string]bool, context.temp_allocator)
-	out := make([dynamic]string, context.temp_allocator)
-	add :: proc(out: ^[dynamic]string, seen: ^map[string]bool, path: string) {
-		if path not_in seen {
-			seen[path] = true
-			append(out, path)
-		}
-	}
-	for e in sel {
-		if !e.is_dir || wscope == nil || wscope.all {
-			add(&out, &seen, e.path)
-			continue
-		}
-		prefix := strings.concatenate({e.path, "/"}, context.temp_allocator)
-		for sc := wscope; sc != nil; sc = sc.base {
-			for path in sc.paths {
-				if strings.has_prefix(path, prefix) {
-					add(&out, &seen, path)
-				}
-			}
-			for path in sc.virtual {
-				if strings.has_prefix(path, prefix) {
-					add(&out, &seen, path)
-				}
-			}
-		}
-	}
-	return out[:]
-}
-
-pane_tree_reveal :: proc(editor: ^Editor, p: ^Pane, path: string) -> bool {
-	root := p.list.source.walk.root
-	for q := path_parent(path); strings.has_prefix(q, root); {
-		pane_tree_set(p, q, true)
-		np := path_parent(q)
-		if q == root || np == q {
-			break
-		}
-		q = np
-	}
-	src := &p.list.source
-	delete(src.keep)
-	src.keep = strings.clone(path)
-	list_walk_fill(editor, p)
-	for e, i in src.entries {
-		if e.path == path {
-			p.list.sel, p.list.anchor, p.list.moved = i, nil, true
-			pane_scroll_fit(p, pane_geom(editor, p).list.h)
-			return true
-		}
-	}
-	// an ancestor is still being read: the fill selects the path once it lands
-	return src.keep != ""
-}
-
-pane_tree_enter :: proc(editor: ^Editor, p: ^Pane) -> bool {
-	src := &p.list.source
-	if src.kind != .Walk || p.list.anchor != nil || p.list.sel < 0 || p.list.sel >= len(src.entries) {
-		return false
-	}
-	e := src.entries[p.list.sel]
-	if !e.is_dir {
-		return false
-	}
-	dir := strings.clone(e.path, context.temp_allocator)
-	on := true
-	if f := pane_filter(p); f != nil && len(f.text) > 0 {
-		textfield_reset(&f.field)
-		pane_tree_set(p, dir, true)
-		pane_tree_reveal(editor, p, dir)
-	} else {
-		on = !pane_tree_expanded(p, dir)
-		pane_tree_set(p, dir, on)
-		// reopening a dir is how a user rereads it
-		if on {
-			delete_key(&src.dirs, dir)
-		}
-		list_walk_fill(editor, p)
-	}
-	if p.on.expand != nil {
-		p.on.expand(editor, p, dir, on)
-	}
-	return true
-}
-
-pane_tree_any_expanded :: proc(p: ^Pane) -> bool {
-	for e in p.list.source.entries {
-		if e.is_dir && pane_tree_expanded(p, e.path) {
-			return true
-		}
-	}
-	return false
-}
-
-// expanding the whole walk needs the ignore set, or it would descend into node_modules
-pane_tree_expand_all :: proc(editor: ^Editor, p: ^Pane, on: bool) -> bool {
-	src := &p.list.source
-	if src.wscope != nil && !src.wscope.all {
-		if on {
-			drop := make([dynamic]string, context.temp_allocator)
-			for key, val in p.list.expanded {
-				if !val {
-					append(&drop, key)
-				}
-			}
-			for key in drop {
-				delete_key(&p.list.expanded, key)
-				delete(key)
-			}
-		} else {
-			for e in src.entries {
-				if e.is_dir {
-					pane_tree_set(p, e.path, false)
-				}
-			}
-		}
-	} else if on {
-		if !src.walk.ignore_ready && !src.walk.ignored {
-			return false
-		}
-		src.expanding = true
-	} else {
-		walk_set_clear(&p.list.expanded)
-	}
-	if !on {
-		src.expanding = false
-		list_walk_keep_clear(src)
-	}
-	list_walk_fill(editor, p)
-	return true
-}
-
-pane_tree_loading :: proc(p: ^Pane) -> bool {
-	return p.list.source.kind == .Walk && len(p.list.source.pending) > 0
-}
-
-// dirs read so far stay open; the ones still pending close
-pane_tree_cancel :: proc(editor: ^Editor, p: ^Pane) {
-	src := &p.list.source
-	src.expanding = false
-	for dir in src.pending {
-		pane_tree_set(p, dir, false)
-	}
-	list_walk_keep_clear(src)
-	list_walk_fill(editor, p)
 }
 
 FsError :: enum {
@@ -1617,4 +1224,150 @@ path_parent :: proc(path: string) -> string {
 		}
 	}
 	return path
+}
+
+ListSourceKind :: enum {
+	None,
+	Commands,
+	Dirs,
+	Lines,
+	Walk,
+}
+
+ListSource :: struct {
+	kind:      ListSourceKind,
+	scope:     string,
+	path:      string,
+	dotfiles:  bool,
+	buf:       u64,
+	cache_dir: string,
+	cache:     [dynamic]string,
+	ids:       [dynamic]u64,
+	rows:      [dynamic]int,
+	stamp:     u64,
+	evicted:   int,
+	walk:      ^Walk,
+	wscope:    ^WalkScope,
+	entries:   [dynamic]FileEntry,
+	names:     vmem.Arena,
+	filtering: bool,
+	narrow_q:  string,
+	narrow_idx: [dynamic]int,
+	narrow_builds: u64,
+	dirs:      map[string][]WalkRow,
+	dirs_arena: vmem.Arena,
+	dirs_walk: ^Walk,
+	dirs_stales: u64,
+	pending:   map[string]bool,
+	keep:      string,
+	expanding: bool,
+	resume:    bool,
+}
+
+list_source_clone :: proc(s: ListSource) -> ListSource {
+	if s.walk != nil {
+		s.walk.refs += 1
+	}
+	if s.wscope != nil {
+		s.wscope.refs += 1
+	}
+	return {kind = s.kind, scope = strings.clone(s.scope), path = strings.clone(s.path), dotfiles = s.dotfiles, buf = s.buf, walk = s.walk, wscope = s.wscope}
+}
+
+list_source_free :: proc(s: ^ListSource) {
+	delete(s.scope)
+	delete(s.path)
+	list_source_uncache(s)
+	delete(s.cache)
+	delete(s.ids)
+	delete(s.rows)
+	walk_release(s.walk)
+	walk_scope_release(s.wscope)
+	delete(s.entries)
+	vmem.arena_destroy(&s.names)
+	delete(s.narrow_q)
+	delete(s.narrow_idx)
+	delete(s.dirs)
+	vmem.arena_destroy(&s.dirs_arena)
+	delete(s.pending)
+	delete(s.keep)
+	s^ = {}
+}
+
+list_source_uncache :: proc(s: ^ListSource) {
+	for n in s.cache {
+		delete(n)
+	}
+	clear(&s.cache)
+	clear(&s.ids)
+	clear(&s.rows)
+	delete(s.cache_dir)
+	s.cache_dir = ""
+}
+
+all_digits :: proc(s: string) -> bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i in 0 ..< len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+path_split :: proc(text: string) -> (base, term: string) {
+	idx := strings.last_index_byte(text, '/')
+	if idx < 0 {
+		return "", text
+	}
+	if idx == 0 {
+		return "/", text[1:]
+	}
+	return text[:idx], text[idx + 1:]
+}
+
+path_resolve :: proc(root, home, base: string, allocator := context.temp_allocator) -> string {
+	switch {
+	case base == "":
+		p, _ := filepath.clean(root, allocator)
+		return p
+	case base == "~":
+		p, _ := filepath.clean(home, allocator)
+		return p
+	case strings.has_prefix(base, "~/"):
+		p, _ := filepath.join({home, base[2:]}, allocator)
+		return p
+	case strings.has_prefix(base, "/"):
+		p, _ := filepath.clean(base, allocator)
+		return p
+	}
+	p, _ := filepath.join({root, base}, allocator)
+	return p
+}
+
+path_back :: proc(text, home: string) -> string {
+	trimmed := strings.trim_right(text, "/")
+	if trimmed == "" {
+		return "/"
+	}
+	if trimmed == "~" {
+		clean, _ := filepath.clean(home, context.temp_allocator)
+		parent := filepath.dir(clean)
+		return "/" if parent == "/" else fmt.tprintf("%s/", parent)
+	}
+	seg := trimmed[strings.last_index_byte(trimmed, '/') + 1:]
+	return text[:len(trimmed) - len(seg)]
+}
+
+path_prefix_match :: proc(name, term: string) -> bool {
+	return len(name) >= len(term) && find_eq(name[:len(term)], term, smart_case_insensitive(term))
+}
+
+path_under :: proc(path, root: string) -> bool {
+	if root == "/" {
+		return strings.has_prefix(path, "/")
+	}
+	return len(path) > len(root) && path[len(root)] == '/' && strings.has_prefix(path, root)
 }

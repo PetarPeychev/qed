@@ -2,14 +2,6 @@ package main
 
 import "core:testing"
 
-@(private = "file")
-pane_test_hits: int
-
-@(private = "file")
-pane_test_hit :: proc(editor: ^Editor, p: ^Pane) {
-	pane_test_hits += 1
-}
-
 @(test)
 e2e_pane_safety_idempotent :: proc(t: ^testing.T) {
 	e := e2e_start("abc")

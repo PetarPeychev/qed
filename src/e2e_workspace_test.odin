@@ -441,11 +441,6 @@ e2e_cwd_unsaved_confirm :: proc(t: ^testing.T) {
 	testing.expect(t, !cwd_open(&e), "confirm closes the picker too")
 }
 
-pane_find_handle :: proc(e: ^E2E, handle: u64) -> ^Pane {
-	i := pane_index(&e.ed, handle)
-	return &e.ed.panes[i] if i >= 0 else nil
-}
-
 @(test)
 e2e_cwd_palette_and_welcome :: proc(t: ^testing.T) {
 	e := e2e_welcome_start()

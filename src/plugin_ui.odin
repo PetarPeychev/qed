@@ -360,37 +360,6 @@ api_list_handle :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> int {
 	return i
 }
 
-api_pane_item_push :: proc(L: ^lua.State, it: PaneItem) {
-	lua.L_checkstack(L, 3, "item")
-	lua.createtable(L, 0, 4)
-	lua.pushodinstring(L, it.label)
-	lua.setfield(L, -2, "label")
-	if it.path != "" {
-		lua.pushodinstring(L, it.path)
-		lua.setfield(L, -2, "path")
-	}
-	if it.detail != "" {
-		lua.pushodinstring(L, it.detail)
-		lua.setfield(L, -2, "detail")
-	}
-	if it.buf != 0 {
-		api_buffer_object_push(L, it.buf)
-		lua.setfield(L, -2, "buf")
-	}
-	if it.row > 0 {
-		api_pos_push(L, {it.row - 1, max(0, it.col - 1)})
-		lua.setfield(L, -2, "pos")
-	}
-	if it.dir {
-		lua.pushboolean(L, true)
-		lua.setfield(L, -2, "dir")
-	}
-	if it.depth > 0 {
-		lua.pushinteger(L, lua.Integer(it.depth))
-		lua.setfield(L, -2, "depth")
-	}
-}
-
 api_opt_bool :: proc(L: ^lua.State, t: c.int, key: cstring) -> bool {
 	tp := lua.getfield(L, t, key)
 	b := bool(lua.toboolean(L, -1))

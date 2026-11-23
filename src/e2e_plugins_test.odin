@@ -121,7 +121,6 @@ pt_key :: proc "c" (L: ^lua.State) -> c.int {
 pt_type :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
 	e2e_type(g_pt, api_string(L, 1))
-	pane_stack_sync(&g_pt.ed)
 	plugin_flush(&g_pt.ed)
 	return 0
 }
@@ -374,7 +373,7 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	lua.pushboolean(L, b32(filetree_active(ed)))
 	lua.setfield(L, -2, "tree")
 	ui_resolve(ed)
-	lua.pushboolean(L, b32(pane_find(ed, "palette") != nil || ui_find(&ed.ui, "#palette/palette") != nil))
+	lua.pushboolean(L, b32(ui_find(&ed.ui, "#palette/palette") != nil))
 	lua.setfield(L, -2, "palette")
 	lua.createtable(L, c.int(len(ed.plugins.status)), 0)
 	for s, i in ed.plugins.status {
@@ -420,7 +419,6 @@ pt_click :: proc "c" (L: ^lua.State) -> c.int {
 		for x in 0 ..= len(row) - len(needle) {
 			if slice.equal(row[x:x + len(needle)], needle) {
 				e2e_mouse(g_pt, x, y)
-				pane_stack_sync(&g_pt.ed)
 				plugin_flush(&g_pt.ed)
 				return 0
 			}
@@ -537,9 +535,6 @@ pt_settle :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
 	e2e_git_settle(g_pt)
 	e2e_pump_while(g_pt, proc(e: ^E2E) -> bool {
-		if pane_stack_pending(&e.ed) {
-			pane_stack_pump(&e.ed, true)
-		}
 		return plugin_busy(&e.ed) || e2e_plugin_yielding(e)
 	})
 	return 0
@@ -560,77 +555,10 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	if _, ok := test_dialog(entry.editor); ok {
 		return pt_ui_dialog(L, entry.editor)
 	}
-	pn := test_view(entry.editor)
-	if pn == nil {
-		if filetree_active(entry.editor) {
-			return pt_ui_tree(L, entry.editor)
-		}
-		lua.pushnil(L)
-		return 1
+	if filetree_active(entry.editor) {
+		return pt_ui_tree(L, entry.editor)
 	}
-	kind := "pane"
-	switch {
-	case pn.has_list && len(pn.fields) > 0:
-		kind = "pick"
-	case len(pn.fields) > 0:
-		kind = "prompt"
-	case pn.has_list:
-		kind = "confirm"
-	}
-	n := pane_count(entry.editor, pn)
-	lua.createtable(L, 0, 6)
-	lua.pushodinstring(L, kind)
-	lua.setfield(L, -2, "kind")
-	lua.pushodinstring(L, pn.id)
-	lua.setfield(L, -2, "id")
-	lua.pushodinstring(L, textfield_str(&pn.fields[0].field) if len(pn.fields) > 0 else "")
-	lua.setfield(L, -2, "query")
-	lua.pushinteger(L, lua.Integer(n))
-	lua.setfield(L, -2, "matches")
-	lua.createtable(L, c.int(n), 0)
-	for i in 0 ..< n {
-		lua.pushodinstring(L, test_pane_label(entry.editor, pn, i))
-		lua.rawseti(L, -2, lua.Integer(i + 1))
-	}
-	lua.setfield(L, -2, "labels")
-	lua.pushodinstring(L, pane_hint(pn) if n == 0 else "")
-	lua.setfield(L, -2, "hint")
-	g := pane_geom(entry.editor, pn)
-	lua.pushinteger(L, lua.Integer(g.box.w))
-	lua.setfield(L, -2, "width")
-	lua.pushinteger(L, lua.Integer(pane_body_rows(pn, g)))
-	lua.setfield(L, -2, "rows")
-	lua.pushinteger(L, lua.Integer(pn.scroll))
-	lua.setfield(L, -2, "scroll")
-	lua.pushinteger(L, lua.Integer(g.text.y))
-	lua.setfield(L, -2, "body_y")
-	lua.pushinteger(L, lua.Integer(g.text.h))
-	lua.setfield(L, -2, "body_h")
-	if n > 0 {
-		lua.pushodinstring(L, test_view_selected(entry.editor))
-		lua.setfield(L, -2, "selected")
-		it := list_item(entry.editor, pn, pane_item_index(pn, pn.list.sel))
-		lua.createtable(L, c.int(len(it.cells)), 0)
-		for cell, i in it.cells {
-			lua.pushodinstring(L, cell)
-			lua.rawseti(L, -2, lua.Integer(i + 1))
-		}
-		lua.setfield(L, -2, "cells")
-		if m, ok := pn.marks[pane_item_key(it)]; ok {
-			lua.pushodinstring(L, m.bar)
-			lua.setfield(L, -2, "mark")
-		}
-	}
-	if pn.footer_input {
-		lua.pushodinstring(L, pn.footer_field.prompt)
-		lua.setfield(L, -2, "input")
-		lua.pushodinstring(L, textfield_str(&pn.footer_field.field))
-		lua.setfield(L, -2, "input_text")
-	}
-	lua.pushinteger(L, lua.Integer(pn.tab + 1))
-	lua.setfield(L, -2, "tab")
-	lua.pushodinstring(L, pn.info)
-	lua.setfield(L, -2, "info")
+	lua.pushnil(L)
 	return 1
 }
 

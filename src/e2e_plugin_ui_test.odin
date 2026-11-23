@@ -72,13 +72,13 @@ ui_selected :: proc(e: ^E2E) -> string {
 	if dialog, ok := test_dialog(&e.ed); ok {
 		return dialog.selected
 	}
-	return test_view_selected(&e.ed)
+	return ""
 }
 
 @(private = "file")
 ui_open :: proc(e: ^E2E) -> bool {
 	_, dialog := test_dialog(&e.ed)
-	return dialog || test_view(&e.ed) != nil
+	return dialog
 }
 
 @(private = "file")
@@ -90,7 +90,6 @@ ui_type :: proc(e: ^E2E, s: string) {
 @(private = "file")
 ui_click :: proc(e: ^E2E, x, y: int) {
 	e2e_mouse(e, x, y)
-	pane_stack_sync(&e.ed)
 	plugin_flush(&e.ed)
 }
 
@@ -278,7 +277,8 @@ e2e_plugin_ui_wait_refused_in_setup :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	pl := e2e_plugin(&e, "eager", `return {setup = function() qed.pick{items = {"a"}} end}`)
 	testing.expect_value(t, pl.state, PluginState.Errored)
-	testing.expect_value(t, len(e.ed.panes), 0)
+	_, asked := test_dialog(&e.ed)
+	testing.expect(t, !asked, "no dialog")
 }
 
 @(private = "file")
@@ -344,15 +344,6 @@ e2e_plugin_ui_filetree_confirm :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "2")
 	testing.expect(t, filetree_active(&e.ed), "the tree stays open")
-}
-
-@(private = "file")
-ui_ask_wait :: proc(e: ^E2E) -> ^Pane {
-	e2e_pump_while(e, proc(e: ^E2E) -> bool {
-		p := pane_focus(&e.ed)
-		return p == nil || p.owner != "ui" || p.parent == 0
-	})
-	return pane_focus(&e.ed)
 }
 
 @(test)

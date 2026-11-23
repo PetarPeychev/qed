@@ -658,16 +658,13 @@ plugin_palette_prefix_and_run :: proc(t: ^testing.T) {
 	})
 	defer plugin_test_destroy(ed)
 
-	palette_open(ed)
 	labels := make([dynamic]string, context.temp_allocator)
-	for it in test_pane_items(ed, pane_find(ed, "palette")) {
-		append(&labels, it.label)
+	for cmd in ed.plugins.commands {
+		append(&labels, cmd.name)
 	}
 	names := fmt.tprintf("|%s|", strings.join(labels[:], "|", context.temp_allocator))
-	pane_end(ed, pane_find(ed, "palette").handle, false)
-	delete(ed.panes)
-	testing.expect(t, strings.contains(names, "|Alpha: Hello|") && strings.contains(names, "|Beta: Hello|"), "the palette shows prefixed names")
-	testing.expect(t, !strings.contains(names, "|Hello|"), "no bare name in the palette")
+	testing.expect(t, strings.contains(names, "|Alpha: Hello|") && strings.contains(names, "|Beta: Hello|"), "commands carry prefixed names")
+	testing.expect(t, !strings.contains(names, "|Hello|"), "no bare name")
 
 	run := proc(ed: ^Editor, name: string) {
 		cmd, _ := plugin_test_command(ed, name)

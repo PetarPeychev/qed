@@ -70,7 +70,6 @@ palette_labels :: proc(e: ^E2E) -> string {
 
 nav_alt :: proc(e: ^E2E, ch: rune) {
 	editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = ch, mod = .Alt})
-	pane_stack_sync(&e.ed)
 	plugin_flush(&e.ed)
 }
 
@@ -305,7 +304,8 @@ e2e_nav_welcome_log :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_grid_has(&e, "Message Log"), "and reopens it")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !test_pane_open(&e.ed, "log"), "Esc closes the log pane")
+	e2e_render(&e)
+	testing.expect(t, !e2e_grid_has(&e, "Message Log"), "Esc closes the log pane")
 	testing.expect(t, e.ed.welcome, "closing returns to the welcome screen")
 }
 
@@ -1640,7 +1640,7 @@ e2e_nav_git_renamed_file :: proc(t: ^testing.T) {
 			plugin_command_run(&e.ed, c)
 		}
 	}
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return test_view(&e.ed) == nil})
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {_, open := test_dialog(&e.ed); return !open})
 	e2e_type(&e, "seed")
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
@@ -1704,7 +1704,8 @@ e2e_nav_git_deleted_unicode :: proc(t: ^testing.T) {
 	nav_write(gone, "new\n")
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)
-	testing.expect(t, pane_focus(&e.ed) == nil, "no restore prompt over a recreated file")
+	_, asked := test_dialog(&e.ed)
+	testing.expect(t, !asked, "no restore prompt over a recreated file")
 	data, _ := os.read_entire_file(gone, context.temp_allocator)
 	testing.expect_value(t, string(data), "new\n")
 }

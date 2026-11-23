@@ -37,10 +37,7 @@ Editor :: struct {
 	log_open:        bool,
 	log_rotated:     bool,
 	log_bytes:       int,
-	panes:           [dynamic]Pane,
 	walks:           [dynamic]^Walk,
-	pane_seq:        u64,
-	pane_saved:      [dynamic]PaneSaved,
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
 	config_written:  DiskStamp,
@@ -203,7 +200,6 @@ editor_shutdown :: proc(editor: ^Editor) {
 	term_destroy(editor)
 	ui_destroy(editor)
 	plugins_shutdown(&editor.plugins)
-	pane_stack_destroy(editor)
 	walk_destroy_all(editor)
 	// Process-global singletons (seeded once at @(init) / lazily, shared across
 	// every editor); real main tears them down once at exit. A headless test reuses
@@ -303,12 +299,6 @@ editor_change_root :: proc(editor: ^Editor, root: string) {
 	delete(editor.working_root)
 	editor.working_root = root
 	editor.hover_active = false
-	// saved selections and expanded dirs name paths under the old root
-	for &s in editor.pane_saved {
-		delete(s.key)
-		s.key = ""
-		walk_set_clear(&s.expanded)
-	}
 	lsp_restart_all(editor)
 	editor_log(editor, .Info, "", fmt.tprintf("Working directory: %s", root))
 }
@@ -328,7 +318,6 @@ editor_resize :: proc(editor: ^Editor) {
 	if editor.terminal.active {
 		term_resize(editor)
 	}
-	editor_previews_sync(editor)
 }
 
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -377,9 +366,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		ui_dispatch(editor, ev)
 		return
 	}
-	if pane_stack_dispatch(editor, ev) {
-		return
-	}
 	if ui_dispatch(editor, ev) {
 		return
 	}
@@ -410,12 +396,8 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 }
 
-editor_previews_sync :: proc(editor: ^Editor) {
-	pane_stack_fit(editor, true)
-}
-
 editor_paste_route :: proc(editor: ^Editor, text: string) {
-	if len(text) == 0 || safety_open(editor) || (ui_focus_in_layer(editor, "alert") && ui_paste(editor, text)) || pane_stack_paste(editor, text) {
+	if len(text) == 0 || safety_open(editor) || (ui_focus_in_layer(editor, "alert") && ui_paste(editor, text)) {
 		return
 	}
 	if ui_paste(editor, text) {
@@ -1080,8 +1062,8 @@ editor_retheme :: proc(editor: ^Editor) {
 	for &b in editor.buffers {
 		b.hl.top = -1 // force a repaint so the per-char color cache picks up the new theme
 	}
-	for &p in editor.panes {
-		pane_md_reset(&p)
+	for _, md in editor.ui.markdowns {
+		ui_markdown_reset(md)
 	}
 	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	term_reload_colors(editor)
@@ -1141,7 +1123,9 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
 	message, is_error := config_load_from(path)
-	if !pane_lua_open(editor) || editor.theme_shown == "" || !theme_preview(path, editor.theme_shown) {
+	// a theme previewed from an open plugin pane (the theme picker) stays shown over a reload
+	picker := ui_layer_used(&editor.ui, "pane") || ui_layer_used(&editor.ui, "alert")
+	if !picker || editor.theme_shown == "" || !theme_preview(path, editor.theme_shown) {
 		delete(editor.theme_shown)
 		editor.theme_shown = ""
 		theme_preview(path, THEME)
@@ -1397,8 +1381,7 @@ editor_syntax_errors_report :: proc(editor: ^Editor) {
 }
 
 editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool) {
-	pane_stack_render(editor, true)
-	panes := pane_stack_render(editor, false)
+	panes := false
 	alert := ui_render_alert(editor)
 	if panes && !alert {
 		tb2.present()
@@ -1431,9 +1414,12 @@ editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
 	editor_render_text_pane(editor, cx, cy, lines[:], diagnostic_color(d.severity))
 }
 
+// a tiny configured hover width still leaves a readable box
+HOVER_MIN_WIDTH :: 20
+
 editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 	editor.hover_rect = {}
-	text_w := min(int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X, max(PANE_MIN_WIDTH, HOVER_MAX_WIDTH)) - 3
+	text_w := min(int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X, max(HOVER_MIN_WIDTH, HOVER_MAX_WIDTH)) - 3
 	if text_w < 8 {
 		return
 	}
@@ -1460,7 +1446,7 @@ editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 	y := room_below >= pane_h ? cy + 1 : cy - pane_h
 	x := clamp(cx, 0, max(0, sw - pane_w))
 	editor.hover_rect = {x, y, pane_w, pane_h}
-	box := pane_draw_box({x, y, pane_w, pane_h})
+	box := draw_box({x, y, pane_w, pane_h})
 	for i in 0 ..< view_h {
 		md_draw_line(box.x, box.y + i, box.w, lines[editor.hover_scroll + i], COLOR_PANE_BG)
 	}
@@ -1486,9 +1472,9 @@ editor_render_text_pane :: proc(editor: ^Editor, cx, cy: int, lines: []string, f
 	pane_h := content_h + 2
 	y := room_below >= pane_h ? cy + 1 : cy - pane_h
 	x := clamp(cx, 0, max(0, sw - pane_w))
-	box := pane_draw_box({x, y, pane_w, pane_h})
+	box := draw_box({x, y, pane_w, pane_h})
 	for line, i in lines[:content_h] {
-		pane_text(box.x, box.y + i, box.w, line, fg, COLOR_PANE_BG)
+		draw_text(box.x, box.y + i, box.w, line, fg, COLOR_PANE_BG)
 	}
 }
 
@@ -1953,12 +1939,12 @@ status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
 			cx := x
 			for ch in s.chunks {
 				if cx < max_x {
-					pane_text(cx, y, int(tb2.width()) - cx, ch.text, ch.fg, COLOR_PANE_BG)
+					draw_text(cx, y, int(tb2.width()) - cx, ch.text, ch.fg, COLOR_PANE_BG)
 				}
 				cx += visual_width(transmute([]u8)ch.text)
 			}
 		} else if x < max_x {
-			pane_text(x, y, int(tb2.width()) - x, s.text, s.fg, COLOR_PANE_BG)
+			draw_text(x, y, int(tb2.width()) - x, s.text, s.fg, COLOR_PANE_BG)
 		}
 		x += visual_width(transmute([]u8)s.text)
 	}
@@ -2080,7 +2066,7 @@ editor_render_welcome_line :: proc(x, y: int, text: string) {
 	if y < 0 || y >= int(tb2.height()) || x < 0 {
 		return
 	}
-	pane_text(x, y, int(tb2.width()) - x, text, COLOR_FG, COLOR_BG)
+	draw_text(x, y, int(tb2.width()) - x, text, COLOR_FG, COLOR_BG)
 }
 
 editor_render_gutter :: proc(left, y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
@@ -2284,5 +2270,5 @@ editor_render_row :: proc(x, y, w: int, text: string, fg, bg: tb2.Color) {
 	for _ in 0 ..< pad {
 		strings.write_byte(&sb, ' ')
 	}
-	pane_text(x, y, w, strings.to_string(sb), fg, bg)
+	draw_text(x, y, w, strings.to_string(sb), fg, bg)
 }

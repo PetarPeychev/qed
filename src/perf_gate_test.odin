@@ -98,17 +98,16 @@ gate_close :: proc(e: ^E2E) {
 gate_settle :: proc(e: ^E2E, max_ms := 20000.0) -> f64 {
 	start := time.tick_now()
 	for ms_since(start) < max_ms {
-		busy := highlight_busy(editor_buffer(&e.ed)) || walk_busy(&e.ed) || pane_stack_pending(&e.ed) || plugin_busy(&e.ed) || e2e_plugin_yielding(e)
+		busy := highlight_busy(editor_buffer(&e.ed)) || walk_busy(&e.ed) || plugin_busy(&e.ed) || e2e_plugin_yielding(e)
 		highlight_ready(editor_buffer(&e.ed))
 		walk_pump(&e.ed)
-		pane_stack_pump(&e.ed, true)
 		plugin_pump(&e.ed)
 		free_all(context.temp_allocator)
 		if !busy {
 			break
 		}
 		if os.get_env("QED_GATE_DEBUG", context.temp_allocator) != "" && int(ms_since(start)) % 1000 == 0 {
-			fmt.eprintfln("settle busy: hl %v walk %v pane %v plugin %v yield %v", highlight_busy(editor_buffer(&e.ed)), walk_busy(&e.ed), pane_stack_pending(&e.ed), plugin_busy(&e.ed), e2e_plugin_yielding(e))
+			fmt.eprintfln("settle busy: hl %v walk %v plugin %v yield %v", highlight_busy(editor_buffer(&e.ed)), walk_busy(&e.ed), plugin_busy(&e.ed), e2e_plugin_yielding(e))
 		}
 		time.sleep(time.Millisecond)
 	}
@@ -120,7 +119,6 @@ gate_settle :: proc(e: ^E2E, max_ms := 20000.0) -> f64 {
 @(private = "file")
 gate_frame :: proc(e: ^E2E, ev: tb2.Event) {
 	e2e_step(e, ev)
-	pane_stack_pump(&e.ed, true)
 	editor_render(&e.ed)
 	free_all(context.temp_allocator)
 }
@@ -281,7 +279,6 @@ gate_expand_all :: proc(e: ^E2E) {
 		at := time.tick_now()
 		e2e_step(e, key(.Arrow_Down))
 		walk_pump(&e.ed)
-		pane_stack_pump(&e.ed)
 		plugin_pump(&e.ed)
 		editor_render(&e.ed)
 		free_all(context.temp_allocator)

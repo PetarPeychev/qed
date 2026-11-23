@@ -228,12 +228,6 @@ e2e_walk_fs_refusals :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(fmt.tprintf("%s/sub/deep/sub", root)), "nothing copied into itself")
 }
 
-@(private = "file")
-ft_rel :: proc(e: ^E2E, root: string) -> string {
-	v := test_view(&e.ed)
-	return walk_rel(v.list.source.entries[v.list.sel].path, root)
-}
-
 @(test)
 e2e_walk_tree_filter_after_write :: proc(t: ^testing.T) {
 	e := e2e_root_start("m")

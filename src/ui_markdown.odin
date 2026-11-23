@@ -4,6 +4,9 @@ import vmem "core:mem/virtual"
 import "core:strings"
 import "core:time"
 
+// a markdown render runs in slices of this many milliseconds; the last finished render stays up meanwhile
+md_slice_ms := 10
+
 UiMarkdownJob :: struct {
 	arena: vmem.Arena,
 	job:   MdJob,

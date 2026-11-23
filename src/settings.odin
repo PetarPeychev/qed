@@ -103,18 +103,6 @@ Config_Str :: struct {
 
 IMAGE_PROTOCOL: ImageSetting
 
-backdrop_parse :: proc(s: string) -> (PaneBackdrop, bool) {
-	switch s {
-	case "none":
-		return .None, true
-	case "dim":
-		return .Dim, true
-	case "blank":
-		return .Blank, true
-	}
-	return .None, false
-}
-
 Config_Section :: struct {
 	name:  string,
 	strs:  []Config_Str,

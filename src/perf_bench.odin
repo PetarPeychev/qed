@@ -792,39 +792,6 @@ bench_decorations :: proc(t: ^testing.T) {
 }
 
 @(test)
-bench_filetree_filter :: proc(t: ^testing.T) {
-	context.allocator = runtime.heap_allocator()
-	root := os.get_env("QED_BENCH_TREE", context.temp_allocator)
-	if root == "" {
-		return
-	}
-	queries := []string{"m", "ma", "mak", "make", "makefile", "sched", "kernel/sched/core", "x"}
-	for round in 0 ..< 2 {
-		editor := Editor{headless = true}
-		editor.working_root = root
-			w := walk_acquire(&editor, root, false, false)
-		if round == 1 {
-			walk_prewarm(&editor, w)
-			for !sync.atomic_load(&w.pw.done) {
-				thread.yield()
-			}
-		}
-		p := Pane{fields = make([]PaneField, 1), has_list = true, list = {max = WALK_FILTER_MAX_RESULTS, source = {kind = .Walk, walk = w}}}
-		p.fields[0].mode = .Filter
-		fmt.eprintfln("=== filter bench (%s) ===", "prewarmed" if round == 1 else "cold")
-		for q in queries {
-			textfield_set(&p.fields[0].field, q)
-			at := time.tick_now()
-			list_walk_fill(&editor, &p)
-			fmt.eprintfln("filter %-20s %8.2f ms  %d shown / %d matched / %d cands", q, ms_since(at), len(p.list.source.entries), len(p.list.source.narrow_idx), len(w.cands))
-		}
-		pane_free(&p)
-		walk_destroy_all(&editor)
-		editor_log_destroy(&editor)
-	}
-}
-
-@(test)
 bench_filetree_render :: proc(t: ^testing.T) {
 	// the runner's rollback stack is not thread-safe and the walk workers share context.allocator
 	context.allocator = runtime.heap_allocator()
@@ -930,8 +897,7 @@ bench_step :: proc(e: ^E2E, label: string, run: proc(e: ^E2E)) {
 	clear(&test_slice_max)
 	at := time.tick_now()
 	run(e)
-	for i := 0; i < 20000 && (plugin_busy(&e.ed) || e2e_plugin_yielding(e) || pane_stack_pending(&e.ed)); i += 1 {
-		pane_stack_pump(&e.ed, true)
+	for i := 0; i < 20000 && (plugin_busy(&e.ed) || e2e_plugin_yielding(e)); i += 1 {
 		plugin_pump(&e.ed)
 		free_all(context.temp_allocator)
 		time.sleep(time.Millisecond)

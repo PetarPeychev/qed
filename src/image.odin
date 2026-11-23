@@ -222,10 +222,8 @@ image_reply :: proc(editor: ^Editor) {
 }
 
 image_panes_reset :: proc(editor: ^Editor) {
-	for &p in editor.panes {
-		if p.has_md {
-			pane_md_reset(&p)
-		}
+	for _, md in editor.ui.markdowns {
+		ui_markdown_reset(md)
 	}
 }
 

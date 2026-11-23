@@ -225,13 +225,13 @@ textfield_render :: proc(x, y, w: int, f: ^TextField) {
 	for start < f.caret && visual_width(text[start:f.caret]) >= w {
 		start = grapheme_next(text, start)
 	}
-	pane_text(x, y, w, string(text[start:]), COLOR_PANE_FG, COLOR_PANE_BG)
+	draw_text(x, y, w, string(text[start:]), COLOR_PANE_FG, COLOR_PANE_BG)
 	if lo, hi, ok := textfield_selection(f); ok {
 		slo := max(lo, start)
 		if slo < hi {
 			sx := x + visual_width(text[start:slo])
 			sw := x + w - sx
-			pane_text(sx, y, sw, string(text[slo:hi]), COLOR_PANE_BG, COLOR_PANE_FG)
+			draw_text(sx, y, sw, string(text[slo:hi]), COLOR_PANE_BG, COLOR_PANE_FG)
 		}
 	}
 	tb2.set_cursor(i32(x + visual_width(text[start:f.caret])), i32(y))

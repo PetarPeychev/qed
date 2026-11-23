@@ -492,7 +492,7 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 		return
 	}
 
-	box := pane_draw_box({x, y, pane_w, pane_h})
+	box := draw_box({x, y, pane_w, pane_h})
 	for i in 0 ..< rows {
 		idx := c.scroll + i
 		it := &c.items[c.matches[idx]]
@@ -502,13 +502,13 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 		if idx == c.selected {
 			fg, bg = COLOR_PANE_SEL_FG, COLOR_PANE_SEL_BG
 			dfg = COLOR_PANE_SEL_FG
-			pane_fill_row(box.x, ry, box.w, fg, bg)
+			draw_fill_row(box.x, ry, box.w, fg, bg)
 		}
-		pane_text(box.x + 1, ry, box.w - 2, it.label, fg, bg)
+		draw_text(box.x + 1, ry, box.w - 2, it.label, fg, bg)
 		if it.detail != "" {
 			dw := min(len(it.detail), box.w - 2 - len(it.label) - 1)
 			if dw > 0 {
-				pane_text(box.x + box.w - 1 - dw, ry, dw, it.detail, dfg, bg)
+				draw_text(box.x + box.w - 1 - dw, ry, dw, it.detail, dfg, bg)
 			}
 		}
 	}

@@ -92,51 +92,6 @@ test_status_path_shorten :: proc(t: ^testing.T) {
 	testing.expect_value(t, p, "…/petar/qed")
 }
 
-split_expect :: proc(t: ^testing.T, inner_w, lmin, lmax, want_l, want_r: int, want_preview: bool, loc := #caller_location) {
-	l, r, preview := overlay_split(inner_w, lmin, lmax)
-	testing.expect_value(t, preview, want_preview, loc)
-	testing.expect_value(t, l, want_l, loc)
-	testing.expect_value(t, r, want_r, loc)
-}
-
-@(test)
-test_overlay_split_defaults :: proc(t: ^testing.T) {
-	testing.expect_value(t, SPLIT_TREE_MIN_WIDTH, 30)
-	testing.expect_value(t, SPLIT_TREE_MAX_WIDTH, 60)
-	testing.expect_value(t, SPLIT_CODE_MIN_WIDTH, 50)
-	testing.expect_value(t, SPLIT_CODE_MAX_WIDTH, 100)
-	testing.expect_value(t, SPLIT_PREVIEW_MIN_WIDTH, 70)
-	testing.expect_value(t, SPLIT_PREVIEW_MAX_WIDTH, 130)
-}
-
-@(test)
-test_overlay_split_filetree :: proc(t: ^testing.T) {
-	lmin, lmax := 30, 60
-	split_expect(t, 1 + 400, lmin, lmax, 60, 130, true)
-	split_expect(t, 1 + 190, lmin, lmax, 60, 130, true)
-	split_expect(t, 1 + 189, lmin, lmax, 60, 129, true)
-	split_expect(t, 1 + 150, lmin, lmax, 40, 110, true)
-	split_expect(t, 1 + 145, lmin, lmax, 38, 107, true)
-	split_expect(t, 1 + 120, lmin, lmax, 30, 90, true)
-	split_expect(t, 1 + 101, lmin, lmax, 30, 71, true)
-	split_expect(t, 1 + 100, lmin, lmax, 30, 70, true)
-	split_expect(t, 1 + 99, lmin, lmax, 100, 0, false)
-	split_expect(t, 10, lmin, lmax, 10, 0, false)
-}
-
-@(test)
-test_overlay_split_code :: proc(t: ^testing.T) {
-	lmin, lmax := 50, 100
-	split_expect(t, 1 + 400, lmin, lmax, 100, 130, true)
-	split_expect(t, 1 + 230, lmin, lmax, 100, 130, true)
-	split_expect(t, 1 + 229, lmin, lmax, 100, 129, true)
-	split_expect(t, 1 + 228, lmin, lmax, 99, 129, true)
-	split_expect(t, 1 + 175, lmin, lmax, 73, 102, true)
-	split_expect(t, 1 + 130, lmin, lmax, 50, 80, true)
-	split_expect(t, 1 + 120, lmin, lmax, 50, 70, true)
-	split_expect(t, 1 + 119, lmin, lmax, 120, 0, false)
-}
-
 @(test)
 test_status_fit_clips_undroppable_plugin_segment :: proc(t: ^testing.T) {
 	left := make([dynamic]StatusSeg, context.temp_allocator)
@@ -152,40 +107,6 @@ test_status_fit_clips_undroppable_plugin_segment :: proc(t: ^testing.T) {
 	testing.expect_value(t, right[0].text, "keep")
 	status_fit(left[:], right[:], 12)
 	testing.expect(t, status_overflow(left[:], right[:], 12) <= 0, "segments too narrow to clip hide")
-}
-
-@(test)
-test_columns_layout_fixed_fit_fill :: proc(t: ^testing.T) {
-	w := columns_layout({{size = .Fixed, w = 4}, {}}, nil, 20)
-	testing.expect_value(t, w[0], 4)
-	testing.expect_value(t, w[1], 14)
-	w = columns_layout({{size = .Fixed, w = 3}, {}, {}}, nil, 20)
-	testing.expect_value(t, w[1], 7)
-	testing.expect_value(t, w[2], 6)
-	w = columns_layout({{size = .Fit, max = 5}, {size = .Fit, min = 6}, {size = .Fit}}, {9, 2, 3}, 40)
-	testing.expect_value(t, w[0], 5)
-	testing.expect_value(t, w[1], 6)
-	testing.expect_value(t, w[2], 3)
-}
-
-@(test)
-test_columns_layout_narrow :: proc(t: ^testing.T) {
-	cols := []PaneColumn{{size = .Fit}, {size = .Fill, min = 3}}
-	w := columns_layout(cols, {6, 0}, 12)
-	testing.expect_value(t, w[0], 6)
-	testing.expect_value(t, w[1], 4)
-	w = columns_layout(cols, {6, 0}, 10)
-	testing.expect_value(t, w[0], 5)
-	testing.expect_value(t, w[1], 3)
-	titled := []PaneColumn{{size = .Fit, title = "Name"}, {}}
-	w = columns_layout(titled, {10, 0}, 8)
-	testing.expect_value(t, w[0], 6)
-	testing.expect_value(t, w[1], 0)
-	w = columns_layout(titled, {10, 0}, 4)
-	testing.expect_value(t, w[0], 4)
-	w = columns_layout({{size = .Fit}, {size = .Fit}}, {10, 4}, 12)
-	testing.expect_value(t, w[0], 6)
-	testing.expect_value(t, w[1], 4)
 }
 
 @(test)

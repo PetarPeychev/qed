@@ -1843,7 +1843,7 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 			if expanded_child.float == .None {
 				total := expanded_child.rect.h + expanded_child.margin[0] + expanded_child.margin[2]
 				if total > content.h {
-					start, length := pane_scrollbar_thumb(state.offset, content.h, total)
+					start, length := scrollbar_thumb(state.offset, content.h, total)
 					fg, _ := ui_style_colors(paint.inherit, COLOR_PANE_BORDER, paint.bg)
 					for i in 0 ..< length {
 						ui_cell(&paint, content.x + content.w, content.y + start + i, '┃', fg, paint.bg)

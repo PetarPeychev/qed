@@ -358,7 +358,6 @@ e2e_type :: proc(e: ^E2E, s: string) {
 			editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = r})
 		}
 	}
-	pane_stack_pump(&e.ed, true)
 }
 
 e2e_render :: proc(e: ^E2E) {
@@ -528,5 +527,5 @@ e2e_hover_max_width :: proc(t: ^testing.T) {
 	HOVER_MAX_WIDTH = 5
 	defer HOVER_MAX_WIDTH = saved
 	editor_render_hover_pane(&e.ed, 0, 0)
-	testing.expectf(t, e.ed.hover_rect.w > 0 && e.ed.hover_rect.w <= PANE_MIN_WIDTH, "a tiny max clamps to the pane minimum, got %d", e.ed.hover_rect.w)
+	testing.expectf(t, e.ed.hover_rect.w > 0 && e.ed.hover_rect.w <= HOVER_MIN_WIDTH, "a tiny max clamps to the pane minimum, got %d", e.ed.hover_rect.w)
 }

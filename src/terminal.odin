@@ -198,8 +198,8 @@ term_grid_size :: proc(editor: ^Editor) -> (cols, rows: int) {
 	if area := editor.terminal.area; area.w > 0 && area.h > 0 {
 		return area.w, area.h
 	}
-	lay := overlay_layout(editor)
-	return lay.inner.w, lay.inner.h
+	// before the terminal node is laid out: the bundled terminal pane's box (margins 8 by 3, a border)
+	return max(int(tb2.width()) - 2 * 8 - 2, 0), max(int(tb2.height()) - STATUS_ROWS - 2 * 3 - 2, 0)
 }
 
 term_shell :: proc(editor: ^Editor) -> ^Terminal {

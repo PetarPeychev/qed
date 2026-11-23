@@ -230,7 +230,6 @@ PluginStart :: struct {
 	item_ref: i32,
 	item:     int,
 	items:    []int,
-	pitems:   []PaneItem,
 	view_ref: i32,
 	command:  u64,
 	view:     u64,
@@ -432,31 +431,19 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 		nargs = 1
 	case .View_Item:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
-		if len(start.pitems) > 0 {
-			api_pane_item_push(L, start.pitems[0])
-		} else {
-			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
-			lua.rawgeti(L, -1, lua.Integer(start.item))
-			lua.remove(L, -2)
-		}
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
+		lua.rawgeti(L, -1, lua.Integer(start.item))
+		lua.remove(L, -2)
 		nargs = 2
 	case .View_Items:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
-		if len(start.pitems) > 0 {
-			lua.createtable(L, c.int(len(start.pitems)), 0)
-			for it, i in start.pitems {
-				api_pane_item_push(L, it)
-				lua.rawseti(L, -2, lua.Integer(i + 1))
-			}
-		} else {
-			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
-			lua.createtable(L, c.int(len(start.items)), 0)
-			for idx, i in start.items {
-				lua.rawgeti(L, -2, lua.Integer(idx + 1))
-				lua.rawseti(L, -2, lua.Integer(i + 1))
-			}
-			lua.remove(L, -2)
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.item_ref))
+		lua.createtable(L, c.int(len(start.items)), 0)
+		for idx, i in start.items {
+			lua.rawgeti(L, -2, lua.Integer(idx + 1))
+			lua.rawseti(L, -2, lua.Integer(i + 1))
 		}
+		lua.remove(L, -2)
 		nargs = 2
 	case .View_Text:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
@@ -468,7 +455,7 @@ plugin_co_main :: proc "c" (L: ^lua.State) -> c.int {
 		nargs = 2
 	case .View_Expand:
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(start.view_ref))
-		api_pane_item_push(L, start.pitems[0])
+		lua.pushnil(L)
 		lua.pushboolean(L, b32(start.item != 0))
 		nargs = 3
 	case .View_Submit:
@@ -1055,11 +1042,6 @@ plugin_timeout_ms :: proc(editor: ^Editor, cap: int) -> int {
 	for s in p.saves {
 		consider(&best, now, s.deadline)
 	}
-	for q in editor.panes {
-		if q.ctx.lua && q.query_due {
-			consider(&best, now, q.query_at)
-		}
-	}
 	return best
 }
 
@@ -1251,7 +1233,6 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 		}
 	}
 
-	pane_stack_sync(editor)
 	if !editor.pasting {
 		plugin_flush(editor)
 	}

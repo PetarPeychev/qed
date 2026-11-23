@@ -275,8 +275,8 @@ inspect_draw :: proc(editor: ^Editor, lines: []InspectLine) {
 	max_rows := max(1, int(tb2.height()) - STATUS_ROWS - 3)
 	n := min(len(lines), max_rows)
 	x := max(0, sw - box_w - 2)
-	box := pane_draw_box({x, 1, box_w, n + 2})
+	box := draw_box({x, 1, box_w, n + 2})
 	for i in 0 ..< n {
-		pane_text(box.x, box.y + i, box.w, lines[i].text, lines[i].fg, COLOR_PANE_BG)
+		draw_text(box.x, box.y + i, box.w, lines[i].text, lines[i].fg, COLOR_PANE_BG)
 	}
 }

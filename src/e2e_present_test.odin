@@ -294,7 +294,7 @@ test_pane_text_draws_clusters :: proc(t: ^testing.T) {
 	}
 	for c in cases {
 		tb2.clear()
-		got := pane_text(0, 0, 20, c.text, COLOR_FG, COLOR_BG)
+		got := draw_text(0, 0, 20, c.text, COLOR_FG, COLOR_BG)
 		testing.expectf(t, got == c.width, "%q: %d columns, want %d", c.text, got, c.width)
 		for want, x in c.cells {
 			cell: ^tb2.Cell_Raw
@@ -305,7 +305,7 @@ test_pane_text_draws_clusters :: proc(t: ^testing.T) {
 		}
 	}
 	tb2.clear()
-	testing.expect(t, pane_text(0, 0, 3, "ab漢", COLOR_FG, COLOR_BG) == 2, "a wide char past the width is left out")
+	testing.expect(t, draw_text(0, 0, 3, "ab漢", COLOR_FG, COLOR_BG) == 2, "a wide char past the width is left out")
 }
 
 // wide clusters of the row underneath straddle both edges of a box drawn over it
