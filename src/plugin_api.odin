@@ -40,6 +40,9 @@ qed_api := [?]lua.L_Reg {
 	{"config_unset", qed_config_unset},
 	{"commands", qed_commands},
 	{"plugins", qed_plugins},
+	{"plugin_enable", qed_plugin_enable},
+	{"plugin_reload", qed_plugin_reload},
+	{"plugin_source", qed_plugin_source},
 	{"open_url", qed_open_url},
 	{"set_root", qed_set_root},
 	{"config", qed_config},
@@ -1112,6 +1115,18 @@ qed_plugins :: proc "c" (L: ^lua.State) -> c.int {
 		lua.setfield(L, -2, "state")
 		lua.pushboolean(L, b32(pl.bundled))
 		lua.setfield(L, -2, "bundled")
+		lua.pushodinstring(L, pl.last_error)
+		lua.setfield(L, -2, "error")
+		lua.pushnumber(L, lua.Number(pl.load_ms))
+		lua.setfield(L, -2, "load_ms")
+		lua.pushodinstring(L, pl.main)
+		lua.setfield(L, -2, "main")
+		fork := fmt.tprintf("%s/%s", p.user_dir, pl.dir if pl.dir != "" else pl.main)
+		if home := os.get_env("HOME", context.temp_allocator); home != "" && strings.has_prefix(fork, home) {
+			fork = fmt.tprintf("~%s", fork[len(home):])
+		}
+		lua.pushodinstring(L, fork)
+		lua.setfield(L, -2, "fork")
 		if pl.defaults != lua.NOREF {
 			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.defaults))
 			plugin_table_copy(L, -1)
@@ -1126,6 +1141,53 @@ qed_plugins :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		lua.rawseti(L, -2, lua.Integer(i + 1))
 	}
+	return 1
+}
+
+qed_plugin_request :: proc(L: ^lua.State, kind: PluginRequestKind) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	caller := api_loaded(L, entry.editor)
+	name := api_string(L, 1)
+	pl := plugin_find(p, name)
+	if pl == nil {
+		return api_fail(L, "no such plugin")
+	}
+	if pl.name == caller.name {
+		return api_fail(L, "a plugin cannot enable, disable or reload itself")
+	}
+	if kind == .Reload && pl.state == .Disabled {
+		return api_fail(L, "disabled")
+	}
+	append(&p.requests, PluginRequest{kind = kind, name = strings.clone(pl.name)})
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_plugin_enable :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	return qed_plugin_request(L, .Enable if bool(lua.toboolean(L, 2)) else .Disable)
+}
+
+qed_plugin_reload :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	return qed_plugin_request(L, .Reload)
+}
+
+qed_plugin_source :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	pl := plugin_find(p, api_string(L, 1))
+	if pl == nil {
+		return api_fail(L, "no such plugin")
+	}
+	text, ok := plugin_source(p, pl, pl.main)
+	if !ok {
+		return api_fail(L, "no source")
+	}
+	lua.pushodinstring(L, text)
 	return 1
 }
 

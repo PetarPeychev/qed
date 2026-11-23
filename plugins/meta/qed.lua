@@ -138,10 +138,33 @@ function qed.commands() end
 ---@field bundled boolean
 ---@field options? table its `qed.options` defaults (a copy), once loaded
 ---@field info? table<string, string|qed.OptionInfo> its `qed.options` info (a copy)
+---@field error string the last load or task error, "" when none
+---@field load_ms number how long its setup took
+---@field main string its main file: a path for a user plugin, `<id>/init.lua` for a bundled one
+---@field fork string where a copy would go to override a bundled one
 
 ---Every plugin, bundled then user, in load order.
 ---@return qed.PluginInfo[]
 function qed.plugins() end
+
+---Enables or disables another plugin at the next flush and persists `plugins.<id>.enabled` (removed when it matches the default).
+---@param id string
+---@param enabled boolean
+---@return true|nil ok
+---@return "no such plugin"|"a plugin cannot enable, disable or reload itself"|nil err
+function qed.plugin_enable(id, enabled) end
+
+---Reloads another plugin at the next flush.
+---@param id string
+---@return true|nil ok
+---@return "no such plugin"|"disabled"|"a plugin cannot enable, disable or reload itself"|nil err
+function qed.plugin_reload(id) end
+
+---A plugin's main source text (bundled plugins are embedded).
+---@param id string
+---@return string|nil text
+---@return "no such plugin"|"no source"|nil err
+function qed.plugin_source(id) end
 
 ---Save through the full pipeline. Fails without saving if the file changed on disk
 ---(the conflict dialog opens only for the current buffer). Waits for `buf_pre_save` handlers.

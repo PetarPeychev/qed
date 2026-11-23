@@ -25,8 +25,6 @@
   "auto_close_pairs": {"description": "Insert closing brackets and quotes"},
   "line_wrap": {"description": "Soft wrap long lines in new buffers"},
   "diff_view": {"description": "Show removed lines and changed words inline against the diff base"},
-  "plugins_pane_backdrop": {"description": "What the Plugins pane does to the screen behind it", "choices": ["none", "dim", "blank"]},
-  "plugins_pane_max_width": {"description": "Max width of the Plugins pane", "min": 20},
   "image_protocol": {"description": "Terminal graphics for images in the markdown preview: auto detects kitty graphics", "choices": ["auto", "kitty", "none"]},
   "image_max_rows": {"description": "Max rows an image takes in the markdown preview", "min": 1},
   "lsp.enabled": {"description": "Start language servers"},

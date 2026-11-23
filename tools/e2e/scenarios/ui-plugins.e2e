@@ -1,0 +1,18 @@
+# Plugin manager plugin: list, footer error, bundled source view.
+file a.txt
+x
+end
+run a.txt
+wait x
+key ctrl+p
+type plugin manager open
+key enter
+wait Description
+key down down
+key enter
+wait bundled, read-only
+snap source
+key esc
+wait Description
+key esc
+snap closed

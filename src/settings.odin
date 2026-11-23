@@ -55,7 +55,6 @@ PLUGIN_MEMORY_MB: int
 PLUGIN_SLICE_MAX_MS: int
 PLUGIN_COMMAND_MAX_MS: int
 PLUGIN_HOOK_TIMEOUT_MS: int
-PLUGINS_PANE_MAX_WIDTH: int
 IMAGE_MAX_ROWS: int
 
 config_ints := [?]Config_Int {
@@ -77,7 +76,6 @@ config_ints := [?]Config_Int {
 	{"split_code_max_width", &SPLIT_CODE_MAX_WIDTH},
 	{"split_preview_min_width", &SPLIT_PREVIEW_MIN_WIDTH},
 	{"split_preview_max_width", &SPLIT_PREVIEW_MAX_WIDTH},
-	{"plugins_pane_max_width", &PLUGINS_PANE_MAX_WIDTH},
 	{"image_max_rows", &IMAGE_MAX_ROWS},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
 	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
@@ -103,7 +101,6 @@ Config_Str :: struct {
 	ptr: ^string,
 }
 
-PLUGINS_PANE_BACKDROP: PaneBackdrop
 IMAGE_PROTOCOL: ImageSetting
 
 Config_Backdrop :: struct {
@@ -112,7 +109,6 @@ Config_Backdrop :: struct {
 }
 
 config_backdrops := [?]Config_Backdrop {
-	{"plugins_pane_backdrop", &PLUGINS_PANE_BACKDROP},
 }
 
 backdrop_parse :: proc(s: string) -> (PaneBackdrop, bool) {
@@ -743,6 +739,11 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 }
 
 CONFIG_MOVED :: [?][2]string {
+	{"plugins_pane_max_width", "plugins/manager/max_width"},
+	{"keybinds/Plugins: Open", "plugins/manager/keybinds/Open"},
+	{"keybinds/Plugins: Enable/Disable", "plugins/manager/keybinds/Enable/Disable"},
+	{"keybinds/Plugins: Reload", "plugins/manager/keybinds/Reload"},
+	{"keybinds/Plugins: Show Log", "plugins/manager/keybinds/Show Log"},
 	{"terminal_escape_closes", "plugins/terminal/escape_closes"},
 	{"keybinds/Terminal: Toggle", "plugins/terminal/keybinds/Toggle"},
 	{"keybinds/Message Log: Open", "plugins/log/keybinds/Open"},

@@ -1,0 +1,60 @@
+qed-e2e snapshot 80x24 cursor 3,2
+-- text
+ 1 x
+ 2┌─ plugins/dialog/init.lua  ·  bundled, read-only ─────────────────────────┐
+  │local ui = qed.ui                                                         │
+  │                                                                          │
+  │local WIDTH = 64                                                          │
+  │local MAX_ROWS = 12                                                       │
+  │                                                                          │
+  │local dialog                                                              │
+  │                                                                          │
+  │local function label_of(item)                                             │
+  │    if type(item) == "table" then                                         │
+  │        return item.label or item.path or ""                              │
+  │    end                                                                   │
+  │    return tostring(item)                                                 │
+  │end                                                                       │
+  │                                                                          │
+  │local function highlighted_key()                                          │
+  │    local state = ui.node("dialog_rows"):state()                          │
+  │    return state and state.highlighted or nil                             │
+  │end                                                                       │
+  │                                                                          │
+  │ Esc back  ·  fork: copy to ~/.config/qed/plugins/dialog                  │
+ a└──────────────────────────────────────────────────────────────────────────┘t
+
+-- style
+abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeedddddddddffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeeddddddddddddffddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdddddeedeeeeddddddddddgggggggdeeeeddddddddddddddddddddddddddddddddddddddddddcc
+ccdddddddddeeeeeeddddddddddddeedddddddddddeedggdddddddddddddddddddddddddddddddcc
+ccdddddeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdddddeeeeeedeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdddddeeeeedddddddddddddddddgggggggggggggddddddddddddddddddddddddddddddddddddcc
+ccdddddeeeeeedddddddeeedddddddddddddddddddeedfffddddddddddddddddddddddddddddddcc
+ccdeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhdddddddddddddddddddcc
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddhh
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#f4f4ff bg=#181818
+d fg=#f4f4ff bg=#2b2b2b
+e fg=#ffdd33 bg=#2b2b2b
+f fg=#95a99f bg=#2b2b2b
+g fg=#73c936 bg=#2b2b2b
+h fg=#686868 bg=#2b2b2b

@@ -374,10 +374,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	if editor.welcome {
 		if ev.type == .Key {
-			if command_matches(ev, "Plugins: Open") {
-				pluginview_open(editor)
-				return
-			}
 			if command_matches(ev, "Quit") {
 				editor_request_quit(editor)
 				return

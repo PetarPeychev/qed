@@ -107,7 +107,6 @@ cmd_toggle_line_wrap :: proc(editor: ^Editor) {
 }
 
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
-cmd_plugins :: proc(editor: ^Editor) {pluginview_open(editor)}
 
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
@@ -139,13 +138,9 @@ commands := [?]Command {
 	{name = "LSP: Previous Diagnostic", lsp = true, run = cmd_diag_prev},
 	{name = "LSP: Restart", lsp = true, run = cmd_lsp_restart},
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
-	{name = "Plugins: Open", run = cmd_plugins},
 }
 
 pane_commands := [?]Command {
-	{name = "Enable/Disable", scope = "plugins", config_name = "Plugins: Enable/Disable", run = pluginview_toggle},
-	{name = "Reload", scope = "plugins", config_name = "Plugins: Reload", run = pluginview_reload},
-	{name = "Show Log", scope = "plugins", config_name = "Plugins: Show Log", run = pluginview_log},
 	{name = "Left", scope = "editor", config_name = "Editor: Left", run = ui_command_left},
 	{name = "Right", scope = "editor", config_name = "Editor: Right", run = ui_command_right},
 	{name = "Up", scope = "editor", config_name = "Editor: Up", run = ui_command_up},
@@ -198,7 +193,7 @@ command_available :: proc(editor: ^Editor, name: string, scope := "") -> bool {
 	}
 	if editor.welcome {
 		switch name {
-		case "Plugins: Open", "Quit":
+		case "Quit":
 			return true
 		}
 		return false

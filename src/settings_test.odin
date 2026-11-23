@@ -493,19 +493,19 @@ test_config_files :: proc(t: ^testing.T) {
 
 	// Pane-scoped binds: a collision in one scope is reported and dropped, a swap is fine.
 	clash_path := fmt.tprintf("%s/clash.json", dir)
-	_ = os.write_entire_file(clash_path, transmute([]byte)string(`{"keybinds": {"Plugins: Enable/Disable": "r", "Plugins: Show Log": "Ctrl+c"}}`))
+	_ = os.write_entire_file(clash_path, transmute([]byte)string(`{"keybinds": {"Editor: Word Left": "Left", "Editor: Word Right": "Alt+q"}}`))
 	msg, is_err = config_load_from(clash_path)
 	testing.expect(t, is_err, "a clash is reported")
-	testing.expectf(t, strings.contains(msg, `keybinds/Plugins: Enable/Disable (r is "Reload")`), "names the clash: %s", msg)
-	testing.expect_value(t, command_shortcut("Plugins: Enable/Disable"), "")
-	testing.expect_value(t, command_shortcut("Plugins: Reload"), "r")
-	testing.expect_value(t, command_shortcut("Plugins: Show Log"), "Ctrl+c")
+	testing.expectf(t, strings.contains(msg, `keybinds/Editor: Word Left (Left is "Left")`), "names the clash: %s", msg)
+	testing.expect_value(t, command_shortcut("Editor: Word Left"), "")
+	testing.expect_value(t, command_shortcut("Editor: Left"), "Left")
+	testing.expect_value(t, command_shortcut("Editor: Word Right"), "Alt+q")
 	swap_path := fmt.tprintf("%s/swap.json", dir)
-	_ = os.write_entire_file(swap_path, transmute([]byte)string(`{"keybinds": {"Plugins: Enable/Disable": "r", "Plugins: Reload": "e", "Editor: Left": "Ctrl+c"}}`))
+	_ = os.write_entire_file(swap_path, transmute([]byte)string(`{"keybinds": {"Editor: Word Left": "Ctrl+Right", "Editor: Word Right": "Ctrl+Left", "Editor: Left": "Ctrl+c"}}`))
 	msg, is_err = config_load_from(swap_path)
-	testing.expectf(t, strings.contains(msg, `keybinds/Editor: Left (Ctrl+c is "Copy")`) && !strings.contains(msg, "Enable/Disable"), "a swap is fine, a borrowed bind counts: %s", msg)
-	testing.expect_value(t, command_shortcut("Plugins: Enable/Disable"), "r")
-	testing.expect_value(t, command_shortcut("Plugins: Reload"), "e")
+	testing.expectf(t, strings.contains(msg, `keybinds/Editor: Left (Ctrl+c is "Copy")`) && !strings.contains(msg, "Word Left"), "a swap is fine, a borrowed bind counts: %s", msg)
+	testing.expect_value(t, command_shortcut("Editor: Word Left"), "Ctrl+Right")
+	testing.expect_value(t, command_shortcut("Editor: Word Right"), "Ctrl+Left")
 
 	// Language overrides: per-key merge, patterns drive detection, invalid subkey
 	// reported, unknown key untouched in file.

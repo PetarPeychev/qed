@@ -82,6 +82,7 @@ end
 
 return {
 	setup = function()
+		qed.meta{description = "Terminal pane for qed.term sessions"}
 		options = qed.options({escape_closes = true}, {escape_closes = "Esc at a shell prompt closes the terminal pane (a full-screen program always gets Esc)"})
 		qed:on("config_changed", function() options = qed.config() end)
 		qed.command{name = "Toggle", key = "Alt+t", welcome = true, run = toggle}

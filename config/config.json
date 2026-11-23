@@ -25,8 +25,6 @@
   "auto_close_pairs": true,
   "line_wrap": true,
   "diff_view": false,
-  "plugins_pane_backdrop": "none",
-  "plugins_pane_max_width": 120,
   "image_protocol": "auto",
   "image_max_rows": 24,
   "lsp": {
@@ -78,6 +76,9 @@
     "dialog": {
       "enabled": true
     },
+    "manager": {
+      "enabled": true
+    },
     "search": {
       "enabled": true
     },
@@ -114,10 +115,6 @@
     "LSP: Previous Diagnostic": "Alt+<",
     "LSP: Restart": "",
     "Debug: Inspect Tokens": "",
-    "Plugins: Open": "",
-    "Plugins: Enable/Disable": "e",
-    "Plugins: Reload": "r",
-    "Plugins: Show Log": "l",
     "Editor: Left": "Left",
     "Editor: Right": "Right",
     "Editor: Up": "Up",

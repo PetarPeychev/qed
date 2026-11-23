@@ -21,29 +21,41 @@ e2e_reload_stop :: proc(e: ^E2E, dir: string) {
 	e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
 }
 
+manager_shown :: proc(e: ^E2E) -> bool {
+	e2e_ui_settle(e)
+	return ui_find(&e.ed.ui, "#manager/plugin_rows") != nil
+}
+
 e2e_reload_select :: proc(e: ^E2E, name: string) {
-	p := pane_find(&e.ed, "plugins")
+	target := -1
 	for pl, i in e.ed.plugins.list {
 		if pl.name == name {
-			p.list.sel = i
+			target = i
 		}
 	}
-	pane_scroll_fit(p, pane_geom(&e.ed, p).list.h)
+	for _ in 0 ..< len(e.ed.plugins.list) {
+		current := -1
+		for pl, i in e.ed.plugins.list {
+			if pl.name == e2e_reload_selected(e) {
+				current = i
+			}
+		}
+		if current == target {
+			break
+		}
+		e2e_key(e, .Arrow_Down if current < target else .Arrow_Up)
+		e2e_ui_settle(e)
+	}
 }
 
 e2e_reload_row_y :: proc(e: ^E2E, name: string) -> int {
-	p := pane_find(&e.ed, "plugins")
-	g := pane_geom(&e.ed, p)
-	for pl, i in e.ed.plugins.list {
-		if pl.name == name {
-			return g.list.y + i - p.list.scroll
-		}
-	}
-	return -1
+	display := plugin_find(&e.ed.plugins, name).display
+	e2e_render(e)
+	return e2e_ui_find_row(e, fmt.tprintf(" %s ", display))
 }
 
 e2e_reload_selected :: proc(e: ^E2E) -> string {
-	return e.ed.plugins.list[pane_find(&e.ed, "plugins").list.sel].name
+	return e.ed.ui.states["#manager/plugin_rows"].highlighted
 }
 
 @(test)
@@ -120,9 +132,9 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	editor_log(&e.ed, .Info, "other", "not alpha")
 
 	e2e_key(&e, .Ctrl_P)
-	e2e_type(&e, "plugins: open")
+	e2e_type(&e, "plugin manager: open")
 	e2e_key(&e, .Enter)
-	testing.expect(t, test_pane_open(&e.ed, "plugins"), "the pane opens")
+	testing.expect(t, manager_shown(&e), "the pane opens")
 	e2e_reload_select(&e, "alpha")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has_words(&e, "Alpha user enabled"), "the user plugin row")
@@ -131,6 +143,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	stamp := DiskStamp{mtime = 42, ok = true}
 	e.ed.config_stamp = stamp
 	e2e_key(&e, tb2.Key(0), {}, 'e')
+	e2e_ui_settle(&e)
 	testing.expect(t, e.ed.config_stamp == stamp, "e leaves the config stamp so the next poll still reloads an external edit")
 	alpha := plugin_find(&e.ed.plugins, "alpha")
 	testing.expect_value(t, alpha.state, PluginState.Disabled)
@@ -143,9 +156,11 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_grid_has_words(&e, "Alpha user disabled"), "the row shows disabled")
 
 	e2e_key(&e, tb2.Key(0), {}, 'r')
+	e2e_ui_settle(&e)
 	testing.expect(t, strings.contains(e.ed.message, "Alpha is disabled"), "r on a disabled plugin explains")
 
 	e2e_key(&e, tb2.Key(0), {}, 'e')
+	e2e_ui_settle(&e)
 	alpha = plugin_find(&e.ed.plugins, "alpha")
 	testing.expect_value(t, alpha.state, PluginState.Enabled)
 	data, _ = os.read_entire_file(e.ed.plugins.persist_path, context.temp_allocator)
@@ -153,11 +168,13 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(string(data), `"tab_width": 2`), "other keys stay")
 
 	e2e_key(&e, tb2.Key(0), {}, 'r')
+	e2e_ui_settle(&e)
 	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "Alpha", "reloaded"), 1)
 	testing.expect_value(t, reload_logged_count(&e.ed, .Info, "Alpha", "alpha says hi"), 3)
 
 	reload_write(dir, "aaa.lua", `return {}`)
 	plugins_poll(&e.ed)
+	e2e_ui_settle(&e)
 	testing.expect_value(t, e2e_reload_selected(&e), "alpha")
 	e2e_key(&e, tb2.Key(0), {}, 'l')
 	plugin_flush(&e.ed)
@@ -169,33 +186,41 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 	plugin_flush(&e.ed)
 	e2e_render(&e)
 	testing.expect(t, !e2e_grid_has(&e, "Message Log"), "Esc closes the log")
-	pluginview_open(&e.ed)
+	ut_run_owner(&e, "manager", "Open")
 
 	e2e_reload_select(&e, "format")
 	user_dir := e.ed.plugins.user_dir
 	e.ed.plugins.user_dir = "/qed-u"
 	e2e_key(&e, .Enter)
+	e2e_ui_settle(&e)
 	e.ed.plugins.user_dir = user_dir
-	testing.expect(t, test_pane_open(&e.ed, "plugin_source"), "Enter on a bundled plugin opens its source")
+	testing.expect(t, ui_find(&e.ed.ui, "#manager/plugin_source") != nil, "Enter on a bundled plugin opens its source")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "plugins/format/init.lua  ·  bundled, read-only"), "the read-only title")
 	testing.expect(t, e2e_grid_has(&e, "local on = {}"), "the embedded source shows")
 	testing.expect(t, e2e_grid_has(&e, "fork: copy to /qed-u/format"), "the fork hint points into the user plugin dir")
-	e2e_key(&e, .Pgdn)
-	testing.expect(t, pane_find(&e.ed, "plugin_source").preview.scroll > 0, "the source scrolls")
-	g := pane_geom(&e.ed, pane_find(&e.ed, "plugins"))
-	e2e_mouse(&e, g.inner.x + 2, g.list.y + 1, .Mouse_Wheel_Up)
+	for _ in 0 ..< 40 {
+		e.ed.accel_tick = {}
+		e2e_key(&e, .Arrow_Down)
+	}
+	e2e_ui_settle(&e)
+	source_node := ui_find(&e.ed.ui, "#manager/plugin_source")
+	testing.expect(t, source_node != nil && ui_node_state(&e.ed.ui, source_node).scroll_row > 0, "the source scrolls")
 	e2e_key(&e, tb2.Key(0), {}, 'e')
+	e2e_ui_settle(&e)
 	testing.expect_value(t, plugin_find(&e.ed.plugins, "format").state, PluginState.Enabled)
 	e2e_key(&e, .Esc)
-	testing.expect(t, test_pane_open(&e.ed, "plugins") && !test_pane_open(&e.ed, "plugin_source"), "Esc leaves the source view")
+	e2e_ui_settle(&e)
+	testing.expect(t, manager_shown(&e) && ui_find(&e.ed.ui, "#manager/plugin_source") == nil, "Esc leaves the source view")
 
 	e2e_reload_select(&e, "alpha")
 	y := e2e_reload_row_y(&e, "alpha")
-	e2e_mouse(&e, g.inner.x + 2, y)
+	e2e_mouse(&e, 10, y)
+	e2e_ui_settle(&e)
 	testing.expect_value(t, e2e_reload_selected(&e), "alpha")
-	e2e_mouse(&e, g.inner.x + 2, y)
-	testing.expect(t, !test_pane_open(&e.ed, "plugins"), "a double click opens the user plugin file")
+	e2e_mouse(&e, 10, y)
+	e2e_ui_settle(&e)
+	testing.expect(t, !manager_shown(&e), "a double click opens the user plugin file")
 	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "/alpha.lua"), "the file is open for editing")
 	for highlight_busy(editor_buffer(&e.ed)) {
 		e2e_render(&e)

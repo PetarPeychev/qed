@@ -14,7 +14,6 @@ ListSourceKind :: enum {
 	Commands,
 	Dirs,
 	Lines,
-	Plugins,
 	Walk,
 }
 
@@ -133,8 +132,6 @@ list_stamp :: proc(editor: ^Editor, p: ^Pane) -> u64 {
 		if b, _ := api_buf_find(editor, src.buf); b != nil {
 			return b.rev + 1
 		}
-	case .Plugins:
-		return u64(len(editor.plugins.list))
 	case .Walk:
 		return src.walk.gen + 1 if src.walk != nil else 0
 	}
@@ -160,8 +157,6 @@ list_count :: proc(editor: ^Editor, p: ^Pane) -> int {
 	case .Lines:
 		b, _ := api_buf_find(editor, src.buf)
 		return len(b.lines) if b != nil else 0
-	case .Plugins:
-		return len(editor.plugins.list)
 	case .Walk:
 		return len(src.entries)
 	}
@@ -183,8 +178,6 @@ list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
 	case .Lines:
 		b, _ := api_buf_find(editor, src.buf)
 		return string(b.lines[i].text[:])
-	case .Plugins:
-		return editor.plugins.list[i].display
 	case .Walk:
 		return src.entries[i].path
 	}
@@ -222,20 +215,6 @@ list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
 		}
 		it.cells = make([]string, 2, context.temp_allocator)
 		it.cells[0], it.cells[1] = fmt.tprintf("%d", i + 1), it.label
-	case .Plugins:
-		pl := editor.plugins.list[i]
-		it.label, it.key = pl.display, pl.name
-		state := "enabled"
-		switch pl.state {
-		case .Enabled:
-		case .Disabled:
-			state, it.color = "disabled", "pane_shortcut_foreground"
-		case .Errored:
-			state, it.color = "errored", "error_foreground"
-		}
-		it.cells = make([]string, 5, context.temp_allocator)
-		it.cells[0], it.cells[1], it.cells[2], it.cells[3] = pl.display, pl.description, "bundled" if pl.bundled else "user", state
-		it.cells[4] = fmt.tprintf("%.2f ms", pl.load_ms) if pl.state != .Disabled else ""
 	case .Walk:
 		e := src.entries[i]
 		it.label, it.path, it.key, it.dir, it.depth = e.name, e.path, e.path, e.is_dir, e.depth
@@ -253,8 +232,6 @@ list_columns :: proc(editor: ^Editor, p: ^Pane) -> []PaneColumn {
 		return p.list.columns
 	case .Lines:
 		return slice.clone([]PaneColumn{{size = .Fixed, w = digit_count(list_count(editor, p)), right = true}, {}}, context.temp_allocator)
-	case .Plugins:
-		return PLUGIN_COLUMNS[:]
 	}
 	return nil
 }

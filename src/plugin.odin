@@ -112,7 +112,20 @@ Plugins :: struct {
 	mark_seq: u64,
 	status:   [dynamic]PluginStatus,
 	calls:    [dynamic]PluginCall,
+	requests: [dynamic]PluginRequest,
 	entry_owner: string,
+}
+
+PluginRequestKind :: enum {
+	Enable,
+	Disable,
+	Reload,
+}
+
+// enabling, disabling and reloading run Lua and unload envs, so a plugin's call queues them for the next flush
+PluginRequest :: struct {
+	kind: PluginRequestKind,
+	name: string,
 }
 
 PluginCall :: struct {
@@ -145,6 +158,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"terminal/init.lua", #load("../plugins/terminal/init.lua", string)},
 	{"dialog/init.lua", #load("../plugins/dialog/init.lua", string)},
+	{"manager/init.lua", #load("../plugins/manager/init.lua", string)},
 	{"settings/menu.lua", #load("../plugins/settings/menu.lua", string)},
 	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
@@ -930,10 +944,6 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 		}
 		append(&next, pl)
 	}
-	selected := ""
-	if pl := pluginview_selected(editor); pl != nil {
-		selected = strings.clone(pl.name, context.temp_allocator)
-	}
 	for &pl, i in p.list {
 		if kept[i] < 0 {
 			plugin_strings_free(&pl)
@@ -941,13 +951,6 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 	}
 	delete(p.list)
 	p.list = next
-	if pn := pane_find(editor, "plugins"); pn != nil {
-		for pl, i in p.list {
-			if pl.name == selected {
-				pn.list.sel = i
-			}
-		}
-	}
 	for name, i in loads {
 		pl := plugin_find(p, name)
 		plugin_load(editor, pl)
@@ -1997,17 +2000,6 @@ plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
 	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.id, user = true})
 }
 
-plugin_command_run_named :: proc(editor: ^Editor, name, argument: string) -> bool {
-	for cmd in editor.plugins.commands {
-		if cmd.scope == "" && cmd.name == name {
-			plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Line, line = argument, command = cmd.id, user = true})
-			return true
-		}
-	}
-	editor_log(editor, .Warn, "", fmt.tprintf("%s is not available", name))
-	return false
-}
-
 plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {
 	if plugin_command_when(editor, cmd) {
 		plugin_command_run(editor, cmd)
@@ -2201,62 +2193,43 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	pl.unknown = strings.join(unknown[:], ", ")
 }
 
-PLUGIN_COLUMNS := [?]PaneColumn {
-	{size = .Fit, title = "Name"},
-	{title = "Description"},
-	{size = .Fit, title = "Source"},
-	{size = .Fit, title = "Status"},
-	{size = .Fit, title = "Load", right = true},
-}
-
-pluginview_open :: proc(editor: ^Editor) {
+plugin_requests_run :: proc(editor: ^Editor) {
 	p := &editor.plugins
-	editor_clear_message(editor)
-	pn := pane_open(editor, Pane {
-		id = "plugins",
-		place = .Full,
-		chord = "Plugins: Open",
-		scope = "plugins",
-		keep = true,
-		title = "Plugins (Lua failed to start)" if p.L == nil else fmt.tprintf("Plugins  ·  Lua init %.2f ms", p.init_ms),
-		has_list = true,
-		backdrop = PLUGINS_PANE_BACKDROP,
-		max_width = max(PANE_MIN_WIDTH, PLUGINS_PANE_MAX_WIDTH),
-		list = {source = {kind = .Plugins}, sel_bg = true, empty = "(no plugins)"},
-		footer = []PaneHint {
-			{label = "↑↓ select"},
-			{label = "Enter open"},
-			{label = "enable/disable", cmd = "Plugins: Enable/Disable"},
-			{label = "reload", cmd = "Plugins: Reload"},
-			{label = "log", cmd = "Plugins: Show Log"},
-			{label = "Esc close"},
-		},
-		on = {activate = pluginview_enter, close = pane_save, footer = pluginview_footer},
-	})
-	if pn == nil {
+	if len(p.requests) == 0 {
 		return
 	}
-	if saved := pane_saved_find(editor, "plugins"); saved != nil && saved.key != "" {
-		pn.list.restore = strings.clone(saved.key)
-		pane_restore(editor, pn, pane_geom(editor, pn).list.h)
+	batch := p.requests
+	p.requests = {}
+	defer delete(batch)
+	for request in batch {
+		defer delete(request.name)
+		pl := plugin_find(p, request.name)
+		if pl == nil {
+			continue
+		}
+		switch request.kind {
+		case .Enable, .Disable:
+			enable := request.kind == .Enable
+			if (pl.state == .Disabled) != enable {
+				continue
+			}
+			path := p.persist_path if editor.headless else config_path()
+			default_on := true
+			if v, ok := plugin_cfg_entry(g_config_defaults, pl.name)["enabled"].(json.Boolean); ok {
+				default_on = bool(v)
+			}
+			if path == "" || !config_persist_path_to(path, {"plugins", pl.name, "enabled"}, json.Boolean(enable), remove = enable == default_on) {
+				editor_log(editor, .Error, "", "Cannot update config.json (unwritable or not valid JSON)")
+				continue
+			}
+			editor.config_written = buffer_disk_stamp(path)
+			plugin_enabled_set(editor, pl, enable)
+		case .Reload:
+			pl.stamp = plugin_stamp_of(pl^)
+			plugin_reload(editor, pl)
+			plugin_reload_report(editor, pl, "reloaded")
+		}
 	}
-}
-
-pluginview_selected :: proc(editor: ^Editor) -> ^Plugin {
-	pn := pane_find(editor, "plugins")
-	if pn == nil || pn.list.sel < 0 || pn.list.sel >= len(editor.plugins.list) {
-		return nil
-	}
-	return &editor.plugins.list[pn.list.sel]
-}
-
-pluginview_footer :: proc(editor: ^Editor, pn: ^Pane) -> string {
-	pl := pluginview_selected(editor)
-	if pl == nil || pl.last_error == "" {
-		return ""
-	}
-	err, _ := strings.replace_all(pl.last_error, "\n", " ", context.temp_allocator)
-	return err
 }
 
 plugin_enabled_set :: proc(editor: ^Editor, pl: ^Plugin, enable: bool) {
@@ -2272,82 +2245,3 @@ plugin_enabled_set :: proc(editor: ^Editor, pl: ^Plugin, enable: bool) {
 	plugin_reload_report(editor, pl, "enabled")
 }
 
-pluginview_toggle :: proc(editor: ^Editor) {
-	pl := pluginview_selected(editor)
-	if pl == nil {
-		return
-	}
-	enable := pl.state == .Disabled
-	path := editor.plugins.persist_path if editor.headless else config_path()
-	default_on := true
-	if v, ok := plugin_cfg_entry(g_config_defaults, pl.name)["enabled"].(json.Boolean); ok {
-		default_on = bool(v)
-	}
-	if path == "" || !config_persist_path_to(path, {"plugins", pl.name, "enabled"}, json.Boolean(enable), remove = enable == default_on) {
-		editor_log(editor, .Error, "", "Cannot update config.json (unwritable or not valid JSON)")
-		return
-	}
-	editor.config_written = buffer_disk_stamp(path)
-	plugin_enabled_set(editor, pl, enable)
-}
-
-pluginview_reload :: proc(editor: ^Editor) {
-	pl := pluginview_selected(editor)
-	if pl == nil {
-		return
-	}
-	if pl.state == .Disabled {
-		key := command_shortcut("Plugins: Enable/Disable")
-		editor_log(editor, .Warn, "", fmt.tprintf("%s is disabled (%s enables it)", pl.display, key if key != "" else "Enable/Disable"))
-		return
-	}
-	pl.stamp = plugin_stamp_of(pl^)
-	plugin_reload(editor, pl)
-	plugin_reload_report(editor, pl, "reloaded")
-}
-
-pluginview_log :: proc(editor: ^Editor) {
-	if pl := pluginview_selected(editor); pl != nil {
-		if !plugin_command_run_named(editor, "Message Log: Open", pl.display) {
-			return
-		}
-		if pn := pane_find(editor, "plugins"); pn != nil {
-			pane_end(editor, pn.handle, false)
-		}
-	}
-}
-
-pluginview_enter :: proc(editor: ^Editor, pn: ^Pane) {
-	pl := pluginview_selected(editor)
-	if pl == nil {
-		return
-	}
-	if !pl.bundled {
-		main := strings.clone(pl.main, context.temp_allocator)
-		pane_end(editor, pn.handle, false)
-		editor_open_path(editor, main)
-		return
-	}
-	src, ok := plugin_source(&editor.plugins, pl, pl.main)
-	if !ok {
-		return
-	}
-	fork := fmt.tprintf("%s/%s", editor.plugins.user_dir, pl.dir if pl.dir != "" else pl.main)
-	if home := os.get_env("HOME", context.temp_allocator); home != "" && strings.has_prefix(fork, home) {
-		fork = fmt.tprintf("~%s", fork[len(home):])
-	}
-	main := strings.clone(pl.main, context.temp_allocator)
-	c := pane_open(editor, Pane {
-		id = "plugin_source",
-		max_width = max(PANE_MIN_WIDTH, PLUGINS_PANE_MAX_WIDTH),
-		kind = .Child,
-		parent = pn.handle,
-		place = .Full,
-		title = fmt.tprintf("plugins/%s  ·  bundled, read-only", main),
-		body_preview = true,
-		footer = []PaneHint{{label = fmt.tprintf("Esc back  ·  fork: copy to %s", fork)}},
-	})
-	if c != nil {
-		preview_set_text(&c.preview, main, src, pane_geom(editor, c).text.h)
-	}
-}

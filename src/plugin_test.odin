@@ -433,7 +433,7 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 				end,
 			}`},
 		{"dupe.lua", `return {setup = function() qed.command{name = "A", run = function() end} qed.command{name = "A", run = function() end} end}`},
-		{"plugins.lua", `return {setup = function() qed.command{name = "Open", run = function() end} end}`},
+		{"debug.lua", `return {setup = function() qed.command{name = "Inspect Tokens", run = function() end} end}`},
 		{"core.lua", `return {setup = function() qed.command{name = "Save", run = function() end} end}`},
 		{"badkey.lua", `return {setup = function() qed.command{name = "Bad: Key", key = "Hyper+x", run = function() end} end}`},
 		{"badscope.lua", `return {setup = function() qed.command{name = "Bad: Scope", scope = "", run = function() end} end}`},
@@ -441,11 +441,11 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
-	for name in ([?]string{"dupe", "plugins", "core", "badkey", "badscope", "norun"}) {
+	for name in ([?]string{"dupe", "debug", "core", "badkey", "badscope", "norun"}) {
 		testing.expectf(t, plugin_find(&ed.plugins, name).state == .Errored, "%s: invalid registration errors the plugin", name)
 	}
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "dupe").last_error, "'Dupe: A' already exists"), "duplicate name rejected")
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "plugins").last_error, "'Plugins: Open' already exists"), "a visible name equal to a builtin is rejected")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "debug").last_error, "'Debug: Inspect Tokens' already exists"), "a visible name equal to a builtin is rejected")
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "core").last_error, "'Save' is a core command"), "a bare name equal to a core command is rejected")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}

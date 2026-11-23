@@ -84,9 +84,9 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	e2e_plugin(&e, "broken", `return {setup = function() error("setup exploded") end}`)
 
 	e2e_key(&e, .Ctrl_P)
-	e2e_type(&e, "plugins: open")
+	e2e_type(&e, "plugin manager: open")
 	e2e_key(&e, .Enter)
-	testing.expect(t, test_pane_open(&e.ed, "plugins"), "Plugins: Open opens the pane")
+	testing.expect(t, manager_shown(&e), "Plugins: Open opens the pane")
 	e2e_reload_select(&e, "fine")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has_words(&e, "Fine Does fine things user enabled"), "a healthy plugin row")
@@ -101,10 +101,8 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 			broken = i
 		}
 	}
-	for _ in 0 ..< broken {
-		e2e_key(&e, .Arrow_Down)
-	}
-	testing.expect_value(t, pane_find(&e.ed, "plugins").list.sel, broken)
+	testing.expect(t, broken >= 0, "the broken plugin is listed")
+	testing.expect_value(t, e2e_reload_selected(&e), "broken")
 	e2e_resize(&e, 400, 40)
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has_words(&e, "Format Formats on save and trims whitespace bundled enabled"), "the bundled format plugin row")
@@ -115,7 +113,7 @@ e2e_plugin_pane :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_grid_has(&e, "setup exploded"), "the selected row's last error shows in the footer")
 
 	e2e_key(&e, .Esc)
-	testing.expect(t, !test_pane_open(&e.ed, "plugins"), "Esc closes the pane")
+	testing.expect(t, !manager_shown(&e), "Esc closes the pane")
 }
 
 @(test)

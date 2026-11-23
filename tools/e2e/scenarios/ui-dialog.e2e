@@ -1,0 +1,16 @@
+# Dialog plugin: qed.pick and qed.confirm on qed.ui (Settings: Indentation).
+file a.txt
+x
+end
+run a.txt
+wait x
+key ctrl+p
+type settings indentation
+key enter
+wait Auto-detect
+snap pick
+type tabs
+snap filtered
+key enter
+wait Indentation set to Tabs
+snap done

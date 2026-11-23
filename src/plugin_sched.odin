@@ -794,6 +794,7 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 	if p.L == nil {
 		return false
 	}
+	plugin_requests_run(editor)
 	plugin_views_flush(editor)
 	ui_mount_waiters_resume(editor)
 	ui_messages_feed(editor)
