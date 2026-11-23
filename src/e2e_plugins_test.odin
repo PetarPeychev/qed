@@ -349,6 +349,7 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	ed := entry.editor
+	e2e_render(g_pt)
 	lua.createtable(L, 0, 9)
 	lua.pushboolean(L, b32(ed.quit))
 	lua.setfield(L, -2, "quit")

@@ -321,28 +321,7 @@ editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
 	return
 }
 
-Overlay :: struct {
-	active:   ^bool,
-	dispatch: proc(editor: ^Editor, ev: tb2.Event),
-	render:   proc(editor: ^Editor),
-	mouse:    proc(editor: ^Editor, ev: tb2.Event),
-	paste:    proc(editor: ^Editor, text: string),
-}
-
-editor_overlays :: proc(editor: ^Editor) -> [1]Overlay {
-	return {{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay}}
-}
-
-editor_overlay_active :: proc(editor: ^Editor) -> ^bool {
-	for ov in editor_overlays(editor) {
-		if ov.active^ {
-			return ov.active
-		}
-	}
-	return nil
-}
-
-editor_overlay_resize :: proc(editor: ^Editor) {
+editor_resize :: proc(editor: ^Editor) {
 	editor_scroll(editor)
 	if editor.terminal.active {
 		term_resize(editor)
@@ -387,30 +366,11 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	if pane_stack_dispatch(editor, ev) {
 		return
 	}
-	if editor_overlay_active(editor) == nil && ui_dispatch(editor, ev) {
+	if ui_dispatch(editor, ev) {
 		return
-	}
-	for ov in editor_overlays(editor) {
-		if ov.active^ {
-			#partial switch ev.type {
-			case .Key:
-				ov.dispatch(editor, ev)
-			case .Mouse:
-				if ov.mouse != nil {
-					ov.mouse(editor, ev)
-				}
-			case .Resize:
-				editor_overlay_resize(editor)
-			}
-			return
-		}
 	}
 	if editor.welcome {
 		if ev.type == .Key {
-			if command_matches(ev, "Terminal: Toggle") {
-				term_toggle(editor)
-				return
-			}
 			if command_matches(ev, "Plugins: Open") {
 				pluginview_open(editor)
 				return
@@ -448,16 +408,8 @@ editor_paste_route :: proc(editor: ^Editor, text: string) {
 	if len(text) == 0 || pane_stack_paste(editor, text) {
 		return
 	}
-	if editor_overlay_active(editor) == nil && ui_paste(editor, text) {
+	if ui_paste(editor, text) {
 		return
-	}
-	for ov in editor_overlays(editor) {
-		if ov.active^ {
-			if ov.paste != nil {
-				ov.paste(editor, text)
-			}
-			return
-		}
 	}
 	if editor.welcome {
 		return
@@ -1434,15 +1386,7 @@ editor_syntax_errors_report :: proc(editor: ^Editor) {
 
 editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool) {
 	pane_stack_render(editor, true)
-	covered := false
-	for ov in editor_overlays(editor) {
-		if ov.active^ {
-			ov.render(editor)
-			covered = true
-			break
-		}
-	}
-	if pane_stack_render(editor, false) || covered {
+	if pane_stack_render(editor, false) {
 		tb2.present()
 		return true
 	}

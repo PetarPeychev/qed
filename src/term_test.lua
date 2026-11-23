@@ -87,9 +87,9 @@ function T.cwd_env_send_show(t)
 	local out = qed.fs.read(qed.path.join(qed.root(), "sub/out.txt"))
 	t.eq(out, "envval " .. qed.path.join(qed.root(), "sub") .. "\n")
 	t.ok(qed.term.show("sh"))
-	t.eq(t.editor().session, "sh")
+	t.wait(function() return t.editor().session == "sh" end)
 	qed.term.hide()
-	t.ok(not t.editor().terminal, "hide closes the pane")
+	t.wait(function() return not t.editor().terminal end)
 end
 
 return T

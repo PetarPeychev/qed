@@ -335,7 +335,7 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, border_x, box.y + 3), '┃')
 	testing.expect_value(t, e2e_cell_fg(&e, border_x, box.y + 3), COLOR_PANE_FG)
-	testing.expect(t, e2e_grid_has(&e, "Alt+t"), "the shortcut column shows live binds")
+	testing.expect(t, e2e_grid_has(&e, "Ctrl+q"), "the shortcut column shows live binds")
 
 	e2e_type(&e, "line wrap")
 	testing.expect(t, pane_count(&e.ed, p) > 0, "fuzzy query should match a command")

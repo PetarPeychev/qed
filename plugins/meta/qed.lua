@@ -635,6 +635,11 @@ function qed.ui.virtual_column(props) end
 ---@return qed.Node
 function qed.ui.image(props) end
 
+---A qed.term session's screen; it takes keys, paste and the mouse while focused (Esc goes to the program in alt-screen or when `terminal_escape_closes` is off). Prop: `session`.
+---@param props table
+---@return qed.Node
+function qed.ui.terminal(props) end
+
 ---A transparent slot other plugins mount into with `qed.ui.mount(id, tree)`. Prop: `id`.
 ---@param props table
 ---@return qed.Node

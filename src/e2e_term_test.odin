@@ -43,6 +43,17 @@ e2e_term_exited :: proc(t: ^Terminal) -> bool {
 
 e2e_term_alt_t :: proc(e: ^E2E) {
 	e2e_step(e, tb2.Event{type = .Key, mod = .Alt, ch = 't'})
+	e2e_term_sync(e)
+}
+
+e2e_term_sync :: proc(e: ^E2E) {
+	plugin_flush(&e.ed)
+	e2e_render(e)
+}
+
+e2e_term_show :: proc(e: ^E2E, t: ^Terminal) {
+	plugin_queue(&e.ed, {event = .Custom, a = "terminal:show", b = t.name})
+	e2e_term_sync(e)
 }
 
 @(test)
@@ -60,12 +71,10 @@ e2e_term_sessions_independent :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_term_until(&e, 4000, proc(t: ^Terminal) -> bool {return e2e_term_screen_has(t, "beta_out")}, b), "b gets its output")
 	testing.expect(t, !e2e_term_screen_has(a, "beta_out") && !e2e_term_screen_has(b, "alpha_out"), "outputs stay separate")
 
-	term_show(&e.ed, a)
-	e2e_render(&e)
+	e2e_term_show(&e, a)
 	testing.expect(t, e2e_grid_has(&e, "alpha_out") && !e2e_grid_has(&e, "beta_out"), "only the shown session renders")
 	testing.expect(t, e2e_grid_has(&e, " a "), "the pane title names the session")
-	term_show(&e.ed, b)
-	e2e_render(&e)
+	e2e_term_show(&e, b)
 	testing.expect(t, e2e_grid_has(&e, "beta_out") && !e2e_grid_has(&e, "alpha_out"), "showing b switches the overlay")
 }
 
@@ -158,19 +167,22 @@ e2e_term_shell_unaffected :: proc(t: ^testing.T) {
 	e2e_term_alt_t(&e)
 	testing.expect(t, !e.ed.terminal.active, "Alt+t hides it")
 
-	term_show(&e.ed, task)
+	e2e_term_show(&e, task)
 	e2e_term_alt_t(&e)
 	testing.expect(t, !e.ed.terminal.active, "Alt+t hides a shown task")
 	e2e_term_alt_t(&e)
 	testing.expect(t, e.ed.terminal.shown == sh && sh.pid == pid, "Alt+t brings back the same shell, not the task")
 	e2e_key(&e, .Esc)
+	e2e_term_sync(&e)
 	testing.expect(t, !e.ed.terminal.active, "Esc closes the terminal at the prompt")
 	testing.expect(t, task.alive, "the task kept running")
 
 	e2e_term_alt_t(&e)
 	e2e_type(&e, "exit\n")
 	testing.expect(t, e2e_term_until(&e, 4000, e2e_term_exited, sh), "exiting the shell ends the session")
+	e2e_term_sync(&e)
 	e2e_key(&e, .Enter)
+	e2e_term_sync(&e)
 	testing.expect(t, !e.ed.terminal.active, "a key in a dead shell closes the pane")
 	e2e_term_alt_t(&e)
 	testing.expect(t, sh.alive && sh.pid != pid, "Alt+t starts a fresh shell")
@@ -194,6 +206,7 @@ e2e_term_plugin_unload :: proc(t: ^testing.T) {
 		return
 	}
 	command_run(&e.ed, cmd)
+	e2e_term_sync(&e)
 	owned, kept := term_find(&e.ed, "owned"), term_find(&e.ed, "kept")
 	if !testing.expect(t, owned != nil && kept != nil, "both sessions exist") {
 		return
@@ -206,6 +219,7 @@ e2e_term_plugin_unload :: proc(t: ^testing.T) {
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
 	testing.expect(t, term_find(&e.ed, "owned") == nil, "the owned session is torn down")
 	testing.expect(t, e2e_group_gone(pgid), "its process group is gone")
+	e2e_term_sync(&e)
 	testing.expect(t, !e.ed.terminal.active && e.ed.terminal.shown == nil, "the pane that showed it closes")
 	testing.expect(t, term_find(&e.ed, "kept") == kept && kept.alive, "a detached session survives")
 	testing.expect_value(t, reload_owned(&e.ed.plugins, "tt"), 0)

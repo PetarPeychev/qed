@@ -5,14 +5,14 @@ qed-e2e snapshot 80x24 cursor 11,4
    across the field, past the barn, over the hill, and far beyond the river
    until┌─ Command Palette ────────────────────────────────────────────┐
  3      │> Type a command                                              │
-        │ Terminal: Toggle                                      Alt+t ┃│
-        │ Go to: Start of File                                  Alt+{  │
+        │ Go to: Start of File                                  Alt+{ ┃│
         │ Go to: End of File                                    Alt+}  │
         │ Jump Back                                             Alt+,  │
         │ Jump Forward                                          Alt+.  │
         │ Close Buffer                                         Ctrl+w  │
         │ Save                                                 Ctrl+s  │
         │ Quit                                                 Ctrl+q  │
+        │ Undo                                                 Ctrl+z  │
         └──────────────────────────────────────────────────────────────┘
 
 
@@ -34,7 +34,7 @@ ccccccccdgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggddcccccccc
 ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
 ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
 ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
+ccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhhddcccccccc
 ccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhhddcccccccc
 ccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhhddcccccccc
 ccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhhddcccccccc

@@ -113,7 +113,6 @@ cmd_plugins :: proc(editor: ^Editor) {pluginview_open(editor)}
 // `keybinds` section, applied by config_seed_defaults before main.
 commands := [?]Command {
 	{name = "Command Palette", run = palette_open},
-	{name = "Terminal: Toggle", run = term_toggle},
 	{name = "Go to: Start of File", run = cmd_buffer_start},
 	{name = "Go to: End of File", run = cmd_buffer_end},
 	{name = "Jump Back", run = jump_back},
@@ -199,7 +198,7 @@ command_available :: proc(editor: ^Editor, name: string, scope := "") -> bool {
 	}
 	if editor.welcome {
 		switch name {
-		case "Terminal: Toggle", "Plugins: Open", "Message Log: Open", "Quit":
+		case "Plugins: Open", "Message Log: Open", "Quit":
 			return true
 		}
 		return false

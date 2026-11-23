@@ -183,7 +183,6 @@ MASTER_CONFIG_PATHS := [?]string {
 	"keybinds/Select All",
 	"keybinds/Set Language",
 	"keybinds/Set Theme",
-	"keybinds/Terminal: Toggle",
 	"keybinds/Toggle Comment",
 	"keybinds/Toggle Final Newline on Save",
 	"keybinds/Toggle Format on Save",

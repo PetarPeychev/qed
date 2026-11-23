@@ -68,6 +68,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly` |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
 | `outlet` | none | `id` |
+| `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |
 | `image` | none | `path` (relative to the root); natural size from the pixel size and the cell size; `[image: name]` without graphics |
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and
@@ -200,12 +201,11 @@ The full-screen column closes on an outside click; the box swallows clicks insid
 
 ## Open
 
-- Not built: `terminal`, `virtual_row` nodes, `qed.markdown.parse`, resizable containers, multi-row
+- Not built: `virtual_row` nodes, `qed.markdown.parse`, resizable containers, multi-row
   virtual items, plain-table `data`, `focus`/`blur`/`state`/`drag`/`release` events, span `on.click`, keyboard
   scrolling of `scroll`.
 - Per-view editor state (cursor, wrap) instead of the buffer's.
 - List navigation helpers and the fuzzy span builder, once a second picker exists.
 - `qed.commands()`, `qed.fs.walk`, `qed.buffers()` returning `qed.List`; the palette listing the scope chain.
-- Deleting `qed.ui.open`, the remaining old panes (file tree, settings, plugins, pick/prompt/confirm, terminal, safety
-  dialogs) and the old key matcher.
+- Deleting `qed.ui.open`, the remaining old panes (file tree, settings, plugins, pick/prompt/confirm, safety dialogs) and the old key matcher.
 - Completion and hover as `cursor`-anchored plugin floats (they are core-drawn at the caret today).

@@ -73,6 +73,9 @@
     "settings": {
       "enabled": true
     },
+    "terminal": {
+      "enabled": true
+    },
     "search": {
       "enabled": true
     },
@@ -83,7 +86,6 @@
   "theme": "default",
   "keybinds": {
     "Command Palette": "Ctrl+p",
-    "Terminal: Toggle": "Alt+t",
     "Go to: Start of File": "Alt+{",
     "Go to: End of File": "Alt+}",
     "Jump Back": "Alt+,",

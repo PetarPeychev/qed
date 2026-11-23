@@ -24,6 +24,7 @@ UiKind :: enum u8 {
 	Virtual_Column,
 	Outlet,
 	Image,
+	Terminal,
 }
 
 ui_kind_names := [UiKind]string {
@@ -36,6 +37,7 @@ ui_kind_names := [UiKind]string {
 	.Virtual_Column = "virtual_column",
 	.Outlet         = "outlet",
 	.Image          = "image",
+	.Terminal       = "terminal",
 }
 
 UiSizeForm :: enum u8 {
@@ -152,6 +154,7 @@ UiNode :: struct {
 	buffer:          u64,
 	placeholder:     string,
 	path:            string,
+	session:         string,
 	line_numbers:    bool,
 	syntax:          bool,
 	readonly:        bool,
@@ -320,6 +323,7 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 	delete(node.title)
 	delete(node.placeholder)
 	delete(node.path)
+	delete(node.session)
 	free(node)
 }
 
@@ -767,7 +771,7 @@ ui_grows :: proc(node: ^UiNode, axis: int) -> int {
 	if node.grow_set {
 		return node.grow
 	}
-	if node.kind == .Editor {
+	if node.kind == .Editor || node.kind == .Terminal {
 		size := node.height if axis == 1 else node.width
 		return 1 if size.form == .Auto else 0
 	}
@@ -921,6 +925,7 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 		if buffer := ui_buffer(editor, node.buffer); buffer != nil {
 			height = len(buffer.lines)
 		}
+	case .Terminal:
 	case .Image:
 		if image := image_get(node.path); image != nil && image_enabled() {
 			width, height = image_cells(image.w, image.h, avail_w, avail_h, g_image_cell.x, g_image_cell.y)
@@ -991,7 +996,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 		}
 	case .Column, .Row:
 		ui_layout_flow(editor, node, content)
-	case .Text, .Editor, .Virtual_Column, .Outlet, .Image:
+	case .Text, .Editor, .Virtual_Column, .Outlet, .Image, .Terminal:
 	}
 	for child in node.expanded {
 		if child.float != .None {
@@ -1370,6 +1375,7 @@ ui_prepare :: proc(editor: ^Editor) {
 	clear(&ui.lists_dead)
 	ui_resolve(editor)
 	ui_focused(editor)
+	editor.terminal.active = false
 	if len(ui.mounts) == 0 {
 		return
 	}
@@ -1406,6 +1412,17 @@ ui_prepare :: proc(editor: ^Editor) {
 		}
 		if !moved && pass > 0 {
 			break
+		}
+	}
+	for _, node in ui.index {
+		if node.kind != .Terminal || node.hidden || node.rect.w <= 0 || node.rect.h <= 0 {
+			continue
+		}
+		if session := term_find(editor, node.session); session != nil {
+			editor.terminal.active = true
+			editor.terminal.shown = session
+			editor.terminal.area = node.rect
+			term_resize(editor)
 		}
 	}
 	for node in ui.editors {
@@ -1721,6 +1738,14 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		}
 	case .Image:
 		ui_render_image(&paint, node)
+	case .Terminal:
+		if session := term_find(editor, node.session); session != nil {
+			focused := editor.ui.focus == node.identity
+			if cell_x, cell_y, ok := term_render_area(editor, session, node.rect, focused); ok && focused {
+				editor.ui.caret = {cell_x, cell_y}
+				editor.ui.caret_shown = true
+			}
+		}
 	case .Column, .Row, .Outlet:
 	}
 	if node.header != nil {

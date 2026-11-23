@@ -33,6 +33,7 @@ ui_kind_props := [UiKind][]string {
 	.Virtual_Column = {"data", "item", "highlight_style"},
 	.Outlet         = {},
 	.Image          = {"path"},
+	.Terminal       = {"session"},
 }
 
 UiMarshal :: struct {
@@ -341,6 +342,13 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			continue
 		}
 		switch name {
+		case "session":
+			if lua.type(L, value_index) != .STRING {
+				ui_marshal_fail(marshal, "session: a qed.term session name expected")
+				break
+			}
+			text, _ := lua.toodinstring(L, value_index)
+			node.session = strings.clone(text)
 		case "path":
 			if lua.type(L, value_index) != .STRING {
 				ui_marshal_fail(marshal, "path: string expected")
@@ -570,7 +578,7 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		if laid != 1 {
 			ui_marshal_fail(marshal, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
 		}
-	case .Editor, .Virtual_Column, .Image:
+	case .Editor, .Virtual_Column, .Image, .Terminal:
 		limit = 0
 	case .Outlet:
 		if len(node.children) > 0 {

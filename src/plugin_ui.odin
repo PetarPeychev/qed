@@ -1169,11 +1169,6 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 				return api_fail(L, "busy")
 			}
 			spec.kind, spec.parent = .Child, f.handle
-		} else if ov := editor_overlay_active(editor); ov != nil {
-			if !user {
-				return api_fail(L, "busy")
-			}
-			spec.kind, spec.over = .Child, ov
 		}
 	}
 	keep := len(items)

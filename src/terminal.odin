@@ -25,6 +25,7 @@ TermPos :: struct {
 
 Terminals :: struct {
 	active:  bool,
+	area:    Rect,
 	more:    bool,
 	list:    [dynamic]^Terminal,
 	shown:   ^Terminal,
@@ -194,24 +195,11 @@ term_busy :: proc(t: ^Terminal) -> bool {
 }
 
 term_grid_size :: proc(editor: ^Editor) -> (cols, rows: int) {
+	if area := editor.terminal.area; area.w > 0 && area.h > 0 {
+		return area.w, area.h
+	}
 	lay := overlay_layout(editor)
 	return lay.inner.w, lay.inner.h
-}
-
-term_toggle :: proc(editor: ^Editor) {
-	if editor.terminal.active {
-		editor.terminal.active = false
-		return
-	}
-	if t := term_shell(editor); t != nil {
-		term_show(editor, t)
-	}
-}
-
-term_show :: proc(editor: ^Editor, t: ^Terminal) {
-	editor.terminal.shown = t
-	editor.terminal.active = true
-	term_resize(editor)
 }
 
 term_shell :: proc(editor: ^Editor) -> ^Terminal {
@@ -521,38 +509,15 @@ term_drain :: proc(t: ^Terminal) -> (got, more: bool) {
 	return got, true
 }
 
-term_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
-	ts := &editor.terminal
-	t := ts.shown
-	if t == nil {
-		ts.active = false
-		return
-	}
-	alt := ev_alt(ev)
-	swapped := ev
-	if ev.ch == 't' {
-		swapped.ch = 'T'
-	} else if ev.ch == 'T' {
-		swapped.ch = 't'
-	}
-	if command_matches(ev, "Terminal: Toggle") || command_matches(swapped, "Terminal: Toggle") {
-		ts.active = false
-		return
-	}
-	// Full-screen programs (alt-screen) own Escape; at a plain shell prompt it
-	// defocuses the pane instead (config-gated).
-	if ev.key == .Esc && !alt && TERMINAL_ESCAPE_CLOSES && !t.altscreen {
-		ts.active = false
-		return
-	}
+term_key :: proc(t: ^Terminal, ev: tb2.Event) -> bool {
 	if !t.alive {
-		ts.active = false
-		return
+		return false
 	}
 	t.sb_view = 0
 	t.sel_active = false
 	term_send_key(t, ev)
 	term_flush_output(t)
+	return true
 }
 
 term_mods :: proc(ev: tb2.Event) -> vterm.Modifier {
@@ -577,7 +542,7 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	motion := ev_motion(ev)
 	shift := ev_shift(ev)
 	mod := term_mods(ev)
-	lay := overlay_layout(editor)
+	inner := editor.terminal.area
 	// A plain shell doesn't grab the mouse, so a drag there is a local text
 	// selection; a mouse-mode program (vim/htop) takes it unless Shift forces local.
 	local := !t.mouse_mode || shift
@@ -603,12 +568,11 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 	// tmux/WT dropping the clean button-press or injecting a stray release mid-drag:
 	// a fresh press re-anchors, and a bare motion starts a drag if one isn't live.
 	if local && ev.key == .Mouse_Left {
-		if !motion && !mouse_in_rect(ev, lay.box) {
-			editor.terminal.active = false
+		if !motion && !mouse_in_rect(ev, inner) {
 			return
 		}
-		row := clamp(int(ev.y) - lay.inner.y, 0, t.rows - 1)
-		col := clamp(int(ev.x) - lay.inner.x, 0, t.cols - 1)
+		row := clamp(int(ev.y) - inner.y, 0, t.rows - 1)
+		col := clamp(int(ev.x) - inner.x, 0, t.cols - 1)
 		vi := term_vi_at(t, row)
 		if !motion || !t.sel_drag {
 			t.sel_drag = true
@@ -619,17 +583,11 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	}
 
-	if !mouse_in_rect(ev, lay.box) {
-		if ev.key == .Mouse_Left && !motion {
-			editor.terminal.active = false
-		}
+	if !mouse_in_rect(ev, inner) || !t.alive {
 		return
 	}
-	if !t.alive {
-		return
-	}
-	row := clamp(int(ev.y) - lay.inner.y, 0, t.rows - 1)
-	col := clamp(int(ev.x) - lay.inner.x, 0, t.cols - 1)
+	row := clamp(int(ev.y) - inner.y, 0, t.rows - 1)
+	col := clamp(int(ev.x) - inner.x, 0, t.cols - 1)
 
 	// Position first: vterm reads the stored cell for the button report.
 	vterm.mouse_move(t.vt, c.int(row), c.int(col), mod)
@@ -748,12 +706,6 @@ term_copy_selection :: proc(editor: ^Editor) {
 	}
 	clipboard_set(text)
 	editor_log(editor, .Info, "Terminal", "copied selection")
-}
-
-term_paste_overlay :: proc(editor: ^Editor, text: string) {
-	if t := editor.terminal.shown; t != nil {
-		term_paste(t, text)
-	}
 }
 
 term_paste :: proc(t: ^Terminal, text: string) {
@@ -889,19 +841,9 @@ term_flush_output :: proc(t: ^Terminal) {
 	}
 }
 
-term_render :: proc(editor: ^Editor) {
-	t := editor.terminal.shown
-	lay := overlay_layout(editor)
-	inner := pane_draw_box(lay.box)
+term_render_area :: proc(editor: ^Editor, t: ^Terminal, inner: Rect, focused: bool) -> (cursor_x, cursor_y: int, cursor_ok: bool) {
 	if t == nil || t.vt == nil {
 		return
-	}
-	if t.name != TERM_SHELL {
-		title := fmt.tprintf(" %s ", t.name)
-		if t.exited {
-			title = fmt.tprintf(" %s (exited %d) ", t.name, t.code)
-		}
-		pane_text(lay.box.x + 2, lay.box.y, max(0, lay.box.w - 4), title, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
 	}
 	rows := min(t.rows, inner.h)
 	cols := min(t.cols, inner.w)
@@ -948,15 +890,14 @@ term_render :: proc(editor: ^Editor) {
 			col += w
 		}
 	}
-	if editor.terminal.active && t.alive && v == 0 {
+	if focused && t.alive && v == 0 {
 		cur: vterm.Pos
 		vterm.state_get_cursorpos(vterm.obtain_state(t.vt), &cur)
 		if int(cur.row) < rows && int(cur.col) < cols {
-			tb2.set_cursor(i32(inner.x + int(cur.col)), i32(inner.y + int(cur.row)))
-			return
+			return inner.x + int(cur.col), inner.y + int(cur.row), true
 		}
 	}
-	tb2.hide_cursor()
+	return
 }
 
 term_cell_colors :: proc(t: ^Terminal, cell: ^vterm.ScreenCell) -> (fg, bg: tb2.Color) {

@@ -221,9 +221,9 @@ e2e_term_row :: proc(e: ^E2E, inner: Rect, ry: int) -> string {
 // line, distinct from the command-echo line that merely contains the marker.
 e2e_term_find_row :: proc(e: ^E2E, exact: string) -> (sc, gy: int, ok: bool) {
 	e2e_render(e)
-	lay := overlay_layout(&e.ed)
-	for ry in 0 ..< lay.inner.h {
-		row := e2e_term_row(e, lay.inner, ry)
+	area := e.ed.terminal.area
+	for ry in 0 ..< area.h {
+		row := e2e_term_row(e, area, ry)
 		if strings.trim_right(row, " ") == exact {
 			return strings.index(row, exact), ry, true
 		}
@@ -268,7 +268,7 @@ e2e_terminal_pane :: proc(t: ^testing.T) {
 		clipboard_tool = saved_tool
 	}
 
-	term_toggle(&e.ed)
+	e2e_term_alt_t(&e)
 	if e.ed.terminal.shown == nil || !e.ed.terminal.shown.alive {
 		return // shell failed to spawn in this environment; nothing to drive.
 	}
@@ -280,14 +280,15 @@ e2e_terminal_pane :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "shell echoes the marker on its own row")
 
 	// Drag over the echoed text: press, motion, release auto-copies the trimmed run.
-	lay := overlay_layout(&e.ed)
+	area := e.ed.terminal.area
 	ec := sc + len("qed_e2e_marker") - 1
-	e2e_mouse(&e, lay.inner.x + sc, lay.inner.y + gy)
-	e2e_mouse(&e, lay.inner.x + ec, lay.inner.y + gy, .Mouse_Left, motion = true)
-	e2e_mouse(&e, lay.inner.x + ec, lay.inner.y + gy, .Mouse_Release)
+	e2e_mouse(&e, area.x + sc, area.y + gy)
+	e2e_mouse(&e, area.x + ec, area.y + gy, .Mouse_Left, motion = true)
+	e2e_mouse(&e, area.x + ec, area.y + gy, .Mouse_Release)
 	testing.expect_value(t, clipboard_register, "qed_e2e_marker")
 
 	// Esc at a plain shell prompt defocuses the pane (the shell survives).
 	e2e_key(&e, .Esc)
+	e2e_term_sync(&e)
 	testing.expect(t, !e.ed.terminal.active, "Esc closes the terminal at the prompt")
 }

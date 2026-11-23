@@ -745,6 +745,7 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 }
 
 CONFIG_MOVED :: [?][2]string {
+	{"keybinds/Terminal: Toggle", "plugins/terminal/keybinds/Toggle"},
 	{"keybinds/Message Log: Open", "plugins/log/keybinds/Open"},
 	{"keybinds/Message Log: Toggle Debug", "plugins/log/keybinds/Toggle Debug"},
 	{"keybinds/Message Log: Toggle Info", "plugins/log/keybinds/Toggle Info"},

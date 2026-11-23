@@ -1,0 +1,72 @@
+local ui = qed.ui
+
+local view
+
+local function hide()
+	if view then
+		view.handle:unmount()
+		view = nil
+	end
+end
+
+local function title_of(session)
+	if session == "shell" then
+		return nil
+	end
+	local state = qed.term.state(session)
+	if state and state.code and not state.running then
+		return ("%s (exited %d)"):format(session, state.code)
+	end
+	return session
+end
+
+local function build(session)
+	local state = qed.term.state(session)
+	local on
+	if not (state and state.running) then
+		on = {key = function() hide() return true end}
+	end
+	return ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 8, y = 3},
+		border = true, title = title_of(session), bg = "pane_background", fg = "pane_foreground",
+		ui.terminal{id = "terminal", session = session, grow = 1, scope = "terminal", on = on},
+	}
+end
+
+local function show(session)
+	if view then
+		view.session = session
+		view.handle:update(build(session))
+	else
+		view = {session = session}
+		view.handle = ui.mount("pane", build(session))
+	end
+	ui.node("terminal"):focus()
+end
+
+local function toggle()
+	if view then
+		hide()
+	else
+		qed.term.show("shell")
+	end
+end
+
+return {
+	setup = function()
+		qed.command{name = "Toggle", key = "Alt+t", welcome = true, run = toggle}
+		qed.command{name = "Hide", scope = "terminal", keybind = "Toggle", run = hide}
+		qed.command{name = "Close", scope = "terminal", key = "Esc", run = hide}
+		qed:on("terminal:show", show)
+		qed:on("terminal:hide", hide)
+		qed:on("term_exit", function(session)
+			if view and view.session == session then
+				view.handle:update(build(session))
+			end
+		end)
+		qed:on("term_close", function(session)
+			if view and view.session == session then
+				hide()
+			end
+		end)
+	end,
+}

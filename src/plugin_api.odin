@@ -1911,7 +1911,7 @@ qed_term_show :: proc "c" (L: ^lua.State) -> c.int {
 	} else if t = term_find(editor, name); t == nil {
 		return api_fail(L, "no such session")
 	}
-	term_show(editor, t)
+	plugin_queue(editor, {event = .Custom, a = "terminal:show", b = t.name})
 	lua.pushboolean(L, true)
 	return 1
 }
@@ -1920,7 +1920,7 @@ qed_term_hide :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	api_loaded(L, entry.editor)
-	entry.editor.terminal.active = false
+	plugin_queue(entry.editor, {event = .Custom, a = "terminal:hide"})
 	return 0
 }
 

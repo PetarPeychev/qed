@@ -75,8 +75,11 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 	gen := ui.gen
 	for node := focus; node != nil; node = node.parent {
 		ui.target = node
+		session := term_find(editor, node.session) if node.kind == .Terminal else nil
+		// full-screen programs (alt-screen) own Escape; at a plain shell prompt it goes to the pane
+		program_escape := session != nil && ev.key == .Esc && !ev_alt(ev) && (session.altscreen || !TERMINAL_ESCAPE_CLOSES)
 		for scope in node.scope {
-			if ui_scope_run(editor, scope, chord) {
+			if !program_escape && ui_scope_run(editor, scope, chord) {
 				return
 			}
 		}
@@ -84,6 +87,10 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 			return
 		}
 		if ui.gen != gen {
+			return
+		}
+		if session != nil && session.alive {
+			term_key(session, ev)
 			return
 		}
 		if node.kind == .Editor && text != "" && !node.readonly && ui_node_edits(node) {
@@ -172,6 +179,12 @@ ui_paste :: proc(editor: ^Editor, text: string) -> bool {
 		if node.handlers[.Paste] != 0 && ui_handler_call(editor, node.owner, node.handlers[.Paste], {text = text}) {
 			return true
 		}
+		if node.kind == .Terminal {
+			if session := term_find(editor, node.session); session != nil {
+				term_paste(session, text)
+				return true
+			}
+		}
 		if node.kind == .Editor && !node.readonly && ui_node_edits(node) {
 			if buffer := ui_buffer(editor, node.buffer); buffer != nil {
 				buffer_paste(buffer, text)
@@ -197,6 +210,11 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	ui := &editor.ui
 	cell_x, cell_y := int(ev.x), int(ev.y)
 	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
+	if ui.drag.active && (ev.key == .Mouse_Release || motion) {
+		if node := ui_find(ui, ui.drag.node); node != nil && node.kind == .Terminal {
+			term_dispatch_mouse(editor, ev)
+		}
+	}
 	if ev.key == .Mouse_Release {
 		was := ui.drag.active
 		ui.drag.active = false
@@ -270,6 +288,19 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 	ui := &editor.ui
 	step := -UI_WHEEL_STEP if ev.key == .Mouse_Wheel_Up else UI_WHEEL_STEP
 	#partial switch node.kind {
+	case .Terminal:
+		if session := term_find(editor, node.session); session != nil {
+			if ev.key == .Mouse_Left {
+				if node.id != "" {
+					ui_focus_set(editor, node.identity)
+				}
+				delete(ui.drag.node)
+				ui.drag = {node = strings.clone(node.identity), active = true}
+			}
+			editor.terminal.shown = session
+			term_dispatch_mouse(editor, ev)
+			return true
+		}
 	case .Scroll:
 		if wheel {
 			state := ui_node_state(ui, node)

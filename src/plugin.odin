@@ -143,6 +143,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"log/init.lua", #load("../plugins/log/init.lua", string)},
 	{"palette/init.lua", #load("../plugins/palette/init.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
+	{"terminal/init.lua", #load("../plugins/terminal/init.lua", string)},
 	{"settings/menu.lua", #load("../plugins/settings/menu.lua", string)},
 	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},

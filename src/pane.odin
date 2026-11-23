@@ -254,7 +254,6 @@ Pane :: struct {
 	modal:        bool,
 	dead:         bool,
 	parent:       u64,
-	over:         ^bool,
 	place:        PanePlace,
 	size:         PaneSize,
 	ctx:          PaneCtx,
@@ -679,7 +678,7 @@ pane_end :: proc(editor: ^Editor, handle: u64, activate: bool) {
 }
 
 pane_live :: proc(editor: ^Editor, p: ^Pane) -> bool {
-	if p.dead || (p.over != nil && !p.over^) {
+	if p.dead {
 		return false
 	}
 	if p.parent == 0 {
@@ -844,7 +843,7 @@ pane_stack_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	case .Mouse:
 		action = pane_mouse(editor, p, ev)
 	case .Resize:
-		editor_overlay_resize(editor)
+		editor_resize(editor)
 	}
 	if action == .Activate && p.list.tree && pane_tree_enter(editor, p) {
 		action = .None
