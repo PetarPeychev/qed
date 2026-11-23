@@ -676,7 +676,7 @@ so a lazily opened `@file` would race to an empty body. A
 reply for the same buffer, rev and cursor becomes `qed.deco.inline` text; Lua never sees the keys that
 accept or dismiss it. The plugin subscribes to `buf_changed` only while a request runs or completion is on.
 The ghost and the LSP completion popup coexist: `Tab` takes the ghost (and closes the popup), `Enter` the
-menu, and a multi-line ghost floats the popup above the caret (`completion_render`). See
+menu, and a multi-line ghost floats the popup above the caret (`caret_popup`). See
 [notes/ai.md](notes/ai.md).
 
 ## Settings menu
@@ -758,7 +758,7 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict safety dialogs as core-built `qed.ui` nodes in the alert layer) · `rename` (the LSP rename prompt, core-built) · `draw` (box, text and cell drawing helpers, `Rect`) · `log` (message ring + disk log) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `preview` (preview read limits, binary check, hexdump rows) · `palette` · `walk` (walk service, `qed.fs` writes) · `walk_tree` (`walk:tree()` list kind) · `fuzzy` ·
-`find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `rename` ·
+`find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `caret_popup` (completion menu, hover and the caret diagnostic as core-built `qed.ui` floats at `anchor = "cursor"` under the focused editor: a core mount in the `caret` outlet, rebuilt only when its content changes) · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (walk handles, `qed.theme`, `qed.status`) · `ui`/`ui_api`/`ui_input`/`ui_list`/`ui_lines`/`ui_markdown` (the `qed.ui` engine, lists, line lists, the markdown node) · `prelude.lua` (node constructors, `qed.markdown.parse`, `qed.ui.dismissable`, `qed.pick`/`prompt`/`confirm` forwarding to the `dialog` plugin) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`layout/`: the default UI (main editor, status row, message

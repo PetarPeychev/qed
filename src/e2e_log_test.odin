@@ -177,3 +177,30 @@ e2e_log_wheel_unsticks_follow :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "late arrival") < 0, "scrolled up, a new entry does not pull the view down")
 }
+
+@(test)
+e2e_log_history_toggle_and_range_survive :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	editor_log(&e.ed, .Info, "", "from a past session", show = false)
+	e.ed.log[len(e.ed.log) - 1].seeded = true
+	for i in 0 ..< 4 {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %d", i), show = false)
+	}
+	log_open_now(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "past session") < 0, "history is off by default")
+	e2e_type(&e, "h")
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "past session") >= 0, "h shows past sessions")
+	e2e_type(&e, "h")
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Arrow_Up)
+	e2e_step(&e, tb2.Event{type = .Key, key = .Arrow_Up, mod = tb2.Mod.Shift})
+	node := ui_find(&e.ed.ui, "#log/log_rows")
+	from := ui_node_state_peek(&e.ed.ui, node).extend_from
+	testing.expect(t, from != "", "a range is selected")
+	editor_log(&e.ed, .Info, "", "late arrival", show = false)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, ui_node_state_peek(&e.ed.ui, node).extend_from, from)
+}

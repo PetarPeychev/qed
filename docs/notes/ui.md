@@ -87,6 +87,9 @@ Positional values are children, named values are props. Common props: `id`, `key
   `rows`, `sources` (source rows of the visible lines), `heading` (source row of the last `heading` set).
   `set_state{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the
   document allows) or `{heading = slug}` moves the holding scroll, now when shown, else at the next layout.
+- Caret popups: the completion menu, the hover and the diagnostic under the caret are core-built floats
+  (`anchor = "cursor"`) that core attaches under the focused editor showing the current buffer; the wheel scrolls
+  the hover, any other click or key dismisses them.
 - `qed.ui.dismissable{on_dismiss = fn, pane, ...}` (prelude): a full-screen catcher column holding the panes; a
   click outside them calls `on_dismiss`, a click inside stays with the pane after its own `on.click`.
 - `virtual_column`: `item` runs in a batched step between layout passes, only for records coming into view, cached
