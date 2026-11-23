@@ -34,15 +34,6 @@ ui_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	return false
 }
 
-ui_target_editor :: proc(node: ^UiNode) -> ^UiNode {
-	for node := node; node != nil; node = node.parent {
-		if node.kind == .Editor {
-			return node
-		}
-	}
-	return nil
-}
-
 ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 	ui := &editor.ui
 	chord := ui_chord_of_event(ev)

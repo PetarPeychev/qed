@@ -670,11 +670,6 @@ walk_narrow_reset :: proc(src: ^ListSource) {
 	clear(&src.narrow_idx)
 }
 
-list_walk_keep_clear :: proc(src: ^ListSource) {
-	delete(src.keep)
-	src.keep = ""
-}
-
 walk_rel :: proc(path, root: string) -> string {
 	if strings.has_prefix(path, root) {
 		return strings.trim_left(path[len(root):], "/")
@@ -1262,16 +1257,6 @@ ListSource :: struct {
 	keep:      string,
 	expanding: bool,
 	resume:    bool,
-}
-
-list_source_clone :: proc(s: ListSource) -> ListSource {
-	if s.walk != nil {
-		s.walk.refs += 1
-	}
-	if s.wscope != nil {
-		s.wscope.refs += 1
-	}
-	return {kind = s.kind, scope = strings.clone(s.scope), path = strings.clone(s.path), dotfiles = s.dotfiles, buf = s.buf, walk = s.walk, wscope = s.wscope}
 }
 
 list_source_free :: proc(s: ^ListSource) {

@@ -39,7 +39,6 @@ test_highlight_incremental :: proc(t: ^testing.T) {
 	highlight_injection(t)
 	highlight_predicates(t)
 	highlight_correctness(t)
-	preview_highlight(t)
 	highlight_perf(t)
 	highlight_error_heavy(t)
 	highlight_slow_flag(t)

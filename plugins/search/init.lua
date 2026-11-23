@@ -115,7 +115,7 @@ local function build()
 		ui.box{id = "search", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
 			border = true, title = "Search", bg = "pane_background", fg = "pane_foreground",
 			ui.row{separator = view.preview ~= nil,
-				ui.column{width = view.preview and {"40%", min = 24, max = 70} or nil, grow = view.preview and 0 or 1,
+				ui.column{width = view.preview and {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")} or nil, grow = view.preview and 0 or 1,
 					ui.row{height = 1,
 						ui.text{fg = "pane_prompt_foreground", "> "},
 						ui.editor{id = "search_query", buffer = view.query, height = 1, grow = 1, scope = {"search", "editor"},

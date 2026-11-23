@@ -641,21 +641,3 @@ diff_word_span :: proc(old, new: string) -> (old_span, new_span: [2]int) {
 is_utf8_cont :: proc(c: u8) -> bool {
 	return c & 0xc0 == 0x80
 }
-
-diff_split_lines :: proc(s: string, allocator := context.temp_allocator) -> [dynamic]string {
-	out := make([dynamic]string, allocator)
-	if len(s) == 0 {
-		return out
-	}
-	for seg in strings.split(s, "\n", allocator) {
-		t := seg
-		if len(t) > 0 && t[len(t) - 1] == '\r' {
-			t = t[:len(t) - 1]
-		}
-		append(&out, t)
-	}
-	if len(out) > 0 && out[len(out) - 1] == "" {
-		pop(&out)
-	}
-	return out
-}

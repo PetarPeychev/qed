@@ -365,8 +365,6 @@ local function preview_close()
 	end
 end
 
-local DIFF_CONTEXT = 3
-
 local function split_lines(text)
 	local out = {}
 	for line in (text .. "\n"):gmatch("([^\n]*)\n") do
@@ -405,8 +403,8 @@ local function changed_rows(buffer, base)
 	end
 	local keep = {}
 	for _, hunk in ipairs(hunks) do
-		local first = math.max(1, hunk.b - DIFF_CONTEXT)
-		local last = math.min(#current, hunk.b + math.max(hunk.b_count, 1) - 1 + DIFF_CONTEXT)
+		local first = math.max(1, hunk.b - qed.opt("preview_diff_context"))
+		local last = math.min(#current, hunk.b + math.max(hunk.b_count, 1) - 1 + qed.opt("preview_diff_context"))
 		for row = first, last do
 			keep[row] = true
 		end

@@ -62,7 +62,7 @@ local function build()
 		ui.box{id = "goto", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
 			border = true, title = "Go to Line", bg = "pane_background", fg = "pane_foreground",
 			ui.row{
-				ui.column{width = {"40%", min = 24, max = 70},
+				ui.column{width = {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")},
 					ui.row{height = 1,
 						ui.text{fg = "pane_prompt_foreground", "> "},
 						ui.editor{id = "goto_query", buffer = view.query, height = 1, grow = 1, scope = {"goto", "editor"},

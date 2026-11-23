@@ -313,13 +313,6 @@ editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
 	return
 }
 
-editor_resize :: proc(editor: ^Editor) {
-	editor_scroll(editor)
-	if editor.terminal.active {
-		term_resize(editor)
-	}
-}
-
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	origin := jump_here(editor)
 	defer jump_record(editor, origin)

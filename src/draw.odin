@@ -51,23 +51,6 @@ scrollbar_thumb :: proc(offset, visible, total: int) -> (start, length: int) {
 	return
 }
 
-draw_scrollbar :: proc(x, y, visible, offset, total: int) {
-	start, length := scrollbar_thumb(offset, visible, total)
-	for i in 0 ..< length {
-		tb2.set_cell(i32(x), i32(y + start + i), '┃', COLOR_PANE_FG, COLOR_PANE_BG)
-	}
-}
-
-draw_hline :: proc(box: Rect, y: int) {
-	left := box.x
-	right := box.x + box.w - 1
-	for x in left + 1 ..< right {
-		tb2.set_cell(i32(x), i32(y), '─', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	}
-	tb2.set_cell(i32(left), i32(y), '├', COLOR_PANE_BORDER, COLOR_PANE_BG)
-	tb2.set_cell(i32(right), i32(y), '┤', COLOR_PANE_BORDER, COLOR_PANE_BG)
-}
-
 draw_fill_row :: proc(x, y, w: int, fg, bg: tb2.Color) {
 	for col in 0 ..< w {
 		tb2.set_cell(i32(x + col), i32(y), ' ', fg, bg)
@@ -107,14 +90,6 @@ cell_put_cluster :: proc(x, y: int, cluster: []u8, fg, bg: tb2.Color) {
 		tb2.extend_cell(i32(x), i32(y), rr)
 		rest = rest[m:]
 	}
-}
-
-cell_measure :: proc(s: string, cap: int) -> int {
-	b := transmute([]u8)s
-	if c := col_at_visual(b, cap + 1); c < len(b) {
-		return max(visual_width(b[:c]), cap + 1)
-	}
-	return visual_width(b)
 }
 
 cell_clip :: proc(text: string, w: int) -> string {

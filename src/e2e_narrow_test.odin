@@ -92,13 +92,13 @@ e2e_narrow_linefind_code_split :: proc(t: ^testing.T) {
 	box := node_rect(&e.ed, "goto")
 	query := node_rect(&e.ed, "goto_query")
 	preview := node_rect(&e.ed, "goto_preview")
-	testing.expect_value(t, query.w + 2, 70)
+	testing.expect_value(t, query.w + 2, SPLIT_CODE_MAX_WIDTH)
 	testing.expectf(t, preview.x >= query.x + query.w && preview.w > 100, "the preview fills the rest: %v %v", query, preview)
 	testing.expect_value(t, box.x, 2)
 
 	e2e_resize(&e, 100, E2E_H)
 	query = node_rect(&e.ed, "goto_query")
-	testing.expect_value(t, query.w + 2, 37)
+	testing.expect_value(t, query.w + 2, SPLIT_CODE_MIN_WIDTH)
 
 	box = node_rect(&e.ed, "goto")
 	e2e_mouse(&e, box.x - 1, box.y + 3)

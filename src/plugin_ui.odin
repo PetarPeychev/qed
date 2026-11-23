@@ -129,15 +129,6 @@ plugin_ui_unload :: proc(editor: ^Editor, owner: string) {
 	}
 }
 
-plugin_command_id_matches :: proc(editor: ^Editor, id: u64, ev: tb2.Event) -> bool {
-	for cmd in editor.plugins.commands {
-		if cmd.id == id {
-			return plugin_command_matches(cmd, ev)
-		}
-	}
-	return false
-}
-
 QED_LIST_META :: "qed.PaneSource"
 
 qed_fs_walk :: proc "c" (L: ^lua.State) -> c.int {

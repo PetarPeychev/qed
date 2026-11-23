@@ -201,7 +201,7 @@ local function split_frame(prompt, item)
 		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
 			border = true, bg = "pane_background", fg = "pane_foreground",
 			ui.row{
-				ui.column{width = {"40%", min = 24, max = 70},
+				ui.column{width = {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")},
 					query_row(prompt, {"dialog_list", "dialog", "editor"}),
 					ui.scroll{grow = 1,
 						ui.virtual_column{id = "dialog_rows", data = dialog.matches, item = item_row,

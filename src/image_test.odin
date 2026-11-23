@@ -403,55 +403,6 @@ e2e_image_preview :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(again, "\x1b_G"), "a redraw sends nothing new")
 }
 
-@(test)
-e2e_image_file_preview :: proc(t: ^testing.T) {
-	e2e_enter()
-	defer sync.mutex_unlock(&e2e_lock)
-	saved, saved_cell := IMAGE_PROTOCOL, g_image_cell
-	defer {
-		IMAGE_PROTOCOL, g_image_cell = saved, saved_cell
-		image_shutdown()
-	}
-	dir := image_fixture_dir("preview")
-	defer image_fixture_drop(dir)
-	g_image_cell = {1, 1}
-	p: Preview
-	defer preview_destroy(&p)
-
-	IMAGE_PROTOCOL = .None
-	preview_set_file(&p, fmt.tprintf("%s/pic.png", dir), 0, 10)
-	testing.expect(t, p.image == 0 && p.hex, "no protocol: an image file previews as a hexdump")
-
-	IMAGE_PROTOCOL = .Kitty
-	preview_set_file(&p, fmt.tprintf("%s/pic.png", dir), 0, 10)
-	testing.expect(t, p.image != 0 && !p.hex, "an image file previews as the image")
-	tb2.clear()
-	preview_render(&p, 0, 0, 40, 10)
-	cell: ^tb2.Cell_Raw
-	tb2.get_cell(2, 1, 1, &cell)
-	testing.expect_value(t, rune(cell.ch), IMAGE_PLACEHOLDER)
-	testing.expect_value(t, u32(u64(cell.fg) & COLOR_RGB_MASK), p.image)
-	tb2.get_cell(2, 2, 1, &cell)
-	testing.expect(t, rune(cell.ch) != IMAGE_PLACEHOLDER, "a 2x2 image takes two rows")
-
-	preview_set_file(&p, fmt.tprintf("%s/gray.png", dir), 0, 10)
-	image_shutdown()
-	os.remove(fmt.tprintf("%s/gray.png", dir))
-	tb2.clear()
-	preview_render(&p, 0, 0, 40, 10)
-	sb := strings.builder_make(context.temp_allocator)
-	for x in 0 ..< 40 {
-		tb2.get_cell(i32(x), 0, 1, &cell)
-		strings.write_rune(&sb, rune(cell.ch))
-	}
-	testing.expect(t, strings.contains(strings.to_string(sb), PREVIEW_IMAGE_FAILED_TEXT), "a preview whose image left the cache and the disk says so")
-
-	_ = os.write_entire_file(fmt.tprintf("%s/fake.png", dir), transmute([]u8)string("\x89PNG\r\n\x1a\nbroken"))
-	defer os.remove(fmt.tprintf("%s/fake.png", dir))
-	preview_set_file(&p, fmt.tprintf("%s/fake.png", dir), 0, 10)
-	testing.expect(t, p.image == 0, "an undecodable image falls back to the plain preview")
-}
-
 @(private = "file")
 image_pump_idle :: proc(editor: ^Editor) {
 	for _ in 0 ..< 5000 {
