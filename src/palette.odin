@@ -119,8 +119,6 @@ cmd_log_error :: proc(editor: ^Editor) {logview_toggle(editor, .Error)}
 commands := [?]Command {
 	{name = "Command Palette", run = palette_open},
 	{name = "Terminal: Toggle", run = term_toggle},
-	{name = "Find", run = find_open},
-	{name = "Replace", run = find_open_replace},
 	{name = "Go to: Start of File", run = cmd_buffer_start},
 	{name = "Go to: End of File", run = cmd_buffer_end},
 	{name = "Jump Back", run = jump_back},

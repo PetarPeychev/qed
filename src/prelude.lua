@@ -42,7 +42,7 @@ end
 local BUFFER_METHODS = {"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line",
 	"find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor",
 	"screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base",
-	"base", "line_list", "on"}
+	"base", "line_list", "on", "find", "find_step", "find_replace", "find_clear"}
 
 local BUFFER_EVENTS = {buf_open = true, buf_enter = true, buf_close = true, buf_pre_save = true, buf_save = true,
 	buf_reload = true, buf_changed = true, cursor_moved = true, language_changed = true}

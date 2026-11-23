@@ -48,6 +48,9 @@
     "filetree": {
       "enabled": true
     },
+    "find": {
+      "enabled": true
+    },
     "format": {
       "enabled": true
     },
@@ -80,8 +83,6 @@
   "keybinds": {
     "Command Palette": "Ctrl+p",
     "Terminal: Toggle": "Alt+t",
-    "Find": "Ctrl+f",
-    "Replace": "Ctrl+h",
     "Go to: Start of File": "Alt+{",
     "Go to: End of File": "Alt+}",
     "Jump Back": "Alt+,",

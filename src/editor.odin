@@ -73,6 +73,7 @@ Editor :: struct {
 	inspect:         Inspect,
 	headless:        bool,
 	ui:              Ui,
+	caret_view:      EditorView,
 }
 
 editor_terminal_init :: proc() -> (fallback: string) {
@@ -330,11 +331,8 @@ Overlay :: struct {
 	paste:    proc(editor: ^Editor, text: string),
 }
 
-editor_overlays :: proc(editor: ^Editor) -> [2]Overlay {
-	return {
-		{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay},
-		{&editor.find.active, find_dispatch_key, find_render, find_dispatch_mouse, find_paste},
-	}
+editor_overlays :: proc(editor: ^Editor) -> [1]Overlay {
+	return {{&editor.terminal.active, term_dispatch, term_render, term_dispatch_mouse, term_paste_overlay}}
 }
 
 editor_overlay_active :: proc(editor: ^Editor) -> ^bool {
@@ -855,6 +853,7 @@ editor_close_index :: proc(editor: ^Editor, idx: int) {
 	editor.jump_lock = true
 	plugin_queue(editor, {event = .Buf_Close, buf = editor.buffers[idx].id, a = editor.buffers[idx].path})
 	lsp_did_close(editor, &editor.buffers[idx])
+	plugin_buffer_hooks_drop(&editor.plugins, editor.buffers[idx].id)
 	buffer_destroy(&editor.buffers[idx])
 	ordered_remove(&editor.buffers, idx)
 	if len(editor.buffers) == 0 {
@@ -1298,13 +1297,15 @@ editor_goto :: proc(editor: ^Editor, row, col: int) {
 }
 
 editor_highlight_clips :: proc(editor: ^Editor, top, bot: int) -> []HighlightClip {
-	b := editor_buffer(editor)
 	w, h := editor_viewport(editor)
+	return highlight_clips_view(editor_buffer(editor), w, h, editor.scroll_row, editor.scroll_sub, editor.scroll_col, inline_active(editor), top, bot)
+}
+
+highlight_clips_view :: proc(b: ^Buffer, w, h, scroll_row, scroll_sub, scroll_col: int, ghost: bool, top, bot: int) -> []HighlightClip {
 	clips := make([dynamic]HighlightClip, context.temp_allocator)
 	if w <= 0 {
 		return nil
 	}
-	ghost := inline_active(editor)
 	for row in max(top, 0) ..= min(bot, len(b.lines) - 1) {
 		text := b.lines[row].text[:]
 		if len(text) < HIGHLIGHT_CLIP_BYTES {
@@ -1314,12 +1315,12 @@ editor_highlight_clips :: proc(editor: ^Editor, top, bot: int) -> []HighlightCli
 		if b.wrap {
 			// A ghost line wraps from its start, its text only pushing the line's bytes further down.
 			segs := buffer_line_wrap(b, row, w)
-			sub := clamp(editor.scroll_sub, 0, len(segs) - 1) if row == editor.scroll_row && !(ghost && row == b.cursor.row) else 0
+			sub := clamp(scroll_sub, 0, len(segs) - 1) if row == scroll_row && !(ghost && row == b.cursor.row) else 0
 			lo = segs[sub]
 			hi = segs[sub + h + 1] if sub + h + 1 < len(segs) else len(text)
 		} else {
-			lo = col_at_visual(text, editor.scroll_col - 1)
-			hi = col_at_visual(text, editor.scroll_col + w + 1)
+			lo = col_at_visual(text, scroll_col - 1)
+			hi = col_at_visual(text, scroll_col + w + 1)
 		}
 		append(&clips, HighlightClip{row, lo, hi})
 	}
@@ -1330,9 +1331,13 @@ editor_render :: proc(editor: ^Editor) {
 	image_frame_begin()
 	tb2.clear()
 	ui_prepare(editor)
+	editor_syntax_errors_report(editor)
 	tree_base := ui_layer_used(&editor.ui, "base")
 	if tree_base {
 		ui_render(editor)
+		if editor.inspect.active && !editor.welcome {
+			inspect_render(editor)
+		}
 		editor_render_overlays(editor, true)
 		return
 	}
@@ -1345,16 +1350,7 @@ editor_render :: proc(editor: ^Editor) {
 		if !editor_buffer(editor).big {
 			top, bot := editor.scroll_row, editor.scroll_row + vh - 1
 			highlight_update(editor_buffer(editor), top, bot, editor_highlight_clips(editor, top, bot))
-			if g_syntax_error != "" {
-				editor_log(editor, .Error, "Syntax", fmt.tprintf("failed to load %s grammar", g_syntax_error))
-				editor_log(editor, .Debug, "Syntax", fmt.tprintf("%s %s compile failed", g_syntax_error, g_syntax_error_detail))
-				g_syntax_error = ""
-				g_syntax_error_detail = ""
-			}
-			if g_syntax_inject_error != "" {
-				editor_log(editor, .Debug, "Syntax", fmt.tprintf("injection query compile failed: %s", g_syntax_inject_error))
-				g_syntax_inject_error = ""
-			}
+			editor_syntax_errors_report(editor)
 			diffbase_update(editor_buffer(editor))
 		}
 		editor_render_buffer(editor)
@@ -1419,6 +1415,27 @@ editor_render :: proc(editor: ^Editor) {
 	tb2.present()
 }
 
+editor_caret_area :: proc(editor: ^Editor) -> EditorView {
+	if editor.caret_view.h > 0 {
+		return editor.caret_view
+	}
+	w, h := editor_viewport(editor)
+	return {w = w, h = h, gutter = editor_gutter_width(editor), scroll_col = editor.scroll_col}
+}
+
+editor_syntax_errors_report :: proc(editor: ^Editor) {
+	if g_syntax_error != "" {
+		editor_log(editor, .Error, "Syntax", fmt.tprintf("failed to load %s grammar", g_syntax_error))
+		editor_log(editor, .Debug, "Syntax", fmt.tprintf("%s %s compile failed", g_syntax_error, g_syntax_error_detail))
+		g_syntax_error = ""
+		g_syntax_error_detail = ""
+	}
+	if g_syntax_inject_error != "" {
+		editor_log(editor, .Debug, "Syntax", fmt.tprintf("injection query compile failed: %s", g_syntax_inject_error))
+		g_syntax_inject_error = ""
+	}
+}
+
 editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool) {
 	pane_stack_render(editor, true)
 	covered := false
@@ -1471,9 +1488,9 @@ editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
 		return
 	}
 	sw := int(tb2.width())
-	_, h := editor_viewport(editor)
-	room_below := h - (cy + 1)
-	room_above := cy
+	area := editor_caret_area(editor)
+	room_below := area.y + area.h - (cy + 1)
+	room_above := cy - area.y
 	view_h := min(len(lines), HOVER_PANE_MAX_LINES, max(room_below, room_above) - 2)
 	if view_h <= 0 {
 		return
@@ -1500,9 +1517,9 @@ editor_render_text_pane :: proc(editor: ^Editor, cx, cy: int, lines: []string, f
 		return
 	}
 	sw := int(tb2.width())
-	_, h := editor_viewport(editor)
-	room_below := h - (cy + 1)
-	room_above := cy
+	area := editor_caret_area(editor)
+	room_below := area.y + area.h - (cy + 1)
+	room_above := cy - area.y
 	content_h := min(len(lines), max_lines, max(room_below, room_above) - 2)
 	if content_h <= 0 {
 		return
@@ -1685,9 +1702,10 @@ editor_render_buffer :: proc(editor: ^Editor) {
 		bg           = COLOR_BG,
 		syntax       = true,
 		current_line = true,
-		find         = editor.find.active,
+		find         = find_shows(editor, editor_buffer(editor)),
 		inline       = true,
 	}
+	editor.caret_view = view
 	editor_render_view(editor, &view)
 }
 

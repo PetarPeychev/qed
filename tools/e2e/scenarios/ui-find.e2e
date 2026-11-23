@@ -1,0 +1,24 @@
+# Find plugin on qed.ui: query, regex toggle, replace one and all.
+file notes.txt
+cat dog cat
+the cat sat
+catalog
+end
+run notes.txt
+wait catalog
+key ctrl+f
+type cat
+snap found
+key down down
+snap stepped
+key esc
+key ctrl+h
+type cat
+key tab
+type lion
+key enter
+snap replaced
+key alt+a
+snap all
+key esc
+snap closed

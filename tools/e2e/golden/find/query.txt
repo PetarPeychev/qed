@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 38,2
 -- text
   1 package main
   2                         ┌────────────────────────────────────────────────┐
-  3 import "fmt"            │Find name                         .* Aa 1/4     │
+  3 import "fmt"            │Find name                      .* Aa        1/4 │
   4                         └────────────────────────────────────────────────┘
   5 func greet(name string) string {
   6     return "hello, " + name
@@ -27,15 +27,15 @@ qed-e2e snapshot 80x24 cursor 38,2
 -- style
 aaaabbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaaccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
-aaaabbbbbbceeeeeccccccccccccdfffffggggdddddddddddddddddddddddddddddddgggddddddcc
+aaaabbbbbbceeeeeccccccccccccdfffffddddddddddddddddddddddddddggdggddddddddggggdcc
 aaaaccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ahhhiiiijjjjjjjkkkkjlllllljjlllllljjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
-aaaaccccbbbbbbceeeeeeeeecccmmmmccccccccccccccccccccccccccccccccccccccccccccccccc
+ahhhbbbbccccccciiiicjjjjjjccjjjjjjcccccccccccccccccccccccccccccccccccccccccccccc
+aaaaccccbbbbbbceeeeeeeeeccckkkkccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaabbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-aaaaccccbbbccccmmmmccccbbbbbcccnnnnnnceeeeecceeeeeeecccccccccccccccccccccccccccc
-aaaaccccccccccccccccccccccccccmmmmcccccccccccccccccccccccccccccccccccccccccccccc
+aaaaccccbbbcccckkkkccccbbbbbcccjjjjjjceeeeecceeeeeeecccccccccccccccccccccccccccc
+aaaacccccccccccccccccccccccccckkkkcccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,21 +47,17 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggooo
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddggg
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#ffdd33 bg=#181818
 c fg=#f4f4ff bg=#181818
-d fg=#868686 bg=#2b2b2b
+d fg=#f4f4ff bg=#2b2b2b
 e fg=#73c936 bg=#181818
 f fg=#ffdd33 bg=#2b2b2b
-g fg=#f4f4ff bg=#2b2b2b
+g fg=#686868 bg=#2b2b2b
 h fg=#d8d8d8 bg=#1b1b1b
-i fg=#ffdd33 bg=#262626
-j fg=#f4f4ff bg=#262626
-k fg=#181818 bg=#f4f4ff
-l fg=#96a6c8 bg=#262626
-m fg=#f4f4ff bg=#453b1a
-n fg=#96a6c8 bg=#181818
-o fg=#686868 bg=#2b2b2b
+i fg=#181818 bg=#f4f4ff
+j fg=#96a6c8 bg=#181818
+k fg=#f4f4ff bg=#453b1a

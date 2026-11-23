@@ -150,7 +150,6 @@ UiNode :: struct {
 	line_numbers:    bool,
 	syntax:          bool,
 	readonly:        bool,
-	current_line:    UiStyle,
 	list:            u64,
 	list_ref:        i32,
 	item_ref:        i32,
@@ -216,6 +215,8 @@ Ui :: struct {
 	internal_owner: map[u64]string,
 	builds:        int,
 	scopes_warned: map[string]bool,
+	lists_dead:    [dynamic]u64,
+	chords:        map[string]string,
 }
 
 ui_destroy :: proc(editor: ^Editor) {
@@ -256,6 +257,12 @@ ui_destroy :: proc(editor: ^Editor) {
 		delete(scope)
 	}
 	delete(ui.scopes_warned)
+	delete(ui.lists_dead)
+	for shortcut, chord in ui.chords {
+		delete(shortcut)
+		delete(chord)
+	}
+	delete(ui.chords)
 }
 
 ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
@@ -290,8 +297,8 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 			lua_unref(L, node.list_ref)
 		}
 	}
-	for span in node.scope {
-		delete(span)
+	for scope in node.scope {
+		delete(scope)
 	}
 	delete(node.scope)
 	for span in node.spans {
@@ -301,7 +308,6 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 	delete(node.spans)
 	ui_style_free(node.style)
 	ui_style_free(node.highlight_style)
-	ui_style_free(node.current_line)
 	delete(node.id)
 	delete(node.key)
 	delete(node.identity)
@@ -552,6 +558,9 @@ ui_resolve :: proc(editor: ^Editor) {
 	clear(&ui.virtuals)
 	clear(&ui.editors)
 	visiting := make(map[u64]bool, 16, context.temp_allocator)
+	for mount in ui.mounts {
+		mount.root.parent = nil
+	}
 	for layer in UI_LAYERS {
 		for mount in ui.mounts {
 			if mount.outlet == layer {
@@ -679,6 +688,7 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 }
 
 ui_internal_close :: proc(editor: ^Editor, id: u64) -> bool {
+	plugin_buffer_hooks_drop(&editor.plugins, id)
 	ui := &editor.ui
 	for buffer, i in ui.internal {
 		if buffer.id == id {
@@ -1260,11 +1270,12 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 	if buffer.cursor.row >= state.scroll_row + height {
 		state.scroll_row = buffer.cursor.row - height + 1
 	}
-	vx := visual_col(buffer.lines[buffer.cursor.row].text[:], buffer.cursor.col)
-	if vx < state.scroll_col {
-		state.scroll_col = vx
-	} else if vx >= state.scroll_col + width {
-		state.scroll_col = vx - width + 1
+	visual_x := visual_col(buffer.lines[buffer.cursor.row].text[:], buffer.cursor.col)
+	margin := min(SCROLL_MARGIN, width / 4)
+	if visual_x < state.scroll_col + margin {
+		state.scroll_col = max(visual_x - margin, 0)
+	} else if visual_x >= state.scroll_col + width - margin {
+		state.scroll_col = visual_x - width + margin + 1
 	}
 }
 
@@ -1329,6 +1340,10 @@ ui_prepare :: proc(editor: ^Editor) {
 	clear(&ui.hits)
 	ui.caret_shown = false
 	ui_graveyard_flush(editor)
+	for id in ui.lists_dead {
+		ui_list_remove_by_id(editor, id)
+	}
+	clear(&ui.lists_dead)
 	ui_resolve(editor)
 	ui_focused(editor)
 	if len(ui.mounts) == 0 {
@@ -1373,7 +1388,10 @@ ui_prepare :: proc(editor: ^Editor) {
 		buffer := ui_buffer(editor, node.buffer)
 		if buffer != nil && node.syntax && !buffer.big && node.rect.h > 0 {
 			state := ui_node_state(ui, node)
-			highlight_update(buffer, state.scroll_row, state.scroll_row + node.rect.h - 1)
+			width := ui_editor_text_width(node, buffer)
+			top, bottom := state.scroll_row, state.scroll_row + node.rect.h - 1
+			ghost := inline_active(editor) && ui_editor_shows_current(editor, buffer)
+			highlight_update(buffer, top, bottom, highlight_clips_view(buffer, width, node.rect.h, state.scroll_row, state.scroll_sub, state.scroll_col, ghost, top, bottom))
 			diffbase_update(buffer)
 		}
 	}
@@ -1432,12 +1450,16 @@ ui_virtual_build :: proc(editor: ^Editor, node: ^UiNode) {
 		if list.rev != rev || i >= ui_list_count(list) {
 			break
 		}
-		key := ui_list_key(list, i)
+		key := strings.clone(ui_list_key(list, i), context.temp_allocator)
 		item, cached := node.items[key]
 		if !cached {
-			built := ui_item_build(editor, node, list, i)
+			built := ui_item_build(editor, node, list, i, key)
 			if built == nil {
 				continue
+			}
+			if list.rev != rev {
+				ui_node_free(editor, built)
+				break
 			}
 			item = UiItem{built, ui_list_record_rev(list, i)}
 			node.items[strings.clone(key)] = item
@@ -1533,9 +1555,9 @@ UiPaint :: struct {
 	bg:       tb2.Color,
 }
 
-ui_cell :: proc(paint: ^UiPaint, cell_x, cell_y: int, rect: rune, fg, bg: tb2.Color) {
+ui_cell :: proc(paint: ^UiPaint, cell_x, cell_y: int, character: rune, fg, bg: tb2.Color) {
 	if ui_rect_has(paint.clip, cell_x, cell_y) {
-		tb2.set_cell(i32(cell_x), i32(cell_y), rect, fg, bg)
+		tb2.set_cell(i32(cell_x), i32(cell_y), character, fg, bg)
 	}
 }
 
@@ -1575,13 +1597,21 @@ ui_render :: proc(editor: ^Editor) {
 			}
 			ui_render_node(editor, floating, &paint, &floats)
 		}
+		if layer == "base" {
+			ui_render_caret(editor, true)
+		}
 	}
+	ui_render_caret(editor, false)
+}
+
+ui_render_caret :: proc(editor: ^Editor, popups: bool) {
+	ui := &editor.ui
 	if focused := ui_focused(editor); focused != nil && focused.kind == .Editor && !focused.hidden {
 		if cell_x, cell_y, ok := ui_editor_caret_pos(editor, focused); ok && ui_rect_has(focused.clip, cell_x, cell_y) {
 			ui.caret = {cell_x, cell_y}
 			ui.caret_shown = true
 			buffer := ui_buffer(editor, focused.buffer)
-			if ui_editor_shows_current(editor, buffer) {
+			if popups && ui_editor_shows_current(editor, buffer) {
 				ghost := inline_active(editor)
 				if ghost && !buffer.wrap {
 					inline_render(editor, cell_x, cell_y)
@@ -1745,8 +1775,8 @@ ui_draw_text :: proc(paint: ^UiPaint, cell_x, cell_y, width: int, text: string, 
 			break
 		}
 		if bytes[i] == '\t' {
-			for key in 0 ..< cw {
-				ui_cell(paint, cell_x + col + key, cell_y, ' ', fg, bg)
+			for offset in 0 ..< cw {
+				ui_cell(paint, cell_x + col + offset, cell_y, ' ', fg, bg)
 			}
 		} else if ui_rect_has(paint.clip, cell_x + col, cell_y) && ui_rect_has(paint.clip, cell_x + col + cw - 1, cell_y) {
 			cell_put_cluster(cell_x + col, cell_y, bytes[i:next_index], fg, bg)
@@ -1797,6 +1827,19 @@ ui_render_text :: proc(paint: ^UiPaint, node: ^UiNode) {
 	}
 }
 
+ui_editor_advance :: proc(buffer: ^Buffer, width, row, sub_row, rows: int) -> (int, int) {
+	row, sub_row := row, sub_row
+	for _ in 0 ..< max(rows, 0) {
+		if buffer.wrap && width > 0 && sub_row + 1 < line_rows(buffer, width, row) {
+			sub_row += 1
+		} else if row + 1 < len(buffer.lines) {
+			row += 1
+			sub_row = 0
+		}
+	}
+	return row, sub_row
+}
+
 ui_editor_shows_current :: proc(editor: ^Editor, buffer: ^Buffer) -> bool {
 	return buffer != nil && !editor.welcome && len(editor.buffers) > 0 && editor_buffer(editor) == buffer
 }
@@ -1812,6 +1855,8 @@ ui_render_editor :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	}
 	state := ui_node_state(&editor.ui, node)
 	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
+	width := ui_editor_text_width(node, buffer)
+	row, sub_row := ui_editor_advance(buffer, width, state.scroll_row, state.scroll_sub, visible.y - node.rect.y)
 	base := ui_style_over(paint.inherit, paint.override)
 	foreground, background := ui_style_colors(base, COLOR_FG, paint.bg)
 	shows_current := ui_editor_shows_current(editor, buffer)
@@ -1820,19 +1865,24 @@ ui_render_editor :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 		buffer       = buffer,
 		x            = node.rect.x,
 		y            = visible.y,
-		w            = ui_editor_text_width(node, buffer),
+		w            = width,
 		h            = visible.h,
 		gutter       = gutter,
-		scroll_row   = state.scroll_row,
-		scroll_sub   = state.scroll_sub,
+		scroll_row   = row,
+		scroll_sub   = sub_row,
 		scroll_col   = state.scroll_col,
 		bg           = background,
 		fg           = foreground,
 		fg_set       = .Fg in base.set,
 		syntax       = node.syntax && !buffer.big,
 		current_line = node.line_numbers && focused,
-		find         = shows_current && editor.find.active,
+		find         = find_shows(editor, buffer),
 		inline       = shows_current && focused,
+	}
+	if shows_current && focused {
+		editor.caret_view = view
+		editor.caret_view.y, editor.caret_view.h = node.rect.y, node.rect.h
+		editor.caret_view.scroll_row, editor.caret_view.scroll_sub = state.scroll_row, state.scroll_sub
 	}
 	editor_render_view(editor, &view)
 	if len(buffer.lines) == 1 && len(buffer.lines[0].text) == 0 && node.placeholder != "" {
@@ -1855,7 +1905,7 @@ ui_chord_of_event :: proc(ev: tb2.Event, allocator := context.temp_allocator) ->
 	control_byte := false
 	switch u16(ev.key) {
 	case 0x00:
-		name, ctrl = "~", true
+		name, ctrl = "Space", true
 	case 0x08:
 		name, ctrl = "h", true
 	case 0x09:
@@ -1959,7 +2009,23 @@ ui_chord_normalize :: proc(chord: string, allocator := context.temp_allocator) -
 	return ui_chord_build(ctrl, alt, shift, name, allocator)
 }
 
+UI_CHORDS_UNSEEN :: [?]string{"Ctrl+Enter", "Shift+Enter", "Ctrl+Tab", "Ctrl+Backspace", "Ctrl+Esc", "Shift+Esc", "Shift+Backspace"}
+
+ui_chord_cached :: proc(ui: ^Ui, shortcut: string) -> string {
+	if chord, ok := ui.chords[shortcut]; ok {
+		return chord
+	}
+	chord := ui_chord_normalize(shortcut, context.allocator)
+	ui.chords[strings.clone(shortcut)] = chord
+	return chord
+}
+
 ui_chord_named_key :: proc(chord: string) -> (key: tb2.Key, ok: bool) {
+	for unseen in UI_CHORDS_UNSEEN {
+		if ui_chord_normalize(chord) == unseen {
+			return
+		}
+	}
 	ctrl, alt, shift, name, parsed := ui_chord_parse(chord)
 	if !parsed {
 		return

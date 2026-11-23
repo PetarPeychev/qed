@@ -749,6 +749,8 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 }
 
 CONFIG_MOVED :: [?][2]string {
+	{"keybinds/Find", "plugins/find/keybinds/In Buffer"},
+	{"keybinds/Replace", "plugins/find/keybinds/Replace"},
 	{"format_on_save", "plugins/format/on_save"},
 	{"trim_trailing_whitespace_on_save", "plugins/format/trim_whitespace_on_save"},
 	{"ensure_final_newline_on_save", "plugins/format/final_newline_on_save"},

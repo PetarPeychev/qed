@@ -1,15 +1,12 @@
 package main
 
-import "core:fmt"
+import "core:c"
+import "core:strings"
 import "core:text/regex"
 import "core:unicode"
-import "lib:tb2"
+import lua "lib:lua"
 
 FIND_MAX_MATCHES :: 5000
-FIND_BOX_WIDTH :: 50
-FIND_STATUS_W :: 15
-FIND_LABEL :: "Find "
-FIND_RLABEL :: "Repl "
 
 FindMatch :: struct {
 	row, from, to: int,
@@ -17,41 +14,19 @@ FindMatch :: struct {
 
 Find :: struct {
 	active:         bool,
-	replacing:      bool,
-	focus_replace:  bool,
+	buffer:         u64,
+	query:          string,
 	regex:          bool,
 	case_sensitive: bool,
 	invalid:        bool,
-	field:          TextField,
-	replace:        TextField,
 	matches:        [dynamic]FindMatch,
 	current:        int,
 	origin:         Cursor,
 }
 
-find_destroy :: proc(f: ^Find) {
-	textfield_destroy(&f.field)
-	textfield_destroy(&f.replace)
-	delete(f.matches)
-}
-
-find_open :: proc(editor: ^Editor) {find_begin(editor, false)}
-find_open_replace :: proc(editor: ^Editor) {find_begin(editor, true)}
-
-find_begin :: proc(editor: ^Editor, replacing: bool) {
-	f := &editor.find
-	b := editor_buffer(editor)
-	editor_clear_message(editor)
-	f.active = true
-	f.replacing = replacing
-	f.focus_replace = false
-	f.origin = b.cursor
-	if text, ok := selection_single_line(b); ok {
-		textfield_set(&f.field, text)
-	}
-	textfield_select_all(&f.field)
-	find_scan(editor)
-	find_jump(editor)
+find_destroy :: proc(find: ^Find) {
+	delete(find.query)
+	delete(find.matches)
 }
 
 find_close :: proc(editor: ^Editor) {
@@ -59,25 +34,25 @@ find_close :: proc(editor: ^Editor) {
 	clear(&editor.find.matches)
 }
 
-find_ci :: proc(f: ^Find, q: string) -> bool {
-	return !f.case_sensitive && smart_case_insensitive(q)
+find_ci :: proc(find: ^Find, query: string) -> bool {
+	return !find.case_sensitive && smart_case_insensitive(query)
 }
 
-smart_case_insensitive :: proc(q: string) -> bool {
-	for r in q {
-		if unicode.is_upper(r) {
+smart_case_insensitive :: proc(query: string) -> bool {
+	for character in query {
+		if unicode.is_upper(character) {
 			return false
 		}
 	}
 	return true
 }
 
-find_eq :: proc(a, b: string, ci: bool) -> bool {
-	if !ci {
-		return a == b
+find_eq :: proc(left, right: string, insensitive: bool) -> bool {
+	if !insensitive {
+		return left == right
 	}
-	for i in 0 ..< len(a) {
-		if ascii_lower(a[i]) != ascii_lower(b[i]) {
+	for i in 0 ..< len(left) {
+		if ascii_lower(left[i]) != ascii_lower(right[i]) {
 			return false
 		}
 	}
@@ -85,327 +60,241 @@ find_eq :: proc(a, b: string, ci: bool) -> bool {
 }
 
 find_scan :: proc(editor: ^Editor) {
-	f := &editor.find
-	clear(&f.matches)
-	f.invalid = false
-	f.current = -1
-	q := textfield_str(&f.field)
-	if len(q) == 0 {
+	find := &editor.find
+	clear(&find.matches)
+	find.invalid = false
+	find.current = -1
+	query := find.query
+	buffer := ui_buffer(editor, find.buffer)
+	if len(query) == 0 || buffer == nil {
 		return
 	}
-	ci := find_ci(f, q)
-	b := editor_buffer(editor)
-
-	if f.regex {
+	insensitive := find_ci(find, query)
+	if find.regex {
 		flags: regex.Flags
-		if ci {
+		if insensitive {
 			flags += {.Case_Insensitive}
 		}
-		re, err := regex.create(q, flags, context.temp_allocator, context.temp_allocator)
+		pattern, err := regex.create(query, flags, context.temp_allocator, context.temp_allocator)
 		if err != nil {
-			f.invalid = true
+			find.invalid = true
 			return
 		}
-		capbuf := regex.preallocate_capture(context.temp_allocator)
-		outer: for line, row in b.lines {
-			s := string(line.text[:])
-			off := 0
-			for off <= len(s) {
-				_, ok := regex.match_with_preallocated_capture(re, s[off:], &capbuf, context.temp_allocator)
+		captures := regex.preallocate_capture(context.temp_allocator)
+		regex_rows: for line, row in buffer.lines {
+			text := string(line.text[:])
+			offset := 0
+			for offset <= len(text) {
+				_, ok := regex.match_with_preallocated_capture(pattern, text[offset:], &captures, context.temp_allocator)
 				if !ok {
 					break
 				}
-				from := off + capbuf.pos[0][0]
-				to := off + capbuf.pos[0][1]
+				from := offset + captures.pos[0][0]
+				to := offset + captures.pos[0][1]
 				if to <= from {
-					off = from + 1
+					offset = from + 1
 					continue
 				}
-				append(&f.matches, FindMatch{row, from, to})
-				if len(f.matches) >= FIND_MAX_MATCHES {
-					break outer
+				append(&find.matches, FindMatch{row, from, to})
+				if len(find.matches) >= FIND_MAX_MATCHES {
+					break regex_rows
 				}
-				off = to
+				offset = to
 			}
 		}
 	} else {
-		n := len(q)
-		first := ascii_lower(q[0]) if ci else q[0]
-		outer2: for line, row in b.lines {
-			s := string(line.text[:])
+		length := len(query)
+		first := ascii_lower(query[0]) if insensitive else query[0]
+		plain_rows: for line, row in buffer.lines {
+			text := string(line.text[:])
 			start := 0
-			for start + n <= len(s) {
-				c := ascii_lower(s[start]) if ci else s[start]
-				if c != first {
+			for start + length <= len(text) {
+				byte_at := ascii_lower(text[start]) if insensitive else text[start]
+				if byte_at != first {
 					start += 1
 					continue
 				}
-				if find_eq(s[start:start + n], q, ci) {
-					append(&f.matches, FindMatch{row, start, start + n})
-					if len(f.matches) >= FIND_MAX_MATCHES {
-						break outer2
+				if find_eq(text[start:start + length], query, insensitive) {
+					append(&find.matches, FindMatch{row, start, start + length})
+					if len(find.matches) >= FIND_MAX_MATCHES {
+						break plain_rows
 					}
-					start += n
+					start += length
 				} else {
 					start += 1
 				}
 			}
 		}
 	}
-	find_pick_current(f)
+	find_pick_current(find)
 }
 
-find_pick_current :: proc(f: ^Find) {
-	f.current = -1
-	for m, i in f.matches {
-		if m.row > f.origin.row || (m.row == f.origin.row && m.to >= f.origin.col) {
-			f.current = i
+find_pick_current :: proc(find: ^Find) {
+	find.current = -1
+	for match, i in find.matches {
+		if match.row > find.origin.row || (match.row == find.origin.row && match.to >= find.origin.col) {
+			find.current = i
 			return
 		}
 	}
-	if len(f.matches) > 0 {
-		f.current = 0
+	if len(find.matches) > 0 {
+		find.current = 0
 	}
 }
 
 find_jump :: proc(editor: ^Editor) {
-	f := &editor.find
-	if f.current < 0 || f.current >= len(f.matches) {
+	find := &editor.find
+	buffer := ui_buffer(editor, find.buffer)
+	if buffer == nil || find.current < 0 || find.current >= len(find.matches) {
 		return
 	}
-	m := f.matches[f.current]
-	b := editor_buffer(editor)
-	b.selection = Cursor{m.row, m.from}
-	b.cursor = {m.row, m.to}
-	cursor_goal_sync(b)
-	editor_scroll(editor)
+	match := find.matches[find.current]
+	buffer.selection = Cursor{match.row, match.from}
+	buffer.cursor = {match.row, match.to}
+	cursor_goal_sync(buffer)
+	if !editor.welcome && editor_buffer(editor) == buffer {
+		editor_scroll(editor)
+	}
 }
 
-find_step :: proc(editor: ^Editor, dir: int) {
-	f := &editor.find
-	n := len(f.matches)
-	if n == 0 {
+find_step :: proc(editor: ^Editor, direction: int) {
+	find := &editor.find
+	count := len(find.matches)
+	if count == 0 {
 		return
 	}
-	if f.current < 0 {
-		f.current = 0 if dir > 0 else n - 1
+	if find.current < 0 {
+		find.current = 0 if direction > 0 else count - 1
 	} else {
-		f.current = (f.current + dir + n) % n
+		find.current = (find.current + direction + count) % count
 	}
 	find_jump(editor)
 }
 
-find_replace_current :: proc(editor: ^Editor) {
-	f := &editor.find
-	if f.current < 0 || f.current >= len(f.matches) {
-		return
+find_replace :: proc(editor: ^Editor, replacement: string, all: bool) -> int {
+	find := &editor.find
+	buffer := ui_buffer(editor, find.buffer)
+	if buffer == nil || len(find.matches) == 0 || (!all && (find.current < 0 || find.current >= len(find.matches))) {
+		return 0
 	}
-	m := f.matches[f.current]
-	b := editor_buffer(editor)
-	repl := textfield_str(&f.replace)
-	edit_open(b, .Atomic)
-	edit_delete(b, {m.row, m.from}, {m.row, m.to})
-	edit_insert(b, {m.row, m.from}, repl)
-	buffer_undo_commit(b)
-	f.origin = {m.row, m.from + len(repl)}
+	edit_open(buffer, .Atomic)
+	count := 0
+	if all {
+		#reverse for match in find.matches {
+			edit_delete(buffer, {match.row, match.from}, {match.row, match.to})
+			edit_insert(buffer, {match.row, match.from}, replacement)
+			count += 1
+		}
+		find.origin = buffer.cursor
+	} else {
+		match := find.matches[find.current]
+		edit_delete(buffer, {match.row, match.from}, {match.row, match.to})
+		edit_insert(buffer, {match.row, match.from}, replacement)
+		find.origin = {match.row, match.from + len(replacement)}
+		count = 1
+	}
+	buffer_undo_commit(buffer)
 	find_scan(editor)
 	find_jump(editor)
-}
-
-find_replace_all :: proc(editor: ^Editor) {
-	f := &editor.find
-	if len(f.matches) == 0 {
-		return
-	}
-	b := editor_buffer(editor)
-	repl := textfield_str(&f.replace)
-	count := len(f.matches)
-	edit_open(b, .Atomic)
-	#reverse for m in f.matches {
-		edit_delete(b, {m.row, m.from}, {m.row, m.to})
-		edit_insert(b, {m.row, m.from}, repl)
-	}
-	buffer_undo_commit(b)
-	f.origin = b.cursor
-	find_scan(editor)
-	find_jump(editor)
-	editor_log(editor, .Info, "", fmt.tprintf("Replaced %d match%s", count, "" if count == 1 else "es"))
-}
-
-find_dispatch_key :: proc(editor: ^Editor, ev: tb2.Event) {
-	f := &editor.find
-	if ev_alt(ev) && ev.ch != 0 {
-		switch ev.ch {
-		case 'c', 'C':
-			f.case_sensitive = !f.case_sensitive
-			find_scan(editor)
-			find_jump(editor)
-		case 'r', 'R':
-			f.regex = !f.regex
-			find_scan(editor)
-			find_jump(editor)
-		case 'a', 'A':
-			if f.replacing {
-				find_replace_all(editor)
-			}
-		}
-		return
-	}
-	if command_matches(ev, "Find") {
-		f.focus_replace = false
-		textfield_select_all(&f.field)
-		return
-	}
-	if command_matches(ev, "Replace") {
-		f.replacing = !f.replacing
-		if !f.replacing {
-			f.focus_replace = false
-		}
-		return
-	}
-	#partial switch ev.key {
-	case .Esc:
-		find_close(editor)
-		return
-	case .Ctrl_Z:
-		cmd_undo(editor)
-		f.origin = editor_buffer(editor).cursor
-		find_scan(editor)
-		find_jump(editor)
-		return
-	case .Ctrl_Y:
-		cmd_redo(editor)
-		f.origin = editor_buffer(editor).cursor
-		find_scan(editor)
-		find_jump(editor)
-		return
-	case .Tab:
-		if f.replacing {
-			f.focus_replace = !f.focus_replace
-		}
-		return
-	case .Enter:
-		if f.replacing {
-			find_replace_current(editor)
-		} else {
-			find_step(editor, 1)
-		}
-		return
-	case .Arrow_Down:
-		find_step(editor, 1)
-		return
-	case .Arrow_Up:
-		find_step(editor, -1)
-		return
-	}
-	target := &f.replace if f.replacing && f.focus_replace else &f.field
-	if textfield_key(target, ev) && target == &f.field {
-		find_scan(editor)
-		find_jump(editor)
-	}
-}
-
-find_paste :: proc(editor: ^Editor, text: string) {
-	f := &editor.find
-	target := &f.replace if f.replacing && f.focus_replace else &f.field
-	if textfield_insert_flat(target, text) && target == &f.field {
-		find_scan(editor)
-		find_jump(editor)
-	}
+	return count
 }
 
 find_row_spans :: proc(editor: ^Editor, row: int) -> [][2]int {
-	f := &editor.find
+	find := &editor.find
 	out := make([dynamic][2]int, context.temp_allocator)
-	for m in f.matches {
-		if m.row == row {
-			append(&out, [2]int{m.from, m.to})
-		} else if m.row > row {
-			break
+	for match in find.matches {
+		if match.row == row {
+			append(&out, [2]int{match.from, match.to})
 		}
 	}
 	return out[:]
 }
 
-find_box :: proc(editor: ^Editor) -> Rect {
-	sw := int(tb2.width())
-	rows := 2 if editor.find.replacing else 1
-	w := min(FIND_BOX_WIDTH, sw)
-	x := max(0, sw - w - 2)
-	return {x, 1, w, rows + 2}
+find_shows :: proc(editor: ^Editor, buffer: ^Buffer) -> bool {
+	return editor.find.active && buffer != nil && buffer.id == editor.find.buffer
 }
 
-find_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
-	if ev.key != .Mouse_Left {
-		return
+find_result_push :: proc(L: ^lua.State, find: ^Find) -> c.int {
+	lua.pushinteger(L, lua.Integer(find.current + 1 if find.current >= 0 else 0))
+	lua.pushinteger(L, lua.Integer(len(find.matches)))
+	return 2
+}
+
+qed_buf_find :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	buffer, _ := api_buf(L, editor, 1)
+	query := api_string(L, 2)
+	find := &editor.find
+	find.regex, find.case_sensitive = false, false
+	if lua.type(L, 3) == .TABLE {
+		lua.getfield(L, 3, "regex")
+		find.regex = bool(lua.toboolean(L, -1))
+		lua.getfield(L, 3, "case_sensitive")
+		find.case_sensitive = bool(lua.toboolean(L, -1))
+		lua.pop(L, 2)
 	}
-	f := &editor.find
-	box := find_box(editor)
-	if !mouse_in_rect(ev, box) {
-		if !ev_motion(ev) {
-			find_close(editor)
+	if !find.active || find.buffer != buffer.id {
+		find.origin = buffer.cursor
+		if from, _, ok := selection_range(buffer); ok {
+			find.origin = from
 		}
-		return
 	}
-	tx := box.x + 1 + len(FIND_LABEL)
-	tw := box.x + box.w - 1 - tx
-	if int(ev.y) == box.y + 1 {
-		f.focus_replace = false
-		textfield_mouse(&f.field, tx, box.y + 1, tw, ev)
-	} else if f.replacing && int(ev.y) == box.y + 2 {
-		f.focus_replace = true
-		textfield_mouse(&f.replace, tx, box.y + 2, tw, ev)
+	find.active = true
+	find.buffer = buffer.id
+	delete(find.query)
+	find.query = strings.clone(query)
+	find_scan(editor)
+	find_jump(editor)
+	if find.invalid {
+		lua.pushnil(L)
+		lua.pushstring(L, "invalid pattern")
+		return 2
 	}
+	return find_result_push(L, find)
 }
 
-find_status :: proc(f: ^Find) -> string {
-	if f.invalid {
-		return "bad regex"
+qed_buf_find_step :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	buffer, _ := api_buf(L, editor, 1)
+	if !find_shows(editor, buffer) {
+		lua.pushnil(L)
+		return 1
 	}
-	if len(textfield_str(&f.field)) == 0 {
-		return ""
-	}
-	if len(f.matches) == 0 {
-		return "no match"
-	}
-	human := f.current + 1 if f.current >= 0 else 0
-	if len(f.matches) >= FIND_MAX_MATCHES {
-		return fmt.tprintf("%d/%d+", human, FIND_MAX_MATCHES)
-	}
-	return fmt.tprintf("%d/%d", human, len(f.matches))
+	find_step(editor, 1 if api_int(L, 2, "direction expected (1 or -1)") >= 0 else -1)
+	return find_result_push(L, &editor.find)
 }
 
-find_render_field :: proc(editor: ^Editor, label: string, y, fw: int, field: ^TextField, focused: bool) {
-	box := find_box(editor)
-	inner_x := box.x + 1
-	pane_text(inner_x, y, len(label), label, COLOR_PANE_PROMPT_FG, COLOR_PANE_BG)
-	tx := inner_x + len(label)
-	if focused {
-		textfield_render(tx, y, fw, field)
-	} else {
-		pane_text(tx, y, fw, textfield_str(field), COLOR_PANE_FG, COLOR_PANE_BG)
+qed_buf_find_replace :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	buffer, _ := api_buf(L, editor, 1)
+	replacement := api_string(L, 2)
+	all := false
+	if lua.type(L, 3) == .TABLE {
+		lua.getfield(L, 3, "all")
+		all = bool(lua.toboolean(L, -1))
+		lua.pop(L, 1)
 	}
+	if !find_shows(editor, buffer) {
+		lua.pushinteger(L, 0)
+		return 1
+	}
+	lua.pushinteger(L, lua.Integer(find_replace(editor, replacement, all)))
+	return 1
 }
 
-find_render :: proc(editor: ^Editor) {
-	f := &editor.find
-	box := find_box(editor)
-	inner := pane_draw_box(box)
-	fw := max(1, inner.w - len(FIND_LABEL) - FIND_STATUS_W)
-
-	find_render_field(editor, FIND_LABEL, inner.y, fw, &f.field, !f.focus_replace)
-
-	sx := inner.x + inner.w - FIND_STATUS_W + 1
-	rx := sx
-	regex_fg := COLOR_PANE_PROMPT_FG if f.regex else COLOR_PANE_SHORTCUT_FG
-	pane_text(rx, inner.y, 2, ".*", regex_fg, COLOR_PANE_BG)
-	rx += 3
-	case_fg := COLOR_PANE_PROMPT_FG if f.case_sensitive else COLOR_PANE_SHORTCUT_FG
-	pane_text(rx, inner.y, 2, "Aa", case_fg, COLOR_PANE_BG)
-	rx += 3
-	pane_text(rx, inner.y, FIND_STATUS_W, find_status(f), COLOR_PANE_FG, COLOR_PANE_BG)
-
-	if f.replacing {
-		find_render_field(editor, FIND_RLABEL, inner.y + 1, fw, &f.replace, f.focus_replace)
+qed_buf_find_clear :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	buffer, _ := api_buf(L, editor, 1)
+	if find_shows(editor, buffer) {
+		find_close(editor)
 	}
+	return 0
 }

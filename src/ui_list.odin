@@ -156,9 +156,10 @@ ui_list_record_rev :: proc(list: ^UiList, i: int) -> u64 {
 
 ui_list_changed :: proc(editor: ^Editor, list: ^UiList) {
 	list.rev += 1
-	for dependent in list.dependents {
-		if dep := ui_list_find(&editor.ui, dependent); dep != nil {
-			dep.fuzzy_dirty = true
+	for dependent_id in list.dependents {
+		if dependent := ui_list_find(&editor.ui, dependent_id); dependent != nil {
+			dependent.fuzzy_dirty = true
+			dependent.rev += 1
 		}
 	}
 }
@@ -314,8 +315,7 @@ qed_list_gc_ui :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	context = entry.ctx
 	lua.getfield(L, 1, "id")
-	id := u64(lua.tointeger(L, -1))
-	ui_list_remove_by_id(entry.editor, id)
+	append(&entry.editor.ui.lists_dead, u64(lua.tointeger(L, -1)))
 	return 0
 }
 
@@ -595,7 +595,9 @@ qed_list_remove :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	delete(record.key)
 	delete(record.sort_str)
-	ui_list_reindex(list)
+	for i in pos ..< len(list.records) {
+		list.positions[list.records[i].key] = i
+	}
 	ui_list_changed(editor, list)
 	return 0
 }

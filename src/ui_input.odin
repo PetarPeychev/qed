@@ -18,6 +18,13 @@ ui_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 		}
 		ui_dispatch_key(editor, focus, ev)
 		return true
+	case .Resize:
+		for key, &state in ui.states {
+			if state.kind == .Editor {
+				state.reveal = true
+			}
+		}
+		return false
 	case .Mouse:
 		if len(ui.mounts) == 0 {
 			return false
@@ -96,13 +103,13 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 			continue
 		}
 		_, _, shortcut := command_effective_bind(command)
-		if shortcut != "" && ui_chord_normalize(shortcut) == chord {
+		if shortcut != "" && ui_chord_cached(&editor.ui, shortcut) == chord {
 			command.run(editor)
 			return true
 		}
 	}
 	for command in editor.plugins.commands {
-		if command.scope == scope && command.shortcut != "" && ui_chord_normalize(command.shortcut) == chord {
+		if command.scope == scope && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
 			plugin_command_chord(editor, command)
 			return true
 		}
@@ -116,13 +123,13 @@ ui_global_binds :: proc(editor: ^Editor, ev: tb2.Event) {
 		return
 	}
 	for command in editor.plugins.commands {
-		if command.scope == "" && command.shortcut != "" && ui_chord_normalize(command.shortcut) == chord {
+		if command.scope == "" && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
 			plugin_command_chord(editor, command)
 			return
 		}
 	}
 	for command in commands {
-		if command.shortcut != "" && ui_chord_normalize(command.shortcut) == chord {
+		if command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
 			if command_enabled(command) {
 				command.run(editor)
 			}
@@ -382,13 +389,17 @@ ui_command_right :: proc(editor: ^Editor) {
 ui_cursor_up :: proc(buffer: ^Buffer) {cursor_move_up_n(buffer, 1)}
 ui_cursor_down :: proc(buffer: ^Buffer) {cursor_move_down_n(buffer, 1)}
 
-ui_move_accelerated :: proc(editor: ^Editor, key: tb2.Key, move: proc(buffer: ^Buffer)) {
+ui_move_accelerated :: proc(editor: ^Editor, key: tb2.Key, move: proc(buffer: ^Buffer), select := false) {
 	buffer := ui_target_buffer(editor)
 	if buffer == nil {
 		return
 	}
 	buffer_undo_commit(buffer)
-	buffer.selection = nil
+	if select {
+		selection_set_anchor(buffer)
+	} else {
+		buffer.selection = nil
+	}
 	for _ in 0 ..< editor_accel_step(editor, key) {
 		move(buffer)
 	}
@@ -408,10 +419,10 @@ ui_command_move_line_down :: proc(editor: ^Editor) {
 		buffer_move_lines(buffer, +1)
 	}
 }
-ui_command_select_left :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_left)}
-ui_command_select_right :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_right)}
-ui_command_select_up :: proc(editor: ^Editor) {ui_move(editor, true, ui_cursor_up)}
-ui_command_select_down :: proc(editor: ^Editor) {ui_move(editor, true, ui_cursor_down)}
+ui_command_select_left :: proc(editor: ^Editor) {ui_move_accelerated(editor, .Arrow_Left, cursor_move_left, true)}
+ui_command_select_right :: proc(editor: ^Editor) {ui_move_accelerated(editor, .Arrow_Right, cursor_move_right, true)}
+ui_command_select_up :: proc(editor: ^Editor) {ui_move_accelerated(editor, .Arrow_Up, ui_cursor_up, true)}
+ui_command_select_down :: proc(editor: ^Editor) {ui_move_accelerated(editor, .Arrow_Down, ui_cursor_down, true)}
 ui_command_word_left :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_word_left)}
 ui_command_word_right :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_word_right)}
 ui_command_line_start :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_home_smart)}

@@ -29,7 +29,7 @@ ui_kind_props := [UiKind][]string {
 	.Box            = {"border", "title"},
 	.Scroll         = {"header"},
 	.Text           = {"wrap", "align"},
-	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly", "current_line_style"},
+	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly"},
 	.Virtual_Column = {"data", "item", "highlight_style"},
 	.Outlet         = {},
 }
@@ -461,11 +461,11 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 				}
 				ev_name, _ := lua.toodinstring(L, -2)
 				found := false
-				for anchor_name, event in ui_event_names {
-					if anchor_name == ev_name {
+				for event_name, event in ui_event_names {
+					if event_name == ev_name {
 						found = true
 						if lua.type(L, -1) != .FUNCTION {
-							ui_marshal_fail(marshal, fmt.tprintf("on.%s: function expected", anchor_name))
+							ui_marshal_fail(marshal, fmt.tprintf("on.%s: function expected", event_name))
 						} else {
 							lua.pushvalue(L, -1)
 							node.handlers[event] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
@@ -492,8 +492,6 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			node.readonly = bool(lua.toboolean(L, value_index))
 		case "highlight_style":
 			node.highlight_style = ui_marshal_style(marshal, value_index, name)
-		case "current_line_style":
-			node.current_line = ui_marshal_style(marshal, value_index, name)
 		case "buffer":
 			id := 0
 			if lua.type(L, value_index) == .TABLE {
@@ -913,7 +911,7 @@ ui_item_build_c :: proc "c" (L: ^lua.State) -> c.int {
 	return 0
 }
 
-ui_item_build :: proc(editor: ^Editor, vc: ^UiNode, list: ^UiList, pos: int) -> ^UiNode {
+ui_item_build :: proc(editor: ^Editor, vc: ^UiNode, list: ^UiList, pos: int, key: string) -> ^UiNode {
 	plugins := &editor.plugins
 	if plugins.L == nil {
 		return nil
@@ -940,11 +938,6 @@ ui_item_build :: proc(editor: ^Editor, vc: ^UiNode, list: ^UiList, pos: int) -> 
 		build.node = node
 	}
 	node := build.node
-	if pos >= ui_list_count(list) {
-		ui_node_free(editor, node)
-		return nil
-	}
-	key := ui_list_key(list, pos)
 	delete(node.key)
 	node.key = strings.clone(key)
 	node.is_item = true

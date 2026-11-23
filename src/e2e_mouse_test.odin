@@ -206,34 +206,6 @@ e2e_mouse_filetree_click_away :: proc(t: ^testing.T) {
 
 // Find bar (Ctrl+F): a click in the query field places the caret; a button-held
 // drag selects text in the field.
-@(test)
-e2e_mouse_find_field_caret_drag :: proc(t: ^testing.T) {
-	e := e2e_start("hello world")
-	defer e2e_stop(&e)
-
-	e2e_key(&e, .Ctrl_F)
-	testing.expect(t, e.ed.find.active, "Ctrl+F opens find")
-	e2e_type(&e, "hello")
-	testing.expect_value(t, textfield_str(&e.ed.find.field), "hello")
-
-	box := find_box(&e.ed)
-	tx := box.x + 1 + len(FIND_LABEL)
-	fy := box.y + 1
-
-	// A plain click drops the caret at that column, clearing any selection.
-	e2e_mouse(&e, tx + 2, fy)
-	testing.expect_value(t, e.ed.find.field.caret, 2)
-	_, _, sel := textfield_selection(&e.ed.find.field)
-	testing.expect(t, !sel, "a plain click leaves no field selection")
-
-	// A button-held drag extends a selection from the caret.
-	e2e_mouse(&e, tx + 4, fy, .Mouse_Left, motion = true)
-	lo, hi, ok := textfield_selection(&e.ed.find.field)
-	testing.expect(t, ok, "drag selects field text")
-	testing.expect_value(t, lo, 2)
-	testing.expect_value(t, hi, 4)
-}
-
 // -- Terminal pane ----------------------------------------------------------
 
 e2e_term_row :: proc(e: ^E2E, inner: Rect, ry: int) -> string {

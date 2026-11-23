@@ -95,6 +95,10 @@ qed_buf_api := [?]lua.L_Reg {
 	{"base", qed_buf_base},
 	{"line_list", qed_buf_line_list},
 	{"create", qed_buf_create},
+	{"find", qed_buf_find},
+	{"find_step", qed_buf_find_step},
+	{"find_replace", qed_buf_find_replace},
+	{"find_clear", qed_buf_find_clear},
 	{"on", qed_buf_on},
 	{nil, nil},
 }
@@ -1282,7 +1286,6 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 		if entry.editor.ui.internal_owner[id] != pl.name {
 			return plugin_raise(L, "another plugin's internal buffer")
 		}
-		plugin_buffer_hooks_drop(&entry.editor.plugins, id)
 		ui_internal_close(entry.editor, id)
 		lua.pushboolean(L, true)
 		return 1
@@ -1306,7 +1309,6 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 	lock := entry.editor.jump_lock
 	editor_close_index(entry.editor, idx)
 	entry.editor.jump_lock = lock
-	plugin_buffer_hooks_drop(&entry.editor.plugins, id)
 	lua.pushboolean(L, true)
 	return 1
 }

@@ -1,7 +1,7 @@
-qed-e2e snapshot 80x24 cursor 79,1
+qed-e2e snapshot 80x24 cursor 76,1
 -- text
  1
- 2 t the barn, over the hill, and far beyond the river until the sun goes down.
+ 2 he barn, over the hill, and far beyond the river until the sun goes down.
  3
  4
 

@@ -450,8 +450,9 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 		return
 	}
 	b := editor_buffer(editor)
-	gutter := editor_gutter_width(editor)
-	_, vh := editor_viewport(editor)
+	area := editor_caret_area(editor)
+	gutter := area.x + area.gutter
+	vh := area.y + area.h
 	sw := int(tb2.width())
 	rows := min(len(c.matches), COMPLETION_MAX_ROWS)
 
@@ -474,11 +475,11 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 		seg := wrap_seg_start(buffer_line_wrap(b, c.anchor_row, b.wrap_width), c.anchor_col)
 		ax = gutter + visual_col(atext, c.anchor_col) - visual_col(atext, seg)
 	} else {
-		ax = gutter + visual_col(atext, c.anchor_col) - editor.scroll_col
+		ax = gutter + visual_col(atext, c.anchor_col) - area.scroll_col
 	}
 	x := clamp(ax, 0, max(0, sw - pane_w))
 	below_y, above_y := cy + 1, cy - pane_h
-	below_fits, above_fits := below_y + pane_h <= vh, above_y >= 0
+	below_fits, above_fits := below_y + pane_h <= vh, above_y >= area.y
 	// A multi-line ghost occupies the rows below the caret; float above it so both
 	// the ghost and the popup stay fully visible.
 	y: int
@@ -487,7 +488,7 @@ completion_render :: proc(editor: ^Editor, cx, cy: int) {
 	} else {
 		y = below_y if below_fits else above_y
 	}
-	if y < 0 || y + pane_h > vh {
+	if y < area.y || y + pane_h > vh {
 		return
 	}
 

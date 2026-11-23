@@ -136,6 +136,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"git/picker.lua", #load("../plugins/git/picker.lua", string)},
 	{"git/repo.lua", #load("../plugins/git/repo.lua", string)},
 	{"git/tree.lua", #load("../plugins/git/tree.lua", string)},
+	{"find/init.lua", #load("../plugins/find/init.lua", string)},
 	{"goto/init.lua", #load("../plugins/goto/init.lua", string)},
 	{"layout/init.lua", #load("../plugins/layout/init.lua", string)},
 	{"palette/init.lua", #load("../plugins/palette/init.lua", string)},
@@ -815,6 +816,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	pl.keys_due = true
 	if p.bound && !p.startup_due {
 		plugin_queue(editor, {event = .Startup, only = pl.name})
+		plugin_message_queue(editor, pl.name)
 		plugin_queue(editor, {event = .Plugin_Loaded, a = pl.name})
 	}
 }

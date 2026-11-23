@@ -1,0 +1,60 @@
+qed-e2e snapshot 80x24 cursor 38,3
+-- text
+ 1 cat dog cat
+ 2 the lion sat             ┌────────────────────────────────────────────────┐
+ 3 catalog                  │Find cat                       .* Aa        3/3 │
+ 4                          │Repl lion                                       │
+                            └────────────────────────────────────────────────┘
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ● notes.txt                                                           3:4 text
+
+-- style
+aaabbbcccccbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaacccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
+aeefffccccccccccccccccccccccdgggggddddddddddddddddddddddddddhhdhhddddddddhhhhdcc
+aaacccccccccccccccccccccccccdgggggddddddddddddddddddddddddddddddddddddddddddddcc
+ccccccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhh
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#f4f4ff bg=#453b1a
+c fg=#f4f4ff bg=#181818
+d fg=#f4f4ff bg=#2b2b2b
+e fg=#d8d8d8 bg=#1b1b1b
+f fg=#181818 bg=#f4f4ff
+g fg=#ffdd33 bg=#2b2b2b
+h fg=#686868 bg=#2b2b2b

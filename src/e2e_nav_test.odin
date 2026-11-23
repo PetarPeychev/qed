@@ -331,11 +331,11 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, border_x, box.y + 3), '┃')
 	testing.expect_value(t, e2e_cell_fg(&e, border_x, box.y + 3), COLOR_PANE_FG)
+	testing.expect(t, e2e_grid_has(&e, "Alt+t"), "the shortcut column shows live binds")
 
 	e2e_type(&e, "line wrap")
 	testing.expect(t, pane_count(&e.ed, p) > 0, "fuzzy query should match a command")
 	testing.expect_value(t, palette_selected(&e), "Toggle Line Wrap")
-	testing.expect(t, e2e_grid_has(&e, "Ctrl+f"), "the shortcut column shows live binds")
 
 	rows = min(pane_count(&e.ed, p), PALETTE_MAX_ROWS)
 	box = pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)
@@ -537,134 +537,6 @@ e2e_nav_open_tab_close_unsaved_confirms :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, len(e.ed.buffers), 1)
 	testing.expect(t, strings.has_suffix(editor_buffer(&e.ed).path, "main.txt"), "main.txt remains")
-}
-
-@(test)
-e2e_nav_find_navigation :: proc(t: ^testing.T) {
-	e := e2e_start("foo\nbar\nfoo")
-	defer e2e_stop(&e)
-
-	b := editor_buffer(&e.ed)
-	b.cursor = {0, 0}
-	gutter := editor_gutter_width(&e.ed)
-
-	e2e_key(&e, .Ctrl_F)
-	e2e_type(&e, "foo")
-	testing.expect_value(t, len(e.ed.find.matches), 2)
-
-	// The non-current match (row 2) renders with the find-match background.
-	e2e_render(&e)
-	testing.expect_value(t, e2e_cell_bg(&e, gutter, 2), COLOR_FIND_MATCH_BG)
-
-	// Enter/arrows step next with wrap-around.
-	testing.expect_value(t, b.cursor.row, 0)
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, b.cursor.row, 2)
-	e2e_key(&e, .Arrow_Down)
-	testing.expect_value(t, b.cursor.row, 0)
-	e2e_key(&e, .Arrow_Down)
-	testing.expect_value(t, b.cursor.row, 2)
-	e2e_key(&e, .Arrow_Up)
-	testing.expect_value(t, b.cursor.row, 0)
-}
-
-@(test)
-e2e_nav_find_smart_case :: proc(t: ^testing.T) {
-	e := e2e_start("foo bar foo\nFOO baz\nfoo")
-	defer e2e_stop(&e)
-
-	f := &e.ed.find
-	e2e_key(&e, .Ctrl_F)
-	e2e_type(&e, "foo")
-	testing.expect_value(t, len(f.matches), 4) // smart-case: lowercase query is insensitive
-
-	nav_alt(&e, 'c') // Aa on -> case-sensitive drops FOO
-	testing.expect(t, f.case_sensitive, "Alt+c enables case-sensitive")
-	testing.expect_value(t, len(f.matches), 3)
-
-	nav_alt(&e, 'c')
-	testing.expect_value(t, len(f.matches), 4)
-}
-
-@(test)
-e2e_nav_find_regex :: proc(t: ^testing.T) {
-	e := e2e_start("foo\nFOO\nbar")
-	defer e2e_stop(&e)
-
-	f := &e.ed.find
-	e2e_key(&e, .Ctrl_F)
-	e2e_type(&e, "f.o")
-	testing.expect_value(t, len(f.matches), 0) // literal: no dot in the text
-
-	nav_alt(&e, 'r') // .* toggle: now a regex, ci matches foo + FOO
-	testing.expect(t, f.regex, "Alt+r enables regex")
-	testing.expect_value(t, len(f.matches), 2)
-}
-
-@(test)
-e2e_nav_find_replace :: proc(t: ^testing.T) {
-	e := e2e_start("foo bar foo\nfoo")
-	defer e2e_stop(&e)
-
-	b := editor_buffer(&e.ed)
-	b.cursor = {0, 0}
-
-	e2e_key(&e, .Ctrl_H)
-	testing.expect(t, e.ed.find.active && e.ed.find.replacing, "Ctrl+H opens find in replace mode")
-	e2e_type(&e, "foo")
-	e2e_key(&e, .Tab) // focus the replace field
-	e2e_type(&e, "X")
-
-	e2e_key(&e, .Enter) // replace the current match
-	testing.expect_value(t, string(b.lines[0].text[:]), "X bar foo")
-
-	nav_alt(&e, 'a') // replace all remaining
-	testing.expect_value(t, string(b.lines[0].text[:]), "X bar X")
-	testing.expect_value(t, string(b.lines[1].text[:]), "X")
-}
-
-@(test)
-e2e_nav_find_selection_prefill :: proc(t: ^testing.T) {
-	e := e2e_start("foo bar foo\nbaz")
-	defer e2e_stop(&e)
-
-	b := editor_buffer(&e.ed)
-	b.selection = Cursor{0, 0}
-	b.cursor = {0, 3} // single-line selection of "foo"
-
-	e2e_key(&e, .Ctrl_F)
-	f := &e.ed.find
-	testing.expect_value(t, textfield_str(&f.field), "foo")
-	testing.expect_value(t, len(f.matches), 2) // pre-fill highlights matches on open
-	testing.expect_value(t, f.field.anchor, 0) // fully selected
-	testing.expect_value(t, f.field.caret, 3)
-
-	// Fully selected: one keystroke replaces the whole pre-filled query.
-	e2e_type(&e, "z")
-	testing.expect_value(t, textfield_str(&f.field), "z")
-	e2e_key(&e, .Esc)
-}
-
-@(test)
-e2e_nav_find_selection_no_prefill :: proc(t: ^testing.T) {
-	e := e2e_start("aa   bb\ncc")
-	defer e2e_stop(&e)
-
-	b := editor_buffer(&e.ed)
-
-	// A multi-line selection does not pre-fill.
-	b.selection = Cursor{0, 0}
-	b.cursor = {1, 2}
-	e2e_key(&e, .Ctrl_F)
-	testing.expect_value(t, textfield_str(&e.ed.find.field), "")
-	e2e_key(&e, .Esc)
-
-	// A whitespace-only selection counts as no selection.
-	b.selection = Cursor{0, 2}
-	b.cursor = {0, 5}
-	e2e_key(&e, .Ctrl_F)
-	testing.expect_value(t, textfield_str(&e.ed.find.field), "")
-	e2e_key(&e, .Esc)
 }
 
 @(test)

@@ -729,12 +729,29 @@ highlight_jobs_pump :: proc(editor: ^Editor) -> (redraw: bool) {
 		b.hl.top = -1
 		redraw ||= i == editor.current
 	}
+	for internal in editor.ui.internal {
+		if !highlight_ready(internal) {
+			continue
+		}
+		if !highlight_job_adopt(internal) {
+			internal.hl.valid = false
+			internal.hl.computed = true
+			internal.hl.rev = internal.rev
+		}
+		internal.hl.top = -1
+		redraw = true
+	}
 	return
 }
 
 highlight_jobs_busy :: proc(editor: ^Editor) -> bool {
 	for &b in editor.buffers {
 		if highlight_busy(&b) {
+			return true
+		}
+	}
+	for internal in editor.ui.internal {
+		if highlight_busy(internal) {
 			return true
 		}
 	}

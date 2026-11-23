@@ -6,13 +6,13 @@ qed-e2e snapshot 80x24 cursor 11,4
    until┌─ Command Palette ────────────────────────────────────────────┐
  3      │> Type a command                                              │
         │ Terminal: Toggle                                      Alt+t ┃│
-        │ Find                                                 Ctrl+f  │
-        │ Replace                                              Ctrl+h  │
         │ Go to: Start of File                                  Alt+{  │
         │ Go to: End of File                                    Alt+}  │
         │ Jump Back                                             Alt+,  │
         │ Jump Forward                                          Alt+.  │
         │ Close Buffer                                         Ctrl+w  │
+        │ Save                                                 Ctrl+s  │
+        │ Quit                                                 Ctrl+q  │
         └──────────────────────────────────────────────────────────────┘
 
 
@@ -31,12 +31,12 @@ aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaacccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccc
 aaacccccdeeffffffffffffffdddddddddddddddddddddddddddddddddddddddddddddddcccccccc
 ccccccccdgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggddcccccccc
+ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
+ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
+ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
+ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
 ccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhhddcccccccc
 ccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhhddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhddcccccccc
 ccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddhhhhhhhddcccccccc
 ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

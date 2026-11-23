@@ -485,9 +485,10 @@ inline_word_len :: proc(s: string) -> int {
 
 inline_render :: proc(editor: ^Editor, cx, cy: int) {
 	b := editor_buffer(editor)
-	gutter := editor_gutter_width(editor)
-	_, vh := editor_viewport(editor)
-	full_w := int(tb2.width())
+	area := editor_caret_area(editor)
+	gutter := area.x + area.gutter
+	vh := area.y + area.h
+	full_w := gutter + area.w
 	drow := deco_rows(b, b.cursor.row, b.cursor.row + 1, deco_palette(editor.plugins.colors[:]))
 	line_bg := editor_line_bg(true, diff_mark_at(b, b.cursor.row), diff_view_on(), drow[0].tints[:])
 

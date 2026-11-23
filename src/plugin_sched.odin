@@ -1106,6 +1106,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 	if p.startup_due {
 		p.startup_due = false
 		plugin_queue(editor, {event = .Startup})
+		plugin_message_queue(editor)
 	}
 	now := time.tick_now()
 

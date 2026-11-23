@@ -69,7 +69,16 @@ editor_message_show :: proc(editor: ^Editor, level: LogLevel, source, text: stri
 	editor.message_source = string(editor.message_store[:len(source)])
 	editor.message = string(editor.message_store[len(source):])
 	editor.message_level = level
-	plugin_queue(editor, {event = .Message, a = fmt.tprintf("%s: %s", source, text) if source != "" else text, b = log_level_names[level]})
+	plugin_message_queue(editor)
+}
+
+plugin_message_queue :: proc(editor: ^Editor, only := "") {
+	if editor.message == "" {
+		return
+	}
+	source := editor.message_source
+	text := fmt.tprintf("%s: %s", source, editor.message) if source != "" else editor.message
+	plugin_queue(editor, {event = .Message, a = text, b = log_level_names[editor.message_level], only = only})
 }
 
 editor_log :: proc(editor: ^Editor, level: LogLevel, source, msg: string, show := true) {

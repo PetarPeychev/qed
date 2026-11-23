@@ -474,12 +474,6 @@ e2e_paste_buffer_and_overlay :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_Z)
 	testing.expect_value(t, len(b.lines), 1)
 	testing.expect_value(t, string(b.lines[0].text[:]), "")
-
-	// Into an overlay text field a multi-line paste flattens to one line.
-	e2e_key(&e, .Ctrl_F)
-	testing.expect(t, e.ed.find.active, "Ctrl+F should open find")
-	e2e_paste(&e, "a\nb\nc")
-	testing.expect_value(t, textfield_str(&e.ed.find.field), "a b c")
 }
 
 @(test)
