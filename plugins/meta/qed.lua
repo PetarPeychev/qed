@@ -6,10 +6,10 @@
 ---@field col integer
 
 ---Buffer id. `nil` or `0` means the current buffer.
----@alias qed.Buf integer|qed.BufferObject|nil
+---@alias qed.Buf qed.BufferObject
 
 ---@class qed.Ctx
----@field buf integer|nil current buffer id (nil on the welcome screen)
+---@field buf qed.BufferObject|nil the current buffer (nil on the welcome screen)
 ---@field path string|nil the current buffer's path, `""` for an unnamed buffer (nil on the welcome screen)
 ---@field language string|nil
 ---@field root string
@@ -152,7 +152,7 @@ function qed.save(b) end
 
 ---Close a buffer. Returns `nil, "unsaved"` and keeps it open if it has unsaved changes, unless its id is in `discard` (approved, e.g. by a confirm).
 ---@param b qed.Buf
----@param opts? {discard?: integer[]}
+---@param opts? {discard?: qed.BufferObject[]}
 ---@return true|nil ok
 ---@return "unsaved"|nil err
 function qed.close(b, opts) end
@@ -177,11 +177,11 @@ function qed.open_url(url) end
 ---@class qed.Unsaved
 ---@field total integer buffers outside the new root
 ---@field unsaved integer of them unsaved
----@field bufs integer[] the unsaved ones' ids
+---@field bufs qed.BufferObject[] the unsaved ones
 
 ---Switches the working root to the directory `path` (relative to `qed.root()`): closes every buffer outside it, restarts the language servers, drops saved pane selections and expanded dirs and fires `root_changed`. A no-op on the current root. While an unsaved buffer outside it is not in `discard`, closes nothing and returns `nil, "unsaved", info`; ask, then call again with `{discard = info.bufs}`.
 ---@param path string
----@param opts? {discard?: integer[]} unsaved buffer ids that may be closed
+---@param opts? {discard?: qed.BufferObject[]} unsaved buffer ids that may be closed
 ---@return true|nil ok
 ---@return "unsaved"|string|nil err `"unsaved"`, or "not a directory: <path>"
 ---@return qed.Unsaved|nil info with `"unsaved"`
@@ -984,7 +984,7 @@ function qed.buf.list() end
 local BufferObject = {}
 
 ---Closes the buffer: frees an internal buffer; closes a file buffer like `qed.close`.
----@param opts? {discard?: integer[]}
+---@param opts? {discard?: qed.BufferObject[]}
 ---@return true|nil
 ---@return string|nil err
 function BufferObject:close(opts) end
