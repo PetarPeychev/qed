@@ -989,27 +989,45 @@ local BufferObject = {}
 ---@return string|nil err
 function BufferObject:close(opts) end
 
----Finds `query` in the buffer and highlights every match; selects the match at or after the cursor. Returns the 1-based current index and the count, or `nil, "invalid pattern"`.
+---Starts a search owned by the calling plugin: highlights every match, selects the one at or after the cursor. Several can exist; closed on plugin unload.
+---@param query string
+---@param opts? {regex?: boolean, case_sensitive?: boolean}
+---@return qed.Search
+function BufferObject:find(query, opts) end
+
+---@class qed.Search
+---@field id integer
+local Search = {}
+
+---Changes the query and options; returns index, count, capped, or `nil, "invalid pattern"`.
 ---@param query string
 ---@param opts? {regex?: boolean, case_sensitive?: boolean}
 ---@return integer|nil index
 ---@return integer|string count
-function BufferObject:find(query, opts) end
+---@return boolean|nil capped
+function Search:update(query, opts) end
 
----Selects the next (`1`) or previous (`-1`) match, wrapping. Returns index and count; nil when this buffer has no find.
+---Current index (1-based, 0 when none), count and whether the count hit the cap; rescans after buffer edits.
+---@return integer|nil index
+---@return integer|string count
+---@return boolean|nil capped
+function Search:result() end
+
+---Selects the next (`1`) or previous (`-1`) match, wrapping.
 ---@param direction integer
 ---@return integer|nil index
----@return integer|nil count
-function BufferObject:find_step(direction) end
+---@return integer|string count
+---@return boolean|nil capped
+function Search:step(direction) end
 
 ---Replaces the current match, or every match with `all`, as one undo step. Returns the number replaced.
 ---@param text string
 ---@param opts? {all?: boolean}
 ---@return integer
-function BufferObject:find_replace(text, opts) end
+function Search:replace(text, opts) end
 
----Removes the find highlights.
-function BufferObject:find_clear() end
+---Ends the search and its highlights.
+function Search:close() end
 
 ---True if `b` is the id of an open buffer. Unlike other `qed.buf` calls it never raises, and nil or 0 is not "current" here.
 ---@param b integer|nil
@@ -1163,10 +1181,6 @@ function BufferObject:line_list() end
 ---@return qed.BufferObject
 function qed.buf.create(spec) end
 
----A buffer object for an open buffer id, nil when closed.
----@param b integer
----@return qed.BufferObject|nil
-function qed.buf.get(b) end
 
 ---Subscribes to a buffer's events (`"change"`); handlers get the `buf_changed` arguments. Internal buffers fire only these.
 ---@param event "change"

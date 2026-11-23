@@ -23,12 +23,12 @@ e2e_deco_gutter_tint_eol_span :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.wrap = false
 	pl := deco_plugin(&e, "dp", `
-		qed.deco.gutter(nil, ns, 2, "●", {color = "git_added"})
-		qed.deco.tint(nil, ns, 3, 4, {color = "error_foreground", alpha = 0.5})
-		qed.deco.eol(nil, ns, 1, "note", {color = "warn_foreground"})
-		qed.deco.eol(nil, ns, 1, "more", {color = "git_deleted"})
-		qed.deco.span(nil, ns, {row = 2, col = 2}, {row = 2, col = 4}, {fg = "git_modified", bold = true, underline = true})
-		qed.deco.span(nil, ns, {row = 3, col = 1}, {row = 3, col = 3}, {bg = "git_added"})`)
+		qed.deco.gutter(qed.buf.current(), ns, 2, "●", {color = "git_added"})
+		qed.deco.tint(qed.buf.current(), ns, 3, 4, {color = "error_foreground", alpha = 0.5})
+		qed.deco.eol(qed.buf.current(), ns, 1, "note", {color = "warn_foreground"})
+		qed.deco.eol(qed.buf.current(), ns, 1, "more", {color = "git_deleted"})
+		qed.deco.span(qed.buf.current(), ns, {row = 2, col = 2}, {row = 2, col = 4}, {fg = "git_modified", bold = true, underline = true})
+		qed.deco.span(qed.buf.current(), ns, {row = 3, col = 1}, {row = 3, col = 3}, {bg = "git_added"})`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)
@@ -74,7 +74,7 @@ e2e_deco_eol_wide_and_wrap :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.wrap = false
 	b.cursor = {1, 0}
-	deco_plugin(&e, "dw", `qed.deco.eol(nil, ns, 1, "x日本", {color = "warn_foreground"})`)
+	deco_plugin(&e, "dw", `qed.deco.eol(qed.buf.current(), ns, 1, "x日本", {color = "warn_foreground"})`)
 	e2e_render(&e)
 	testing.expect_value(t, editor_gutter_width(&e.ed), gutter)
 	testing.expect_value(t, e2e_cell(&e, gutter + w - 3, 0), 'x')
@@ -90,7 +90,7 @@ e2e_deco_eol_wide_and_wrap :: proc(t: ^testing.T) {
 	b.wrap = true
 	wide := strings.repeat("word ", 20, context.temp_allocator)
 	buffer_insert(b, {1, 5}, fmt.tprintf(" %s", wide))
-	deco_plugin(&e, "dw2", `qed.deco.eol(nil, ns, 2, "tail", {color = "warn_foreground"})`)
+	deco_plugin(&e, "dw2", `qed.deco.eol(qed.buf.current(), ns, 2, "tail", {color = "warn_foreground"})`)
 	e2e_render(&e)
 	segs := line_wrap(b.lines[1].text[:], w)
 	testing.expect_value(t, len(segs), 2)
@@ -110,8 +110,8 @@ e2e_deco_ghost_rows_mapping :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
 	deco_plugin(&e, "dg", `
-		qed.deco.ghost(nil, ns, 2, {"g1", "g2"}, {color = "git_deleted"})
-		qed.deco.ghost(nil, ns, 4, "up", {above = true})`)
+		qed.deco.ghost(qed.buf.current(), ns, 2, {"g1", "g2"}, {color = "git_deleted"})
+		qed.deco.ghost(qed.buf.current(), ns, 4, "up", {above = true})`)
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)
 	testing.expect_value(t, deco_row(&e, 1), "2 r1")
@@ -156,7 +156,7 @@ e2e_deco_ghost_scroll :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
 	deco_plugin(&e, "gs", `
-		for r = 1, 20 do qed.deco.ghost(nil, ns, r, {"a", "b"}) end`)
+		for r = 1, 20 do qed.deco.ghost(qed.buf.current(), ns, r, {"a", "b"}) end`)
 	_, h := editor_viewport(&e.ed)
 	b.cursor = {15, 0}
 	editor_scroll(&e.ed)
@@ -185,7 +185,7 @@ e2e_deco_line_bg_order :: proc(t: ^testing.T) {
 e2e_deco_default_tint_alpha :: proc(t: ^testing.T) {
 	e := e2e_start("a\nb\n")
 	defer e2e_stop(&e)
-	deco_plugin(&e, "da", `qed.deco.tint(nil, ns, 2, 2, {color = "git_added"})`)
+	deco_plugin(&e, "da", `qed.deco.tint(qed.buf.current(), ns, 2, 2, {color = "git_added"})`)
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)
 	testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, gutter + 3, 1)), e2e_rgb(color_over(COLOR_BG, COLOR_GIT_ADD, DECO_TINT)))
@@ -200,11 +200,11 @@ e2e_deco_namespaces_and_unload :: proc(t: ^testing.T) {
 		return {setup = function()
 			local a, b = qed.deco.ns("a"), qed.deco.ns("b")
 			assert(qed.deco.ns("a") == a, "same name, same id")
-			qed.deco.gutter(nil, a, 1, "x", {color = "git_added"})
-			qed.deco.gutter(nil, a, 2, "x", {color = "git_added"})
-			qed.deco.ghost(nil, a, 3, "ghost")
-			qed.deco.gutter(nil, b, 3, "y", {color = "git_added"})
-			qed.deco.clear(nil, a, 2, 2)
+			qed.deco.gutter(qed.buf.current(), a, 1, "x", {color = "git_added"})
+			qed.deco.gutter(qed.buf.current(), a, 2, "x", {color = "git_added"})
+			qed.deco.ghost(qed.buf.current(), a, 3, "ghost")
+			qed.deco.gutter(qed.buf.current(), b, 3, "y", {color = "git_added"})
+			qed.deco.clear(qed.buf.current(), a, 2, 2)
 			assert(not pcall(qed.deco.gutter, nil, a, 1, "xx", {color = "git_added"}), "two-char glyph refused")
 			assert(not pcall(qed.deco.eol, nil, a, 1, "x", "git_added"), "a positional color is refused")
 			assert(not pcall(qed.deco.gutter, nil, a, 1, "日", {color = "git_added"}), "wide glyph refused")
@@ -222,7 +222,7 @@ e2e_deco_namespaces_and_unload :: proc(t: ^testing.T) {
 	two := e2e_plugin(&e, "two", `
 		return {setup = function()
 			local mine = qed.deco.ns("a")
-			qed.deco.gutter(nil, mine, 1, "z", {color = "git_deleted"})
+			qed.deco.gutter(qed.buf.current(), mine, 1, "z", {color = "git_deleted"})
 			assert(not pcall(qed.deco.clear, nil, mine - 1), "another plugin's namespace is refused")
 		end}`)
 	testing.expect_value(t, two.state, PluginState.Enabled)
@@ -455,8 +455,8 @@ e2e_deco_theme_tint_keys :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.cursor = {1, 0}
 	pl := deco_plugin(&e, "dk", `
-		qed.deco.tint(nil, ns, 1, 1, {color = "git_added", alpha = "conflict"})
-		qed.deco.span(nil, ns, {row = 1, col = 2}, {row = 1, col = 3}, {bg = "git_deleted", alpha = 0.5})
+		qed.deco.tint(qed.buf.current(), ns, 1, 1, {color = "git_added", alpha = "conflict"})
+		qed.deco.span(qed.buf.current(), ns, {row = 1, col = 2}, {row = 1, col = 3}, {bg = "git_deleted", alpha = 0.5})
 		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, {color = "git_added", alpha = "nope"}), "unknown tint key refused")
 		assert(not pcall(qed.deco.span, nil, ns, {row = 1, col = 1}, {row = 1, col = 2}, {alpha = 0.5}), "alpha needs bg")
 		assert(not pcall(qed.deco.span, nil, ns, {row = 1, col = 1}, {row = 1, col = 2}, {bg = "git_added", alpha = 2}), "alpha out of range refused")`)
@@ -480,10 +480,10 @@ e2e_deco_mark_follows_edits :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
 	pl := deco_plugin(&e, "mk", `
-		local m = qed.deco.mark(nil, ns, {row = 2, col = 7}, {row = 2, col = 14})
-		local from, to = qed.deco.range(nil, ns, m)
+		local m = qed.deco.mark(qed.buf.current(), ns, {row = 2, col = 7}, {row = 2, col = 14})
+		local from, to = qed.deco.range(qed.buf.current(), ns, m)
 		assert(from.row == 2 and from.col == 7 and to.col == 14, "range reads back")
-		assert(qed.deco.range(nil, ns, m + 1) == nil, "unknown id")`)
+		assert(qed.deco.range(qed.buf.current(), ns, m + 1) == nil, "unknown id")`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	testing.expect_value(t, len(b.deco.marks), 1)
 
@@ -512,8 +512,8 @@ e2e_deco_mark_dies_on_overlap :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
 	deco_plugin(&e, "mk", `
-		qed.deco.mark(nil, ns, {row = 1, col = 5}, {row = 1, col = 8})
-		qed.deco.mark(nil, ns, {row = 1, col = 9}, {row = 1, col = 14})`)
+		qed.deco.mark(qed.buf.current(), ns, {row = 1, col = 5}, {row = 1, col = 8})
+		qed.deco.mark(qed.buf.current(), ns, {row = 1, col = 9}, {row = 1, col = 14})`)
 	testing.expect_value(t, len(b.deco.marks), 2)
 	delete(buffer_delete(b, {0, 2}, {0, 6}))
 	testing.expect_value(t, len(b.deco.marks), 1)
@@ -531,7 +531,7 @@ e2e_deco_tint_theme_key :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.wrap = false
 	pl := deco_plugin(&e, "tk", `
-		qed.deco.tint(nil, ns, 2, 2, {color = "ai_edit_background", alpha = "ai_edit"})
+		qed.deco.tint(qed.buf.current(), ns, 2, 2, {color = "ai_edit_background", alpha = "ai_edit"})
 		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, {color = "ai_edit_background", alpha = "nope"}), "unknown tint")`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	e2e_render(&e)
@@ -550,10 +550,10 @@ inline_start :: proc(t: ^testing.T, e: ^E2E, name := "gh") -> ^Buffer {
 	b.wrap = false
 	b.cursor = {0, 2}
 	pl := deco_plugin(e, name, `
-		assert(not qed.deco.inline(nil, ns, {row = 1, col = 1}, "X"), "not at the cursor")
-		assert(not qed.deco.inline(nil, ns, {row = 1, col = 3}, "X", {rev = qed.buf.current():rev() + 1}), "stale rev")
-		assert(not qed.deco.inline(nil, ns, {row = 1, col = 3}, ""), "empty text")
-		assert(qed.deco.inline(nil, ns, {row = 1, col = 3}, "AAA\nBBB", {rev = qed.buf.current():rev()}), "shown")`)
+		assert(not qed.deco.inline(qed.buf.current(), ns, {row = 1, col = 1}, "X"), "not at the cursor")
+		assert(not qed.deco.inline(qed.buf.current(), ns, {row = 1, col = 3}, "X", {rev = qed.buf.current():rev() + 1}), "stale rev")
+		assert(not qed.deco.inline(qed.buf.current(), ns, {row = 1, col = 3}, ""), "empty text")
+		assert(qed.deco.inline(qed.buf.current(), ns, {row = 1, col = 3}, "AAA\nBBB", {rev = qed.buf.current():rev()}), "shown")`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	testing.expect(t, inline_active(&e.ed), "ghost active at the cursor")
 	return b
@@ -661,12 +661,12 @@ e2e_text_diff_rows_and_markers :: proc(t: ^testing.T) {
 		assert(table.concat(rows, ",") == "1,6,10,11", "word markers in order: " .. table.concat(rows, ","))
 		assert(table.concat(kinds, ",") == "1,2,3,3", "kinds")
 		assert(#qed.buf.current():find_lines("<<<<<<<") == 2 and select(2, qed.buf.current():find_lines("=")) == nil, "plain prefix")
-		local h = qed.text.diff_rows(nil, 2, 3, 7, 9, {words = true})
+		local h = qed.text.diff_rows(qed.buf.current(), 2, 3, 7, 9, {words = true})
 		assert(#h == 1 and h[1].a == 3 and h[1].a_count == 1 and h[1].b == 8 and h[1].b_count == 2, "rows are buffer rows")
 		local s = h[1].spans[1]
 		assert(#h[1].spans == 1 and s[1] == 1 and s[2] == 4 and s[3] == 1 and s[4] == 4, "old|new word span")
-		assert(qed.text.diff_rows(nil, 2, 3, 2, 3)[1] == nil and qed.text.diff_rows(nil, 4, 3, 7, 7)[1].b_count == 1, "equal and empty sides")
-		assert(not pcall(qed.text.diff_rows, nil, 0, 1, 1, 1) and not pcall(qed.text.diff_rows, nil, 1, 99, 1, 1), "out of range")`)
+		assert(qed.text.diff_rows(qed.buf.current(), 2, 3, 2, 3)[1] == nil and qed.text.diff_rows(qed.buf.current(), 4, 3, 7, 7)[1].b_count == 1, "equal and empty sides")
+		assert(not pcall(qed.text.diff_rows, qed.buf.current(), 0, 1, 1, 1) and not pcall(qed.text.diff_rows, qed.buf.current(), 1, 99, 1, 1), "out of range")`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 }
 

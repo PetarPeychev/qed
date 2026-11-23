@@ -496,11 +496,9 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			id := 0
 			if lua.type(L, value_index) == .TABLE {
 				id, _ = api_field_int(L, value_index, "id")
-			} else if lua.isinteger(L, value_index) {
-				id = int(lua.tointeger(L, value_index))
 			}
 			if ui_buffer(marshal.editor, u64(id)) == nil {
-				ui_marshal_fail(marshal, "buffer: an open buffer (qed.buf.create or qed.buf.get) expected")
+				ui_marshal_fail(marshal, "buffer: an open buffer object expected")
 			}
 			node.buffer = u64(id)
 		case "header":
@@ -859,6 +857,9 @@ ui_handler_call :: proc(editor: ^Editor, owner: string, ref: i32, args: UiHandle
 		return false
 	}
 	args := args
+	previous_owner := plugins.entry_owner
+	plugins.entry_owner = owner
+	defer plugins.entry_owner = previous_owner
 	lua.pushcfunction(plugins.L, ui_handler_c)
 	lua.pushinteger(plugins.L, lua.Integer(ref))
 	lua.pushlightuserdata(plugins.L, &args)
@@ -917,6 +918,9 @@ ui_item_build :: proc(editor: ^Editor, vc: ^UiNode, list: ^UiList, pos: int, key
 		return nil
 	}
 	build := UiItemBuild{editor = editor, vc = vc, list = list, pos = pos}
+	previous_owner := plugins.entry_owner
+	plugins.entry_owner = vc.owner
+	defer plugins.entry_owner = previous_owner
 	lua.pushcfunction(plugins.L, ui_item_build_c)
 	lua.pushlightuserdata(plugins.L, &build)
 	plugins.resumes += 1

@@ -125,6 +125,24 @@ plugin_prelude_install :: proc(L: ^lua.State) {
 	}
 	lua.pushvalue(L, -2)
 	lua.call(L, 1, 0)
+	lua.getfield(L, -1, "buf")
+	lua.getfield(L, -1, "__object")
+	lua.setfield(L, lua.REGISTRYINDEX, QED_BUFFER_OBJECT)
+	lua.pushnil(L)
+	lua.setfield(L, -2, "__object")
+	lua.pop(L, 1)
+}
+
+QED_BUFFER_OBJECT :: "qed.buffer_object"
+
+api_buffer_object_push :: proc(L: ^lua.State, id: u64) {
+	if lua.getfield(L, lua.REGISTRYINDEX, QED_BUFFER_OBJECT) != .FUNCTION {
+		lua.pop(L, 1)
+		lua.pushinteger(L, lua.Integer(id))
+		return
+	}
+	lua.pushinteger(L, lua.Integer(id))
+	lua.call(L, 1, 1)
 }
 
 plugin_view_index :: proc(p: ^Plugins, handle: u64) -> int {
@@ -734,7 +752,7 @@ api_pane_item_push :: proc(L: ^lua.State, it: PaneItem) {
 		lua.setfield(L, -2, "detail")
 	}
 	if it.buf != 0 {
-		lua.pushinteger(L, lua.Integer(it.buf))
+		api_buffer_object_push(L, it.buf)
 		lua.setfield(L, -2, "buf")
 	}
 	if it.row > 0 {

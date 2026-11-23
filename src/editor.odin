@@ -58,7 +58,7 @@ Editor :: struct {
 	accel_tick:      time.Tick,
 	overlay_click_tick: time.Tick,
 	overlay_click_idx:  int,
-	find:            Find,
+	searches:        [dynamic]^Search,
 	jumps:           JumpList,
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
@@ -198,7 +198,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	editor_log_destroy(editor)
 	delete(editor.hover)
 	completion_destroy(&editor.completion)
-	find_destroy(&editor.find)
+	searches_destroy(editor)
 	jump_destroy(&editor.jumps)
 	term_destroy(editor)
 	ui_destroy(editor)
@@ -900,6 +900,7 @@ editor_add_buffer :: proc(editor: ^Editor, b: Buffer) -> int {
 	plugin_queue(editor, {event = .Buf_Open, buf = b.id})
 	scratch := editor.buffers[0]
 	if len(editor.buffers) == 1 && scratch.path == "" && !scratch.modified {
+		plugin_buffer_hooks_drop(&editor.plugins, scratch.id)
 		buffer_destroy(&editor.buffers[0])
 		editor.buffers[0] = b
 		return 0
@@ -1330,6 +1331,7 @@ highlight_clips_view :: proc(b: ^Buffer, w, h, scroll_row, scroll_sub, scroll_co
 editor_render :: proc(editor: ^Editor) {
 	image_frame_begin()
 	tb2.clear()
+	editor.caret_view = {}
 	ui_prepare(editor)
 	editor_syntax_errors_report(editor)
 	tree_base := ui_layer_used(&editor.ui, "base")
@@ -1795,7 +1797,7 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 
 		match_spans: [][2]int
 		if view.find {
-			match_spans = find_row_spans(editor, row)
+			match_spans = find_row_spans(editor, b, row)
 		}
 
 		// Deleted/replaced base lines render as dim-red ghost rows: above a

@@ -62,7 +62,6 @@ qed_api := [?]lua.L_Reg {
 	{nil, nil},
 }
 
-@(private = "file")
 qed_buf_api := [?]lua.L_Reg {
 	{"current", qed_buf_current},
 	{"list", qed_buf_list},
@@ -96,9 +95,6 @@ qed_buf_api := [?]lua.L_Reg {
 	{"line_list", qed_buf_line_list},
 	{"create", qed_buf_create},
 	{"find", qed_buf_find},
-	{"find_step", qed_buf_find_step},
-	{"find_replace", qed_buf_find_replace},
-	{"find_clear", qed_buf_find_clear},
 	{"on", qed_buf_on},
 	{nil, nil},
 }
@@ -238,7 +234,38 @@ plugin_qed_push :: proc(L: ^lua.State, pl: ^Plugin) {
 		lua.L_setfuncs(L, raw_data(s.regs), 1)
 		lua.setfield(L, -2, s.name)
 	}
+	lua.getfield(L, -1, "buf")
+	api_buffer_methods_push(L)
+	lua.setfield(L, -2, "__methods")
+	lua.pop(L, 1)
 	plugin_prelude_install(L)
+}
+
+QED_BUFFER_METHODS :: "qed.buffer_methods"
+
+api_buffer_methods_push :: proc(L: ^lua.State) {
+	if lua.getfield(L, lua.REGISTRYINDEX, QED_BUFFER_METHODS) == .TABLE {
+		return
+	}
+	lua.pop(L, 1)
+	lua.createtable(L, 0, c.int(len(qed_buf_api)))
+	for method in qed_buf_api {
+		if method.name == nil {
+			continue
+		}
+		switch string(method.name) {
+		case "current", "list", "create":
+			continue
+		}
+		lua.pushodinstring(L, PLUGIN_CALLER_KEY)
+		lua.pushcclosure(L, method.func, 1)
+		lua.setfield(L, -2, method.name)
+	}
+	lua.pushodinstring(L, PLUGIN_CALLER_KEY)
+	lua.pushcclosure(L, qed_close, 1)
+	lua.setfield(L, -2, "close")
+	lua.pushvalue(L, -1)
+	lua.setfield(L, lua.REGISTRYINDEX, QED_BUFFER_METHODS)
 }
 
 api_enter :: proc "c" (L: ^lua.State) -> ^PluginEntry {
@@ -284,27 +311,11 @@ api_buf_find :: proc(editor: ^Editor, id: u64) -> (^Buffer, int) {
 }
 
 api_buf :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> (^Buffer, int) {
-	id: u64
-	if lua.type(L, idx) == .TABLE {
-		n, _ := api_field_int(L, idx, "id")
-		if n <= 0 {
-			lua.L_argerror(L, idx, "buffer expected")
-		}
-		id = u64(n)
-	} else if lua.type(L, idx) > .NIL {
-		n := api_int(L, idx, "buffer id expected")
-		if n < 0 {
-			lua.L_argerror(L, idx, "buffer id expected")
-		}
-		id = u64(n)
+	if lua.type(L, idx) != .TABLE {
+		lua.L_argerror(L, idx, "buffer object expected")
 	}
-	if id == 0 {
-		if editor.welcome {
-			plugin_raise(L, "no current buffer")
-		}
-		return editor_buffer(editor), editor.current
-	}
-	b, i := api_buf_find(editor, id)
+	id, _ := api_field_int(L, lua.absindex(L, idx), "id")
+	b, i := api_buf_find(editor, u64(id))
 	if b == nil {
 		plugin_raise(L, "buffer closed")
 	}
@@ -313,11 +324,11 @@ api_buf :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> (^Buffer, int) {
 
 api_buffer_id :: proc(L: ^lua.State, idx: c.int) -> u64 {
 	idx := lua.absindex(L, idx)
-	if lua.type(L, idx) == .TABLE {
-		id, _ := api_field_int(L, idx, "id")
-		return u64(id)
+	if lua.type(L, idx) != .TABLE {
+		lua.L_argerror(L, idx, "buffer object expected")
 	}
-	return u64(lua.tointeger(L, idx))
+	id, _ := api_field_int(L, idx, "id")
+	return u64(id)
 }
 
 api_field_int :: proc(L: ^lua.State, t: c.int, key: string) -> (int, bool) {
@@ -501,10 +512,9 @@ qed_buf_list :: proc "c" (L: ^lua.State) -> c.int {
 qed_buf_valid :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	isnum: b32
-	n := lua.tointeger(L, 1, &isnum)
+	n := i64(api_buffer_id(L, 1))
 	valid := false
-	if isnum && n > 0 {
+	if n > 0 {
 		b, _ := api_buf_find(entry.editor, u64(n))
 		valid = b != nil
 	}

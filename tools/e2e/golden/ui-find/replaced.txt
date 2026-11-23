@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 38,3
 -- text
  1 cat dog cat
  2 the lion sat             ┌────────────────────────────────────────────────┐
- 3 catalog                  │Find cat                       .* Aa        3/3 │
+ 3 catalog                  │Find cat                      .* Aa         3/3 │
  4                          │Repl lion                                       │
                             └────────────────────────────────────────────────┘
 
@@ -27,7 +27,7 @@ qed-e2e snapshot 80x24 cursor 38,3
 -- style
 aaabbbcccccbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaacccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
-aeefffccccccccccccccccccccccdgggggddddddddddddddddddddddddddhhdhhddddddddhhhhdcc
+aeefffccccccccccccccccccccccdgggggdddddddddddddddddddddddddhhdhhdddddddddhhhhdcc
 aaacccccccccccccccccccccccccdgggggddddddddddddddddddddddddddddddddddddddddddddcc
 ccccccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

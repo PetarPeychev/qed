@@ -76,7 +76,7 @@ plugin_sched_yield_resume :: proc(t: ^testing.T) {
 				end}
 				qed.command{name = "Raw", run = function() coroutine.yield() end}
 				qed.command{name = "InEdit", run = function()
-					local ok, err = pcall(qed.edit, nil, function() qed.sleep(1) end)
+					local ok, err = pcall(qed.edit, qed.buf.current(), function() qed.sleep(1) end)
 					inedit = err:find("cannot wait inside qed.edit") and "refused" or err
 				end}
 				qed.command{name = "Late", run = function() qed.sleep(1); error("late boom") end}

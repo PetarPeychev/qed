@@ -112,6 +112,7 @@ Plugins :: struct {
 	mark_seq: u64,
 	status:   [dynamic]PluginStatus,
 	calls:    [dynamic]PluginCall,
+	entry_owner: string,
 }
 
 PluginCall :: struct {
@@ -798,6 +799,9 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	lua.pushlightuserdata(p.L, &args)
 	p.loading = true
 	prev_slice := plugin_slice_begin(p, .Setup)
+	previous_owner := p.entry_owner
+	p.entry_owner = pl.name
+	defer p.entry_owner = previous_owner
 	ok, msg, tb := plugin_call(editor, 1, 0)
 	killed := plugin_slice_end(editor, prev_slice, pl.name, .Setup, "setup")
 	p.loading = false
@@ -1078,6 +1082,7 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 		}
 	}
 	ui_unload(editor, pl.name)
+	searches_unload(editor, pl.name)
 	plugin_ui_unload(editor, pl.name)
 	plugin_sched_unload(editor, pl.name)
 	term_unload(editor, pl.name)
@@ -1151,6 +1156,46 @@ plugin_key_push :: proc(L: ^lua.State, pl: ^Plugin) {
 	lua.pushodinstring(L, fmt.tprintf("%s\x00%d", pl.name, pl.gen))
 }
 
+// a shared method has no plugin of its own: the Lua code calling it decides, found by the _ENV it runs in
+plugin_caller_by_env :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
+	record: lua.Debug
+	for level: c.int = 1; lua.getstack(L, level, &record) != 0; level += 1 {
+		lua.getinfo(L, "f", &record)
+		function := lua.gettop(L)
+		for upvalue: c.int = 1; ; upvalue += 1 {
+			name := lua.getupvalue(L, function, upvalue)
+			if name == nil {
+				break
+			}
+			if string(name) != "_ENV" {
+				lua.pop(L, 1)
+				continue
+			}
+			for &plugin in editor.plugins.list {
+				if plugin.env == lua.NOREF || plugin.state != .Enabled {
+					continue
+				}
+				lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(plugin.env))
+				same := lua.rawequal(L, -1, -2) != 0
+				lua.pop(L, 1)
+				if same {
+					lua.settop(L, function - 1)
+					return &plugin
+				}
+			}
+			lua.pop(L, 1)
+			break
+		}
+		lua.settop(L, function - 1)
+	}
+	for task in editor.plugins.tasks {
+		if task.co == L {
+			return plugin_find(&editor.plugins, task.owner)
+		}
+	}
+	return plugin_find(&editor.plugins, editor.plugins.entry_owner)
+}
+
 plugin_key :: proc(L: ^lua.State, idx: c.int) -> (name: string, gen: u64) {
 	key, _ := lua.toodinstring(L, idx)
 	i := strings.index_byte(key, 0)
@@ -1163,7 +1208,12 @@ plugin_key :: proc(L: ^lua.State, idx: c.int) -> (name: string, gen: u64) {
 	return key[:i], gen
 }
 
+PLUGIN_CALLER_KEY :: "\x00caller"
+
 plugin_owner :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
+	if key, _ := lua.toodinstring(L, lua.upvalueindex(1)); key == PLUGIN_CALLER_KEY {
+		return plugin_caller_by_env(L, editor)
+	}
 	name, gen := plugin_key(L, lua.upvalueindex(1))
 	pl := plugin_find(&editor.plugins, name)
 	if pl != nil && gen != 0 && pl.gen != gen {
@@ -1934,6 +1984,9 @@ plugin_invoke :: proc(editor: ^Editor, owner: string, ref: i32, nresults: c.int)
 	lua.pushinteger(p.L, lua.Integer(ref))
 	lua.pushodinstring(p.L, owner)
 	p.resumes += 1
+	previous_owner := p.entry_owner
+	p.entry_owner = owner
+	defer p.entry_owner = previous_owner
 	prev_slice := plugin_slice_begin(p, .When)
 	ok, msg, tb := plugin_call(editor, 2, nresults)
 	if plugin_slice_end(editor, prev_slice, owner, .When, "command when") && ok {

@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 38,3
 -- text
  1 lion dog lion
  2 the lion sat             ┌────────────────────────────────────────────────┐
- 3 lionalog                 │Find cat                       .* Aa no matches │
+ 3 lionalog                 │Find cat                      .* Aa  no matches │
  4                          │Repl lion                                       │
                             └────────────────────────────────────────────────┘
 
@@ -27,7 +27,7 @@ Find: Replaced 3 matches
 -- style
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccbb
-addeeebbbbbbbbbbbbbbbbbbbbbbcfffffccccccccccccccccccccccccccggcggcgggggggggggcbb
+addeeebbbbbbbbbbbbbbbbbbbbbbcfffffcccccccccccccccccccccccccggcggccgggggggggggcbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbcfffffccccccccccccccccccccccccccccccccccccccccccccbb
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccbb
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

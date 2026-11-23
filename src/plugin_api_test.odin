@@ -80,7 +80,7 @@ plugin_api_buf_read :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local b = qed.buf.current()
 		assert(ctx.buf == b, "ctx.buf is the current id")
-		assert(b:valid() and qed.buf.get(b.id + 1000) == nil, "valid")
+		assert(b:valid(), "valid")
 		local ids = qed.buf.list()
 		assert(#ids == 2 and ids[1] == b, "list in buffer order")
 		local other = ids[2]
@@ -97,7 +97,7 @@ plugin_api_buf_read :: proc(t: ^testing.T) {
 		assert(b:line(1) == "héllo" and other:line(1) == "", "line")
 		assert(not pcall(b.line, b, 4), "line out of range")
 		assert(b:text() == "héllo\n\nend" and other:text() == "", "text joins rows with \\n")
-		assert(qed.buf.get("x") == nil, "non-integer id rejected")
+		assert(not pcall(qed.edit, 7, function() end), "an id is not a buffer")
 	`, "héllo", "", "end")
 	defer api_test_destroy(ed)
 	append(&ed.buffers, test_buffer())
@@ -537,7 +537,7 @@ plugin_api_save_conflict :: proc(t: ^testing.T) {
 		local other = qed.buf.list()[2]
 		local ok, err = qed.save(other)
 		assert(ok == nil and err == "changed on disk", "a conflicting background save fails: " .. tostring(err))
-		local ok2, err2 = qed.save()
+		local ok2, err2 = qed.save(qed.buf.current())
 		assert(ok2 == nil and err2 == "no file name", "unnamed buffer")
 	`, "x")
 	defer api_test_destroy(ed)
@@ -551,7 +551,7 @@ plugin_api_save_conflict :: proc(t: ^testing.T) {
 
 @(test)
 plugin_api_edit_error_traceback :: proc(t: ^testing.T) {
-	ed := api_test_editor(`qed.edit(nil, function() error("inside edit") end)`, "x")
+	ed := api_test_editor(`qed.edit(qed.buf.current(), function() error("inside edit") end)`, "x")
 	defer api_test_destroy(ed)
 	cmd, _ := plugin_test_command(ed, "T: Run")
 	command_run(ed, cmd)

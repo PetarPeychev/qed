@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 37,2
 -- text
  1 cat dog cat
  2 the cat sat              ┌────────────────────────────────────────────────┐
- 3 catalog                  │Find cat                       .* Aa        1/4 │
+ 3 catalog                  │Find cat                      .* Aa         1/4 │
  4                          └────────────────────────────────────────────────┘
 
 
@@ -27,7 +27,7 @@ qed-e2e snapshot 80x24 cursor 37,2
 -- style
 abbcccdddddeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 aaaddddeeeddddddddddddddddddffffffffffffffffffffffffffffffffffffffffffffffffffdd
-aaaeeeddddddddddddddddddddddfgggggffffffffffffffffffffffffffhhfhhffffffffhhhhfdd
+aaaeeeddddddddddddddddddddddfgggggfffffffffffffffffffffffffhhfhhfffffffffhhhhfdd
 aaadddddddddddddddddddddddddffffffffffffffffffffffffffffffffffffffffffffffffffdd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

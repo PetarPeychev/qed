@@ -42,52 +42,54 @@ end
 local BUFFER_METHODS = {"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line",
 	"find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor",
 	"screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base",
-	"base", "line_list", "on", "find", "find_step", "find_replace", "find_clear"}
+	"base", "line_list", "on", "find"}
 
 local BUFFER_EVENTS = {buf_open = true, buf_enter = true, buf_close = true, buf_pre_save = true, buf_save = true,
 	buf_reload = true, buf_changed = true, cursor_moved = true, language_changed = true}
 
+local buffer_cache = setmetatable({}, {__mode = "v"})
+local buffer_meta
+
+local function buffer_object(id)
+	if type(id) ~= "number" then
+		return id
+	end
+	local buffer = buffer_cache[id]
+	if not buffer then
+		buffer = setmetatable({id = id}, buffer_meta)
+		buffer_cache[id] = buffer
+	end
+	return buffer
+end
+
 local function buffer_objects(qed)
 	local buf_api = qed.buf
-	local methods = {}
+	local methods = buf_api.__methods
+	buf_api.__methods = nil
 	for _, name in ipairs(BUFFER_METHODS) do
-		local fn = buf_api[name]
-		methods[name] = function(self, ...)
-			return fn(self.id, ...)
-		end
 		buf_api[name] = nil
 	end
-	local close = qed.close
-	function methods:close(options)
-		return close(self.id, options)
-	end
-	local meta = {
-		__index = methods,
-		__eq = function(left, right) return left.id == right.id end,
-		__tostring = function(self) return tostring(self.id) end,
-	}
-	local cache = setmetatable({}, {__mode = "v"})
-	local function object(id)
-		if type(id) ~= "number" then
-			return id
+	if not buffer_meta then
+		local on = methods.on
+		function methods:on(event, handler)
+			if type(handler) ~= "function" then
+				return on(self, event, handler)
+			end
+			return on(self, event, function(buffer, ...)
+				return handler(buffer_object(buffer), ...)
+			end)
 		end
-		local buffer = cache[id]
-		if not buffer then
-			buffer = setmetatable({id = id}, meta)
-			cache[id] = buffer
-		end
-		return buffer
+		buffer_meta = {
+			__index = methods,
+			__eq = function(left, right) return left.id == right.id end,
+			__tostring = function(self) return tostring(self.id) end,
+		}
 	end
-	local valid = methods.valid
+	buf_api.__object = buffer_object
+	local object = buffer_object
 	local create, current, list = buf_api.create, buf_api.current, buf_api.list
 	function buf_api.create(spec)
 		return object(create(spec))
-	end
-	function buf_api.get(id)
-		if type(id) ~= "number" or not valid({id = id}) then
-			return nil
-		end
-		return object(id)
 	end
 	function buf_api.current()
 		return object(current())

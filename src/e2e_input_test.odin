@@ -95,13 +95,13 @@ e2e_input_esc_joins_keys :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 
 	e2e_key(&e, .Ctrl_F)
-	testing.expect(t, e.ed.find.active, "Ctrl+F should open find")
+	testing.expect(t, (len(e.ed.searches) > 0), "Ctrl+F should open find")
 	evs := input_feed("\x1b\x7f")
 	testing.expect_value(t, len(evs), 2)
 	e2e_step(&e, evs[0], ..evs[1:])
-	testing.expect(t, e.ed.find.active, "Alt+Backspace must not reach find as a bare Esc")
+	testing.expect(t, (len(e.ed.searches) > 0), "Alt+Backspace must not reach find as a bare Esc")
 	evs = input_feed("\x1b\r")
 	e2e_step(&e, evs[0], ..evs[1:])
-	testing.expect(t, e.ed.find.active, "Alt+Enter must not reach find as a bare Esc")
+	testing.expect(t, (len(e.ed.searches) > 0), "Alt+Enter must not reach find as a bare Esc")
 	testing.expect_value(t, len(b.lines), 2)
 }

@@ -12,30 +12,60 @@ FindMatch :: struct {
 	row, from, to: int,
 }
 
-Find :: struct {
-	active:         bool,
+Search :: struct {
+	id:             u64,
+	owner:          string,
 	buffer:         u64,
 	query:          string,
 	regex:          bool,
 	case_sensitive: bool,
 	invalid:        bool,
+	capped:         bool,
 	matches:        [dynamic]FindMatch,
 	current:        int,
 	origin:         Cursor,
+	rev:            u64,
 }
 
-find_destroy :: proc(find: ^Find) {
-	delete(find.query)
-	delete(find.matches)
+search_free :: proc(search: ^Search) {
+	delete(search.query)
+	delete(search.matches)
+	free(search)
 }
 
-find_close :: proc(editor: ^Editor) {
-	editor.find.active = false
-	clear(&editor.find.matches)
+searches_destroy :: proc(editor: ^Editor) {
+	for search in editor.searches {
+		search_free(search)
+	}
+	delete(editor.searches)
 }
 
-find_ci :: proc(find: ^Find, query: string) -> bool {
-	return !find.case_sensitive && smart_case_insensitive(query)
+search_find :: proc(editor: ^Editor, id: u64) -> ^Search {
+	for search in editor.searches {
+		if search.id == id {
+			return search
+		}
+	}
+	return nil
+}
+
+search_close :: proc(editor: ^Editor, id: u64) {
+	for search, i in editor.searches {
+		if search.id == id {
+			search_free(search)
+			ordered_remove(&editor.searches, i)
+			return
+		}
+	}
+}
+
+searches_unload :: proc(editor: ^Editor, owner: string) {
+	for i := len(editor.searches) - 1; i >= 0; i -= 1 {
+		if editor.searches[i].owner == owner {
+			search_free(editor.searches[i])
+			ordered_remove(&editor.searches, i)
+		}
+	}
 }
 
 smart_case_insensitive :: proc(query: string) -> bool {
@@ -59,25 +89,29 @@ find_eq :: proc(left, right: string, insensitive: bool) -> bool {
 	return true
 }
 
-find_scan :: proc(editor: ^Editor) {
-	find := &editor.find
-	clear(&find.matches)
-	find.invalid = false
-	find.current = -1
-	query := find.query
-	buffer := ui_buffer(editor, find.buffer)
-	if len(query) == 0 || buffer == nil {
+search_scan :: proc(editor: ^Editor, search: ^Search) {
+	clear(&search.matches)
+	search.invalid = false
+	search.capped = false
+	search.current = -1
+	buffer := ui_buffer(editor, search.buffer)
+	if buffer == nil {
 		return
 	}
-	insensitive := find_ci(find, query)
-	if find.regex {
+	search.rev = buffer.rev
+	query := search.query
+	if len(query) == 0 {
+		return
+	}
+	insensitive := !search.case_sensitive && smart_case_insensitive(query)
+	if search.regex {
 		flags: regex.Flags
 		if insensitive {
 			flags += {.Case_Insensitive}
 		}
 		pattern, err := regex.create(query, flags, context.temp_allocator, context.temp_allocator)
 		if err != nil {
-			find.invalid = true
+			search.invalid = true
 			return
 		}
 		captures := regex.preallocate_capture(context.temp_allocator)
@@ -95,8 +129,9 @@ find_scan :: proc(editor: ^Editor) {
 					offset = from + 1
 					continue
 				}
-				append(&find.matches, FindMatch{row, from, to})
-				if len(find.matches) >= FIND_MAX_MATCHES {
+				append(&search.matches, FindMatch{row, from, to})
+				if len(search.matches) >= FIND_MAX_MATCHES {
+					search.capped = true
 					break regex_rows
 				}
 				offset = to
@@ -115,8 +150,9 @@ find_scan :: proc(editor: ^Editor) {
 					continue
 				}
 				if find_eq(text[start:start + length], query, insensitive) {
-					append(&find.matches, FindMatch{row, start, start + length})
-					if len(find.matches) >= FIND_MAX_MATCHES {
+					append(&search.matches, FindMatch{row, start, start + length})
+					if len(search.matches) >= FIND_MAX_MATCHES {
+						search.capped = true
 						break plain_rows
 					}
 					start += length
@@ -126,29 +162,40 @@ find_scan :: proc(editor: ^Editor) {
 			}
 		}
 	}
-	find_pick_current(find)
-}
-
-find_pick_current :: proc(find: ^Find) {
-	find.current = -1
-	for match, i in find.matches {
-		if match.row > find.origin.row || (match.row == find.origin.row && match.to >= find.origin.col) {
-			find.current = i
-			return
+	search.current = -1
+	for match, i in search.matches {
+		if match.row > search.origin.row || (match.row == search.origin.row && match.to >= search.origin.col) {
+			search.current = i
+			break
 		}
 	}
-	if len(find.matches) > 0 {
-		find.current = 0
+	if search.current < 0 && len(search.matches) > 0 {
+		search.current = 0
 	}
 }
 
-find_jump :: proc(editor: ^Editor) {
-	find := &editor.find
-	buffer := ui_buffer(editor, find.buffer)
-	if buffer == nil || find.current < 0 || find.current >= len(find.matches) {
+search_fresh :: proc(editor: ^Editor, search: ^Search) -> ^Buffer {
+	buffer := ui_buffer(editor, search.buffer)
+	if buffer == nil {
+		clear(&search.matches)
+		search.current = -1
+		return nil
+	}
+	if buffer.rev != search.rev {
+		if search.current >= 0 && search.current < len(search.matches) {
+			match := search.matches[search.current]
+			search.origin = buffer_pos_clamp(buffer, {match.row, match.from})
+		}
+		search_scan(editor, search)
+	}
+	return buffer
+}
+
+search_select :: proc(editor: ^Editor, search: ^Search, buffer: ^Buffer) {
+	if search.current < 0 || search.current >= len(search.matches) {
 		return
 	}
-	match := find.matches[find.current]
+	match := search.matches[search.current]
 	buffer.selection = Cursor{match.row, match.from}
 	buffer.cursor = {match.row, match.to}
 	cursor_goal_sync(buffer)
@@ -157,67 +204,93 @@ find_jump :: proc(editor: ^Editor) {
 	}
 }
 
-find_step :: proc(editor: ^Editor, direction: int) {
-	find := &editor.find
-	count := len(find.matches)
-	if count == 0 {
-		return
-	}
-	if find.current < 0 {
-		find.current = 0 if direction > 0 else count - 1
-	} else {
-		find.current = (find.current + direction + count) % count
-	}
-	find_jump(editor)
-}
-
-find_replace :: proc(editor: ^Editor, replacement: string, all: bool) -> int {
-	find := &editor.find
-	buffer := ui_buffer(editor, find.buffer)
-	if buffer == nil || len(find.matches) == 0 || (!all && (find.current < 0 || find.current >= len(find.matches))) {
+search_replace :: proc(editor: ^Editor, search: ^Search, replacement: string, all: bool) -> int {
+	buffer := search_fresh(editor, search)
+	if buffer == nil || len(search.matches) == 0 || (!all && (search.current < 0 || search.current >= len(search.matches))) {
 		return 0
 	}
-	edit_open(buffer, .Atomic)
-	count := 0
-	if all {
-		#reverse for match in find.matches {
-			edit_delete(buffer, {match.row, match.from}, {match.row, match.to})
-			edit_insert(buffer, {match.row, match.from}, replacement)
-			count += 1
+	targets := search.matches[:] if all else search.matches[search.current:search.current + 1]
+	for match in targets {
+		if match.row >= len(buffer.lines) || match.to > len(buffer.lines[match.row].text) {
+			return 0
 		}
-		find.origin = buffer.cursor
-	} else {
-		match := find.matches[find.current]
+	}
+	edit_open(buffer, .Atomic)
+	#reverse for match in targets {
 		edit_delete(buffer, {match.row, match.from}, {match.row, match.to})
 		edit_insert(buffer, {match.row, match.from}, replacement)
-		find.origin = {match.row, match.from + len(replacement)}
-		count = 1
+	}
+	count := len(targets)
+	if all {
+		search.origin = buffer.cursor
+	} else {
+		search.origin = {targets[0].row, targets[0].from + len(replacement)}
 	}
 	buffer_undo_commit(buffer)
-	find_scan(editor)
-	find_jump(editor)
+	search_scan(editor, search)
+	search_select(editor, search, buffer)
 	return count
 }
 
-find_row_spans :: proc(editor: ^Editor, row: int) -> [][2]int {
-	find := &editor.find
+find_row_spans :: proc(editor: ^Editor, buffer: ^Buffer, row: int) -> [][2]int {
 	out := make([dynamic][2]int, context.temp_allocator)
-	for match in find.matches {
-		if match.row == row {
-			append(&out, [2]int{match.from, match.to})
+	for search in editor.searches {
+		if search.buffer != buffer.id || buffer.rev != search.rev {
+			continue
+		}
+		for match in search.matches {
+			if match.row == row {
+				append(&out, [2]int{match.from, match.to})
+			} else if match.row > row {
+				break
+			}
 		}
 	}
 	return out[:]
 }
 
 find_shows :: proc(editor: ^Editor, buffer: ^Buffer) -> bool {
-	return editor.find.active && buffer != nil && buffer.id == editor.find.buffer
+	if buffer == nil {
+		return false
+	}
+	for search in editor.searches {
+		if search.buffer == buffer.id {
+			search_fresh(editor, search)
+			return true
+		}
+	}
+	return false
 }
 
-find_result_push :: proc(L: ^lua.State, find: ^Find) -> c.int {
-	lua.pushinteger(L, lua.Integer(find.current + 1 if find.current >= 0 else 0))
-	lua.pushinteger(L, lua.Integer(len(find.matches)))
-	return 2
+search_result_push :: proc(L: ^lua.State, search: ^Search) -> c.int {
+	if search.invalid {
+		lua.pushnil(L)
+		lua.pushstring(L, "invalid pattern")
+		return 2
+	}
+	lua.pushinteger(L, lua.Integer(search.current + 1 if search.current >= 0 else 0))
+	lua.pushinteger(L, lua.Integer(len(search.matches)))
+	lua.pushboolean(L, b32(search.capped))
+	return 3
+}
+
+search_options :: proc(L: ^lua.State, idx: c.int, search: ^Search) {
+	search.regex, search.case_sensitive = false, false
+	if lua.type(L, idx) == .TABLE {
+		lua.getfield(L, idx, "regex")
+		search.regex = bool(lua.toboolean(L, -1))
+		lua.getfield(L, idx, "case_sensitive")
+		search.case_sensitive = bool(lua.toboolean(L, -1))
+		lua.pop(L, 2)
+	}
+}
+
+search_methods := [?]lua.L_Reg {
+	{"update", qed_search_update},
+	{"result", qed_search_result},
+	{"step", qed_search_step},
+	{"replace", qed_search_replace},
+	{"close", qed_search_close},
 }
 
 qed_buf_find :: proc "c" (L: ^lua.State) -> c.int {
@@ -226,53 +299,83 @@ qed_buf_find :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	buffer, _ := api_buf(L, editor, 1)
 	query := api_string(L, 2)
-	find := &editor.find
-	find.regex, find.case_sensitive = false, false
-	if lua.type(L, 3) == .TABLE {
-		lua.getfield(L, 3, "regex")
-		find.regex = bool(lua.toboolean(L, -1))
-		lua.getfield(L, 3, "case_sensitive")
-		find.case_sensitive = bool(lua.toboolean(L, -1))
-		lua.pop(L, 2)
+	plugin := api_loaded(L, editor)
+	search := new(Search)
+	search.id = plugin_next_id(&editor.plugins)
+	search.owner = plugin_name_intern(&editor.plugins, plugin.name)
+	search.buffer = buffer.id
+	search.query = strings.clone(query)
+	search_options(L, 3, search)
+	search.origin = buffer.cursor
+	if from, _, ok := selection_range(buffer); ok {
+		search.origin = from
 	}
-	if !find.active || find.buffer != buffer.id {
-		find.origin = buffer.cursor
-		if from, _, ok := selection_range(buffer); ok {
-			find.origin = from
+	search_scan(editor, search)
+	search_select(editor, search, buffer)
+	lua.settop(L, 0)
+	append(&editor.searches, search)
+	api_handle_push(L, search.id, search_methods[:])
+	return 1
+}
+
+api_search :: proc(L: ^lua.State, editor: ^Editor) -> ^Search {
+	search := search_find(editor, api_handle_id(L))
+	if search == nil {
+		plugin_raise(L, "search closed")
+	}
+	return search
+}
+
+qed_search_update :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	search := api_search(L, editor)
+	query := api_string(L, 2)
+	buffer := search_fresh(editor, search)
+	if buffer == nil {
+		return api_fail(L, "buffer closed")
+	}
+	delete(search.query)
+	search.query = strings.clone(query)
+	search_options(L, 3, search)
+	search_scan(editor, search)
+	search_select(editor, search, buffer)
+	return search_result_push(L, search)
+}
+
+qed_search_result :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	search := api_search(L, entry.editor)
+	search_fresh(entry.editor, search)
+	return search_result_push(L, search)
+}
+
+qed_search_step :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	search := api_search(L, editor)
+	direction := 1 if api_int(L, 2, "direction expected (1 or -1)") >= 0 else -1
+	buffer := search_fresh(editor, search)
+	count := len(search.matches)
+	if buffer != nil && count > 0 {
+		if search.current < 0 {
+			search.current = 0 if direction > 0 else count - 1
+		} else {
+			search.current = (search.current + direction + count) % count
 		}
+		search_select(editor, search, buffer)
 	}
-	find.active = true
-	find.buffer = buffer.id
-	delete(find.query)
-	find.query = strings.clone(query)
-	find_scan(editor)
-	find_jump(editor)
-	if find.invalid {
-		lua.pushnil(L)
-		lua.pushstring(L, "invalid pattern")
-		return 2
-	}
-	return find_result_push(L, find)
+	return search_result_push(L, search)
 }
 
-qed_buf_find_step :: proc "c" (L: ^lua.State) -> c.int {
+qed_search_replace :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	buffer, _ := api_buf(L, editor, 1)
-	if !find_shows(editor, buffer) {
-		lua.pushnil(L)
-		return 1
-	}
-	find_step(editor, 1 if api_int(L, 2, "direction expected (1 or -1)") >= 0 else -1)
-	return find_result_push(L, &editor.find)
-}
-
-qed_buf_find_replace :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	buffer, _ := api_buf(L, editor, 1)
+	search := api_search(L, editor)
 	replacement := api_string(L, 2)
 	all := false
 	if lua.type(L, 3) == .TABLE {
@@ -280,21 +383,13 @@ qed_buf_find_replace :: proc "c" (L: ^lua.State) -> c.int {
 		all = bool(lua.toboolean(L, -1))
 		lua.pop(L, 1)
 	}
-	if !find_shows(editor, buffer) {
-		lua.pushinteger(L, 0)
-		return 1
-	}
-	lua.pushinteger(L, lua.Integer(find_replace(editor, replacement, all)))
+	lua.pushinteger(L, lua.Integer(search_replace(editor, search, replacement, all)))
 	return 1
 }
 
-qed_buf_find_clear :: proc "c" (L: ^lua.State) -> c.int {
+qed_search_close :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	editor := entry.editor
-	buffer, _ := api_buf(L, editor, 1)
-	if find_shows(editor, buffer) {
-		find_close(editor)
-	}
+	search_close(entry.editor, api_handle_id(L))
 	return 0
 }

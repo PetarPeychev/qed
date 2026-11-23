@@ -23,10 +23,9 @@ g_pt_target: string
 PtCase :: struct {
 	tests: c.int,
 	name:  string,
-	env:   i32,
 }
 
-PT_OPEN_WRAP :: "local t, qed = ... local open = t.open t.open = function(...) return qed.buf.get(open(...)) end return t"
+
 
 @(private = "file")
 pt_api := [?]lua.L_Reg {
@@ -166,7 +165,7 @@ pt_expect_line :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	row := api_int(L, 1, "row expected")
 	want := api_string(L, 2)
-	b, _ := api_buf(L, entry.editor, 3)
+	b := pt_buffer(L, entry.editor, 3)
 	if row < 1 || row > len(b.lines) {
 		return plugin_raise(L, fmt.tprintf("line %d: out of range 1..%d", row, len(b.lines)))
 	}
@@ -297,7 +296,7 @@ pt_open :: proc "c" (L: ^lua.State) -> c.int {
 	if !editor_open_path(entry.editor, path) {
 		return plugin_raise(L, fmt.tprintf("t.open: cannot open %s", path))
 	}
-	lua.pushinteger(L, lua.Integer(editor_buffer(entry.editor).id))
+	api_buffer_object_push(L, editor_buffer(entry.editor).id)
 	return 1
 }
 
@@ -443,10 +442,19 @@ pt_sh :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 @(private = "file")
+pt_buffer :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> ^Buffer {
+	if lua.type(L, idx) <= .NIL {
+		return editor_buffer(editor)
+	}
+	b, _ := api_buf(L, editor, idx)
+	return b
+}
+
+@(private = "file")
 pt_marks :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	b, _ := api_buf(L, entry.editor, 1)
+	b := pt_buffer(L, entry.editor, 1)
 	diffbase_update(b)
 	names := [DiffMark]string{.None = "", .Added = "added", .Modified = "modified", .Deleted = "deleted"}
 	lua.createtable(L, c.int(len(b.lines)), 0)
@@ -461,7 +469,7 @@ pt_marks :: proc "c" (L: ^lua.State) -> c.int {
 pt_deco :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	b, _ := api_buf(L, entry.editor, 1)
+	b := pt_buffer(L, entry.editor, 1)
 	colors := entry.editor.plugins.colors[:]
 	key :: proc(colors: []string, id: u16) -> string {
 		return colors[id - 1] if id > 0 else "-"
@@ -649,16 +657,8 @@ pt_case_c :: proc "c" (L: ^lua.State) -> c.int {
 	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(tc.tests))
 	lua.pushodinstring(L, tc.name)
 	lua.rawget(L, -2)
-	wrap := PT_OPEN_WRAP
-	if lua.L_loadbuffer(L, raw_data(wrap), c.size_t(len(wrap)), "t", "t") != .OK {
-		return lua.error(L)
-	}
 	lua.newtable(L)
 	lua.L_setfuncs(L, raw_data(pt_api[:]), 0)
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(tc.env))
-	lua.getfield(L, -1, "qed")
-	lua.remove(L, -2)
-	lua.call(L, 2, 1)
 	lua.call(L, 1, 0)
 	return 0
 }
@@ -782,10 +782,12 @@ pt_run :: proc(t: ^testing.T, name: string, f: PluginFile) {
 		saved_theme := strings.clone(THEME, context.temp_allocator)
 		saved_reg := clipboard_register
 		clipboard_register = ""
-		tc := PtCase{tests, names[i], plugin_find(&e.ed.plugins, fmt.tprintf("%s_test", name)).env}
+		tc := PtCase{tests, names[i]}
 		lua.pushcfunction(e.ed.plugins.L, pt_case_c)
 		lua.pushlightuserdata(e.ed.plugins.L, &tc)
+		e.ed.plugins.entry_owner = plugin_find(&e.ed.plugins, fmt.tprintf("%s_test", name)).name
 		ok, msg, tb := plugin_call(&e.ed, 1, 0)
+		e.ed.plugins.entry_owner = ""
 		if !ok {
 			testing.expectf(t, false, "plugins/%s %s: %s\n%s", f.path, names[i], msg, tb)
 		} else if pl := plugin_find(&e.ed.plugins, name); pl != nil && pl.last_error != "" {
@@ -863,9 +865,12 @@ return {setup = function()
 			if type(records[name]) == "function" then out[#out + 1] = "List:" .. name end
 		end
 		local buffer = qed.buf.create{internal = true}
-		for _, name in ipairs{"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line", "find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor", "screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base", "base", "line_list", "on", "close", "find", "find_step", "find_replace", "find_clear"} do
+		for _, name in ipairs{"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line", "find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor", "screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base", "base", "line_list", "on", "close", "find"} do
 			if type(buffer[name]) == "function" then out[#out + 1] = "BufferObject:" .. name end
 		end
+		local search = qed.buf.current():find("x")
+		add("Search", search)
+		search:close()
 		buffer:close()
 		local matches = qed.fuzzy.list(records, {field = "name"})
 		for _, name in ipairs{"append", "insert", "set", "remove", "clear", "get", "at", "index_of", "count", "sort", "set_query", "positions"} do

@@ -59,6 +59,26 @@ KFunction :: #type proc "c" (L: ^State, status: c.int, ctx: KContext) -> c.int
 Alloc :: #type proc "c" (ud: rawptr, ptr: rawptr, osize, nsize: c.size_t) -> rawptr
 Hook :: #type proc "c" (L: ^State, ar: rawptr)
 
+Debug :: struct {
+	event:           c.int,
+	name:            cstring,
+	namewhat:        cstring,
+	what:            cstring,
+	source:          cstring,
+	srclen:          c.size_t,
+	currentline:     c.int,
+	linedefined:     c.int,
+	lastlinedefined: c.int,
+	nups:            u8,
+	nparams:         u8,
+	isvararg:        bool,
+	istailcall:      bool,
+	ftransfer:       u16,
+	ntransfer:       u16,
+	short_src:       [60]u8,
+	i_ci:            rawptr,
+}
+
 MASKCOUNT :: 1 << 3
 
 State :: struct {}
@@ -133,6 +153,9 @@ foreign lib {
 	next :: proc(L: ^State, idx: c.int) -> c.int ---
 	gc :: proc(L: ^State, what: GCWhat, #c_vararg args: ..c.int) -> c.int ---
 	setupvalue :: proc(L: ^State, funcindex: c.int, n: c.int) -> cstring ---
+	getupvalue :: proc(L: ^State, funcindex: c.int, n: c.int) -> cstring ---
+	getstack :: proc(L: ^State, level: c.int, ar: ^Debug) -> c.int ---
+	getinfo :: proc(L: ^State, what: cstring, ar: ^Debug) -> c.int ---
 }
 
 @(link_prefix = "lua")

@@ -682,6 +682,8 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 	buffer^ = buffer_new()
 	buffer.internal = true
 	buffer.wrap = false
+	buffer.plugin_seen = true
+	buffer.plugin_rev = buffer.rev
 	append(&editor.ui.internal, buffer)
 	editor.ui.internal_owner[buffer.id] = owner
 	return buffer

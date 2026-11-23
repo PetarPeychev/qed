@@ -35,7 +35,7 @@ e2e_find_navigates_and_highlights :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	e2e_ui_settle(&e)
 	testing.expect(t, find_box_row(&e) == "", "Esc closes")
-	testing.expect(t, !e.ed.find.active, "closing clears the highlights")
+	testing.expect(t, len(e.ed.searches) == 0, "closing clears the highlights")
 	testing.expect(t, ui_focused(&e.ed) != nil && ui_focused(&e.ed).id == "main_editor", "focus returns to the editor")
 }
 

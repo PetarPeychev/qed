@@ -394,3 +394,4 @@ end}`)
 	}
 	testing.expect_value(t, hooks_after, 0)
 }
+
