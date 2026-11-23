@@ -193,6 +193,9 @@ UiState :: struct {
 	extend_from: string,
 	key_kind:    UiKeyKind,
 	offset:      int,
+	center:      bool,
+	// a follow scroll whose list the user moved off its last row stops following until they come back
+	parked:      bool,
 	scroll_row:  int,
 	scroll_sub:  int,
 	scroll_col:  int,
@@ -544,7 +547,8 @@ ui_state_key :: proc(ui: ^Ui, key: string, kept: bool, buffer: u64 = 0) -> ^UiSt
 	if state, ok := &ui.states[key]; ok {
 		return state
 	}
-	ui.states[strings.clone(key)] = {kept = kept, buffer = buffer}
+	// a follow scroll starts at its end
+	ui.states[strings.clone(key)] = {kept = kept, buffer = buffer, at_end = true}
 	return &ui.states[key]
 }
 
@@ -1132,7 +1136,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 			}
 			total := max(content_height, content.h)
 			max_offset := max(0, content_height - content.h)
-			if node.follow && state.at_end {
+			if node.follow && state.at_end && !state.parked {
 				state.offset = max_offset
 			}
 			state.offset = clamp(state.offset, 0, max_offset)
@@ -1453,7 +1457,7 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 	}
 	state := ui_node_state(&editor.ui, node)
 	// a jump to where the cursor already is still centres, and leaves no flag behind for a later move
-	if buffer.cursor != state.cursor_seen || buffer.reveal_center {
+	if buffer.cursor != state.cursor_seen || state.center {
 		state.cursor_seen = buffer.cursor
 		state.reveal = true
 	}
@@ -1476,8 +1480,8 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 	margin := clamp(SCROLL_MARGIN, 0, (height - 1) / 2)
 	row, sub_row := buffer.cursor.row, sub
 	top_limit_row, top_limit_sub := vpos_down(buffer, width, state.scroll_row, state.scroll_sub, margin)
-	if buffer.reveal_center {
-		buffer.reveal_center = false
+	if state.center {
+		state.center = false
 		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, height / 2)
 	} else if vpos_cmp(row, sub_row, top_limit_row, top_limit_sub) < 0 {
 		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, margin)

@@ -291,6 +291,13 @@ e2e_walk_expand_all_streams :: proc(t: ^testing.T) {
 	testing.expect(t, len(ft_tree_list(&e.ed).tree.source.entries) < top + 15, "rows stream in")
 	sel, _ := ft_selected(&e.ed)
 	testing.expect_value(t, walk_rel(sel.path, e.dir), "d2")
+	_, sel_y, sel_shown := expand_sel_row(&e)
+	testing.expect(t, sel_shown, "the selected row shows")
+	for i := 0; walk_trees_busy(&e.ed) && i < 3; i += 1 {
+		e2e_ui_settle(&e)
+		_, y, shown := expand_sel_row(&e)
+		testing.expectf(t, shown && y == sel_y, "rows streaming in above keep the selection on its screen row: %d, was %d", y, sel_y)
+	}
 	for i := 0; walk_trees_busy(&e.ed) && i < 100; i += 1 {
 		e2e_key(&e, .Arrow_Down)
 		e2e_key(&e, .Arrow_Up)
@@ -364,4 +371,24 @@ e2e_walk_raise_keeps_no_ref :: proc(t: ^testing.T) {
 	testing.expect(t, found, "a call from an unloaded plugin raises")
 	testing.expect_value(t, len(e.ed.walks), walks)
 	testing.expect_value(t, len(e.ed.plugins.lists), lists)
+}
+
+@(private = "file")
+expand_sel_row :: proc(e: ^E2E) -> (x, y: int, ok: bool) {
+	e2e_render(e)
+	node := ui_find(&e.ed.ui, "#filetree/filetree_rows")
+	if node == nil {
+		return
+	}
+	state := ui_node_state_peek(&e.ed.ui, node)
+	list := ui_list_find(&e.ed.ui, node.list)
+	if list == nil {
+		return
+	}
+	at, present := ui_list_position(list, state.highlighted)
+	if !present {
+		return
+	}
+	row := node.rect.y + at
+	return node.rect.x, row, row >= node.clip.y && row < node.clip.y + node.clip.h
 }

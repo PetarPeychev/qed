@@ -107,9 +107,9 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 		}
 		_, _, shortcut := command_effective_bind(command)
 		if shortcut != "" && ui_chord_cached(&editor.ui, shortcut) == chord {
-			// a command acts on what the keys typed before it changed: their change events run first
-			plugin_flush(editor)
-			command.run(editor)
+			if ui_flush_before_command(editor) {
+				command.run(editor)
+			}
 			return true
 		}
 	}
@@ -121,6 +121,21 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 		}
 	}
 	return false
+}
+
+// a command acts on what the keys typed before it changed, so their change events run first; one that replaced the
+// tree leaves the command the new node with the same identity, or nothing to act on when that node is gone
+ui_flush_before_command :: proc(editor: ^Editor) -> bool {
+	ui := &editor.ui
+	identity := strings.clone(ui.target.identity, context.temp_allocator) if ui.target != nil else ""
+	gen := ui.gen
+	plugin_flush(editor)
+	if ui.gen == gen || identity == "" {
+		return true
+	}
+	ui_resolve(editor)
+	ui.target = ui_find(ui, identity)
+	return ui.target != nil
 }
 
 ui_global_binds :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -141,6 +156,17 @@ ui_global_binds :: proc(editor: ^Editor, ev: tb2.Event) {
 			return
 		}
 	}
+}
+
+ui_node_in_scope :: proc(node: ^UiNode, scope: string) -> bool {
+	for ancestor := node; ancestor != nil; ancestor = ancestor.parent {
+		for name in ancestor.scope {
+			if name == scope {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 ui_node_edits :: proc(node: ^UiNode) -> bool {
@@ -268,6 +294,12 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 				cursor_goal_sync(buffer)
 				ui_node_state(ui, node).reveal = true
 			}
+		} else if node != nil && node.kind == .Virtual_Column {
+			// a drag over a range list's rows extends from the pressed row, as Shift+Up/Down do
+			if list := ui_list_find(ui, node.list); list != nil && ui_list_count(list) > 0 {
+				row := clamp(cell_y - node.rect.y, 0, ui_list_count(list) - 1)
+				ui_list_highlight(editor, node, strings.clone(ui_list_key(list, row), context.temp_allocator), true)
+			}
 		}
 		return true
 	}
@@ -325,6 +357,10 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 	step := -WHEEL_SCROLL_LINES if ev.key == .Mouse_Wheel_Up else WHEEL_SCROLL_LINES
 	if node.is_item && node.parent != nil && node.parent.kind == .Virtual_Column && ev.key == .Mouse_Left && !wheel {
 		ui_list_highlight(editor, node.parent, strings.clone(node.key, context.temp_allocator), false)
+		if ui_node_in_scope(node.parent, "list_range") {
+			delete(ui.drag.node)
+			ui.drag = {node = strings.clone(node.parent.identity), active = true}
+		}
 		return true
 	}
 	#partial switch node.kind {
@@ -698,7 +734,19 @@ ui_list_highlight :: proc(editor: ^Editor, node: ^UiNode, key: string, extend: b
 	if list := ui_list_find(&editor.ui, node.list); list != nil {
 		state.key_kind = ui_list_keys_owner(editor, list).key_kind
 	}
+	ui_follow_park(editor, node, key)
 	ui_state_changed(editor, node)
+}
+
+// a highlight off the list's last row parks a follow scroll; back on the last row it follows again
+ui_follow_park :: proc(editor: ^Editor, node: ^UiNode, key: string) {
+	scroll := ui_enclosing_scroll(node)
+	list := ui_list_find(&editor.ui, node.list)
+	if scroll == nil || !scroll.follow || list == nil {
+		return
+	}
+	at, present := ui_list_position(list, key)
+	ui_node_state(&editor.ui, scroll).parked = present && at < ui_list_count(list) - 1
 }
 
 ui_list_move :: proc(editor: ^Editor, step: int, extend := false) {

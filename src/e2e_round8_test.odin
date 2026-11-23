@@ -192,7 +192,7 @@ e2e_round8_jump_in_place_leaves_no_centre_flag :: proc(t: ^testing.T) {
 	main_view(&e)
 	editor_goto(&e.ed, 30, 0)
 	view := main_view(&e)
-	testing.expect(t, !b.reveal_center, "a jump to the cursor's own position is consumed")
+	testing.expect(t, !view.center, "a jump to the cursor's own position is consumed")
 	centred := view.scroll_row
 	e2e_key(&e, .Arrow_Right)
 	testing.expect_value(t, main_view(&e).scroll_row, centred)

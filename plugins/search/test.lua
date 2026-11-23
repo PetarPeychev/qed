@@ -251,6 +251,47 @@ local function fifo_scope(test, body)
 	test.key("Shift+Down")
 end
 
+-- b.txt is read at once, a_fifo blocks rg until the test writes to it: its hit arrives last but sorts first
+local function late_top_scope(test)
+	write("b.txt", "needle_sort one\nneedle_sort two\n")
+	test.ok(test.sh("mkfifo a_fifo"), "mkfifo")
+	test.key("Alt+f")
+	test.settle()
+	for _ = 1, 4 do
+		test.key("Up")
+	end
+	test.key("Shift+Down")
+	open(test)
+	test.type("needle_sort")
+	test.wait(function() local ui = current(test); return ui ~= nil and ui.matches == 2 end)
+end
+
+function tests.highlight_follows_the_top_row_while_streaming(test)
+	if not rg(test) then
+		return
+	end
+	late_top_scope(test)
+	test.eq(current(test).selected, "b.txt:1  needle_sort one", "the first hit is highlighted")
+	test.ok(test.sh("printf 'needle_sort late\\n' > a_fifo"), "the late hit arrives")
+	test.wait(function() return current(test).matches == 3 end)
+	test.eq(current(test).labels[1], "a_fifo:1  needle_sort late", "the late hit sorts first")
+	test.eq(current(test).selected, "a_fifo:1  needle_sort late", "the highlight follows the top row")
+	test.key("Esc")
+end
+
+function tests.highlight_stays_where_the_user_moved_it(test)
+	if not rg(test) then
+		return
+	end
+	late_top_scope(test)
+	test.key("Down")
+	test.eq(current(test).selected, "b.txt:2  needle_sort two", "the user moved the highlight")
+	test.ok(test.sh("printf 'needle_sort late\\n' > a_fifo"), "the late hit arrives")
+	test.wait(function() return current(test).matches == 3 end)
+	test.eq(current(test).selected, "b.txt:2  needle_sort two", "a new top row does not take the highlight back")
+	test.key("Esc")
+end
+
 function tests.streams_while_rg_runs(test)
 	if not rg(test) then
 		return

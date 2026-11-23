@@ -69,7 +69,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 |---|---|---|
 | `column`, `row` | nodes | `gap`, `align`, `separator`, `highlight_style` (the child whose `key` is `highlighted`) |
 | `box` | exactly one laid out | `border`, `title` |
-| `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (stays at the end while it is there) |
+| `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (opens at the end and stays there; a user highlight off the list's last row parks it until it returns) |
 | `text` | strings and spans `{fg =, bold =, "text", ...}` | `wrap` (by cluster), `align`; overflow clips with `…` |
 | `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly` |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
@@ -105,10 +105,12 @@ Positional values are children, named values are props. Common props: `id`, `key
   their chord), then `on.key`, then an editor's typing. Then plugin global binds, then core global binds (both by
   chord). A command of a scope acts on the node whose scope matched. Unknown scope names warn once. A command key
   first runs the change events of the keys typed before it, so it sees their effect.
-- The `list` scope: core's `List: Next/Previous` (held-key acceleration), `Page Down/Up`, `First/Last` and
-  `Extend Down/Up` (set `extend_from`) move the highlight of the first `virtual_column` under the node carrying the
-  scope. A click on a row highlights it. An editor one row high lets Up/Down bubble, so a query field above a list
-  just works.
+- The `list` scope: core's `List: Next/Previous` (held-key acceleration), `Page Down/Up` and `First/Last` move the
+  highlight of the first `virtual_column` under the node carrying the scope. A click on a row highlights it. An
+  editor one row high lets Up/Down bubble, so a query field above a list just works. The `list_range` scope opts a
+  list into ranges: `List: Extend Down/Up` (Shift+Up/Down) and a drag across rows set `extend_from`. A command that
+  does not apply (core `applies`, plugin `when`) lets its chord pass. A command whose pre-command flush replaced
+  the tree acts on the new node with the same identity, or not at all when it is gone.
 - Focus: exactly one node, set by its owner with `ref:focus()` (any node with an id). Editors focus themselves on a
   click. When the focused node leaves the tree, focus returns to the most recent node still there (16 deep).
 - Mouse: the topmost node under the pointer bubbles to the root; unhandled, the next node below continues. Scroll

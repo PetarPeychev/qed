@@ -1566,6 +1566,12 @@ e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	nav_preview(&e)
 	testing.expect_value(t, ft_preview_line(&e.ed, 0), "alpha")
 	testing.expect_value(t, ft_preview_line(&e.ed, 1), "beta")
+	e2e_render(&e)
+	if px, py, shown := nav_screen_find(&e, "alpha"); shown {
+		testing.expect(t, e2e_rgb(e2e_cell_bg(&e, px, py)) != e2e_rgb(e2e_cell_bg(&e, px, py + 3)), "the removed rows are tinted like the diff's removed rows")
+	} else {
+		testing.expect(t, false, "the deleted file's text shows in the preview")
+	}
 
 	e2e_render(&e)
 	x, y, found := nav_screen_find(&e, "gone.txt")

@@ -124,7 +124,7 @@ local function build()
 					hint and ui.text{id = "search_hint", fg = "pane_dim_foreground", wrap = true, " ", hint} or false,
 					ui.scroll{grow = 1,
 						ui.virtual_column{id = "search_rows", data = view.results, item = result_row, highlight_style = SELECTED,
-							on = {state = preview_soon}}},
+							on = {state = function() view.user_moved = true preview_soon() end}}},
 				},
 				view.preview and ui.editor{id = "search_preview", buffer = view.preview.buffer, grow = 1, readonly = true,
 					syntax = true, line_numbers = true} or false,
@@ -155,6 +155,7 @@ local function run_query(current, text)
 	stop()
 	current.results:clear()
 	current.capped = false
+	current.user_moved, current.top_key = false, nil
 	if #text < min_query then
 		current.hint = short_hint()
 		refresh(current)
@@ -189,8 +190,11 @@ local function run_query(current, text)
 			path = qed.path.join(root, file),
 			pos = {row = tonumber(row), col = tonumber(col)},
 		}
-		if total == 1 then
-			highlight(key)
+		-- the top row stays highlighted while hits stream in and sort, until the user moves
+		local top = current.results:at(1)
+		if not current.user_moved and top and top.key ~= current.top_key then
+			current.top_key = top.key
+			highlight(top.key)
 		end
 		refresh_soon(current)
 	end}

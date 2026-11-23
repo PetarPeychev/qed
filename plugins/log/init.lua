@@ -92,7 +92,6 @@ end
 local function show_end()
 	local last = view.messages:at(view.messages:count())
 	ui.node("log_rows"):set_state{highlighted = last and last.seq or false}
-	ui.node("log_scroll"):set_state{offset = 1e9}
 end
 
 local function reload()

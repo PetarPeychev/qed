@@ -882,7 +882,7 @@ qed_buf_set_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	state.scroll_row, state.scroll_sub = top_r, top_s
 	// the cursor set before this call must not scroll the view back on the next frame
-	state.cursor_seen, state.reveal, b.reveal_center = b.cursor, false, false
+	state.cursor_seen, state.reveal, state.center = b.cursor, false, false
 	lua.pushboolean(L, true)
 	return 1
 }

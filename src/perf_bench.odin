@@ -1135,3 +1135,37 @@ bench_palette :: proc(t: ^testing.T) {
 		local query_ms = (clock() - at) * 10
 		return ("commands %.3f  fill %.3f  query %.3f  (#%d)"):format(commands_ms, fill_ms, query_ms, #qed.commands())`))
 }
+
+@(test)
+bench_filetree_filter :: proc(t: ^testing.T) {
+	context.allocator = runtime.heap_allocator()
+	root := os.get_env("QED_BENCH_TREE", context.temp_allocator)
+	if root == "" {
+		return
+	}
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin_config(&e, "git", `{"enabled": false}`)
+	delete(e.ed.working_root)
+	e.ed.working_root = strings.clone(root)
+	plugin_flush(&e.ed)
+	filetree_open_all(&e.ed)
+	for walk_busy(&e.ed) {
+		walk_pump(&e.ed)
+		thread.yield()
+	}
+	queries := []string{"m", "ma", "mak", "make", "makefile", "sched", "kernel/sched/core", "x"}
+	previous := ""
+	for q in queries {
+		for _ in 0 ..< len(previous) {
+			e2e_key(&e, .Backspace2)
+		}
+		ft_trees_settle(&e.ed)
+		previous = q
+		at := time.tick_now()
+		e2e_type(&e, q)
+		ft_trees_settle(&e.ed)
+		e2e_render(&e)
+		fmt.eprintfln("filter %-20s %.2f ms  %d rows", q, ms_since(at), len(ft_entries(&e.ed)))
+	}
+}

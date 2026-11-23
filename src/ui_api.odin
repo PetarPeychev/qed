@@ -946,6 +946,9 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 			if lua.type(L, -1) != .NIL && lua.type(L, -1) != .BOOLEAN {
 				state.highlighted = strings.clone(ui_state_key_arg(L, editor, identity, state, "highlighted"))
 				state.reveal = true
+				if node := ui_find(&editor.ui, identity); node != nil && node.kind == .Virtual_Column {
+					ui_follow_park(editor, node, state.highlighted)
+				}
 			}
 		case "extend_from":
 			delete(state.extend_from)

@@ -884,7 +884,9 @@ editor_goto :: proc(editor: ^Editor, row, col: int) {
 	b.selection = nil
 	b.cursor = {r, clamp(col, 0, len(b.lines[r].text))}
 	cursor_goal_sync(b)
-	b.reveal_center = true
+	if _, state := ui_buffer_view(editor, b); state != nil {
+		state.center = true
+	}
 }
 
 highlight_clips_view :: proc(b: ^Buffer, w, h, scroll_row, scroll_sub, scroll_col: int, ghost: bool, top, bot: int) -> []HighlightClip {

@@ -434,6 +434,10 @@ local function preview_load(path, base)
 	else
 		buffer = qed.buf.create{internal = true}
 		buffer:set_text(base or "")
+		-- every row of a deleted file is removed text: tinted as the diff tints removed rows
+		if base and base ~= "" then
+			qed.deco.tint(buffer, qed.deco.ns("filetree_deleted"), 1, buffer:line_count(), {color = "git_deleted", alpha = "git_diff_ghost"})
+		end
 	end
 	view.preview = {path = path, buffer = buffer, deleted = not exists(path)}
 end
