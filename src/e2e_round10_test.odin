@@ -95,7 +95,9 @@ e2e_round10_a_command_after_a_tree_swap_sees_a_laid_out_node :: proc(t: ^testing
 	rows := ui_find(&e.ed.ui, "#r10/r10_rows")
 	list := ui_list_find(&e.ed.ui, rows.list)
 	at, _ := ui_list_position(list, ui_node_state_peek(&e.ed.ui, rows).highlighted)
-	testing.expectf(t, at - 23 > 3, "PgDn after the swap moves a page, not one row: now at index %d", at)
+	start := 23
+	page := max(rows.clip.h - 1, 1)
+	testing.expectf(t, at == start + page, "PgDn after the swap moves a page (%d rows) from index %d, not one row: now at %d", page, start, at)
 }
 
 @(test)

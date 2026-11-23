@@ -784,33 +784,79 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 }
 
 // a copy for showing a file: an open buffer's live text, else the head of the file on disk
+// a preview copy is filled line by line, not through the edit path (no undo step, no diff against the empty buffer,
+// no snapshot of an open buffer joined and split again): a 1M-line buffer copies in one pass
 ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string) {
-	text := ""
-	if index := editor_find_buffer(editor, path); index >= 0 {
-		text = buffer_snapshot(&editor.buffers[index], context.temp_allocator)
-	} else if info, ok := fs_stat(path); !ok || !posix.S_ISREG(info.st_mode) {
-		// a fifo or device would block the read
-		text = ""
-	} else if data, read_ok := ui_preview_read(path); read_ok {
-		text, _ = strings.replace_all(string(data), "\r\n", "\n", context.temp_allocator)
-	}
-	if data := transmute([]u8)text; preview_is_binary(data[:min(len(data), PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES)]) {
-		sb := strings.builder_make(context.temp_allocator)
-		for offset := 0; offset < len(data) && offset < PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES; offset += PREVIEW_HEX_BYTES {
-			line := hex_dump_line(data[offset:min(offset + PREVIEW_HEX_BYTES, len(data))], offset)
-			strings.write_string(&sb, line)
-			strings.write_byte(&sb, '\n')
-			delete(line)
+	if index := editor_find_buffer(editor, path); index >= 0 && !ui_buffer_looks_binary(&editor.buffers[index]) {
+		source := &editor.buffers[index]
+		ui_internal_fill(buffer, len(source.lines))
+		for line, i in source.lines {
+			buffer.lines[i].text = slice.clone_to_dynamic(line.text[:])
 		}
-		buffer_set_text(buffer, strings.to_string(sb))
-		buffer.cursor = {}
-		buffer.plugin_rev = buffer.rev
-		return
+	} else {
+		text := ""
+		if index >= 0 {
+			text = buffer_snapshot(&editor.buffers[index], context.temp_allocator)
+		} else if info, ok := fs_stat(path); ok && posix.S_ISREG(info.st_mode) {
+			// a fifo or device would block the read
+			if data, read_ok := ui_preview_read(path); read_ok {
+				text = string(data)
+			}
+		}
+		if data := transmute([]u8)text; preview_is_binary(data[:min(len(data), PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES)]) {
+			rows := min((len(data) + PREVIEW_HEX_BYTES - 1) / PREVIEW_HEX_BYTES, PREVIEW_MAX_LINES)
+			ui_internal_fill(buffer, rows)
+			for i in 0 ..< rows {
+				offset := i * PREVIEW_HEX_BYTES
+				line := hex_dump_line(data[offset:min(offset + PREVIEW_HEX_BYTES, len(data))], offset)
+				buffer.lines[i].text = slice.clone_to_dynamic(transmute([]u8)line)
+				delete(line)
+			}
+			buffer.cursor = {}
+			buffer.plugin_rev = buffer.rev
+			return
+		}
+		ui_internal_fill(buffer, strings.count(text, "\n") + 1)
+		rest := text
+		for row := 0; ; row += 1 {
+			nl := strings.index_byte(rest, '\n')
+			line := rest if nl < 0 else rest[:nl]
+			buffer.lines[row].text = slice.clone_to_dynamic(transmute([]u8)strings.trim_suffix(line, "\r"))
+			if nl < 0 {
+				break
+			}
+			rest = rest[nl + 1:]
+		}
 	}
-	buffer_set_text(buffer, text)
 	editor_set_language(editor, buffer, language_of(path))
 	buffer.cursor = {}
 	buffer.plugin_rev = buffer.rev
+}
+
+ui_buffer_looks_binary :: proc(source: ^Buffer) -> bool {
+	limit := PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES
+	sb := strings.builder_make(context.temp_allocator)
+	for line in source.lines {
+		if strings.builder_len(sb) >= limit {
+			break
+		}
+		strings.write_bytes(&sb, line.text[:])
+		strings.write_byte(&sb, '\n')
+	}
+	data := sb.buf[:]
+	return preview_is_binary(data[:min(len(data), limit)])
+}
+
+ui_internal_fill :: proc(buffer: ^Buffer, rows: int) {
+	for &line in buffer.lines {
+		delete(line.text)
+	}
+	clear(&buffer.lines)
+	resize(&buffer.lines, max(rows, 1))
+	buffer.selection = nil
+	buffer.clean_rows, buffer.clean_pos = 0, 0
+	buffer.plugin_dirty, buffer.plugin_lo, buffer.plugin_hi = true, 0, max(rows, 1) - 1
+	buffer.rev += 1
 }
 
 // the file (at most PREVIEW_MAX_BYTES), cut back to the last whole line when it is longer: every row a pick or

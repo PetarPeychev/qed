@@ -438,6 +438,12 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 		{"badkey.lua", `return {setup = function() qed.command{name = "Bad: Key", key = "Hyper+x", run = function() end} end}`},
 		{"badscope.lua", `return {setup = function() qed.command{name = "Bad: Scope", scope = "", run = function() end} end}`},
 		{"norun.lua", `return {setup = function() qed.command{name = "No: Run"} end}`},
+		{"treeview.lua", `return {setup = function()
+			qed.command{name = "Open", run = function()
+				qed.ui.mount("pane", qed.ui.text{id = "tv", float = "screen", width = 4, height = 1, scope = "filetree", "tree"})
+				qed.ui.node("tv"):focus()
+			end}
+		end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
@@ -465,6 +471,11 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 	testing.expect_value(t, unbound.shortcut, "")
 	tree, _ := plugin_test_command(ed, "Cmd: Tree")
 	testing.expect(t, tree.shortcut == "Alt+j" && tree.scope == "filetree", "the tree's command keeps its key, in its scope only")
+	view_open, _ := plugin_test_command(ed, "Treeview: Open")
+	command_run(ed, view_open)
+	press(ed, alt('j'))
+	testing.expect_value(t, ed.message, "tree")
+	ui_focus_set(ed, "")
 
 	press(ed, alt('y'))
 	testing.expect_value(t, ed.message, "")

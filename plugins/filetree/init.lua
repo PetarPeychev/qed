@@ -492,7 +492,8 @@ local function follow_loading()
 	end)
 end
 
-local function changed()
+-- a held arrow key reads one file, not one per row; a typed query previews its first row at once
+local function changed(now)
 	if not view then
 		return
 	end
@@ -501,6 +502,10 @@ local function changed()
 		follow_loading()
 	end
 	view.preview_due = (view.preview_due or 0) + 1
+	if now then
+		preview_sync()
+		return
+	end
 	local token, current = view.preview_due, view
 	qed.defer(PREVIEW_DEBOUNCE_MS, function()
 		if view == current and current.preview_due == token then
@@ -645,9 +650,8 @@ local function open(tab)
 		if view ~= current then
 			return
 		end
-		local text = view.query:text()
 		apply_query()
-		changed()
+		changed(true)
 	end)
 	ui.node("filetree_query"):focus()
 	local remembered = last_row[scope]

@@ -965,6 +965,8 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 			// a scroll keeps its rows in `offset`, an editor its top row in `scroll_row`: one name for both
 			state.offset = max(int(lua.tointeger(L, -1)), 0)
 			state.scroll_row, state.scroll_sub = state.offset, 0
+			// as the wheel: an explicit position is the newer intent; layout reads at_end from it, parked or not
+			state.at_end, state.parked = false, false
 		case "source":
 			state.md_source = max(int(lua.tointeger(L, -1)), 1)
 		case "at":

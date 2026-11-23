@@ -66,7 +66,13 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 	}
 	defer ui.target = nil
 	gen := ui.gen
+	// a flush can re-parent a node under one already visited: each identity hears a key once
+	visited := make(map[string]bool, 8, context.temp_allocator)
 	for node := focus; node != nil; node = node.parent {
+		if visited[node.identity] {
+			continue
+		}
+		visited[node.identity] = true
 		ui.target = node
 		session := term_find(editor, node.session) if node.kind == .Terminal else nil
 		// full-screen programs (alt-screen) own Escape
@@ -76,10 +82,12 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 				return
 			}
 		}
-		// a pre-command flush that replaced the tree hands the key on from the same node in the new tree
+		// a pre-command flush that replaced the tree hands the key on from the same node in the new tree, whose
+		// session may differ (or be gone)
 		if ui.gen != gen && ui.target != nil {
 			node = ui.target
 			gen = ui.gen
+			session = term_find(editor, node.session) if node.kind == .Terminal else nil
 		}
 		if node.handlers[.Key] != 0 && ui_handler_call(editor, node.owner, node.handlers[.Key], {chord = chord, text = text}) {
 			return

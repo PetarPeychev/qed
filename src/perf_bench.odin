@@ -1154,7 +1154,20 @@ bench_filetree_filter :: proc(t: ^testing.T) {
 		walk_pump(&e.ed)
 		thread.yield()
 	}
-	queries := []string{"m", "ma", "mak", "make", "makefile", "sched", "kernel/sched/core", "x"}
+	for ch in "file0123" {
+		at := time.tick_now()
+		e2e_type(&e, fmt.tprintf("%c", ch))
+		typed := ms_since(at)
+		ft_trees_settle(&e.ed)
+		settled := ms_since(at)
+		e2e_render(&e)
+		fmt.eprintfln("first pass %c %.2f ms (typed %.2f, settled %.2f)  %d rows", ch, ms_since(at), typed, settled, len(ft_entries(&e.ed)))
+	}
+	for _ in 0 ..< 8 {
+		e2e_key(&e, .Backspace2)
+	}
+	ft_trees_settle(&e.ed)
+	queries := []string{"f", "fi", "fil", "file", "file0", "file01", "file012", "file0123", "m", "x"}
 	previous := ""
 	for q in queries {
 		for _ in 0 ..< len(previous) {
@@ -1164,8 +1177,33 @@ bench_filetree_filter :: proc(t: ^testing.T) {
 		previous = q
 		at := time.tick_now()
 		e2e_type(&e, q)
+		typed := ms_since(at)
 		ft_trees_settle(&e.ed)
+		settled := ms_since(at)
 		e2e_render(&e)
-		fmt.eprintfln("filter %-20s %.2f ms  %d rows", q, ms_since(at), len(ft_entries(&e.ed)))
+		fmt.eprintfln("filter %-20s %.2f ms (typed %.2f, settled %.2f)  %d rows", q, ms_since(at), typed, settled, len(ft_entries(&e.ed)))
+	}
+}
+
+@(test)
+bench_goto_open :: proc(t: ^testing.T) {
+	context.allocator = runtime.heap_allocator()
+	path := os.get_env("QED_BENCH_GOTO", context.temp_allocator)
+	if path == "" {
+		return
+	}
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	testing.expect(t, editor_open_path(&e.ed, path), "opens")
+	e2e_ui_settle(&e)
+	for round in 0 ..< 5 {
+		at := time.tick_now()
+		e2e_step(&e, tb2.Event{type = .Key, key = .Ctrl_G})
+		stepped := ms_since(at)
+		editor_render(&e.ed)
+		fmt.eprintfln("goto open %d: %.1f ms (step %.1f)", round, ms_since(at), stepped)
+		e2e_key(&e, .Esc)
+		e2e_ui_settle(&e)
+		free_all(context.temp_allocator)
 	}
 }
