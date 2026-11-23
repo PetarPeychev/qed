@@ -207,5 +207,5 @@ The full-screen column closes on an outside click; the box swallows clicks insid
 - Per-view editor state (cursor, wrap) instead of the buffer's.
 - List navigation helpers and the fuzzy span builder, once a second picker exists.
 - `qed.commands()`, `qed.fs.walk`, `qed.buffers()` returning `qed.List`; the palette listing the scope chain.
-- Deleting `qed.ui.open`, the remaining old panes (file tree, settings, plugins, pick/prompt/confirm, safety dialogs) and the old key matcher.
+- Deleting `qed.ui.open`, the remaining old panes (file tree, plugins, pick/prompt/confirm, safety dialogs) and the old key matcher.
 - Completion and hover as `cursor`-anchored plugin floats (they are core-drawn at the caret today).

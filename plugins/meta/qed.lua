@@ -5,7 +5,7 @@
 ---@field row integer
 ---@field col integer
 
----Buffer id. `nil` or `0` means the current buffer.
+---A buffer object (`qed.buf.current()`, `qed.open`, ...).
 ---@alias qed.Buf qed.BufferObject
 
 ---@class qed.Ctx
