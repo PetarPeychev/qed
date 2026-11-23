@@ -2,6 +2,7 @@ local ui = qed.ui
 
 local WIDTH = 64
 local MAX_ROWS = 12
+local PREVIEW_DEBOUNCE_MS = 60
 
 local dialog
 
@@ -22,7 +23,15 @@ local function notify()
 	local record = key and dialog.matches:get(key)
 	local item = record and dialog.items[record.index] or nil
 	if dialog.split then
-		dialog.handle:update(dialog.split(item))
+		-- a held arrow key reads one file, not one per row
+		local current = dialog
+		current.due = (current.due or 0) + 1
+		local token = current.due
+		qed.defer(PREVIEW_DEBOUNCE_MS, function()
+			if dialog == current and current.due == token then
+				current.handle:update(current.split(item))
+			end
+		end)
 	end
 	if dialog.on_change then
 		dialog.on_change(nil, item)
@@ -60,7 +69,7 @@ local function finish(result)
 	local closing = dialog
 	dialog = nil
 	closing.handle:unmount(result)
-	if closing.preview then
+	if closing.preview and closing.preview.buffer then
 		closing.preview.buffer:close()
 	end
 	if closing.query then
@@ -157,28 +166,37 @@ local function query_row(prompt, scope)
 	}
 end
 
-local function preview_buffer(item)
+-- the preview of a path item: an image, or a copy of the file with its cursor on the item's row
+local function preview_of(item)
 	local path = type(item) == "table" and item.path or nil
-	if dialog.preview and dialog.preview.path == path then
-		return dialog.preview.buffer
+	local wanted = path and tonumber(item.pos and item.pos.row or item.row) or 1
+	local preview = dialog.preview
+	if preview and preview.path == path then
+		if preview.buffer then
+			preview.buffer:set_cursor({row = math.max(1, math.min(wanted, preview.buffer:line_count())), col = 1})
+		end
+		return preview
 	end
-	if dialog.preview then
-		dialog.preview.buffer:close()
-		dialog.preview = nil
+	if preview and preview.buffer then
+		preview.buffer:close()
 	end
+	dialog.preview = nil
 	if not path then
 		return nil
 	end
-	local buffer = qed.buf.create{internal = true, path = path}
-	local wanted = item.pos and item.pos.row or item.row
-	local row = math.max(1, math.min(tonumber(wanted) or 1, buffer:line_count()))
-	buffer:set_cursor({row = row, col = 1})
+	local info = qed.fs.stat(path)
+	if info and info.image then
+		dialog.preview = {path = path}
+		return dialog.preview
+	end
+	local buffer = qed.buf.create{internal = true, from = path, row = wanted}
+	buffer:set_cursor({row = math.max(1, math.min(wanted, buffer:line_count())), col = 1})
 	dialog.preview = {path = path, buffer = buffer}
-	return buffer
+	return dialog.preview
 end
 
 local function split_frame(prompt, item)
-	local buffer = preview_buffer(item)
+	local preview = preview_of(item)
 	return ui.dismissable{id = "dialog_pick", on_dismiss = function() finish(nil) end,
 		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
 			border = true, bg = "pane_background", fg = "pane_foreground",
@@ -189,8 +207,10 @@ local function split_frame(prompt, item)
 						ui.virtual_column{id = "dialog_rows", data = dialog.matches, item = item_row,
 							highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 				},
-				buffer and ui.editor{id = "dialog_preview", buffer = buffer, grow = 1, readonly = true, syntax = true,
-					line_numbers = true} or ui.text{grow = 1, ""},
+				preview and preview.buffer and ui.editor{id = "dialog_preview", buffer = preview.buffer, grow = 1,
+					readonly = true, syntax = true, line_numbers = true}
+				or preview and ui.image{id = "dialog_preview", path = preview.path, grow = 1}
+				or ui.text{grow = 1, ""},
 			},
 		},
 	}

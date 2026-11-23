@@ -284,7 +284,6 @@ jump list too. LSP hover uses the same renderer (plaintext hovers render verbati
 |-----|---------|---------|
 | `plugins.markdown.enabled` | `true` | Off removes *Markdown: Preview*. |
 | `plugins.markdown.max_width` | `120` | Widest the preview pane gets, borders included (at least 20). Applies to an open preview. |
-| `plugins.markdown.backdrop` | `"dim"` | What shows around the preview: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
 
 ### Git
 

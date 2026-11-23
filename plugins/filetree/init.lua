@@ -102,11 +102,16 @@ local function ignore_push()
 	walk:ignore(all)
 end
 
+local function scope_release(cached)
+	cached.tree:release()
+	if cached.handle then
+		cached.handle:release()
+	end
+end
+
 local function walk_new()
 	for _, cached in pairs(scopes) do
-		if cached.handle then
-			cached.handle:release()
-		end
+		scope_release(cached)
 	end
 	scopes = {}
 	if walk then
@@ -141,7 +146,7 @@ local function source()
 		return cached.tree
 	end
 	if cached then
-		cached.handle:release()
+		scope_release(cached)
 	end
 	local handle = walk:within(paths or tab.paths)
 	if tab and tab.virtual and #tab.virtual > 0 then
@@ -186,7 +191,6 @@ local function highlighted_path()
 	local path = state and state.highlighted
 	if not path and view and view.tree:count() > 0 then
 		path = view.tree:at(1).path
-		ui.node("filetree_rows"):set_state{highlighted = path}
 	end
 	return path
 end
@@ -198,7 +202,7 @@ local function query_sync()
 		view.applied = text
 		view.tree:set_query(text)
 		local first = view.tree:at(1)
-		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, anchor = false}
+		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, extend_from = false}
 	end
 end
 
@@ -209,7 +213,7 @@ local function selected_range()
 		return nil
 	end
 	local state = ui.node("filetree_rows"):state()
-	local anchor = state and state.anchor and tree:index_of(state.anchor) or cursor
+	local anchor = state and state.extend_from and tree:index_of(state.extend_from) or cursor
 	return math.min(anchor, cursor), math.max(anchor, cursor)
 end
 
@@ -264,8 +268,7 @@ local function tree_row(row)
 	return ui.row{
 		on = {
 			click = function(args)
-				ui.node("filetree_rows"):set_state{highlighted = row.path}
-				ui.node("filetree_rows"):set_state{anchor = false}
+				ui.node("filetree_rows"):set_state{highlighted = row.path, extend_from = false}
 				view.changed()
 				return true
 			end,
@@ -330,15 +333,18 @@ build = function()
 						scope = {"filetree", "editor"}, placeholder = "type to filter"},
 					ui.text{fg = "pane_dim_foreground", tree:loading() and "… " or (count .. (tree:more() and "+" or "") .. " ")},
 				},
-				ui.row{grow = 1,
-					ui.column{width = {"40%", min = qed.opt("split_tree_min_width"), max = qed.opt("split_tree_max_width")},
+				ui.row{grow = 1, separator = view.preview ~= nil,
+					ui.column{grow = view.preview and 0 or 1,
+						width = view.preview and {"40%", min = qed.opt("split_tree_min_width"), max = qed.opt("split_tree_max_width")} or nil,
 						empty and ui.text{id = "filetree_hint", fg = "pane_dim_foreground", " ", empty} or false,
 						ui.scroll{id = "filetree_scroll", grow = 1,
 							ui.virtual_column{id = "filetree_rows", data = tree, item = tree_row,
 								highlight_style = {bg = "pane_selection_background"}}},
 					},
-					view.preview and ui.editor{id = "filetree_preview", buffer = view.preview.buffer, grow = 1,
-						readonly = true, syntax = true, line_numbers = true} or ui.text{grow = 1, ""},
+					view.preview and view.preview.buffer and ui.editor{id = "filetree_preview", buffer = view.preview.buffer,
+						grow = 1, readonly = true, syntax = true, line_numbers = true}
+					or view.preview and ui.image{id = "filetree_preview", path = view.preview.path, grow = 1}
+					or false,
 				},
 				footer(),
 			},
@@ -352,7 +358,9 @@ end
 
 local function preview_close()
 	if view and view.preview then
-		view.preview.buffer:close()
+		if view.preview.buffer then
+			view.preview.buffer:close()
+		end
 		view.preview = nil
 	end
 end
@@ -420,8 +428,13 @@ end
 local function preview_load(path, base)
 	preview_close()
 	local buffer
+	local info = exists(path) and qed.fs.stat(path)
+	if info and info.image then
+		view.preview = {path = path}
+		return
+	end
 	if exists(path) then
-		buffer = qed.buf.create{internal = true, path = path}
+		buffer = qed.buf.create{internal = true, from = path}
 		local only = base and show.diff and changed_rows(buffer, base)
 		if only then
 			buffer:set_text(only)
@@ -592,8 +605,7 @@ local function reveal(path)
 	refresh()
 	if view then
 		view.tree:reveal(path)
-		ui.node("filetree_rows"):set_state{highlighted = path}
-		ui.node("filetree_rows"):set_state{anchor = false}
+		ui.node("filetree_rows"):set_state{highlighted = path, extend_from = false}
 		changed()
 	end
 end
@@ -621,7 +633,7 @@ local function open(tab)
 		changed = changed, activate = activate, close = close}
 	view.switch = function(label)
 		scope = label
-		ui.node("filetree_rows"):set_state{anchor = false}
+		ui.node("filetree_rows"):set_state{extend_from = false}
 		sync()
 	end
 	view.tree = source()
@@ -644,7 +656,7 @@ local function open(tab)
 	end)
 	ui.node("filetree_query"):focus()
 	local first = view.tree:at(1)
-	ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, anchor = false}
+	ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, extend_from = false}
 	refresh()
 	changed()
 end
@@ -661,10 +673,10 @@ local function move(step, extend)
 	end
 	local path = highlighted_path()
 	local state = ui.node("filetree_rows"):state()
-	if extend and not (state and state.anchor) then
-		ui.node("filetree_rows"):set_state{anchor = path}
+	if extend and not (state and state.extend_from) then
+		ui.node("filetree_rows"):set_state{extend_from = path}
 	elseif not extend then
-		ui.node("filetree_rows"):set_state{anchor = false}
+		ui.node("filetree_rows"):set_state{extend_from = false}
 	end
 	local index = tree:index_of(path or "") or 0
 	index = math.max(1, math.min(count, index + step))
@@ -685,8 +697,8 @@ local function escape()
 	if not view then
 		return
 	end
-	if view.tree:loading() and view.query:text() == "" then
-		view.tree:expand_all(false)
+	if view.tree:expanding() then
+		view.tree:stop()
 		rebuild()
 		return
 	end
@@ -851,7 +863,7 @@ local function delete()
 		end
 	end
 	refresh()
-	ui.node("filetree_rows"):set_state{anchor = false}
+	ui.node("filetree_rows"):set_state{extend_from = false}
 	local above = low and view.tree:at(math.max(1, low - 1))
 	if above then
 		ui.node("filetree_rows"):set_state{highlighted = above.path}
@@ -1080,9 +1092,7 @@ end
 
 local function release(label)
 	if scopes[label] then
-		if scopes[label].handle then
-			scopes[label].handle:release()
-		end
+		scope_release(scopes[label])
 		scopes[label] = nil
 	end
 end
@@ -1247,8 +1257,7 @@ return {
 		cmd{name = "Close Buffers", bind_from = "Close Buffer", run = close_buffers}
 		cmd{name = "Select All", bind_from = "Select All", run = function()
 			if view and view.tree:count() > 0 then
-				ui.node("filetree_rows"):set_state{anchor = view.tree:at(1).path}
-				ui.node("filetree_rows"):set_state{highlighted = view.tree:at(view.tree:count()).path}
+				ui.node("filetree_rows"):set_state{extend_from = view.tree:at(1).path, highlighted = view.tree:at(view.tree:count()).path}
 				changed()
 			end
 		end}
@@ -1262,12 +1271,7 @@ return {
 			if not view then
 				return
 			end
-			local any = false
-			for index = 1, view.tree:count() do
-				local row = view.tree:at(index)
-				any = any or (row.dir and row.expanded)
-			end
-			if not view.tree:expand_all(not any) then
+			if not view.tree:expand_all() then
 				qed.message("File status is still loading")
 			end
 			rebuild()

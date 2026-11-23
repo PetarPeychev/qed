@@ -66,8 +66,9 @@ local function run_command(name)
 	if not palette or not name then
 		return
 	end
+	local record = palette.commands:get(name)
 	close_palette()
-	qed.run(name)
+	qed.run(name, {scope = record and record.scope ~= "global" and record.scope or nil})
 end
 
 -- typed keys reach the query before its change event runs: catch up before running
@@ -150,7 +151,7 @@ local function open_palette()
 	for _, command in ipairs(qed.commands()) do
 		local listed = scoped and wanted[command.scope] or (not scoped and command.scope == "global")
 		if listed and command.owner ~= "palette" and command.name ~= "Command Palette" then
-			commands:append{name = command.name, shortcut = command.shortcut}
+			commands:append{name = command.name, shortcut = command.shortcut, scope = command.scope}
 		end
 	end
 	local matches = qed.fuzzy.list(commands, {field = "name"})

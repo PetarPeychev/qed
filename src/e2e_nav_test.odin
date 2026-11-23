@@ -417,18 +417,23 @@ e2e_nav_scrollbar :: proc(t: ^testing.T) {
 		nav_write(path, "body")
 	}
 
+	e2e_resize(&e, 200, E2E_H)
 	nav_alt(&e, 'f')
 	testing.expect(t, filetree_active(&e.ed), "Alt+f opens the file tree")
+	nav_preview(&e)
 
 	lay := ft_layout(&e.ed)
 	testing.expect(t, len(ft_entries(&e.ed)) > lay.body_h, "20 files should overflow the tree's body")
 	e2e_render(&e)
-	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '┃')
+	testing.expect_value(t, e2e_cell(&e, lay.bar_x, lay.body_top), '┃')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '│')
 
 	e2e_type(&e, "f00")
 	testing.expect(t, len(ft_entries(&e.ed)) <= lay.body_h, "a narrow query should fit without a scrollbar")
+	nav_preview(&e)
 	e2e_render(&e)
-	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), ' ')
+	testing.expect_value(t, e2e_cell(&e, lay.bar_x, lay.body_top), ' ')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '│')
 
 	e2e_key(&e, .Esc)
 	testing.expect(t, ft_query(&e.ed) == "", "Esc first clears the filter")
@@ -863,7 +868,7 @@ e2e_nav_git_diffsize :: proc(t: ^testing.T) {
 		testing.expectf(t, off >= 0, "Git tab row shows per-file diff size: %q", row)
 		if off >= 0 {
 			x := visual_width(transmute([]u8)row[:off])
-			testing.expect_value(t, x + len(want), lay.div_x)
+			testing.expect_value(t, x + len(want), lay.bar_x)
 			testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x, y)), e2e_rgb(COLOR_GIT_ADD))
 			testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x + 4, y)), e2e_rgb(COLOR_GIT_DEL))
 			found += 1
@@ -886,6 +891,8 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	e.ed.working_root = strings.clone(e.dir)
 
 	nav_write(e.path, "line 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nCHANGED\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\n")
+	// a preview copies the open buffer, so it takes the disk change first, as the disk poll would
+	editor_reload_buffer(&e.ed, editor_buffer(&e.ed))
 
 	nav_alt(&e, 'f')
 	nav_scan(&e)
@@ -1152,6 +1159,11 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	testing.expect(t, filetree_active(&e.ed), "the palette sits over the tree")
 	e2e_render(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "the palette draws over the tree")
+	tree_box := node_rect(&e.ed, "filetree")
+	box := node_rect(&e.ed, "palette")
+	testing.expect(t, tree_box.x < box.x && box.x + box.w < tree_box.x + tree_box.w, "the tree box is wider than the palette")
+	testing.expect_value(t, e2e_cell(&e, box.x, box.y), '┌')
+	testing.expect_value(t, e2e_cell(&e, tree_box.x, box.y + 1), '│')
 	e2e_type(&e, "copy")
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)

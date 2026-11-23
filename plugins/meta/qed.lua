@@ -37,6 +37,7 @@
 ---@field size integer
 ---@field mtime number unix seconds
 ---@field type "file"|"dir"|"link"|"other"
+---@field image? boolean a PNG or JPEG file (by its magic bytes)
 
 ---@alias qed.Level "debug"|"info"|"warn"|"error"
 
@@ -66,11 +67,12 @@ function CommandHandle:remove() end
 ---@return qed.CommandHandle
 function qed.command(spec) end
 
----Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command (bare names never equal a core command). `nil, "unavailable"` when a core command does not apply now or a plugin command's `when` returns false; raises on an unknown name.
+---Run a builtin or plugin command by its visible name (`"Git: Set Diff Base"`). A bare name also resolves to the caller's own editor command (bare names never equal a core command). `opts.scope` runs that scope's command of the name instead (a pane's own command, as its palette does). `nil, "unavailable"` when a core command does not apply now or a plugin command's `when` returns false; raises on an unknown name.
 ---@param name string
+---@param opts? {scope?: string}
 ---@return true|nil ok
 ---@return "unavailable"|nil err
-function qed.run(name) end
+function qed.run(name, opts) end
 
 ---Every change to `b` while `fn` runs is one undo step; an error inside `fn` rolls it back.
 ---Returns `nil, "stale"` without calling `fn` if `opts.rev` is stale.
@@ -778,6 +780,13 @@ function TreeList:at(index) end
 function TreeList:index_of(key) end
 ---@return integer
 function TreeList:count() end
+---Drops the list now (it stops refilling and lets its walk go); a view still showing it shows nothing.
+function TreeList:release() end
+---True while Expand All is still opening dirs.
+---@return boolean
+function TreeList:expanding() end
+---Stops Expand All where it got; the dirs it opened stay open.
+function TreeList:stop() end
 ---Narrows to the fuzzy matches of `query` over every path (flat rows); "" shows the tree again.
 ---@param query string
 function TreeList:set_query(query) end
@@ -794,8 +803,8 @@ function TreeList:expanded(path) end
 ---@param path string
 ---@return boolean
 function TreeList:reveal(path) end
----False when the walk's ignore set is not known yet (it would descend into ignored dirs).
----@param on? boolean default true
+---False when the walk's ignore set is not known yet (it would descend into ignored dirs). Without `on`, collapses when a shown dir is open, else expands.
+---@param on? boolean
 ---@return boolean
 function TreeList:expand_all(on) end
 ---@return boolean
@@ -1295,8 +1304,8 @@ function BufferObject:base() end
 function BufferObject:line_list() end
 
 ---A new internal buffer (not in the buffer list, no LSP, git or autosave) as a buffer object: every `qed.buf.*` function is a method with the buffer bound (`buffer:text()`). The plugin owns it; `buffer:close()` frees it.
----With `path`, it holds a copy of that file (an open buffer's live text, else the head of the file on disk) in its language: a read-only preview under a `readonly` editor node.
----@param spec {internal: true, path?: string}
+---With `from`, it holds a copy of that file in its language, not bound to it (no path, cannot be saved): an open buffer's live text, else the file on disk through `row` (default 1) plus 200 lines, cut to whole lines (binaries as a hexdump). For a read-only preview under a `readonly` editor node.
+---@param spec {internal: true, from?: string, row?: integer}
 ---@return qed.BufferObject
 function qed.buf.create(spec) end
 

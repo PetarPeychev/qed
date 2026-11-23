@@ -6,6 +6,7 @@ qed-e2e snapshot 80x24 cursor 3,2
   │                                                                          │
   │local WIDTH = 64                                                          │
   │local MAX_ROWS = 12                                                       │
+  │local PREVIEW_DEBOUNCE_MS = 60                                            │
   │                                                                          │
   │local dialog                                                              │
   │                                                                          │
@@ -20,7 +21,6 @@ qed-e2e snapshot 80x24 cursor 3,2
   │    local state = ui.node("dialog_rows"):state()                          │
   │    return state and state.highlighted or nil                             │
   │end                                                                       │
-  │                                                                          │
   │ Esc back  ·  fork: copy to ~/.config/qed/plugins/dialog                  │
  a└──────────────────────────────────────────────────────────────────────────┘t
 
@@ -31,6 +31,7 @@ ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdeeeeedddddddddffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdeeeeeddddddddddddffddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeedddddddddddddddddddddddffdddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
@@ -45,7 +46,6 @@ ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdddddeeeeedddddddddddddddddgggggggggggggddddddddddddddddddddddddddddddddddddcc
 ccdddddeeeeeedddddddeeedddddddddddddddddddeedfffddddddddddddddddddddddddddddddcc
 ccdeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhdddddddddddddddddddcc
 ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddhh
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

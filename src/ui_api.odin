@@ -861,9 +861,9 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 			lua.pushodinstring(L, state.highlighted)
 			lua.setfield(L, -2, "highlighted")
 		}
-		if state.anchor != "" && (node == nil || ui_highlight_present(editor, node, state.anchor)) {
-			lua.pushodinstring(L, state.anchor)
-			lua.setfield(L, -2, "anchor")
+		if state.extend_from != "" && (node == nil || ui_highlight_present(editor, node, state.extend_from)) {
+			lua.pushodinstring(L, state.extend_from)
+			lua.setfield(L, -2, "extend_from")
 		}
 	case .Scroll:
 		lua.pushinteger(L, lua.Integer(state.offset))
@@ -925,12 +925,12 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 				state.highlighted = strings.clone(text)
 				state.reveal = true
 			}
-		case "anchor":
-			delete(state.anchor)
-			state.anchor = ""
+		case "extend_from":
+			delete(state.extend_from)
+			state.extend_from = ""
 			if lua.type(L, -1) == .STRING || lua.type(L, -1) == .NUMBER {
 				text, _ := lua.toodinstring(L, -1)
-				state.anchor = strings.clone(text)
+				state.extend_from = strings.clone(text)
 			}
 		case "offset":
 			state.offset = max(int(lua.tointeger(L, -1)), 0)
@@ -1125,12 +1125,16 @@ qed_buf_create :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	internal := false
 	path := ""
+	row := 1
 	if lua.type(L, 1) == .TABLE {
 		lua.getfield(L, 1, "internal")
 		internal = bool(lua.toboolean(L, -1))
 		lua.pop(L, 1)
-		if text, ok := api_field_string(L, 1, "path"); ok && text != "" {
+		if text, ok := api_field_string(L, 1, "from"); ok && text != "" {
 			path = api_path(editor, text)
+		}
+		if wanted, ok := api_field_int(L, 1, "row"); ok {
+			row = max(int(wanted), 1)
 		}
 	}
 	if !internal {
@@ -1139,7 +1143,7 @@ qed_buf_create :: proc "c" (L: ^lua.State) -> c.int {
 	plugin := api_loaded(L, editor)
 	buffer := ui_internal_create(editor, plugin_name_intern(&editor.plugins, plugin.name))
 	if path != "" {
-		ui_internal_load(editor, buffer, path)
+		ui_internal_load(editor, buffer, path, row)
 	}
 	lua.pushinteger(L, lua.Integer(buffer.id))
 	return 1

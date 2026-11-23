@@ -14,6 +14,7 @@ WalkTree :: struct {
 	max:       int,
 	more:      bool,
 	expanding: bool,
+	waiting:   bool,
 	capped:    bool,
 	due:       bool,
 	stamp:     u64,
@@ -64,7 +65,7 @@ walk_tree_stamp :: proc(tree: ^WalkTree) -> u64 {
 // one slice of reading: dirs not read in time stay pending and the next prepare continues
 walk_tree_fill :: proc(editor: ^Editor, tree: ^WalkTree) {
 	src := &tree.source
-	tree.due = false
+	tree.due, tree.waiting = false, false
 	tree.stamp = walk_tree_stamp(tree)
 	tree.gen += 1
 	clear(&src.entries)
@@ -73,9 +74,10 @@ walk_tree_fill :: proc(editor: ^Editor, tree: ^WalkTree) {
 	tree.more = false
 	src.filtering = tree.query != ""
 	if src.filtering {
-		if !walk_ready(editor, src) {
+		// only the first walk waits (walk_busy wakes the loop); a rewalk serves the last candidates
+		if (src.wscope == nil || src.wscope.all) && !src.walk.built {
 			walk_prewarm(editor, src.walk)
-			tree.due = true
+			tree.waiting = true
 			return
 		}
 		walk_tree_filter(editor, tree)
@@ -181,7 +183,7 @@ walk_tree_filter :: proc(editor: ^Editor, tree: ^WalkTree) {
 
 walk_tree_reveal :: proc(tree: ^WalkTree, path: string) {
 	root := tree.source.walk.root
-	for dir := path_parent(path); strings.has_prefix(dir, root); {
+	for dir := path_parent(path); dir == root || path_under(dir, root); {
 		walk_tree_set(tree, dir, true)
 		up := path_parent(dir)
 		if dir == root || up == dir {
@@ -189,6 +191,15 @@ walk_tree_reveal :: proc(tree: ^WalkTree, path: string) {
 		}
 		dir = up
 	}
+}
+
+walk_tree_any_expanded :: proc(tree: ^WalkTree) -> bool {
+	for entry in tree.source.entries {
+		if entry.is_dir && walk_tree_expanded(tree, entry.path) {
+			return true
+		}
+	}
+	return false
 }
 
 // expanding the whole walk needs the ignore set, or it would descend into node_modules

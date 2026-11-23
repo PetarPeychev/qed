@@ -196,6 +196,10 @@ ui_list_changed :: proc(editor: ^Editor, list: ^UiList) {
 }
 
 ui_list_settle_all :: proc(editor: ^Editor, list: ^UiList) {
+	if list.tree != nil {
+		walk_trees_settle(editor)
+		return
+	}
 	if list.lines != nil {
 		ui_lines_settle(editor, list)
 		return
@@ -355,6 +359,9 @@ ui_tree_list_methods := [?]lua.L_Reg {
 	{"expand_all", qed_tree_expand_all},
 	{"loading", qed_tree_loading},
 	{"more", qed_tree_more},
+	{"release", qed_tree_release},
+	{"expanding", qed_tree_expanding},
+	{"stop", qed_tree_stop},
 }
 
 api_tree_self :: proc(L: ^lua.State, editor: ^Editor) -> ^WalkTree {
@@ -437,18 +444,36 @@ qed_tree_expand_all :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	tree := api_tree_self(L, entry.editor)
-	on := lua.type(L, 2) <= .NIL || bool(lua.toboolean(L, 2))
+	// no argument: collapse when a shown dir is open, else expand
+	on := !walk_tree_any_expanded(tree) if lua.type(L, 2) <= .NIL else bool(lua.toboolean(L, 2))
 	ok := walk_tree_expand_all(tree, on)
 	walk_trees_settle(entry.editor)
 	lua.pushboolean(L, b32(ok))
 	return 1
 }
 
+qed_tree_expanding :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	lua.pushboolean(L, b32(tree.expanding))
+	return 1
+}
+
+// Expand All stops where it got; the dirs it opened stay open
+qed_tree_stop :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	tree.expanding = false
+	return 0
+}
+
 qed_tree_loading :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	tree := api_tree_self(L, entry.editor)
-	lua.pushboolean(L, b32(tree.due))
+	lua.pushboolean(L, b32(tree.due || tree.waiting))
 	return 1
 }
 
@@ -467,6 +492,20 @@ ui_fuzzy_list_methods := [?]lua.L_Reg {
 	{"count", qed_list_count},
 	{"set_query", qed_list_set_query},
 	{"positions", qed_list_positions},
+}
+
+// a tree holds its walk and refills on every walk change: its owner drops it now rather than at the next GC
+qed_tree_release :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	list, gone := api_ui_list_lookup(L, entry.editor, 1)
+	if gone || list == nil || list.tree == nil {
+		return 0
+	}
+	append(&entry.editor.ui.lists_dead, list.id)
+	list.tree.due = false
+	list.tree.stamp = walk_tree_stamp(list.tree)
+	return 0
 }
 
 qed_list_gc_ui :: proc "c" (L: ^lua.State) -> c.int {

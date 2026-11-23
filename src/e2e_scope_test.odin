@@ -34,12 +34,20 @@ e2e_scope_line_list_large_stays_cheap :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	rows := node_rect(&e.ed, "goto_rows").h
 	testing.expect(t, rows > 0, "Go to: Line opens over a line list")
-	testing.expectf(t, test_list_built <= 4 * rows, "open + render build only visible rows, built %d", test_list_built)
+	node := ui_find(&e.ed.ui, "#goto/goto_rows")
+	list := ui_list_find(&e.ed.ui, node.list)
+	testing.expect(t, list != nil && list.lines != nil, "over a line list")
+	testing.expect_value(t, ui_list_count(list), N + 1)
+	testing.expect(t, !list.lines.filtered && len(list.lines.matches) == 0, "an empty query builds no index")
+	testing.expect_value(t, ui_node_state_peek(&e.ed.ui, node).highlighted, fmt.tprintf("%d", N / 2 + 1))
+	testing.expectf(t, test_list_built <= 3 * rows, "open + render build only visible rows, built %d", test_list_built)
 
 	built := test_list_built
 	e2e_type(&e, ":90000:3")
 	e2e_ui_settle(&e)
-	testing.expectf(t, test_list_built - built <= 2 * rows + 8, "a jump spec builds a handful, built %d", test_list_built - built)
+	testing.expect_value(t, ui_list_count(list), 1)
+	testing.expect_value(t, ui_lines_row(list.lines, 0), 90000 - 1)
+	testing.expectf(t, test_list_built - built <= 2 * rows, "a jump spec builds a handful, built %d", test_list_built - built)
 
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)
@@ -121,9 +129,12 @@ e2e_scope_line_list_stale_jump :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_G)
 	e2e_type(&e, ":9")
 	testing.expect_value(t, goto_state(&e.ed).count, 1)
+	list := ui_list_find(&e.ed.ui, ui_find(&e.ed.ui, "#goto/goto_rows").list)
+	testing.expect_value(t, ui_lines_row(list.lines, 0), 8)
 	delete(buffer_delete(b, {3, 0}, {9, 0}))
 	e2e_render(&e)
 	testing.expect_value(t, goto_state(&e.ed).count, 1)
+	testing.expect_value(t, ui_lines_row(list.lines, 0), 3)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, b.cursor.row, 3)
 }

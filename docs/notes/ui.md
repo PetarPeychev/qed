@@ -32,6 +32,7 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 - Identity: `id` (per plugin: `ui.node` only sees the caller's nodes), else `key` among siblings, else type + raw
   positional index (a `false` or `nil` hole keeps later siblings' identity). Duplicate ids or sibling keys raise.
 - State is core's, keyed by identity, never in the node table: `highlighted` (column, row, virtual_column),
+  `extend_from` (virtual_column: the rows from it to `highlighted` draw highlighted too, a range selection),
   `offset` (scroll), `scroll` (editor; per editor node and buffer). `set_state` changes only named fields, fires
   nothing, and a new `highlighted` scrolls into view. `state()` reports `highlighted` only while that key is in the
   data. States of id'd nodes live until their plugin unloads; others go with their node.

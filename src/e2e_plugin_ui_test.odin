@@ -259,6 +259,8 @@ e2e_plugin_ui_pick_paths :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "focus here"), "the preview shows the file")
 	e2e_key(&e, .Arrow_Down)
+	// past the preview debounce
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.timers) > 0}, 300)
 	e2e_ui_settle(&e)
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "second body"), "moving reloads the preview")

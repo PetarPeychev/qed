@@ -183,10 +183,17 @@ return function(qed)
 				on_dismiss()
 				return true
 			end}}
+		-- a click on a pane stays with it, after the pane's own click handler had its say
 		for index, pane in ipairs(props) do
 			if type(pane) == "table" then
 				pane.on = pane.on or {}
-				pane.on.click = pane.on.click or function() return true end
+				local own = pane.on.click
+				pane.on.click = function(event)
+					if own then
+						own(event)
+					end
+					return true
+				end
 			end
 			catcher[index] = pane
 		end

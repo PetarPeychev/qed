@@ -203,7 +203,7 @@ ft_sel_range :: proc(ed: ^Editor) -> (lo, hi: int) {
 	list := ft_tree_list(ed)
 	lo, hi = ft_sel(ed), ft_sel(ed)
 	state := ed.ui.states["#filetree/filetree_rows"]
-	if anchor, ok := ui_list_position(list, state.anchor); ok && state.anchor != "" {
+	if anchor, ok := ui_list_position(list, state.extend_from); ok && state.extend_from != "" {
 		lo, hi = min(anchor, lo), max(anchor, hi)
 	}
 	return
@@ -273,6 +273,7 @@ FtLayout :: struct {
 	body_top, body_h, filter_y, filter_sep_y: int,
 	footer_y, tab_y, title_sep_y:             int,
 	div_x, left_w, right_x, right_w:          int,
+	bar_x:        int,
 	preview:                                  bool,
 }
 
@@ -303,7 +304,8 @@ ft_layout :: proc(ed: ^Editor) -> FtLayout {
 		footer_y = inner.y + inner.h - 1,
 		tab_y = inner.y,
 		title_sep_y = box.y,
-		div_x = scroll.x + scroll.w - 1,
+		div_x = scroll.x + scroll.w,
+		bar_x = scroll.x + scroll.w - 1,
 		left_w = scroll.w,
 		right_x = preview.x,
 		right_w = preview.w,
@@ -389,7 +391,7 @@ ft_expand_all :: proc(ed: ^Editor, on: bool) -> bool {
 // reads every pending dir: a tree list fills one slice per frame
 ft_trees_settle :: proc(ed: ^Editor) {
 	start := time.tick_now()
-	for walk_trees_busy(ed) && ms_since(start) < 3000 {
+	for (walk_trees_busy(ed) || walk_busy(ed)) && ms_since(start) < 3000 {
 		walk_pump(ed)
 		walk_trees_settle(ed)
 	}

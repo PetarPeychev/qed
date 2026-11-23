@@ -1,6 +1,8 @@
 package main
 
 import "core:fmt"
+import "core:os"
+import "core:io"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
@@ -179,7 +181,7 @@ UiNode :: struct {
 
 UiState :: struct {
 	highlighted: string,
-	anchor:      string,
+	extend_from: string,
 	offset:      int,
 	scroll_row:  int,
 	scroll_sub:  int,
@@ -254,7 +256,7 @@ ui_destroy :: proc(editor: ^Editor) {
 	for key, state in ui.states {
 		delete(key)
 		delete(state.highlighted)
-		delete(state.anchor)
+		delete(state.extend_from)
 		delete(state.md_heading)
 	}
 	delete(ui.states)
@@ -541,7 +543,7 @@ ui_states_drop :: proc(ui: ^Ui, gone: []string) {
 		owned, state := delete_key(&ui.states, key)
 		delete(owned)
 		delete(state.highlighted)
-		delete(state.anchor)
+		delete(state.extend_from)
 		delete(state.md_heading)
 	}
 }
@@ -722,33 +724,69 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 }
 
 // a copy for showing a file: an open buffer's live text, else the head of the file on disk
-ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string) {
+// lines a disk preview reads past the wanted row
+UI_PREVIEW_AFTER :: 200
+
+ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string, row := 1) {
 	text := ""
-	if index := editor_find_buffer(editor, path); index >= 0 && editor.buffers[index].modified {
-		text = buffer_snapshot(&editor.buffers[index])
+	if index := editor_find_buffer(editor, path); index >= 0 {
+		text = buffer_snapshot(&editor.buffers[index], context.temp_allocator)
 	} else if info, ok := fs_stat(path); !ok || !posix.S_ISREG(info.st_mode) {
 		// a fifo or device would block the read
 		text = ""
-	} else if data, ok := preview_file_bytes(path, PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES, PREVIEW_MAX_LINES); ok {
-		if preview_is_binary(data) {
-			sb := strings.builder_make(context.temp_allocator)
-			for offset := 0; offset < len(data) && offset < PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES; offset += PREVIEW_HEX_BYTES {
-				line := hex_dump_line(data[offset:min(offset + PREVIEW_HEX_BYTES, len(data))], offset)
-				strings.write_string(&sb, line)
-				strings.write_byte(&sb, '\n')
-				delete(line)
-			}
-			buffer_set_text(buffer, strings.to_string(sb))
-			buffer.cursor = {}
-			buffer.plugin_rev = buffer.rev
-			return
-		}
+	} else if data, read_ok := ui_preview_read(path, max(row, 1) + UI_PREVIEW_AFTER); read_ok {
 		text = string(data)
+	}
+	if data := transmute([]u8)text; preview_is_binary(data[:min(len(data), PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES)]) {
+		sb := strings.builder_make(context.temp_allocator)
+		for offset := 0; offset < len(data) && offset < PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES; offset += PREVIEW_HEX_BYTES {
+			line := hex_dump_line(data[offset:min(offset + PREVIEW_HEX_BYTES, len(data))], offset)
+			strings.write_string(&sb, line)
+			strings.write_byte(&sb, '\n')
+			delete(line)
+		}
+		buffer_set_text(buffer, strings.to_string(sb))
+		buffer.cursor = {}
+		buffer.plugin_rev = buffer.rev
+		return
 	}
 	buffer_set_text(buffer, text)
 	editor_set_language(editor, buffer, language_of(path))
 	buffer.cursor = {}
 	buffer.plugin_rev = buffer.rev
+}
+
+// the file up to `lines` lines (at most PREVIEW_MAX_BYTES), cut back to the last whole line when it stops early
+ui_preview_read :: proc(path: string, lines: int) -> (data: []u8, ok: bool) {
+	fd, err := os.open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer os.close(fd)
+	out := make([dynamic]u8, 0, 64 * 1024, context.temp_allocator)
+	chunk: [64 * 1024]u8
+	seen := 0
+	for {
+		n, read_err := os.read(fd, chunk[:])
+		if n <= 0 {
+			if read_err != nil && read_err != io.Error.EOF {
+				return nil, false
+			}
+			return out[:], true
+		}
+		for b in chunk[:n] {
+			seen += int(b == '\n')
+		}
+		append(&out, ..chunk[:n])
+		if seen >= lines || len(out) >= PREVIEW_MAX_BYTES {
+			break
+		}
+	}
+	end := min(len(out), PREVIEW_MAX_BYTES)
+	if last := strings.last_index_byte(string(out[:end]), '\n'); last >= 0 {
+		end = last + 1
+	}
+	return out[:end], true
 }
 
 ui_internal_close :: proc(editor: ^Editor, id: u64) -> bool {
@@ -1820,8 +1858,8 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		list := ui_list_find(&editor.ui, node.list)
 		if list != nil {
 			low, high := -1, -1
-			if state.anchor != "" {
-				anchor_at, anchor_ok := ui_list_position(list, state.anchor)
+			if state.extend_from != "" {
+				anchor_at, anchor_ok := ui_list_position(list, state.extend_from)
 				cursor_at, cursor_ok := ui_list_position(list, state.highlighted)
 				if anchor_ok && cursor_ok {
 					low, high = min(anchor_at, cursor_at), max(anchor_at, cursor_at)

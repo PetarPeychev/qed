@@ -18,6 +18,7 @@ local function close()
 	end
 	local closing = view
 	view = nil
+	closing.watch:off()
 	closing.handle:unmount()
 	closing.query:close()
 	closing.preview:close()
@@ -129,7 +130,7 @@ local function find_line(ctx)
 		return
 	end
 	local path = buffer:path()
-	local preview = qed.buf.create{internal = true, path = path ~= "" and path or nil}
+	local preview = qed.buf.create{internal = true, from = path ~= "" and path or nil}
 	if path == "" then
 		preview:set_text(buffer:text())
 	end
@@ -138,6 +139,12 @@ local function find_line(ctx)
 		digits = #tostring(buffer:line_count())}
 	view.handle = ui.mount("pane", build())
 	local current = view
+	-- a reload or plugin edit of the buffer shows in the preview copy too
+	view.watch = qed:on("buf_changed", function(changed)
+		if view == current and changed == buffer then
+			preview:set_text(buffer:text())
+		end
+	end)
 	query:on("change", function()
 		if view == current then
 			query_sync()

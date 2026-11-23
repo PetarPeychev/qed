@@ -3,6 +3,7 @@ local ui = qed.ui
 local MAX = 500
 local MAX_COLUMNS = 300
 local DEBOUNCE_MS = 120
+local PREVIEW_DEBOUNCE_MS = 60
 local SELECTED = {bg = "pane_selection_background", fg = "pane_selection_foreground"}
 
 local min_query
@@ -63,16 +64,24 @@ local function preview_show(item)
 		if preview then
 			preview.buffer:close()
 		end
-		preview = {path = item.path, buffer = qed.buf.create{internal = true, path = item.path}}
+		preview = {path = item.path, buffer = qed.buf.create{internal = true, from = item.path, row = item.pos.row}}
 		view.preview = preview
 		view.handle:update(view.build())
 	end
 	preview.buffer:set_cursor({row = math.min(item.pos.row, preview.buffer:line_count()), col = 1})
 end
 
+-- a held arrow key reads one file, not one per row
 local function highlight(key)
 	ui.node("search_rows"):set_state{highlighted = key}
-	preview_show(highlighted())
+	local current = view
+	current.preview_due = (current.preview_due or 0) + 1
+	local token = current.preview_due
+	qed.defer(PREVIEW_DEBOUNCE_MS, function()
+		if view == current and current.preview_due == token then
+			preview_show(highlighted())
+		end
+	end)
 end
 
 local function result_row(record)
@@ -130,6 +139,18 @@ local function refresh(current)
 	end
 end
 
+-- a burst of rg lines rebuilds the tree once
+local function refresh_soon(current)
+	if current.refresh_due then
+		return
+	end
+	current.refresh_due = true
+	qed.defer(0, function()
+		current.refresh_due = false
+		refresh(current)
+	end)
+end
+
 local function run_query(current, text)
 	stop()
 	current.results:clear()
@@ -171,7 +192,7 @@ local function run_query(current, text)
 		if total == 1 then
 			highlight(key)
 		end
-		refresh(current)
+		refresh_soon(current)
 	end}
 	if not proc then
 		current.hint = "Search failed: " .. err

@@ -8,6 +8,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:sys/posix"
 import "core:time"
 import "core:unicode/utf8"
 import lua "lib:lua"
@@ -2159,19 +2160,24 @@ qed_fs_stat :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	path := api_path(entry.editor, api_string(L, 1))
-	fi, err := os.stat(path, context.temp_allocator)
-	if err != nil {
-		return api_fail(L, fmt.tprintf("cannot stat %s: %v", path, err))
+	// posix.stat by path: os.stat opens the file, which blocks on a fifo
+	info, ok := fs_stat(path)
+	if !ok {
+		return api_fail(L, fmt.tprintf("cannot stat %s: %v", path, posix.errno()))
 	}
 	kind := "other"
-	#partial switch fi.type {
-	case .Regular:
+	switch {
+	case posix.S_ISREG(info.st_mode):
 		kind = "file"
-	case .Directory:
+	case posix.S_ISDIR(info.st_mode):
 		kind = "dir"
-	case .Symlink:
+	case posix.S_ISLNK(info.st_mode):
 		kind = "link"
 	}
+	fi := struct {
+		size:              i64,
+		modification_time: time.Time,
+	}{i64(info.st_size), time.unix(i64(info.st_mtim.tv_sec), i64(info.st_mtim.tv_nsec))}
 	lua.createtable(L, 0, 3)
 	lua.pushinteger(L, lua.Integer(fi.size))
 	lua.setfield(L, -2, "size")
@@ -2179,7 +2185,26 @@ qed_fs_stat :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "mtime")
 	lua.pushodinstring(L, kind)
 	lua.setfield(L, -2, "type")
+	if kind == "file" && fs_is_image(path) {
+		lua.pushboolean(L, true)
+		lua.setfield(L, -2, "image")
+	}
 	return 1
+}
+
+// a PNG or JPEG by its magic bytes; only regular files are opened (a fifo would block)
+fs_is_image :: proc(path: string) -> bool {
+	if info, ok := fs_stat(path); !ok || !posix.S_ISREG(info.st_mode) {
+		return false
+	}
+	fd, err := os.open(path)
+	if err != nil {
+		return false
+	}
+	defer os.close(fd)
+	head: [8]u8
+	n, _ := os.read(fd, head[:])
+	return n > 0 && image_magic(head[:n])
 }
 
 qed_fs_list :: proc "c" (L: ^lua.State) -> c.int {

@@ -1508,8 +1508,14 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 		return plugin_raise(L, "qed.run is unavailable while plugins load")
 	}
 	name, _ := lua.toodinstring(L, 1)
+	scope := ""
+	if lua.type(L, 2) == .TABLE {
+		if text, ok := api_field_string(L, 2, "scope"); ok {
+			scope = text
+		}
+	}
 	for cmd in commands {
-		if cmd.name == name {
+		if scope == "" && cmd.name == name {
 			if !command_available(editor, name) {
 				return api_fail(L, "unavailable")
 			}
@@ -1521,7 +1527,7 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 	caller, _ := plugin_key(L, lua.upvalueindex(1))
 	found := -1
 	for cmd, i in editor.plugins.commands {
-		if cmd.scope != "" {
+		if cmd.scope != scope {
 			continue
 		}
 		if cmd.name == name {
@@ -1530,18 +1536,6 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		if found < 0 && cmd.owner == caller && cmd.bare == name {
 			found = i
-		}
-	}
-	// a pane's own command runs while that pane has focus, as from its palette
-	if found < 0 {
-		for node := ui_focused(editor); node != nil && found < 0; node = node.parent {
-			for scope in node.scope {
-				for cmd, i in editor.plugins.commands {
-					if found < 0 && cmd.scope == scope && cmd.name == name {
-						found = i
-					}
-				}
-			}
 		}
 	}
 	if found < 0 {

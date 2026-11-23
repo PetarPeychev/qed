@@ -139,12 +139,12 @@ buffer_destroy :: proc(buffer: ^Buffer) {
 	delete(buffer.lsp_changes)
 }
 
-buffer_snapshot :: proc(buffer: ^Buffer) -> string {
+buffer_snapshot :: proc(buffer: ^Buffer, allocator := context.allocator) -> string {
 	size := max(len(buffer.lines) - 1, 0)
 	for line in buffer.lines {
 		size += len(line.text)
 	}
-	sb := strings.builder_make_len_cap(0, size)
+	sb := strings.builder_make_len_cap(0, size, allocator)
 	for line, i in buffer.lines {
 		if i > 0 {
 			strings.write_byte(&sb, '\n')

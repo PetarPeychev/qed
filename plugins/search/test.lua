@@ -85,7 +85,8 @@ function tests.results_sorted_and_counted(test)
 	test.eq(ui.labels[1], "a.txt:1  x zz_needle")
 	test.eq(ui.labels[2], "b.txt:1  zz_needle")
 	test.eq(ui.labels[3], "b.txt:2  zz_needle")
-	test.ok(on_screen(test, " 3 │"), "the match count renders at the end of the query row")
+	test.wait(function() return on_screen(test, " 3 │") end)
+	test.ok(on_screen(test, " 3 │"), "the match count renders at the end of the query row, by the preview's divider")
 	test.key("Esc")
 end
 
