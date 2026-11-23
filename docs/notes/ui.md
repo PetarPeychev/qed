@@ -68,6 +68,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly` |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
 | `outlet` | none | `id` |
+| `image` | none | `path` (relative to the root); natural size from the pixel size and the cell size; `[image: name]` without graphics |
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and
   paste insert, and the `editor` scope's core commands edit (`Editor: Left` ... `Dedent`, plus Undo, Redo, Copy,
@@ -199,7 +200,7 @@ The full-screen column closes on an outside click; the box swallows clicks insid
 
 ## Open
 
-- Not built: `image`, `terminal`, `virtual_row` nodes, `qed.markdown.parse`, resizable containers, multi-row
+- Not built: `terminal`, `virtual_row` nodes, `qed.markdown.parse`, resizable containers, multi-row
   virtual items, plain-table `data`, `focus`/`blur`/`state`/`drag`/`release` events, span `on.click`, keyboard
   scrolling of `scroll`.
 - Per-view editor state (cursor, wrap) instead of the buffer's.

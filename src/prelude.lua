@@ -32,7 +32,7 @@ local PICK = {items = true, prompt = true, selected = true, on = true}
 local PROMPT = {prompt = true, text = true}
 local CONFIRM = {question = true, choices = true}
 
-local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet"}
+local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet", "image"}
 
 local node_metas = {}
 for _, name in ipairs(NODE_TYPES) do

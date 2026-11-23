@@ -630,6 +630,11 @@ function qed.ui.editor(props) end
 ---@return qed.Node
 function qed.ui.virtual_column(props) end
 
+---An image file drawn with kitty graphics placeholders (alt text `[image: name]` without graphics). Prop: `path` (relative to the root).
+---@param props table
+---@return qed.Node
+function qed.ui.image(props) end
+
 ---A transparent slot other plugins mount into with `qed.ui.mount(id, tree)`. Prop: `id`.
 ---@param props table
 ---@return qed.Node

@@ -32,6 +32,7 @@ ui_kind_props := [UiKind][]string {
 	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly"},
 	.Virtual_Column = {"data", "item", "highlight_style"},
 	.Outlet         = {},
+	.Image          = {"path"},
 }
 
 UiMarshal :: struct {
@@ -340,6 +341,13 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			continue
 		}
 		switch name {
+		case "path":
+			if lua.type(L, value_index) != .STRING {
+				ui_marshal_fail(marshal, "path: string expected")
+				break
+			}
+			text, _ := lua.toodinstring(L, value_index)
+			node.path = strings.clone(api_path(marshal.editor, text))
 		case "id", "key", "title", "placeholder":
 			value_type := lua.type(L, value_index)
 			if value_type != .STRING && !(value_type == .NUMBER && name == "key") {
@@ -562,7 +570,7 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		if laid != 1 {
 			ui_marshal_fail(marshal, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
 		}
-	case .Editor, .Virtual_Column:
+	case .Editor, .Virtual_Column, .Image:
 		limit = 0
 	case .Outlet:
 		if len(node.children) > 0 {
@@ -577,6 +585,9 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 	}
 	if kind == .Virtual_Column && (node.list == 0 || node.item_ref == 0) {
 		ui_marshal_fail(marshal, "virtual_column: data and item expected")
+	}
+	if kind == .Image && node.path == "" {
+		ui_marshal_fail(marshal, "image: path expected")
 	}
 	if kind == .Editor && node.buffer == 0 {
 		ui_marshal_fail(marshal, "editor: buffer expected")

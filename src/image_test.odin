@@ -535,3 +535,34 @@ image_md_refs :: proc(lines: []MdLine) -> []ImageRef {
 	}
 	return out[:]
 }
+
+@(test)
+e2e_ui_image_node :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+	saved, saved_cell, saved_tmux := IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux
+	defer {
+		IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = saved, saved_cell, saved_tmux
+		image_shutdown()
+	}
+	dir := image_fixture_dir("node")
+	defer image_fixture_drop(dir)
+	IMAGE_PROTOCOL = .None
+	e2e_plugin(&e, "uitest", fmt.tprintf(`return {{setup = function()
+	qed.command{{name = "Run", run = function()
+		qed.ui.mount("pane", qed.ui.image{{float = "screen", anchor = "top_left", width = 20, height = 6, path = %q}})
+	end}}
+end}}`, fmt.tprintf("%s/pic.png", dir)))
+	ut_run(&e, "Run")
+	testing.expect(t, strings.has_prefix(e2e_row_text(&e, 0), "[image: pic.png]"), "without graphics the node shows its alt text")
+	IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = .Kitty, {1, 1}, false
+	for _ in 0 ..< 50 {
+		image_pump(&e.ed)
+		e2e_render(&e)
+		if e2e_cell(&e, 0, 0) == IMAGE_PLACEHOLDER {
+			break
+		}
+		time.sleep(time.Millisecond * 10)
+	}
+	testing.expect_value(t, e2e_cell(&e, 0, 0), IMAGE_PLACEHOLDER)
+}

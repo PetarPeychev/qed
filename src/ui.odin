@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
@@ -22,6 +23,7 @@ UiKind :: enum u8 {
 	Editor,
 	Virtual_Column,
 	Outlet,
+	Image,
 }
 
 ui_kind_names := [UiKind]string {
@@ -33,6 +35,7 @@ ui_kind_names := [UiKind]string {
 	.Editor         = "editor",
 	.Virtual_Column = "virtual_column",
 	.Outlet         = "outlet",
+	.Image          = "image",
 }
 
 UiSizeForm :: enum u8 {
@@ -148,6 +151,7 @@ UiNode :: struct {
 	text_align:      UiAlign,
 	buffer:          u64,
 	placeholder:     string,
+	path:            string,
 	line_numbers:    bool,
 	syntax:          bool,
 	readonly:        bool,
@@ -315,6 +319,7 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 	delete(node.identity)
 	delete(node.title)
 	delete(node.placeholder)
+	delete(node.path)
 	free(node)
 }
 
@@ -916,9 +921,19 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 		if buffer := ui_buffer(editor, node.buffer); buffer != nil {
 			height = len(buffer.lines)
 		}
+	case .Image:
+		if image := image_get(node.path); image != nil && image_enabled() {
+			width, height = image_cells(image.w, image.h, avail_w, avail_h, g_image_cell.x, g_image_cell.y)
+		} else {
+			width, height = visual_width(transmute([]u8)ui_image_alt(node)), 1
+		}
 	case .Outlet:
 	}
 	return
+}
+
+ui_image_alt :: proc(node: ^UiNode) -> string {
+	return fmt.tprintf("[image: %s]", filepath.base(node.path))
 }
 
 ui_measure_slot :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (width, height: int) {
@@ -976,7 +991,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 		}
 	case .Column, .Row:
 		ui_layout_flow(editor, node, content)
-	case .Text, .Editor, .Virtual_Column, .Outlet:
+	case .Text, .Editor, .Virtual_Column, .Outlet, .Image:
 	}
 	for child in node.expanded {
 		if child.float != .None {
@@ -1704,6 +1719,8 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 				ui_render_node(editor, item.node, &child, floats)
 			}
 		}
+	case .Image:
+		ui_render_image(&paint, node)
 	case .Column, .Row, .Outlet:
 	}
 	if node.header != nil {
@@ -1722,6 +1739,24 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 	}
 	if node.separator && (node.kind == .Column || node.kind == .Row) {
 		ui_render_separators(&paint, node)
+	}
+}
+
+ui_render_image :: proc(paint: ^UiPaint, node: ^UiNode) {
+	rect := node.rect
+	image := image_get(node.path)
+	state := ImageState.Failed
+	if image != nil {
+		state, _ = image_state(image.id)
+	}
+	if image == nil || state == .Failed || !image_enabled() {
+		ui_draw_text(paint, rect.x, rect.y, rect.w, ui_image_alt(node), COLOR_PANE_DIM_FG, paint.bg)
+		return
+	}
+	cols, rows := image_cells(image.w, image.h, rect.w, rect.h, g_image_cell.x, g_image_cell.y)
+	image_show({image.id, i32(cols), i32(rows)})
+	for row in 0 ..< rows {
+		ui_draw_text(paint, rect.x, rect.y + row, cols, image_placeholder_row(row, cols), image_color(image.id), paint.bg)
 	}
 }
 
