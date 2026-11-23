@@ -2207,15 +2207,24 @@ qed_fs_list :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	path := api_path(entry.editor, api_string(L, 1))
-	infos, err := os.read_directory_by_path(path, -1, context.temp_allocator)
-	if err != nil {
-		return api_fail(L, fmt.tprintf("cannot list %s: %v", path, err))
+	// names only: os.read_directory opens every entry and fails whole when one vanishes meanwhile
+	dirp := posix.opendir(strings.clone_to_cstring(path, context.temp_allocator))
+	if dirp == nil {
+		return api_fail(L, fmt.tprintf("cannot list %s: %v", path, posix.errno()))
 	}
-	names := make([]string, len(infos), context.temp_allocator)
-	for fi, i in infos {
-		names[i] = fi.name
+	defer posix.closedir(dirp)
+	names := make([dynamic]string, context.temp_allocator)
+	for {
+		dirent := posix.readdir(dirp)
+		if dirent == nil {
+			break
+		}
+		name := string(cstring(raw_data(dirent.d_name[:])))
+		if name != "." && name != ".." {
+			append(&names, strings.clone(name, context.temp_allocator))
+		}
 	}
-	slice.sort(names)
+	slice.sort(names[:])
 	lua.createtable(L, c.int(len(names)), 0)
 	for n, i in names {
 		lua.pushodinstring(L, n)

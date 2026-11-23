@@ -117,6 +117,14 @@ e2e_enter :: proc() {
 	// re-applying here would race settings_test's global mutations.
 	tb2.set_clear_attrs(COLOR_FG, COLOR_BG)
 	tb2.clear()
+	e2e_input_drain()
+}
+
+// the backend is shared: input or a resize a previous test left queued must not reach this one
+e2e_input_drain :: proc() {
+	ev: tb2.Event
+	for tb2.peek_event(&ev, 0) == .Ok {
+	}
 }
 
 // Open the editor on a real file seeded with `content`, exactly as `qed FILE`
@@ -228,8 +236,10 @@ e2e_resize :: proc(e: ^E2E, w, h: int) {
 e2e_apply_size :: proc(w, h: int) {
 	pty.resize(e2e_slave, h, w)
 	posix.pthread_kill(posix.pthread_self(), posix.Signal(posix.SIGWINCH))
+	// buffered input is returned before the resize pipe is read: skip it until our resize lands
 	ev: tb2.Event
-	tb2.peek_event(&ev, 1000)
+	for tb2.peek_event(&ev, 1000) == .Ok && ev.type != .Resize {
+	}
 }
 
 e2e_run :: proc(cmd: string) -> bool {

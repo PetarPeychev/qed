@@ -65,6 +65,7 @@ e2e_narrow_filetree_wide_caps_the_tree :: proc(t: ^testing.T) {
 	e2e_resize(&e, 300, E2E_H)
 	nav_alt(&e, 'f')
 	nav_scan(&e)
+	nav_preview(&e)
 	lay := ft_layout(&e.ed)
 	testing.expect_value(t, lay.left_w, SPLIT_TREE_MAX_WIDTH)
 	e2e_render(&e)
