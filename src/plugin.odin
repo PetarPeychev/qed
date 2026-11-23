@@ -2020,6 +2020,17 @@ plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
 	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.id, user = true})
 }
 
+plugin_command_run_named :: proc(editor: ^Editor, name, argument: string) -> bool {
+	for cmd in editor.plugins.commands {
+		if cmd.scope == "" && cmd.name == name {
+			plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Line, line = argument, command = cmd.id, user = true})
+			return true
+		}
+	}
+	editor_log(editor, .Warn, "", fmt.tprintf("%s is not available", name))
+	return false
+}
+
 plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {
 	if plugin_command_when(editor, cmd) {
 		plugin_command_run(editor, cmd)
@@ -2320,7 +2331,7 @@ pluginview_reload :: proc(editor: ^Editor) {
 
 pluginview_log :: proc(editor: ^Editor) {
 	if pl := pluginview_selected(editor); pl != nil {
-		plugin_queue(editor, {event = .Custom, a = "log:show", b = pl.display})
+		plugin_command_run_named(editor, "Message Log: Open", pl.display)
 		if pn := pane_find(editor, "plugins"); pn != nil {
 			pane_end(editor, pn.handle, false)
 		}

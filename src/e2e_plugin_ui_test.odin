@@ -715,7 +715,7 @@ local function type_in(cmd)
 		qed.message("busy")
 		return
 	end
-	qed.message(tostring(qed.term.show("shell")))
+	qed.message(tostring(qed.plugin("terminal").show("shell")))
 	qed.term.send("shell", "\x15" .. cmd .. "\r")
 end
 return {{setup = function()

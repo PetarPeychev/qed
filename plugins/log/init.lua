@@ -224,7 +224,9 @@ return {
 	setup = function()
 		qed.meta{display_name = "Message Log", description = "The message log on qed.ui"}
 		options = qed.options({max_width = 120}, {max_width = "Max width of the message log box in cells"})
-		qed.command{name = "Open", key = "Alt+l", welcome = true, run = function() open_log(nil) end}
+		qed.command{name = "Open", key = "Alt+l", welcome = true, run = function(source)
+			open_log(type(source) == "string" and source or nil)
+		end}
 		qed.command{name = "Next", scope = "log", key = "Down", run = function() move(1, false) end}
 		qed.command{name = "Previous", scope = "log", key = "Up", run = function() move(-1, false) end}
 		qed.command{name = "Extend Down", scope = "log", key = "Shift+Down", run = function() move(1, true) end}
@@ -238,6 +240,5 @@ return {
 		qed.command{name = "Toggle Warn", scope = "log", key = "w", run = function() toggle("warn") end}
 		qed.command{name = "Toggle Error", scope = "log", key = "e", run = function() toggle("error") end}
 		qed.command{name = "Toggle History", scope = "log", key = "h", run = function() toggle("history") end}
-		qed:on("log:show", function(source) open_log(source) end)
 	end,
 }

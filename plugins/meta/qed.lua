@@ -831,14 +831,11 @@ qed.term = {}
 ---@return "already running"|"cannot start"|nil err
 function qed.term.create(spec) end
 
----Shows the session in the terminal pane overlay (`"shell"` starts the default shell if needed, like Alt+t). Raises during `setup`.
----@param name string
+---Starts the default `"shell"` session if it is not running. The bundled `terminal` plugin shows sessions:
+---`qed.plugin("terminal").show(name)` and `.hide()`. Raises during `setup`.
 ---@return true|nil ok
----@return "no such session"|"terminal unavailable"|nil err
-function qed.term.show(name) end
-
----Hides the terminal pane; sessions keep running.
-function qed.term.hide() end
+---@return "terminal unavailable"|nil err
+function qed.term.shell() end
 
 ---Kills the session's process group. Its output stays; `term_exit` fires. Raises for `"shell"`.
 ---@param name string

@@ -50,7 +50,7 @@ function T.create_rules(t)
 	for _, f in ipairs({qed.term.kill, qed.term.restart, qed.term.close}) do
 		t.ok(not pcall(f, "shell"), "plugins cannot kill, restart or close the shell")
 	end
-	local _, serr = qed.term.show("nope")
+	local _, serr = qed.plugin("terminal").show("nope")
 	t.eq(serr, "no such session")
 end
 
@@ -86,9 +86,9 @@ function T.cwd_env_send_show(t)
 	t.wait(exited("sh"), 5000)
 	local out = qed.fs.read(qed.path.join(qed.root(), "sub/out.txt"))
 	t.eq(out, "envval " .. qed.path.join(qed.root(), "sub") .. "\n")
-	t.ok(qed.term.show("sh"))
+	t.ok(qed.plugin("terminal").show("sh"))
 	t.wait(function() return t.editor().session == "sh" end)
-	qed.term.hide()
+	qed.plugin("terminal").hide()
 	t.wait(function() return not t.editor().terminal end)
 end
 

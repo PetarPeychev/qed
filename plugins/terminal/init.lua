@@ -43,11 +43,24 @@ local function show(session)
 	ui.node("terminal"):focus()
 end
 
+local function show_session(session)
+	if session == "shell" then
+		local ok, err = qed.term.shell()
+		if not ok then
+			return nil, err
+		end
+	elseif not qed.term.state(session) then
+		return nil, "no such session"
+	end
+	show(session)
+	return true
+end
+
 local function toggle()
 	if view then
 		hide()
 	else
-		qed.term.show("shell")
+		show_session("shell")
 	end
 end
 
@@ -56,8 +69,7 @@ return {
 		qed.command{name = "Toggle", key = "Alt+t", welcome = true, run = toggle}
 		qed.command{name = "Hide", scope = "terminal", keybind = "Toggle", run = hide}
 		qed.command{name = "Close", scope = "terminal", key = "Esc", run = hide}
-		qed:on("terminal:show", show)
-		qed:on("terminal:hide", hide)
+		qed.export{show = show_session, hide = hide}
 		qed:on("term_exit", function(session)
 			if view and view.session == session then
 				view.handle:update(build(session))

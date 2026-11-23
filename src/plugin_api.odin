@@ -151,8 +151,7 @@ qed_theme_api := [?]lua.L_Reg {
 @(private = "file")
 qed_term_api := [?]lua.L_Reg {
 	{"create", qed_term_create},
-	{"show", qed_term_show},
-	{"hide", qed_term_hide},
+	{"shell", qed_term_shell},
 	{"kill", qed_term_kill},
 	{"restart", qed_term_restart},
 	{"send", qed_term_send},
@@ -1833,7 +1832,7 @@ qed_term_create :: proc "c" (L: ^lua.State) -> c.int {
 		return plugin_raise(L, "name must be a non-empty string")
 	}
 	if name == TERM_SHELL {
-		return plugin_raise(L, `"shell" is the default session; use qed.term.show("shell")`)
+		return plugin_raise(L, `"shell" is the default session; use qed.term.shell()`)
 	}
 	spec := TermSpec{name = name}
 	spec.cmd, _ = api_field_string(L, 1, "cmd")
@@ -1894,34 +1893,19 @@ api_term_named :: proc(L: ^lua.State, editor: ^Editor, guard := false) -> ^Termi
 	return term_find(editor, name)
 }
 
-qed_term_show :: proc "c" (L: ^lua.State) -> c.int {
+qed_term_shell :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	name := api_string(L, 1)
 	api_loaded(L, editor)
 	if editor.plugins.loading {
-		return plugin_raise(L, "qed.term.show is unavailable while plugins load")
+		return plugin_raise(L, "qed.term.shell is unavailable while plugins load")
 	}
-	t: ^Terminal
-	if name == TERM_SHELL {
-		if t = term_shell(editor); t == nil {
-			return api_fail(L, "terminal unavailable")
-		}
-	} else if t = term_find(editor, name); t == nil {
-		return api_fail(L, "no such session")
+	if term_shell(editor) == nil {
+		return api_fail(L, "terminal unavailable")
 	}
-	plugin_queue(editor, {event = .Custom, a = "terminal:show", b = t.name})
 	lua.pushboolean(L, true)
 	return 1
-}
-
-qed_term_hide :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	api_loaded(L, entry.editor)
-	plugin_queue(entry.editor, {event = .Custom, a = "terminal:hide"})
-	return 0
 }
 
 qed_term_kill :: proc "c" (L: ^lua.State) -> c.int {

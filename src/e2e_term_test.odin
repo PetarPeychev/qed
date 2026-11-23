@@ -52,7 +52,16 @@ e2e_term_sync :: proc(e: ^E2E) {
 }
 
 e2e_term_show :: proc(e: ^E2E, t: ^Terminal) {
-	plugin_queue(&e.ed, {event = .Custom, a = "terminal:show", b = t.name})
+	if plugin_find(&e.ed.plugins, "termshow") == nil {
+		e2e_plugin(e, "termshow", `return {setup = function()
+	qed.command{name = "Show", run = function(name) qed.plugin("terminal").show(name) end}
+end}`)
+	}
+	for command in e.ed.plugins.commands {
+		if command.owner == "termshow" {
+			plugin_task_start(&e.ed, command.owner, .Command, {ref = command.ref, args = .Line, line = t.name, command = command.id, user = true})
+		}
+	}
 	e2e_term_sync(e)
 }
 
@@ -197,7 +206,7 @@ e2e_term_plugin_unload :: proc(t: ^testing.T) {
 		qed.command{name = "TT: Start", run = function()
 			qed.term.create{name = "owned", cmd = "sleep 30 & sleep 30; wait"}
 			qed.term.create{name = "kept", cmd = "sleep 30", detach = true}
-			qed.term.show("owned")
+			qed.plugin("terminal").show("owned")
 		end}
 	end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the plugin loads")
