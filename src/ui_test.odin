@@ -5,26 +5,26 @@ import "core:testing"
 import "lib:tb2"
 
 ut_node :: proc(kind: UiKind, children: ..^UiNode) -> ^UiNode {
-	n := new(UiNode)
-	n.kind = kind
-	n.owner = "test"
-	for c, i in children {
-		append(&n.children, c)
-		append(&n.child_slots, i + 1)
+	node := new(UiNode)
+	node.kind = kind
+	node.owner = "test"
+	for child, i in children {
+		append(&node.children, child)
+		append(&node.child_slots, i + 1)
 	}
-	return n
+	return node
 }
 
-ut_text :: proc(s: string) -> ^UiNode {
-	n := ut_node(.Text)
-	append(&n.spans, UiSpan{text = strings.clone(s)})
-	return n
+ut_text :: proc(text: string) -> ^UiNode {
+	node := ut_node(.Text)
+	append(&node.spans, UiSpan{text = strings.clone(text)})
+	return node
 }
 
 ut_mount :: proc(e: ^E2E, root: ^UiNode, outlet := "base") -> u64 {
-	h := ui_mount_add(&e.ed, "test", outlet, root)
+	handle := ui_mount_add(&e.ed, "test", outlet, root)
 	e2e_render(e)
-	return h
+	return handle
 }
 
 @(test)
@@ -128,8 +128,8 @@ ui_scroll_clips_and_reserves_bar :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	rows := ut_node(.Column)
 	for i in 0 ..< 10 {
-		r := ut_text(strings.clone(string([]u8{u8('0' + i)}), context.temp_allocator))
-		append(&rows.children, r)
+		row := ut_text(strings.clone(string([]u8{u8('0' + i)}), context.temp_allocator))
+		append(&rows.children, row)
 		append(&rows.child_slots, i + 1)
 	}
 	scroll := ut_node(.Scroll, rows)

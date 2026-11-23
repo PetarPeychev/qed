@@ -220,35 +220,35 @@ Ui :: struct {
 
 ui_destroy :: proc(editor: ^Editor) {
 	ui := &editor.ui
-	for m in ui.mounts {
-		ui_node_free(editor, m.root)
-		delete(m.outlet)
+	for mount in ui.mounts {
+		ui_node_free(editor, mount.root)
+		delete(mount.outlet)
 	}
 	delete(ui.mounts)
 	ui_graveyard_flush(editor)
 	delete(ui.graveyard)
-	for k, v in ui.states {
-		delete(k)
-		delete(v.highlighted)
+	for key, state in ui.states {
+		delete(key)
+		delete(state.highlighted)
 	}
 	delete(ui.states)
 	delete(ui.focus)
-	for f in ui.focus_history {
-		delete(f)
+	for entry in ui.focus_history {
+		delete(entry)
 	}
 	delete(ui.focus_history)
 	delete(ui.index)
 	delete(ui.virtuals)
 	delete(ui.editors)
-	for l in ui.lists {
-		ui_list_free(editor, l)
+	for list in ui.lists {
+		ui_list_free(editor, list)
 	}
 	delete(ui.lists)
 	delete(ui.hits)
 	delete(ui.drag.node)
-	for b in ui.internal {
-		buffer_destroy(b)
-		free(b)
+	for buffer in ui.internal {
+		buffer_destroy(buffer)
+		free(buffer)
 	}
 	delete(ui.internal)
 	delete(ui.internal_owner)
@@ -262,15 +262,15 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 	if node == nil {
 		return
 	}
-	for c in node.children {
-		ui_node_free(editor, c)
+	for child in node.children {
+		ui_node_free(editor, child)
 	}
 	ui_node_free(editor, node.header)
 	for _, item in node.items {
 		ui_node_free(editor, item.node)
 	}
-	for k, _ in node.items {
-		delete(k)
+	for key, _ in node.items {
+		delete(key)
 	}
 	delete(node.items)
 	delete(node.children)
@@ -290,13 +290,13 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 			lua_unref(L, node.list_ref)
 		}
 	}
-	for s in node.scope {
-		delete(s)
+	for span in node.scope {
+		delete(span)
 	}
 	delete(node.scope)
-	for s in node.spans {
-		delete(s.text)
-		ui_style_free(s.style)
+	for span in node.spans {
+		delete(span.text)
+		ui_style_free(span.style)
 	}
 	delete(node.spans)
 	ui_style_free(node.style)
@@ -310,21 +310,21 @@ ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
 	free(node)
 }
 
-ui_style_free :: proc(s: UiStyle) {
-	delete(s.fg)
-	delete(s.bg)
+ui_style_free :: proc(style: UiStyle) {
+	delete(style.fg)
+	delete(style.bg)
 }
 
 ui_graveyard_flush :: proc(editor: ^Editor) {
-	for n in editor.ui.graveyard {
-		ui_node_free(editor, n)
+	for node in editor.ui.graveyard {
+		ui_node_free(editor, node)
 	}
 	clear(&editor.ui.graveyard)
 }
 
 ui_mount_index :: proc(ui: ^Ui, handle: u64) -> int {
-	for m, i in ui.mounts {
-		if m.handle == handle {
+	for mount, i in ui.mounts {
+		if mount.handle == handle {
 			return i
 		}
 	}
@@ -392,9 +392,9 @@ ui_unload :: proc(editor: ^Editor, owner: string) {
 		}
 	}
 	for i := len(ui.internal) - 1; i >= 0; i -= 1 {
-		b := ui.internal[i]
-		if ui.internal_owner[b.id] == owner {
-			ui_internal_close(editor, b.id)
+		buffer := ui.internal[i]
+		if ui.internal_owner[buffer.id] == owner {
+			ui_internal_close(editor, buffer.id)
 		}
 	}
 }
@@ -407,16 +407,16 @@ ui_tree_identify :: proc(node: ^UiNode, handle: u64) {
 
 ui_children_identify :: proc(node: ^UiNode, handle: u64) {
 	node.mount = handle
-	for c, i in node.children {
-		delete(c.identity)
-		if c.id != "" {
-			c.identity = strings.clone(fmt.tprintf("#%s/%s", c.owner, c.id))
-		} else if c.key != "" {
-			c.identity = strings.clone(fmt.tprintf("%s/k%s", node.identity, c.key))
+	for child, i in node.children {
+		delete(child.identity)
+		if child.id != "" {
+			child.identity = strings.clone(fmt.tprintf("#%s/%s", child.owner, child.id))
+		} else if child.key != "" {
+			child.identity = strings.clone(fmt.tprintf("%s/k%s", node.identity, child.key))
 		} else {
-			c.identity = strings.clone(fmt.tprintf("%s/%s%d", node.identity, ui_kind_names[c.kind], node.child_slots[i]))
+			child.identity = strings.clone(fmt.tprintf("%s/%s%d", node.identity, ui_kind_names[child.kind], node.child_slots[i]))
 		}
-		ui_children_identify(c, handle)
+		ui_children_identify(child, handle)
 	}
 	if node.header != nil {
 		delete(node.header.identity)
@@ -433,8 +433,8 @@ ui_tree_carry :: proc(L: ^lua.State, fresh, old: ^UiNode) {
 
 ui_tree_collect :: proc(node: ^UiNode, into: ^map[string]^UiNode) {
 	into[node.identity] = node
-	for c in node.children {
-		ui_tree_collect(c, into)
+	for child in node.children {
+		ui_tree_collect(child, into)
 	}
 	if node.header != nil {
 		ui_tree_collect(node.header, into)
@@ -448,8 +448,8 @@ ui_tree_carry_walk :: proc(L: ^lua.State, node: ^UiNode, olds: ^map[string]^UiNo
 			node.items_rev = old.items_rev
 		}
 	}
-	for c in node.children {
-		ui_tree_carry_walk(L, c, olds)
+	for child in node.children {
+		ui_tree_carry_walk(L, child, olds)
 	}
 	if node.header != nil {
 		ui_tree_carry_walk(L, node.header, olds)
@@ -525,8 +525,8 @@ ui_state_prune :: proc(editor: ^Editor) {
 }
 
 ui_layer_used :: proc(ui: ^Ui, layer: string) -> bool {
-	for m in ui.mounts {
-		if m.outlet == layer {
+	for mount in ui.mounts {
+		if mount.outlet == layer {
 			return true
 		}
 	}
@@ -534,8 +534,8 @@ ui_layer_used :: proc(ui: ^Ui, layer: string) -> bool {
 }
 
 ui_is_layer :: proc(name: string) -> bool {
-	for l in UI_LAYERS {
-		if l == name {
+	for layer in UI_LAYERS {
+		if layer == name {
 			return true
 		}
 	}
@@ -553,10 +553,10 @@ ui_resolve :: proc(editor: ^Editor) {
 	clear(&ui.editors)
 	visiting := make(map[u64]bool, 16, context.temp_allocator)
 	for layer in UI_LAYERS {
-		for m in ui.mounts {
-			if m.outlet == layer {
-				m.root.parent = nil
-				ui_resolve_node(editor, m.root, &visiting)
+		for mount in ui.mounts {
+			if mount.outlet == layer {
+				mount.root.parent = nil
+				ui_resolve_node(editor, mount.root, &visiting)
 			}
 		}
 	}
@@ -572,26 +572,26 @@ ui_resolve_node :: proc(editor: ^Editor, node: ^UiNode, visiting: ^map[u64]bool)
 		append(&ui.editors, node)
 	}
 	clear(&node.expanded)
-	for c in node.children {
-		if c.kind != .Outlet {
-			c.parent = node
-			append(&node.expanded, c)
-			ui_resolve_node(editor, c, visiting)
+	for child in node.children {
+		if child.kind != .Outlet {
+			child.parent = node
+			append(&node.expanded, child)
+			ui_resolve_node(editor, child, visiting)
 			continue
 		}
-		ui.index[c.identity] = c
-		c.parent = node
-		if c.id == "" {
+		ui.index[child.identity] = child
+		child.parent = node
+		if child.id == "" {
 			continue
 		}
-		for m in ui.mounts {
-			if m.outlet != c.id || visiting[m.handle] {
+		for mount in ui.mounts {
+			if mount.outlet != child.id || visiting[mount.handle] {
 				continue
 			}
-			visiting[m.handle] = true
-			m.root.parent = node
-			append(&node.expanded, m.root)
-			ui_resolve_node(editor, m.root, visiting)
+			visiting[mount.handle] = true
+			mount.root.parent = node
+			append(&node.expanded, mount.root)
+			ui_resolve_node(editor, mount.root, visiting)
 		}
 	}
 	if node.header != nil {
@@ -612,8 +612,8 @@ ui_focused :: proc(editor: ^Editor) -> ^UiNode {
 	ui := &editor.ui
 	ui_resolve(editor)
 	for ui.focus != "" {
-		if n := ui_find(ui, ui.focus); n != nil {
-			return n
+		if node := ui_find(ui, ui.focus); node != nil {
+			return node
 		}
 		delete(ui.focus)
 		ui.focus = ""
@@ -635,9 +635,9 @@ ui_focus_set :: proc(editor: ^Editor, identity: string) {
 		return
 	}
 	if ui.focus != "" {
-		for f, i in ui.focus_history {
-			if f == ui.focus {
-				delete(f)
+		for entry, i in ui.focus_history {
+			if entry == ui.focus {
+				delete(entry)
 				ordered_remove(&ui.focus_history, i)
 				break
 			}
@@ -652,38 +652,38 @@ ui_focus_set :: proc(editor: ^Editor, identity: string) {
 }
 
 ui_buffer :: proc(editor: ^Editor, id: u64) -> ^Buffer {
-	for b in editor.ui.internal {
-		if b.id == id {
-			return b
+	for buffer in editor.ui.internal {
+		if buffer.id == id {
+			return buffer
 		}
 	}
 	if editor.welcome {
 		return nil
 	}
-	for &b in editor.buffers {
-		if b.id == id {
-			return &b
+	for &buffer in editor.buffers {
+		if buffer.id == id {
+			return &buffer
 		}
 	}
 	return nil
 }
 
 ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
-	b := new(Buffer)
-	b^ = buffer_new()
-	b.internal = true
-	b.wrap = false
-	append(&editor.ui.internal, b)
-	editor.ui.internal_owner[b.id] = owner
-	return b
+	buffer := new(Buffer)
+	buffer^ = buffer_new()
+	buffer.internal = true
+	buffer.wrap = false
+	append(&editor.ui.internal, buffer)
+	editor.ui.internal_owner[buffer.id] = owner
+	return buffer
 }
 
 ui_internal_close :: proc(editor: ^Editor, id: u64) -> bool {
 	ui := &editor.ui
-	for b, i in ui.internal {
-		if b.id == id {
-			buffer_destroy(b)
-			free(b)
+	for buffer, i in ui.internal {
+		if buffer.id == id {
+			buffer_destroy(buffer)
+			free(buffer)
 			ordered_remove(&ui.internal, i)
 			delete_key(&ui.internal_owner, id)
 			return true
@@ -696,45 +696,45 @@ ui_screen :: proc() -> Rect {
 	return {0, 0, int(tb2.width()), int(tb2.height())}
 }
 
-ui_rect_shrink :: proc(r: Rect, margin: [4]int) -> Rect {
-	out := Rect{r.x + margin[3], r.y + margin[0], r.w - margin[1] - margin[3], r.h - margin[0] - margin[2]}
+ui_rect_shrink :: proc(rect: Rect, margin: [4]int) -> Rect {
+	out := Rect{rect.x + margin[3], rect.y + margin[0], rect.w - margin[1] - margin[3], rect.h - margin[0] - margin[2]}
 	out.w = max(out.w, 0)
 	out.h = max(out.h, 0)
 	return out
 }
 
-ui_rect_intersect :: proc(a, b: Rect) -> Rect {
-	x0 := max(a.x, b.x)
-	y0 := max(a.y, b.y)
-	x1 := min(a.x + a.w, b.x + b.w)
-	y1 := min(a.y + a.h, b.y + b.h)
+ui_rect_intersect :: proc(first, second: Rect) -> Rect {
+	x0 := max(first.x, second.x)
+	y0 := max(first.y, second.y)
+	x1 := min(first.x + first.w, second.x + second.w)
+	y1 := min(first.y + first.h, second.y + second.h)
 	return {x0, y0, max(0, x1 - x0), max(0, y1 - y0)}
 }
 
-ui_rect_has :: proc(r: Rect, x, y: int) -> bool {
-	return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h
+ui_rect_has :: proc(rect: Rect, cell_x, cell_y: int) -> bool {
+	return cell_x >= rect.x && cell_y >= rect.y && cell_x < rect.x + rect.w && cell_y < rect.y + rect.h
 }
 
-ui_size_clamp :: proc(s: UiSize, v, avail: int) -> int {
-	v := v
-	if s.max > 0 {
-		v = min(v, s.max)
+ui_size_clamp :: proc(size: UiSize, value, avail: int) -> int {
+	value := value
+	if size.max > 0 {
+		value = min(value, size.max)
 	}
-	v = max(v, s.min)
-	return clamp(v, 0, max(avail, 0))
+	value = max(value, size.min)
+	return clamp(value, 0, max(avail, 0))
 }
 
-ui_size_resolve :: proc(s: UiSize, avail, natural: int) -> int {
-	v := natural
-	switch s.form {
+ui_size_resolve :: proc(size: UiSize, avail, natural: int) -> int {
+	value := natural
+	switch size.form {
 	case .Cells:
-		v = s.value
+		value = size.value
 	case .Percent:
-		v = max(avail, 0) * s.value / 100
+		value = max(avail, 0) * size.value / 100
 	case .Fit, .Auto:
-		v = natural
+		value = natural
 	}
-	return ui_size_clamp(s, v, avail)
+	return ui_size_clamp(size, value, avail)
 }
 
 ui_snap :: proc(size: UiSize, value, avail: int) -> int {
@@ -762,13 +762,13 @@ ui_axis_size :: proc(node: ^UiNode, axis: int) -> UiSize {
 ui_text_lines :: proc(node: ^UiNode, allocator := context.temp_allocator) -> [dynamic][dynamic]UiSpan {
 	lines := make([dynamic][dynamic]UiSpan, allocator)
 	append(&lines, make([dynamic]UiSpan, allocator))
-	for s in node.spans {
-		rest := s.text
+	for span in node.spans {
+		rest := span.text
 		for {
 			nl := strings.index_byte(rest, '\n')
 			part := rest if nl < 0 else rest[:nl]
 			if len(part) > 0 {
-				append(&lines[len(lines) - 1], UiSpan{part, s.style})
+				append(&lines[len(lines) - 1], UiSpan{part, span.style})
 			}
 			if nl < 0 {
 				break
@@ -781,11 +781,11 @@ ui_text_lines :: proc(node: ^UiNode, allocator := context.temp_allocator) -> [dy
 }
 
 ui_spans_width :: proc(spans: []UiSpan) -> int {
-	w := 0
-	for s in spans {
-		w = visual_col_from(transmute([]u8)s.text, 0, w, len(s.text))
+	width := 0
+	for span in spans {
+		width = visual_col_from(transmute([]u8)span.text, 0, width, len(span.text))
 	}
-	return w
+	return width
 }
 
 ui_text_wrapped :: proc(node: ^UiNode, width: int) -> [dynamic][dynamic]UiSpan {
@@ -797,16 +797,16 @@ ui_text_wrapped :: proc(node: ^UiNode, width: int) -> [dynamic][dynamic]UiSpan {
 	for line in lines {
 		cur := make([dynamic]UiSpan, context.temp_allocator)
 		col := 0
-		for s in line {
-			bytes := transmute([]u8)s.text
+		for span in line {
+			bytes := transmute([]u8)span.text
 			start := 0
 			i := 0
 			for i < len(bytes) {
-				e := cluster_end(bytes, i)
-				cw := seg_width(bytes, i, e, col)
+				next_index := cluster_end(bytes, i)
+				cw := seg_width(bytes, i, next_index, col)
 				if col + cw > width && col > 0 {
 					if i > start {
-						append(&cur, UiSpan{s.text[start:i], s.style})
+						append(&cur, UiSpan{span.text[start:i], span.style})
 					}
 					append(&out, cur)
 					cur = make([dynamic]UiSpan, context.temp_allocator)
@@ -815,10 +815,10 @@ ui_text_wrapped :: proc(node: ^UiNode, width: int) -> [dynamic][dynamic]UiSpan {
 					continue
 				}
 				col += cw
-				i = e
+				i = next_index
 			}
 			if i > start {
-				append(&cur, UiSpan{s.text[start:i], s.style})
+				append(&cur, UiSpan{span.text[start:i], span.style})
 			}
 		}
 		append(&out, cur)
@@ -826,26 +826,26 @@ ui_text_wrapped :: proc(node: ^UiNode, width: int) -> [dynamic][dynamic]UiSpan {
 	return out
 }
 
-ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (w, h: int) {
+ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (width, height: int) {
 	switch node.kind {
 	case .Text:
 		lines := ui_text_wrapped(node, avail_w)
 		for line in lines {
-			w = max(w, ui_spans_width(line[:]))
+			width = max(width, ui_spans_width(line[:]))
 		}
-		h = len(lines)
+		height = len(lines)
 	case .Column, .Row:
 		axis := 1 if node.kind == .Column else 0
 		main, cross := 0, 0
 		count := 0
-		for c in node.expanded {
-			if c.float != .None {
+		for child in node.expanded {
+			if child.float != .None {
 				continue
 			}
-			cw, ch := ui_measure_slot(editor, c, avail_w, avail_h)
+			cw, ch := ui_measure_slot(editor, child, avail_w, avail_h)
 			sizes := [2]int{cw, ch}
-			if ui_grows(c, axis) > 0 && ui_axis_size(c, axis).form == .Auto {
-				sizes[axis] = ui_axis_size(c, axis).min + (c.margin[0] + c.margin[2] if axis == 1 else c.margin[1] + c.margin[3])
+			if ui_grows(child, axis) > 0 && ui_axis_size(child, axis).form == .Auto {
+				sizes[axis] = ui_axis_size(child, axis).min + (child.margin[0] + child.margin[2] if axis == 1 else child.margin[1] + child.margin[3])
 			}
 			main += sizes[axis]
 			cross = max(cross, sizes[1 - axis])
@@ -855,59 +855,59 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (w,
 			main += (count - 1) * (node.gap + (1 if node.separator else 0))
 		}
 		if axis == 1 {
-			w, h = cross, main
+			width, height = cross, main
 		} else {
-			w, h = main, cross
+			width, height = main, cross
 		}
 	case .Box:
 		inset := 2 if node.border else 0
-		for c in node.expanded {
-			if c.float == .None {
-				w, h = ui_measure_slot(editor, c, avail_w - inset, avail_h - inset)
+		for child in node.expanded {
+			if child.float == .None {
+				width, height = ui_measure_slot(editor, child, avail_w - inset, avail_h - inset)
 				break
 			}
 		}
-		w += inset
-		h += inset
+		width += inset
+		height += inset
 		if node.border && node.title != "" {
-			w = max(w, visual_width(transmute([]u8)node.title) + 4)
+			width = max(width, visual_width(transmute([]u8)node.title) + 4)
 		}
 	case .Scroll:
 		hw, hh := 0, 0
 		if node.header != nil {
 			hw, hh = ui_measure_slot(editor, node.header, avail_w - 1, avail_h)
 		}
-		for c in node.expanded {
-			if c.float == .None {
-				w, h = ui_measure_slot(editor, c, avail_w - 1, UI_UNBOUNDED)
+		for child in node.expanded {
+			if child.float == .None {
+				width, height = ui_measure_slot(editor, child, avail_w - 1, UI_UNBOUNDED)
 				break
 			}
 		}
-		w = max(w, hw) + 1
-		h += hh
+		width = max(width, hw) + 1
+		height += hh
 	case .Virtual_Column:
 		list := ui_list_find(&editor.ui, node.list)
 		if list != nil {
-			h = ui_list_count(list)
+			height = ui_list_count(list)
 		}
 		if list != nil {
 			for i in node.window_lo ..< min(node.window_hi, ui_list_count(list)) {
 				if item, ok := node.items[ui_list_key(list, i)]; ok {
 					item_width, _ := ui_measure_slot(editor, item.node, avail_w, 1)
-					w = max(w, item_width)
+					width = max(width, item_width)
 				}
 			}
 		}
 	case .Editor:
 		if buffer := ui_buffer(editor, node.buffer); buffer != nil {
-			h = len(buffer.lines)
+			height = len(buffer.lines)
 		}
 	case .Outlet:
 	}
 	return
 }
 
-ui_measure_slot :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (w, h: int) {
+ui_measure_slot :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (width, height: int) {
 	mx := node.margin[1] + node.margin[3]
 	my := node.margin[0] + node.margin[2]
 	inner_w := max(avail_w - mx, 0)
@@ -916,8 +916,8 @@ ui_measure_slot :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -
 	if node.width.form == .Auto || node.width.form == .Fit || node.height.form == .Auto || node.height.form == .Fit {
 		nw, nh = ui_measure(editor, node, inner_w if node.width.form != .Cells else node.width.value, inner_h)
 	}
-	w = ui_size_resolve(node.width, inner_w, nw) + mx
-	h = ui_size_resolve(node.height, inner_h, nh) + my
+	width = ui_size_resolve(node.width, inner_w, nw) + mx
+	height = ui_size_resolve(node.height, inner_h, nh) + my
 	return
 }
 
@@ -928,9 +928,9 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 		if node.border {
 			content = ui_rect_shrink(node.rect, {1, 1, 1, 1})
 		}
-		for c in node.expanded {
-			if c.float == .None {
-				ui_layout_single(editor, c, content, node.clip)
+		for child in node.expanded {
+			if child.float == .None {
+				ui_layout_single(editor, child, content, node.clip)
 				break
 			}
 		}
@@ -944,44 +944,44 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 			content.h -= hh
 		}
 		state := ui_node_state(&editor.ui, node)
-		for c in node.expanded {
-			if c.float != .None {
+		for child in node.expanded {
+			if child.float != .None {
 				continue
 			}
-			_, ch := ui_measure_slot(editor, c, content.w, UI_UNBOUNDED)
+			_, ch := ui_measure_slot(editor, child, content.w, UI_UNBOUNDED)
 			total := max(ch, content.h)
 			state.offset = clamp(state.offset, 0, max(0, ch - content.h))
 			slot := Rect{content.x, content.y - state.offset, content.w, total}
-			ui_layout_node(editor, c, ui_rect_shrink(slot, c.margin), ui_rect_intersect(content, node.clip))
+			ui_layout_node(editor, child, ui_rect_shrink(slot, child.margin), ui_rect_intersect(content, node.clip))
 			break
 		}
 	case .Column, .Row:
 		ui_layout_flow(editor, node, content)
 	case .Text, .Editor, .Virtual_Column, .Outlet:
 	}
-	for c in node.expanded {
-		if c.float != .None {
-			ui_layout_float(editor, c, node)
+	for child in node.expanded {
+		if child.float != .None {
+			ui_layout_float(editor, child, node)
 		}
 	}
 }
 
 ui_layout_single :: proc(editor: ^Editor, child: ^UiNode, area, clip: Rect) {
 	inner := ui_rect_shrink(area, child.margin)
-	r := inner
+	rect := inner
 	if child.width.form != .Auto {
 		nw, _ := ui_measure(editor, child, inner.w, inner.h)
-		r.w = ui_size_resolve(child.width, inner.w, nw)
+		rect.w = ui_size_resolve(child.width, inner.w, nw)
 	}
 	if child.height.form != .Auto {
-		_, nh := ui_measure(editor, child, r.w, inner.h)
-		r.h = ui_size_resolve(child.height, inner.h, nh)
+		_, nh := ui_measure(editor, child, rect.w, inner.h)
+		rect.h = ui_size_resolve(child.height, inner.h, nh)
 	}
-	ui_layout_node(editor, child, r, clip)
+	ui_layout_node(editor, child, rect, clip)
 }
 
-ui_layout_node :: proc(editor: ^Editor, node: ^UiNode, r, clip: Rect) {
-	node.rect = r
+ui_layout_node :: proc(editor: ^Editor, node: ^UiNode, rect, clip: Rect) {
+	node.rect = rect
 	node.clip = clip
 	node.hidden = false
 	ui_layout_children(editor, node)
@@ -1004,66 +1004,66 @@ ui_node_hide :: proc(node: ^UiNode) {
 ui_layout_flow :: proc(editor: ^Editor, node: ^UiNode, content: Rect) {
 	axis := 1 if node.kind == .Column else 0
 	avail := [2]int{content.w, content.h}
-	kids := make([dynamic]^UiNode, context.temp_allocator)
-	for c in node.expanded {
-		if c.float == .None {
-			append(&kids, c)
-			c.hidden = false
+	laid_out := make([dynamic]^UiNode, context.temp_allocator)
+	for child in node.expanded {
+		if child.float == .None {
+			append(&laid_out, child)
+			child.hidden = false
 		}
 	}
-	sizes := make([]int, len(kids), context.temp_allocator)
-	margins := make([]int, len(kids), context.temp_allocator)
-	for c, i in kids {
-		margins[i] = c.margin[0] + c.margin[2] if axis == 1 else c.margin[1] + c.margin[3]
-		form := ui_axis_size(c, axis)
-		if ui_grows(c, axis) > 0 && form.form == .Auto {
+	sizes := make([]int, len(laid_out), context.temp_allocator)
+	margins := make([]int, len(laid_out), context.temp_allocator)
+	for child, i in laid_out {
+		margins[i] = child.margin[0] + child.margin[2] if axis == 1 else child.margin[1] + child.margin[3]
+		form := ui_axis_size(child, axis)
+		if ui_grows(child, axis) > 0 && form.form == .Auto {
 			sizes[i] = form.min
 			continue
 		}
-		cw, ch := ui_measure_slot(editor, c, content.w, content.h)
+		cw, ch := ui_measure_slot(editor, child, content.w, content.h)
 		sizes[i] = (ch if axis == 1 else cw) - margins[i]
 	}
 	sep := node.gap + (1 if node.separator else 0)
-	total :: proc(kids: []^UiNode, sizes, margins: []int, sep: int) -> int {
-		t, n := 0, 0
-		for c, i in kids {
-			if c.hidden {
+	total :: proc(laid_out: []^UiNode, sizes, margins: []int, sep: int) -> int {
+		sum, count := 0, 0
+		for child, i in laid_out {
+			if child.hidden {
 				continue
 			}
-			t += sizes[i] + margins[i]
-			n += 1
+			sum += sizes[i] + margins[i]
+			count += 1
 		}
-		return t + max(n - 1, 0) * sep
+		return sum + max(count - 1, 0) * sep
 	}
-	for total(kids[:], sizes, margins, sep) > avail[axis] {
+	for total(laid_out[:], sizes, margins, sep) > avail[axis] {
 		worst := -1
-		for c, i in kids {
-			if !c.hidden && c.drop > 0 && (worst < 0 || c.drop >= kids[worst].drop) {
+		for child, i in laid_out {
+			if !child.hidden && child.drop > 0 && (worst < 0 || child.drop >= laid_out[worst].drop) {
 				worst = i
 			}
 		}
 		if worst < 0 {
 			break
 		}
-		kids[worst].hidden = true
+		laid_out[worst].hidden = true
 	}
-	leftover := avail[axis] - total(kids[:], sizes, margins, sep)
+	leftover := avail[axis] - total(laid_out[:], sizes, margins, sep)
 	weight := 0
-	for c in kids {
-		if !c.hidden {
-			weight += ui_grows(c, axis)
+	for child in laid_out {
+		if !child.hidden {
+			weight += ui_grows(child, axis)
 		}
 	}
 	if leftover > 0 && weight > 0 {
 		given := 0
 		last := -1
-		for c, i in kids {
-			g := ui_grows(c, axis)
-			if c.hidden || g == 0 {
+		for child, i in laid_out {
+			growth := ui_grows(child, axis)
+			if child.hidden || growth == 0 {
 				continue
 			}
-			share := leftover * g / weight
-			form := ui_axis_size(c, axis)
+			share := leftover * growth / weight
+			form := ui_axis_size(child, axis)
 			if form.max > 0 {
 				share = min(share, max(form.max - sizes[i], 0))
 			}
@@ -1071,32 +1071,32 @@ ui_layout_flow :: proc(editor: ^Editor, node: ^UiNode, content: Rect) {
 			given += share
 			last = i
 		}
-		if last >= 0 && ui_axis_size(kids[last], axis).max == 0 {
+		if last >= 0 && ui_axis_size(laid_out[last], axis).max == 0 {
 			sizes[last] += leftover - given
 		}
 	}
 	pos := content.y if axis == 1 else content.x
 	end := pos + avail[axis]
-	for c, i in kids {
-		if c.hidden {
-			ui_node_hide(c)
+	for child, i in laid_out {
+		if child.hidden {
+			ui_node_hide(child)
 			continue
 		}
-		lead := c.margin[0] if axis == 1 else c.margin[3]
+		lead := child.margin[0] if axis == 1 else child.margin[3]
 		main := clamp(sizes[i], 0, max(end - pos - lead, 0))
-		cross_avail := (content.w - c.margin[1] - c.margin[3]) if axis == 1 else (content.h - c.margin[0] - c.margin[2])
+		cross_avail := (content.w - child.margin[1] - child.margin[3]) if axis == 1 else (content.h - child.margin[0] - child.margin[2])
 		cross_avail = max(cross_avail, 0)
-		cross_form := ui_axis_size(c, 1 - axis)
+		cross_form := ui_axis_size(child, 1 - axis)
 		cross := cross_avail
 		align := node.align
 		if cross_form.form != .Auto {
-			nw, nh := ui_measure(editor, c, main if axis == 0 else cross_avail, main if axis == 1 else cross_avail)
+			nw, nh := ui_measure(editor, child, main if axis == 0 else cross_avail, main if axis == 1 else cross_avail)
 			cross = ui_size_resolve(cross_form, cross_avail, nh if axis == 0 else nw)
 			if align == .Stretch {
 				align = .Start
 			}
 		}
-		cross_lead := c.margin[3] if axis == 1 else c.margin[0]
+		cross_lead := child.margin[3] if axis == 1 else child.margin[0]
 		cross_pos := (content.x if axis == 1 else content.y) + cross_lead
 		switch align {
 		case .Stretch, .Start:
@@ -1106,13 +1106,13 @@ ui_layout_flow :: proc(editor: ^Editor, node: ^UiNode, content: Rect) {
 		case .End:
 			cross_pos += cross_avail - cross
 		}
-		r: Rect
+		rect: Rect
 		if axis == 1 {
-			r = {cross_pos, pos + lead, cross, main}
+			rect = {cross_pos, pos + lead, cross, main}
 		} else {
-			r = {pos + lead, cross_pos, main, cross}
+			rect = {pos + lead, cross_pos, main, cross}
 		}
-		ui_layout_node(editor, c, r, node.clip)
+		ui_layout_node(editor, child, rect, node.clip)
 		pos += main + margins[i] + sep
 	}
 }
@@ -1127,12 +1127,12 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 	if node.width.form == .Auto || node.width.form == .Fit || node.height.form == .Auto || node.height.form == .Fit {
 		nw, nh = ui_measure(editor, node, area.w if node.width.form != .Cells else node.width.value, area.h)
 	}
-	w := ui_size_resolve(node.width, area.w, nw)
+	width := ui_size_resolve(node.width, area.w, nw)
 	if node.height.form == .Fit || node.height.form == .Auto {
-		_, nh = ui_measure(editor, node, w, area.h)
+		_, nh = ui_measure(editor, node, width, area.h)
 	}
-	h := ui_size_resolve(node.height, area.h, nh)
-	x, y := area.x, area.y
+	height := ui_size_resolve(node.height, area.h, nh)
+	cell_x, cell_y := area.x, area.y
 	center_x :: proc(node: ^UiNode, area: Rect, width: ^int) -> int {
 		width^ = ui_snap(node.width, width^, area.w)
 		return area.x + (area.w - width^) / 2
@@ -1143,26 +1143,26 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 	}
 	switch node.anchor {
 	case .Center:
-		x = center_x(node, area, &w)
-		y = center_y(node, area, &h)
+		cell_x = center_x(node, area, &width)
+		cell_y = center_y(node, area, &height)
 	case .Top_Left:
 	case .Top:
-		x = center_x(node, area, &w)
+		cell_x = center_x(node, area, &width)
 	case .Top_Right:
-		x = area.x + area.w - w
+		cell_x = area.x + area.w - width
 	case .Left:
-		y = center_y(node, area, &h)
+		cell_y = center_y(node, area, &height)
 	case .Right:
-		x = area.x + area.w - w
-		y = center_y(node, area, &h)
+		cell_x = area.x + area.w - width
+		cell_y = center_y(node, area, &height)
 	case .Bottom_Left:
-		y = area.y + area.h - h
+		cell_y = area.y + area.h - height
 	case .Bottom:
-		x = center_x(node, area, &w)
-		y = area.y + area.h - h
+		cell_x = center_x(node, area, &width)
+		cell_y = area.y + area.h - height
 	case .Bottom_Right:
-		x = area.x + area.w - w
-		y = area.y + area.h - h
+		cell_x = area.x + area.w - width
+		cell_y = area.y + area.h - height
 	case .Cursor:
 		cx, cy, ok := ui_editor_caret_pos(editor, parent)
 		if !ok {
@@ -1170,84 +1170,84 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 			node.rect = {}
 			return
 		}
-		x = clamp(cx, area.x, max(area.x + area.w - w, area.x))
-		y = cy + 1
-		if y + h > area.y + area.h && cy - h >= area.y {
-			y = cy - h
+		cell_x = clamp(cx, area.x, max(area.x + area.w - width, area.x))
+		cell_y = cy + 1
+		if cell_y + height > area.y + area.h && cy - height >= area.y {
+			cell_y = cy - height
 		}
 	}
-	ui_layout_node(editor, node, {x, y, w, h}, ui_screen())
+	ui_layout_node(editor, node, {cell_x, cell_y, width, height}, ui_screen())
 }
 
-ui_editor_text_width :: proc(node: ^UiNode, b: ^Buffer) -> int {
-	gutter := digit_count(len(b.lines)) + 2 if node.line_numbers else 0
+ui_editor_text_width :: proc(node: ^UiNode, buffer: ^Buffer) -> int {
+	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
 	return max(node.rect.w - gutter, 0)
 }
 
-ui_editor_caret_pos :: proc(editor: ^Editor, node: ^UiNode) -> (x, y: int, ok: bool) {
+ui_editor_caret_pos :: proc(editor: ^Editor, node: ^UiNode) -> (cell_x, cell_y: int, ok: bool) {
 	if node == nil || node.kind != .Editor {
 		return
 	}
-	b := ui_buffer(editor, node.buffer)
-	if b == nil {
+	buffer := ui_buffer(editor, node.buffer)
+	if buffer == nil {
 		return
 	}
 	state := ui_node_state(&editor.ui, node)
-	gutter := digit_count(len(b.lines)) + 2 if node.line_numbers else 0
-	w := ui_editor_text_width(node, b)
-	text := b.lines[b.cursor.row].text[:]
-	if b.cursor.row < state.scroll_row {
+	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
+	width := ui_editor_text_width(node, buffer)
+	text := buffer.lines[buffer.cursor.row].text[:]
+	if buffer.cursor.row < state.scroll_row {
 		return
 	}
 	cx, cy: int
-	if b.wrap && w > 0 {
-		segs := buffer_line_wrap(b, b.cursor.row, w)
-		sub := wrap_subrow(segs, b.cursor.col)
-		if b.cursor.row == state.scroll_row && sub < state.scroll_sub {
+	if buffer.wrap && width > 0 {
+		segs := buffer_line_wrap(buffer, buffer.cursor.row, width)
+		sub := wrap_subrow(segs, buffer.cursor.col)
+		if buffer.cursor.row == state.scroll_row && sub < state.scroll_sub {
 			return
 		}
-		cx = visual_col(text, b.cursor.col) - visual_col(text, segs[sub])
-		cy = vpos_dist(b, w, state.scroll_row, state.scroll_sub, b.cursor.row, sub, node.rect.h + 1)
+		cx = visual_col(text, buffer.cursor.col) - visual_col(text, segs[sub])
+		cy = vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, buffer.cursor.row, sub, node.rect.h + 1)
 	} else {
-		cx = visual_col(text, b.cursor.col) - state.scroll_col
-		cy = b.cursor.row - state.scroll_row
+		cx = visual_col(text, buffer.cursor.col) - state.scroll_col
+		cy = buffer.cursor.row - state.scroll_row
 	}
-	if cy < 0 || cy >= node.rect.h || cx < 0 || cx >= w {
+	if cy < 0 || cy >= node.rect.h || cx < 0 || cx >= width {
 		return
 	}
 	return node.rect.x + gutter + cx, node.rect.y + cy, true
 }
 
 ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
-	b := ui_buffer(editor, node.buffer)
-	if b == nil {
+	buffer := ui_buffer(editor, node.buffer)
+	if buffer == nil {
 		return
 	}
 	state := ui_node_state(&editor.ui, node)
-	if b.cursor != state.cursor_seen {
-		state.cursor_seen = b.cursor
+	if buffer.cursor != state.cursor_seen {
+		state.cursor_seen = buffer.cursor
 		state.reveal = true
 	}
-	state.scroll_row = clamp(state.scroll_row, 0, len(b.lines) - 1)
-	w := ui_editor_text_width(node, b)
-	h := node.rect.h
-	if !state.reveal || h <= 0 || w <= 0 {
+	state.scroll_row = clamp(state.scroll_row, 0, len(buffer.lines) - 1)
+	width := ui_editor_text_width(node, buffer)
+	height := node.rect.h
+	if !state.reveal || height <= 0 || width <= 0 {
 		return
 	}
 	state.reveal = false
-	if b.cursor.row < state.scroll_row {
-		state.scroll_row = b.cursor.row
+	if buffer.cursor.row < state.scroll_row {
+		state.scroll_row = buffer.cursor.row
 		state.scroll_sub = 0
 	}
-	if b.wrap {
+	if buffer.wrap {
 		state.scroll_col = 0
-		segs := buffer_line_wrap(b, b.cursor.row, w)
-		sub := wrap_subrow(segs, b.cursor.col)
-		if b.cursor.row == state.scroll_row && sub < state.scroll_sub {
+		segs := buffer_line_wrap(buffer, buffer.cursor.row, width)
+		sub := wrap_subrow(segs, buffer.cursor.col)
+		if buffer.cursor.row == state.scroll_row && sub < state.scroll_sub {
 			state.scroll_sub = sub
 		}
-		for vpos_dist(b, w, state.scroll_row, state.scroll_sub, b.cursor.row, sub, h + 1) >= h {
-			if state.scroll_sub + 1 < line_rows(b, w, state.scroll_row) {
+		for vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, buffer.cursor.row, sub, height + 1) >= height {
+			if state.scroll_sub + 1 < line_rows(buffer, width, state.scroll_row) {
 				state.scroll_sub += 1
 			} else {
 				state.scroll_row += 1
@@ -1257,25 +1257,25 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 		return
 	}
 	state.scroll_sub = 0
-	if b.cursor.row >= state.scroll_row + h {
-		state.scroll_row = b.cursor.row - h + 1
+	if buffer.cursor.row >= state.scroll_row + height {
+		state.scroll_row = buffer.cursor.row - height + 1
 	}
-	vx := visual_col(b.lines[b.cursor.row].text[:], b.cursor.col)
+	vx := visual_col(buffer.lines[buffer.cursor.row].text[:], buffer.cursor.col)
 	if vx < state.scroll_col {
 		state.scroll_col = vx
-	} else if vx >= state.scroll_col + w {
-		state.scroll_col = vx - w + 1
+	} else if vx >= state.scroll_col + width {
+		state.scroll_col = vx - width + 1
 	}
 }
 
 ui_layout :: proc(editor: ^Editor) {
 	screen := ui_screen()
 	for layer in UI_LAYERS {
-		for m in editor.ui.mounts {
-			if m.outlet != layer {
+		for mount in editor.ui.mounts {
+			if mount.outlet != layer {
 				continue
 			}
-			root := m.root
+			root := mount.root
 			if root.float != .None {
 				ui_layout_float(editor, root, nil)
 			} else {
@@ -1286,11 +1286,11 @@ ui_layout :: proc(editor: ^Editor) {
 }
 
 ui_enclosing_scroll :: proc(node: ^UiNode) -> ^UiNode {
-	for p := node.parent; p != nil; p = p.parent {
-		if p.kind == .Scroll {
-			return p
+	for ancestor := node.parent; ancestor != nil; ancestor = ancestor.parent {
+		if ancestor.kind == .Scroll {
+			return ancestor
 		}
-		if p.float != .None {
+		if ancestor.float != .None {
 			return nil
 		}
 	}
@@ -1334,14 +1334,14 @@ ui_prepare :: proc(editor: ^Editor) {
 	if len(ui.mounts) == 0 {
 		return
 	}
-	for n in ui.virtuals {
-		if list := ui_list_find(ui, n.list); list != nil {
+	for node in ui.virtuals {
+		if list := ui_list_find(ui, node.list); list != nil {
 			ui_list_settle_all(editor, list)
 		}
 	}
-	for n in ui.editors {
-		if b := ui_buffer(editor, n.buffer); b != nil && n.wrap_set {
-			b.wrap = n.wrap
+	for node in ui.editors {
+		if buffer := ui_buffer(editor, node.buffer); buffer != nil && node.wrap_set {
+			buffer.wrap = node.wrap
 		}
 	}
 	for pass in 0 ..< 3 {
@@ -1349,32 +1349,32 @@ ui_prepare :: proc(editor: ^Editor) {
 		ui_layout(editor)
 		moved := false
 		virtuals := slice.clone(ui.virtuals[:], context.temp_allocator)
-		for n in virtuals {
-			ui_virtual_build(editor, n)
-			if ui_virtual_reveal(editor, n) {
+		for node in virtuals {
+			ui_virtual_build(editor, node)
+			if ui_virtual_reveal(editor, node) {
 				moved = true
 			}
 		}
-		for _, n in ui.index {
-			if n.kind == .Column || n.kind == .Row {
-				if ui_container_reveal(editor, n) {
+		for _, node in ui.index {
+			if node.kind == .Column || node.kind == .Row {
+				if ui_container_reveal(editor, node) {
 					moved = true
 				}
 			}
 		}
-		for n in ui.editors {
-			ui_editor_reveal(editor, n)
+		for node in ui.editors {
+			ui_editor_reveal(editor, node)
 		}
 		if !moved && pass > 0 {
 			break
 		}
 	}
-	for n in ui.editors {
-		b := ui_buffer(editor, n.buffer)
-		if b != nil && n.syntax && !b.big && n.rect.h > 0 {
-			state := ui_node_state(ui, n)
-			highlight_update(b, state.scroll_row, state.scroll_row + n.rect.h - 1)
-			diffbase_update(b)
+	for node in ui.editors {
+		buffer := ui_buffer(editor, node.buffer)
+		if buffer != nil && node.syntax && !buffer.big && node.rect.h > 0 {
+			state := ui_node_state(ui, node)
+			highlight_update(buffer, state.scroll_row, state.scroll_row + node.rect.h - 1)
+			diffbase_update(buffer)
 		}
 	}
 }
@@ -1385,9 +1385,9 @@ ui_container_reveal :: proc(editor: ^Editor, node: ^UiNode) -> bool {
 		return false
 	}
 	state.reveal = false
-	for c in node.expanded {
-		if c.key == state.highlighted && !c.hidden {
-			return ui_reveal_row(editor, node, c.rect.y, c.rect.h)
+	for child in node.expanded {
+		if child.key == state.highlighted && !child.hidden {
+			return ui_reveal_row(editor, node, child.rect.y, child.rect.h)
 		}
 	}
 	return false
@@ -1412,14 +1412,14 @@ ui_virtual_build :: proc(editor: ^Editor, node: ^UiNode) {
 	if node.items_rev != list.rev {
 		node.items_rev = list.rev
 		stale := make([dynamic]string, context.temp_allocator)
-		for k, item in node.items {
-			pos, present := ui_list_position(list, k)
+		for stale_key, item in node.items {
+			pos, present := ui_list_position(list, stale_key)
 			if !present || ui_list_record_rev(list, pos) != item.rev {
-				append(&stale, k)
+				append(&stale, stale_key)
 			}
 		}
-		for k in stale {
-			key, item := delete_key(&node.items, k)
+		for stale_key in stale {
+			key, item := delete_key(&node.items, stale_key)
 			append(&editor.ui.graveyard, item.node)
 			editor.ui.dirty = true
 			delete(key)
@@ -1510,20 +1510,20 @@ ui_style_over :: proc(base, top: UiStyle) -> UiStyle {
 	return out
 }
 
-ui_style_colors :: proc(s: UiStyle, fg, bg: tb2.Color) -> (tb2.Color, tb2.Color) {
-	f := ui_color(s.fg, fg) if .Fg in s.set else fg
-	g := ui_color(s.bg, bg) if .Bg in s.set else bg
+ui_style_colors :: proc(style: UiStyle, fg, bg: tb2.Color) -> (tb2.Color, tb2.Color) {
+	foreground := ui_color(style.fg, fg) if .Fg in style.set else fg
+	background := ui_color(style.bg, bg) if .Bg in style.set else bg
 	attrs := u64(0)
-	if s.bold {
+	if style.bold {
 		attrs |= u64(tb2.Color.Bold)
 	}
-	if s.italic {
+	if style.italic {
 		attrs |= u64(tb2.Color.Italic)
 	}
-	if s.underline {
+	if style.underline {
 		attrs |= u64(tb2.Color.Underline)
 	}
-	return tb2.Color(u64(f) | attrs), g
+	return tb2.Color(u64(foreground) | attrs), background
 }
 
 UiPaint :: struct {
@@ -1533,17 +1533,17 @@ UiPaint :: struct {
 	bg:       tb2.Color,
 }
 
-ui_cell :: proc(p: ^UiPaint, x, y: int, r: rune, fg, bg: tb2.Color) {
-	if ui_rect_has(p.clip, x, y) {
-		tb2.set_cell(i32(x), i32(y), r, fg, bg)
+ui_cell :: proc(paint: ^UiPaint, cell_x, cell_y: int, rect: rune, fg, bg: tb2.Color) {
+	if ui_rect_has(paint.clip, cell_x, cell_y) {
+		tb2.set_cell(i32(cell_x), i32(cell_y), rect, fg, bg)
 	}
 }
 
-ui_fill :: proc(p: ^UiPaint, r: Rect, bg: tb2.Color) {
-	area := ui_rect_intersect(r, p.clip)
-	for y in area.y ..< area.y + area.h {
-		for x in area.x ..< area.x + area.w {
-			tb2.set_cell(i32(x), i32(y), ' ', COLOR_FG, bg)
+ui_fill :: proc(paint: ^UiPaint, rect: Rect, bg: tb2.Color) {
+	area := ui_rect_intersect(rect, paint.clip)
+	for cell_y in area.y ..< area.y + area.h {
+		for cell_x in area.x ..< area.x + area.w {
+			tb2.set_cell(i32(cell_x), i32(cell_y), ' ', COLOR_FG, bg)
 		}
 	}
 }
@@ -1555,30 +1555,30 @@ ui_render :: proc(editor: ^Editor) {
 	floats := make([dynamic]^UiNode, context.temp_allocator)
 	for layer in UI_LAYERS {
 		clear(&floats)
-		for m in ui.mounts {
-			if m.outlet != layer {
+		for mount in ui.mounts {
+			if mount.outlet != layer {
 				continue
 			}
-			if m.root.float != .None {
-				append(&floats, m.root)
+			if mount.root.float != .None {
+				append(&floats, mount.root)
 				continue
 			}
 			paint := UiPaint{clip = ui_screen(), bg = COLOR_BG}
-			ui_render_node(editor, m.root, &paint, &floats)
+			ui_render_node(editor, mount.root, &paint, &floats)
 		}
 		for i := 0; i < len(floats); i += 1 {
-			n := floats[i]
+			floating := floats[i]
 			paint := UiPaint{clip = ui_screen(), bg = COLOR_BG}
-			if n.parent != nil {
-				paint.inherit = ui_inherited(n.parent)
-				paint.bg = ui_inherited_bg(n.parent)
+			if floating.parent != nil {
+				paint.inherit = ui_inherited(floating.parent)
+				paint.bg = ui_inherited_bg(floating.parent)
 			}
-			ui_render_node(editor, n, &paint, &floats)
+			ui_render_node(editor, floating, &paint, &floats)
 		}
 	}
-	if f := ui_focused(editor); f != nil && f.kind == .Editor && !f.hidden {
-		if x, y, ok := ui_editor_caret_pos(editor, f); ok && ui_rect_has(f.clip, x, y) {
-			ui.caret = {x, y}
+	if focused := ui_focused(editor); focused != nil && focused.kind == .Editor && !focused.hidden {
+		if cell_x, cell_y, ok := ui_editor_caret_pos(editor, focused); ok && ui_rect_has(focused.clip, cell_x, cell_y) {
+			ui.caret = {cell_x, cell_y}
 			ui.caret_shown = true
 		}
 	}
@@ -1592,8 +1592,8 @@ ui_inherited :: proc(node: ^UiNode) -> UiStyle {
 }
 
 ui_inherited_bg :: proc(node: ^UiNode) -> tb2.Color {
-	s := ui_inherited(node)
-	return ui_color(s.bg, COLOR_BG) if .Bg in s.set else COLOR_BG
+	style := ui_inherited(node)
+	return ui_color(style.bg, COLOR_BG) if .Bg in style.set else COLOR_BG
 }
 
 ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats: ^[dynamic]^UiNode) {
@@ -1620,9 +1620,9 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		}
 	case .Scroll:
 		content := ui_scroll_content(editor, node)
-		for c in node.expanded {
-			if c.float == .None {
-				total := c.rect.h + c.margin[0] + c.margin[2]
+		for expanded_child in node.expanded {
+			if expanded_child.float == .None {
+				total := expanded_child.rect.h + expanded_child.margin[0] + expanded_child.margin[2]
 				if total > content.h {
 					start, length := pane_scrollbar_thumb(state.offset, content.h, total)
 					fg, _ := ui_style_colors(paint.inherit, COLOR_PANE_BORDER, paint.bg)
@@ -1656,162 +1656,162 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 	if node.header != nil {
 		ui_render_node(editor, node.header, &paint, floats)
 	}
-	for c in node.expanded {
-		if c.float != .None {
-			append(floats, c)
+	for expanded_child in node.expanded {
+		if expanded_child.float != .None {
+			append(floats, expanded_child)
 			continue
 		}
 		child := paint
-		if state.highlighted != "" && c.key == state.highlighted {
+		if state.highlighted != "" && expanded_child.key == state.highlighted {
 			child.override = ui_style_over(paint.override, node.highlight_style)
 		}
-		ui_render_node(editor, c, &child, floats)
+		ui_render_node(editor, expanded_child, &child, floats)
 	}
 	if node.separator && (node.kind == .Column || node.kind == .Row) {
 		ui_render_separators(&paint, node)
 	}
 }
 
-ui_render_border :: proc(p: ^UiPaint, node: ^UiNode) {
-	r := node.rect
-	fg, _ := ui_style_colors(ui_style_over(p.inherit, p.override), COLOR_PANE_BORDER, p.bg)
+ui_render_border :: proc(paint: ^UiPaint, node: ^UiNode) {
+	rect := node.rect
+	fg, _ := ui_style_colors(ui_style_over(paint.inherit, paint.override), COLOR_PANE_BORDER, paint.bg)
 	if .Fg not_in node.style.set {
 		fg = COLOR_PANE_BORDER
 	}
-	x1, y1 := r.x + r.w - 1, r.y + r.h - 1
-	for x in r.x + 1 ..< x1 {
-		ui_cell(p, x, r.y, '─', fg, p.bg)
-		ui_cell(p, x, y1, '─', fg, p.bg)
+	x1, y1 := rect.x + rect.w - 1, rect.y + rect.h - 1
+	for cell_x in rect.x + 1 ..< x1 {
+		ui_cell(paint, cell_x, rect.y, '─', fg, paint.bg)
+		ui_cell(paint, cell_x, y1, '─', fg, paint.bg)
 	}
-	for y in r.y + 1 ..< y1 {
-		ui_cell(p, r.x, y, '│', fg, p.bg)
-		ui_cell(p, x1, y, '│', fg, p.bg)
+	for cell_y in rect.y + 1 ..< y1 {
+		ui_cell(paint, rect.x, cell_y, '│', fg, paint.bg)
+		ui_cell(paint, x1, cell_y, '│', fg, paint.bg)
 	}
-	ui_cell(p, r.x, r.y, '┌', fg, p.bg)
-	ui_cell(p, x1, r.y, '┐', fg, p.bg)
-	ui_cell(p, r.x, y1, '└', fg, p.bg)
-	ui_cell(p, x1, y1, '┘', fg, p.bg)
-	if node.title != "" && r.w > 4 {
-		title_fg, _ := ui_style_colors(ui_style_over(p.inherit, p.override), COLOR_PANE_FG, p.bg)
-		ui_draw_text(p, r.x + 2, r.y, r.w - 4, fmt.tprintf(" %s ", node.title), title_fg, p.bg)
+	ui_cell(paint, rect.x, rect.y, '┌', fg, paint.bg)
+	ui_cell(paint, x1, rect.y, '┐', fg, paint.bg)
+	ui_cell(paint, rect.x, y1, '└', fg, paint.bg)
+	ui_cell(paint, x1, y1, '┘', fg, paint.bg)
+	if node.title != "" && rect.w > 4 {
+		title_fg, _ := ui_style_colors(ui_style_over(paint.inherit, paint.override), COLOR_PANE_FG, paint.bg)
+		ui_draw_text(paint, rect.x + 2, rect.y, rect.w - 4, fmt.tprintf(" %s ", node.title), title_fg, paint.bg)
 	}
 }
 
-ui_render_separators :: proc(p: ^UiPaint, node: ^UiNode) {
+ui_render_separators :: proc(paint: ^UiPaint, node: ^UiNode) {
 	prev: ^UiNode
-	for c in node.expanded {
-		if c.float != .None || c.hidden {
+	for child in node.expanded {
+		if child.float != .None || child.hidden {
 			continue
 		}
 		if prev != nil {
 			if node.kind == .Column {
-				y := c.rect.y - c.margin[0] - 1
-				for x in node.rect.x ..< node.rect.x + node.rect.w {
-					ui_cell(p, x, y, '─', COLOR_PANE_BORDER, p.bg)
+				cell_y := child.rect.y - child.margin[0] - 1
+				for cell_x in node.rect.x ..< node.rect.x + node.rect.w {
+					ui_cell(paint, cell_x, cell_y, '─', COLOR_PANE_BORDER, paint.bg)
 				}
 			} else {
-				x := c.rect.x - c.margin[3] - 1
-				for y in node.rect.y ..< node.rect.y + node.rect.h {
-					ui_cell(p, x, y, '│', COLOR_PANE_BORDER, p.bg)
+				cell_x := child.rect.x - child.margin[3] - 1
+				for cell_y in node.rect.y ..< node.rect.y + node.rect.h {
+					ui_cell(paint, cell_x, cell_y, '│', COLOR_PANE_BORDER, paint.bg)
 				}
 			}
 		}
-		prev = c
+		prev = child
 	}
 }
 
-ui_draw_text :: proc(p: ^UiPaint, x, y, w: int, text: string, fg, bg: tb2.Color) -> int {
+ui_draw_text :: proc(paint: ^UiPaint, cell_x, cell_y, width: int, text: string, fg, bg: tb2.Color) -> int {
 	bytes := transmute([]u8)text
 	col := 0
 	i := 0
-	for i < len(bytes) && col < w {
-		e := cluster_end(bytes, i)
-		cw := seg_width(bytes, i, e, col)
-		if col + cw > w {
+	for i < len(bytes) && col < width {
+		next_index := cluster_end(bytes, i)
+		cw := seg_width(bytes, i, next_index, col)
+		if col + cw > width {
 			break
 		}
 		if bytes[i] == '\t' {
-			for k in 0 ..< cw {
-				ui_cell(p, x + col + k, y, ' ', fg, bg)
+			for key in 0 ..< cw {
+				ui_cell(paint, cell_x + col + key, cell_y, ' ', fg, bg)
 			}
-		} else if ui_rect_has(p.clip, x + col, y) && ui_rect_has(p.clip, x + col + cw - 1, y) {
-			cell_put_cluster(x + col, y, bytes[i:e], fg, bg)
+		} else if ui_rect_has(paint.clip, cell_x + col, cell_y) && ui_rect_has(paint.clip, cell_x + col + cw - 1, cell_y) {
+			cell_put_cluster(cell_x + col, cell_y, bytes[i:next_index], fg, bg)
 		}
 		col += cw
-		i = e
+		i = next_index
 	}
 	return col
 }
 
-ui_render_text :: proc(p: ^UiPaint, node: ^UiNode) {
-	r := node.rect
-	lines := ui_text_wrapped(node, r.w)
+ui_render_text :: proc(paint: ^UiPaint, node: ^UiNode) {
+	rect := node.rect
+	lines := ui_text_wrapped(node, rect.w)
 	for line, row in lines {
-		if row >= r.h {
+		if row >= rect.h {
 			break
 		}
-		y := r.y + row
+		cell_y := rect.y + row
 		width := ui_spans_width(line[:])
-		x := r.x
+		cell_x := rect.x
 		switch node.text_align {
 		case .Center:
-			x += max(r.w - width, 0) / 2
+			cell_x += max(rect.w - width, 0) / 2
 		case .End:
-			x += max(r.w - width, 0)
+			cell_x += max(rect.w - width, 0)
 		case .Stretch, .Start:
 		}
-		col := x - r.x
-		overflow := width > r.w
-		limit := r.w - 1 if overflow else r.w
-		last_fg, last_bg := COLOR_FG, p.bg
-		for s in line {
-			style := ui_style_over(ui_style_over(p.inherit, s.style), p.override)
-			fg, bg := ui_style_colors(style, COLOR_FG, p.bg)
+		col := cell_x - rect.x
+		overflow := width > rect.w
+		limit := rect.w - 1 if overflow else rect.w
+		last_fg, last_bg := COLOR_FG, paint.bg
+		for span in line {
+			style := ui_style_over(ui_style_over(paint.inherit, span.style), paint.override)
+			fg, bg := ui_style_colors(style, COLOR_FG, paint.bg)
 			last_fg, last_bg = fg, bg
 			if col >= limit {
 				break
 			}
-			drawn := ui_draw_text(p, r.x + col, y, limit - col, s.text, fg, bg)
+			drawn := ui_draw_text(paint, rect.x + col, cell_y, limit - col, span.text, fg, bg)
 			col += drawn
-			if drawn < visual_width(transmute([]u8)s.text) {
+			if drawn < visual_width(transmute([]u8)span.text) {
 				break
 			}
 		}
-		if overflow && r.w > 0 {
-			ui_cell(p, r.x + r.w - 1, y, '…', last_fg, last_bg)
+		if overflow && rect.w > 0 {
+			ui_cell(paint, rect.x + rect.w - 1, cell_y, '…', last_fg, last_bg)
 		}
 	}
 }
 
-ui_render_editor :: proc(editor: ^Editor, p: ^UiPaint, node: ^UiNode) {
-	b := ui_buffer(editor, node.buffer)
-	if b == nil {
+ui_render_editor :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
+	buffer := ui_buffer(editor, node.buffer)
+	if buffer == nil {
 		return
 	}
 	state := ui_node_state(&editor.ui, node)
-	r := ui_rect_intersect(node.rect, p.clip)
-	if r.w <= 0 || r.h <= 0 {
+	rect := ui_rect_intersect(node.rect, paint.clip)
+	if rect.w <= 0 || rect.h <= 0 {
 		return
 	}
-	gutter := digit_count(len(b.lines)) + 2 if node.line_numbers else 0
-	w := ui_editor_text_width(node, b)
-	b.wrap_width = w
-	base := ui_style_over(p.inherit, p.override)
-	fg_base, bg := ui_style_colors(base, COLOR_FG, p.bg)
-	sel_from, sel_to, sel_ok := selection_range(b)
+	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
+	width := ui_editor_text_width(node, buffer)
+	buffer.wrap_width = width
+	base := ui_style_over(paint.inherit, paint.override)
+	fg_base, bg := ui_style_colors(base, COLOR_FG, paint.bg)
+	sel_from, sel_to, sel_ok := selection_range(buffer)
 	focused := editor.ui.focus == node.identity
-	y := node.rect.y
+	cell_y := node.rect.y
 	bottom := node.rect.y + node.rect.h
-	for row := state.scroll_row; row < len(b.lines) && y < bottom; row += 1 {
-		text := b.lines[row].text[:]
-		current := row == b.cursor.row && focused
+	for row := state.scroll_row; row < len(buffer.lines) && cell_y < bottom; row += 1 {
+		text := buffer.lines[row].text[:]
+		current := row == buffer.cursor.row && focused
 		line_bg := bg
 		if current && .Bg in node.current_line.set {
 			_, line_bg = ui_style_colors(node.current_line, fg_base, bg)
 		}
 		colors: []tb2.Color
-		if node.syntax && !b.big {
-			colors = highlight_colors(b, row)
+		if node.syntax && !buffer.big {
+			colors = highlight_colors(buffer, row)
 		}
 		if len(colors) == 0 && .Fg in base.set {
 			colors = make([]tb2.Color, len(text), context.temp_allocator)
@@ -1823,53 +1823,53 @@ ui_render_editor :: proc(editor: ^Editor, p: ^UiPaint, node: ^UiNode) {
 			re = sel_to.col if row == sel_to.row else len(text) + 1
 		}
 		segs: []int
-		if b.wrap && w > 0 {
-			segs = buffer_line_wrap(b, row, w)
+		if buffer.wrap && width > 0 {
+			segs = buffer_line_wrap(buffer, row, width)
 		} else {
 			segs = {0}
 		}
-		start_sub := state.scroll_sub if row == state.scroll_row && b.wrap else 0
-		x_origin := state.scroll_col if !b.wrap else (visual_col(text, segs[start_sub]) if start_sub < len(segs) else 0)
-		for s in start_sub ..< len(segs) {
-			if y >= bottom {
+		start_sub := state.scroll_sub if row == state.scroll_row && buffer.wrap else 0
+		x_origin := state.scroll_col if !buffer.wrap else (visual_col(text, segs[start_sub]) if start_sub < len(segs) else 0)
+		for segment in start_sub ..< len(segs) {
+			if cell_y >= bottom {
 				break
 			}
-			seg_start := segs[s]
-			seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
-			if !b.wrap {
+			seg_start := segs[segment]
+			seg_end := segs[segment + 1] if segment + 1 < len(segs) else len(text)
+			if !buffer.wrap {
 				seg_start, seg_end = 0, len(text)
 			}
 			if node.line_numbers {
-				ui_render_gutter(p, node.rect.x, y, gutter, row + 1 if s == start_sub || s == 0 else 0, current)
+				ui_render_gutter(paint, node.rect.x, cell_y, gutter, row + 1 if segment == start_sub || segment == 0 else 0, current)
 			}
-			if y >= r.y && y < r.y + r.h {
-				editor_render_text_row(node.rect.x + gutter, y, w, text, colors, x_origin, line_bg, rs, re, nil, seg_start, seg_end)
+			if cell_y >= rect.y && cell_y < rect.y + rect.h {
+				editor_render_text_row(node.rect.x + gutter, cell_y, width, text, colors, x_origin, line_bg, rs, re, nil, seg_start, seg_end)
 			}
-			if b.wrap {
+			if buffer.wrap {
 				x_origin = visual_col_from(text, seg_start, x_origin, seg_end)
 			}
-			y += 1
+			cell_y += 1
 		}
 	}
-	for ; y < bottom; y += 1 {
+	for ; cell_y < bottom; cell_y += 1 {
 		if node.line_numbers {
-			ui_render_gutter(p, node.rect.x, y, gutter, 0, false)
+			ui_render_gutter(paint, node.rect.x, cell_y, gutter, 0, false)
 		}
-		ui_fill(p, {node.rect.x + gutter, y, w, 1}, bg)
+		ui_fill(paint, {node.rect.x + gutter, cell_y, width, 1}, bg)
 	}
-	if len(b.lines) == 1 && len(b.lines[0].text) == 0 && node.placeholder != "" {
-		ui_draw_text(p, node.rect.x + gutter, node.rect.y, w, node.placeholder, COLOR_PANE_DIM_FG, bg)
+	if len(buffer.lines) == 1 && len(buffer.lines[0].text) == 0 && node.placeholder != "" {
+		ui_draw_text(paint, node.rect.x + gutter, node.rect.y, width, node.placeholder, COLOR_PANE_DIM_FG, bg)
 	}
 }
 
-ui_render_gutter :: proc(p: ^UiPaint, x, y, width, number: int, current: bool) {
+ui_render_gutter :: proc(paint: ^UiPaint, cell_x, cell_y, width, number: int, current: bool) {
 	fg := COLOR_CURRENT_LINE_FG if current else COLOR_GUTTER_FG
 	for i in 0 ..< width {
-		ui_cell(p, x + i, y, ' ', fg, COLOR_GUTTER_BG)
+		ui_cell(paint, cell_x + i, cell_y, ' ', fg, COLOR_GUTTER_BG)
 	}
 	if number > 0 {
 		label := fmt.tprintf("%d", number)
-		ui_draw_text(p, x + width - 1 - len(label), y, len(label), label, fg, COLOR_GUTTER_BG)
+		ui_draw_text(paint, cell_x + width - 1 - len(label), cell_y, len(label), label, fg, COLOR_GUTTER_BG)
 	}
 }
 
@@ -1950,8 +1950,8 @@ ui_chord_build :: proc(ctrl, alt, shift: bool, name: string, allocator := contex
 
 UI_NAMED_KEYS :: [?]string{"Up", "Down", "Left", "Right", "Enter", "Esc", "Tab", "Backspace", "Delete", "Insert", "Home", "End", "PgUp", "PgDn", "Space", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"}
 
-ui_chord_parse :: proc(s: string) -> (ctrl, alt, shift: bool, name: string, ok: bool) {
-	rest := s
+ui_chord_parse :: proc(chord: string) -> (ctrl, alt, shift: bool, name: string, ok: bool) {
+	rest := chord
 	for {
 		switch {
 		case strings.has_prefix(rest, "Ctrl+") && len(rest) > 5:
@@ -1966,40 +1966,40 @@ ui_chord_parse :: proc(s: string) -> (ctrl, alt, shift: bool, name: string, ok: 
 		}
 		break
 	}
-	for k in UI_NAMED_KEYS {
-		if rest == k {
+	for key_name in UI_NAMED_KEYS {
+		if rest == key_name {
 			return ctrl, alt, shift, rest, true
 		}
 	}
 	if strings.equal_fold(rest, "escape") {
 		return ctrl, alt, shift, "Esc", true
 	}
-	r, size := utf8.decode_rune_in_string(rest)
-	if size == 0 || size != len(rest) || r == utf8.RUNE_ERROR {
+	character, size := utf8.decode_rune_in_string(rest)
+	if size == 0 || size != len(rest) || character == utf8.RUNE_ERROR {
 		return
 	}
-	if ctrl && r >= 'A' && r <= 'Z' {
-		rest = fmt.tprintf("%c", r + 32)
+	if ctrl && character >= 'A' && character <= 'Z' {
+		rest = fmt.tprintf("%c", character + 32)
 	}
 	return ctrl, alt, shift, rest, true
 }
 
-ui_chord_normalize :: proc(s: string, allocator := context.temp_allocator) -> string {
-	ctrl, alt, shift, name, ok := ui_chord_parse(s)
+ui_chord_normalize :: proc(chord: string, allocator := context.temp_allocator) -> string {
+	ctrl, alt, shift, name, ok := ui_chord_parse(chord)
 	if !ok {
 		return ""
 	}
 	return ui_chord_build(ctrl, alt, shift, name, allocator)
 }
 
-ui_chord_named_key :: proc(s: string) -> (key: tb2.Key, ok: bool) {
-	ctrl, alt, shift, name, parsed := ui_chord_parse(s)
+ui_chord_named_key :: proc(chord: string) -> (key: tb2.Key, ok: bool) {
+	ctrl, alt, shift, name, parsed := ui_chord_parse(chord)
 	if !parsed {
 		return
 	}
 	named := false
-	for k in UI_NAMED_KEYS {
-		named = named || k == name
+	for key_name in UI_NAMED_KEYS {
+		named = named || key_name == name
 	}
 	if !named {
 		return

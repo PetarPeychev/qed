@@ -28,9 +28,9 @@ ui_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 }
 
 ui_target_editor :: proc(node: ^UiNode) -> ^UiNode {
-	for n := node; n != nil; n = n.parent {
-		if n.kind == .Editor {
-			return n
+	for node := node; node != nil; node = node.parent {
+		if node.kind == .Editor {
+			return node
 		}
 	}
 	return nil
@@ -46,21 +46,21 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 	editor_clear_message(editor)
 	defer ui.target = nil
 	gen := ui.gen
-	for n := focus; n != nil; n = n.parent {
-		ui.target = n
-		for scope in n.scope {
+	for node := focus; node != nil; node = node.parent {
+		ui.target = node
+		for scope in node.scope {
 			if ui_scope_run(editor, scope, chord) {
 				return
 			}
 		}
-		if n.handlers[.Key] != 0 && ui_handler_call(editor, n.owner, n.handlers[.Key], {chord = chord, text = text}) {
+		if node.handlers[.Key] != 0 && ui_handler_call(editor, node.owner, node.handlers[.Key], {chord = chord, text = text}) {
 			return
 		}
 		if ui.gen != gen {
 			return
 		}
-		if n.kind == .Editor && text != "" && !n.readonly && ui_node_edits(n) {
-			ui_editor_type(editor, n, ev.ch)
+		if node.kind == .Editor && text != "" && !node.readonly && ui_node_edits(node) {
+			ui_editor_type(editor, node, ev.ch)
 			return
 		}
 	}
@@ -71,19 +71,19 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 	if chord == "" {
 		return false
 	}
-	for cmd in pane_commands {
-		if cmd.scope != scope || cmd.run == nil {
+	for command in pane_commands {
+		if command.scope != scope || command.run == nil {
 			continue
 		}
-		_, _, shortcut := command_effective_bind(cmd)
+		_, _, shortcut := command_effective_bind(command)
 		if shortcut != "" && ui_chord_normalize(shortcut) == chord {
-			cmd.run(editor)
+			command.run(editor)
 			return true
 		}
 	}
-	for cmd in editor.plugins.commands {
-		if cmd.scope == scope && cmd.shortcut != "" && ui_chord_normalize(cmd.shortcut) == chord {
-			plugin_command_chord(editor, cmd)
+	for command in editor.plugins.commands {
+		if command.scope == scope && command.shortcut != "" && ui_chord_normalize(command.shortcut) == chord {
+			plugin_command_chord(editor, command)
 			return true
 		}
 	}
@@ -120,13 +120,13 @@ ui_node_edits :: proc(node: ^UiNode) -> bool {
 	return false
 }
 
-ui_editor_type :: proc(editor: ^Editor, node: ^UiNode, r: rune) {
-	b := ui_buffer(editor, node.buffer)
-	if b == nil {
+ui_editor_type :: proc(editor: ^Editor, node: ^UiNode, character: rune) {
+	buffer := ui_buffer(editor, node.buffer)
+	if buffer == nil {
 		return
 	}
-	buffer_type_rune(b, r)
-	b.typed_rev = b.rev
+	buffer_type_rune(buffer, character)
+	buffer.typed_rev = buffer.rev
 	ui_node_state(&editor.ui, node).reveal = true
 }
 
@@ -135,14 +135,14 @@ ui_paste :: proc(editor: ^Editor, text: string) -> bool {
 	if focus == nil {
 		return false
 	}
-	for n := focus; n != nil; n = n.parent {
-		if n.handlers[.Paste] != 0 && ui_handler_call(editor, n.owner, n.handlers[.Paste], {text = text}) {
+	for node := focus; node != nil; node = node.parent {
+		if node.handlers[.Paste] != 0 && ui_handler_call(editor, node.owner, node.handlers[.Paste], {text = text}) {
 			return true
 		}
-		if n.kind == .Editor && !n.readonly && ui_node_edits(n) {
-			if b := ui_buffer(editor, n.buffer); b != nil {
-				buffer_paste(b, text)
-				ui_node_state(&editor.ui, n).reveal = true
+		if node.kind == .Editor && !node.readonly && ui_node_edits(node) {
+			if buffer := ui_buffer(editor, node.buffer); buffer != nil {
+				buffer_paste(buffer, text)
+				ui_node_state(&editor.ui, node).reveal = true
 			}
 			return true
 		}
@@ -162,7 +162,7 @@ ui_mouse_button :: proc(key: tb2.Key) -> string {
 
 ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	ui := &editor.ui
-	x, y := int(ev.x), int(ev.y)
+	cell_x, cell_y := int(ev.x), int(ev.y)
 	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
 	if ev.key == .Mouse_Release {
 		was := ui.drag.active
@@ -173,13 +173,13 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 		if !ui.drag.active {
 			return false
 		}
-		if n := ui_find(ui, ui.drag.node); n != nil && n.kind == .Editor {
-			if b := ui_buffer(editor, n.buffer); b != nil {
-				if b.selection == nil {
-					b.selection = b.cursor
+		if node := ui_find(ui, ui.drag.node); node != nil && node.kind == .Editor {
+			if buffer := ui_buffer(editor, node.buffer); buffer != nil {
+				if buffer.selection == nil {
+					buffer.selection = buffer.cursor
 				}
-				b.cursor = ui_editor_point(editor, n, x, y)
-				ui_node_state(ui, n).reveal = true
+				buffer.cursor = ui_editor_point(editor, node, cell_x, cell_y)
+				ui_node_state(ui, node).reveal = true
 			}
 		}
 		return true
@@ -187,45 +187,45 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	wheel := ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down
 	event := UiEvent.Wheel if wheel else UiEvent.Click
 	if !wheel {
-		if editor.click_count > 0 && editor.last_click_pos == {y, x} && ms_since(editor.last_click_tick) < UI_DOUBLE_CLICK_MS {
+		if editor.click_count > 0 && editor.last_click_pos == {cell_y, cell_x} && ms_since(editor.last_click_tick) < UI_DOUBLE_CLICK_MS {
 			event = .Double_Click
 			editor.click_count = 0
 		} else {
 			editor.click_count = 1
 		}
 		editor.last_click_tick = time.tick_now()
-		editor.last_click_pos = {y, x}
+		editor.last_click_pos = {cell_y, cell_x}
 	}
 	if event == .Double_Click {
-		clicked := ui_mouse_bubble(editor, ev, x, y, .Click, true)
-		return ui_mouse_bubble(editor, ev, x, y, .Double_Click, false) || clicked
+		clicked := ui_mouse_bubble(editor, ev, cell_x, cell_y, .Click, true)
+		return ui_mouse_bubble(editor, ev, cell_x, cell_y, .Double_Click, false) || clicked
 	}
-	return ui_mouse_bubble(editor, ev, x, y, event, true)
+	return ui_mouse_bubble(editor, ev, cell_x, cell_y, event, true)
 }
 
-ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, x, y: int, event: UiEvent, native: bool) -> bool {
+ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, cell_x, cell_y: int, event: UiEvent, native: bool) -> bool {
 	ui := &editor.ui
 	wheel := event == .Wheel
 	gen := ui.gen
 	visited := make(map[^UiNode]bool, 16, context.temp_allocator)
 	for i := len(ui.hits) - 1; i >= 0; i -= 1 {
 		hit := ui.hits[i]
-		if !ui_rect_has(hit.rect, x, y) || visited[hit.node] {
+		if !ui_rect_has(hit.rect, cell_x, cell_y) || visited[hit.node] {
 			continue
 		}
-		for n := hit.node; n != nil; n = n.parent {
-			if visited[n] {
+		for node := hit.node; node != nil; node = node.parent {
+			if visited[node] {
 				break
 			}
-			visited[n] = true
-			args := UiHandlerArgs{mouse = true, x = x - n.rect.x + 1, y = y - n.rect.y + 1, button = ui_mouse_button(ev.key)}
-			if n.handlers[event] != 0 && ui_handler_call(editor, n.owner, n.handlers[event], args) {
+			visited[node] = true
+			args := UiHandlerArgs{mouse = true, x = cell_x - node.rect.x + 1, y = cell_y - node.rect.y + 1, button = ui_mouse_button(ev.key)}
+			if node.handlers[event] != 0 && ui_handler_call(editor, node.owner, node.handlers[event], args) {
 				return true
 			}
 			if ui.gen != gen {
 				return true
 			}
-			if native && ui_mouse_native(editor, n, ev, x, y, wheel) {
+			if native && ui_mouse_native(editor, node, ev, cell_x, cell_y, wheel) {
 				return true
 			}
 		}
@@ -233,58 +233,58 @@ ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, x, y: int, event: UiEven
 	return false
 }
 
-ui_mouse_native :: proc(editor: ^Editor, n: ^UiNode, ev: tb2.Event, x, y: int, wheel: bool) -> bool {
+ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, cell_y: int, wheel: bool) -> bool {
 	ui := &editor.ui
 	step := -UI_WHEEL_STEP if ev.key == .Mouse_Wheel_Up else UI_WHEEL_STEP
-	#partial switch n.kind {
+	#partial switch node.kind {
 	case .Scroll:
 		if wheel {
-			state := ui_node_state(ui, n)
+			state := ui_node_state(ui, node)
 			state.offset = max(state.offset + step, 0)
 			return true
 		}
 	case .Editor:
-		b := ui_buffer(editor, n.buffer)
-		if b == nil {
+		buffer := ui_buffer(editor, node.buffer)
+		if buffer == nil {
 			return false
 		}
-		state := ui_node_state(ui, n)
+		state := ui_node_state(ui, node)
 		if wheel {
-			state.scroll_row = clamp(state.scroll_row + step, 0, len(b.lines) - 1)
+			state.scroll_row = clamp(state.scroll_row + step, 0, len(buffer.lines) - 1)
 			state.scroll_sub = 0
 			return true
 		}
 		if ev.key != .Mouse_Left {
 			return false
 		}
-		if n.id != "" {
-			ui_focus_set(editor, n.identity)
+		if node.id != "" {
+			ui_focus_set(editor, node.identity)
 		}
-		b.selection = nil
-		b.cursor = ui_editor_point(editor, n, x, y)
-		cursor_goal_sync(b)
-		buffer_undo_commit(b)
+		buffer.selection = nil
+		buffer.cursor = ui_editor_point(editor, node, cell_x, cell_y)
+		cursor_goal_sync(buffer)
+		buffer_undo_commit(buffer)
 		state.reveal = true
 		delete(ui.drag.node)
-		ui.drag = {node = strings.clone(n.identity), active = true}
+		ui.drag = {node = strings.clone(node.identity), active = true}
 		return true
 	}
 	return false
 }
 
-ui_editor_point :: proc(editor: ^Editor, node: ^UiNode, x, y: int) -> Cursor {
-	b := ui_buffer(editor, node.buffer)
+ui_editor_point :: proc(editor: ^Editor, node: ^UiNode, cell_x, cell_y: int) -> Cursor {
+	buffer := ui_buffer(editor, node.buffer)
 	state := ui_node_state(&editor.ui, node)
-	gutter := digit_count(len(b.lines)) + 2 if node.line_numbers else 0
-	w := ui_editor_text_width(node, b)
-	dy := max(y - node.rect.y, 0)
-	dx := x - node.rect.x
-	if b.wrap && w > 0 {
+	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
+	width := ui_editor_text_width(node, buffer)
+	dy := max(cell_y - node.rect.y, 0)
+	dx := cell_x - node.rect.x
+	if buffer.wrap && width > 0 {
 		row, sub := state.scroll_row, state.scroll_sub
 		for dy > 0 {
-			if sub + 1 < line_rows(b, w, row) {
+			if sub + 1 < line_rows(buffer, width, row) {
 				sub += 1
-			} else if row + 1 < len(b.lines) {
+			} else if row + 1 < len(buffer.lines) {
 				row += 1
 				sub = 0
 			} else {
@@ -292,176 +292,176 @@ ui_editor_point :: proc(editor: ^Editor, node: ^UiNode, x, y: int) -> Cursor {
 			}
 			dy -= 1
 		}
-		return {row, editor_wrap_col(b, w, row, sub, gutter, dx)}
+		return {row, editor_wrap_col(buffer, width, row, sub, gutter, dx)}
 	}
-	row := clamp(state.scroll_row + dy, 0, len(b.lines) - 1)
-	text := b.lines[row].text[:]
+	row := clamp(state.scroll_row + dy, 0, len(buffer.lines) - 1)
+	text := buffer.lines[row].text[:]
 	return {row, col_at_visual(text, state.scroll_col + max(dx - gutter, 0))}
 }
 
 ui_target_buffer :: proc(editor: ^Editor, edits := false) -> ^Buffer {
-	n := editor.ui.target
-	if n == nil || (edits && n.readonly) {
+	node := editor.ui.target
+	if node == nil || (edits && node.readonly) {
 		return nil
 	}
-	b := ui_buffer(editor, n.buffer)
-	if b != nil {
-		ui_node_state(&editor.ui, n).reveal = true
+	buffer := ui_buffer(editor, node.buffer)
+	if buffer != nil {
+		ui_node_state(&editor.ui, node).reveal = true
 	}
-	return b
+	return buffer
 }
 
-ui_move :: proc(editor: ^Editor, select: bool, move: proc(b: ^Buffer)) {
-	b := ui_target_buffer(editor)
-	if b == nil {
+ui_move :: proc(editor: ^Editor, select: bool, move: proc(buffer: ^Buffer)) {
+	buffer := ui_target_buffer(editor)
+	if buffer == nil {
 		return
 	}
-	buffer_undo_commit(b)
+	buffer_undo_commit(buffer)
 	if select {
-		selection_set_anchor(b)
+		selection_set_anchor(buffer)
 	} else {
-		b.selection = nil
+		buffer.selection = nil
 	}
-	move(b)
+	move(buffer)
 }
 
-ui_cmd_left :: proc(editor: ^Editor) {
-	b := ui_target_buffer(editor)
-	if b == nil {
+ui_command_left :: proc(editor: ^Editor) {
+	buffer := ui_target_buffer(editor)
+	if buffer == nil {
 		return
 	}
-	if from, _, ok := selection_range(b); ok {
-		b.selection = nil
-		b.cursor = from
-		cursor_goal_sync(b)
+	if from, _, ok := selection_range(buffer); ok {
+		buffer.selection = nil
+		buffer.cursor = from
+		cursor_goal_sync(buffer)
 		return
 	}
 	ui_move(editor, false, cursor_move_left)
 }
 
-ui_cmd_right :: proc(editor: ^Editor) {
-	b := ui_target_buffer(editor)
-	if b == nil {
+ui_command_right :: proc(editor: ^Editor) {
+	buffer := ui_target_buffer(editor)
+	if buffer == nil {
 		return
 	}
-	if _, to, ok := selection_range(b); ok {
-		b.selection = nil
-		b.cursor = to
-		cursor_goal_sync(b)
+	if _, to, ok := selection_range(buffer); ok {
+		buffer.selection = nil
+		buffer.cursor = to
+		cursor_goal_sync(buffer)
 		return
 	}
 	ui_move(editor, false, cursor_move_right)
 }
 
-ui_cursor_up :: proc(b: ^Buffer) {cursor_move_up_n(b, 1)}
-ui_cursor_down :: proc(b: ^Buffer) {cursor_move_down_n(b, 1)}
+ui_cursor_up :: proc(buffer: ^Buffer) {cursor_move_up_n(buffer, 1)}
+ui_cursor_down :: proc(buffer: ^Buffer) {cursor_move_down_n(buffer, 1)}
 
-ui_cmd_up :: proc(editor: ^Editor) {ui_move(editor, false, ui_cursor_up)}
-ui_cmd_down :: proc(editor: ^Editor) {ui_move(editor, false, ui_cursor_down)}
-ui_cmd_select_left :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_left)}
-ui_cmd_select_right :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_right)}
-ui_cmd_select_up :: proc(editor: ^Editor) {ui_move(editor, true, ui_cursor_up)}
-ui_cmd_select_down :: proc(editor: ^Editor) {ui_move(editor, true, ui_cursor_down)}
-ui_cmd_word_left :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_word_left)}
-ui_cmd_word_right :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_word_right)}
-ui_cmd_line_start :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_home_smart)}
-ui_cmd_line_end :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_end)}
+ui_command_up :: proc(editor: ^Editor) {ui_move(editor, false, ui_cursor_up)}
+ui_command_down :: proc(editor: ^Editor) {ui_move(editor, false, ui_cursor_down)}
+ui_command_select_left :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_left)}
+ui_command_select_right :: proc(editor: ^Editor) {ui_move(editor, true, cursor_move_right)}
+ui_command_select_up :: proc(editor: ^Editor) {ui_move(editor, true, ui_cursor_up)}
+ui_command_select_down :: proc(editor: ^Editor) {ui_move(editor, true, ui_cursor_down)}
+ui_command_word_left :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_word_left)}
+ui_command_word_right :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_word_right)}
+ui_command_line_start :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_home_smart)}
+ui_command_line_end :: proc(editor: ^Editor) {ui_move(editor, false, cursor_move_end)}
 
-ui_cmd_newline :: proc(editor: ^Editor) {
-	b := ui_target_buffer(editor, true)
-	if b == nil {
+ui_command_newline :: proc(editor: ^Editor) {
+	buffer := ui_target_buffer(editor, true)
+	if buffer == nil {
 		return
 	}
-	if selection_active(b) {
-		buffer_replace_selection(b, "\n")
+	if selection_active(buffer) {
+		buffer_replace_selection(buffer, "\n")
 	} else {
-		buffer_newline(b)
+		buffer_newline(buffer)
 	}
-	b.typed_rev = b.rev
+	buffer.typed_rev = buffer.rev
 }
 
-ui_cmd_backspace :: proc(editor: ^Editor) {
-	b := ui_target_buffer(editor, true)
-	if b == nil {
+ui_command_backspace :: proc(editor: ^Editor) {
+	buffer := ui_target_buffer(editor, true)
+	if buffer == nil {
 		return
 	}
-	if selection_active(b) {
-		buffer_delete_selection(b)
-	} else if !buffer_backspace_pair(b) {
-		buffer_backspace(b)
+	if selection_active(buffer) {
+		buffer_delete_selection(buffer)
+	} else if !buffer_backspace_pair(buffer) {
+		buffer_backspace(buffer)
 	}
-	b.typed_rev = b.rev
+	buffer.typed_rev = buffer.rev
 }
 
-ui_cmd_delete :: proc(editor: ^Editor) {
-	b := ui_target_buffer(editor, true)
-	if b == nil {
+ui_command_delete :: proc(editor: ^Editor) {
+	buffer := ui_target_buffer(editor, true)
+	if buffer == nil {
 		return
 	}
-	if selection_active(b) {
-		buffer_delete_selection(b)
+	if selection_active(buffer) {
+		buffer_delete_selection(buffer)
 	} else {
-		buffer_delete_forward(b)
+		buffer_delete_forward(buffer)
 	}
-	b.typed_rev = b.rev
+	buffer.typed_rev = buffer.rev
 }
 
-ui_cmd_undo :: proc(editor: ^Editor) {
-	b := ui_target_buffer(editor, true)
-	if b == nil {
+ui_command_undo :: proc(editor: ^Editor) {
+	buffer := ui_target_buffer(editor, true)
+	if buffer == nil {
 		return
 	}
-	if !editor.welcome && b == editor_buffer(editor) {
+	if !editor.welcome && buffer == editor_buffer(editor) {
 		editor_undo(editor)
 	} else {
-		buffer_undo(b)
+		buffer_undo(buffer)
 	}
 }
 
-ui_cmd_redo :: proc(editor: ^Editor) {
-	b := ui_target_buffer(editor, true)
-	if b == nil {
+ui_command_redo :: proc(editor: ^Editor) {
+	buffer := ui_target_buffer(editor, true)
+	if buffer == nil {
 		return
 	}
-	if !editor.welcome && b == editor_buffer(editor) {
+	if !editor.welcome && buffer == editor_buffer(editor) {
 		editor_redo(editor)
 	} else {
-		buffer_redo(b)
+		buffer_redo(buffer)
 	}
 }
 
-ui_cmd_select_all :: proc(editor: ^Editor) {
-	if b := ui_target_buffer(editor); b != nil {
-		cursor_select_all(b)
+ui_command_select_all :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor); buffer != nil {
+		cursor_select_all(buffer)
 	}
 }
 
-ui_cmd_copy :: proc(editor: ^Editor) {
-	if b := ui_target_buffer(editor); b != nil {
-		buffer_copy(b)
+ui_command_copy :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor); buffer != nil {
+		buffer_copy(buffer)
 	}
 }
 
-ui_cmd_cut :: proc(editor: ^Editor) {
-	if b := ui_target_buffer(editor, true); b != nil {
-		buffer_cut(b)
+ui_command_cut :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor, true); buffer != nil {
+		buffer_cut(buffer)
 	}
 }
 
-ui_cmd_paste :: proc(editor: ^Editor) {
-	if b := ui_target_buffer(editor, true); b != nil {
-		buffer_paste_clipboard(b)
+ui_command_paste :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor, true); buffer != nil {
+		buffer_paste_clipboard(buffer)
 	}
 }
 
-ui_cmd_indent :: proc(editor: ^Editor) {
-	if b := ui_target_buffer(editor, true); b != nil {
-		buffer_indent(b)
+ui_command_indent :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor, true); buffer != nil {
+		buffer_indent(buffer)
 	}
 }
 
-ui_cmd_dedent :: proc(editor: ^Editor) {
-	if b := ui_target_buffer(editor, true); b != nil {
-		buffer_dedent(b)
+ui_command_dedent :: proc(editor: ^Editor) {
+	if buffer := ui_target_buffer(editor, true); buffer != nil {
+		buffer_dedent(buffer)
 	}
 }

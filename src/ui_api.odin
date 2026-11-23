@@ -13,9 +13,9 @@ lua_unref :: proc(L: ^lua.State, ref: i32) {
 	lua.L_unref(L, lua.REGISTRYINDEX, c.int(ref))
 }
 
-lua_refs_equal :: proc(L: ^lua.State, a, b: i32) -> bool {
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(a))
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(b))
+lua_refs_equal :: proc(L: ^lua.State, first, second: i32) -> bool {
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(first))
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(second))
 	same := lua.rawequal(L, -1, -2) != 0
 	lua.pop(L, 2)
 	return same
@@ -42,9 +42,9 @@ UiMarshal :: struct {
 	ids:    [dynamic]string,
 }
 
-ui_marshal_fail :: proc(m: ^UiMarshal, msg: string) {
-	if m.err == "" {
-		m.err = msg
+ui_marshal_fail :: proc(marshal: ^UiMarshal, msg: string) {
+	if marshal.err == "" {
+		marshal.err = msg
 	}
 }
 
@@ -56,9 +56,9 @@ ui_node_kind :: proc(L: ^lua.State, idx: c.int) -> (UiKind, bool) {
 	lua.rawget(L, -2)
 	name, _ := lua.toodinstring(L, -1)
 	lua.pop(L, 2)
-	for n, k in ui_kind_names {
-		if n == name {
-			return k, true
+	for node_name, kind in ui_kind_names {
+		if node_name == name {
+			return kind, true
 		}
 	}
 	return {}, false
@@ -69,9 +69,9 @@ ui_positional_keys :: proc(L: ^lua.State, idx: c.int) -> []int {
 	lua.pushnil(L)
 	for lua.next(L, idx) != 0 {
 		if lua.isinteger(L, -2) {
-			k := int(lua.tointeger(L, -2))
-			if k >= 1 && lua.type(L, -1) != .BOOLEAN {
-				append(&keys, k)
+			slot := int(lua.tointeger(L, -2))
+			if slot >= 1 && lua.type(L, -1) != .BOOLEAN {
+				append(&keys, slot)
 			}
 		}
 		lua.pop(L, 1)
@@ -80,41 +80,41 @@ ui_positional_keys :: proc(L: ^lua.State, idx: c.int) -> []int {
 	return keys[:]
 }
 
-ui_marshal_size :: proc(m: ^UiMarshal, idx: c.int, what: string) -> UiSize {
-	L := m.L
+ui_marshal_size :: proc(marshal: ^UiMarshal, idx: c.int, what: string) -> UiSize {
+	L := marshal.L
 	idx := lua.absindex(L, idx)
 	#partial switch lua.type(L, idx) {
 	case .NIL:
 		return {}
 	case .NUMBER:
 		if !lua.isinteger(L, idx) {
-			ui_marshal_fail(m, fmt.tprintf("%s: whole cells expected", what))
+			ui_marshal_fail(marshal, fmt.tprintf("%s: whole cells expected", what))
 			return {}
 		}
 		return {form = .Cells, value = max(int(lua.tointeger(L, idx)), 0)}
 	case .STRING:
-		s, _ := lua.toodinstring(L, idx)
-		if s == "fit" {
+		text, _ := lua.toodinstring(L, idx)
+		if text == "fit" {
 			return {form = .Fit}
 		}
-		if strings.has_suffix(s, "%") {
-			if n, ok := strconv.parse_int(s[:len(s) - 1]); ok && n >= 0 {
-				return {form = .Percent, value = n}
+		if strings.has_suffix(text, "%") {
+			if percent, ok := strconv.parse_int(text[:len(text) - 1]); ok && percent >= 0 {
+				return {form = .Percent, value = percent}
 			}
 		}
-		ui_marshal_fail(m, fmt.tprintf("%s: '%s' is not a size (n, \"N%%\", \"fit\")", what, s))
+		ui_marshal_fail(marshal, fmt.tprintf("%s: '%s' is not a size (n, \"N%%\", \"fit\")", what, text))
 	case .TABLE:
 		lua.rawgeti(L, idx, 1)
-		size := ui_marshal_size(m, -1, what)
+		size := ui_marshal_size(marshal, -1, what)
 		lua.pop(L, 1)
 		for bound, i in ([?]cstring{"min", "max"}) {
 			lua.getfield(L, idx, bound)
 			if lua.type(L, -1) == .NUMBER {
-				v := max(int(lua.tointeger(L, -1)), 0)
+				bound := max(int(lua.tointeger(L, -1)), 0)
 				if i == 0 {
-					size.min = v
+					size.min = bound
 				} else {
-					size.max = v
+					size.max = bound
 				}
 			}
 			lua.pop(L, 1)
@@ -124,13 +124,13 @@ ui_marshal_size :: proc(m: ^UiMarshal, idx: c.int, what: string) -> UiSize {
 		}
 		return size
 	case:
-		ui_marshal_fail(m, fmt.tprintf("%s: size expected", what))
+		ui_marshal_fail(marshal, fmt.tprintf("%s: size expected", what))
 	}
 	return {}
 }
 
-ui_marshal_margin :: proc(m: ^UiMarshal, idx: c.int) -> (out: [4]int) {
-	L := m.L
+ui_marshal_margin :: proc(marshal: ^UiMarshal, idx: c.int) -> (out: [4]int) {
+	L := marshal.L
 	idx := lua.absindex(L, idx)
 	#partial switch lua.type(L, idx) {
 	case .NUMBER:
@@ -159,33 +159,33 @@ ui_marshal_margin :: proc(m: ^UiMarshal, idx: c.int) -> (out: [4]int) {
 					}
 				}
 				if !known {
-					ui_marshal_fail(m, "margin: a number, {x =, y =} or named sides {top =, right =, bottom =, left =}")
+					ui_marshal_fail(marshal, "margin: a number, {x =, y =} or named sides {top =, right =, bottom =, left =}")
 				}
 			}
 			lua.pop(L, 1)
 		}
 		return
 	}
-	ui_marshal_fail(m, "margin: a number, {x =, y =} or named sides {top =, right =, bottom =, left =}")
+	ui_marshal_fail(marshal, "margin: a number, {x =, y =} or named sides {top =, right =, bottom =, left =}")
 	return
 }
 
-ui_marshal_style_field :: proc(m: ^UiMarshal, style: ^UiStyle, name: string, idx: c.int) -> bool {
-	L := m.L
+ui_marshal_style_field :: proc(marshal: ^UiMarshal, style: ^UiStyle, name: string, idx: c.int) -> bool {
+	L := marshal.L
 	switch name {
 	case "fg", "bg":
 		if lua.type(L, idx) != .STRING {
-			ui_marshal_fail(m, fmt.tprintf("%s: theme color name expected", name))
+			ui_marshal_fail(marshal, fmt.tprintf("%s: theme color name expected", name))
 			return true
 		}
-		s, _ := lua.toodinstring(L, idx)
+		text, _ := lua.toodinstring(L, idx)
 		if name == "fg" {
 			delete(style.fg)
-			style.fg = strings.clone(s)
+			style.fg = strings.clone(text)
 			style.set += {.Fg}
 		} else {
 			delete(style.bg)
-			style.bg = strings.clone(s)
+			style.bg = strings.clone(text)
 			style.set += {.Bg}
 		}
 		return true
@@ -205,30 +205,30 @@ ui_marshal_style_field :: proc(m: ^UiMarshal, style: ^UiStyle, name: string, idx
 	return false
 }
 
-ui_marshal_style :: proc(m: ^UiMarshal, idx: c.int, what: string) -> (style: UiStyle) {
-	L := m.L
+ui_marshal_style :: proc(marshal: ^UiMarshal, idx: c.int, what: string) -> (style: UiStyle) {
+	L := marshal.L
 	idx := lua.absindex(L, idx)
 	if lua.type(L, idx) != .TABLE {
-		ui_marshal_fail(m, fmt.tprintf("%s: style table expected", what))
+		ui_marshal_fail(marshal, fmt.tprintf("%s: style table expected", what))
 		return
 	}
 	lua.pushnil(L)
 	for lua.next(L, idx) != 0 {
 		if lua.type(L, -2) != .STRING {
-			ui_marshal_fail(m, fmt.tprintf("%s: style fields are named", what))
-		} else if name, _ := lua.toodinstring(L, -2); !ui_marshal_style_field(m, &style, name, -1) {
-			ui_marshal_fail(m, fmt.tprintf("%s: unknown style field '%s'", what, name))
+			ui_marshal_fail(marshal, fmt.tprintf("%s: style fields are named", what))
+		} else if name, _ := lua.toodinstring(L, -2); !ui_marshal_style_field(marshal, &style, name, -1) {
+			ui_marshal_fail(marshal, fmt.tprintf("%s: unknown style field '%s'", what, name))
 		}
 		lua.pop(L, 1)
 	}
 	return
 }
 
-ui_marshal_spans :: proc(m: ^UiMarshal, node: ^UiNode, idx: c.int, inherited: UiStyle, depth: int) {
-	L := m.L
+ui_marshal_spans :: proc(marshal: ^UiMarshal, node: ^UiNode, idx: c.int, inherited: UiStyle, depth: int) {
+	L := marshal.L
 	idx := lua.absindex(L, idx)
 	if depth > UI_MARSHAL_DEPTH_MAX {
-		ui_marshal_fail(m, "spans nested too deeply")
+		ui_marshal_fail(marshal, "spans nested too deeply")
 		return
 	}
 	style := inherited
@@ -238,7 +238,7 @@ ui_marshal_spans :: proc(m: ^UiMarshal, node: ^UiNode, idx: c.int, inherited: Ui
 			if lua.type(L, -2) == .STRING {
 				name, _ := lua.toodinstring(L, -2)
 				tmp: UiStyle
-				if ui_marshal_style_field(m, &tmp, name, -1) {
+				if ui_marshal_style_field(marshal, &tmp, name, -1) {
 					if .Fg in tmp.set {
 						style.fg = strings.clone(tmp.fg, context.temp_allocator)
 					}
@@ -257,29 +257,29 @@ ui_marshal_spans :: proc(m: ^UiMarshal, node: ^UiNode, idx: c.int, inherited: Ui
 					style.set += tmp.set
 					ui_style_free(tmp)
 				} else {
-					ui_marshal_fail(m, fmt.tprintf("span: unknown field '%s'", name))
+					ui_marshal_fail(marshal, fmt.tprintf("span: unknown field '%s'", name))
 				}
 			}
 			lua.pop(L, 1)
 		}
 	}
-	for k in ui_positional_keys(L, idx) {
-		lua.rawgeti(L, idx, lua.Integer(k))
+	for slot in ui_positional_keys(L, idx) {
+		lua.rawgeti(L, idx, lua.Integer(slot))
 		#partial switch lua.type(L, -1) {
 		case .STRING, .NUMBER:
-			s, _ := lua.toodinstring(L, -1)
-			span := UiSpan{text = strings.clone(s), style = style}
+			text, _ := lua.toodinstring(L, -1)
+			span := UiSpan{text = strings.clone(text), style = style}
 			span.style.fg = strings.clone(style.fg)
 			span.style.bg = strings.clone(style.bg)
 			append(&node.spans, span)
 		case .TABLE:
 			if _, is_node := ui_node_kind(L, -1); is_node {
-				ui_marshal_fail(m, "text children are strings and spans, not nodes")
+				ui_marshal_fail(marshal, "text children are strings and spans, not nodes")
 			} else {
-				ui_marshal_spans(m, node, -1, style, depth + 1)
+				ui_marshal_spans(marshal, node, -1, style, depth + 1)
 			}
 		case:
-			ui_marshal_fail(m, "text children are strings and spans")
+			ui_marshal_fail(marshal, "text children are strings and spans")
 		}
 		lua.pop(L, 1)
 	}
@@ -289,35 +289,35 @@ ui_prop_allowed :: proc(kind: UiKind, name: string) -> bool {
 	if kind == .Outlet {
 		return name == "id"
 	}
-	for p in UI_COMMON_PROPS {
-		if p == name {
+	for prop in UI_COMMON_PROPS {
+		if prop == name {
 			return true
 		}
 	}
-	for p in ui_kind_props[kind] {
-		if p == name {
+	for prop in ui_kind_props[kind] {
+		if prop == name {
 			return true
 		}
 	}
 	return false
 }
 
-ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
-	L := m.L
+ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
+	L := marshal.L
 	idx := lua.absindex(L, idx)
 	kind, ok := ui_node_kind(L, idx)
 	if !ok {
-		ui_marshal_fail(m, "node expected (build nodes with qed.ui.column, qed.ui.text, ...)")
+		ui_marshal_fail(marshal, "node expected (build nodes with qed.ui.column, qed.ui.text, ...)")
 		return nil
 	}
 	if depth > UI_MARSHAL_DEPTH_MAX {
-		ui_marshal_fail(m, "tree nested too deeply")
+		ui_marshal_fail(marshal, "tree nested too deeply")
 		return nil
 	}
 	lua.L_checkstack(L, 8, "ui tree")
 	node := new(UiNode)
 	node.kind = kind
-	node.owner = m.owner
+	node.owner = marshal.owner
 	if kind == .Editor {
 		node.wrap = false
 	}
@@ -330,59 +330,59 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		name, _ := lua.toodinstring(L, -2)
 		name = strings.clone(name, context.temp_allocator)
 		if !ui_prop_allowed(kind, name) {
-			ui_marshal_fail(m, fmt.tprintf("%s: unknown prop '%s'", ui_kind_names[kind], name))
+			ui_marshal_fail(marshal, fmt.tprintf("%s: unknown prop '%s'", ui_kind_names[kind], name))
 			lua.pop(L, 1)
 			continue
 		}
-		v := lua.gettop(L)
-		if ui_marshal_style_field(m, &node.style, name, v) {
+		value_index := lua.gettop(L)
+		if ui_marshal_style_field(marshal, &node.style, name, value_index) {
 			lua.pop(L, 1)
 			continue
 		}
 		switch name {
 		case "id", "key", "title", "placeholder":
-			t := lua.type(L, v)
-			if t != .STRING && !(t == .NUMBER && name == "key") {
-				ui_marshal_fail(m, fmt.tprintf("%s: string expected", name))
+			value_type := lua.type(L, value_index)
+			if value_type != .STRING && !(value_type == .NUMBER && name == "key") {
+				ui_marshal_fail(marshal, fmt.tprintf("%s: string expected", name))
 				break
 			}
-			s, _ := lua.toodinstring(L, v)
+			text, _ := lua.toodinstring(L, value_index)
 			switch name {
 			case "id":
-				node.id = strings.clone(s)
-				append(&m.ids, node.id)
+				node.id = strings.clone(text)
+				append(&marshal.ids, node.id)
 			case "key":
-				node.key = strings.clone(s)
+				node.key = strings.clone(text)
 			case "title":
-				node.title = strings.clone(s)
+				node.title = strings.clone(text)
 			case "placeholder":
-				node.placeholder = strings.clone(s)
+				node.placeholder = strings.clone(text)
 			}
 		case "width":
-			node.width = ui_marshal_size(m, v, "width")
+			node.width = ui_marshal_size(marshal, value_index, "width")
 		case "height":
-			node.height = ui_marshal_size(m, v, "height")
+			node.height = ui_marshal_size(marshal, value_index, "height")
 		case "grow":
-			node.grow = int(lua.tointeger(L, v))
+			node.grow = int(lua.tointeger(L, value_index))
 			node.grow_set = true
 		case "drop":
-			node.drop = int(lua.tointeger(L, v))
+			node.drop = int(lua.tointeger(L, value_index))
 		case "gap":
-			node.gap = max(int(lua.tointeger(L, v)), 0)
+			node.gap = max(int(lua.tointeger(L, value_index)), 0)
 		case "margin":
-			node.margin = ui_marshal_margin(m, v)
+			node.margin = ui_marshal_margin(marshal, value_index)
 		case "float":
-			s, _ := lua.toodinstring(L, v)
-			switch s {
+			text, _ := lua.toodinstring(L, value_index)
+			switch text {
 			case "parent":
 				node.float = .Parent
 			case "screen":
 				node.float = .Screen
 			case:
-				ui_marshal_fail(m, "float: \"parent\" or \"screen\"")
+				ui_marshal_fail(marshal, "float: \"parent\" or \"screen\"")
 			}
 		case "anchor":
-			s, _ := lua.toodinstring(L, v)
+			text, _ := lua.toodinstring(L, value_index)
 			found := false
 			names := [UiAnchor]string {
 				.Center       = "center",
@@ -396,17 +396,17 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 				.Bottom_Right = "bottom_right",
 				.Cursor       = "cursor",
 			}
-			for n, a in names {
-				if n == s {
-					node.anchor = a
+			for anchor_name, anchor in names {
+				if anchor_name == text {
+					node.anchor = anchor
 					found = true
 				}
 			}
 			if !found {
-				ui_marshal_fail(m, fmt.tprintf("anchor: unknown '%s'", s))
+				ui_marshal_fail(marshal, fmt.tprintf("anchor: unknown '%s'", text))
 			}
 		case "align":
-			value, _ := lua.toodinstring(L, v)
+			value, _ := lua.toodinstring(L, value_index)
 			start, finish := "left", "right"
 			if kind == .Row {
 				start, finish = "top", "bottom"
@@ -419,7 +419,7 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			case finish:
 				node.align = .End
 			case:
-				ui_marshal_fail(m, fmt.tprintf("align: %s takes %s, center or %s, not '%s'", ui_kind_names[kind], start, finish, value))
+				ui_marshal_fail(marshal, fmt.tprintf("align: %s takes %s, center or %s, not '%s'", ui_kind_names[kind], start, finish, value))
 			}
 			if kind == .Text {
 				node.text_align = node.align
@@ -427,133 +427,133 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			}
 		case "scope":
 			scopes := make([dynamic]string)
-			if lua.type(L, v) == .STRING {
-				s, _ := lua.toodinstring(L, v)
-				append(&scopes, strings.clone(s))
-			} else if lua.type(L, v) == .TABLE {
-				for k in ui_positional_keys(L, v) {
-					lua.rawgeti(L, v, lua.Integer(k))
-					s, _ := lua.toodinstring(L, -1)
-					append(&scopes, strings.clone(s))
+			if lua.type(L, value_index) == .STRING {
+				text, _ := lua.toodinstring(L, value_index)
+				append(&scopes, strings.clone(text))
+			} else if lua.type(L, value_index) == .TABLE {
+				for slot in ui_positional_keys(L, value_index) {
+					lua.rawgeti(L, value_index, lua.Integer(slot))
+					text, _ := lua.toodinstring(L, -1)
+					append(&scopes, strings.clone(text))
 					lua.pop(L, 1)
 				}
 			} else {
-				ui_marshal_fail(m, "scope: a scope name or a list of names")
+				ui_marshal_fail(marshal, "scope: a scope name or a list of names")
 			}
 			node.scope = scopes[:]
 			for scope in scopes {
 				if scope == "editor" && kind != .Editor {
-					ui_marshal_fail(m, "scope 'editor' only goes on an editor node")
+					ui_marshal_fail(marshal, "scope 'editor' only goes on an editor node")
 				}
-				ui_scope_check(m.editor, scope)
+				ui_scope_check(marshal.editor, scope)
 			}
 		case "on":
-			if lua.type(L, v) != .TABLE {
-				ui_marshal_fail(m, "on: table of handlers expected")
+			if lua.type(L, value_index) != .TABLE {
+				ui_marshal_fail(marshal, "on: table of handlers expected")
 				break
 			}
 			lua.pushnil(L)
-			for lua.next(L, v) != 0 {
+			for lua.next(L, value_index) != 0 {
 				if lua.type(L, -2) != .STRING {
-					ui_marshal_fail(m, "on: handlers are named by event")
+					ui_marshal_fail(marshal, "on: handlers are named by event")
 					lua.pop(L, 1)
 					continue
 				}
 				ev_name, _ := lua.toodinstring(L, -2)
 				found := false
-				for n, e in ui_event_names {
-					if n == ev_name {
+				for anchor_name, event in ui_event_names {
+					if anchor_name == ev_name {
 						found = true
 						if lua.type(L, -1) != .FUNCTION {
-							ui_marshal_fail(m, fmt.tprintf("on.%s: function expected", n))
+							ui_marshal_fail(marshal, fmt.tprintf("on.%s: function expected", anchor_name))
 						} else {
 							lua.pushvalue(L, -1)
-							node.handlers[e] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+							node.handlers[event] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
 						}
 					}
 				}
 				if !found {
-					ui_marshal_fail(m, fmt.tprintf("on: unknown event '%s'", ev_name))
+					ui_marshal_fail(marshal, fmt.tprintf("on: unknown event '%s'", ev_name))
 				}
 				lua.pop(L, 1)
 			}
 		case "separator":
-			node.separator = bool(lua.toboolean(L, v))
+			node.separator = bool(lua.toboolean(L, value_index))
 		case "border":
-			node.border = bool(lua.toboolean(L, v))
+			node.border = bool(lua.toboolean(L, value_index))
 		case "wrap":
-			node.wrap = bool(lua.toboolean(L, v))
+			node.wrap = bool(lua.toboolean(L, value_index))
 			node.wrap_set = true
 		case "line_numbers":
-			node.line_numbers = bool(lua.toboolean(L, v))
+			node.line_numbers = bool(lua.toboolean(L, value_index))
 		case "syntax":
-			node.syntax = bool(lua.toboolean(L, v))
+			node.syntax = bool(lua.toboolean(L, value_index))
 		case "readonly":
-			node.readonly = bool(lua.toboolean(L, v))
+			node.readonly = bool(lua.toboolean(L, value_index))
 		case "highlight_style":
-			node.highlight_style = ui_marshal_style(m, v, name)
+			node.highlight_style = ui_marshal_style(marshal, value_index, name)
 		case "current_line_style":
-			node.current_line = ui_marshal_style(m, v, name)
+			node.current_line = ui_marshal_style(marshal, value_index, name)
 		case "buffer":
 			id := 0
-			if lua.type(L, v) == .TABLE {
-				id, _ = api_field_int(L, v, "id")
-			} else if lua.isinteger(L, v) {
-				id = int(lua.tointeger(L, v))
+			if lua.type(L, value_index) == .TABLE {
+				id, _ = api_field_int(L, value_index, "id")
+			} else if lua.isinteger(L, value_index) {
+				id = int(lua.tointeger(L, value_index))
 			}
-			if ui_buffer(m.editor, u64(id)) == nil {
-				ui_marshal_fail(m, "buffer: an open buffer (qed.buf.create or qed.buf.get) expected")
+			if ui_buffer(marshal.editor, u64(id)) == nil {
+				ui_marshal_fail(marshal, "buffer: an open buffer (qed.buf.create or qed.buf.get) expected")
 			}
 			node.buffer = u64(id)
 		case "header":
-			if _, is_node := ui_node_kind(L, v); !is_node {
-				ui_marshal_fail(m, "header: node expected")
+			if _, is_node := ui_node_kind(L, value_index); !is_node {
+				ui_marshal_fail(marshal, "header: node expected")
 				break
 			}
-			node.header = ui_marshal(m, v, depth + 1)
+			node.header = ui_marshal(marshal, value_index, depth + 1)
 			if node.header != nil && node.header.float != .None {
-				ui_marshal_fail(m, "header: a floating node cannot be a header")
+				ui_marshal_fail(marshal, "header: a floating node cannot be a header")
 			}
 		case "data":
-			list, gone := api_ui_list_lookup(L, m.editor, v)
+			list, gone := api_ui_list_lookup(L, marshal.editor, value_index)
 			if list == nil {
-				ui_marshal_fail(m, "data: the list is gone" if gone else "data: qed.list expected")
+				ui_marshal_fail(marshal, "data: the list is gone" if gone else "data: qed.list expected")
 				break
 			}
 			node.list = list.id
-			lua.pushvalue(L, v)
+			lua.pushvalue(L, value_index)
 			node.list_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
 		case "item":
-			if lua.type(L, v) != .FUNCTION {
-				ui_marshal_fail(m, "item: function(record) -> node expected")
+			if lua.type(L, value_index) != .FUNCTION {
+				ui_marshal_fail(marshal, "item: function(record) -> node expected")
 				break
 			}
-			lua.pushvalue(L, v)
+			lua.pushvalue(L, value_index)
 			node.item_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
 		}
 		lua.pop(L, 1)
 	}
 	if kind == .Text {
-		ui_marshal_spans(m, node, idx, {}, 0)
+		ui_marshal_spans(marshal, node, idx, {}, 0)
 		return node
 	}
 	laid := 0
 	seen_keys := make(map[string]bool, 8, context.temp_allocator)
-	for k in ui_positional_keys(L, idx) {
-		lua.rawgeti(L, idx, lua.Integer(k))
-		child := ui_marshal(m, -1, depth + 1)
+	for slot in ui_positional_keys(L, idx) {
+		lua.rawgeti(L, idx, lua.Integer(slot))
+		child := ui_marshal(marshal, -1, depth + 1)
 		lua.pop(L, 1)
 		if child == nil {
 			continue
 		}
 		if child.key != "" {
 			if seen_keys[child.key] {
-				ui_marshal_fail(m, fmt.tprintf("duplicate key '%s' among siblings", child.key))
+				ui_marshal_fail(marshal, fmt.tprintf("duplicate key '%s' among siblings", child.key))
 			}
 			seen_keys[child.key] = true
 		}
 		append(&node.children, child)
-		append(&node.child_slots, k)
+		append(&node.child_slots, slot)
 		if child.float == .None {
 			laid += 1
 		}
@@ -562,26 +562,26 @@ ui_marshal :: proc(m: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 	#partial switch kind {
 	case .Box, .Scroll:
 		if laid != 1 {
-			ui_marshal_fail(m, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
+			ui_marshal_fail(marshal, fmt.tprintf("%s: exactly one laid-out child expected, got %d", ui_kind_names[kind], laid))
 		}
 	case .Editor, .Virtual_Column:
 		limit = 0
 	case .Outlet:
 		if len(node.children) > 0 {
-			ui_marshal_fail(m, "outlet: no children (mount into it)")
+			ui_marshal_fail(marshal, "outlet: no children (mount into it)")
 		}
 		if node.id == "" {
-			ui_marshal_fail(m, "outlet: id expected")
+			ui_marshal_fail(marshal, "outlet: id expected")
 		}
 	}
 	if limit == 0 && laid > 0 {
-		ui_marshal_fail(m, fmt.tprintf("%s: only floating children allowed", ui_kind_names[kind]))
+		ui_marshal_fail(marshal, fmt.tprintf("%s: only floating children allowed", ui_kind_names[kind]))
 	}
 	if kind == .Virtual_Column && (node.list == 0 || node.item_ref == 0) {
-		ui_marshal_fail(m, "virtual_column: data and item expected")
+		ui_marshal_fail(marshal, "virtual_column: data and item expected")
 	}
 	if kind == .Editor && node.buffer == 0 {
-		ui_marshal_fail(m, "editor: buffer expected")
+		ui_marshal_fail(marshal, "editor: buffer expected")
 	}
 	return node
 }
@@ -605,31 +605,31 @@ ui_scope_check :: proc(editor: ^Editor, scope: string) {
 }
 
 ui_marshal_tree :: proc(L: ^lua.State, editor: ^Editor, owner: string, idx: c.int, replacing: u64) -> (^UiNode, string) {
-	m := UiMarshal{L = L, editor = editor, owner = owner}
-	m.ids = make([dynamic]string, context.temp_allocator)
-	root := ui_marshal(&m, idx, 0)
-	if m.err == "" {
+	marshal := UiMarshal{L = L, editor = editor, owner = owner}
+	marshal.ids = make([dynamic]string, context.temp_allocator)
+	root := ui_marshal(&marshal, idx, 0)
+	if marshal.err == "" {
 		ui_resolve(editor)
 		seen := make(map[string]bool, 16, context.temp_allocator)
-		for id in m.ids {
+		for id in marshal.ids {
 			if seen[id] {
-				m.err = fmt.tprintf("duplicate id '%s'", id)
+				marshal.err = fmt.tprintf("duplicate id '%s'", id)
 				break
 			}
 			seen[id] = true
 			if ui_is_layer(id) {
-				m.err = fmt.tprintf("id '%s' is a layer name", id)
+				marshal.err = fmt.tprintf("id '%s' is a layer name", id)
 				break
 			}
 			if other := ui_find(&editor.ui, fmt.tprintf("#%s/%s", owner, id)); other != nil && other.mount != replacing {
-				m.err = fmt.tprintf("duplicate id '%s' (already in the tree)", id)
+				marshal.err = fmt.tprintf("duplicate id '%s' (already in the tree)", id)
 				break
 			}
 		}
 	}
-	if m.err != "" {
+	if marshal.err != "" {
 		ui_node_free(editor, root)
-		return nil, m.err
+		return nil, marshal.err
 	}
 	return root, ""
 }
@@ -639,8 +639,8 @@ qed_ui_mount :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	editor := entry.editor
 	outlet := api_string(L, 1)
-	pl := api_loaded(L, editor)
-	root, err := ui_marshal_tree(L, editor, plugin_name_intern(&editor.plugins, pl.name), 2, 0)
+	plugin := api_loaded(L, editor)
+	root, err := ui_marshal_tree(L, editor, plugin_name_intern(&editor.plugins, plugin.name), 2, 0)
 	if root == nil {
 		return plugin_raise(L, err)
 	}
@@ -692,19 +692,19 @@ qed_ui_node :: proc "c" (L: ^lua.State) -> c.int {
 	lua.createtable(L, 0, len(ui_node_ref_methods) + 1)
 	lua.pushvalue(L, 1)
 	lua.setfield(L, -2, "id")
-	for m in ui_node_ref_methods {
+	for method in ui_node_ref_methods {
 		lua.pushvalue(L, lua.upvalueindex(1))
 		lua.pushvalue(L, 1)
-		lua.pushcclosure(L, m.func, 2)
-		lua.setfield(L, -2, m.name)
+		lua.pushcclosure(L, method.func, 2)
+		lua.setfield(L, -2, method.name)
 	}
 	return 1
 }
 
 ui_ref_identity :: proc(L: ^lua.State) -> string {
 	id, _ := lua.toodinstring(L, lua.upvalueindex(2))
-	pl := api_loaded(L, plugin_entry(L).editor)
-	return fmt.tprintf("#%s/%s", pl.name, id)
+	plugin := api_loaded(L, plugin_entry(L).editor)
+	return fmt.tprintf("#%s/%s", plugin.name, id)
 }
 
 qed_ui_ref_focus :: proc "c" (L: ^lua.State) -> c.int {
@@ -785,8 +785,8 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 			delete(state.highlighted)
 			state.highlighted = ""
 			if lua.type(L, -1) == .STRING || lua.type(L, -1) == .NUMBER {
-				s, _ := lua.toodinstring(L, -1)
-				state.highlighted = strings.clone(s)
+				text, _ := lua.toodinstring(L, -1)
+				state.highlighted = strings.clone(text)
 				state.reveal = true
 			}
 		case "offset":
@@ -856,29 +856,29 @@ ui_handler_c :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 ui_handler_call :: proc(editor: ^Editor, owner: string, ref: i32, args: UiHandlerArgs) -> bool {
-	p := &editor.plugins
-	if p.L == nil || ref == 0 {
+	plugins := &editor.plugins
+	if plugins.L == nil || ref == 0 {
 		return false
 	}
 	args := args
-	lua.pushcfunction(p.L, ui_handler_c)
-	lua.pushinteger(p.L, lua.Integer(ref))
-	lua.pushlightuserdata(p.L, &args)
-	p.resumes += 1
-	prev_slice := plugin_slice_begin(p, .When)
+	lua.pushcfunction(plugins.L, ui_handler_c)
+	lua.pushinteger(plugins.L, lua.Integer(ref))
+	lua.pushlightuserdata(plugins.L, &args)
+	plugins.resumes += 1
+	prev_slice := plugin_slice_begin(plugins, .When)
 	ok, msg, tb := plugin_call(editor, 2, 1)
 	if plugin_slice_end(editor, prev_slice, owner, .When, "ui handler") && ok {
-		lua.pop(p.L, 1)
+		lua.pop(plugins.L, 1)
 		ok, msg, tb = false, fmt.tprintf("ui handler exceeded its %.0f ms budget", plugin_budget(.When).hard_ms), ""
 	}
 	if !ok {
-		if pl := plugin_find(p, owner); pl != nil {
-			plugin_error(editor, pl, msg, tb, false)
+		if plugin := plugin_find(plugins, owner); plugin != nil {
+			plugin_error(editor, plugin, msg, tb, false)
 		}
 		return false
 	}
-	handled := bool(lua.toboolean(p.L, -1))
-	lua.pop(p.L, 1)
+	handled := bool(lua.toboolean(plugins.L, -1))
+	lua.pop(plugins.L, 1)
 	return handled
 }
 
@@ -894,35 +894,35 @@ UiItemBuild :: struct {
 ui_item_build_c :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
 	context = entry.ctx
-	b := (^UiItemBuild)(lua.touserdata(L, 1))
-	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(b.vc.item_ref))
-	ui_list_record_push(L, b.editor, b.list, b.pos)
+	build := (^UiItemBuild)(lua.touserdata(L, 1))
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(build.vc.item_ref))
+	ui_list_record_push(L, build.editor, build.list, build.pos)
 	lua.call(L, 1, 1)
-	m := UiMarshal{L = L, editor = b.editor, owner = b.vc.owner}
-	m.ids = make([dynamic]string, context.temp_allocator)
-	node := ui_marshal(&m, -1, 0)
-	if m.err == "" && len(m.ids) > 0 {
-		m.err = "item nodes cannot carry an id (use key)"
+	marshal := UiMarshal{L = L, editor = build.editor, owner = build.vc.owner}
+	marshal.ids = make([dynamic]string, context.temp_allocator)
+	node := ui_marshal(&marshal, -1, 0)
+	if marshal.err == "" && len(marshal.ids) > 0 {
+		marshal.err = "item nodes cannot carry an id (use key)"
 	}
-	if m.err != "" {
-		ui_node_free(b.editor, node)
-		b.err = strings.clone(m.err, context.temp_allocator)
+	if marshal.err != "" {
+		ui_node_free(build.editor, node)
+		build.err = strings.clone(marshal.err, context.temp_allocator)
 		return 0
 	}
-	b.node = node
+	build.node = node
 	return 0
 }
 
 ui_item_build :: proc(editor: ^Editor, vc: ^UiNode, list: ^UiList, pos: int) -> ^UiNode {
-	p := &editor.plugins
-	if p.L == nil {
+	plugins := &editor.plugins
+	if plugins.L == nil {
 		return nil
 	}
 	build := UiItemBuild{editor = editor, vc = vc, list = list, pos = pos}
-	lua.pushcfunction(p.L, ui_item_build_c)
-	lua.pushlightuserdata(p.L, &build)
-	p.resumes += 1
-	prev_slice := plugin_slice_begin(p, .When)
+	lua.pushcfunction(plugins.L, ui_item_build_c)
+	lua.pushlightuserdata(plugins.L, &build)
+	plugins.resumes += 1
+	prev_slice := plugin_slice_begin(plugins, .When)
 	ok, msg, tb := plugin_call(editor, 1, 0)
 	plugin_slice_end(editor, prev_slice, vc.owner, .When, "ui item")
 	editor.ui.builds += 1
@@ -930,8 +930,8 @@ ui_item_build :: proc(editor: ^Editor, vc: ^UiNode, list: ^UiList, pos: int) -> 
 		if !ok {
 			build.err = msg
 		}
-		if pl := plugin_find(p, vc.owner); pl != nil {
-			plugin_error(editor, pl, fmt.tprintf("item: %s", build.err), tb, false)
+		if plugin := plugin_find(plugins, vc.owner); plugin != nil {
+			plugin_error(editor, plugin, fmt.tprintf("item: %s", build.err), tb, false)
 		}
 		node := new(UiNode)
 		node.kind = .Text
@@ -967,9 +967,9 @@ qed_buf_create :: proc "c" (L: ^lua.State) -> c.int {
 	if !internal {
 		return plugin_raise(L, "qed.buf.create: only internal buffers exist so far ({internal = true})")
 	}
-	pl := api_loaded(L, editor)
-	b := ui_internal_create(editor, plugin_name_intern(&editor.plugins, pl.name))
-	lua.pushinteger(L, lua.Integer(b.id))
+	plugin := api_loaded(L, editor)
+	buffer := ui_internal_create(editor, plugin_name_intern(&editor.plugins, plugin.name))
+	lua.pushinteger(L, lua.Integer(buffer.id))
 	return 1
 }
 
@@ -985,8 +985,8 @@ qed_buf_on :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	p := &editor.plugins
-	b, _ := api_buf(L, editor, 1)
+	plugins := &editor.plugins
+	buffer, _ := api_buf(L, editor, 1)
 	name := api_string(L, 2)
 	if name != "change" {
 		lua.L_argerror(L, 2, "buffer event expected: \"change\"")
@@ -994,14 +994,14 @@ qed_buf_on :: proc "c" (L: ^lua.State) -> c.int {
 	if lua.type(L, 3) != .FUNCTION {
 		lua.L_argerror(L, 3, "function expected")
 	}
-	pl := api_loaded(L, editor)
-	id := plugin_next_id(p)
-	buf := b.id
+	plugin := api_loaded(L, editor)
+	id := plugin_next_id(plugins)
+	buf := buffer.id
 	lua.settop(L, 3)
 	api_handle_push(L, id, {{"remove", qed_hook_off}})
 	lua.pushvalue(L, 3)
 	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
-	append(&p.hooks, PluginHook{id = id, buf = buf, event = .Buf_Changed, owner = pl.name, ref = ref})
-	p.subs[.Buf_Changed] += 1
+	append(&plugins.hooks, PluginHook{id = id, buf = buf, event = .Buf_Changed, owner = plugin.name, ref = ref})
+	plugins.subs[.Buf_Changed] += 1
 	return 1
 }

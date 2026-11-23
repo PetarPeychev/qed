@@ -58,9 +58,9 @@ ui_list_find :: proc(ui: ^Ui, id: u64) -> ^UiList {
 	if id == 0 {
 		return nil
 	}
-	for l in ui.lists {
-		if l.id == id {
-			return l
+	for list in ui.lists {
+		if list.id == id {
+			return list
 		}
 	}
 	return nil
@@ -79,19 +79,19 @@ ui_list_free :: proc(editor: ^Editor, list: ^UiList) {
 	if L != nil && list.source_ref != 0 {
 		lua.L_unref(L, lua.REGISTRYINDEX, c.int(list.source_ref))
 	}
-	for r in list.records {
-		if L != nil && r.ref != 0 {
-			lua.L_unref(L, lua.REGISTRYINDEX, c.int(r.ref))
+	for record in list.records {
+		if L != nil && record.ref != 0 {
+			lua.L_unref(L, lua.REGISTRYINDEX, c.int(record.ref))
 		}
-		delete(r.key)
-		delete(r.sort_str)
+		delete(record.key)
+		delete(record.sort_str)
 	}
 	delete(list.records)
 	delete(list.positions)
 	delete(list.dependents)
-	for k, v in list.texts {
-		delete(k)
-		delete(v)
+	for key, value in list.texts {
+		delete(key)
+		delete(value)
 	}
 	delete(list.texts)
 	delete(list.matches)
@@ -100,8 +100,8 @@ ui_list_free :: proc(editor: ^Editor, list: ^UiList) {
 	delete(list.field)
 	delete(list.query)
 	if source := ui_list_find(&editor.ui, list.source); source != nil {
-		for d, i in source.dependents {
-			if d == list.id {
+		for dependent, i in source.dependents {
+			if dependent == list.id {
 				unordered_remove(&source.dependents, i)
 				break
 			}
@@ -112,9 +112,9 @@ ui_list_free :: proc(editor: ^Editor, list: ^UiList) {
 
 ui_list_remove_by_id :: proc(editor: ^Editor, id: u64) {
 	ui := &editor.ui
-	for l, i in ui.lists {
-		if l.id == id {
-			ui_list_free(editor, l)
+	for list, i in ui.lists {
+		if list.id == id {
+			ui_list_free(editor, list)
 			ordered_remove(&ui.lists, i)
 			return
 		}
@@ -124,13 +124,13 @@ ui_list_remove_by_id :: proc(editor: ^Editor, id: u64) {
 ui_list_reindex :: proc(list: ^UiList) {
 	clear(&list.positions)
 	if list.fuzzy {
-		for m, i in list.matches {
-			list.positions[m.key] = i
+		for match, i in list.matches {
+			list.positions[match.key] = i
 		}
 		return
 	}
-	for r, i in list.records {
-		list.positions[r.key] = i
+	for record, i in list.records {
+		list.positions[record.key] = i
 	}
 }
 
@@ -156,8 +156,8 @@ ui_list_record_rev :: proc(list: ^UiList, i: int) -> u64 {
 
 ui_list_changed :: proc(editor: ^Editor, list: ^UiList) {
 	list.rev += 1
-	for d in list.dependents {
-		if dep := ui_list_find(&editor.ui, d); dep != nil {
+	for dependent in list.dependents {
+		if dep := ui_list_find(&editor.ui, dependent); dep != nil {
 			dep.fuzzy_dirty = true
 		}
 	}
@@ -177,21 +177,21 @@ ui_list_settle_all :: proc(editor: ^Editor, list: ^UiList) {
 	list.fuzzy_dirty = false
 	list.source_rev = source.rev
 	clear(&list.matches)
-	for r, i in source.records {
-		text := list.texts[r.key] or_else ""
+	for record, i in source.records {
+		text := list.texts[record.key] or_else ""
 		if list.query == "" {
-			append(&list.matches, UiFuzzyMatch{r.key, 0, i, r.rev})
+			append(&list.matches, UiFuzzyMatch{record.key, 0, i, record.rev})
 			continue
 		}
 		if score, ok := fuzzy_match(list.query, text); ok {
-			append(&list.matches, UiFuzzyMatch{r.key, score, i, r.rev})
+			append(&list.matches, UiFuzzyMatch{record.key, score, i, record.rev})
 		}
 	}
-	slice.sort_by(list.matches[:], proc(a, b: UiFuzzyMatch) -> bool {
-		if a.score != b.score {
-			return a.score > b.score
+	slice.sort_by(list.matches[:], proc(left, right: UiFuzzyMatch) -> bool {
+		if left.score != right.score {
+			return left.score > right.score
 		}
-		return a.order < b.order
+		return left.order < right.order
 	})
 	ui_list_reindex(list)
 	list.rev += 1
@@ -332,15 +332,15 @@ qed_list_new :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushnil(L)
 	for lua.next(L, 1) != 0 {
-		k, _ := lua.toodinstring(L, -2)
-		if lua.type(L, -2) != .STRING || k != "key" {
-			plugin_raise(L, fmt.tprintf("qed.list.new: unknown field '%s'", k))
+		field_name, _ := lua.toodinstring(L, -2)
+		if lua.type(L, -2) != .STRING || field_name != "key" {
+			plugin_raise(L, fmt.tprintf("qed.list.new: unknown field '%s'", field_name))
 		}
 		lua.pop(L, 1)
 	}
-	pl := api_loaded(L, editor)
+	plugin := api_loaded(L, editor)
 	lua.settop(L, 0)
-	list := api_ui_list_push(L, editor, pl.name, false)
+	list := api_ui_list_push(L, editor, plugin.name, false)
 	list.key_field = strings.clone(key)
 	return 1
 }
@@ -355,8 +355,8 @@ ui_list_record_key :: proc(L: ^lua.State, list: ^UiList, idx: c.int) -> string {
 	defer lua.pop(L, 1)
 	#partial switch lua.type(L, -1) {
 	case .STRING:
-		s, _ := lua.toodinstring(L, -1)
-		return strings.clone(s, context.temp_allocator)
+		text, _ := lua.toodinstring(L, -1)
+		return strings.clone(text, context.temp_allocator)
 	case .NUMBER:
 		if lua.isinteger(L, -1) {
 			return fmt.tprintf("%d", lua.tointeger(L, -1))
@@ -367,7 +367,7 @@ ui_list_record_key :: proc(L: ^lua.State, list: ^UiList, idx: c.int) -> string {
 	return ""
 }
 
-ui_list_sort_value :: proc(L: ^lua.State, list: ^UiList, idx: c.int, r: ^UiListRecord) {
+ui_list_sort_value :: proc(L: ^lua.State, list: ^UiList, idx: c.int, record: ^UiListRecord) {
 	if list.sort_field == "" {
 		return
 	}
@@ -375,40 +375,40 @@ ui_list_sort_value :: proc(L: ^lua.State, list: ^UiList, idx: c.int, r: ^UiListR
 	lua.pushodinstring(L, list.sort_field)
 	lua.rawget(L, idx)
 	defer lua.pop(L, 1)
-	delete(r.sort_str)
-	r.sort_str = ""
+	delete(record.sort_str)
+	record.sort_str = ""
 	#partial switch lua.type(L, -1) {
 	case .NUMBER:
-		r.sort_kind = .Number
-		r.sort_num = f64(lua.tonumberx(L, -1, nil))
+		record.sort_kind = .Number
+		record.sort_num = f64(lua.tonumberx(L, -1, nil))
 	case .STRING:
-		s, _ := lua.toodinstring(L, -1)
-		r.sort_kind = .String
-		r.sort_str = strings.clone(s)
+		text, _ := lua.toodinstring(L, -1)
+		record.sort_kind = .String
+		record.sort_str = strings.clone(text)
 	case:
-		r.sort_kind = .None
+		record.sort_kind = .None
 	}
 }
 
-ui_list_less :: proc(list: ^UiList, a, b: UiListRecord) -> bool {
+ui_list_less :: proc(list: ^UiList, left, right: UiListRecord) -> bool {
 	less := false
-	if a.sort_kind != b.sort_kind {
-		less = a.sort_kind < b.sort_kind
-	} else if a.sort_kind == .Number {
-		less = a.sort_num < b.sort_num
+	if left.sort_kind != right.sort_kind {
+		less = left.sort_kind < right.sort_kind
+	} else if left.sort_kind == .Number {
+		less = left.sort_num < right.sort_num
 	} else {
-		less = a.sort_str < b.sort_str
+		less = left.sort_str < right.sort_str
 	}
 	if list.sort_reverse {
-		return !less && (a.sort_kind != b.sort_kind || a.sort_num != b.sort_num || a.sort_str != b.sort_str)
+		return !less && (left.sort_kind != right.sort_kind || left.sort_num != right.sort_num || left.sort_str != right.sort_str)
 	}
 	return less
 }
 
 ui_list_texts_update :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, key: string, idx: c.int) {
 	idx := lua.absindex(L, idx)
-	for d in list.dependents {
-		dep := ui_list_find(&editor.ui, d)
+	for dependent in list.dependents {
+		dep := ui_list_find(&editor.ui, dependent)
 		if dep == nil {
 			continue
 		}
@@ -441,20 +441,20 @@ ui_list_store :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, idx: c.int,
 	if key in list.positions {
 		plugin_raise(L, fmt.tprintf("duplicate key '%s'", key))
 	}
-	r := UiListRecord{}
-	ui_list_sort_value(L, list, idx, &r)
+	record := UiListRecord{}
+	ui_list_sort_value(L, list, idx, &record)
 	ui_list_texts_update(L, editor, list, key, idx)
 	lua.pushvalue(L, idx)
-	r.ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
-	r.key = strings.clone(key)
+	record.ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	record.key = strings.clone(key)
 	list.record_seq += 1
-	r.rev = list.record_seq
+	record.rev = list.record_seq
 	pos := at
 	if list.sort_field != "" {
 		lo, hi := 0, len(list.records)
 		for lo < hi {
 			mid := (lo + hi) / 2
-			if ui_list_less(list, r, list.records[mid]) {
+			if ui_list_less(list, record, list.records[mid]) {
 				hi = mid
 			} else {
 				lo = mid + 1
@@ -464,12 +464,12 @@ ui_list_store :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, idx: c.int,
 	}
 	pos = clamp(pos, 0, len(list.records))
 	if pos == len(list.records) {
-		append(&list.records, r)
+		append(&list.records, record)
 	} else {
 		if len(list.records) == cap(list.records) {
 			reserve(&list.records, 2 * cap(list.records) + 8)
 		}
-		inject_at(&list.records, pos, r)
+		inject_at(&list.records, pos, record)
 	}
 	for i in pos ..< len(list.records) {
 		list.positions[list.records[i].key] = i
@@ -505,8 +505,8 @@ qed_list_insert :: proc "c" (L: ^lua.State) -> c.int {
 ui_list_key_arg :: proc(L: ^lua.State, idx: c.int) -> string {
 	#partial switch lua.type(L, idx) {
 	case .STRING:
-		s, _ := lua.toodinstring(L, idx)
-		return strings.clone(s, context.temp_allocator)
+		text, _ := lua.toodinstring(L, idx)
+		return strings.clone(text, context.temp_allocator)
 	case .NUMBER:
 		if lua.isinteger(L, idx) {
 			return fmt.tprintf("%d", lua.tointeger(L, idx))
@@ -549,13 +549,13 @@ qed_list_set :: proc "c" (L: ^lua.State) -> c.int {
 	list.records[pos].rev = list.record_seq
 	ui_list_texts_update(L, editor, list, key, record)
 	if list.sort_field != "" {
-		r := list.records[pos]
+		moved := list.records[pos]
 		ordered_remove(&list.records, pos)
-		ui_list_sort_value(L, list, record, &r)
+		ui_list_sort_value(L, list, record, &moved)
 		lo, hi := 0, len(list.records)
 		for lo < hi {
 			mid := (lo + hi) / 2
-			if ui_list_less(list, r, list.records[mid]) {
+			if ui_list_less(list, moved, list.records[mid]) {
 				hi = mid
 			} else {
 				lo = mid + 1
@@ -564,7 +564,7 @@ qed_list_set :: proc "c" (L: ^lua.State) -> c.int {
 		if len(list.records) == cap(list.records) {
 			reserve(&list.records, 2 * cap(list.records) + 8)
 		}
-		inject_at(&list.records, lo, r)
+		inject_at(&list.records, lo, moved)
 		ui_list_reindex(list)
 	}
 	ui_list_changed(editor, list)
@@ -583,18 +583,18 @@ qed_list_remove :: proc "c" (L: ^lua.State) -> c.int {
 	if !ok {
 		return 0
 	}
-	r := list.records[pos]
-	lua.L_unref(L, lua.REGISTRYINDEX, c.int(r.ref))
+	record := list.records[pos]
+	lua.L_unref(L, lua.REGISTRYINDEX, c.int(record.ref))
 	ordered_remove(&list.records, pos)
-	for d in list.dependents {
-		if dep := ui_list_find(&editor.ui, d); dep != nil {
-			k, v := delete_key(&dep.texts, r.key)
-			delete(k)
-			delete(v)
+	for dependent in list.dependents {
+		if dep := ui_list_find(&editor.ui, dependent); dep != nil {
+			text_key, text_value := delete_key(&dep.texts, record.key)
+			delete(text_key)
+			delete(text_value)
 		}
 	}
-	delete(r.key)
-	delete(r.sort_str)
+	delete(record.key)
+	delete(record.sort_str)
 	ui_list_reindex(list)
 	ui_list_changed(editor, list)
 	return 0
@@ -606,17 +606,17 @@ qed_list_clear :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	list := api_ui_list_self(L, editor)
 	ui_list_mutable(L, list)
-	for r in list.records {
-		lua.L_unref(L, lua.REGISTRYINDEX, c.int(r.ref))
-		delete(r.key)
-		delete(r.sort_str)
+	for record in list.records {
+		lua.L_unref(L, lua.REGISTRYINDEX, c.int(record.ref))
+		delete(record.key)
+		delete(record.sort_str)
 	}
 	clear(&list.records)
-	for d in list.dependents {
-		if dep := ui_list_find(&editor.ui, d); dep != nil {
-			for k, v in dep.texts {
-				delete(k)
-				delete(v)
+	for dependent in list.dependents {
+		if dep := ui_list_find(&editor.ui, dependent); dep != nil {
+			for text_key, text_value in dep.texts {
+				delete(text_key)
+				delete(text_value)
 			}
 			clear(&dep.texts)
 		}
@@ -737,14 +737,14 @@ qed_list_sort :: proc "c" (L: ^lua.State) -> c.int {
 	delete(list.sort_field)
 	list.sort_field = strings.clone(field)
 	list.sort_reverse = reverse
-	for &r in list.records {
-		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(r.ref))
-		ui_list_sort_value(L, list, -1, &r)
+	for &record in list.records {
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(record.ref))
+		ui_list_sort_value(L, list, -1, &record)
 		lua.pop(L, 1)
 	}
 	context.user_ptr = list
-	slice.stable_sort_by(list.records[:], proc(a, b: UiListRecord) -> bool {
-		return ui_list_less((^UiList)(context.user_ptr), a, b)
+	slice.stable_sort_by(list.records[:], proc(left, right: UiListRecord) -> bool {
+		return ui_list_less((^UiList)(context.user_ptr), left, right)
 	})
 	ui_list_reindex(list)
 	ui_list_changed(editor, list)
@@ -787,24 +787,24 @@ qed_fuzzy_list :: proc "c" (L: ^lua.State) -> c.int {
 	if !has || field == "" {
 		lua.L_argerror(L, 2, "field: the record field to match")
 	}
-	pl := api_loaded(L, editor)
+	plugin := api_loaded(L, editor)
 	lua.settop(L, 1)
 	source_ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
-	list := api_ui_list_push(L, editor, pl.name, true)
+	list := api_ui_list_push(L, editor, plugin.name, true)
 	list.source = source.id
 	list.source_ref = source_ref
 	list.field = strings.clone(field)
 	list.fuzzy_dirty = true
 	append(&source.dependents, list.id)
-	for r in source.records {
-		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(r.ref))
+	for record in source.records {
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(record.ref))
 		lua.pushodinstring(L, field)
 		lua.rawget(L, -2)
 		text := ""
 		if lua.type(L, -1) == .STRING {
 			text, _ = lua.toodinstring(L, -1)
 		}
-		list.texts[strings.clone(r.key)] = strings.clone(text)
+		list.texts[strings.clone(record.key)] = strings.clone(text)
 		lua.pop(L, 2)
 	}
 	return 1

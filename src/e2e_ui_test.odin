@@ -60,9 +60,9 @@ e2e_ui_palette_filters_and_runs :: proc(t: ^testing.T) {
 }
 
 ut_run :: proc(e: ^E2E, bare: string) {
-	for cmd in e.ed.plugins.commands {
-		if cmd.bare == bare && cmd.owner == "uitest" {
-			plugin_command_run(&e.ed, cmd)
+	for command in e.ed.plugins.commands {
+		if command.bare == bare && command.owner == "uitest" {
+			plugin_command_run(&e.ed, command)
 		}
 	}
 	e2e_ui_settle(e)
@@ -254,9 +254,9 @@ end}`)
 }
 
 ut_run_owner :: proc(e: ^E2E, owner, bare: string) {
-	for cmd in e.ed.plugins.commands {
-		if cmd.bare == bare && cmd.owner == owner {
-			plugin_command_run(&e.ed, cmd)
+	for command in e.ed.plugins.commands {
+		if command.bare == bare && command.owner == owner {
+			plugin_command_run(&e.ed, command)
 		}
 	}
 	e2e_ui_settle(e)
@@ -294,8 +294,8 @@ e2e_ui_palette_fast_typing :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_new_ui(&e)
 	e2e_key(&e, .Ctrl_P, tb2.Mod.Ctrl)
-	for r in "wrap" {
-		e2e_step(&e, tb2.Event{type = .Key, ch = r})
+	for character in "wrap" {
+		e2e_step(&e, tb2.Event{type = .Key, ch = character})
 	}
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "Toggle Line Wrap") >= 0, "typing before a frame still filters")
