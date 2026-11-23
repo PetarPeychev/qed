@@ -63,7 +63,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 |---|---|---|
 | `column`, `row` | nodes | `gap`, `align`, `separator`, `highlight_style` (the child whose `key` is `highlighted`) |
 | `box` | exactly one laid out | `border`, `title` |
-| `scroll` | exactly one laid out | `header` (a laid-out node pinned above) |
+| `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (stays at the end while it is there) |
 | `text` | strings and spans `{fg =, bold =, "text", ...}` | `wrap` (by cluster), `align`; overflow clips with `…` |
 | `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly` |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
@@ -110,15 +110,21 @@ target.
 
 ## 7. Buffers
 
-Buffers are objects everywhere: `qed.buf.current()`, `qed.buf.list()`, `qed.open`, `qed.new_buf`, `ctx.buf`,
-buffer event arguments and `qed.set_root` info all give them (one interned object per buffer per plugin, so `==` and
-table keys work). `qed.buf` itself keeps only `create{internal = true}`, `get(id)`, `current()` and `list()`; every
-per-buffer call is a method: `buffer:text()`, `buffer:cursor()`, `buffer:insert(pos, text)`, ...,
-`buffer:on("change", fn) -> {remove}`, `buffer:close()` (frees an internal buffer, closes a file buffer like
-`qed.close`), and find: `buffer:find(query, {regex, case_sensitive}) -> index, count`, `buffer:find_step(direction)`,
-`buffer:find_replace(text, {all})`, `buffer:find_clear()` (core matches and highlights; one find at a time). Other
-APIs taking a buffer (`qed.edit`, `qed.jump`, `qed.deco.*`, `qed.close`) take objects. Internal buffers fire only
-per-buffer events, never `buf_changed`. A buffer object's methods carry the plugin that made it.
+Buffers are objects everywhere: `qed.buf.current()`, `qed.buf.list()`, `qed.open`, `qed.new_buf`, `ctx.buf`, buffer
+event and `buffer:on` handler arguments, pane items and `qed.set_root` info all give them, interned (one object per
+buffer, so `==` and table keys work across plugins). `qed.buf` keeps only `create{internal = true}`, `current()` and
+`list()`; every per-buffer call is a method (`buffer:text()`, `buffer:insert(pos, text)`, ...,
+`buffer:on("change", fn) -> {remove}`, `buffer:close()`). Methods belong to no plugin: the calling plugin is the owner
+(found from the calling code, else the running task), so an object handed to another plugin acts as that plugin.
+Every API taking a buffer takes an object; ids and `nil` are refused. Internal buffers fire only per-buffer events.
+
+Find: `local search = buffer:find(query, {regex, case_sensitive})` is a handle owned by the caller (closed on unload):
+`search:update(query, opts)`, `search:result()`, `search:step(direction)` (each returns index, count, capped, or
+`nil, "invalid pattern"`), `search:replace(text, {all}) -> replaced`, `search:close()`. Core matches (cap 5000),
+highlights every search in every view of its buffer, and rescans when the buffer changed.
+
+Messages: `qed.messages{levels = {debug, info, warn, error}, history, source} -> qed.List` is a core-fed list of log
+entries `{seq, level, source, text, time, seeded}`: new entries append, evicted ones leave.
 The global bus is `qed:on(event, fn)` / `qed:emit("<id>:<event>", data)`; `message` reports the message line.
 
 ## 8. Worked example: the command palette (`plugins/palette/init.lua`)
@@ -199,5 +205,6 @@ The full-screen column closes on an outside click; the box swallows clicks insid
 - Per-view editor state (cursor, wrap) instead of the buffer's.
 - List navigation helpers and the fuzzy span builder, once a second picker exists.
 - `qed.commands()`, `qed.fs.walk`, `qed.buffers()` returning `qed.List`; the palette listing the scope chain.
-- Deleting `qed.ui.open`, the remaining old panes (file tree, log, settings, terminal) and the old key matcher.
+- Deleting `qed.ui.open`, the remaining old panes (file tree, settings, plugins, pick/prompt/confirm, terminal, safety
+  dialogs) and the old key matcher.
 - Completion and hover as `cursor`-anchored plugin floats (they are core-drawn at the caret today).
