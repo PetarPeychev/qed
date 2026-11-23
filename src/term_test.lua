@@ -1,4 +1,4 @@
-local T = {}
+local tests = {}
 
 local function exited(name)
 	return function()
@@ -14,82 +14,82 @@ local function running(name)
 	end
 end
 
-function T.exit_code_and_event(t)
+function tests.exit_code_and_event(test)
 	local seen = {}
 	qed:on("term_exit", function(name, code) seen[#seen + 1] = name .. ":" .. code end)
-	t.eq(qed.term.create{name = "ex", cmd = "echo hi; exit 3"}, true)
-	t.wait(exited("ex"))
-	t.eq(qed.term.state("ex").code, 3, "exit code")
-	t.wait(function() return #seen == 1 end)
-	t.eq(seen[1], "ex:3")
-	t.eq(qed.term.state("ex").pid, nil, "no pid once exited")
+	test.eq(qed.term.create{name = "ex", cmd = "echo hi; exit 3"}, true)
+	test.wait(exited("ex"))
+	test.eq(qed.term.state("ex").code, 3, "exit code")
+	test.wait(function() return #seen == 1 end)
+	test.eq(seen[1], "ex:3")
+	test.eq(qed.term.state("ex").pid, nil, "no pid once exited")
 end
 
-function T.open_close_events(t)
+function tests.open_close_events(test)
 	local seen = {}
 	qed:on("term_open", function(name) seen[#seen + 1] = "open:" .. name end)
 	qed:on("term_close", function(name) seen[#seen + 1] = "close:" .. name end)
 	qed.term.create{name = "ev", cmd = "sleep 30"}
 	qed.term.restart("ev")
 	qed.term.close("ev")
-	t.wait(function() return #seen == 3 end)
-	t.eq(table.concat(seen, ","), "open:ev,open:ev,close:ev")
+	test.wait(function() return #seen == 3 end)
+	test.eq(table.concat(seen, ","), "open:ev,open:ev,close:ev")
 end
 
-function T.create_rules(t)
-	t.ok(not pcall(qed.term.create, {name = "shell", cmd = "true"}), "the default shell name is refused")
-	t.ok(not pcall(qed.term.create, {cmd = "true"}), "a name is required")
-	t.eq(qed.term.create{name = "live", cmd = "sleep 30"}, true)
+function tests.create_rules(test)
+	test.ok(not pcall(qed.term.create, {name = "shell", cmd = "true"}), "the default shell name is refused")
+	test.ok(not pcall(qed.term.create, {cmd = "true"}), "a name is required")
+	test.eq(qed.term.create{name = "live", cmd = "sleep 30"}, true)
 	local pid = qed.term.state("live").pid
 	local ok, err = qed.term.create{name = "live", cmd = "sleep 30"}
-	t.eq(ok, nil)
-	t.eq(err, "already running")
-	t.eq(qed.term.create{name = "live", cmd = "sleep 31", restart = true}, true)
-	t.ok(qed.term.state("live").running and qed.term.state("live").pid ~= pid, "restart = true replaces a live session")
-	t.eq(qed.term.state("nope"), nil)
-	for _, f in ipairs({qed.term.kill, qed.term.restart, qed.term.close}) do
-		t.ok(not pcall(f, "shell"), "plugins cannot kill, restart or close the shell")
+	test.eq(ok, nil)
+	test.eq(err, "already running")
+	test.eq(qed.term.create{name = "live", cmd = "sleep 31", restart = true}, true)
+	test.ok(qed.term.state("live").running and qed.term.state("live").pid ~= pid, "restart = true replaces a live session")
+	test.eq(qed.term.state("nope"), nil)
+	for _, call in ipairs({qed.term.kill, qed.term.restart, qed.term.close}) do
+		test.ok(not pcall(call, "shell"), "plugins cannot kill, restart or close the shell")
 	end
 	local _, serr = qed.plugin("terminal").show("nope")
-	t.eq(serr, "no such session")
+	test.eq(serr, "no such session")
 end
 
-function T.restart_kill_list_close(t)
+function tests.restart_kill_list_close(test)
 	local exits = 0
 	qed:on("term_exit", function() exits = exits + 1 end)
 	qed.term.create{name = "r", cmd = "sleep 30"}
 	local pid = qed.term.state("r").pid
-	t.ok(qed.term.restart("r"))
-	t.ok(qed.term.state("r").pid ~= pid, "restart respawns")
-	t.ok(qed.term.kill("r"))
-	t.eq(qed.term.state("r").running, false)
-	t.eq(qed.term.state("r").code, 137, "killed by SIGKILL")
-	t.wait(function() return exits == 1 end)
-	t.pump(50)
-	t.eq(exits, 1, "restart fires no term_exit, kill does")
+	test.ok(qed.term.restart("r"))
+	test.ok(qed.term.state("r").pid ~= pid, "restart respawns")
+	test.ok(qed.term.kill("r"))
+	test.eq(qed.term.state("r").running, false)
+	test.eq(qed.term.state("r").code, 137, "killed by SIGKILL")
+	test.wait(function() return exits == 1 end)
+	test.pump(50)
+	test.eq(exits, 1, "restart fires no term_exit, kill does")
 	local names = {}
 	for _, st in ipairs(qed.term.list()) do
 		names[#names + 1] = st.name
 	end
-	t.eq(table.concat(names, ","), "r")
+	test.eq(table.concat(names, ","), "r")
 	local _, nerr = qed.term.send("r", "x")
-	t.eq(nerr, "not running")
-	t.ok(qed.term.close("r"))
-	t.eq(#qed.term.list(), 0)
+	test.eq(nerr, "not running")
+	test.ok(qed.term.close("r"))
+	test.eq(#qed.term.list(), 0)
 end
 
-function T.cwd_env_send_show(t)
-	t.open("sub/x.txt", "x")
+function tests.cwd_env_send_show(test)
+	test.open("sub/x.txt", "x")
 	qed.term.create{name = "sh", cwd = "sub", env = {QED_T = "envval"}}
-	t.wait(running("sh"))
+	test.wait(running("sh"))
 	qed.term.send("sh", "echo \"$QED_T\" \"$PWD\" > out.txt; exit\r")
-	t.wait(exited("sh"), 5000)
+	test.wait(exited("sh"), 5000)
 	local out = qed.fs.read(qed.path.join(qed.root(), "sub/out.txt"))
-	t.eq(out, "envval " .. qed.path.join(qed.root(), "sub") .. "\n")
-	t.ok(qed.plugin("terminal").show("sh"))
-	t.wait(function() return t.editor().session == "sh" end)
+	test.eq(out, "envval " .. qed.path.join(qed.root(), "sub") .. "\n")
+	test.ok(qed.plugin("terminal").show("sh"))
+	test.wait(function() return test.editor().session == "sh" end)
 	qed.plugin("terminal").hide()
-	t.wait(function() return not t.editor().terminal end)
+	test.wait(function() return not test.editor().terminal end)
 end
 
-return T
+return tests
