@@ -2,17 +2,17 @@ qed-e2e snapshot 80x24 cursor hidden
 -- text
   1 # Release notes
   ┌─ notes.md ───────────────────────────────────────────────────────────────┐
-  │ Release notes                                                            │
-  │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │
-  │                                                                          │
-  │ Some bold text, some italic text and inline code.                        │
-  │                                                                          │
-  │ Features                                                                 │
-  │ ──────────────────────────────────────────────────────────────────────── │
- 1│                                                                          │
- 1│ • soft wrap                                                              │
- 1│ • file tree                                                              │
- 1│   ◦ nested item                                                          │e
+  │ Release notes                                                           ┃│
+  │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ┃│
+  │                                                                         ┃│
+  │ Some bold text, some italic text and inline code.                       ┃│
+  │                                                                         ┃│
+  │ Features                                                                ┃│
+  │ ─────────────────────────────────────────────────────────────────────── ┃│
+ 1│                                                                         ┃│
+ 1│ • soft wrap                                                             ┃│
+ 1│ • file tree                                                             ┃│
+ 1│   ◦ nested item                                                         ┃│e
   │                                                                          │
  1│ 1. first                                                                 │
  1│ 2. second                                                                │
@@ -28,12 +28,12 @@ qed-e2e snapshot 80x24 cursor hidden
 abbbcdeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 aaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
 aaffgggggggggggggfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
-aaffhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhffdd
+aaffhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhfffdd
 aaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
 aafffffffiiiiffffffffffffjjjjjjffffffffffkkkkkkkkkkkffffffffffffffffffffffffffdd
 aaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
 aaffggggggggffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
-aaffllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffdd
+aafflllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllfffdd
 aaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
 aaffhhffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
 aaffhhffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd

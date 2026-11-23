@@ -977,7 +977,9 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 		if buffer := ui_buffer(editor, node.buffer); buffer != nil {
 			height = len(buffer.lines)
 		}
-	case .Terminal, .Markdown:
+	case .Terminal:
+	case .Markdown:
+		height = len(ui_markdown_lines(ui_markdown_of(editor, node), avail_w))
 	case .Image:
 		if image := image_get(node.path); image != nil && image_enabled() {
 			width, height = image_cells(image.w, image.h, avail_w, avail_h, g_image_cell.x, g_image_cell.y)
@@ -1035,6 +1037,9 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 				continue
 			}
 			_, content_height := ui_measure_slot(editor, child, content.w, UI_UNBOUNDED)
+			if child.kind == .Markdown {
+				ui_markdown_resolve(ui_markdown_of(editor, child), ui_node_state(&editor.ui, child), state, content)
+			}
 			total := max(content_height, content.h)
 			max_offset := max(0, content_height - content.h)
 			if node.follow && state.at_end {

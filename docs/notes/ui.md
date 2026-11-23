@@ -75,16 +75,16 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `outlet` | none | `id` |
 | `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |
 | `image` | none | `path` (relative to the root); natural size from the pixel size and the cell size; `[image: name]` without graphics |
-| `markdown` | none | `text`, `dir` (relative links and images); rendered in slices, the last render stays up while a newer one runs |
+| (`qed.markdown.parse(text, opts)`) | none | the rendered document as one core node for a `scroll` (it reports its rows at the scroll width); opts are props: `id`, `dir`, `margin`, `on.link` |
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and
   paste insert, and the `editor` scope's core commands edit (`Editor: Left` ... `Dedent`, plus Undo, Redo, Copy,
   Cut, Paste, Select All borrowing the global binds). `scope = "editor"` on another node type raises.
-- `markdown`: focused, Up/Down/PgUp/PgDn/Space/Home/End scroll; the wheel scrolls; a link click fires
-  `on.link{target}`, an unhandled `#slug` scrolls to that heading. State: `scroll`, `rows`, `sources` (source rows
-  of the visible lines), `heading` (source row of the last `heading` set). `set_state{scroll}`,
-  `{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the document
-  allows) or `{heading = slug}`; a pending request resolves at the next render.
+- `qed.markdown.parse`: rendered in slices, the last render stays up while a newer one runs; the holding scroll owns
+  offset, bar and wheel. A link click fires `on.link{target}`; an unhandled `#slug` scrolls to the heading. State:
+  `rows`, `sources` (source rows of the visible lines), `heading` (source row of the last `heading` set).
+  `set_state{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the
+  document allows) or `{heading = slug}` moves the holding scroll, now when shown, else at the next layout.
 - `virtual_column`: `item` runs in a batched step between layout passes, only for records coming into view, cached
   per record until that record changes, the query changes, or `data`/`item` identity changes on `update`. Items are
   one row; items far outside the window are evicted. An `item` error draws an error row.

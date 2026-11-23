@@ -93,9 +93,6 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 			term_key(session, ev)
 			return
 		}
-		if node.kind == .Markdown && ui_markdown_key(editor, node, chord) {
-			return
-		}
 		if node.kind == .Editor && text != "" && !node.readonly && ui_node_edits(node) {
 			ui_editor_type(editor, node, ev.ch)
 			return
@@ -312,10 +309,6 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 			return true
 		}
 	case .Markdown:
-		if wheel {
-			ui_markdown_scroll(editor, node, step)
-			return true
-		}
 		if ev.key != .Mouse_Left {
 			return false
 		}

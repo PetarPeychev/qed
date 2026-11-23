@@ -11,6 +11,10 @@ local function body()
 	return ui.node("markdown_body")
 end
 
+local function scroller()
+	return ui.node("markdown_scroll")
+end
+
 local function close()
 	if not view then
 		return
@@ -26,7 +30,7 @@ local function sync_back()
 	if not view or view.buffer ~= qed.buf.current() then
 		return
 	end
-	local state, rect = body():state(), body():rect()
+	local state, rect = body():state(), scroller():rect()
 	if not state or not rect or not state.sources or #state.sources == 0 then
 		return
 	end
@@ -75,12 +79,13 @@ local function build()
 			margin = {x = 2, y = 1}, border = true, title = path ~= "" and qed.path.base(path) or "untitled",
 			bg = "pane_background", fg = "pane_foreground",
 			ui.column{separator = true,
-				ui.markdown{id = "markdown_body", grow = 1, margin = {left = 1, right = 1}, scope = {"markdown"}, text = view.buffer:text(),
-					dir = path ~= "" and qed.path.dir(path) or nil,
-					on = {link = function(event)
-						follow(event.target)
-						return true
-					end}},
+				ui.scroll{id = "markdown_scroll", grow = 1, scope = {"markdown"},
+					qed.markdown.parse(view.buffer:text(), {id = "markdown_body", margin = {left = 1, right = 1},
+						dir = path ~= "" and qed.path.dir(path) or nil,
+						on = {link = function(event)
+							follow(event.target)
+							return true
+						end}})},
 				ui.text{fg = "pane_dim_foreground", height = 1, " ", footer()},
 			},
 		},
@@ -97,7 +102,7 @@ local function preview(buffer, anchor)
 			view.handle:update(build())
 		end
 	end)
-	body():focus()
+	scroller():focus()
 	if anchor and anchor ~= "" then
 		body():set_state{heading = anchor}
 	else
@@ -126,8 +131,26 @@ local function preview(buffer, anchor)
 end
 
 local function scroll()
-	local state = view and body():state()
-	return state and state.scroll or 1
+	local state = view and scroller():state()
+	return state and state.offset or 0
+end
+
+-- offsets clamp at layout; clamp here too so a read right after a key is already right
+local function scroll_to(offset)
+	local state, rect = body():state(), scroller():rect()
+	local rows, height = state and state.rows or 0, rect and rect.height or 0
+	scroller():set_state{offset = math.max(0, math.min(offset, rows - height))}
+end
+
+local function scroll_by(step)
+	if view then
+		scroll_to(scroll() + step)
+	end
+end
+
+local function page()
+	local rect = scroller():rect()
+	return math.max((rect and rect.height or 2) - 1, 1)
 end
 
 local function remember()
@@ -165,7 +188,7 @@ local function show(entry)
 		preview(entry.buf)
 	end
 	if view then
-		body():set_state{scroll = entry.scroll}
+		scroll_to(entry.scroll)
 	end
 end
 
@@ -243,8 +266,8 @@ local function state()
 	if not view then
 		return nil
 	end
-	local body_state, rect, box = body():state(), body():rect(), ui.node("markdown"):rect()
-	return {kind = "pane", width = box and box.width or 0, scroll = (body_state and body_state.scroll or 1) - 1, rows = body_state and body_state.rows or 0,
+	local body_state, rect, box = body():state(), scroller():rect(), ui.node("markdown"):rect()
+	return {kind = "pane", width = box and box.width or 0, scroll = scroll(), rows = body_state and body_state.rows or 0,
 		body_y = rect and rect.y - 1 or 0, body_h = rect and rect.height or 0}
 end
 
@@ -258,6 +281,12 @@ return {
 			when = function(ctx) return view ~= nil or ctx.language == "markdown" end,
 			run = toggle,
 		}
+		qed.command{name = "Line Up", scope = "markdown", key = "Up", run = function() scroll_by(-1) end}
+		qed.command{name = "Line Down", scope = "markdown", key = "Down", run = function() scroll_by(1) end}
+		qed.command{name = "Page Up", scope = "markdown", key = "PgUp", run = function() scroll_by(-page()) end}
+		qed.command{name = "Page Down", scope = "markdown", key = "PgDn", run = function() scroll_by(page()) end}
+		qed.command{name = "Top", scope = "markdown", key = "Home", run = function() scroll_to(0) end}
+		qed.command{name = "Bottom", scope = "markdown", key = "End", run = function() scroll_to(math.huge) end}
 		qed.command{name = "Back", scope = "markdown", bind_from = "Jump Back", run = function() step(-1) end}
 		qed.command{name = "Forward", scope = "markdown", bind_from = "Jump Forward", run = function() step(1) end}
 		qed.command{name = "Close", scope = "markdown", key = "Esc", run = function()

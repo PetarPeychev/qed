@@ -123,16 +123,23 @@ ui_markdowns_free :: proc(editor: ^Editor) {
 	delete(editor.ui.markdowns)
 }
 
-// a pending source row or heading resolves once the lines for this width exist
-ui_markdown_settle :: proc(md: ^UiMarkdown, state: ^UiState, rect: Rect) {
-	height := rect.h
-	if md.w < 0 {
+// the scroll holding a markdown: its offset is the markdown's scroll position
+ui_markdown_scroller :: proc(editor: ^Editor, node: ^UiNode) -> ^UiState {
+	if node.parent == nil || node.parent.kind != .Scroll {
+		return nil
+	}
+	return ui_node_state(&editor.ui, node.parent)
+}
+
+// a pending source row or heading moves the holding scroll once lines for this width exist; view is its content rect
+ui_markdown_resolve :: proc(md: ^UiMarkdown, state, scroller: ^UiState, view: Rect) {
+	if md.w < 0 || scroller == nil {
 		return
 	}
 	if state.md_heading != "" {
 		for line, i in md.lines {
 			if line.slug == state.md_heading {
-				state.scroll_row = i
+				scroller.offset = i
 				state.md_found = line.src + 1
 				break
 			}
@@ -149,10 +156,11 @@ ui_markdown_settle :: proc(md: ^UiMarkdown, state: ^UiState, rect: Rect) {
 			}
 		}
 		// md_at is a terminal row: the line lands there, or as near as the document allows
-		state.scroll_row = index - clamp(state.md_at - 1 - rect.y, 0, max(height - 1, 0)) if state.md_at > 0 else index
+		scroller.offset = index - clamp(state.md_at - 1 - view.y, 0, max(view.h - 1, 0)) if state.md_at > 0 else index
 		state.md_source, state.md_at = 0, 0
 	}
-	state.scroll_row = clamp(state.scroll_row, 0, max(0, len(md.lines) - height))
+	scroller.offset = clamp(scroller.offset, 0, max(0, len(md.lines) - view.h))
+	scroller.at_end = scroller.offset >= max(0, len(md.lines) - view.h)
 }
 
 ui_render_markdown :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
@@ -160,12 +168,11 @@ ui_render_markdown :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	if rect.w <= 0 || rect.h <= 0 {
 		return
 	}
-	md := ui_markdown_of(editor, node)
-	lines := ui_markdown_lines(md, rect.w)
-	state := ui_node_state(&editor.ui, node)
-	ui_markdown_settle(md, state, rect)
-	for i in 0 ..< min(rect.h, len(lines) - state.scroll_row) {
-		line := lines[state.scroll_row + i]
+	lines := ui_markdown_lines(ui_markdown_of(editor, node), rect.w)
+	first := clamp(paint.clip.y - rect.y, 0, len(lines))
+	last := clamp(paint.clip.y + paint.clip.h - rect.y, first, len(lines))
+	for i in first ..< last {
+		line := lines[i]
 		if line.image.id != 0 {
 			image_show(line.image)
 		}
@@ -173,37 +180,9 @@ ui_render_markdown :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	}
 }
 
-ui_markdown_scroll :: proc(editor: ^Editor, node: ^UiNode, step: int) {
-	md := ui_markdown_of(editor, node)
-	state := ui_node_state(&editor.ui, node)
-	state.scroll_row = clamp(state.scroll_row + step, 0, max(0, len(md.lines) - node.rect.h))
-}
-
-ui_markdown_key :: proc(editor: ^Editor, node: ^UiNode, chord: string) -> bool {
-	page := max(node.rect.h - 1, 1)
-	switch chord {
-	case "Up":
-		ui_markdown_scroll(editor, node, -1)
-	case "Down":
-		ui_markdown_scroll(editor, node, 1)
-	case "PgUp":
-		ui_markdown_scroll(editor, node, -page)
-	case "PgDn", "Space":
-		ui_markdown_scroll(editor, node, page)
-	case "Home":
-		ui_markdown_scroll(editor, node, -max(int))
-	case "End":
-		ui_markdown_scroll(editor, node, max(int) / 2)
-	case:
-		return false
-	}
-	return true
-}
-
 ui_markdown_click :: proc(editor: ^Editor, node: ^UiNode, cell_x, cell_y: int) {
 	md := ui_markdown_of(editor, node)
-	state := ui_node_state(&editor.ui, node)
-	row := state.scroll_row + cell_y - node.rect.y
+	row := cell_y - node.rect.y
 	if row < 0 || row >= len(md.lines) {
 		return
 	}
@@ -216,12 +195,10 @@ ui_markdown_click :: proc(editor: ^Editor, node: ^UiNode, cell_x, cell_y: int) {
 		return
 	}
 	if target[0] == '#' {
-		for line, i in md.lines {
-			if line.slug != "" && line.slug == target[1:] {
-				state.scroll_row = i
-				break
-			}
-		}
+		state := ui_node_state(&editor.ui, node)
+		delete(state.md_heading)
+		state.md_heading = strings.clone(target[1:])
+		ui_markdown_resolve(md, state, ui_markdown_scroller(editor, node), node.clip)
 	}
 }
 
@@ -231,11 +208,15 @@ ui_markdown_sources :: proc(editor: ^Editor, node: ^UiNode) -> (sources: []int, 
 	if !found || md.w < 0 {
 		return nil, 0
 	}
-	state := ui_node_state_peek(&editor.ui, node)
-	top := clamp(state.scroll_row, 0, len(md.lines))
-	visible := md.lines[top:min(len(md.lines), top + node.rect.h)]
-	sources = make([]int, len(visible), context.temp_allocator)
-	for line, i in visible {
+	// the holding scroll's offset, not the last layout: a heading jump since then counts
+	top := node.clip.y - node.rect.y
+	if node.parent != nil && node.parent.kind == .Scroll {
+		top = ui_node_state_peek(&editor.ui, node.parent).offset
+	}
+	first := clamp(top, 0, len(md.lines))
+	last := clamp(top + node.clip.h, first, len(md.lines))
+	sources = make([]int, last - first, context.temp_allocator)
+	for line, i in md.lines[first:last] {
 		sources[i] = line.src
 	}
 	return sources, len(md.lines)

@@ -872,8 +872,6 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushinteger(L, lua.Integer(state.scroll_row + 1))
 		lua.setfield(L, -2, "scroll")
 	case .Markdown:
-		lua.pushinteger(L, lua.Integer(state.scroll_row + 1))
-		lua.setfield(L, -2, "scroll")
 		if node != nil {
 			sources, rows := ui_markdown_sources(editor, node)
 			lua.pushinteger(L, lua.Integer(rows))
@@ -955,9 +953,9 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pop(L, 1)
 	}
 	// a shown markdown resolves a heading or source row now, so a following state() sees it
-	if node := ui_find(&editor.ui, identity); node != nil && node.kind == .Markdown && node.rect.h > 0 {
+	if node := ui_find(&editor.ui, identity); node != nil && node.kind == .Markdown && node.clip.h > 0 {
 		if md, found := editor.ui.markdowns[identity]; found {
-			ui_markdown_settle(md, state, node.rect)
+			ui_markdown_resolve(md, state, ui_markdown_scroller(editor, node), node.clip)
 		}
 	}
 	return 0

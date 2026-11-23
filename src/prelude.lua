@@ -17,9 +17,9 @@ local PICK = {items = true, prompt = true, selected = true, on = true}
 local PROMPT = {prompt = true, text = true}
 local CONFIRM = {question = true, choices = true}
 
-local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet", "image", "terminal", "markdown"}
+local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet", "image", "terminal"}
 
-local node_metas = {}
+local node_metas = {markdown = {__node = "markdown"}}
 for _, name in ipairs(NODE_TYPES) do
 	node_metas[name] = {__node = name}
 end
@@ -157,6 +157,19 @@ return function(qed)
 			end
 			return setmetatable(props, meta)
 		end
+	end
+	-- the rendered document is one core node (width-dependent layout, theme-resolved colors); place it in a scroll
+	qed.markdown = {}
+	function qed.markdown.parse(text, opts)
+		if type(text) ~= "string" then
+			error("qed.markdown.parse expects the markdown text", 2)
+		end
+		local props = {}
+		for key, value in pairs(opts or {}) do
+			props[key] = value
+		end
+		props.text = text
+		return setmetatable(props, node_metas.markdown)
 	end
 
 	-- a full-screen float under a pane: a click outside the pane dismisses it, a click on it stays with it
