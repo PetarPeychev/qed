@@ -370,7 +370,7 @@ function qed.every(ms, fn) end
 ---@field hint? string dim placeholder while the field is empty
 ---@field esc_clears? boolean Esc clears the non-empty field instead of closing the pane
 
----A core-owned item source (`qed.fs.dirs`, `qed.buf.line_list`, `qed.fs.walk`). Items live in core and are built only when drawn; only activated or changed ones reach Lua, as `{label, path?, detail?, buf?, pos?, dir?, depth?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
+---A core-owned item source (`qed.fs.dirs`, `qed.fs.walk`). Items live in core and are built only when drawn; only activated or changed ones reach Lua, as `{label, path?, detail?, buf?, pos?, dir?, depth?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
 ---@class qed.PaneSource
 ---@field id integer
 local PaneSource = {}
@@ -740,6 +740,22 @@ function FuzzyList:set_query(query) end
 function FuzzyList:positions(key) end
 
 ---The visible rows of a walk as a list a `virtual_column` reads (from `walk:tree{max?}`): records `{path, name, depth, dir, expanded}` keyed by `path`. Reading dirs runs in slices; `loading()` is true while some are unread.
+---@class qed.LinesList
+local LinesList = {}
+---@param key string
+---@return table|nil
+function LinesList:get(key) end
+---@param index integer
+---@return table|nil
+function LinesList:at(index) end
+---@param key string
+---@return integer|nil
+function LinesList:index_of(key) end
+---@return integer
+function LinesList:count() end
+---@param query string
+function LinesList:set_query(query) end
+
 ---@class qed.TreeList
 local TreeList = {}
 ---@param key string
@@ -1265,8 +1281,8 @@ function BufferObject:set_base(text, opts) end
 ---@return string|nil
 function BufferObject:base() end
 
----A list handle over the buffer's lines. An edit, a disk reload or the buffer closing shows on the next frame: a filter is recomputed keeping the selected line (a `:N` past the end clamps), a closed buffer empties the list. Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching; a bare number lists row N first, then the text matches. A view over it opens on the match nearest the cursor.
----@return qed.PaneSource
+---A live list over the buffer's lines, for a `virtual_column`: records `{key = tostring(row), row, col, label = line text}`, built only when read, `col` the first non-blank. An edit, a reload or the buffer closing shows on the next frame (a closed buffer empties it). `set_query(text)` keeps matches in buffer order; `:N` or `:N:M` keeps row N alone (column M, past the end clamps), a bare number lists row N first, then the text matches.
+---@return qed.LinesList
 function BufferObject:line_list() end
 
 ---A new internal buffer (not in the buffer list, no LSP, git or autosave) as a buffer object: every `qed.buf.*` function is a method with the buffer bound (`buffer:text()`). The plugin owns it; `buffer:close()` frees it.

@@ -931,6 +931,10 @@ return {setup = function()
 			if type(tree[name]) == "function" then out[#out + 1] = "TreeList:" .. name end
 		end
 		l:release()
+		local lines = qed.buf.current():line_list()
+		for _, name in ipairs{"get", "at", "index_of", "count", "set_query"} do
+			if type(lines[name]) == "function" then out[#out + 1] = "LinesList:" .. name end
+		end
 		local v = qed.ui.open{list = {items = {"a"}}}
 		add("View", v)
 		v:close()

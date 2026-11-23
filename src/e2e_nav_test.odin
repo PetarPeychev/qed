@@ -544,12 +544,12 @@ e2e_nav_line_jump_selection_prefill :: proc(t: ^testing.T) {
 	b.cursor = {0, 5} // select "alpha"
 
 	e2e_key(&e, .Ctrl_G)
-	p := test_view(&e.ed)
-	testing.expect(t, p != nil && p.owner == "goto", "Ctrl+G opens the goto plugin's view")
-	testing.expect_value(t, textfield_str(&p.fields[0].field), "alpha")
-	testing.expect_value(t, pane_count(&e.ed, p), 3) // filter ran on the pre-fill
-	testing.expect_value(t, p.fields[0].anchor, 0) // fully selected
-	testing.expect_value(t, p.fields[0].caret, 5)
+	e2e_ui_settle(&e)
+	state := goto_state(&e.ed)
+	testing.expect_value(t, state.query, "alpha")
+	testing.expect_value(t, len(state.labels), 3) // filter ran on the pre-fill
+	e2e_type(&e, "beta")
+	testing.expect_value(t, goto_state(&e.ed).query, "beta") // the pre-fill was selected
 	e2e_key(&e, .Esc)
 }
 
@@ -577,11 +577,9 @@ e2e_nav_line_jump :: proc(t: ^testing.T) {
 	// Fuzzy content match, in file order.
 	e2e_key(&e, .Ctrl_G)
 	e2e_type(&e, "alpha")
-	p := test_view(&e.ed)
-	testing.expect_value(t, pane_count(&e.ed, p), 3)
-	testing.expect_value(t, pane_item_index(p, 0), 0)
-	testing.expect_value(t, pane_item_index(p, 1), 3)
-	testing.expect_value(t, pane_item_index(p, 2), 5)
+	labels := goto_state(&e.ed).labels
+	testing.expect_value(t, len(labels), 3)
+	testing.expect_value(t, strings.join(labels, ",", context.temp_allocator), "alpha,alpha2,alpha3")
 	e2e_key(&e, .Esc)
 }
 

@@ -255,8 +255,9 @@ ui_destroy :: proc(editor: ^Editor) {
 	delete(ui.virtuals)
 	delete(ui.editors)
 	delete(ui.results)
-	for list in ui.lists {
-		ui_list_free(editor, list)
+	// popped first: a list's free looks up the others, never one already freed
+	for len(ui.lists) > 0 {
+		ui_list_free(editor, pop(&ui.lists))
 	}
 	delete(ui.lists)
 	delete(ui.hits)

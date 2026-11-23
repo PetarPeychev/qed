@@ -54,6 +54,7 @@ UiList :: struct {
 	fuzzy_dirty:  bool,
 	feed:         UiMessagesFeed,
 	tree:         ^WalkTree,
+	lines:        ^UiLines,
 }
 
 ui_list_find :: proc(ui: ^Ui, id: u64) -> ^UiList {
@@ -105,6 +106,9 @@ ui_list_free :: proc(editor: ^Editor, list: ^UiList) {
 	if list.tree != nil {
 		walk_tree_free(list.tree)
 	}
+	if list.lines != nil {
+		ui_lines_free(list.lines)
+	}
 	if source := ui_list_find(&editor.ui, list.source); source != nil {
 		for dependent, i in source.dependents {
 			if dependent == list.id {
@@ -144,6 +148,9 @@ ui_list_count :: proc(list: ^UiList) -> int {
 	if list.tree != nil {
 		return len(list.tree.source.entries)
 	}
+	if list.lines != nil {
+		return ui_lines_count(list.lines)
+	}
 	return len(list.matches) if list.fuzzy else len(list.records)
 }
 
@@ -151,10 +158,16 @@ ui_list_key :: proc(list: ^UiList, i: int) -> string {
 	if list.tree != nil {
 		return list.tree.source.entries[i].path
 	}
+	if list.lines != nil {
+		return fmt.tprintf("%d", ui_lines_row(list.lines, i) + 1)
+	}
 	return list.matches[i].key if list.fuzzy else list.records[i].key
 }
 
 ui_list_position :: proc(list: ^UiList, key: string) -> (int, bool) {
+	if list.lines != nil {
+		return ui_lines_position(list.lines, key)
+	}
 	pos, ok := list.positions[key]
 	return pos, ok
 }
@@ -162,6 +175,9 @@ ui_list_position :: proc(list: ^UiList, key: string) -> (int, bool) {
 ui_list_record_rev :: proc(list: ^UiList, i: int) -> u64 {
 	if list.tree != nil {
 		return list.tree.gen
+	}
+	if list.lines != nil {
+		return list.rev
 	}
 	if list.fuzzy {
 		return list.matches[i].rev ~ (list.query_gen << 40)
@@ -180,6 +196,10 @@ ui_list_changed :: proc(editor: ^Editor, list: ^UiList) {
 }
 
 ui_list_settle_all :: proc(editor: ^Editor, list: ^UiList) {
+	if list.lines != nil {
+		ui_lines_settle(editor, list)
+		return
+	}
 	if !list.fuzzy {
 		return
 	}
@@ -246,6 +266,9 @@ api_ui_list_lookup :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> (list:
 	lua.pop(L, 1)
 	lua.getfield(L, lua.REGISTRYINDEX, UI_TREE_LIST_META)
 	is_list = is_list || lua.rawequal(L, -1, -2) != 0
+	lua.pop(L, 1)
+	lua.getfield(L, lua.REGISTRYINDEX, UI_LINES_LIST_META)
+	is_list = is_list || lua.rawequal(L, -1, -2) != 0
 	lua.pop(L, 2)
 	if !is_list {
 		return nil, false
@@ -271,14 +294,14 @@ api_ui_list_self :: proc(L: ^lua.State, editor: ^Editor) -> ^UiList {
 	return list
 }
 
-api_ui_list_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, fuzzy: bool, tree := false) -> ^UiList {
+api_ui_list_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, fuzzy: bool, tree := false, lines := false) -> ^UiList {
 	plugins := &editor.plugins
 	id := plugin_next_id(plugins)
 	lua.createtable(L, 0, 1)
 	lua.pushinteger(L, lua.Integer(id))
 	lua.setfield(L, -2, "id")
-	meta_name: cstring = UI_TREE_LIST_META if tree else UI_FUZZY_LIST_META if fuzzy else UI_LIST_META
-	methods := ui_tree_list_methods[:] if tree else ui_fuzzy_list_methods[:] if fuzzy else ui_list_methods[:]
+	meta_name: cstring = UI_LINES_LIST_META if lines else UI_TREE_LIST_META if tree else UI_FUZZY_LIST_META if fuzzy else UI_LIST_META
+	methods := ui_lines_methods[:] if lines else ui_tree_list_methods[:] if tree else ui_fuzzy_list_methods[:] if fuzzy else ui_list_methods[:]
 	if lua.getfield(L, lua.REGISTRYINDEX, meta_name) != .TABLE {
 		lua.pop(L, 1)
 		lua.createtable(L, 0, 4)
@@ -717,7 +740,7 @@ qed_list_remove :: proc "c" (L: ^lua.State) -> c.int {
 	list := api_ui_list_self(L, editor)
 	ui_list_mutable(L, list)
 	key := ui_list_key_arg(L, 2)
-	pos, ok := list.positions[key]
+	pos, ok := ui_list_position(list, key)
 	if !ok {
 		return 0
 	}
@@ -771,6 +794,10 @@ ui_list_record_push :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, pos: 
 		walk_tree_record_push(L, list.tree, pos)
 		return
 	}
+	if list.lines != nil {
+		ui_lines_record_push(L, editor, list.lines, pos)
+		return
+	}
 	if !list.fuzzy {
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(list.records[pos].ref))
 		return
@@ -815,7 +842,7 @@ qed_list_get :: proc "c" (L: ^lua.State) -> c.int {
 	list := api_ui_list_self(L, editor)
 	ui_list_settle_all(editor, list)
 	key := ui_list_key_arg(L, 2)
-	pos, ok := list.positions[key]
+	pos, ok := ui_list_position(list, key)
 	if !ok {
 		lua.pushnil(L)
 		return 1
@@ -846,7 +873,7 @@ qed_list_index_of :: proc "c" (L: ^lua.State) -> c.int {
 	list := api_ui_list_self(L, editor)
 	ui_list_settle_all(editor, list)
 	key := ui_list_key_arg(L, 2)
-	pos, ok := list.positions[key]
+	pos, ok := ui_list_position(list, key)
 	if !ok {
 		lua.pushnil(L)
 		return 1

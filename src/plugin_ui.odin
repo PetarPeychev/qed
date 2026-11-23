@@ -668,17 +668,6 @@ qed_walk_tree :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
-qed_buf_line_list :: proc "c" (L: ^lua.State) -> c.int {
-	entry := api_enter(L)
-	context = entry.ctx
-	editor := entry.editor
-	b, _ := api_buf(L, editor, 1)
-	id := b.id
-	lua.settop(L, 0)
-	api_list_push(L, editor, .Lines).buf = id
-	return 1
-}
-
 // The record goes in after the last call that can raise, so the caller acquires what src owns only then.
 api_list_push :: proc(L: ^lua.State, editor: ^Editor, kind: ListSourceKind) -> ^ListSource {
 	p := &editor.plugins

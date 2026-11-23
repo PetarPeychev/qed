@@ -139,14 +139,15 @@ e2e_mouse_linefind_click_row :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.cursor = {0, 0}
 	e2e_key(&e, .Ctrl_G)
-	p := test_view(&e.ed)
-	testing.expect(t, test_pane_open(&e.ed, "goto"), "Ctrl+G opens line jump")
-	testing.expect_value(t, p.list.sel, 0)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, goto_state(&e.ed).selected, "alpha")
 
-	g := pane_geom(&e.ed, p)
-	e2e_mouse(&e, g.list.x + 1, g.list.y + 2)
-	testing.expect_value(t, test_view(&e.ed).list.sel, 2)
-	testing.expect(t, test_pane_open(&e.ed, "goto"), "a single click only selects, stays open")
+	rows := node_rect(&e.ed, "goto_rows")
+	e2e_mouse(&e, rows.x + 1, rows.y + 2)
+	e2e_ui_settle(&e)
+	state := goto_state(&e.ed)
+	testing.expect(t, state.open, "a single click only selects, stays open")
+	testing.expect_value(t, state.selected, "gamma")
 }
 
 // Open tab (Alt+o): a double click on a row switches to that buffer, same as Enter.

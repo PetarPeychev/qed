@@ -440,6 +440,37 @@ TestDialog :: struct {
 	labels:                          [dynamic]string,
 }
 
+GotoState :: struct {
+	open:     bool,
+	count:    int,
+	query:    string,
+	labels:   []string,
+	selected: string,
+}
+
+goto_state :: proc(ed: ^Editor) -> GotoState {
+	out := ft_lua(ed, `local s = qed.plugin("goto").state()
+		if not s then return "" end
+		return table.concat({s.query, s.selected or "", table.concat(s.labels, "\1"), #s.labels}, "\2")`)
+	if out == "" {
+		return {}
+	}
+	parts := strings.split(out, "\x02", context.temp_allocator)
+	labels := strings.split(parts[2], "\x01", context.temp_allocator) if parts[2] != "" else nil
+	count, _ := strconv.parse_int(parts[3])
+	return {open = true, query = parts[0], selected = parts[1], labels = labels, count = count}
+}
+
+node_rect :: proc(ed: ^Editor, id: string) -> Rect {
+	editor_render(ed)
+	for &mount in ed.ui.mounts {
+		if node := ui_find(&ed.ui, fmt.tprintf("#%s/%s", mount.owner, id)); node != nil {
+			return node.rect
+		}
+	}
+	return {}
+}
+
 test_dialog :: proc(ed: ^Editor) -> (dialog: TestDialog, ok: bool) {
 	ui := &ed.ui
 	#reverse for mount in ui.mounts {
