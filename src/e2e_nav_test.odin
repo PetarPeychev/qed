@@ -1587,10 +1587,13 @@ e2e_nav_git_deleted_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, ft_mode(&e.ed), FtMode.Nav)
 
 	e2e_key(&e, .Enter)
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return pane_focus(&e.ed) == ft_pane(&e.ed)})
-	pn := pane_focus(&e.ed)
-	testing.expect(t, pn != nil && pn.owner == "git" && len(pn.list.items) > 0, "the git plugin asks to confirm")
-	testing.expect_value(t, pn.text[0].text, "Restore gone.txt from HEAD?")
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {
+		_, asked := test_dialog(&e.ed)
+		return !asked
+	})
+	dialog, asked := test_dialog(&e.ed)
+	testing.expect(t, asked && len(dialog.labels) > 0, "the git plugin asks to confirm")
+	testing.expect_value(t, dialog.question, "Restore gone.txt from HEAD?")
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
 	e2e_git_settle(&e)

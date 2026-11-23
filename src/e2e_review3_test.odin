@@ -127,7 +127,6 @@ end}`)
 		qed.message(tostring(current == again) .. " " .. tostring(seen[again]) .. " " .. tostring(current.id) .. "=" .. tostring(current))
 	end}
 end}`)
-	testing.expect_value(t, message, "true true 1=1" if false else message)
 	parts := strings.split(message, " ", context.temp_allocator)
 	testing.expect_value(t, parts[0], "true")
 	testing.expect_value(t, parts[1], "true")
@@ -174,4 +173,30 @@ e2e_caret_area_follows_the_node :: proc(t: ^testing.T) {
 	testing.expect_value(t, area.gutter, 3)
 	clips := highlight_clips_view(editor_buffer(&e.ed), 10, 5, 0, 0, 0, false, 0, 1)
 	testing.expect_value(t, len(clips), 0)
+}
+
+@(test)
+e2e_owner_is_the_running_entry :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "own", `
+local function bare(buffer) return buffer:find("x") end
+return {setup = function()
+	qed.export{bare = bare}
+end}`)
+	message := ut_plugin_run(&e, `return {setup = function()
+	qed.command{name = "Run", run = function()
+		local buffer = qed.buf.current()
+		qed.plugin("own").bare(buffer)
+		local wrapped = coroutine.wrap(function() return buffer:find("x") end)()
+		qed.message(tostring(wrapped ~= nil))
+	end}
+end}`)
+	testing.expect_value(t, message, "true")
+	owners := make(map[string]int, 4, context.temp_allocator)
+	for search in e.ed.searches {
+		owners[search.owner] += 1
+	}
+	testing.expect_value(t, owners["own"], 1)
+	testing.expect_value(t, owners["uitest"], 1)
 }

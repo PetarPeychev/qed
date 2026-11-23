@@ -82,18 +82,20 @@ e2e_conflict_resolve_keep_ours :: proc(t: ^testing.T) {
 
 	b.cursor = {0, 0}
 	e2e_key(&e, tb2.Key(0), .Alt, 'm')
-	testing.expect(t, pane_focus(&e.ed) == nil, "Alt+m outside a block should not open the dialog")
+	_, asked := test_dialog(&e.ed)
+	testing.expect(t, !asked, "Alt+m outside a block should not open the dialog")
 	testing.expect_value(t, b.cursor.row, 1)
 
 	e2e_key(&e, tb2.Key(0), .Alt, 'm')
-	p := pane_focus(&e.ed)
-	testing.expect(t, p != nil && p.owner == "conflict", "Alt+m inside a block opens the dialog")
+	dialog, opened := test_dialog(&e.ed)
+	testing.expect(t, opened && dialog.question == "Resolve merge conflict:", "Alt+m inside a block opens the dialog")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Resolve merge conflict:"), "the dialog asks")
 	testing.expect(t, e2e_grid_has(&e, "Keep Theirs"), "the dialog lists the choices")
 
 	e2e_key(&e, .Enter)
-	testing.expect(t, pane_focus(&e.ed) == nil, "executing closes the dialog")
+	_, asked = test_dialog(&e.ed)
+	testing.expect(t, !asked, "executing closes the dialog")
 	testing.expect_value(t, len(b.lines), 3)
 	testing.expect_value(t, string(b.lines[0].text[:]), "top")
 	testing.expect_value(t, string(b.lines[1].text[:]), "ours")

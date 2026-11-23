@@ -144,6 +144,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"palette/init.lua", #load("../plugins/palette/init.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"terminal/init.lua", #load("../plugins/terminal/init.lua", string)},
+	{"dialog/init.lua", #load("../plugins/dialog/init.lua", string)},
 	{"settings/menu.lua", #load("../plugins/settings/menu.lua", string)},
 	{"markdown/init.lua", #load("../plugins/markdown/init.lua", string)},
 	{"search/init.lua", #load("../plugins/search/init.lua", string)},
@@ -1158,44 +1159,20 @@ plugin_key_push :: proc(L: ^lua.State, pl: ^Plugin) {
 	lua.pushodinstring(L, fmt.tprintf("%s\x00%d", pl.name, pl.gen))
 }
 
-// a shared method has no plugin of its own: the Lua code calling it decides, found by the _ENV it runs in
-plugin_caller_by_env :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
-	record: lua.Debug
-	for level: c.int = 1; lua.getstack(L, level, &record) != 0; level += 1 {
-		lua.getinfo(L, "f", &record)
-		function := lua.gettop(L)
-		for upvalue: c.int = 1; ; upvalue += 1 {
-			name := lua.getupvalue(L, function, upvalue)
-			if name == nil {
-				break
-			}
-			if string(name) != "_ENV" {
-				lua.pop(L, 1)
-				continue
-			}
-			for &plugin in editor.plugins.list {
-				if plugin.env == lua.NOREF || plugin.state != .Enabled {
-					continue
-				}
-				lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(plugin.env))
-				same := lua.rawequal(L, -1, -2) != 0
-				lua.pop(L, 1)
-				if same {
-					lua.settop(L, function - 1)
-					return &plugin
-				}
-			}
-			lua.pop(L, 1)
-			break
+// a shared method has no plugin of its own: the plugin whose entry is running owns the call, an export call switching it
+plugin_running :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
+	p := &editor.plugins
+	for i := len(p.calls) - 1; i >= 0; i -= 1 {
+		if p.calls[i].co == L {
+			return plugin_find(p, p.calls[i].owner)
 		}
-		lua.settop(L, function - 1)
 	}
-	for task in editor.plugins.tasks {
+	for task in p.tasks {
 		if task.co == L {
-			return plugin_find(&editor.plugins, task.owner)
+			return plugin_find(p, task.owner)
 		}
 	}
-	return plugin_find(&editor.plugins, editor.plugins.entry_owner)
+	return plugin_find(p, p.entry_owner)
 }
 
 plugin_key :: proc(L: ^lua.State, idx: c.int) -> (name: string, gen: u64) {
@@ -1214,7 +1191,7 @@ PLUGIN_CALLER_KEY :: "\x00caller"
 
 plugin_owner :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
 	if key, _ := lua.toodinstring(L, lua.upvalueindex(1)); key == PLUGIN_CALLER_KEY {
-		return plugin_caller_by_env(L, editor)
+		return plugin_running(L, editor)
 	}
 	name, gen := plugin_key(L, lua.upvalueindex(1))
 	pl := plugin_find(&editor.plugins, name)

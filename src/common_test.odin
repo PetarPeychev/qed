@@ -117,8 +117,8 @@ ft_chip :: proc(ed: ^Editor, label: string) -> bool {
 }
 
 ft_confirm_text :: proc(ed: ^Editor) -> string {
-	if f := pane_focus(ed); f != nil && f.size == .Dialog && len(f.text) > 0 {
-		return f.text[0].text
+	if dialog, ok := test_dialog(ed); ok && dialog.kind == "confirm" {
+		return dialog.question
 	}
 	return ""
 }
@@ -194,11 +194,11 @@ ft_mode :: proc(ed: ^Editor) -> FtMode {
 	if p == nil {
 		return .Nav
 	}
-	if f := pane_focus(ed); f != nil && f.parent == p.handle && f.size == .Dialog && len(f.text) > 0 {
+	if dialog, ok := test_dialog(ed); ok && dialog.kind == "confirm" {
 		switch {
-		case strings.has_prefix(f.text[0].text, "Delete"):
+		case strings.has_prefix(dialog.question, "Delete"):
 			return .ConfirmDelete
-		case strings.has_prefix(f.text[0].text, "Close"):
+		case strings.has_prefix(dialog.question, "Close"):
 			return .ConfirmClose
 		}
 	}
@@ -276,4 +276,47 @@ test_rss_mb :: proc(field: string) -> f64 {
 		}
 	}
 	return 0
+}
+
+TestDialog :: struct {
+	kind, query, question, selected: string,
+	labels:                          [dynamic]string,
+}
+
+test_dialog :: proc(ed: ^Editor) -> (dialog: TestDialog, ok: bool) {
+	ui := &ed.ui
+	#reverse for mount in ui.mounts {
+		if mount.owner == "dialog" && strings.has_prefix(mount.root.id, "dialog_") {
+			dialog.kind = mount.root.id[len("dialog_"):]
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return
+	}
+	ui_resolve(ed)
+	if node := ui_find(ui, "#dialog/dialog_query"); node != nil {
+		if buffer := ui_buffer(ed, node.buffer); buffer != nil {
+			dialog.query = string(buffer.lines[0].text[:])
+		}
+	}
+	if node := ui_find(ui, "#dialog/dialog_question"); node != nil {
+		sb := strings.builder_make(context.temp_allocator)
+		for span in node.spans {
+			strings.write_string(&sb, span.text)
+		}
+		dialog.question = strings.trim_space(strings.to_string(sb))
+	}
+	dialog.labels = make([dynamic]string, context.temp_allocator)
+	rows := ui_find(ui, "#dialog/dialog_rows")
+	if list := ui_list_find(ui, rows.list) if rows != nil else nil; list != nil {
+		for match in list.matches {
+			append(&dialog.labels, list.texts[match.key])
+		}
+		if state, has := ui.states["#dialog/dialog_rows"]; has && state.highlighted != "" {
+			dialog.selected = list.texts[state.highlighted]
+		}
+	}
+	return
 }

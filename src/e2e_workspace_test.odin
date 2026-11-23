@@ -66,11 +66,10 @@ cwd_query :: proc(e: ^E2E) -> string {
 }
 
 cwd_confirm :: proc(e: ^E2E) -> string {
-	p := pane_focus(&e.ed)
-	if p == nil || p.owner != "workspace" || len(p.text) == 0 {
-		return ""
+	if dialog, ok := test_dialog(&e.ed); ok && dialog.kind == "confirm" {
+		return dialog.question
 	}
-	return p.text[0].text
+	return ""
 }
 
 @(test)
@@ -407,8 +406,7 @@ e2e_cwd_unsaved_confirm :: proc(t: ^testing.T) {
 	selected := p.list.sel
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, cwd_confirm(&e), "Close 1 buffer? (1 unsaved)")
-	picker := pane_focus(&e.ed).parent
-	testing.expect(t, pane_find_handle(&e, picker).owner == "workspace", "the confirm sits on the picker")
+	testing.expect(t, cwd_pane(&e) != nil, "the picker stays under the confirm")
 	testing.expect_value(t, e.ed.working_root, root)
 	e2e_render(&e)
 
@@ -563,7 +561,7 @@ e2e_cwd_tree_unsaved_confirm :: proc(t: ^testing.T) {
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "alpha row")
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, cwd_confirm(&e), "Close 1 buffer? (1 unsaved)")
-	testing.expect(t, pane_focus(&e.ed).parent == ft_pane(&e.ed).handle, "the confirm sits on the tree")
+	testing.expect(t, filetree_active(&e.ed), "the tree stays under the confirm")
 	testing.expect_value(t, e.ed.working_root, root)
 	e2e_render(&e)
 

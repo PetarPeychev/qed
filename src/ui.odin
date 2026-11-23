@@ -212,6 +212,7 @@ Ui :: struct {
 	editors:       [dynamic]^UiNode,
 	dirty:         bool,
 	graveyard:     [dynamic]^UiNode,
+	results:       map[u64]i32,
 	gen:           u64,
 	seq:           u64,
 	lists:         [dynamic]^UiList,
@@ -250,6 +251,7 @@ ui_destroy :: proc(editor: ^Editor) {
 	delete(ui.index)
 	delete(ui.virtuals)
 	delete(ui.editors)
+	delete(ui.results)
 	for list in ui.lists {
 		ui_list_free(editor, list)
 	}
@@ -1611,38 +1613,72 @@ ui_fill :: proc(paint: ^UiPaint, rect: Rect, bg: tb2.Color) {
 	}
 }
 
+// the alert layer draws after the old panes (ui_render_alert), so a dialog sits above them
 ui_render :: proc(editor: ^Editor) {
 	ui := &editor.ui
 	clear(&ui.hits)
 	ui.caret_shown = false
-	floats := make([dynamic]^UiNode, context.temp_allocator)
 	for layer in UI_LAYERS {
-		clear(&floats)
-		for mount in ui.mounts {
-			if mount.outlet != layer {
-				continue
-			}
-			if mount.root.float != .None {
-				append(&floats, mount.root)
-				continue
-			}
-			paint := UiPaint{clip = ui_screen(), bg = COLOR_BG}
-			ui_render_node(editor, mount.root, &paint, &floats)
+		if layer == "alert" {
+			continue
 		}
-		for i := 0; i < len(floats); i += 1 {
-			floating := floats[i]
-			paint := UiPaint{clip = ui_screen(), bg = COLOR_BG}
-			if floating.parent != nil {
-				paint.inherit = ui_inherited(floating.parent)
-				paint.bg = ui_inherited_bg(floating.parent)
-			}
-			ui_render_node(editor, floating, &paint, &floats)
-		}
+		ui_render_layer(editor, layer)
 		if layer == "base" {
 			ui_render_caret(editor, true)
 		}
 	}
 	ui_render_caret(editor, false)
+}
+
+ui_render_alert :: proc(editor: ^Editor) -> bool {
+	if !ui_layer_used(&editor.ui, "alert") {
+		return false
+	}
+	ui_render_layer(editor, "alert")
+	ui_render_caret(editor, false)
+	return true
+}
+
+ui_render_layer :: proc(editor: ^Editor, layer: string) {
+	ui := &editor.ui
+	floats := make([dynamic]^UiNode, context.temp_allocator)
+	for mount in ui.mounts {
+		if mount.outlet != layer {
+			continue
+		}
+		if mount.root.float != .None {
+			append(&floats, mount.root)
+			continue
+		}
+		paint := UiPaint{clip = ui_screen(), bg = COLOR_BG}
+		ui_render_node(editor, mount.root, &paint, &floats)
+	}
+	for i := 0; i < len(floats); i += 1 {
+		floating := floats[i]
+		paint := UiPaint{clip = ui_screen(), bg = COLOR_BG}
+		if floating.parent != nil {
+			paint.inherit = ui_inherited(floating.parent)
+			paint.bg = ui_inherited_bg(floating.parent)
+		}
+		ui_render_node(editor, floating, &paint, &floats)
+	}
+}
+
+ui_focus_in_layer :: proc(editor: ^Editor, layer: string) -> bool {
+	focus := ui_focused(editor)
+	if focus == nil {
+		return false
+	}
+	root := focus
+	for root.parent != nil {
+		root = root.parent
+	}
+	for mount in editor.ui.mounts {
+		if mount.root == root {
+			return mount.outlet == layer
+		}
+	}
+	return false
 }
 
 ui_render_caret :: proc(editor: ^Editor, popups: bool) {

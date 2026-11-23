@@ -554,6 +554,9 @@ pt_poll_disk :: proc "c" (L: ^lua.State) -> c.int {
 pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	if _, ok := test_dialog(entry.editor); ok {
+		return pt_ui_dialog(L, entry.editor)
+	}
 	pn := test_view(entry.editor)
 	if pn == nil {
 		lua.pushnil(L)
@@ -622,6 +625,36 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "tab")
 	lua.pushodinstring(L, pn.info)
 	lua.setfield(L, -2, "info")
+	return 1
+}
+
+pt_ui_dialog :: proc(L: ^lua.State, editor: ^Editor) -> c.int {
+	dialog, ok := test_dialog(editor)
+	if !ok {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.createtable(L, 0, 6)
+	lua.pushodinstring(L, dialog.kind)
+	lua.setfield(L, -2, "kind")
+	lua.pushodinstring(L, "dialog")
+	lua.setfield(L, -2, "id")
+	lua.pushodinstring(L, dialog.query)
+	lua.setfield(L, -2, "query")
+	lua.pushodinstring(L, dialog.question)
+	lua.setfield(L, -2, "question")
+	lua.pushinteger(L, lua.Integer(len(dialog.labels)))
+	lua.setfield(L, -2, "matches")
+	lua.createtable(L, c.int(len(dialog.labels)), 0)
+	for label, i in dialog.labels {
+		lua.pushodinstring(L, label)
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	lua.setfield(L, -2, "labels")
+	if dialog.selected != "" {
+		lua.pushodinstring(L, dialog.selected)
+		lua.setfield(L, -2, "selected")
+	}
 	return 1
 }
 

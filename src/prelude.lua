@@ -7,12 +7,6 @@ local function await(v)
 	return items, index, text
 end
 
-local function prefix(prompt)
-	if prompt ~= nil and prompt ~= "" then
-		return prompt .. " "
-	end
-end
-
 local function label_of(it)
 	if type(it) == "table" then
 		return it.label or it.path
@@ -151,8 +145,15 @@ local function buffer_objects(qed)
 	end
 end
 
+local function dialogs(qed)
+	local exports = qed.plugin("dialog")
+	if not exports then
+		error("the dialog plugin is not loaded", 3)
+	end
+	return exports
+end
+
 return function(qed)
-	local open = qed.ui.open
 
 	for _, name in ipairs(NODE_TYPES) do
 		local meta = node_metas[name]
@@ -201,20 +202,18 @@ return function(qed)
 				index = i
 			end
 		end
-		local v, err = open{
-			kind = "child",
-			modal = true,
-			place = split and "split" or "center",
-			fields = {{prompt = prefix(spec.prompt), count = split}},
-			list = {items = items, selected = index},
-			preview = split and "auto" or nil,
-			on = {change = on and on.change},
-		}
-		if not v then
-			return nil, err
+		if split then
+			-- path items keep the old list + preview pane until qed.ui has a preview node
+			local v, err = qed.ui.open{kind = "child", modal = true, place = "split", preview = "auto",
+				fields = {{prompt = spec.prompt and spec.prompt ~= "" and spec.prompt .. " " or nil, count = true}},
+				list = {items = items, selected = index}, on = {change = on and on.change}}
+			if not v then
+				return nil, err
+			end
+			local picked = await(v)
+			return picked and picked[1]
 		end
-		local picked = await(v)
-		return picked and picked[1]
+		return dialogs(qed).pick{items = items, prompt = spec.prompt, selected = index or selected, on = on}
 	end
 
 	function qed.prompt(spec)
@@ -222,15 +221,7 @@ return function(qed)
 			error("table {prompt, text?} expected", 2)
 		end
 		check_fields("prompt", spec, PROMPT)
-		local v, err = open{kind = "child", modal = true, fields = {{prompt = prefix(spec.prompt), text = spec.text, mode = "input"}}}
-		if not v then
-			return nil, err
-		end
-		local ok, _, text = await(v)
-		if ok then
-			return text
-		end
-		return nil
+		return dialogs(qed).prompt{prompt = spec.prompt, text = spec.text}
 	end
 
 	function qed.confirm(spec)
@@ -252,11 +243,6 @@ return function(qed)
 				error("choices must be strings", 2)
 			end
 		end
-		local v, err = open{kind = "child", modal = true, size = "dialog", text = {question}, list = {items = choices}}
-		if not v then
-			return nil, err
-		end
-		local picked, index = await(v)
-		return picked and index or nil
+		return dialogs(qed).confirm{question = question, choices = choices}
 	end
 end

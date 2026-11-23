@@ -67,7 +67,8 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 			command_run(&e.ed, cmd)
 		}
 	}
-	testing.expect(t, test_view(&e.ed) != nil, "the pick modal is open")
+	_, asked := test_dialog(&e.ed)
+	testing.expect(t, asked, "the pick dialog is open")
 	owned_procs := proc(p: ^Plugins) -> (n: int) {
 		for pr in p.procs {
 			n += int(pr.owner == "t")
@@ -88,13 +89,14 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 		qed:on("startup", function() qed.ui.open{place = "full", title = "Hello pane", text = {"x"}} end)
 	end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
-	testing.expect(t, test_view(&e.ed) == nil, "the modal closes")
 	testing.expect_value(t, owned_procs(p), 0)
 	testing.expect(t, e2e_group_gone(pgid), "the process group is gone")
 	testing.expect_value(t, reload_owned(p, "t"), 1)
 	testing.expect(t, p.mem.used < before - 1024 * 1024, "the old incarnation's heap is reclaimed")
 	plugin_pump(&e.ed)
 	testing.expect(t, test_view(&e.ed) != nil, "a plugin loaded at runtime gets its startup event")
+	_, asked = test_dialog(&e.ed)
+	testing.expect(t, !asked, "the dialog closes with its asker")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Hello pane"), "the pane renders")
 

@@ -103,6 +103,7 @@ PluginWaitKind :: enum {
 	Save,
 	Lsp,
 	Pane,
+	Mount,
 }
 
 PluginWait :: struct {
@@ -390,8 +391,12 @@ plugin_task_alive :: proc(p: ^Plugins, id: u64) -> bool {
 
 plugin_task_free :: proc(editor: ^Editor, i: int) {
 	p := &editor.plugins
-	th, owner := p.tasks[i].thread, p.tasks[i].owner
+	th, owner, wait := p.tasks[i].thread, p.tasks[i].owner, p.tasks[i].wait
 	ordered_remove(&p.tasks, i)
+	// a mount exists for its waiter: a stopped waiter takes it along
+	if wait.kind == .Mount {
+		ui_mount_remove(editor, wait.id)
+	}
 	for j := len(p.calls) - 1; j >= 0; j -= 1 {
 		if p.calls[j].co == th.co {
 			ordered_remove(&p.calls, j)
@@ -596,6 +601,9 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	prev := plugin_enter(editor, &entry)
 	from := p.current
 	p.current = co
+	owner_before := p.entry_owner
+	p.entry_owner = owner
+	defer p.entry_owner = owner_before
 	nres: c.int
 	status := lua.resume(co, from, nargs, &nres)
 	p.current = from
@@ -787,6 +795,7 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 		return false
 	}
 	plugin_views_flush(editor)
+	ui_mount_waiters_resume(editor)
 	ui_messages_feed(editor)
 	settled := false
 	for _ in 0 ..< PLUGIN_FLUSH_ROUNDS {
@@ -1034,6 +1043,9 @@ plugin_timeout_ms :: proc(editor: ^Editor, cap: int) -> int {
 		if t.wait.kind == .Sleep || t.wait.kind == .Lsp {
 			consider(&best, now, t.wait.until)
 		}
+		if t.wait.kind == .Mount && ui_mount_index(&editor.ui, t.wait.id) < 0 {
+			best = 0
+		}
 	}
 	for pr in p.procs {
 		if pr.fake && !pr.done {
@@ -1152,6 +1164,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 	for id in due {
 		plugin_task_resume(editor, id, 0)
 	}
+	ui_mount_waiters_resume(editor)
 
 	clear(&due)
 	for pr in p.procs {

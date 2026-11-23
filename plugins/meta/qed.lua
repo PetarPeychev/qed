@@ -561,8 +561,13 @@ local MountHandle = {}
 ---@param tree qed.Node
 function MountHandle:update(tree) end
 
----Removes the tree. A no-op when already unmounted.
-function MountHandle:unmount() end
+---Removes the tree; `result` goes to whoever waits on it. A no-op when already unmounted.
+---@param result? any
+function MountHandle:unmount(result) end
+
+---Waits (in a command, handler or timer) until the tree is unmounted and returns the `unmount` result, or nil.
+---@return any
+function MountHandle:wait() end
 
 ---@class qed.NodeRef
 local NodeRef = {}

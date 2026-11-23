@@ -76,6 +76,9 @@
     "terminal": {
       "enabled": true
     },
+    "dialog": {
+      "enabled": true
+    },
     "search": {
       "enabled": true
     },

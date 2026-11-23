@@ -657,12 +657,15 @@ qed_ui_mount :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	outlet := api_string(L, 1)
 	plugin := api_loaded(L, editor)
+	if outlet == "alert" && pane_safety_open(editor) {
+		return api_fail(L, "busy")
+	}
 	root, err := ui_marshal_tree(L, editor, plugin_name_intern(&editor.plugins, plugin.name), 2, 0)
 	if root == nil {
 		return plugin_raise(L, err)
 	}
 	handle := ui_mount_add(editor, root.owner, outlet, root)
-	api_handle_push(L, handle, {{"update", qed_ui_handle_update}, {"unmount", qed_ui_handle_unmount}})
+	api_handle_push(L, handle, {{"update", qed_ui_handle_update}, {"unmount", qed_ui_handle_unmount}, {"wait", qed_ui_handle_wait}})
 	return 1
 }
 
@@ -688,8 +691,74 @@ qed_ui_handle_update :: proc "c" (L: ^lua.State) -> c.int {
 qed_ui_handle_unmount :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
-	ui_mount_remove(entry.editor, api_handle_id(L))
+	ui := &entry.editor.ui
+	handle := api_handle_id(L)
+	if ui_mount_index(ui, handle) >= 0 && lua.gettop(L) >= 2 && lua.type(L, 2) != .NIL {
+		lua.pushvalue(L, 2)
+		ui.results[handle] = i32(lua.L_ref(L, lua.REGISTRYINDEX))
+	}
+	ui_mount_remove(entry.editor, handle)
 	return 0
+}
+
+qed_ui_handle_wait :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	p := &entry.editor.plugins
+	handle := api_handle_id(L)
+	if ui_mount_index(&entry.editor.ui, handle) < 0 {
+		return ui_mount_result_push(L, entry.editor, handle)
+	}
+	t := api_await(L, p, "handle:wait")
+	t.wait = {kind = .Mount, id = handle}
+	return lua.yieldk(L, 0, lua.KContext(handle), qed_ui_handle_wait_k)
+}
+
+qed_ui_handle_wait_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := plugin_entry(L)
+	context = entry.ctx
+	return ui_mount_result_push(L, entry.editor, u64(ctx))
+}
+
+ui_mount_result_push :: proc(L: ^lua.State, editor: ^Editor, handle: u64) -> c.int {
+	if ref, ok := editor.ui.results[handle]; ok {
+		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(ref))
+		lua.L_unref(L, lua.REGISTRYINDEX, c.int(ref))
+		delete_key(&editor.ui.results, handle)
+	} else {
+		lua.pushnil(L)
+	}
+	return 1
+}
+
+ui_mount_waiters_resume :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	ui := &editor.ui
+	ready := make([dynamic]u64, context.temp_allocator)
+	for t in p.tasks {
+		if t.wait.kind == .Mount && ui_mount_index(ui, t.wait.id) < 0 {
+			append(&ready, t.id)
+		}
+	}
+	for id in ready {
+		plugin_task_resume(editor, id, 0)
+	}
+	waited := make(map[u64]bool, 8, context.temp_allocator)
+	for t in p.tasks {
+		if t.wait.kind == .Mount {
+			waited[t.wait.id] = true
+		}
+	}
+	gone := make([dynamic]u64, context.temp_allocator)
+	for handle, ref in ui.results {
+		if !waited[handle] && ui_mount_index(ui, handle) < 0 {
+			lua.L_unref(p.L, lua.REGISTRYINDEX, c.int(ref))
+			append(&gone, handle)
+		}
+	}
+	for handle in gone {
+		delete_key(&ui.results, handle)
+	}
 }
 
 ui_node_ref_methods := [?]lua.L_Reg {

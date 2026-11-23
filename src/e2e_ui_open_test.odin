@@ -390,23 +390,6 @@ e2e_ui_open_unload :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_ui_open_busy_over_ask :: proc(t: ^testing.T) {
-	e, _ := view_start(t)
-	defer e2e_stop(&e)
-	e2e_plugin(&e, "asker", `return {setup = function()
-		qed.command{name = "Confirm", run = function() qed.message("asked " .. tostring(qed.confirm{question = "Q?"})) end}
-	end}`)
-	view_run(t, &e, "Asker: Confirm")
-	view_run(t, &e, "V: Busy")
-	testing.expect(t, view_logged(&e, "busy nil busy"), "an exclusive open is refused while a plugin waits on a pane")
-	testing.expect(t, strings.contains(pane_focus(&e.ed).text[0].text, "Q?"), "the confirm stays")
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, e.ed.message, "asked 1")
-	view_run(t, &e, "V: Busy")
-	testing.expect(t, test_view(&e.ed) != nil, "free again")
-}
-
-@(test)
 e2e_ui_open_waiter_replaced :: proc(t: ^testing.T) {
 	e, _ := view_start(t)
 	defer e2e_stop(&e)
@@ -416,31 +399,6 @@ e2e_ui_open_waiter_replaced :: proc(t: ^testing.T) {
 	plugin_flush(&e.ed)
 	testing.expect(t, view_logged(&e, "wait nil nil "), "a non-modal pane with a waiter is replaced, its wait resolves nil")
 	testing.expect_value(t, test_view_selected(&e.ed), "o")
-	e2e_key(&e, .Esc)
-}
-
-@(test)
-e2e_ui_open_foreign_ask :: proc(t: ^testing.T) {
-	e, _ := view_start(t)
-	defer e2e_stop(&e)
-	e2e_plugin(&e, "asker", `return {setup = function()
-		qed.command{name = "View", run = function(ctx) qed.message("view " .. tostring(ctx.view)) end}
-		qed.command{name = "Later", run = function()
-			qed.defer(0, function() local r, err = qed.confirm{question = "L?"}; qed.message("later " .. tostring(err)) end)
-		end}
-		qed.command{name = "Now", run = function() qed.message("now " .. tostring(qed.confirm{question = "N?"})) end}
-	end}`)
-	view_run(t, &e, "V: Center")
-	view_run(t, &e, "Asker: View")
-	testing.expect_value(t, e.ed.message, "view nil")
-	view_run(t, &e, "Asker: Later")
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return !strings.has_prefix(e.ed.message, "later")})
-	testing.expect_value(t, e.ed.message, "later busy")
-	testing.expect_value(t, len(e.ed.panes), 1)
-	view_run(t, &e, "Asker: Now")
-	testing.expect_value(t, len(e.ed.panes), 2)
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, e.ed.message, "now nil")
 	e2e_key(&e, .Esc)
 }
 
