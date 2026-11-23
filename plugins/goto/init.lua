@@ -1,7 +1,7 @@
 local function selection_query(ctx)
-	local s = ctx.selection_text
-	if s and not s:find("\n") and s:find("[^ \t]") then
-		return s
+	local selection = ctx.selection_text
+	if selection and not selection:find("\n") and selection:find("[^ \t]") then
+		return selection
 	end
 end
 
@@ -17,8 +17,8 @@ local function find_line(ctx)
 		list = {items = buf:line_list()},
 		preview = "auto",
 		on = {
-			activate = function(v, items)
-				v:close()
+			activate = function(view, items)
+				view:close()
 				if items[1] and buf:valid() then
 					qed.jump(buf, items[1].pos)
 				end

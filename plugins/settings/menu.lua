@@ -1,4 +1,4 @@
-local M = {}
+local menu = {}
 
 local ui = qed.ui
 
@@ -12,26 +12,26 @@ local view
 local tab = 1
 local rows = {}
 
-local function split(s)
+local function split(dotted_name)
 	local out = {}
-	for part in s:gmatch("[^.]+") do
+	for part in dotted_name:gmatch("[^.]+") do
 		out[#out + 1] = part
 	end
 	return out
 end
 
-local function lookup(t, path)
-	for _, k in ipairs(path) do
-		if type(t) ~= "table" then
+local function lookup(node, path)
+	for _, segment in ipairs(path) do
+		if type(node) ~= "table" then
 			return nil
 		end
-		t = t[k]
+		node = node[segment]
 	end
-	return t
+	return node
 end
 
-local function is_object(v)
-	return type(v) == "table" and next(v) ~= nil and #v == 0
+local function is_object(setting)
+	return type(setting) == "table" and next(setting) ~= nil and #setting == 0
 end
 
 local function user_config()
@@ -52,50 +52,50 @@ local function schema_entry(dotted)
 		return schema[dotted]
 	end
 	local parts = split(dotted)
-	for pattern, e in pairs(schema) do
+	for pattern, entry in pairs(schema) do
 		local ps = split(pattern)
 		local ok = #ps == #parts
 		for i = 1, ok and #ps or 0 do
 			ok = ok and (ps[i] == "*" or ps[i] == parts[i])
 		end
 		if ok then
-			return e
+			return entry
 		end
 	end
 	return {}
 end
 
-local function kind_of(v, choices)
+local function kind_of(setting, choices)
 	if choices then
 		return "choice"
-	elseif type(v) == "boolean" then
+	elseif type(setting) == "boolean" then
 		return "bool"
-	elseif math.type(v) == "integer" then
+	elseif math.type(setting) == "integer" then
 		return "int"
-	elseif type(v) == "number" then
+	elseif type(setting) == "number" then
 		return "number"
-	elseif type(v) == "table" then
+	elseif type(setting) == "table" then
 		return "list"
 	end
 	return "string"
 end
 
-local function show(v)
-	if v == nil then
+local function show(setting)
+	if setting == nil then
 		return ""
-	elseif type(v) == "table" then
-		return qed.json.encode(v)
-	elseif v == "" then
+	elseif type(setting) == "table" then
+		return qed.json.encode(setting)
+	elseif setting == "" then
 		return '""'
 	end
-	return (tostring(v):gsub("\n", "\\n"))
+	return (tostring(setting):gsub("\n", "\\n"))
 end
 
-local function same(a, b)
-	if type(a) == "table" and type(b) == "table" then
-		return qed.json.encode(a) == qed.json.encode(b)
+local function same(left, right)
+	if type(left) == "table" and type(right) == "table" then
+		return qed.json.encode(left) == qed.json.encode(right)
 	end
-	return a == b
+	return left == right
 end
 
 local function option_row(out, user, source, name, path, default, info)
@@ -125,37 +125,37 @@ end
 
 local function option_leaves(out, user, source, prefix, path, def, maps, info_of)
 	local keys = {}
-	for k in pairs(def) do
-		keys[#keys + 1] = k
+	for segment in pairs(def) do
+		keys[#keys + 1] = segment
 	end
 	local usr = lookup(user, path)
 	if not is_object(usr) then
 		usr = {}
 	elseif maps and prefix ~= "" then
-		for k in pairs(usr) do
-			if def[k] == nil then
-				keys[#keys + 1] = k
+		for segment in pairs(usr) do
+			if def[segment] == nil then
+				keys[#keys + 1] = segment
 			end
 		end
 	end
-	local function nested(k)
-		return is_object(def[k]) or is_object(usr[k])
+	local function nested(segment)
+		return is_object(def[segment]) or is_object(usr[segment])
 	end
-	table.sort(keys, function(a, b)
-		if nested(a) ~= nested(b) then
-			return nested(b)
+	table.sort(keys, function(left, right)
+		if nested(left) ~= nested(right) then
+			return nested(right)
 		end
-		return a < b
+		return left < right
 	end)
-	for _, k in ipairs(keys) do
-		local p = {table.unpack(path)}
-		p[#p + 1] = k
-		local name = prefix == "" and k or prefix .. "." .. k
-		local v = def[k]
-		if is_object(v) or (v == nil and is_object(usr[k])) then
-			option_leaves(out, user, source, name, p, v or {}, maps, info_of)
+	for _, segment in ipairs(keys) do
+		local child_path = {table.unpack(path)}
+		child_path[#child_path + 1] = segment
+		local name = prefix == "" and segment or prefix .. "." .. segment
+		local setting = def[segment]
+		if is_object(setting) or (setting == nil and is_object(usr[segment])) then
+			option_leaves(out, user, source, name, child_path, setting or {}, maps, info_of)
 		else
-			option_row(out, user, source, name, p, v, info_of(name))
+			option_row(out, user, source, name, child_path, setting, info_of(name))
 		end
 	end
 end
@@ -164,29 +164,29 @@ local function option_rows(user)
 	local out = {}
 	local defaults = qed.json.decode(qed.config_defaults())
 	local core = {}
-	for k, v in pairs(defaults) do
-		if k ~= "keybinds" and k ~= "plugins" and k ~= "lsp" then
-			core[k] = v
+	for segment, setting in pairs(defaults) do
+		if segment ~= "keybinds" and segment ~= "plugins" and segment ~= "lsp" then
+			core[segment] = setting
 		end
 	end
 	option_leaves(out, user, "core", "", {}, core, false, function(name)
-		local e = schema_entry(name)
+		local entry = schema_entry(name)
 		if name == "theme" then
-			e = {description = e.description, choices = qed.theme.list()}
+			entry = {description = entry.description, choices = qed.theme.list()}
 		end
-		return e
+		return entry
 	end)
 	option_leaves(out, user, "lsp", "", {"lsp"}, defaults.lsp, false, function(name)
 		return schema_entry("lsp." .. name)
 	end)
-	for _, p in ipairs(qed.plugins()) do
-		local on = lookup(defaults, {"plugins", p.id, "enabled"})
+	for _, plugin in ipairs(qed.plugins()) do
+		local on = lookup(defaults, {"plugins", plugin.id, "enabled"})
 		if on == nil then
 			on = true
 		end
-		option_row(out, user, p.id, "enabled", {"plugins", p.id, "enabled"}, on, schema_entry("plugins.*.enabled"))
-		local info = p.info or {}
-		option_leaves(out, user, p.id, "", {"plugins", p.id}, p.options or {}, true, function(name)
+		option_row(out, user, plugin.id, "enabled", {"plugins", plugin.id, "enabled"}, on, schema_entry("plugins.*.enabled"))
+		local info = plugin.info or {}
+		option_leaves(out, user, plugin.id, "", {"plugins", plugin.id}, plugin.options or {}, true, function(name)
 			local i = info[name:match("^[^.]+")]
 			return type(i) == "string" and {description = i} or i or {}
 		end)
@@ -221,14 +221,14 @@ local function keybind_rows(user)
 			row.scopes[cmd.scope] = true
 		end
 	end
-	table.sort(out, function(a, b)
-		if (a.source == "core") ~= (b.source == "core") then
-			return a.source == "core"
+	table.sort(out, function(left, right)
+		if (left.source == "core") ~= (right.source == "core") then
+			return left.source == "core"
 		end
-		if a.source ~= b.source then
-			return a.source < b.source
+		if left.source ~= right.source then
+			return left.source < right.source
 		end
-		return a.name < b.name
+		return left.name < right.name
 	end)
 	return out
 end
@@ -282,7 +282,7 @@ local function setting_row(record)
 	return ui.row{
 		on = {click = function()
 			ui.node("settings_rows"):set_state{highlighted = record.key}
-			M.rebuild()
+			menu.rebuild()
 			return true
 		end},
 		ui.text{width = 1, fg = "git_modified", record.user and "▎" or " "},
@@ -296,7 +296,7 @@ local function tab_row()
 	for index, title in ipairs(TABS) do
 		local on = index == tab
 		chips[#chips + 1] = ui.text{
-			on = {click = function() M.switch_tab(index) return true end},
+			on = {click = function() menu.switch_tab(index) return true end},
 			" ", {fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, title}, " "}
 	end
 	chips[#chips + 1] = ui.text{grow = 1, fg = "pane_dim_foreground", "  ", shortcut("Next Tab"), " switches"}
@@ -313,7 +313,7 @@ local function footer()
 	elseif footer_state then
 		return ui.text{id = "settings_chord", height = 1, fg = "pane_prompt_foreground", " ", footer_state.prompt,
 			on = {key = function(args)
-				M.capture(args.chord)
+				menu.capture(args.chord)
 				return true
 			end}}
 	end
@@ -324,7 +324,7 @@ local function build()
 	local columns = COLUMNS[tab]
 	return ui.column{float = "screen", width = "100%", height = "100%",
 		on = {click = function()
-			M.dismiss()
+			menu.dismiss()
 			return true
 		end},
 		ui.box{float = "screen", anchor = "center", width = {"100%", max = opts.max_width}, height = "100%",
@@ -347,7 +347,7 @@ local function build()
 	}}
 end
 
-function M.rebuild()
+function menu.rebuild()
 	if view then
 		view.handle:update(build())
 	end
@@ -401,12 +401,12 @@ local function refresh(reorder)
 	end
 	rows, view.name_width = by_key, width
 	highlight(keep)
-	M.rebuild()
+	menu.rebuild()
 end
 
 local function focus_query()
 	view.footer = nil
-	M.rebuild()
+	menu.rebuild()
 	ui.node("settings_query"):focus()
 end
 
@@ -415,7 +415,7 @@ local function prompt_input(row, text)
 	buffer:set_text(text)
 	buffer:set_cursor({row = 1, col = #text + 1})
 	view.footer = {kind = "input", row = row, buffer = buffer, prompt = row.name .. ": "}
-	M.rebuild()
+	menu.rebuild()
 	ui.node("settings_input"):focus()
 end
 
@@ -439,25 +439,25 @@ local function parse(row, text)
 	if row.kind == "string" then
 		return text
 	elseif row.kind == "list" then
-		local v = qed.json.decode(text)
-		if type(v) ~= "table" or is_object(v) then
+		local setting = qed.json.decode(text)
+		if type(setting) ~= "table" or is_object(setting) then
 			return nil, row.name .. " needs a JSON list"
 		end
-		for _, e in ipairs(v) do
-			if type(e) ~= "string" then
+		for _, entry in ipairs(setting) do
+			if type(entry) ~= "string" then
 				return nil, row.name .. " needs a JSON list of strings"
 			end
 		end
-		return v
+		return setting
 	end
-	local n = tonumber(text)
-	if not n or (row.kind == "int" and math.type(n) ~= "integer") then
+	local number = tonumber(text)
+	if not number or (row.kind == "int" and math.type(number) ~= "integer") then
 		return nil, row.name .. (row.kind == "int" and " needs a whole number" or " needs a number")
 	end
-	if row.min and n < row.min then
+	if row.min and number < row.min then
 		return nil, ("%s must be at least %d"):format(row.name, row.min)
 	end
-	return n
+	return number
 end
 
 local function normalize(chord)
@@ -528,7 +528,7 @@ local function activate()
 		edit_option(row)
 	else
 		view.footer = {kind = "chord", row = row, prompt = "Press a chord for " .. row.name .. " (Esc cancels)"}
-		M.rebuild()
+		menu.rebuild()
 		ui.node("settings_chord"):focus()
 	end
 end
@@ -559,7 +559,7 @@ local function submit()
 	end
 end
 
-function M.capture(chord)
+function menu.capture(chord)
 	local footer_state = view and view.footer
 	if not footer_state or not chord or chord == "" then
 		return
@@ -570,7 +570,7 @@ function M.capture(chord)
 	end
 end
 
-function M.switch_tab(index)
+function menu.switch_tab(index)
 	if not view then
 		return
 	end
@@ -591,10 +591,10 @@ local function move(step)
 	local index = matches:index_of(highlighted() or "") or 0
 	index = math.max(1, math.min(count, index + step))
 	ui.node("settings_rows"):set_state{highlighted = matches:at(index).key}
-	M.rebuild()
+	menu.rebuild()
 end
 
-function M.dismiss()
+function menu.dismiss()
 	if not view then
 		return
 	end
@@ -612,10 +612,10 @@ local function close()
 		view.query:set_text("")
 		return
 	end
-	M.dismiss()
+	menu.dismiss()
 end
 
-function M.reset()
+function menu.reset()
 	local row = view and rows[highlighted() or ""]
 	if not row then
 		return
@@ -633,7 +633,7 @@ function M.reset()
 	refresh()
 end
 
-function M.open()
+function menu.open()
 	if view then
 		ui.node("settings_query"):focus()
 		return
@@ -651,15 +651,15 @@ function M.open()
 		if view then
 			view.matches:set_query(view.query:text())
 			highlight(nil)
-			M.rebuild()
+			menu.rebuild()
 		end
 	end)
 	highlight(nil)
-	M.rebuild()
+	menu.rebuild()
 	ui.node("settings_query"):focus()
 end
 
-function M.setup()
+function menu.setup()
 	opts = qed.options({max_width = 120}, {max_width = "Max width of the settings pane"})
 	qed:on("config_changed", function()
 		opts = qed.config()
@@ -670,15 +670,15 @@ function M.setup()
 			refresh()
 		end)
 	end
-	qed.command{name = "Open", welcome = true, run = M.open}
-	qed.command{name = "Reset", scope = "settings", key = "Ctrl+d", run = M.reset}
+	qed.command{name = "Open", welcome = true, run = menu.open}
+	qed.command{name = "Reset", scope = "settings", key = "Ctrl+d", run = menu.reset}
 	qed.command{name = "Edit", scope = "settings", key = "Enter", run = activate}
 	qed.command{name = "Next", scope = "settings", key = "Down", run = function() move(1) end}
 	qed.command{name = "Previous", scope = "settings", key = "Up", run = function() move(-1) end}
-	qed.command{name = "Next Tab", scope = "settings", key = "Tab", run = function() M.switch_tab() end}
+	qed.command{name = "Next Tab", scope = "settings", key = "Tab", run = function() menu.switch_tab() end}
 	qed.command{name = "Close", scope = "settings", key = "Esc", run = close}
 	qed.command{name = "Submit", scope = "settings_input", key = "Enter", run = submit}
 	qed.command{name = "Cancel", scope = "settings_input", key = "Esc", run = cancel_input}
 end
 
-return M
+return menu

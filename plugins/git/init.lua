@@ -14,24 +14,24 @@ local renames = {}
 local published, ft
 local inrepo = false
 
-local function fetch(b)
-	local path = b:path()
-	gen[b] = (gen[b] or 0) + 1
-	local mine = gen[b]
-	fetched[b] = path
+local function fetch(buffer)
+	local path = buffer:path()
+	gen[buffer] = (gen[buffer] or 0) + 1
+	local mine = gen[buffer]
+	fetched[buffer] = path
 	local blob
-	if path ~= "" and not b:big() then
+	if path ~= "" and not buffer:big() then
 		blob = repo.blob(path, base)
 	end
-	if b:valid() and gen[b] == mine then
-		b:set_base(blob, {label = ""})
+	if buffer:valid() and gen[buffer] == mine then
+		buffer:set_base(blob, {label = ""})
 	end
 end
 
 local function fetch_all()
-	for _, b in ipairs(qed.buf.list()) do
-		if b:valid() then
-			fetch(b)
+	for _, buffer in ipairs(qed.buf.list()) do
+		if buffer:valid() then
+			fetch(buffer)
 		end
 	end
 end
@@ -92,8 +92,8 @@ local function publish(files, ignored, full, empty)
 		return
 	end
 	renames = {}
-	for path, e in pairs(files) do
-		renames[path] = e.from
+	for path, entry in pairs(files) do
+		renames[path] = entry.from
 	end
 	local paths, virtual = view.changed, view.deleted
 	if how == "fields" then
@@ -165,8 +165,8 @@ local function poll()
 		if branch == "" then
 			branch = repo.out(root, {"rev-parse", "--short", "HEAD"})
 		end
-		local b, a = repo.out(root, {"rev-list", "--left-right", "--count", "@{u}...HEAD"}):match("^(%d+)%s+(%d+)$")
-		behind, ahead = tonumber(b) or 0, tonumber(a) or 0
+		local behind_text, ahead_text = repo.out(root, {"rev-list", "--left-right", "--count", "@{u}...HEAD"}):match("^(%d+)%s+(%d+)$")
+		behind, ahead = tonumber(behind_text) or 0, tonumber(ahead_text) or 0
 		local rev = repo.rev(top, base)
 		sha = repo.out(root, {"rev-parse", "-q", "--verify", rev})
 		added, deleted = repo.diffsize(top, rev)
@@ -189,9 +189,9 @@ local function poll()
 end
 
 local function tick()
-	for _, b in ipairs(qed.buf.list()) do
-		if b:valid() and fetched[b] ~= b:path() then
-			fetch(b)
+	for _, buffer in ipairs(qed.buf.list()) do
+		if buffer:valid() and fetched[buffer] ~= buffer:path() then
+			fetch(buffer)
 		end
 	end
 	poll()
@@ -274,14 +274,14 @@ return {
 			scan()
 		end)
 		for _, ev in ipairs({"buf_open", "buf_save", "buf_reload"}) do
-			qed:on(ev, function(b)
-				if ready and b:valid() then
-					fetch(b)
+			qed:on(ev, function(buffer)
+				if ready and buffer:valid() then
+					fetch(buffer)
 				end
 			end)
 		end
-		qed:on("buf_close", function(b)
-			fetched[b], gen[b] = nil, nil
+		qed:on("buf_close", function(buffer)
+			fetched[buffer], gen[buffer] = nil, nil
 		end)
 		qed:on("root_changed", function()
 			if ready then

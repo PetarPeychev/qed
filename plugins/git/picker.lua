@@ -1,10 +1,10 @@
 local repo = require("repo")
 
-local M = {}
+local picker = {}
 
 local LOG_COUNT = 50
 
-function M.entries(default, refs, log)
+function picker.entries(default, refs, log)
 	local out = {{label = "HEAD"}}
 	if default ~= "" then
 		out[#out + 1] = {label = "Merge base with " .. default, ref = default, name = default .. "...", merge = true}
@@ -26,37 +26,37 @@ local function default_branch(root)
 	if origin ~= "" then
 		return origin
 	end
-	for _, b in ipairs({"main", "master"}) do
-		if repo.git(root, {"show-ref", "-q", "--verify", "refs/heads/" .. b}).code == 0 then
-			return b
+	for _, branch in ipairs({"main", "master"}) do
+		if repo.git(root, {"show-ref", "-q", "--verify", "refs/heads/" .. branch}).code == 0 then
+			return branch
 		end
 	end
 	return ""
 end
 
-function M.pick(root)
+function picker.pick(root)
 	if repo.git(root, {"rev-parse", "--show-toplevel"}).code ~= 0 then
 		return nil, "Working directory is not a git repository"
 	end
 	local refs = repo.lines(repo.git(root, {"for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads", "refs/remotes"}).stdout)
 	local log = repo.lines(repo.git(root, {"log", "-n", tostring(LOG_COUNT), "--format=%h %s"}).stdout)
 	local items = {}
-	for _, e in ipairs(M.entries(default_branch(root), refs, log)) do
-		items[#items + 1] = {label = e.label, value = e}
+	for _, entry in ipairs(picker.entries(default_branch(root), refs, log)) do
+		items[#items + 1] = {label = entry.label, value = entry}
 	end
 	local item = qed.pick{items = items}
 	if not item then
 		return nil
 	end
-	local e = item.value
-	if not e.ref then
+	local entry = item.value
+	if not entry.ref then
 		return {}
 	end
-	local sha = repo.resolve(root, e)
+	local sha = repo.resolve(root, entry)
 	if sha == "" then
-		return nil, "Cannot resolve " .. e.label
+		return nil, "Cannot resolve " .. entry.label
 	end
-	return {ref = e.commit and sha or e.ref, label = e.name, merge = e.merge or false}
+	return {ref = entry.commit and sha or entry.ref, label = entry.name, merge = entry.merge or false}
 end
 
-return M
+return picker

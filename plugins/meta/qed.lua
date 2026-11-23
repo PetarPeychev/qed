@@ -74,22 +74,22 @@ function qed.run(name) end
 
 ---Every change to `b` while `fn` runs is one undo step; an error inside `fn` rolls it back.
 ---Returns `nil, "stale"` without calling `fn` if `opts.rev` is stale.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param fn fun()
 ---@param opts? {rev?: integer}
 ---@return true|nil ok
 ---@return "stale"|nil err
-function qed.edit(b, fn, opts) end
+function qed.edit(buffer, fn, opts) end
 
 ---Open (or switch to) a file. Relative paths resolve against `qed.root()`.
 ---@param path string
----@return integer|nil b
+---@return qed.BufferObject|nil buffer
 ---@return string|nil err
 function qed.open(path) end
 
 ---Opens a new unnamed buffer (the untouched welcome scratch is replaced) holding `text` as its clean content, and switches to it. Saving it asks for a file name. `nil, err` on an unknown `language`.
 ---@param opts {text?: string, language?: string}
----@return integer|nil b
+---@return qed.BufferObject|nil buffer
 ---@return string|nil err
 function qed.new_buf(opts) end
 
@@ -168,17 +168,17 @@ function qed.plugin_source(id) end
 
 ---Save through the full pipeline. Fails without saving if the file changed on disk
 ---(the conflict dialog opens only for the current buffer). Waits for `buf_pre_save` handlers.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@return true|nil ok
 ---@return "no file name"|"changed on disk"|"save in progress"|nil err
-function qed.save(b) end
+function qed.save(buffer) end
 
 ---Close a buffer. Returns `nil, "unsaved"` and keeps it open if it has unsaved changes, unless its id is in `discard` (approved, e.g. by a confirm).
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param opts? {discard?: qed.BufferObject[]}
 ---@return true|nil ok
 ---@return "unsaved"|nil err
-function qed.close(b, opts) end
+function qed.close(buffer, opts) end
 
 ---Switch to buffer `target` or open the path `target` (relative to `qed.root()`), move the cursor to `pos` (clamped, a col inside a UTF-8 sequence snaps back), and record the jump from where you were. Closes the file tree if it is open.
 ---@param target qed.Buf|string
@@ -237,9 +237,9 @@ function qed.config() end
 function qed.opt(key) end
 
 ---POSIX single-quotes `s` so it is one literal shell word.
----@param s string
+---@param text string
 ---@return string
-function qed.shell_quote(s) end
+function qed.shell_quote(text) end
 
 ---Parses compiler/grep output (`file:row:col: msg`, `file:row:col`, `file:row: msg`, `file:row`) into `qed.pick` items with a root-relative `label`, an absolute `path` and the parsed `pos`.
 ---Lines naming a missing file are skipped; `{}` when nothing parses. `cwd` resolves relative files, default `qed.root()`.
@@ -912,78 +912,78 @@ qed.deco = {}
 function qed.deco.ns(name) end
 
 ---Mark column glyph (shown where the diff base has no mark).
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param row integer
 ---@param glyph string one single-width character
 ---@param opts {color: string} theme color key
-function qed.deco.gutter(b, ns, row, glyph, opts) end
+function qed.deco.gutter(buffer, ns, row, glyph, opts) end
 
 ---Line background tint, stacked over the diff hunk tint and under the current-line tint.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param from_row integer
 ---@param to_row integer inclusive
 ---@param opts {color: string, alpha?: number|string} `color` a theme color key; `alpha` 0..1, or a theme tint key (`"conflict"`, `"ai_edit"`) resolved per frame, default the theme's `decoration` tint
-function qed.deco.tint(b, ns, from_row, to_row, opts) end
+function qed.deco.tint(buffer, ns, from_row, to_row, opts) end
 
 ---Virtual rows below (or above) a row, one clipped screen row each.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param row integer
 ---@param lines string|string[]
 ---@param opts? {above?: boolean, color?: string}
-function qed.deco.ghost(b, ns, row, lines, opts) end
+function qed.deco.ghost(buffer, ns, row, lines, opts) end
 
 ---Style over a range; dropped when any of its rows is edited.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param from qed.Pos
 ---@param to qed.Pos
 ---@param style {fg?: string, bg?: string, alpha?: number|string, bold?: boolean, underline?: boolean} `alpha` (a number or theme tint key) blends `bg` over the line background instead of painting it solid
-function qed.deco.span(b, ns, from, to, style) end
+function qed.deco.span(buffer, ns, from, to, style) end
 
 ---Virtual text after the end of a row, clipped to the window.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param row integer
 ---@param text string
 ---@param opts {color: string} theme color key
-function qed.deco.eol(b, ns, row, text, opts) end
+function qed.deco.eol(buffer, ns, row, text, opts) end
 
 ---A range anchor that follows edits: text inserted before it shifts it, an edit touching its inside (or a reload) removes it. Never drawn.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param from qed.Pos
 ---@param to qed.Pos
 ---@return integer id
-function qed.deco.mark(b, ns, from, to) end
+function qed.deco.mark(buffer, ns, from, to) end
 
 ---Where the mark is now, or nil once an edit touched its inside, a reload dropped it or it was cleared.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param id integer
 ---@return qed.Pos|nil from
 ---@return qed.Pos|nil to
-function qed.deco.range(b, ns, id) end
+function qed.deco.range(buffer, ns, id) end
 
 ---Dimmed inline text at the cursor, not part of the buffer (one per buffer). Shown while the cursor stays at `pos` without a selection; core handles the keys: Tab inserts it, Ctrl+Right its next word, any other key, a click or an edit drops it.
 ---Fails (nothing shown) when `opts.rev` is stale, `pos` is not the cursor, a selection is active or `text` is empty.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param pos qed.Pos
 ---@param text string may span lines
 ---@param opts? {rev?: integer}
 ---@return true|nil ok
 ---@return "stale"|"not at cursor"|"selection"|"empty"|nil err
-function qed.deco.inline(b, ns, pos, text, opts) end
+function qed.deco.inline(buffer, ns, pos, text, opts) end
 
 ---Removes the namespace's decorations, marks and inline text touching rows from_row..to_row (all when omitted).
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param ns integer
 ---@param from_row? integer
 ---@param to_row? integer
-function qed.deco.clear(b, ns, from_row, to_row) end
+function qed.deco.clear(buffer, ns, from_row, to_row) end
 
 qed.status = {}
 
@@ -1162,7 +1162,7 @@ function BufferObject:set_text(text, opts) end
 ---@return qed.Pos
 function BufferObject:cursor() end
 
----Move the caret to `pos`, clear the selection and scroll it into view if `b` is current.
+---Move the caret to `pos`, clear the selection and scroll it into view if it is current.
 ---@param pos qed.Pos
 function BufferObject:set_cursor(pos) end
 
@@ -1306,15 +1306,15 @@ function qed.fs.mkdir(path) end
 qed.json = {}
 
 ---Parses JSON into Lua values, or `nil, err` on invalid input. Whole numbers decode as integers.
----@param s string
+---@param text string
 ---@return any
 ---@return string|nil err
-function qed.json.decode(s) end
+function qed.json.decode(text) end
 
 ---Serializes a Lua value to compact JSON. Raises on functions, userdata, NaN or infinity, non-string/integer keys and over-deep nesting.
----@param v any
+---@param value any
 ---@return string
-function qed.json.encode(v) end
+function qed.json.encode(value) end
 
 qed.path = {}
 
@@ -1324,26 +1324,26 @@ qed.path = {}
 function qed.path.join(...) end
 
 ---Everything before the last path element, as in `dirname`.
----@param p string
+---@param path string
 ---@return string
-function qed.path.dir(p) end
+function qed.path.dir(path) end
 
 ---The last path element, as in `basename`.
----@param p string
+---@param path string
 ---@return string
-function qed.path.base(p) end
+function qed.path.base(path) end
 
 ---`p` relative to `base`, or `nil, err` when no relative path exists. Both are made absolute against `qed.root()` first; the result may start with `..` when `p` is not under `base`.
----@param p string
+---@param path string
 ---@param base? string defaults to `qed.root()`
 ---@return string|nil
 ---@return string|nil err
-function qed.path.rel(p, base) end
+function qed.path.rel(path, base) end
 
 ---Absolute, cleaned form; relative paths resolve against `qed.root()`. Symlinks are not resolved and the path need not exist.
----@param p string
+---@param path string
 ---@return string
-function qed.path.abs(p) end
+function qed.path.abs(path) end
 
 qed.lsp = {}
 
@@ -1351,39 +1351,39 @@ qed.lsp = {}
 ---Fails with "disabled" (`lsp.enabled` off), "no server", "unavailable" (not ready or no
 ---formatting support), "stale" (buffer changed meanwhile), "timeout" (no reply within
 ---`plugin_hook_timeout_ms`) or "error" (already logged).
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@return true|nil ok
 ---@return "disabled"|"no server"|"unavailable"|"stale"|"timeout"|"error"|nil err
-function qed.lsp.format(b) end
+function qed.lsp.format(buffer) end
 
 qed.text = {}
 
 ---Display width in terminal columns, grapheme-aware: wide characters count 2, combining marks 0, tabs advance to the next tab stop.
----@param s string
+---@param text string
 ---@return integer
-function qed.text.width(s) end
+function qed.text.width(text) end
 
 ---@class qed.DiffHunk
----@field a integer first row of the run in `a` (where it would be for an insertion)
----@field a_count integer rows removed from `a`
----@field b integer first row of the run in `b`
----@field b_count integer rows added from `b`
+---@field a integer first row of the run in the old list (where it would be for an insertion)
+---@field a_count integer rows removed from the old list
+---@field b integer first row of the run in the new list
+---@field b_count integer rows added from the new list
 
 ---Line diff of two string lists (the diff engine behind the gutter), as runs of changed rows. `nil` when the lists differ too much for the engine's edit-distance cap.
----@param a string[]
----@param b string[]
+---@param old_lines string[]
+---@param new_lines string[]
 ---@return qed.DiffHunk[]|nil
-function qed.text.diff(a, b) end
+function qed.text.diff(old_lines, new_lines) end
 
 ---@class qed.DiffRowsHunk: qed.DiffHunk
 ---@field spans? integer[][] with `words`: per paired row (`a + k - 1` with `b + k - 1`), `{a_from, a_to, b_from, b_to}`, the differing columns (`to` exclusive; equal when a side has no change)
 
 ---`qed.text.diff` of two row ranges of one buffer, read in core (no text copied into Lua). Hunk rows are buffer rows; `lo > hi` (by one) is an empty side.
----@param b qed.Buf
+---@param buffer qed.Buf
 ---@param a_lo integer
 ---@param a_hi integer
 ---@param b_lo integer
 ---@param b_hi integer
 ---@param opts? {words?: boolean}
 ---@return qed.DiffRowsHunk[]|nil
-function qed.text.diff_rows(b, a_lo, a_hi, b_lo, b_hi, opts) end
+function qed.text.diff_rows(buffer, a_lo, a_hi, b_lo, b_hi, opts) end

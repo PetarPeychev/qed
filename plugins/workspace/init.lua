@@ -17,17 +17,17 @@ local function switch(target, reopen)
 		if ok then
 			return nil
 		end
-		local v = reopen and reopen()
+		local view = reopen and reopen()
 		if err ~= "unsaved" then
 			qed.message(err, "error")
-			return v
+			return view
 		end
 		local question = ("Close %d buffer%s? (%d unsaved)"):format(info.total, info.total == 1 and "" or "s", info.unsaved)
 		if qed.confirm{question = question, choices = ACTIONS} ~= 2 then
-			return v
+			return view
 		end
-		if v then
-			v:close()
+		if view then
+			view:close()
 		end
 		opts = {discard = info.bufs}
 	end
@@ -35,9 +35,9 @@ end
 
 local function open_directory()
 	local root = qed.root()
-	local v = picker(root:sub(-1) == "/" and root or root .. "/")
-	while v do
-		local ok, _, target = v:wait()
+	local view = picker(root:sub(-1) == "/" and root or root .. "/")
+	while view do
+		local ok, _, target = view:wait()
 		if not ok then
 			return
 		end
@@ -46,8 +46,8 @@ local function open_directory()
 			qed.message("Not a directory: " .. target, "error")
 		else
 			-- closed before the switch: restarting the servers can outlast the command's slice
-			v:close()
-			v = switch(target, function() return picker(target) end)
+			view:close()
+			view = switch(target, function() return picker(target) end)
 		end
 	end
 end

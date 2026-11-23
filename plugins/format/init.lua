@@ -15,28 +15,28 @@ local LSP_ERRORS = {
 }
 
 local function trim_len(line, markdown)
-	local n = #line:match("[ \t]*$")
+	local trailing = #line:match("[ \t]*$")
 	-- Two+ trailing spaces on a markdown content line are a hard line break.
-	if n > 0 and markdown and n < #line and line:sub(-2) == "  " then
+	if trailing > 0 and markdown and trailing < #line and line:sub(-2) == "  " then
 		return 0
 	end
-	return n
+	return trailing
 end
 
-local function fixups(b)
+local function fixups(buffer)
 	if not on.trim and not on.newline then
 		return
 	end
-	local markdown = b:language() == "markdown"
-	local last = b:line_count()
-	local tail = b:line(last)
+	local markdown = buffer:language() == "markdown"
+	local last = buffer:line_count()
+	local tail = buffer:line(last)
 	local last_trim = on.trim and trim_len(tail, markdown) or 0
 	local newline = on.newline and #tail > last_trim
 	local cuts = {}
 	if on.trim then
-		local rows, from, to = b:find_trailing()
+		local rows, from, to = buffer:find_trailing()
 		for i, row in ipairs(rows) do
-			if not markdown or trim_len(b:line(row), true) > 0 then
+			if not markdown or trim_len(buffer:line(row), true) > 0 then
 				cuts[#cuts + 1] = {row = row, col = from[i], to = to[i]}
 			end
 		end
@@ -44,52 +44,52 @@ local function fixups(b)
 	if #cuts == 0 and not newline then
 		return
 	end
-	qed.edit(b, function()
-		for _, c in ipairs(cuts) do
-			b:delete({row = c.row, col = c.col}, {row = c.row, col = c.to})
+	qed.edit(buffer, function()
+		for _, cut in ipairs(cuts) do
+			buffer:delete({row = cut.row, col = cut.col}, {row = cut.row, col = cut.to})
 		end
 		if newline then
-			local eof = {row = last, col = #b:line(last) + 1}
-			local cur = b:cursor()
-			local keep = cur.row == eof.row and cur.col == eof.col and not b:selection()
-			b:insert(eof, "\n")
+			local eof = {row = last, col = #buffer:line(last) + 1}
+			local cur = buffer:cursor()
+			local keep = cur.row == eof.row and cur.col == eof.col and not buffer:selection()
+			buffer:insert(eof, "\n")
 			if keep then
-				b:set_cursor(eof)
+				buffer:set_cursor(eof)
 			end
 		end
 	end)
 	qed.log(("fixups: trimmed %d line(s), final-newline=%s"):format(#cuts, tostring(newline)), "debug")
 end
 
-local function external(b, cmd, on_save)
+local function external(buffer, cmd, on_save)
 	local tool = cmd:match("^%S+") or cmd
-	local path = b:path()
+	local path = buffer:path()
 	local file = path ~= "" and path or qed.path.join(qed.root(), "untitled")
 	local run = cmd:gsub("{file}", function() return qed.shell_quote(file) end)
-	local rev = b:rev()
-	local input = b:text()
-	local r, err = qed.spawn{cmd = run, stdin = input, cwd = qed.path.dir(file)}
-	if not b:valid() then
+	local rev = buffer:rev()
+	local input = buffer:text()
+	local result, err = qed.spawn{cmd = run, stdin = input, cwd = qed.path.dir(file)}
+	if not buffer:valid() then
 		return
 	end
-	if not r or r.code ~= 0 or r.stdout == "" then
-		if r and r.code == 127 then
+	if not result or result.code ~= 0 or result.stdout == "" then
+		if result and result.code == 127 then
 			qed.message("Formatter not found: " .. tool, "error")
 		else
 			qed.message(tool .. " failed", "error")
 		end
-		qed.log(("%s: %s"):format(tool, r and ("exit " .. r.code .. " " .. r.stderr) or err), "debug")
+		qed.log(("%s: %s"):format(tool, result and ("exit " .. result.code .. " " .. result.stderr) or err), "debug")
 		return
 	end
-	qed.log(("ran %s: %dB in, %dB out"):format(tool, #input, #r.stdout), "debug")
-	local out = r.stdout:gsub("\r\n", "\n")
+	qed.log(("ran %s: %dB in, %dB out"):format(tool, #input, #result.stdout), "debug")
+	local out = result.stdout:gsub("\r\n", "\n")
 	if out == input then
 		if not on_save then
 			qed.message("No formatting changes")
 		end
 		return
 	end
-	local set, applied = pcall(b.set_text, b, out, {rev = rev})
+	local set, applied = pcall(buffer.set_text, buffer, out, {rev = rev})
 	if not set then
 		qed.message(("%s failed: %s"):format(tool, applied), "error")
 	elseif not applied then
@@ -101,14 +101,14 @@ local function external(b, cmd, on_save)
 	end
 end
 
-local function lsp(b, on_save)
-	local rev = b:rev()
-	local ok, err = qed.lsp.format(b)
-	if on_save or not b:valid() then
+local function lsp(buffer, on_save)
+	local rev = buffer:rev()
+	local ok, err = qed.lsp.format(buffer)
+	if on_save or not buffer:valid() then
 		return
 	end
 	if ok then
-		qed.message(b:rev() ~= rev and "Formatted" or "No formatting changes")
+		qed.message(buffer:rev() ~= rev and "Formatted" or "No formatting changes")
 	elseif err == "stale" then
 		qed.message("skipped: buffer changed", "warn")
 	elseif LSP_ERRORS[err] then
@@ -116,12 +116,12 @@ local function lsp(b, on_save)
 	end
 end
 
-local function format(b, on_save)
-	local cmd = commands[b:language()]
+local function format(buffer, on_save)
+	local cmd = commands[buffer:language()]
 	if cmd and cmd ~= "" then
-		external(b, cmd, on_save)
+		external(buffer, cmd, on_save)
 	else
-		lsp(b, on_save)
+		lsp(buffer, on_save)
 	end
 end
 
@@ -171,10 +171,10 @@ return {
 		toggle("Toggle Trim Whitespace on Save", "trim", "Trim whitespace on save")
 		toggle("Toggle Final Newline on Save", "newline", "Final newline on save")
 		qed:on("config_changed", function(changed) apply(qed.config(), changed) end)
-		qed:on("buf_pre_save", function(b)
-			fixups(b)
+		qed:on("buf_pre_save", function(buffer)
+			fixups(buffer)
 			if on.format then
-				format(b, true)
+				format(buffer, true)
 			end
 		end)
 	end,

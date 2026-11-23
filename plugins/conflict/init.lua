@@ -14,17 +14,17 @@ local function scan(buffer)
 		if kinds[i] == START then
 			local block = {start = rows[i]}
 			local last
-			for j = i + 1, count do
-				local kind = kinds[j]
+			for next_index = i + 1, count do
+				local kind = kinds[next_index]
 				if kind == START then
 					break
 				elseif kind == FINISH then
-					block.finish, last = rows[j], j
+					block.finish, last = rows[next_index], next_index
 					break
 				elseif not block.sep and not block.base and kind == BASE then
-					block.base = rows[j]
+					block.base = rows[next_index]
 				elseif not block.sep and kind == SEP then
-					block.sep = rows[j]
+					block.sep = rows[next_index]
 				end
 			end
 			if block.sep and block.finish then
@@ -50,15 +50,15 @@ end
 
 local function decorate_words(buffer, block)
 	local hunks = qed.text.diff_rows(buffer, block.start + 1, (block.base or block.sep) - 1, block.sep + 1, block.finish - 1, {words = true})
-	for _, h in ipairs(hunks or {}) do
-		for kind, s in ipairs(h.spans) do
-			if s[1] ~= s[2] then
-				local row = h.a + kind - 1
-				qed.deco.span(buffer, ns, {row = row, col = s[1]}, {row = row, col = s[2]}, {bg = "conflict_ours", alpha = "conflict_word"})
+	for _, hunk in ipairs(hunks or {}) do
+		for kind, span in ipairs(hunk.spans) do
+			if span[1] ~= span[2] then
+				local row = hunk.a + kind - 1
+				qed.deco.span(buffer, ns, {row = row, col = span[1]}, {row = row, col = span[2]}, {bg = "conflict_ours", alpha = "conflict_word"})
 			end
-			if s[3] ~= s[4] then
-				local row = h.b + kind - 1
-				qed.deco.span(buffer, ns, {row = row, col = s[3]}, {row = row, col = s[4]}, {bg = "conflict_theirs", alpha = "conflict_word"})
+			if span[3] ~= span[4] then
+				local row = hunk.b + kind - 1
+				qed.deco.span(buffer, ns, {row = row, col = span[3]}, {row = row, col = span[4]}, {bg = "conflict_theirs", alpha = "conflict_word"})
 			end
 		end
 	end
@@ -113,8 +113,8 @@ local function full(buffer, force)
 	sync_hook()
 end
 
-local function same(o, d, block)
-	return o.start + d == block.start and o.sep + d == block.sep and o.finish + d == block.finish and (o.base and o.base + d) == block.base
+local function same(other, shift, block)
+	return other.start + shift == block.start and other.sep + shift == block.sep and other.finish + shift == block.finish and (other.base and other.base + shift) == block.base
 end
 
 changed = function(buffer, rev, _, lo, hi)
@@ -127,25 +127,25 @@ changed = function(buffer, rev, _, lo, hi)
 	local delta = lines - st.lines
 	local old_hi = hi - delta
 	local kept = {}
-	local j = 1
-	for _, o in ipairs(st.blocks) do
-		local d
-		if o.finish < lo then
-			d = 0
-		elseif o.start > old_hi then
-			d = delta
+	local next_index = 1
+	for _, other in ipairs(st.blocks) do
+		local shift
+		if other.finish < lo then
+			shift = 0
+		elseif other.start > old_hi then
+			shift = delta
 		end
-		if not d then
-			qed.deco.clear(buffer, ns, math.min(o.start, lo), o.finish > old_hi and o.finish + delta or hi)
+		if not shift then
+			qed.deco.clear(buffer, ns, math.min(other.start, lo), other.finish > old_hi and other.finish + delta or hi)
 		else
-			local s = o.start + d
-			while blocks[j] and blocks[j].start < s do
-				j = j + 1
+			local start_row = other.start + shift
+			while blocks[next_index] and blocks[next_index].start < start_row do
+				next_index = next_index + 1
 			end
-			if blocks[j] and same(o, d, blocks[j]) then
-				kept[j] = true
+			if blocks[next_index] and same(other, shift, blocks[next_index]) then
+				kept[next_index] = true
 			else
-				qed.deco.clear(buffer, ns, s, o.finish + d)
+				qed.deco.clear(buffer, ns, start_row, other.finish + shift)
 			end
 		end
 	end

@@ -6,30 +6,30 @@ local fim = {enabled = false, warned = false, gen = 0}
 
 local CONTEXT_BYTES = 64 * 1024
 
-local function trim(s)
-	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+local function trim(source)
+	return (source:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
-local function last_find(s, needle)
+local function last_find(source, needle)
 	local at
 	local i = 1
 	while true do
-		local j = s:find(needle, i, true)
-		if not j then
+		local found = source:find(needle, i, true)
+		if not found then
 			return at
 		end
-		at, i = j, j + 1
+		at, i = found, found + 1
 	end
 end
 
 -- the last fence wins: a model that reasons first may quote example snippets
-local function extract(s)
-	local close = last_find(s, "```")
+local function extract(source)
+	local close = last_find(source, "```")
 	if not close then
-		return trim(s)
+		return trim(source)
 	end
-	local open = last_find(s:sub(1, close - 1), "```")
-	local inner = open and s:sub(open + 3, close - 1) or s:sub(close + 3)
+	local open = last_find(source:sub(1, close - 1), "```")
+	local inner = open and source:sub(open + 3, close - 1) or source:sub(close + 3)
 	local nl = inner:find("\n", 1, true)
 	if nl then
 		inner = inner:sub(nl + 1)
@@ -46,39 +46,39 @@ local function reframe(core, original)
 	return lead .. core .. original:match("%s*$")
 end
 
-local function before(a, b)
-	return a.row < b.row or (a.row == b.row and a.col < b.col)
+local function before(left, right)
+	return left.row < right.row or (left.row == right.row and left.col < right.col)
 end
 
-local function translate(p, from, to, new_end)
-	if not before(from, p) then
-		return p
+local function translate(point, from, to, new_end)
+	if not before(from, point) then
+		return point
 	end
-	if not before(to, p) then
+	if not before(to, point) then
 		return new_end
 	end
-	local out = {row = p.row + new_end.row - to.row, col = p.col}
-	if p.row == to.row then
-		out.col = new_end.col + p.col - to.col
+	local out = {row = point.row + new_end.row - to.row, col = point.col}
+	if point.row == to.row then
+		out.col = new_end.col + point.col - to.col
 	end
 	return out
 end
 
 local function offset(lines, pos)
-	local n = 0
-	for r = 1, pos.row - 1 do
-		n = n + #lines[r] + 1
+	local count = 0
+	for row = 1, pos.row - 1 do
+		count = count + #lines[row] + 1
 	end
-	return n + pos.col
+	return count + pos.col
 end
 
-local function build_prompt(b, instruction, from, to)
-	local lines = b:lines()
+local function build_prompt(buffer, instruction, from, to)
+	local lines = buffer:lines()
 	local text = table.concat(lines, "\n")
-	local a, z = offset(lines, from), offset(lines, to)
-	local selection = text:sub(a, z - 1)
-	local marked = text:sub(1, a - 1) .. "<<<SELECT\n" .. selection .. "\nSELECT>>>" .. text:sub(z)
-	local path = b:path()
+	local start_offset, end_offset = offset(lines, from), offset(lines, to)
+	local selection = text:sub(start_offset, end_offset - 1)
+	local marked = text:sub(1, start_offset - 1) .. "<<<SELECT\n" .. selection .. "\nSELECT>>>" .. text:sub(end_offset)
+	local path = buffer:path()
 	local fill = {
 		{"{path}", path ~= "" and path or "(unsaved buffer)"},
 		{"{instruction}", instruction},
@@ -86,8 +86,8 @@ local function build_prompt(b, instruction, from, to)
 		{"{selection}", selection},
 	}
 	local prompt = cfg.edit_prompt
-	for _, f in ipairs(fill) do
-		prompt = prompt:gsub(f[1], function() return f[2] end)
+	for _, substitution in ipairs(fill) do
+		prompt = prompt:gsub(substitution[1], function() return substitution[2] end)
 	end
 	return prompt, selection
 end
@@ -125,52 +125,52 @@ local function status()
 	end
 end
 
-local function retint(b)
-	if not b:valid() then
+local function retint(buffer)
+	if not buffer:valid() then
 		return
 	end
-	qed.deco.clear(b, tints)
+	qed.deco.clear(buffer, tints)
 	local live = false
 	for _, wb in pairs(waiting) do
-		live = live or wb == b
+		live = live or wb == buffer
 	end
-	for _, e in ipairs(edits) do
-		if e.buf == b then
+	for _, edit in ipairs(edits) do
+		if edit.buf == buffer then
 			live = true
-			local from, to = qed.deco.range(b, ranges, e.mark)
+			local from, to = qed.deco.range(buffer, ranges, edit.mark)
 			if from then
 				local last = to.row
 				if to.col == 1 and to.row > from.row then
 					last = to.row - 1
 				end
-				qed.deco.tint(b, tints, from.row, last, {color = "ai_edit_background", alpha = "ai_edit"})
+				qed.deco.tint(buffer, tints, from.row, last, {color = "ai_edit_background", alpha = "ai_edit"})
 			end
 		end
 	end
 	if not live then
-		qed.deco.clear(b, ranges)
+		qed.deco.clear(buffer, ranges)
 	end
 end
 
-local function drop(e)
-	for i, x in ipairs(edits) do
-		if x == e then
+local function drop(edit)
+	for i, other in ipairs(edits) do
+		if other == edit then
 			table.remove(edits, i)
 			break
 		end
 	end
-	e.done = true
-	retint(e.buf)
+	edit.done = true
+	retint(edit.buf)
 	status()
 	sync_hook()
 end
 
-local function apply(e, r)
-	local raw = r.stdout
+local function apply(edit, result)
+	local raw = result.stdout
 	qed.log(("response (%dB):\n%s"):format(#raw, raw), "debug")
-	if r.code ~= 0 then
-		qed.log(("command exited %d (%dB reply)"):format(r.code, #raw), "debug")
-		qed.message(("Command failed (exit %d)"):format(r.code), "error")
+	if result.code ~= 0 then
+		qed.log(("command exited %d (%dB reply)"):format(result.code, #raw), "debug")
+		qed.message(("Command failed (exit %d)"):format(result.code), "error")
 		return
 	end
 	local core = extract(raw)
@@ -179,51 +179,51 @@ local function apply(e, r)
 		qed.message("Empty result, discarded", "error")
 		return
 	end
-	local b = e.buf
-	if not b:valid() then
+	local buffer = edit.buf
+	if not buffer:valid() then
 		qed.message("Buffer closed, discarded", "error")
 		return
 	end
-	local from, to = qed.deco.range(b, ranges, e.mark)
+	local from, to = qed.deco.range(buffer, ranges, edit.mark)
 	if not from then
 		qed.message("Edit discarded: block changed", "error")
 		return
 	end
 	qed.log(("applied at %d:%d (%dB)"):format(from.row, from.col, #core), "debug")
-	local cursor = b:cursor()
-	local sel_from, sel_to = b:selection()
+	local cursor = buffer:cursor()
+	local sel_from, sel_to = buffer:selection()
 	local anchor
 	if sel_from then
 		anchor = (sel_to.row == cursor.row and sel_to.col == cursor.col) and sel_from or sel_to
 	end
 	local new_end
-	qed.edit(b, function()
-		new_end = b:replace(from, to, reframe(core, e.original))
+	qed.edit(buffer, function()
+		new_end = buffer:replace(from, to, reframe(core, edit.original))
 	end)
 	cursor = translate(cursor, from, to, new_end)
 	if anchor then
-		b:set_selection(translate(anchor, from, to, new_end), cursor)
+		buffer:set_selection(translate(anchor, from, to, new_end), cursor)
 	else
-		b:set_cursor(cursor)
+		buffer:set_cursor(cursor)
 	end
 	qed.message("Edit applied")
 end
 
 local function edit_selection(ctx)
-	local b = ctx.buf
-	local from, to = b:selection()
+	local buffer = ctx.buf
+	local from, to = buffer:selection()
 	if not from then
 		qed.message("Select a block first", "error")
 		return
 	end
 	spaces()
-	local mark = qed.deco.mark(b, ranges, from, to)
-	waiting[mark] = b
+	local mark = qed.deco.mark(buffer, ranges, from, to)
+	waiting[mark] = buffer
 	local instruction = qed.prompt{prompt = "AI edit:"}
 	waiting[mark] = nil
 	local function abandon(msg)
-		if b:valid() then
-			retint(b)
+		if buffer:valid() then
+			retint(buffer)
 		end
 		if msg then
 			qed.message(msg, "error")
@@ -236,8 +236,8 @@ local function edit_selection(ctx)
 		return abandon("Empty instruction")
 	end
 	from, to = nil, nil
-	if b:valid() then
-		from, to = qed.deco.range(b, ranges, mark)
+	if buffer:valid() then
+		from, to = qed.deco.range(buffer, ranges, mark)
 	end
 	if not from then
 		return abandon("Edit discarded: block changed")
@@ -245,56 +245,56 @@ local function edit_selection(ctx)
 	if trim(cfg.edit_command) == "" then
 		return abandon("plugins.ai.edit_command is empty")
 	end
-	local prompt, selection = build_prompt(b, instruction, from, to)
+	local prompt, selection = build_prompt(buffer, instruction, from, to)
 	qed.log(("prompt (%dB):\n%s"):format(#prompt, prompt), "debug")
 	local proc, err = qed.spawn_bg{cmd = cfg.edit_command, stdin = prompt}
 	if not proc then
 		qed.log(("spawn failed: %s (%s)"):format(cfg.edit_command, err), "debug")
 		return abandon("Could not start command")
 	end
-	local e = {proc = proc, buf = b, original = selection, mark = mark}
-	edits[#edits + 1] = e
-	retint(b)
+	local edit = {proc = proc, buf = buffer, original = selection, mark = mark}
+	edits[#edits + 1] = edit
+	retint(buffer)
 	status()
 	sync_hook()
 	qed.log(("request sent: %s (%dB prompt)"):format(cfg.edit_command, #prompt), "debug")
 	qed.message(("Edit sent (%d running)"):format(#edits))
-	local r = proc:wait()
-	if e.done or not r then
+	local result = proc:wait()
+	if edit.done or not result then
 		return
 	end
-	apply(e, r)
-	drop(e)
+	apply(edit, result)
+	drop(edit)
 end
 
 local function cancel_all()
-	local n = #edits
+	local count = #edits
 	local bufs = {}
-	for _, e in ipairs(edits) do
-		e.done = true
-		e.proc:kill()
-		bufs[e.buf] = true
+	for _, edit in ipairs(edits) do
+		edit.done = true
+		edit.proc:kill()
+		bufs[edit.buf] = true
 	end
 	edits = {}
-	for b in pairs(bufs) do
-		retint(b)
+	for buffer in pairs(bufs) do
+		retint(buffer)
 	end
 	status()
 	sync_hook()
-	if n > 0 then
-		qed.message(("Cancelled %d edit(s)"):format(n))
+	if count > 0 then
+		qed.message(("Cancelled %d edit(s)"):format(count))
 	else
 		qed.message("No edits running")
 	end
 end
 
-local function prune(b, why, all)
+local function prune(buffer, why, all)
 	local cancelled = 0
 	for i = #edits, 1, -1 do
-		local e = edits[i]
-		if e.buf == b and (all or not qed.deco.range(b, ranges, e.mark)) then
-			e.done = true
-			e.proc:kill()
+		local edit = edits[i]
+		if edit.buf == buffer and (all or not qed.deco.range(buffer, ranges, edit.mark)) then
+			edit.done = true
+			edit.proc:kill()
 			table.remove(edits, i)
 			cancelled = cancelled + 1
 		end
@@ -307,18 +307,18 @@ local function prune(b, why, all)
 		sync_hook()
 	end
 	if not all then
-		retint(b)
+		retint(buffer)
 	end
 end
 
-reloaded = function(b)
-	if b:valid() then
-		prune(b, "file reloaded")
+reloaded = function(buffer)
+	if buffer:valid() then
+		prune(buffer, "file reloaded")
 	end
 end
 
-closed = function(b)
-	prune(b, nil, true)
+closed = function(buffer)
+	prune(buffer, nil, true)
 end
 
 local function fim_stop()
@@ -352,11 +352,11 @@ local function fim_parse(raw)
 	return type(c0.text) == "string" and c0.text or ""
 end
 
-local function fim_request(b, gen, typed_at, typed_rev)
-	if gen ~= fim.gen or not b:valid() or qed.buf.current() ~= b or b:selection() then
+local function fim_request(buffer, gen, typed_at, typed_rev)
+	if gen ~= fim.gen or not buffer:valid() or qed.buf.current() ~= buffer or buffer:selection() then
 		return
 	end
-	local pos, rev = b:cursor(), b:rev()
+	local pos, rev = buffer:cursor(), buffer:rev()
 	if rev ~= typed_rev or pos.row ~= typed_at.row or pos.col ~= typed_at.col then
 		return
 	end
@@ -376,8 +376,8 @@ local function fim_request(b, gen, typed_at, typed_rev)
 		return
 	end
 	local lo = math.max(1, pos.row - cfg.completion_context_lines)
-	local hi = math.min(b:line_count(), pos.row + cfg.completion_context_lines)
-	local lines = b:lines(lo, hi)
+	local hi = math.min(buffer:line_count(), pos.row + cfg.completion_context_lines)
+	local lines = buffer:lines(lo, hi)
 	local at = pos.row - lo + 1
 	local cur = lines[at]
 	local prefix = table.concat(lines, "\n", 1, at - 1) .. (at > 1 and "\n" or "") .. cur:sub(1, pos.col - 1)
@@ -406,42 +406,42 @@ local function fim_request(b, gen, typed_at, typed_rev)
 	end
 	fim.proc = proc
 	qed.log(("request fired: prefix=%dB suffix=%dB"):format(#prefix, #suffix), "debug")
-	local r = proc:wait()
-	if gen ~= fim.gen or not r then
+	local result = proc:wait()
+	if gen ~= fim.gen or not result then
 		return
 	end
 	fim.proc = nil
-	local text = fim_parse(r.stdout):gsub("\n+$", "")
-	local now = b:valid() and b:cursor()
-	local moved = not now or qed.buf.current() ~= b or b:rev() ~= rev or now.row ~= pos.row or now.col ~= pos.col
-	if r.code ~= 0 then
-		qed.log(("curl exited %d (%dB reply)"):format(r.code, #r.stdout), "debug")
+	local text = fim_parse(result.stdout):gsub("\n+$", "")
+	local now = buffer:valid() and buffer:cursor()
+	local moved = not now or qed.buf.current() ~= buffer or buffer:rev() ~= rev or now.row ~= pos.row or now.col ~= pos.col
+	if result.code ~= 0 then
+		qed.log(("curl exited %d (%dB reply)"):format(result.code, #result.stdout), "debug")
 	else
-		qed.log(("response %dB -> %dB suggestion, moved=%s, raw=%q"):format(#r.stdout, #text, tostring(moved), r.stdout:sub(1, 200)), "debug")
+		qed.log(("response %dB -> %dB suggestion, moved=%s, raw=%q"):format(#result.stdout, #text, tostring(moved), result.stdout:sub(1, 200)), "debug")
 	end
 	if not moved and text:find("%S") then
 		spaces()
-		fim.buf = b
-		qed.deco.inline(b, ghosts, pos, text, {rev = rev})
+		fim.buf = buffer
+		qed.deco.inline(buffer, ghosts, pos, text, {rev = rev})
 	end
 end
 
-local function fim_typed(b)
+local function fim_typed(buffer)
 	fim_stop()
-	if not fim.enabled or b:selection() or b:big() then
+	if not fim.enabled or buffer:selection() or buffer:big() then
 		return
 	end
-	local gen, at, rev = fim.gen, b:cursor(), b:rev()
+	local gen, at, rev = fim.gen, buffer:cursor(), buffer:rev()
 	fim.timer = qed.defer(cfg.completion_debounce_ms, function()
 		fim.timer = nil
-		fim_request(b, gen, at, rev)
+		fim_request(buffer, gen, at, rev)
 	end)
 end
 
-local function configure(c, changed)
-	cfg = c
+local function configure(config, changed)
+	cfg = config
 	if not changed or changed.completion_enabled then
-		fim.enabled = c.completion_enabled
+		fim.enabled = config.completion_enabled
 		if not fim.enabled then
 			fim_dismiss()
 		end
@@ -449,15 +449,15 @@ local function configure(c, changed)
 	end
 end
 
-changed = function(b, _, typed)
-	if not b:valid() then
+changed = function(buffer, _, typed)
+	if not buffer:valid() then
 		return
 	end
 	if #edits > 0 then
-		prune(b, "block edited")
+		prune(buffer, "block edited")
 	end
 	if typed then
-		fim_typed(b)
+		fim_typed(buffer)
 	end
 end
 

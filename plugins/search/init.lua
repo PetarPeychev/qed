@@ -7,8 +7,8 @@ local has_rg = false
 
 local function rg_ready()
 	if not has_rg then
-		local r = qed.spawn{cmd = "command -v rg"}
-		has_rg = r ~= nil and r.code == 0
+		local result = qed.spawn{cmd = "command -v rg"}
+		has_rg = result ~= nil and result.code == 0
 	end
 	return has_rg
 end
@@ -29,13 +29,13 @@ local function stop()
 	end
 end
 
-local function query(v, text, args)
+local function query(view, text, args)
 	stop()
 	if #text < min_query then
-		v:set({}, {hint = short_hint()})
+		view:set({}, {hint = short_hint()})
 		return
 	end
-	local root, n, seen = qed.root(), 0, {}
+	local root, total, seen = qed.root(), 0, {}
 	local proc, err = qed.spawn_bg{cmd = rg_cmd(text, args), on_line = function(line)
 		local file, row, col, hit = line:match("^(.-):(%d+):(%d+):(.*)$")
 		if not file or file == "" then
@@ -46,30 +46,30 @@ local function query(v, text, args)
 			return
 		end
 		seen[key] = true
-		n = n + 1
+		total = total + 1
 		local item = {
 			label = ("%s:%s  %s"):format(file, row, hit:gsub("\r$", ""):match("^[ \t]*(.*)")),
 			key = key,
 			path = qed.path.join(root, file),
 			pos = {row = tonumber(row), col = tonumber(col)},
 		}
-		if n == 1 then
-			v:set({item})
+		if total == 1 then
+			view:set({item})
 		else
-			v:append({item})
+			view:append({item})
 		end
-		if n > MAX then
+		if total > MAX then
 			stop()
 		end
 	end}
 	if not proc then
-		v:set({}, {hint = "Search failed: " .. err})
+		view:set({}, {hint = "Search failed: " .. err})
 		return
 	end
 	running = proc
-	local r = proc:wait()
-	if n == 0 and r then
-		v:set({}, {hint = r.code > 1 and ("Search failed: rg exit code %d"):format(r.code) or "No matches"})
+	local result = proc:wait()
+	if total == 0 and result then
+		view:set({}, {hint = result.code > 1 and ("Search failed: rg exit code %d"):format(result.code) or "No matches"})
 	end
 end
 
@@ -98,10 +98,10 @@ local function search(ctx, scope)
 		list = {max = MAX, sort = true, empty = short_hint()},
 		preview = "auto",
 		on = {
-			query = function(v, text) query(v, text, args) end,
+			query = function(view, text) query(view, text, args) end,
 			close = stop,
-			activate = function(v, items)
-				v:close()
+			activate = function(view, items)
+				view:close()
 				qed.jump(items[1].path, items[1].pos)
 			end,
 		},

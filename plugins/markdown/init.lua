@@ -4,19 +4,19 @@ local synced
 local history, at = {}, 0
 local follow
 
-local function stop(v)
-	if view == v then
+local function stop(pane)
+	if view == pane then
 		watch:off()
 		view, watch, current, synced = nil, nil, nil, nil
 	end
 end
 
-local function sync_back(v)
-	if not current or current.buf ~= qed.buf.current() or v:scroll() == synced then
+local function sync_back(pane)
+	if not current or current.buf ~= qed.buf.current() or pane:scroll() == synced then
 		return
 	end
 	local buffer = current.buf
-	local src, row = v:source_line(buffer:screen_row())
+	local src, row = pane:source_line(buffer:screen_row())
 	if not src then
 		return
 	end
@@ -26,7 +26,7 @@ end
 
 local function preview(buffer, anchor)
 	local path = buffer:path()
-	local v = qed.ui.open{
+	local pane = qed.ui.open{
 		place = "full",
 		scope = "markdown",
 		toggle = "Markdown: Preview",
@@ -46,24 +46,24 @@ local function preview(buffer, anchor)
 			link = function(lv, target) follow(lv, target) end,
 		},
 	}
-	if not v then
+	if not pane then
 		return
 	end
 	if view then
 		stop(view)
 	end
-	v:source_scroll(buffer:cursor().row, buffer:screen_row())
+	pane:source_scroll(buffer:cursor().row, buffer:screen_row())
 	if anchor and anchor ~= "" then
-		local src = v:anchor(anchor)
+		local src = pane:anchor(anchor)
 		if src then
 			buffer:set_cursor({row = src, col = 1})
 		end
 	end
-	synced = v:scroll()
+	synced = pane:scroll()
 	current = {path = path, buf = buffer}
-	view, watch = v, qed:on("buf_changed", function(changed)
+	view, watch = pane, qed:on("buf_changed", function(changed)
 		if changed == buffer then
-			v:markdown(buffer:text())
+			pane:markdown(buffer:text())
 		end
 	end)
 end
@@ -107,12 +107,12 @@ local function show(entry)
 	end
 end
 
-local function step(d)
-	if not history[at + d] then
+local function step(direction)
+	if not history[at + direction] then
 		return
 	end
 	remember()
-	at = at + d
+	at = at + direction
 	show(history[at])
 end
 
@@ -125,10 +125,10 @@ local function target_pos(path)
 	return {row = 1, col = 1}
 end
 
-follow = function(v, target)
+follow = function(pane, target)
 	if target:sub(1, 1) == "#" then
-		local before = v:scroll()
-		if v:anchor(target:sub(2)) then
+		local before = pane:scroll()
+		if pane:anchor(target:sub(2)) then
 			if history[at] then
 				history[at].scroll = before
 			end
@@ -144,7 +144,7 @@ follow = function(v, target)
 		return
 	end
 	local file, anchor = target:match("^([^#]*)#?(.*)$")
-	file = file:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
+	file = file:gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end)
 	local base = current and current.path or ""
 	local dir = base ~= "" and qed.path.dir(base) or qed.root()
 	local path = file:sub(1, 1) == "/" and file or qed.path.join(dir, file)
@@ -154,8 +154,8 @@ follow = function(v, target)
 	end
 	local markdown = path:lower():match("%.md$") or path:lower():match("%.markdown$")
 	if not markdown then
-		stop(v)
-		v:close()
+		stop(pane)
+		pane:close()
 	end
 	local _, err = qed.jump(path, target_pos(path))
 	if err then
