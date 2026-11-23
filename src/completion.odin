@@ -13,6 +13,8 @@ COMPLETION_MAX_WIDTH :: 40
 Completion :: struct {
 	active:     bool,
 	items:      [dynamic]CompletionItem,
+	// bumped whenever the items are replaced: a response of the same shape is still new content
+	items_gen:  u64,
 	matches:    [dynamic]int,
 	selected:   int,
 	scroll:     int,
@@ -55,6 +57,7 @@ completion_clear_items :: proc(c: ^Completion) {
 	}
 	clear(&c.items)
 	clear(&c.matches)
+	c.items_gen += 1
 }
 
 completion_dismiss :: proc(editor: ^Editor) {

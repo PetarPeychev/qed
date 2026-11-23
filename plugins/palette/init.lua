@@ -106,13 +106,20 @@ local function open_palette()
 		return
 	end
 	-- over a focused pane its own commands, else the global ones
+	local all = qed.commands()
+	-- a pane's scope holds plugin commands; core's own scopes (editor, list, ...) hold only core ones
+	local plugin_scopes = {}
+	for _, command in ipairs(all) do
+		if command.owner then
+			plugin_scopes[command.scope] = true
+		end
+	end
 	local wanted = {}
 	for _, focus_scope in ipairs(qed.ui.focus_scopes()) do
-		if focus_scope ~= "editor" and focus_scope ~= "list" and focus_scope ~= "list_range" then
+		if plugin_scopes[focus_scope] then
 			wanted[focus_scope] = true
 		end
 	end
-	local all = qed.commands()
 	local scoped = false
 	for _, command in ipairs(all) do
 		scoped = scoped or wanted[command.scope] == true

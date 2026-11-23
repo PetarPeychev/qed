@@ -253,10 +253,16 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	ui := &editor.ui
 	cell_x, cell_y := int(ev.x), int(ev.y)
 	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
-	// the wheel over a caret popup scrolls it; any other click or wheel dismisses the caret popups
+	// the wheel over the hover scrolls it; any other click or wheel closes the caret popups, and a wheel over the
+	// completion menu or the diagnostic box only closes it (the editor under it does not scroll)
 	popup := caret_popup_root(editor)
-	over_popup := popup != nil && ui_rect_has(popup.rect, cell_x, cell_y) && (ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down)
-	if !motion && ev.key != .Mouse_Release && !over_popup {
+	wheel_over_popup := popup != nil && ui_rect_has(popup.rect, cell_x, cell_y) && (ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down)
+	if wheel_over_popup && popup.id != "caret_hover" {
+		completion_dismiss(editor)
+		caret_diagnostic_close(editor)
+		return true
+	}
+	if !motion && ev.key != .Mouse_Release && !wheel_over_popup {
 		editor.hover_active = false
 		completion_dismiss(editor)
 		inline_dismiss(editor)

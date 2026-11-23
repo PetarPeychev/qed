@@ -182,8 +182,9 @@ UiNode :: struct {
 	clip:            Rect,
 	hidden:          bool,
 	is_item:         bool,
-	// core-built caret popups only: shift from the caret, prefer above it, a markdown body's code language
-	cursor_dx:       int,
+	// core-built caret popups only: start at a buffer position on the caret's row, prefer above, a code language
+	cursor_from:     Cursor,
+	cursor_from_set: bool,
 	cursor_above:    bool,
 	md_lang:         Language,
 }
@@ -1360,7 +1361,10 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 			node.rect = {}
 			return
 		}
-		cell_x = clamp(cx + node.cursor_dx, area.x, max(area.x + area.w - width, area.x))
+		if node.cursor_from_set {
+			cx = ui_editor_x_on_caret_row(editor, parent, node.cursor_from, cx)
+		}
+		cell_x = clamp(cx, area.x, max(area.x + area.w - width, area.x))
 		cell_y = cy + 1
 		below := cell_y + height <= area.y + area.h
 		above := cy - height >= area.y
@@ -1397,7 +1401,9 @@ ui_buffer_view :: proc(editor: ^Editor, buffer: ^Buffer) -> (^UiNode, ^UiState) 
 	}
 	for node in ui.editors {
 		if !node.hidden && ui_node_edits(node) && ui_shows_user_buffer(editor, node) {
-			return node, ui_state_key(ui, fmt.tprintf("%s|%d", node.identity, buffer.id), node.id != "", buffer.id)
+			state := ui_state_key(ui, fmt.tprintf("%s|%d", node.identity, buffer.id), node.id != "", buffer.id)
+			state.kind = .Editor
+			return node, state
 		}
 	}
 	return nil, nil
@@ -1448,6 +1454,30 @@ ui_editor_caret_pos :: proc(editor: ^Editor, node: ^UiNode) -> (cell_x, cell_y: 
 		return
 	}
 	return node.rect.x + gutter + cx, node.rect.y + cy, true
+}
+
+// the screen column of a buffer position on the caret's visual row, read every layout so it follows the caret;
+// a position off that row (an earlier wrap segment) or scrolled out left gives the text's left edge
+ui_editor_x_on_caret_row :: proc(editor: ^Editor, node: ^UiNode, pos: Cursor, caret_x: int) -> int {
+	buffer := ui_buffer(editor, node.buffer)
+	if buffer == nil || pos.row != buffer.cursor.row {
+		return caret_x
+	}
+	state := ui_node_state(&editor.ui, node)
+	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
+	left := node.rect.x + gutter
+	text := buffer.lines[pos.row].text[:]
+	col := clamp(pos.col, 0, len(text))
+	width := ui_editor_text_width(node, buffer)
+	if buffer.wrap && width > 0 {
+		segs := buffer_line_wrap(buffer, pos.row, width)
+		sub := wrap_subrow(segs, buffer.cursor.col)
+		if wrap_subrow(segs, col) != sub {
+			return left
+		}
+		return left + visual_col(text, col) - visual_col(text, segs[sub])
+	}
+	return max(left + visual_col(text, col) - state.scroll_col, left)
 }
 
 ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
@@ -2390,6 +2420,30 @@ ui_chord_named_key :: proc(chord: string) -> (key: tb2.Key, ok: bool) {
 		return .Pgdn, true
 	case "Space":
 		return .Space, true
+	case "F1":
+		return .F1, true
+	case "F2":
+		return .F2, true
+	case "F3":
+		return .F3, true
+	case "F4":
+		return .F4, true
+	case "F5":
+		return .F5, true
+	case "F6":
+		return .F6, true
+	case "F7":
+		return .F7, true
+	case "F8":
+		return .F8, true
+	case "F9":
+		return .F9, true
+	case "F10":
+		return .F10, true
+	case "F11":
+		return .F11, true
+	case "F12":
+		return .F12, true
 	}
 	return UI_KEY_CHORD_ONLY, true
 }

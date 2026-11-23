@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:encoding/json"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -324,4 +325,166 @@ e2e_round9_log_follows_again_after_reopening_a_parked_view :: proc(t: ^testing.T
 	}
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "burst 29") >= 0, "reopened on the last row, the log follows a burst again")
+}
+
+@(private = "file")
+r9_completion :: proc(e: ^E2E, labels: []string, anchor: Cursor) {
+	c := &e.ed.completion
+	completion_clear_items(c)
+	for label, i in labels {
+		append(&c.items, CompletionItem{label = strings.clone(label), insert = strings.clone(label), filter = strings.clone(label)})
+		append(&c.matches, i)
+	}
+	c.selected, c.scroll = 0, 0
+	c.anchor_row, c.anchor_col = anchor.row, anchor.col
+	c.active = true
+}
+
+@(private = "file")
+r9_popup :: proc(e: ^E2E) -> ^UiNode {
+	e2e_render(e)
+	e2e_render(e)
+	return caret_popup_root(&e.ed)
+}
+
+@(test)
+e2e_round9_completion_shows_new_items_of_the_same_shape :: proc(t: ^testing.T) {
+	e := e2e_start("x = al\n")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.cursor = {0, 6}
+	r9_completion(&e, {"alpha", "alpine"}, {0, 4})
+	r9_popup(&e)
+	testing.expect(t, e2e_grid_has(&e, "alpine"), "the first response shows")
+	r9_completion(&e, {"beta_one", "beta_two"}, {0, 4})
+	r9_popup(&e)
+	testing.expect(t, e2e_grid_has(&e, "beta_one") && !e2e_grid_has(&e, "alpine"), "a response with the same shape still replaces the rows")
+}
+
+@(test)
+e2e_round9_completion_box_stays_at_the_word :: proc(t: ^testing.T) {
+	e := e2e_start("x = al\n")
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.cursor = {0, 6}
+	r9_completion(&e, {"alpha", "alpine"}, {0, 4})
+	popup := r9_popup(&e)
+	testing.expect(t, popup != nil, "the menu shows")
+	if popup == nil {
+		return
+	}
+	word_x := popup.rect.x
+	for ch in "pi" {
+		buffer_insert_text(b, fmt.tprintf("%c", ch))
+		popup = r9_popup(&e)
+		testing.expect(t, popup != nil && popup.rect.x == word_x, "typing keeps the box at the word start")
+	}
+	// wrap off, the word scrolled out on the left: the box starts at the text's left edge
+	b.wrap = false
+	line := strings.concatenate({strings.repeat("y", 150, context.temp_allocator), " al"}, context.temp_allocator)
+	buffer_set_text(b, line)
+	b.cursor = {0, len(line)}
+	r9_completion(&e, {"alpha", "alpine"}, {0, 0})
+	popup = r9_popup(&e)
+	node := ui_find(&e.ed.ui, "#layout/main_editor")
+	left := node.rect.x + node.rect.w - ui_editor_text_width(node, b)
+	testing.expect(t, popup != nil && popup.rect.x == left, "a word start scrolled out puts the box at the text's left edge")
+	// wrap on, the word starting on an earlier segment: the left edge too
+	b.wrap = true
+	b.cursor = {0, len(line)}
+	popup = r9_popup(&e)
+	testing.expect(t, popup != nil && popup.rect.x == left, "a word start on an earlier wrap segment puts the box at the left edge")
+}
+
+@(test)
+e2e_round9_wheel_over_completion_or_diagnostic_closes_it :: proc(t: ^testing.T) {
+	e := e2e_start(strings.concatenate({"x = al\n", r9_lines(100)}, context.temp_allocator))
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.cursor = {0, 6}
+	r9_completion(&e, {"alpha", "alpine"}, {0, 4})
+	popup := r9_popup(&e)
+	top := main_view(&e).scroll_row
+	e2e_mouse(&e, popup.rect.x + 2, popup.rect.y + 1, .Mouse_Wheel_Down)
+	testing.expect(t, !e.ed.completion.active, "the wheel closes the menu")
+	testing.expect_value(t, main_view(&e).scroll_row, top)
+	append(&b.diags, Diagnostic{from = {0, 0}, to = {0, 1}, severity = 1, message = strings.clone("an error here")})
+	popup = r9_popup(&e)
+	testing.expect(t, popup != nil && popup.id == "caret_diagnostic", "the diagnostic box shows")
+	e2e_mouse(&e, popup.rect.x + 2, popup.rect.y + 1, .Mouse_Wheel_Down)
+	testing.expect(t, r9_popup(&e) == nil, "the wheel closes the diagnostic box")
+	testing.expect_value(t, main_view(&e).scroll_row, top)
+	b.cursor = {0, 1}
+	testing.expect(t, r9_popup(&e) != nil, "it comes back once the caret moves")
+}
+
+@(test)
+e2e_round9_hover_of_the_same_length_is_new_content :: proc(t: ^testing.T) {
+	e := e2e_start("x\n")
+	defer e2e_stop(&e)
+	reply :: proc(e: ^E2E, text: string) {
+		v, _ := json.parse_string(fmt.tprintf(`{{"result": {{"contents": {{"kind": "markdown", "value": "%s"}}}}}}`, text), allocator = context.temp_allocator)
+		lsp_apply_hover(&e.ed, v.(json.Object))
+	}
+	reply(&e, "first reply")
+	r9_popup(&e)
+	testing.expect(t, e2e_grid_has(&e, "first reply"), "the first hover shows")
+	reply(&e, "other reply")
+	r9_popup(&e)
+	testing.expect(t, e2e_grid_has(&e, "other reply"), "a reply of the same length replaces it")
+}
+
+@(test)
+e2e_round9_a_rejected_key_keeps_the_highlight :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	ft_lua(&e.ed, `
+		_G.r9_keys = qed.list.new{key = "id"}
+		for i = 1, 3 do r9_keys:append{id = i, label = "item " .. i} end
+		qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 10,
+			qed.ui.virtual_column{id = "r9_rows", data = r9_keys, item = function(record) return qed.ui.text{record.label} end}})
+		qed.ui.node("r9_rows"):set_state{highlighted = 2}
+		return 0`)
+	e2e_render(&e)
+	ft_lua(&e.ed, `qed.ui.node("r9_rows"):set_state{highlighted = "3"}; return 0`)
+	testing.expect_value(t, ft_lua(&e.ed, `return qed.ui.node("r9_rows"):state().highlighted`), "2")
+}
+
+@(test)
+e2e_round9_welcome_keys_respect_when :: proc(t: ^testing.T) {
+	e := e2e_welcome_start()
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "wa", `local on = false
+	return {setup = function()
+		qed.command{name = "Gate", key = "F6", welcome = true, when = function() return on end, run = function() qed.message("ran") end}
+		qed.command{name = "Arm", run = function() on = true end}
+	end}`)
+	e2e_key(&e, .F6)
+	e2e_ui_settle(&e)
+	testing.expect(t, e.ed.message != "ran", "a welcome command whose when fails does not run")
+	ft_run(&e.ed, "Arm")
+	e2e_key(&e, .F6)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "ran")
+}
+
+@(test)
+e2e_round9_palette_takes_pane_scopes_from_the_commands :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "scoped", `return {setup = function()
+		qed.command{name = "Only Here", scope = "scoped_pane", key = "F7", run = function() end}
+		qed.command{name = "Scoped Open", run = function()
+			qed.ui.mount("pane", qed.ui.box{float = "screen", width = 20, height = 3, scope = {"scoped_pane", "list"},
+				qed.ui.text{id = "scoped_field", "pane"}})
+			qed.ui.node("scoped_field"):focus()
+		end}
+	end}`)
+	ft_run(&e.ed, "Scoped Open")
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Ctrl_P)
+	testing.expect(t, palette_open_now(&e), "the palette opens over the pane")
+	labels := palette_labels(&e)
+	testing.expect(t, strings.contains(labels, "Only Here"), labels)
+	testing.expect(t, !strings.contains(labels, "List: Next") && !strings.contains(labels, "|Next|"), "core's list scope is not offered")
 }

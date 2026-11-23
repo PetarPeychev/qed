@@ -941,21 +941,26 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 		name, _ := lua.toodinstring(L, -2)
 		switch name {
 		case "highlighted":
-			delete(state.highlighted)
-			state.highlighted = ""
+			// a rejected key raises before the old highlight is touched
+			key := ""
 			if lua.type(L, -1) != .NIL && lua.type(L, -1) != .BOOLEAN {
-				state.highlighted = strings.clone(ui_state_key_arg(L, editor, identity, state, "highlighted"))
+				key = ui_state_key_arg(L, editor, identity, state, "highlighted")
+			}
+			delete(state.highlighted)
+			state.highlighted = strings.clone(key)
+			if key != "" {
 				state.reveal = true
 				if node := ui_find(&editor.ui, identity); node != nil && node.kind == .Virtual_Column {
 					ui_follow_park(editor, node, state.highlighted)
 				}
 			}
 		case "extend_from":
-			delete(state.extend_from)
-			state.extend_from = ""
+			key := ""
 			if lua.type(L, -1) != .NIL && lua.type(L, -1) != .BOOLEAN {
-				state.extend_from = strings.clone(ui_state_key_arg(L, editor, identity, state, "extend_from"))
+				key = ui_state_key_arg(L, editor, identity, state, "extend_from")
 			}
+			delete(state.extend_from)
+			state.extend_from = strings.clone(key)
 		case "offset":
 			// a scroll keeps its rows in `offset`, an editor its top row in `scroll_row`: one name for both
 			state.offset = max(int(lua.tointeger(L, -1)), 0)

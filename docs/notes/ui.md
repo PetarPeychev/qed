@@ -230,4 +230,6 @@ bubble to the box's `list` scope.
 - `qed.commands()`, `qed.fs.walk`, `qed.buffers()` returning `qed.List`; the palette listing the scope chain.
 - Removed with the old panes (no move target): `split_preview_min_width`/`split_preview_max_width`, icon
   `preview_more`, tint `pane_backdrop`.
-- Completion and hover as `cursor`-anchored plugin floats (they are core-drawn at the caret today).
+- The inline ghost is still drawn by hand (`inline_render`, the last user of `editor.caret_view`). Completion, hover
+  and the caret diagnostic are core-built floats; the `caret` outlet name is core's (see Round 9 decisions for the
+  generic alternative).

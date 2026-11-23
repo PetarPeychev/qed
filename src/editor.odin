@@ -59,6 +59,7 @@ Editor :: struct {
 	hover:           [dynamic]u8,
 	hover_active:    bool,
 	hover_lang:      Language,
+	hover_gen:       u64,
 	caret_popup:     CaretPopup,
 	completion:      Completion,
 	save_intent:     SaveIntent,
@@ -371,9 +372,12 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 				palette_open(editor)
 				return
 			}
-			if pcmd, pok := plugin_command_for_event(editor, ev, ""); pok && pcmd.welcome {
-				plugin_command_chord(editor, pcmd)
-				return
+			// the one rule: a command that does not apply lets its chord pass to the next
+			for cmd in editor.plugins.commands {
+				if cmd.scope == "" && cmd.welcome && plugin_command_matches(cmd, ev, false) && plugin_command_when(editor, cmd) {
+					plugin_command_run(editor, cmd)
+					return
+				}
 			}
 		}
 		return

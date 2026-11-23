@@ -13,6 +13,21 @@ CaretPopup :: struct {
 	handle:    u64,
 	target:    string,
 	signature: string,
+	// the diagnostic box closed by the wheel stays closed until the caret moves
+	diag_closed:    bool,
+	diag_closed_at: Cursor,
+}
+
+@(private = "file")
+buffer_is_elsewhere :: proc(editor: ^Editor, at: Cursor) -> bool {
+	return len(editor.buffers) == 0 || editor_buffer(editor).cursor != at
+}
+
+caret_diagnostic_close :: proc(editor: ^Editor) {
+	if editor.caret_popup.handle != 0 && strings.has_prefix(editor.caret_popup.signature, "diag|") {
+		editor.caret_popup.diag_closed = true
+		editor.caret_popup.diag_closed_at = editor_buffer(editor).cursor
+	}
 }
 
 caret_popup_free :: proc(popup: ^CaretPopup) {
@@ -25,6 +40,9 @@ caret_popup_sync :: proc(editor: ^Editor) {
 	popup := &editor.caret_popup
 	target, signature := "", ""
 	root: ^UiNode
+	if popup.diag_closed && buffer_is_elsewhere(editor, popup.diag_closed_at) {
+		popup.diag_closed = false
+	}
 	focus := ui_focused(editor)
 	buffer := ui_buffer(editor, focus.buffer) if focus != nil && focus.kind == .Editor else nil
 	if buffer != nil && ui_node_edits(focus) && ui_editor_shows_current(editor, buffer) {
@@ -37,11 +55,11 @@ caret_popup_sync :: proc(editor: ^Editor) {
 				root = caret_completion_build(editor, buffer)
 			}
 		} else if !ghost && editor.hover_active && len(editor.hover) > 0 {
-			signature = fmt.tprintf("hover|%s|%d|%d|%d|%p|%v", target, tb2.width(), HOVER_MAX_WIDTH, len(editor.hover), raw_data(editor.hover), editor.hover_lang)
+			signature = fmt.tprintf("hover|%s|%d|%d|%d", target, tb2.width(), HOVER_MAX_WIDTH, editor.hover_gen)
 			if signature != popup.signature {
 				root = caret_hover_build(editor)
 			}
-		} else if d, ok := diagnostic_at(buffer, buffer.cursor); !ghost && ok {
+		} else if d, ok := diagnostic_at(buffer, buffer.cursor); !ghost && ok && !(popup.diag_closed && popup.diag_closed_at == buffer.cursor) {
 			signature = fmt.tprintf("diag|%s|%d|%d|%s", target, tb2.width(), d.severity, d.message)
 			if signature != popup.signature {
 				root = caret_diag_build(d)
@@ -111,7 +129,7 @@ caret_box :: proc(id: string, width, height: int) -> ^UiNode {
 caret_completion_signature :: proc(editor: ^Editor, target: string) -> string {
 	c := &editor.completion
 	sb := strings.builder_make(context.temp_allocator)
-	fmt.sbprintf(&sb, "completion|%s|%d|%d|%d|%d|%d|", target, c.selected, c.scroll, c.anchor_row, c.anchor_col, inline_gap(editor))
+	fmt.sbprintf(&sb, "completion|%s|%d|%d|%d|%d|%d|%d|", target, c.items_gen, c.selected, c.scroll, c.anchor_row, c.anchor_col, inline_gap(editor))
 	for m in c.matches[c.scroll:min(len(c.matches), c.scroll + COMPLETION_MAX_ROWS)] {
 		fmt.sbprintf(&sb, "%d,", m)
 	}
@@ -135,10 +153,7 @@ caret_completion_build :: proc(editor: ^Editor, buffer: ^Buffer) -> ^UiNode {
 	content_w = clamp(content_w, 10, COMPLETION_MAX_WIDTH)
 	box := caret_box("caret_completion", content_w + 4, rows + 2)
 	// the box starts at the completed word, not the caret
-	if c.anchor_row == buffer.cursor.row && c.anchor_col <= buffer.cursor.col {
-		text := buffer.lines[buffer.cursor.row].text[:]
-		box.cursor_dx = visual_col(text, c.anchor_col) - visual_col(text, buffer.cursor.col)
-	}
+	box.cursor_from, box.cursor_from_set = {c.anchor_row, c.anchor_col}, true
 	// a multi-line ghost fills the rows below the caret
 	box.cursor_above = inline_gap(editor) > 0
 	column := ui_core_node(.Column, "caret_completion_rows")

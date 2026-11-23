@@ -1880,12 +1880,6 @@ plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
 	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.id, user = true})
 }
 
-plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {
-	if plugin_command_when(editor, cmd) {
-		plugin_command_run(editor, cmd)
-	}
-}
-
 plugin_json_push :: proc(L: ^lua.State, v: json.Value) {
 	lua.L_checkstack(L, 3, "config nested too deeply")
 	switch x in v {
