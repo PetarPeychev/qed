@@ -419,7 +419,6 @@ end}`)
 	testing.expect_value(t, e.ed.message, "text xyz")
 }
 
-
 @(test)
 e2e_scoped_command_pick_keeps_its_chord :: proc(t: ^testing.T) {
 	e := e2e_start("x")

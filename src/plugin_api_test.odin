@@ -600,8 +600,6 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 		local spare, dirty = ids[2], ids[3]
 		local ns = qed.deco.ns("t")
 		local rev = b:rev()
-		local v = assert(qed.ui.open{list = {items = {"a"}}})
-		v:close()
 		local cases = {
 			{"close unsaved", "unsaved", function() return qed.close(dirty) end},
 			{"close", true, function() return qed.close(spare) end},
@@ -620,10 +618,6 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 			{"set_screen_row not current", "not current", function() return dirty:set_screen_row(1, 1) end},
 			{"inline off cursor", "not at cursor", function() return qed.deco.inline(b, ns, {row = 1, col = 3}, "x") end},
 			{"inline", true, function() return qed.deco.inline(b, ns, b:cursor(), "x") end},
-			{"view closed set", "closed", function() return v:set({"b"}) end},
-			{"view closed text", "closed", function() return v:text({"b"}) end},
-			{"view closed select", "closed", function() return v:select(1) end},
-			{"view closed scroll", "closed", function() return v:scroll(1) end},
 			{"close bad arg", "raise", function() return qed.close("x") end},
 			{"closed buffer", "raise", function() return spare:line(1) end},
 			{"run unknown", "raise", function() return qed.run("No Such Command") end},

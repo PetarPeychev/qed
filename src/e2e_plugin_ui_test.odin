@@ -9,7 +9,6 @@ import "core:time"
 
 @(private = "file")
 UI_PLUGIN :: `
-local pane, last
 local function show(v)
 	if type(v) == "table" then
 		local parts = {}
@@ -33,12 +32,6 @@ return {setup = function()
 		local r = qed.pick{items = {"a", "b", "c"}, on = {change = function(_, item) qed.log("chg " .. item) end}}
 		show(r)
 	end)
-	cmd("Multi", function()
-		local v = qed.ui.open{kind = "child", modal = true, fields = {{}}, list = {items = {"a", "b", "c", "d"}, multi = true}}
-		local items = v:wait()
-		v:close()
-		show(items)
-	end)
 	cmd("Paths", function()
 		local dir = qed.path.dir(qed.buf.current():path())
 		local r = qed.pick{items = {{path = qed.path.join(dir, "p1.txt"), pos = {row = 2, col = 1}}, {label = "second", detail = "DET2", path = qed.path.join(dir, "p2.txt")}}}
@@ -53,14 +46,6 @@ return {setup = function()
 	cmd("Confirm Default", function()
 		show(qed.confirm{question = "Ok?"})
 	end)
-	cmd("Pane", function()
-		pane = qed.ui.open{place = "full", title = "Pane Title", text = {"line one", {text = "line two", color = "error_foreground"}}, footer = {hints = {{label = "my footer"}}}}
-	end)
-	cmd("Pane Set", function()
-		local ok, err = pane:text({"line three"})
-		show(ok or err)
-	end)
-	cmd("Pane Close", function() pane:close() end)
 	cmd("Chain", function()
 		local a = qed.pick{items = {"x", "y"}}
 		local b = qed.pick{items = {"p", "q"}}
@@ -69,36 +54,6 @@ return {setup = function()
 	cmd("Persist", function()
 		local ok, err = qed.theme.set(qed.opt("theme"), {persist = true})
 		show(tostring(ok) .. " " .. tostring(err))
-	end)
-	qed.command{name = "Query", key = "Alt+q", run = function()
-		local v, err = qed.ui.open{kind = "child", modal = true, place = "split", preview = "auto", list = {},
-			fields = {{text = "ab", mode = "query", count = true}},
-			on = {change = function(_, it) qed.log("chg " .. it.label) end, query = function(picker, q)
-			qed.log("query " .. q)
-			last = picker
-			if q == "slow" then
-				qed.spawn{cmd = "sleep 5"}
-				qed.log("slow done")
-			end
-			if q == "" then
-				picker:set({}, {hint = "type something"})
-				return
-			end
-			picker:set({{label = q .. "1"}, {label = q .. "2"}, {label = q .. "3"}}, {selected = 2, more = q == "more"})
-		end}}
-		if not v then
-			return show(err)
-		end
-		local items, _, q = v:wait()
-		v:close()
-		show(items and items[1].label or ("q " .. tostring(q)))
-	end}
-	cmd("Stale", function() show(select(2, last:set({"x"}))) end)
-	cmd("Query Static", function()
-		local v = qed.ui.open{kind = "child", modal = true, fields = {{text = "gam"}}, list = {items = {"alpha", "beta", "gamma"}}}
-		local items = v:wait()
-		v:close()
-		show(items and items[1])
 	end)
 	qed.command{name = "Tree Confirm", scope = "filetree", run = function()
 		show(qed.confirm{question = "Tree?", choices = {"One", "Two"}})
@@ -177,7 +132,6 @@ e2e_plugin_ui_pick_strings :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 	testing.expect(t, !ui_open(&e), "Esc closes")
 	testing.expect_value(t, e.ed.message, "nil")
-	testing.expect_value(t, len(e.ed.plugins.views), 0)
 }
 
 @(test)
@@ -216,28 +170,6 @@ e2e_plugin_ui_pick_on_change :: proc(t: ^testing.T) {
 	testing.expect_value(t, count(&e, "chg a"), 1)
 	e2e_key(&e, .Esc)
 	testing.expect_value(t, e.ed.message, "nil")
-}
-
-@(test)
-e2e_plugin_ui_pick_multi :: proc(t: ^testing.T) {
-	e, _ := ui_start(t)
-	defer e2e_stop(&e)
-	ui_run(t, &e, "UI: Multi")
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Arrow_Down, .Shift)
-	e2e_key(&e, .Arrow_Down, .Shift)
-	e2e_render(&e)
-	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + 4)
-	testing.expect_value(t, e2e_cell_bg(&e, box.x + 2, box.y + 4), COLOR_PANE_SEL_BG)
-	testing.expect_value(t, e2e_cell_bg(&e, box.x + 2, box.y + 3), COLOR_PANE_BG)
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, e.ed.message, "b,c,d")
-
-	ui_run(t, &e, "UI: Multi")
-	e2e_key(&e, .Arrow_Down, .Shift)
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, e.ed.message, "c")
 }
 
 @(test)
@@ -304,31 +236,6 @@ e2e_plugin_ui_confirm :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_plugin_ui_pane :: proc(t: ^testing.T) {
-	e, _ := ui_start(t)
-	defer e2e_stop(&e)
-	ui_run(t, &e, "UI: Pane")
-	testing.expect(t, ui_open(&e), "a full pane opens")
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Pane Title"), "title")
-	testing.expect(t, e2e_grid_has(&e, "line two"), "lines")
-	testing.expect(t, e2e_grid_has(&e, "my footer"), "footer")
-	ui_run(t, &e, "UI: Pane Set")
-	testing.expect_value(t, e.ed.message, "true")
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "line three"), "view:text replaces the lines")
-	testing.expect(t, !e2e_grid_has(&e, "line one"), "old lines are gone")
-	ui_run(t, &e, "UI: Pane Close")
-	testing.expect(t, !ui_open(&e), "view:close closes")
-	ui_run(t, &e, "UI: Pane Set")
-	testing.expect_value(t, e.ed.message, "closed")
-
-	ui_run(t, &e, "UI: Pane")
-	e2e_key(&e, .Esc)
-	testing.expect(t, !ui_open(&e), "Esc closes the pane")
-}
-
-@(test)
 e2e_plugin_ui_unload_closes :: proc(t: ^testing.T) {
 	e, pl := ui_start(t)
 	defer e2e_stop(&e)
@@ -337,7 +244,6 @@ e2e_plugin_ui_unload_closes :: proc(t: ^testing.T) {
 	plugin_unload(&e.ed, pl)
 	plugin_flush(&e.ed)
 	testing.expect(t, !ui_open(&e), "unloading the owner closes the modal")
-	testing.expect_value(t, len(e.ed.plugins.views), 0)
 	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
 	e2e_key(&e, .Esc)
 }
@@ -406,7 +312,6 @@ e2e_plugin_ui_chained_pick :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.message, "xq")
 	testing.expect(t, !ui_open(&e), "both picks resolved")
-	testing.expect_value(t, len(e.ed.plugins.views), 0)
 	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
 }
 
@@ -562,183 +467,4 @@ ui_count :: proc(e: ^E2E, text: string) -> int {
 		}
 	}
 	return n
-}
-
-@(test)
-e2e_plugin_ui_query_set :: proc(t: ^testing.T) {
-	e, pl := ui_start(t)
-	defer e2e_stop(&e)
-	ui_run(t, &e, "UI: Query")
-	v := test_view(&e.ed)
-	testing.expect(t, v.place == .Split, "an on_query pick opens in the list + preview layout")
-	testing.expect_value(t, textfield_str(&v.fields[0].field), "ab")
-	testing.expect_value(t, v.fields[0].anchor, 0)
-	testing.expect_value(t, v.fields[0].caret, 2)
-	testing.expect_value(t, pane_count(&e.ed, v), 0)
-	ui_pump(&e, 5)
-	testing.expect_value(t, ui_count(&e, "query ab"), 1)
-	testing.expect_value(t, pane_count(&e.ed, test_view(&e.ed)), 3)
-	testing.expect_value(t, ui_selected(&e), "ab2")
-	testing.expect(t, ui_logged(&e, "chg ab2"), "set fires on_change for the new highlight")
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "ab3"), "pushed items render")
-	testing.expect(t, e2e_grid_has(&e, "3│"), "the count renders by the divider")
-
-	e2e_type(&e, "xyz")
-	testing.expect_value(t, ui_count(&e, "query x"), 0)
-	testing.expect_value(t, ui_selected(&e), "ab2")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	testing.expect_value(t, ui_count(&e, "query xyz"), 1)
-	testing.expect_value(t, ui_count(&e, "query x") + ui_count(&e, "query xy"), 0)
-	testing.expect_value(t, ui_selected(&e), "xyz2")
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Enter)
-	testing.expect(t, !ui_open(&e), "Enter closes")
-	testing.expect_value(t, e.ed.message, "xyz3")
-	testing.expect_value(t, len(e.ed.plugins.tasks), 0)
-	testing.expect_value(t, len(e.ed.plugins.views), 0)
-	testing.expect_value(t, pl.last_error, "")
-
-	ui_run(t, &e, "UI: Stale")
-	testing.expect_value(t, e.ed.message, "closed")
-}
-
-@(test)
-e2e_plugin_ui_query_hint_more :: proc(t: ^testing.T) {
-	e, _ := ui_start(t)
-	defer e2e_stop(&e)
-	ui_run(t, &e, "UI: Query")
-	ui_pump(&e, 5)
-	e2e_key(&e, .Backspace2)
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	testing.expect_value(t, pane_count(&e.ed, test_view(&e.ed)), 0)
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "type something"), "the hint renders while the list is empty")
-	e2e_type(&e, "more")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	e2e_render(&e)
-	testing.expect(t, !e2e_grid_has(&e, "type something"), "items hide the hint")
-	testing.expect(t, e2e_grid_has(&e, "3+│"), "more shows N+")
-	e2e_paste(&e, "x")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	testing.expect_value(t, ui_selected(&e), "morex2")
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, e.ed.message, "q morex")
-}
-
-@(test)
-e2e_plugin_ui_query_kills_search :: proc(t: ^testing.T) {
-	e, _ := ui_start(t)
-	defer e2e_stop(&e)
-	ui_run(t, &e, "UI: Query")
-	e2e_type(&e, "slow")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	p := &e.ed.plugins
-	testing.expect_value(t, len(p.procs), 1)
-	e2e_type(&e, "er")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	testing.expect_value(t, len(p.procs), 0)
-	testing.expect_value(t, ui_selected(&e), "slower2")
-
-	e2e_key(&e, .Backspace2)
-	e2e_key(&e, .Backspace2)
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	testing.expect_value(t, len(p.procs), 1)
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, e.ed.message, "q slow")
-	testing.expect_value(t, len(p.procs), 0)
-	testing.expect_value(t, len(p.tasks), 0)
-	testing.expect(t, !ui_logged(&e, "slow done"), "the killed search never resumes")
-}
-
-@(test)
-e2e_plugin_ui_query_unload :: proc(t: ^testing.T) {
-	e, pl := ui_start(t)
-	defer e2e_stop(&e)
-	ui_run(t, &e, "UI: Query")
-	e2e_type(&e, "slow")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	p := &e.ed.plugins
-	testing.expect_value(t, len(p.procs), 1)
-	plugin_unload(&e.ed, pl)
-	testing.expect(t, !ui_open(&e), "unloading the owner closes the picker")
-	testing.expect_value(t, len(p.views), 0)
-	testing.expect_value(t, len(p.procs), 0)
-	testing.expect_value(t, len(p.tasks), 0)
-	testing.expect_value(t, len(p.queue), 1)
-	testing.expect_value(t, p.queue[0].event, PluginEvent.Plugin_Unloaded)
-	plugin_flush(&e.ed)
-	testing.expect(t, !plugin_busy(&e.ed), "nothing left to pump")
-}
-
-@(test)
-e2e_plugin_ui_query_busy_chord :: proc(t: ^testing.T) {
-	e, _ := ui_start(t)
-	defer e2e_stop(&e)
-	nav_alt(&e, 'q')
-	testing.expect(t, ui_open(&e), "the chord opens the picker")
-	e2e_type(&e, "slow")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	nav_alt(&e, 'q')
-	testing.expect(t, !ui_open(&e), "the opening command's chord closes it")
-	plugin_flush(&e.ed)
-	testing.expect_value(t, e.ed.message, "q slow")
-	testing.expect_value(t, len(e.ed.plugins.procs), 0)
-
-	ui_run(t, &e, "UI: Query Static")
-	v := test_view(&e.ed)
-	testing.expect_value(t, textfield_str(&v.fields[0].field), "gam")
-	testing.expect_value(t, ui_selected(&e), "gamma")
-	testing.expect_value(t, pane_count(&e.ed, v), 1)
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, e.ed.message, "gamma")
-}
-
-@(test)
-e2e_plugin_ui_query_fast_close :: proc(t: ^testing.T) {
-	e, _ := ui_start(t)
-	defer e2e_stop(&e)
-	ui_run(t, &e, "UI: Query")
-	e2e_type(&e, "late")
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, e.ed.message, "q late")
-	testing.expect_value(t, ui_count(&e, "query late"), 0)
-
-	ui_run(t, &e, "UI: Query")
-	ui_pump(&e, 5)
-	e2e_type(&e, "xyz")
-	e2e_key(&e, .Enter)
-	testing.expect(t, ui_open(&e), "Enter waits for the due query")
-	ui_pump(&e, 20)
-	testing.expect(t, !ui_open(&e), "the accept lands once the query set its items")
-	testing.expect_value(t, ui_count(&e, "query xyz"), 1)
-	testing.expect_value(t, e.ed.message, "xyz2")
-
-	ui_run(t, &e, "UI: Query")
-	ui_pump(&e, 5)
-	e2e_type(&e, "slow")
-	e2e_key(&e, .Enter)
-	e2e_type(&e, "er")
-	ui_pump(&e, PANE_QUERY_DEBOUNCE_MS + 60)
-	testing.expect(t, ui_open(&e), "typing after Enter drops the pending accept")
-	e2e_key(&e, .Esc)
-	testing.expect_value(t, len(e.ed.plugins.procs), 0)
-}
-
-@(test)
-e2e_plugin_ui_query_prompt_click :: proc(t: ^testing.T) {
-	e, _ := ui_start(t)
-	defer e2e_stop(&e)
-	e2e_resize(&e, 160, 40)
-	ui_run(t, &e, "UI: Query")
-	ui_pump(&e, 5)
-	f := &test_view(&e.ed).fields[0]
-	lay := overlay_layout(&e.ed, .Code)
-	testing.expect(t, lay.preview, "wide enough for the preview")
-	textfield_set(&f.field, "abcdef")
-	e2e_mouse(&e, lay.right_x + 4, lay.inner.y)
-	testing.expect_value(t, f.caret, 6)
-	e2e_mouse(&e, lay.inner.x + 1 + 2 + 3, lay.inner.y)
-	testing.expect_value(t, f.caret, 3)
-	e2e_key(&e, .Esc)
 }

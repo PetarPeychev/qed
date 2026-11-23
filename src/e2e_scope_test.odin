@@ -69,7 +69,6 @@ e2e_scope_line_list_live :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 }
 
-
 @(test)
 e2e_scope_line_list_filtered_shrink :: proc(t: ^testing.T) {
 	e := e2e_start("a1\na2\na3\nb\na4")
@@ -126,54 +125,6 @@ e2e_scope_line_list_closed_buffer :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	e2e_key(&e, .Esc)
 	testing.expect(t, !goto_state(&e.ed).open, "Esc closes")
-}
-
-@(test)
-e2e_scope_ctx_items :: proc(t: ^testing.T) {
-	e := e2e_start("abc")
-	defer e2e_stop(&e)
-	e2e_plugin(&e, "own", `return {setup = function()
-		qed.command{name = "Open", key = "Alt+k", run = function()
-			qed.ui.open{scope = "shared", list = {items = {{label = "a", path = "/x/a"}, {label = "b"}, {label = "c", path = "/x/c"}}, multi = true}}
-		end}
-	end}`)
-	e2e_plugin(&e, "other", `return {setup = function()
-		qed.command{name = "Peek", scope = "shared", key = "p", run = function(ctx)
-			local labels = {}
-			for _, it in ipairs(ctx.items) do labels[#labels + 1] = it.label end
-			qed.message(("%s|%s|%s"):format(table.concat(labels, ","), table.concat(ctx.files, ","), tostring(ctx.view)))
-		end}
-	end}`)
-	e2e_alt(&e, 'k')
-	e2e_key(&e, .Arrow_Down, mod = .Shift)
-	e2e_key(&e, .Arrow_Down, mod = .Shift)
-	scope_bare(&e, 'p')
-	testing.expect_value(t, e.ed.message, "a,b,c|/x/a,/x/c|nil")
-	e2e_key(&e, .Esc)
-}
-
-@(test)
-e2e_scope_ctx_snapshot :: proc(t: ^testing.T) {
-	e := e2e_start("abc")
-	defer e2e_stop(&e)
-	e2e_plugin(&e, "own", `return {setup = function()
-		qed.command{name = "Open", key = "Alt+k", run = function()
-			qed.ui.open{scope = "snap", list = {items = {{label = "a", path = "/x/a"}, {label = "b", path = "/x/b"}, {label = "c", path = "/x/c"}}, multi = true}}
-		end}
-		qed.command{name = "Later", scope = "snap", key = "p", run = function(ctx)
-			qed.sleep(20)
-			local labels = {}
-			for _, it in ipairs(ctx.items) do labels[#labels + 1] = it.label end
-			qed.message(("%s|%s|%s"):format(table.concat(labels, ","), table.concat(ctx.files, ","), tostring(ctx.item.path) .. "," .. tostring(ctx.item == ctx.items[2])))
-		end}
-	end}`)
-	e2e_alt(&e, 'k')
-	e2e_key(&e, .Arrow_Down, mod = .Shift)
-	scope_bare(&e, 'p')
-	e2e_key(&e, .Arrow_Down)
-	e2e_key(&e, .Esc)
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
-	testing.expect_value(t, e.ed.message, "a,b|/x/a,/x/b|/x/b,true")
 }
 
 @(test)

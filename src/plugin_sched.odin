@@ -795,7 +795,6 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 		return false
 	}
 	plugin_requests_run(editor)
-	plugin_views_flush(editor)
 	ui_mount_waiters_resume(editor)
 	ui_messages_feed(editor)
 	settled := false
@@ -1018,7 +1017,7 @@ plugin_lsp_result :: proc(p: ^Plugins, id: u64) -> (PluginLspResult, bool) {
 
 plugin_busy :: proc(editor: ^Editor) -> bool {
 	p := &editor.plugins
-	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 || len(p.view_events) > 0 || plugin_views_due(editor) {
+	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 {
 		return true
 	}
 	for pr in p.procs {
@@ -1220,7 +1219,6 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 	}
 	clear(&p.lsp_results)
 
-	plugin_views_pump(editor)
 	plugins_errors_flush(editor)
 
 	clear(&due)

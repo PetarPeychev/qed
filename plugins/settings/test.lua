@@ -459,19 +459,6 @@ function tests.menu_chord_conflict(test)
 	test.key("Esc")
 end
 
-function tests.info_strip_wraps(test)
-	local words = {}
-	for i = 1, 60 do
-		words[i] = "word" .. i
-	end
-	local view = qed.ui.open{place = "full", list = {items = {"a"}}, info = table.concat(words, " ")}
-	test.ok(view, "the pane opens")
-	test.ok(screen_has(test, "word1 word2") and screen_has(test, "word60"), "a long info wraps, never truncated")
-	view:info("short info")
-	test.ok(screen_has(test, "short info") and not screen_has(test, "word60"), "v:info replaces it")
-	view:close()
-end
-
 function tests.config_set_and_unset(test)
 	test.ok(qed.config_set({"plugins", "x", "list"}, {}))
 	test.ok(qed.config_set("tab_width", 3))

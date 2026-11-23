@@ -93,7 +93,7 @@ test_walk_within_union_ignored :: proc(t: ^testing.T) {
 
 @(private = "file")
 WALK_PLUGIN :: `
-local v, h, hw, hd
+local hw, hd
 local function note(s) qed.log(s) end
 local function cmd(name, run) qed.command{name = name, run = run} end
 local function res(ok, err) return tostring(ok) .. ":" .. tostring(err) end
@@ -125,39 +125,6 @@ return {setup = function()
 		note("remove link " .. res(qed.fs.remove("link3")))
 		note("remove missing " .. res(qed.fs.remove("moved")))
 	end)
-	cmd("Tree", function()
-		h = qed.fs.walk{}
-		v = qed.ui.open{id = "wt", place = "split", size = "split:tree", scope = "wt", tabs = {"All", {label = "Sub"}},
-			fields = {{hint = "find it", esc_clears = true, count = true}},
-			list = {items = h, tree = true, multi = true}, preview = "auto",
-			footer = {hints = {{label = "hint row"}}, chips = {{label = "chip", cmd = "W: Chip", on = true}}},
-			on = {
-				tab = function(view, i)
-					note("tab " .. i)
-					view:set(i == 2 and h:within{"sub/b.txt"} or h)
-				end,
-				expand = function(_, item, open) note(("expand %s %s %s"):format(qed.path.base(item.path), tostring(item.dir), tostring(open))) end,
-				submit = function(_, text) note("submit " .. tostring(text)) end,
-				activate = function(_, items) note("activate " .. qed.path.base(items[1].path)) end,
-				change = function(_, item) note("change " .. qed.path.base(item.path)) end,
-			}}
-	end)
-	cmd("Chip", function() note("chip ran") end)
-	cmd("Marks", function()
-		note("marks " .. tostring(v:marks({["a.txt"] = {bar = "git_added", suffix = "<- old", added = 12, removed = 3}, other = {dim = true}}, {replace = true})))
-		note("bad " .. tostring(pcall(function() v:marks({x = {fg = "nope"}}) end)))
-	end)
-	cmd("Unmark", function() v:marks({["a.txt"] = false}) end)
-	cmd("Input", function() note("footer " .. tostring(v:footer{input = {prompt = "Name: ", text = "x"}})) end)
-	cmd("Chips", function() v:footer{chips = {{label = "chip", cmd = "W: Chip", on = false}}, hints = {{label = "new hints"}}} end)
-	cmd("Tab", function() note("tab now " .. v:tab() .. " " .. v:tab(2)) end)
-	cmd("Expand", function() note("expand all " .. tostring(v:expand(true))) end)
-	cmd("Diff", function() note("preview " .. tostring(v:preview{path = "a.txt", base = "old\n"})) end)
-	cmd("Mk", function() qed.fs.mkdir("fresh") end)
-	cmd("Write", function() qed.fs.write("written.txt", "w") end)
-	cmd("Ignore", function() h:ignore{"other"} end)
-	cmd("Reveal", function() note("reveal " .. tostring(v:reveal("sub/deep/c.txt"))) end)
-	cmd("Select", function() v:set(h, {selected = "a.txt"}) end)
 	cmd("Into", function()
 		note("copy into " .. res(qed.fs.copy("sub", "sub/deep/sub")))
 		note("rename into " .. res(qed.fs.rename("sub", "sub/x")))
@@ -247,115 +214,6 @@ e2e_walk_fs_rename_repaths :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_walk_lua_tree_view :: proc(t: ^testing.T) {
-	e := walk_start(t)
-	defer e2e_stop(&e)
-	root := e.ed.working_root
-	e2e_resize(&e, 160, 40)
-	test_list_built = 0
-	walk_run_cmd(t, &e, "W: Tree")
-	v := test_view(&e.ed)
-	testing.expect(t, v != nil && v.list.tree && v.size == .Tree, "a tree view opens")
-	testing.expect_value(t, walk_rels(v.list.source.entries[:], root), "a.txt,main.txt,other,sub")
-	e2e_render(&e)
-	g := pane_geom(&e.ed, v)
-	testing.expectf(t, test_list_built <= 3 * g.list.h, "only visible rows are built, built %d", test_list_built)
-	testing.expect(t, e2e_grid_has(&e, "All │ Sub"), "tabs render")
-	testing.expect(t, e2e_grid_has(&e, "find it"), "field hint renders")
-	testing.expect(t, e2e_grid_has(&e, "hint row"), "footer hints render")
-	testing.expect(t, e2e_grid_has(&e, "chip"), "chips render")
-	testing.expect(t, e2e_grid_has(&e, "▸ sub/"), "dirs render collapsed")
-
-	walk_run_cmd(t, &e, "W: Marks")
-	testing.expect(t, walk_logged(&e, "marks true"), "marks apply")
-	testing.expect(t, walk_logged(&e, "bad false"), "an unknown color raises")
-	e2e_key(&e, .Arrow_Down)
-	e2e_render(&e)
-	x, y, found := nav_screen_find(&e, "a.txt")
-	testing.expect(t, found, "a.txt row")
-	testing.expect_value(t, e2e_cell(&e, g.list.x, y), '▌')
-	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, g.list.x, y)), e2e_rgb(COLOR_GIT_ADD))
-	testing.expect(t, strings.contains(e2e_row_text(&e, y), "a.txt  <- old"), "suffix renders")
-	testing.expect(t, strings.contains(e2e_row_text(&e, y), "+12  -3"), "sizes render")
-	ox, oy, _ := nav_screen_find(&e, "other/")
-	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, ox, oy)), e2e_rgb(COLOR_PANE_DIM_FG))
-	walk_run_cmd(t, &e, "W: Unmark")
-	e2e_render(&e)
-	testing.expect(t, e2e_cell(&e, g.list.x, y) != '▌', "false drops a mark")
-
-	e2e_key(&e, .Arrow_Right)
-	plugin_flush(&e.ed)
-	testing.expect(t, walk_logged(&e, "tab 2"), "Right switches tabs")
-	plugin_flush(&e.ed)
-	v = test_view(&e.ed)
-	testing.expect_value(t, walk_rels(v.list.source.entries[:], root), "sub,sub/b.txt")
-	e2e_key(&e, .Arrow_Left)
-	plugin_flush(&e.ed)
-	plugin_flush(&e.ed)
-	v = test_view(&e.ed)
-	testing.expect_value(t, v.tab, 0)
-
-	for i, n := 0, len(v.list.source.entries); i < n; i += 1 {
-		if walk_rel(v.list.source.entries[i].path, root) == "sub" {
-			v.list.sel = i
-		}
-	}
-	e2e_key(&e, .Enter)
-	plugin_flush(&e.ed)
-	testing.expect(t, walk_logged(&e, "expand sub true true"), "Enter on a dir expands it and fires expand")
-	v = test_view(&e.ed)
-	testing.expect(t, strings.contains(walk_rels(v.list.source.entries[:], root), "sub/b.txt"), "expanded rows")
-
-	e2e_type(&e, "b.t")
-	testing.expect(t, v.list.source.filtering, "the filter ranks paths")
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "sub/b.txt"), "filtered rows show relative paths")
-	e2e_key(&e, .Esc)
-	testing.expect(t, test_view(&e.ed) != nil && !v.list.source.filtering, "Esc clears the filter first")
-
-	walk_run_cmd(t, &e, "W: Mk")
-	e2e_render(&e)
-	testing.expect(t, strings.contains(walk_rels(test_view(&e.ed).list.source.entries[:], root), "fresh"), "a write refills the view")
-
-	walk_run_cmd(t, &e, "W: Input")
-	testing.expect(t, walk_logged(&e, "footer true"), "footer input opens")
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "Name: x"), "footer input renders")
-	e2e_type(&e, "y")
-	e2e_key(&e, .Enter)
-	plugin_flush(&e.ed)
-	testing.expect(t, walk_logged(&e, "submit xy"), "Enter submits")
-	walk_run_cmd(t, &e, "W: Input")
-	e2e_key(&e, .Esc)
-	plugin_flush(&e.ed)
-	testing.expect(t, walk_logged(&e, "submit nil"), "Esc cancels with nil")
-	testing.expect(t, test_view(&e.ed) != nil, "and keeps the view")
-
-	walk_run_cmd(t, &e, "W: Chips")
-	testing.expect(t, !test_view(&e.ed).chips[0].on, "chips update")
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "new hints"), "hints update")
-	g = pane_geom(&e.ed, test_view(&e.ed))
-	xs, _ := pane_chips_layout(&e.ed, test_view(&e.ed), g)
-	e2e_mouse(&e, xs[0], g.footer_y)
-	plugin_flush(&e.ed)
-	testing.expect(t, walk_logged(&e, "chip ran"), "a chip click runs its command")
-
-	walk_run_cmd(t, &e, "W: Tab")
-	testing.expect(t, walk_logged(&e, "tab now 1 2"), "v:tab gets and sets")
-	walk_run_cmd(t, &e, "W: Expand")
-	testing.expect(t, walk_logged(&e, "expand all true"), "expand all")
-	walk_run_cmd(t, &e, "W: Diff")
-	testing.expect(t, walk_logged(&e, "preview true"), "v:preview")
-	testing.expect(t, test_view(&e.ed).preview.diff, "a base shows a diff")
-
-	e2e_key(&e, .Esc)
-	testing.expect(t, test_view(&e.ed) == nil, "Esc with an empty filter closes")
-	saved := pane_saved_find(&e.ed, "wt")
-	testing.expect(t, saved != nil && len(saved.expanded) > 0, "expanded dirs persist by id")
-}
-
-@(test)
 e2e_walk_fs_refusals :: proc(t: ^testing.T) {
 	e := walk_start(t)
 	defer e2e_stop(&e)
@@ -368,48 +226,6 @@ e2e_walk_fs_refusals :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, os.exists(fmt.tprintf("%s/other2/d.txt", root)) && !fs_lexists(fmt.tprintf("%s/other2/fifo", root)), "special files are skipped")
 	testing.expect(t, !os.exists(fmt.tprintf("%s/sub/deep/sub", root)), "nothing copied into itself")
-}
-
-@(test)
-e2e_walk_tree_keys :: proc(t: ^testing.T) {
-	e := walk_start(t)
-	defer e2e_stop(&e)
-	root := e.ed.working_root
-	e2e_resize(&e, 160, 40)
-	walk_run_cmd(t, &e, "W: Tree")
-	plugin_flush(&e.ed)
-	e2e_type(&e, "txt")
-	plugin_flush(&e.ed)
-	first := test_view_selected(&e.ed)
-	testing.expect(t, walk_logged(&e, fmt.tprintf("change %s", first[strings.last_index_byte(first, '/') + 1:])), "change fires for a new filtered selection")
-	e2e_key(&e, .Arrow_Down)
-	plugin_flush(&e.ed)
-	second := test_view_selected(&e.ed)
-	testing.expect(t, walk_logged(&e, fmt.tprintf("change %s", second[strings.last_index_byte(second, '/') + 1:])), "and when moving in the filtered list")
-	e2e_key(&e, .Esc)
-
-	walk_run_cmd(t, &e, "W: Reveal")
-	testing.expect(t, walk_logged(&e, "reveal true"), "reveal finds a nested file")
-	testing.expect_value(t, ft_rel(&e, root), "sub/deep/c.txt")
-	walk_run_cmd(t, &e, "W: Select")
-	testing.expect_value(t, ft_rel(&e, root), "a.txt")
-
-	v := test_view(&e.ed)
-	v.list.anchor = v.list.sel
-	v.list.sel = 0
-	walk_run_cmd(t, &e, "W: Write")
-	e2e_render(&e)
-	v = test_view(&e.ed)
-	testing.expect(t, v.list.anchor != nil, "a refill keeps the range")
-	if a, ok := v.list.anchor.?; ok {
-		testing.expect_value(t, walk_rel(v.list.source.entries[a].path, root), "a.txt")
-	}
-
-	walk_run_cmd(t, &e, "W: Ignore")
-	v = test_view(&e.ed)
-	testing.expect(t, v.list.source.walk.stale && len(v.list.source.walk.ignore) == 1, "h:ignore restales the walk")
-	list_walk_fill(&e.ed, v)
-	testing.expect(t, !strings.contains(walk_rels(v.list.source.entries[:], root), "other"), "ignored paths drop from the tree")
 }
 
 @(private = "file")
@@ -521,14 +337,14 @@ e2e_walk_raise_keeps_no_ref :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	src := e2e_plugin(&e, "src", `return {setup = function()
-		qed.command{name = "Give", run = function() qed:emit("src:give", {walk = qed.fs.walk, dirs = qed.fs.dirs}) end}
+		qed.command{name = "Give", run = function() qed:emit("src:give", {walk = qed.fs.walk, list = qed.list.new}) end}
 	end}`)
 	e2e_plugin(&e, "dst", `local got
 	return {setup = function()
 		qed:on("src:give", function(d) got = d end)
 		qed.command{name = "Call", run = function()
 			local a = select(2, pcall(got.walk, {root = "/tmp"}))
-			local b = select(2, pcall(got.dirs))
+			local b = select(2, pcall(got.list, {key = "k"}))
 			qed.log(tostring(a) .. "|" .. tostring(b))
 		end}
 	end}`)

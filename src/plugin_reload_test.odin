@@ -71,9 +71,6 @@ reload_owned :: proc(p: ^Plugins, name: string) -> int {
 	for cmd in p.commands {
 		n += int(cmd.owner == name)
 	}
-	for v in p.views {
-		n += int(v.owner == name)
-	}
 	for tm in container_of(p, Editor, "plugins").terminal.list {
 		n += int(tm.owner == name)
 	}

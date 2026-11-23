@@ -111,7 +111,6 @@ qed_fs_api := [?]lua.L_Reg {
 	{"exists", qed_fs_exists},
 	{"stat", qed_fs_stat},
 	{"list", qed_fs_list},
-	{"dirs", qed_fs_dirs},
 	{"walk", qed_fs_walk},
 	{"copy", qed_fs_copy},
 	{"rename", qed_fs_rename},
@@ -196,7 +195,6 @@ qed_clipboard_api := [?]lua.L_Reg {
 
 @(private = "file")
 qed_ui_api := [?]lua.L_Reg {
-	{"open", qed_ui_open},
 	{"mount", qed_ui_mount},
 	{"node", qed_ui_node},
 	{"focus_scopes", qed_ui_focus_scopes},

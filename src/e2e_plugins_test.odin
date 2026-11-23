@@ -937,9 +937,6 @@ return {setup = function()
 		for _, name in ipairs{"get", "at", "index_of", "count", "set_query"} do
 			if type(lines[name]) == "function" then out[#out + 1] = "LinesList:" .. name end
 		end
-		local v = qed.ui.open{list = {items = {"a"}}}
-		add("View", v)
-		v:close()
 		local mounted = qed.ui.mount("notification", qed.ui.text{id = "probe_text", "probe"})
 		add("MountHandle", mounted)
 		add("NodeRef", qed.ui.node("probe_text"))
@@ -972,7 +969,7 @@ end}`)
 		}
 	}
 	testing.expect(t, run_ok, "the probe command registered")
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return plugin_busy(&e.ed) || plugin_views_due(&e.ed)}, 500)
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return plugin_busy(&e.ed)}, 500)
 	plugin_flush(&e.ed)
 	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.tasks) > 0})
 	methods := strings.split(e.ed.message, " ", context.temp_allocator)

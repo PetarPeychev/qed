@@ -98,7 +98,6 @@ loc_run :: proc(t: ^testing.T, e: ^E2E, name: string, loc := #caller_location) {
 	testing.expectf(t, false, "%s registered", name, loc = loc)
 }
 
-
 @(test)
 e2e_plugin_parse_locations :: proc(t: ^testing.T) {
 	e := loc_start(t)

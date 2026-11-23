@@ -98,7 +98,7 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	before := p.mem.used
 
 	reload_write(dir, "t.lua", `return {setup = function()
-		qed:on("startup", function() qed.ui.open{place = "full", title = "Hello pane", text = {"x"}} end)
+		qed:on("startup", function() qed.ui.mount("pane", qed.ui.text{id = "hello", float = "screen", width = 20, height = 1, "Hello pane"}) end)
 	end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the edit reloads")
 	testing.expect_value(t, owned_procs(p), 0)
@@ -106,7 +106,8 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	testing.expect_value(t, reload_owned(p, "t"), 1)
 	testing.expect(t, p.mem.used < before - 1024 * 1024, "the old incarnation's heap is reclaimed")
 	plugin_pump(&e.ed)
-	testing.expect(t, test_view(&e.ed) != nil, "a plugin loaded at runtime gets its startup event")
+	ui_resolve(&e.ed)
+	testing.expect(t, ui_find(&e.ed.ui, "#t/hello") != nil, "a plugin loaded at runtime gets its startup event")
 	_, asked = test_dialog(&e.ed)
 	testing.expect(t, !asked, "the dialog closes with its asker")
 	e2e_render(&e)
@@ -114,7 +115,8 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 
 	reload_write(dir, "t.lua", `return {setup = function() end}`)
 	plugins_poll(&e.ed)
-	testing.expect(t, test_view(&e.ed) == nil, "the pane closes on reload")
+	ui_resolve(&e.ed)
+	testing.expect(t, ui_find(&e.ed.ui, "#t/hello") == nil, "the pane closes on reload")
 	testing.expect_value(t, reload_owned(p, "t"), 0)
 	e2e_render(&e)
 }
