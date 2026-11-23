@@ -989,6 +989,28 @@ local BufferObject = {}
 ---@return string|nil err
 function BufferObject:close(opts) end
 
+---Finds `query` in the buffer and highlights every match; selects the match at or after the cursor. Returns the 1-based current index and the count, or `nil, "invalid pattern"`.
+---@param query string
+---@param opts? {regex?: boolean, case_sensitive?: boolean}
+---@return integer|nil index
+---@return integer|string count
+function BufferObject:find(query, opts) end
+
+---Selects the next (`1`) or previous (`-1`) match, wrapping. Returns index and count; nil when this buffer has no find.
+---@param direction integer
+---@return integer|nil index
+---@return integer|nil count
+function BufferObject:find_step(direction) end
+
+---Replaces the current match, or every match with `all`, as one undo step. Returns the number replaced.
+---@param text string
+---@param opts? {all?: boolean}
+---@return integer
+function BufferObject:find_replace(text, opts) end
+
+---Removes the find highlights.
+function BufferObject:find_clear() end
+
 ---True if `b` is the id of an open buffer. Unlike other `qed.buf` calls it never raises, and nil or 0 is not "current" here.
 ---@param b integer|nil
 ---@return boolean

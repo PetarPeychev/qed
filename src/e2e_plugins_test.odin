@@ -863,7 +863,7 @@ return {setup = function()
 			if type(records[name]) == "function" then out[#out + 1] = "List:" .. name end
 		end
 		local buffer = qed.buf.create{internal = true}
-		for _, name in ipairs{"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line", "find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor", "screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base", "base", "line_list", "on", "close"} do
+		for _, name in ipairs{"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line", "find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor", "screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base", "base", "line_list", "on", "close", "find", "find_step", "find_replace", "find_clear"} do
 			if type(buffer[name]) == "function" then out[#out + 1] = "BufferObject:" .. name end
 		end
 		buffer:close()
