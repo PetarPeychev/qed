@@ -284,19 +284,13 @@ Hot reload mechanics:
 - Config hot reload (`plugins_config_apply`): re-merge each loaded plugin's config, apply `enabled` flips and config-driven reloads (`Plugin.cfg_sig`; subscribers adopt the new signature), flush `config_changed`, then `plugins_rebind`, each loaded plugin's unknown keys (`Plugin.unknown`, computed at merge) and the unknown-plugin warning. Outside a config apply, a load warns its own unknown keys. A config that fails to parse leaves plugin state alone.
 - Commands registered after the first full bind (`Plugins.bound`) report their own key problems, except inside that window (`binds_deferred`).
 
-### Plugins pane (core)
-A full pane on the core pane model (scope `plugins`, `plugins_pane_backdrop`). It is opened by
-*Plugins: Open* (palette, no default bind). It is core so that it still works when Lua fails to
-load. `e`, `r`, `l` are the scoped commands *Plugins: Enable/Disable*, *Reload*, *Show Log*
-(rebindable in `keybinds`, listed in the pane's Ctrl+P).
-
-| Column / action | Behavior |
-|---|---|
-| Rows | Columns under a header: Name (display name), Description (`qed.meta`, fills the rest), Source (`bundled`/`user`), Status (`enabled` / `disabled` / `errored`), Load (ms). The selected row's last error is shown in the footer. Click selects, double click is `Enter`. The selection persists by name. |
-| `Enter` | Opens the plugin's main file. Bundled plugins open read-only from the embedded copy in a highlighted view (a child pane over the same box; Esc returns), with a hint to fork it to the user dir. |
-| `e` | Toggles enabled. Writes only `plugins.<name>.enabled` (`config_persist_path_to`, atomic; refused when config.json doesn't parse) and loads or unloads the plugin. The config stamp is left alone, so the next poll runs the normal reload and finds the flip already applied. |
-| `r` | Reloads the plugin. |
-| `l` | Opens the Message Log filtered to this plugin's display name, as a child (Esc returns). |
+### Plugins pane (the `manager` plugin)
+*Plugin Manager: Open* (palette, no default bind) mounts it on qed.ui. `e`, `r`, `l` are its scoped commands
+*Enable/Disable*, *Reload*, *Show Log* (rebindable under `plugins.manager.keybinds`). Rows: Name, Description,
+Source (`bundled`/`user`), Status, Load; the selected row's last error is the footer. Enter opens a user
+plugin's file, or a bundled one's embedded source read-only (a fork hint into the user dir). `e` writes only
+`plugins.<id>.enabled`; enabling, disabling and reloading run at the next flush (`qed.plugin_enable/reload`).
+It needs Lua: with Lua failed to start there is no list (it was core for that reason before).
 
 ## 5. Runtime model
 

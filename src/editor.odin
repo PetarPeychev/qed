@@ -363,7 +363,9 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			return
 		}
 	}
-	if ui_focus_in_layer(editor, "alert") && ev.type != .Mouse && ui_dispatch(editor, ev) {
+	// a dialog above the old panes takes every key and click, except while a core safety dialog shows
+	if !pane_safety_open(editor) && ui_layer_used(&editor.ui, "alert") && (ev.type == .Mouse || ui_focus_in_layer(editor, "alert")) {
+		ui_dispatch(editor, ev)
 		return
 	}
 	if pane_stack_dispatch(editor, ev) {
@@ -404,7 +406,7 @@ editor_previews_sync :: proc(editor: ^Editor) {
 }
 
 editor_paste_route :: proc(editor: ^Editor, text: string) {
-	if len(text) == 0 || (ui_focus_in_layer(editor, "alert") && ui_paste(editor, text)) || pane_stack_paste(editor, text) {
+	if len(text) == 0 || (!pane_safety_open(editor) && ui_focus_in_layer(editor, "alert") && ui_paste(editor, text)) || pane_stack_paste(editor, text) {
 		return
 	}
 	if ui_paste(editor, text) {
@@ -1387,8 +1389,13 @@ editor_syntax_errors_report :: proc(editor: ^Editor) {
 
 editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool) {
 	pane_stack_render(editor, true)
+	// a core safety dialog draws above a plugin dialog
+	safety := pane_safety_open(editor)
+	alert := safety && ui_render_alert(editor)
 	panes := pane_stack_render(editor, false)
-	alert := ui_render_alert(editor)
+	if !safety {
+		alert = ui_render_alert(editor)
+	}
 	if panes && !alert {
 		tb2.present()
 		return true

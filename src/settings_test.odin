@@ -254,11 +254,6 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 		_, ok := g_config_defaults[it.key].(json.Boolean)
 		testing.expectf(t, ok, "embedded bool %s", it.key)
 	}
-	for it in config_backdrops {
-		s, _ := g_config_defaults[it.key].(json.String)
-		_, ok := backdrop_parse(string(s))
-		testing.expectf(t, ok, "embedded backdrop %s", it.key)
-	}
 	name, name_ok := g_config_defaults["theme"].(json.String)
 	testing.expect(t, name_ok, "embedded theme is a string")
 	found := false

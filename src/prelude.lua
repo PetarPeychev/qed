@@ -159,6 +159,27 @@ return function(qed)
 		end
 	end
 
+	-- a full-screen float under a pane: a click outside the pane dismisses it, a click on it stays with it
+	function qed.ui.dismissable(props)
+		local on_dismiss = props.on_dismiss
+		if type(on_dismiss) ~= "function" or type(props[1]) ~= "table" then
+			error("qed.ui.dismissable expects {on_dismiss = fn, pane, ...}", 2)
+		end
+		local catcher = {id = props.id, float = "screen", width = "100%", height = "100%",
+			on = {click = function()
+				on_dismiss()
+				return true
+			end}}
+		for index, pane in ipairs(props) do
+			if type(pane) == "table" then
+				pane.on = pane.on or {}
+				pane.on.click = pane.on.click or function() return true end
+			end
+			catcher[index] = pane
+		end
+		return qed.ui.column(catcher)
+	end
+
 	buffer_objects(qed)
 
 	function qed.pick(spec)

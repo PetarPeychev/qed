@@ -93,8 +93,6 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `split_tree_min_width` / `split_tree_max_width` | `30` / `60` | List column of a `split:tree` pane (the file tree). |
 | `split_code_min_width` / `split_code_max_width` | `50` / `100` | List column of a `split:code` pane (the default split: line find, search). |
 | `split_preview_min_width` / `split_preview_max_width` | `70` / `130` | Preview column of any split pane. |
-| `plugins_pane_backdrop` | `"none"` | What shows around *Plugins: Open*: `"dim"` fades the editor and panes below (not the status rows), `"blank"` clears them, `"none"` leaves them. |
-| `plugins_pane_max_width` | `120` | Widest the Plugins pane gets, borders included (at least 20); the box stays centered. Applies from the next open. |
 
 ## Search & navigation
 
@@ -172,7 +170,7 @@ old `modules.lsp` keys warn and are ignored.
 
 Lua plugins: bundled ones ship in the binary, your own go in
 `~/.config/qed/plugins/` as `name.lua` or `name/init.lua`. See
-[notes/plugins.md](notes/plugins.md). *Plugins: Open* lists them with their state
+[notes/plugins.md](notes/plugins.md). *Plugin Manager: Open* lists them with their state
 and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
 (rebindable, see [Keybinds](#keybinds)), `Enter` opens its source (bundled ones read-only).
 
@@ -182,7 +180,7 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
 | `plugin_slice_max_ms` | `1000` | Longest a plugin event handler, timer or background task may run without yielding; past it the task is stopped with a warning (the plugin stays loaded, as it does after any Lua error outside setup). |
 | `plugin_command_max_ms` | `5000` | The same limit for a plugin command. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
-| `plugins.<id>.enabled` | `true` | Off unloads that plugin (live) and drops its commands and binds. `e` in *Plugins: Open* writes this key. |
+| `plugins.<id>.enabled` | `true` | Off unloads that plugin (live) and drops its commands and binds. `e` in *Plugin Manager: Open* writes this key. |
 | `plugins.<id>.keybinds` | each command's `key` | Binds for that plugin's commands, keyed by the bare command name (`"Set Diff Base"`, not `"Git: Set Diff Base"`). `""` unbinds. A name no command of the loaded plugin has warns; a disabled plugin's binds are not checked. |
 | `plugins.<id>.<key>` | plugin's `qed.options` | Per-key override of the plugin's own config; objects merge per key, arrays replace. Unknown keys warn once the plugin has loaded; a disabled plugin's keys are not checked. |
 

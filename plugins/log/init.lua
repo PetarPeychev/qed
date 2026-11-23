@@ -60,14 +60,9 @@ end
 
 local function build()
 	local title = view.source and ("Message Log  ·  " .. view.source) or "Message Log"
-	return ui.column{float = "screen", width = "100%", height = "100%",
-		on = {click = function()
-			close_all()
-			return true
-		end},
+	return ui.dismissable{on_dismiss = function() close_all() end,
 		ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
 			margin = {x = 2, y = 1}, border = true, title = title, bg = "pane_background", fg = "pane_foreground",
-			on = {click = function() return true end},
 			ui.column{
 				ui.scroll{id = "log_scroll", grow = 1, follow = true,
 					header = ui.row{bold = true, ui.text{width = 9, "Time"}, ui.text{width = 12, "Source"}, ui.text{grow = 1, "Message"}},
@@ -79,7 +74,6 @@ local function build()
 		view.detail and ui.box{id = "log_detail", float = "screen", anchor = "center",
 			width = {"100%", max = options.max_width}, height = "100%", margin = {x = 2, y = 1}, border = true,
 			title = "Message Log", bg = "pane_background", fg = "pane_foreground", scope = "log_detail",
-			on = {click = function() return true end},
 			ui.scroll{id = "log_detail_scroll", ui.text{wrap = true, table.unpack(view.detail)}}} or false,
 	}
 end

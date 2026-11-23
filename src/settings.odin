@@ -103,14 +103,6 @@ Config_Str :: struct {
 
 IMAGE_PROTOCOL: ImageSetting
 
-Config_Backdrop :: struct {
-	key: string,
-	ptr: ^PaneBackdrop,
-}
-
-config_backdrops := [?]Config_Backdrop {
-}
-
 backdrop_parse :: proc(s: string) -> (PaneBackdrop, bool) {
 	switch s {
 	case "none":
@@ -619,18 +611,6 @@ config_apply_bools :: proc(obj: json.Object, tbl: []Config_Bool, prefix: string,
 config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	config_apply_ints(root, config_ints[:], "", invalid)
 	config_apply_bools(root, config_bools[:], "", invalid)
-	for it in config_backdrops {
-		v, present := root[it.key]
-		if !present {
-			continue
-		}
-		str, _ := v.(json.String)
-		if b, ok := backdrop_parse(string(str)); ok {
-			it.ptr^ = b
-		} else {
-			append(invalid, it.key)
-		}
-	}
 	if v, present := root["image_protocol"]; present {
 		str, _ := v.(json.String)
 		if s, ok := image_setting_parse(string(str)); ok {
@@ -699,9 +679,6 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 			known ||= it.key == key
 		}
 		for it in config_bools {
-			known ||= it.key == key
-		}
-		for it in config_backdrops {
 			known ||= it.key == key
 		}
 		if !known {
@@ -785,7 +762,7 @@ CONFIG_MOVED :: [?][2]string {
 	{"keybinds/Go to End of File", "keybinds/Go to: End of File"},
 	{"keybinds/File Tree: Git", "plugins/git/keybinds/Changes"},
 	{"keybinds/Debug: Message Log", "plugins/log/keybinds/Open"},
-	{"keybinds/Debug: Plugins", "keybinds/Plugins: Open"},
+	{"keybinds/Debug: Plugins", "plugins/manager/keybinds/Open"},
 	{"keybinds/Find in Files", "plugins/search/keybinds/In Files"},
 	{"keybinds/Set Theme", "plugins/settings/keybinds/Theme"},
 	{"keybinds/Set Language", "plugins/settings/keybinds/Language"},

@@ -40,6 +40,10 @@ end
 
 local function query_sync()
 	local text = dialog.query:text()
+	if text:find("\n") then
+		dialog.query:set_text((text:gsub("\r?\n", " ")))
+		return
+	end
 	if text == dialog.applied then
 		return
 	end
@@ -132,15 +136,10 @@ local function item_row(record)
 end
 
 local function frame(id, children)
-	return ui.column{id = id, float = "screen", width = "100%", height = "100%",
-		on = {click = function()
-			finish(nil)
-			return true
-		end},
+	return ui.dismissable{id = id, on_dismiss = function() finish(nil) end,
 		ui.box{float = "screen", anchor = "top", width = WIDTH, height = "fit",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, bg = "pane_background", fg = "pane_foreground",
-			on = {click = function() return true end},
 			ui.column(children)},
 	}
 end
@@ -171,7 +170,8 @@ local function preview_buffer(item)
 		return nil
 	end
 	local buffer = qed.buf.create{internal = true, path = path}
-	local row = math.max(1, math.min(tonumber(item.row) or 1, buffer:line_count()))
+	local wanted = item.pos and item.pos.row or item.row
+	local row = math.max(1, math.min(tonumber(wanted) or 1, buffer:line_count()))
 	buffer:set_cursor({row = row, col = 1})
 	dialog.preview = {path = path, buffer = buffer}
 	return buffer
@@ -179,14 +179,9 @@ end
 
 local function split_frame(prompt, item)
 	local buffer = preview_buffer(item)
-	return ui.column{id = "dialog_pick", float = "screen", width = "100%", height = "100%",
-		on = {click = function()
-			finish(nil)
-			return true
-		end},
+	return ui.dismissable{id = "dialog_pick", on_dismiss = function() finish(nil) end,
 		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
 			border = true, bg = "pane_background", fg = "pane_foreground",
-			on = {click = function() return true end},
 			ui.row{
 				ui.column{width = {"40%", min = 24, max = 70},
 					query_row(prompt, {"dialog_list", "dialog", "editor"}),
@@ -207,6 +202,16 @@ local function records_of(items)
 		list:append{key = tostring(index), index = index, label = label_of(item)}
 	end
 	return list
+end
+
+-- a waiter stopped mid-wait (killed, its plugin unloaded, an error) closes its dialog on the way out
+local function wait_for(current)
+	local guard <close> = setmetatable({}, {__close = function()
+		if dialog == current then
+			finish(nil)
+		end
+	end})
+	return current.handle:wait()
 end
 
 local function busy()
@@ -262,7 +267,7 @@ local function pick(spec)
 	end)
 	ui.node("dialog_query"):focus()
 	highlight(selected_key)
-	local result = handle:wait()
+	local result = wait_for(current)
 	return result and result[1] or nil
 end
 
@@ -276,6 +281,12 @@ local function prompt(spec)
 		query:set_cursor({row = 1, col = #spec.text + 1})
 	end
 	dialog = {kind = "prompt", asker = qed.caller(), query = query}
+	query:on("change", function()
+		local text = query:text()
+		if text:find("\n") then
+			query:set_text((text:gsub("\r?\n", " ")))
+		end
+	end)
 	local handle, err = ui.mount("alert", frame("dialog_prompt", {query_row(spec.prompt, {"dialog", "editor"})}))
 	if not handle then
 		query:close()
@@ -284,7 +295,7 @@ local function prompt(spec)
 	end
 	dialog.handle = handle
 	ui.node("dialog_query"):focus()
-	return dialog.handle:wait()
+	return wait_for(dialog)
 end
 
 local function confirm(spec)
@@ -305,7 +316,7 @@ local function confirm(spec)
 	dialog.handle = handle
 	ui.node("dialog_rows"):focus()
 	highlight(nil)
-	return dialog.handle:wait()
+	return wait_for(dialog)
 end
 
 return {

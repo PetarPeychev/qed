@@ -11,7 +11,7 @@ local function set_theme()
 	local name, busy = qed.pick{
 		items = qed.theme.list(),
 		selected = original,
-		on = {change = function(_, count) qed.theme.set(count) end},
+		on = {change = function(_, name) qed.theme.set(name) end},
 	}
 	if busy then
 		return

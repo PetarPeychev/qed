@@ -318,6 +318,10 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 plugins_shutdown :: proc(p: ^Plugins) {
 	plugin_ui_destroy(p)
 	delete(p.calls)
+	for request in p.requests {
+		delete(request.name)
+	}
+	delete(p.requests)
 	delete(p.persist_path)
 	plugin_sched_shutdown(p)
 	for &cmd in p.commands {
@@ -1165,14 +1169,16 @@ plugin_key_push :: proc(L: ^lua.State, pl: ^Plugin) {
 // a shared method has no plugin of its own: the plugin whose entry is running owns the call, an export call switching it
 plugin_running :: proc(L: ^lua.State, editor: ^Editor) -> ^Plugin {
 	p := &editor.plugins
-	for i := len(p.calls) - 1; i >= 0; i -= 1 {
-		if p.calls[i].co == L {
-			return plugin_find(p, p.calls[i].owner)
+	for coroutine in ([2]^lua.State{L, p.current}) {
+		for i := len(p.calls) - 1; i >= 0; i -= 1 {
+			if p.calls[i].co == coroutine {
+				return plugin_find(p, p.calls[i].owner)
+			}
 		}
-	}
-	for task in p.tasks {
-		if task.co == L {
-			return plugin_find(p, task.owner)
+		for task in p.tasks {
+			if task.co == coroutine {
+				return plugin_find(p, task.owner)
+			}
 		}
 	}
 	return plugin_find(p, p.entry_owner)

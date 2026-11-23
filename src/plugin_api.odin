@@ -1121,11 +1121,7 @@ qed_plugins :: proc "c" (L: ^lua.State) -> c.int {
 		lua.setfield(L, -2, "load_ms")
 		lua.pushodinstring(L, pl.main)
 		lua.setfield(L, -2, "main")
-		fork := fmt.tprintf("%s/%s", p.user_dir, pl.dir if pl.dir != "" else pl.main)
-		if home := os.get_env("HOME", context.temp_allocator); home != "" && strings.has_prefix(fork, home) {
-			fork = fmt.tprintf("~%s", fork[len(home):])
-		}
-		lua.pushodinstring(L, fork)
+		lua.pushodinstring(L, fmt.tprintf("%s/%s", p.user_dir, pl.dir if pl.dir != "" else pl.main))
 		lua.setfield(L, -2, "fork")
 		if pl.defaults != lua.NOREF {
 			lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.defaults))
@@ -1148,14 +1144,11 @@ qed_plugin_request :: proc(L: ^lua.State, kind: PluginRequestKind) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	p := &entry.editor.plugins
-	caller := api_loaded(L, entry.editor)
+	api_loaded(L, entry.editor)
 	name := api_string(L, 1)
 	pl := plugin_find(p, name)
 	if pl == nil {
 		return api_fail(L, "no such plugin")
-	}
-	if pl.name == caller.name {
-		return api_fail(L, "a plugin cannot enable, disable or reload itself")
 	}
 	if kind == .Reload && pl.state == .Disabled {
 		return api_fail(L, "disabled")

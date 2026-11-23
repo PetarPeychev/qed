@@ -420,10 +420,8 @@ core command name), and Odin `on.activate`/`on.close`/`on.footer` handlers. `Edi
 - A **tree list** (`list.tree`, walk sources) draws indent and expand icons from `PaneList.expanded`
   (saved by `id`); Enter or double-click on one dir toggles it before `activate` (under a filter it clears
   the filter and reveals the dir), firing `on.expand`. Open buffers get the accent fg, unsaved ones `●`.
-- The **Message Log** (`log.odin`), the **Plugins pane** (`plugin.odin`, `keep`, `on.footer` shows the
-  selected plugin's last error, selection saved by name; Enter on a bundled plugin opens a `plugin_source`
-  child with a `body_preview`; `l` opens the log as its child) and the **LSP rename** prompt (`rename.odin`,
-  a center `input` pane, `modal`) are core panes (D1). The Plugins pane takes `plugins_pane_backdrop`.
+- The **LSP rename** prompt (`rename.odin`, a center `input` pane, `modal`) is a core pane (D1). The Message
+  Log and the Plugins pane are the `log` and `manager` plugins on qed.ui.
 
 **Plugin views** (`plugin_ui.odin`): `qed.ui.open` builds a Pane plus a `UiView` in `Plugins.views`
 (registry refs: the view table, the item values, the `on` handlers; change/query task ids), keyed by
@@ -1168,7 +1166,7 @@ compiler/grep output into `qed.pick` items for a list + preview picker.
 
 Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter marks, tints, ghost
 rows, spans, end-of-line text, range marks, the inline ghost), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed:emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
-and `enabled` flips; *Plugins: Open* pane with enable/disable (persisted), reload,
+and `enabled` flips; *Plugin Manager: Open* (the `manager` plugin) with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only); `qed.meta` display names prefixing
 commands and labeling messages; per-plugin keybinds (`plugins.<id>.keybinds`); Lua
 completion settings when the root is under the config dir.

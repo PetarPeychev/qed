@@ -80,16 +80,23 @@ local function plugin_row(record)
 	}
 end
 
+local function home_short(path)
+	local home = os.getenv("HOME")
+	if home and home ~= "" and path:sub(1, #home) == home then
+		return "~" .. path:sub(#home + 1)
+	end
+	return path
+end
+
 local function source_box()
 	local record = view.source
 	return ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
 		margin = {x = 2, y = 1}, border = true, title = "plugins/" .. record.main .. "  ·  bundled, read-only",
 		bg = "pane_background", fg = "pane_foreground",
-		on = {click = function() return true end},
 		ui.column{
 			ui.editor{id = "plugin_source", buffer = view.source_buffer, grow = 1, readonly = true, syntax = true,
 				scope = {"plugin_source", "editor"}},
-			ui.text{height = 1, fg = "pane_dim_foreground", " Esc back  ·  fork: copy to " .. record.fork},
+			ui.text{height = 1, fg = "pane_dim_foreground", " Esc back  ·  fork: copy to " .. home_short(record.fork)},
 		},
 	}
 end
@@ -99,14 +106,9 @@ local function build()
 	local footer = selected and selected.error ~= "" and selected.error:gsub("\n", " ") or
 		(" ↑↓ select  Enter open  " .. shortcut("Enable/Disable") .. " enable/disable  " .. shortcut("Reload") ..
 		" reload  " .. shortcut("Show Log") .. " log  Esc close")
-	return ui.column{float = "screen", width = "100%", height = "100%",
-		on = {click = function()
-			close()
-			return true
-		end},
+	return ui.dismissable{on_dismiss = close,
 		ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
 			margin = {x = 2, y = 1}, border = true, title = "Plugins", bg = "pane_background", fg = "pane_foreground",
-			on = {click = function() return true end},
 			ui.column{
 				ui.scroll{id = "plugin_scroll", grow = 1,
 					header = ui.row{bold = true,

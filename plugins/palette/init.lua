@@ -92,15 +92,10 @@ local function command_row(record)
 end
 
 local function build(matches, query, empty)
-	return ui.column{float = "screen", width = "100%", height = "100%",
-		on = {click = function()
-			close_palette()
-			return true
-		end},
+	return ui.dismissable{on_dismiss = close_palette,
 		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
-			on = {click = function() return true end},
 			ui.column{
 				ui.row{
 					ui.text{fg = "pane_prompt_foreground", "> "},
@@ -138,7 +133,12 @@ local function open_palette()
 	options = qed.config()
 	local handle = ui.mount("pane", build(matches, query, empty))
 	query:on("change", function()
-		matches:set_query(query:text())
+		local text = query:text()
+		if text:find("\n") then
+			query:set_text((text:gsub("\r?\n", " ")))
+			return
+		end
+		matches:set_query(text)
 		if (matches:count() == 0) ~= empty then
 			empty = not empty
 			handle:update(build(matches, query, empty))

@@ -98,7 +98,10 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 			return
 		}
 	}
-	ui_global_binds(editor, ev)
+	// a dialog keeps every key: nothing global runs under it
+	if !ui_focus_in_layer(editor, "alert") {
+		ui_global_binds(editor, ev)
+	}
 }
 
 ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {

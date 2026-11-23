@@ -27,14 +27,9 @@ local function build(session)
 	if not (state and state.running) then
 		on = {key = function() hide() return true end}
 	end
-	return ui.column{float = "screen", width = "100%", height = "100%",
-		on = {click = function()
-			hide()
-			return true
-		end},
+	return ui.dismissable{on_dismiss = hide,
 		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 8, y = 3},
 			border = true, title = title_of(session), bg = "pane_background", fg = "pane_foreground",
-			on = {click = function() return true end},
 			ui.terminal{id = "terminal", session = session, grow = 1, scope = "terminal", on = on},
 		},
 	}
@@ -64,13 +59,6 @@ local function show_session(session)
 	return true
 end
 
-local function close()
-	if view and not options.escape_closes then
-		qed.term.send(view.session, "\27")
-		return
-	end
-	hide()
-end
 
 local function toggle()
 	if view then
@@ -84,10 +72,24 @@ return {
 	setup = function()
 		qed.meta{description = "Terminal pane for qed.term sessions"}
 		options = qed.options({escape_closes = true}, {escape_closes = "Esc at a shell prompt closes the terminal pane (a full-screen program always gets Esc)"})
-		qed:on("config_changed", function() options = qed.config() end)
+		local close_command
+		local function bind_close()
+			if close_command then
+				close_command:remove()
+				close_command = nil
+			end
+			-- with escape_closes off, Esc stays with the shell
+			if options.escape_closes then
+				close_command = qed.command{name = "Close", scope = "terminal", key = "Esc", run = hide}
+			end
+		end
+		bind_close()
+		qed:on("config_changed", function()
+			options = qed.config()
+			bind_close()
+		end)
 		qed.command{name = "Toggle", key = "Alt+t", welcome = true, run = toggle}
 		qed.command{name = "Hide", scope = "terminal", keybind = "Toggle", run = hide}
-		qed.command{name = "Close", scope = "terminal", key = "Esc", run = close}
 		qed.export{show = show_session, hide = hide}
 		qed:on("term_exit", function(session)
 			if view and view.session == session then

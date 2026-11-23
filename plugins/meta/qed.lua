@@ -141,7 +141,7 @@ function qed.commands() end
 ---@field error string the last load or task error, "" when none
 ---@field load_ms number how long its setup took
 ---@field main string its main file: a path for a user plugin, `<id>/init.lua` for a bundled one
----@field fork string where a copy would go to override a bundled one
+---@field fork string the path a copy would take to override a bundled one
 
 ---Every plugin, bundled then user, in load order.
 ---@return qed.PluginInfo[]
@@ -151,13 +151,13 @@ function qed.plugins() end
 ---@param id string
 ---@param enabled boolean
 ---@return true|nil ok
----@return "no such plugin"|"a plugin cannot enable, disable or reload itself"|nil err
+---@return "no such plugin"|nil err
 function qed.plugin_enable(id, enabled) end
 
 ---Reloads another plugin at the next flush.
 ---@param id string
 ---@return true|nil ok
----@return "no such plugin"|"disabled"|"a plugin cannot enable, disable or reload itself"|nil err
+---@return "no such plugin"|"disabled"|nil err
 function qed.plugin_reload(id) end
 
 ---A plugin's main source text (bundled plugins are embedded).
@@ -589,7 +589,7 @@ local MountHandle = {}
 ---@param tree qed.Node
 function MountHandle:update(tree) end
 
----Removes the tree; `result` goes to whoever waits on it. A no-op when already unmounted.
+---Removes the tree; `result` goes to a task already waiting on it (wait before unmounting). A no-op when already unmounted.
 ---@param result? any
 function MountHandle:unmount(result) end
 
@@ -672,6 +672,11 @@ function qed.ui.image(props) end
 ---@param props table
 ---@return qed.Node
 function qed.ui.terminal(props) end
+
+---A full-screen float holding panes: a click outside them calls `on_dismiss`, a click on one stays with it. Props: `on_dismiss`, `id`, and the panes as children.
+---@param props table
+---@return qed.Node
+function qed.ui.dismissable(props) end
 
 ---A transparent slot other plugins mount into with `qed.ui.mount(id, tree)`. Prop: `id`.
 ---@param props table
@@ -788,10 +793,10 @@ function qed.fuzzy.list(source, spec) end
 ---@class qed.PickSpec
 ---@field items (string|qed.UiItem)[]
 ---@field prompt? string replaces the `>` prefix
----@field selected? integer|string item index or label to start on (`list.selected`)
----@field on? {change?: fun(v: qed.View, item: string|qed.UiItem)} the highlighted item changed (live preview), as `qed.ui.open`'s `on.change`
+---@field selected? integer|string item index or label to start on
+---@field on? {change?: fun(_: nil, item: string|qed.UiItem)} the highlighted item changed (live preview); the first argument is always nil
 
----Waits for a fuzzy pick (a `qed.ui.open` child pane). Returns the chosen item (the value passed in), or `nil` on Esc. Items with a `path` get the list + file preview layout.
+---Waits for a fuzzy pick (the bundled `dialog` plugin, on qed.ui). Returns the chosen item (the value passed in), or `nil` on Esc. Items with a `path` get a list + read-only file preview (centered on `pos.row`). `on.change(nil, item)` runs on every move.
 ---The opening command's chord closes it like Esc. Stacks on an open pane or overlay (outside a user's command only on the plugin's own pane, or from a view's `activate` on that view and its children); otherwise `nil, "busy"` only while a quit, close or conflict dialog shows.
 ---@param spec qed.PickSpec
 ---@return string|qed.UiItem|nil
