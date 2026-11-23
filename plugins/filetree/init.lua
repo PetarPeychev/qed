@@ -514,11 +514,16 @@ local function changed()
 	end)
 end
 
+-- the row each tab last stood on, restored when it reopens (with the root unchanged)
+local last_row = {}
+
 local function close()
 	if not view then
 		return
 	end
 	local closing = view
+	local state = ui.node("filetree_rows"):state()
+	last_row[scope] = state and state.highlighted or nil
 	view = nil
 	closing.handle:unmount()
 	closing.query:close()
@@ -622,6 +627,7 @@ local function open(tab)
 	if not walk or walk_root ~= qed.root() then
 		walk_new()
 		walk_root = qed.root()
+		last_row = {}
 	else
 		-- a fresh handle on the same walk makes it see the disk as of now
 		qed.fs.walk{dotfiles = show.dotfiles, ignored = show.ignored}:release()
@@ -645,16 +651,17 @@ local function open(tab)
 			return
 		end
 		local text = view.query:text()
-		if text:find("\n") then
-			view.query:set_text((text:gsub("\r?\n", " ")))
-			return
-		end
 		query_sync()
 		changed()
 	end)
 	ui.node("filetree_query"):focus()
-	local first = view.tree:at(1)
-	ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, extend_from = false}
+	local remembered = last_row[scope]
+	if remembered and view.tree:reveal(remembered) then
+		ui.node("filetree_rows"):set_state{highlighted = remembered, extend_from = false}
+	else
+		local first = view.tree:at(1)
+		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, extend_from = false}
+	end
 	refresh()
 	changed()
 end

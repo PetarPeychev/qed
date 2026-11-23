@@ -64,7 +64,7 @@ local function preview_show(item)
 		if preview then
 			preview.buffer:close()
 		end
-		preview = {path = item.path, buffer = qed.buf.create{internal = true, from = item.path, row = item.pos.row}}
+		preview = {path = item.path, buffer = qed.buf.create{internal = true, from = item.path}}
 		view.preview = preview
 		view.handle:update(view.build())
 	end
@@ -213,10 +213,6 @@ end
 -- typed keys run one search once typing pauses
 local function query_changed(current)
 	local text = current.query:text()
-	if text:find("\n") then
-		current.query:set_text((text:gsub("\r?\n", " ")))
-		return
-	end
 	if text == current.applied then
 		return
 	end

@@ -145,9 +145,24 @@ ui_node_edits :: proc(node: ^UiNode) -> bool {
 	return false
 }
 
+// an editor node one row high is a field: no indenting, auto-pairs or newlines; pasted newlines become spaces
+ui_node_one_line :: proc(node: ^UiNode) -> bool {
+	return node.kind == .Editor && node.height.form == .Cells && node.height.value == 1
+}
+
+ui_target_multiline :: proc(editor: ^Editor) -> bool {
+	return editor.ui.target != nil && !ui_node_one_line(editor.ui.target)
+}
+
 ui_editor_type :: proc(editor: ^Editor, node: ^UiNode, character: rune) {
 	buffer := ui_buffer(editor, node.buffer)
 	if buffer == nil {
+		return
+	}
+	if ui_node_one_line(node) {
+		buffer_type_rune(buffer, character)
+		buffer.typed_rev = buffer.rev
+		ui_node_state(&editor.ui, node).reveal = true
 		return
 	}
 	handled := buffer_type_pair(buffer, character)
@@ -178,7 +193,13 @@ ui_paste :: proc(editor: ^Editor, text: string) -> bool {
 		}
 		if node.kind == .Editor && !node.readonly && ui_node_edits(node) {
 			if buffer := ui_buffer(editor, node.buffer); buffer != nil {
-				buffer_paste(buffer, text)
+				pasted := text
+				if ui_node_one_line(node) {
+					pasted, _ = strings.replace_all(text, "\r\n", " ", context.temp_allocator)
+					pasted, _ = strings.replace_all(pasted, "\n", " ", context.temp_allocator)
+					pasted, _ = strings.replace_all(pasted, "\r", " ", context.temp_allocator)
+				}
+				buffer_paste(buffer, pasted)
 				ui_node_state(&editor.ui, node).reveal = true
 			}
 			return true

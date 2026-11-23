@@ -1122,8 +1122,8 @@ function BufferObject:base() end
 function BufferObject:line_list() end
 
 ---A new internal buffer (not in the buffer list, no LSP, git or autosave) as a buffer object: every `qed.buf.*` function is a method with the buffer bound (`buffer:text()`). The plugin owns it; `buffer:close()` frees it.
----With `from`, it holds a copy of that file in its language, not bound to it (no path, cannot be saved): an open buffer's live text, else the file on disk through `row` (default 1) plus 200 lines, cut to whole lines (binaries as a hexdump). For a read-only preview under a `readonly` editor node.
----@param spec {internal: true, from?: string, row?: integer}
+---With `from`, it holds a copy of that file in its language, not bound to it (no path, cannot be saved): an open buffer's live text, else the file on disk up to 4 MiB, cut to whole lines (binaries as a hexdump). For a read-only preview under a `readonly` editor node.
+---@param spec {internal: true, from?: string}
 ---@return qed.BufferObject
 function qed.buf.create(spec) end
 

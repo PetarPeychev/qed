@@ -49,10 +49,6 @@ end
 
 local function query_sync()
 	local text = dialog.query:text()
-	if text:find("\n") then
-		dialog.query:set_text((text:gsub("\r?\n", " ")))
-		return
-	end
 	if text == dialog.applied then
 		return
 	end
@@ -189,7 +185,7 @@ local function preview_of(item)
 		dialog.preview = {path = path}
 		return dialog.preview
 	end
-	local buffer = qed.buf.create{internal = true, from = path, row = wanted}
+	local buffer = qed.buf.create{internal = true, from = path}
 	buffer:set_cursor({row = math.max(1, math.min(wanted, buffer:line_count())), col = 1})
 	dialog.preview = {path = path, buffer = buffer}
 	return dialog.preview
@@ -301,12 +297,6 @@ local function prompt(spec)
 		query:set_cursor({row = 1, col = #spec.text + 1})
 	end
 	dialog = {kind = "prompt", asker = qed.caller(), query = query}
-	query:on("change", function()
-		local text = query:text()
-		if text:find("\n") then
-			query:set_text((text:gsub("\r?\n", " ")))
-		end
-	end)
 	local handle, err = ui.mount("alert", frame("dialog_prompt", {query_row(spec.prompt, {"dialog", "editor"})}))
 	if not handle then
 		query:close()

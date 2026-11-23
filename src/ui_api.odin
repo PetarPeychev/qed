@@ -1126,16 +1126,12 @@ qed_buf_create :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	internal := false
 	path := ""
-	row := 1
 	if lua.type(L, 1) == .TABLE {
 		lua.getfield(L, 1, "internal")
 		internal = bool(lua.toboolean(L, -1))
 		lua.pop(L, 1)
 		if text, ok := api_field_string(L, 1, "from"); ok && text != "" {
 			path = api_path(editor, text)
-		}
-		if wanted, ok := api_field_int(L, 1, "row"); ok {
-			row = max(int(wanted), 1)
 		}
 	}
 	if !internal {
@@ -1144,7 +1140,7 @@ qed_buf_create :: proc "c" (L: ^lua.State) -> c.int {
 	plugin := api_loaded(L, editor)
 	buffer := ui_internal_create(editor, plugin_name_intern(&editor.plugins, plugin.name))
 	if path != "" {
-		ui_internal_load(editor, buffer, path, row)
+		ui_internal_load(editor, buffer, path)
 	}
 	lua.pushinteger(L, lua.Integer(buffer.id))
 	return 1

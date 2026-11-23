@@ -61,10 +61,6 @@ local function refresh()
 		return
 	end
 	local text = finder.query:text()
-	if text:find("\n") then
-		finder.query:set_text((text:gsub("\r?\n", " ")))
-		return
-	end
 	show(finder.search:update(text, search_options()))
 end
 

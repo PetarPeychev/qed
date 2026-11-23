@@ -351,8 +351,16 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		safety_dispatch(editor, ev)
 		return
 	}
-	if rename_prompt_open(editor) && ev.type == .Key && rename_key(editor, ev) {
-		return
+	if rename_prompt_open(editor) {
+		// a click outside the prompt cancels it; its Enter and Esc act only while it has focus
+		if ev.type == .Mouse && ev.key == .Mouse_Left {
+			if box := ui_find(&editor.ui, "#/rename"); box == nil || !ui_rect_has(box.rect, int(ev.x), int(ev.y)) {
+				rename_close(editor)
+			}
+		}
+		if ev.type == .Key && editor.ui.focus == "#/rename_field" && rename_key(editor, ev) {
+			return
+		}
 	}
 	// a dialog above the old panes takes every key and click
 	if ui_layer_used(&editor.ui, "alert") && (ev.type == .Mouse || ui_focus_in_layer(editor, "alert")) {

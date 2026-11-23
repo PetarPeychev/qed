@@ -122,10 +122,6 @@ end
 
 local function query_sync()
 	local text = view.query:text()
-	if text:find("\n") then
-		view.query:set_text((text:gsub("\r?\n", "")))
-		return
-	end
 	if text == view.applied then
 		return
 	end

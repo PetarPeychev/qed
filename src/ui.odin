@@ -735,17 +735,14 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 }
 
 // a copy for showing a file: an open buffer's live text, else the head of the file on disk
-// lines a disk preview reads past the wanted row
-UI_PREVIEW_AFTER :: 200
-
-ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string, row := 1) {
+ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string) {
 	text := ""
 	if index := editor_find_buffer(editor, path); index >= 0 {
 		text = buffer_snapshot(&editor.buffers[index], context.temp_allocator)
 	} else if info, ok := fs_stat(path); !ok || !posix.S_ISREG(info.st_mode) {
 		// a fifo or device would block the read
 		text = ""
-	} else if data, read_ok := ui_preview_read(path, max(row, 1) + UI_PREVIEW_AFTER); read_ok {
+	} else if data, read_ok := ui_preview_read(path); read_ok {
 		text = string(data)
 	}
 	if data := transmute([]u8)text; preview_is_binary(data[:min(len(data), PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES)]) {
@@ -767,8 +764,9 @@ ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string, row := 
 	buffer.plugin_rev = buffer.rev
 }
 
-// the file up to `lines` lines (at most PREVIEW_MAX_BYTES), cut back to the last whole line when it stops early
-ui_preview_read :: proc(path: string, lines: int) -> (data: []u8, ok: bool) {
+// the file (at most PREVIEW_MAX_BYTES), cut back to the last whole line when it is longer: every row a pick or
+// search lists in it is in one copy
+ui_preview_read :: proc(path: string) -> (data: []u8, ok: bool) {
 	fd, err := os.open(path)
 	if err != nil {
 		return nil, false
@@ -776,7 +774,6 @@ ui_preview_read :: proc(path: string, lines: int) -> (data: []u8, ok: bool) {
 	defer os.close(fd)
 	out := make([dynamic]u8, 0, 64 * 1024, context.temp_allocator)
 	chunk: [64 * 1024]u8
-	seen := 0
 	for {
 		n, read_err := os.read(fd, chunk[:])
 		if n <= 0 {
@@ -785,11 +782,8 @@ ui_preview_read :: proc(path: string, lines: int) -> (data: []u8, ok: bool) {
 			}
 			return out[:], true
 		}
-		for b in chunk[:n] {
-			seen += int(b == '\n')
-		}
 		append(&out, ..chunk[:n])
-		if seen >= lines || len(out) >= PREVIEW_MAX_BYTES {
+		if len(out) >= PREVIEW_MAX_BYTES {
 			break
 		}
 	}

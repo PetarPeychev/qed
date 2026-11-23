@@ -161,10 +161,6 @@ local function open_palette()
 	local handle = ui.mount("pane", build(matches, query, empty))
 	query:on("change", function()
 		local text = query:text()
-		if text:find("\n") then
-			query:set_text((text:gsub("\r?\n", " ")))
-			return
-		end
 		palette.applied = text
 		matches:set_query(text)
 		if (matches:count() == 0) ~= empty then

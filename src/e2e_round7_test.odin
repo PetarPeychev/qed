@@ -134,3 +134,82 @@ e2e_round7_status_bar_shows_core_and_plugin_segments :: proc(t: ^testing.T) {
 	testing.expectf(t, strings.contains(row, "main*"), "a qed.status segment draws in the layout's status row: %q", row)
 	testing.expectf(t, strings.contains(row, "Spaces:4") && strings.contains(row, "1/2"), "core segments draw too: %q", row)
 }
+
+@(test)
+e2e_round7_same_file_far_hit_previews_its_row :: proc(t: ^testing.T) {
+	e := e2e_root_start("x")
+	defer e2e_stop(&e)
+	path := fmt.tprintf("%s/far.txt", e.ed.working_root)
+	nav_write(path, r7_lines(12000))
+	e2e_plugin(&e, "uitest", strings.concatenate({`return {setup = function()
+		qed.command{name = "Pick", run = function() qed.pick{items = {{label = "a", path = `, lua_quote(path), `, pos = {row = 5}}, {label = "b", path = `, lua_quote(path), `, pos = {row = 11000}}}} end}
+	end}`}, context.temp_allocator))
+	ut_run(&e, "Pick")
+	e2e_key(&e, .Arrow_Down)
+	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return len(e.ed.plugins.timers) > 0}, 300)
+	e2e_ui_settle(&e)
+	node := ui_find(&e.ed.ui, "#dialog/dialog_preview")
+	buffer := ui_buffer(&e.ed, node.buffer) if node != nil else nil
+	testing.expect(t, buffer != nil && buffer.cursor.row == 10999, "the far hit's own row")
+	if buffer != nil {
+		testing.expect_value(t, string(buffer.lines[buffer.cursor.row].text[:]), "line 11000 with a few words")
+	}
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_round7_file_tree_reopens_on_its_row :: proc(t: ^testing.T) {
+	e := e2e_root_start("x")
+	defer e2e_stop(&e)
+	for name in ([]string{"a.txt", "b.txt", "c.txt"}) {
+		nav_write(fmt.tprintf("%s/%s", e.ed.working_root, name), "x")
+	}
+	nav_alt(&e, 'f')
+	ft_select_path(&e.ed, fmt.tprintf("%s/c.txt", e.ed.working_root))
+	sel, _ := ft_selected(&e.ed)
+	testing.expect_value(t, sel.name, "c.txt")
+	e2e_key(&e, .Esc)
+	nav_alt(&e, 'f')
+	sel, _ = ft_selected(&e.ed)
+	testing.expect_value(t, sel.name, "c.txt")
+	e2e_key(&e, .Esc)
+}
+
+@(test)
+e2e_round7_rename_prompt_keys_need_its_focus :: proc(t: ^testing.T) {
+	e := e2e_start("alpha beta")
+	defer e2e_stop(&e)
+	buffer := ui_internal_create(&e.ed, "")
+	e.ed.rename = {handle = 0, buffer = buffer}
+	box := new(UiNode)
+	box.kind, box.id = .Text, "rename"
+	append(&box.spans, UiSpan{text = strings.clone("Rename to: ")})
+	box.float, box.anchor = .Screen, .Top
+	box.width, box.height = {form = .Cells, value = 20}, {form = .Cells, value = 1}
+	e.ed.rename.handle = ui_mount_add(&e.ed, "", "alert", box)
+	e2e_render(&e)
+	e2e_mouse(&e, 5, 10)
+	testing.expect(t, !rename_prompt_open(&e.ed), "a click outside the prompt cancels it")
+	e2e_key(&e, .Enter)
+	testing.expect_value(t, len(editor_buffer(&e.ed).lines), 2)
+}
+
+@(test)
+e2e_round7_one_line_fields_do_not_indent_pair_or_break :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_key(&e, .Ctrl_P)
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Tab)
+	e2e_type(&e, "(")
+	e2e_paste(&e, "a\nb")
+	e2e_ui_settle(&e)
+	node := ui_find(&e.ed.ui, "#palette/palette_query")
+	buffer := ui_buffer(&e.ed, node.buffer) if node != nil else nil
+	testing.expect(t, buffer != nil, "the palette query")
+	if buffer != nil {
+		testing.expect_value(t, len(buffer.lines), 1)
+		testing.expect_value(t, string(buffer.lines[0].text[:]), "(a b")
+	}
+	e2e_key(&e, .Esc)
+}
