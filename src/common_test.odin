@@ -440,6 +440,10 @@ TestDialog :: struct {
 	labels:                          [dynamic]string,
 }
 
+lua_quote :: proc(text: string) -> string {
+	return strings.concatenate({"[==[", text, "]==]"}, context.temp_allocator)
+}
+
 GotoState :: struct {
 	open:     bool,
 	count:    int,

@@ -1,9 +1,14 @@
+local ui = qed.ui
+
 local MAX = 500
 local MAX_COLUMNS = 300
+local DEBOUNCE_MS = 120
+local SELECTED = {bg = "pane_selection_background", fg = "pane_selection_foreground"}
 
 local min_query
-local running
 local has_rg = false
+local view
+local activate
 
 local function rg_ready()
 	if not has_rg then
@@ -23,20 +28,124 @@ local function rg_cmd(text, args)
 end
 
 local function stop()
-	if running then
-		running:kill()
-		running = nil
+	if view and view.running then
+		view.running:kill()
+		view.running = nil
 	end
 end
 
-local function query(view, text, args)
-	stop()
-	if #text < min_query then
-		view:set({}, {hint = short_hint()})
+local function close()
+	if not view then
 		return
 	end
+	stop()
+	local closing = view
+	view = nil
+	closing.handle:unmount()
+	closing.query:close()
+	if closing.preview then
+		closing.preview.buffer:close()
+	end
+end
+
+local function highlighted()
+	local state = ui.node("search_rows"):state()
+	local key = state and state.highlighted
+	return key and view.results:get(key) or nil
+end
+
+local function preview_show(item)
+	local preview = view.preview
+	if not item then
+		return
+	end
+	if not preview or preview.path ~= item.path then
+		if preview then
+			preview.buffer:close()
+		end
+		preview = {path = item.path, buffer = qed.buf.create{internal = true, path = item.path}}
+		view.preview = preview
+		view.handle:update(view.build())
+	end
+	preview.buffer:set_cursor({row = math.min(item.pos.row, preview.buffer:line_count()), col = 1})
+end
+
+local function highlight(key)
+	ui.node("search_rows"):set_state{highlighted = key}
+	preview_show(highlighted())
+end
+
+local function result_row(record)
+	return ui.row{
+		on = {
+			click = function()
+				highlight(record.key)
+				return true
+			end,
+			double_click = function()
+				highlight(record.key)
+				activate()
+				return true
+			end,
+		},
+		ui.text{grow = 1, " ", record.label},
+	}
+end
+
+local function count_text()
+	local count = view.results:count()
+	if count == 0 then
+		return ""
+	end
+	return tostring(count) .. (view.capped and "+" or "")
+end
+
+local function build()
+	local hint = view.results:count() == 0 and view.hint or nil
+	return ui.dismissable{on_dismiss = close,
+		ui.box{id = "search", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
+			border = true, title = "Search", bg = "pane_background", fg = "pane_foreground",
+			ui.row{separator = view.preview ~= nil,
+				ui.column{width = view.preview and {"40%", min = 24, max = 70} or nil, grow = view.preview and 0 or 1,
+					ui.row{height = 1,
+						ui.text{fg = "pane_prompt_foreground", "> "},
+						ui.editor{id = "search_query", buffer = view.query, height = 1, grow = 1, scope = {"search", "editor"},
+							placeholder = "text to find"},
+						ui.text{id = "search_count", fg = "pane_dim_foreground", " ", count_text(), " "},
+					},
+					hint and ui.text{id = "search_hint", fg = "pane_dim_foreground", wrap = true, " ", hint} or false,
+					ui.scroll{grow = 1,
+						ui.virtual_column{id = "search_rows", data = view.results, item = result_row, highlight_style = SELECTED}},
+				},
+				view.preview and ui.editor{id = "search_preview", buffer = view.preview.buffer, grow = 1, readonly = true,
+					syntax = true, line_numbers = true} or false,
+			},
+		},
+	}
+end
+
+local function refresh(current)
+	if view == current then
+		view.handle:update(build())
+	end
+end
+
+local function run_query(current, text)
+	stop()
+	current.results:clear()
+	current.capped = false
+	if #text < min_query then
+		current.hint = short_hint()
+		refresh(current)
+		return
+	end
+	current.hint = nil
+	refresh(current)
 	local root, total, seen = qed.root(), 0, {}
-	local proc, err = qed.spawn_bg{cmd = rg_cmd(text, args), on_line = function(line)
+	local proc, err = qed.spawn_bg{cmd = rg_cmd(text, current.args), on_line = function(line)
+		if view ~= current or current.applied ~= text then
+			return
+		end
 		local file, row, col, hit = line:match("^(.-):(%d+):(%d+):(.*)$")
 		if not file or file == "" then
 			return
@@ -47,41 +156,92 @@ local function query(view, text, args)
 		end
 		seen[key] = true
 		total = total + 1
-		local item = {
-			label = ("%s:%s  %s"):format(file, row, hit:gsub("\r$", ""):match("^[ \t]*(.*)")),
+		if total > MAX then
+			current.capped = true
+			stop()
+			refresh(current)
+			return
+		end
+		current.results:append{
 			key = key,
+			label = ("%s:%s  %s"):format(file, row, hit:gsub("\r$", ""):match("^[ \t]*(.*)")),
 			path = qed.path.join(root, file),
 			pos = {row = tonumber(row), col = tonumber(col)},
 		}
 		if total == 1 then
-			view:set({item})
-		else
-			view:append({item})
+			highlight(key)
 		end
-		if total > MAX then
-			stop()
-		end
+		refresh(current)
 	end}
 	if not proc then
-		view:set({}, {hint = "Search failed: " .. err})
+		current.hint = "Search failed: " .. err
+		refresh(current)
 		return
 	end
-	running = proc
+	current.running = proc
 	local result = proc:wait()
-	if total == 0 and result then
-		view:set({}, {hint = result.code > 1 and ("Search failed: rg exit code %d"):format(result.code) or "No matches"})
+	if current.running == proc then
+		current.running = nil
+	end
+	if view == current and current.applied == text and total == 0 and result then
+		current.hint = result.code > 1 and ("Search failed: rg exit code %d"):format(result.code) or "No matches"
+		refresh(current)
+	end
+end
+
+-- typed keys run one search once typing pauses
+local function query_changed(current)
+	local text = current.query:text()
+	if text:find("\n") then
+		current.query:set_text((text:gsub("\r?\n", " ")))
+		return
+	end
+	if text == current.applied then
+		return
+	end
+	current.applied = text
+	current.due = (current.due or 0) + 1
+	local token = current.due
+	qed.defer(DEBOUNCE_MS, function()
+		if view == current and current.due == token then
+			run_query(current, text)
+		end
+	end)
+end
+
+local function move(step)
+	if not view then
+		return
+	end
+	local results = view.results
+	local count = results:count()
+	if count == 0 then
+		return
+	end
+	local record = highlighted()
+	local index = record and results:index_of(record.key) or 0
+	highlight(results:at(math.max(1, math.min(count, index + step))).key)
+end
+
+function activate()
+	if not view then
+		return
+	end
+	local record = highlighted() or view.results:at(1)
+	close()
+	if record then
+		qed.jump(record.path, record.pos)
 	end
 end
 
 local function search(ctx, scope)
+	if view then
+		close()
+		return
+	end
 	if not rg_ready() then
 		qed.message("ripgrep (rg) not found", "error")
 		return
-	end
-	local start
-	local sel = ctx.selection_text
-	if sel and not sel:find("\n") and sel:find("[^ \t]") then
-		start = sel
 	end
 	local args = ""
 	for _, path in ipairs(scope or {}) do
@@ -90,22 +250,23 @@ local function search(ctx, scope)
 	if args ~= "" then
 		args = " --" .. args
 	end
-	qed.ui.open{
-		id = "search",
-		kind = "child",
-		place = "split",
-		fields = {{mode = "query", count = true, text = start}},
-		list = {max = MAX, sort = true, empty = short_hint()},
-		preview = "auto",
-		on = {
-			query = function(view, text) query(view, text, args) end,
-			close = stop,
-			activate = function(view, items)
-				view:close()
-				qed.jump(items[1].path, items[1].pos)
-			end,
-		},
-	}
+	local results = qed.list.new{key = "key"}
+	results:sort("key")
+	view = {results = results, query = qed.buf.create{internal = true}, args = args, applied = "", hint = short_hint(), build = build}
+	view.handle = ui.mount("pane", build())
+	local current = view
+	view.query:on("change", function()
+		if view == current then
+			query_changed(current)
+		end
+	end)
+	ui.node("search_query"):focus()
+	local selection = ctx.selection_text
+	if selection and not selection:find("\n") and selection:find("[^ \t]") then
+		view.query:set_text(selection)
+		view.query:set_selection({row = 1, col = 1}, {row = 1, col = #selection + 1})
+		query_changed(current)
+	end
 end
 
 local function search_tree(ctx)
@@ -130,12 +291,30 @@ local function search_tree(ctx)
 	search(ctx, paths)
 end
 
+local function state()
+	if not view then
+		return nil
+	end
+	local labels = {}
+	for index = 1, view.results:count() do
+		labels[index] = view.results:at(index).label
+	end
+	local record = highlighted()
+	return {id = "search", query = view.query:text(), labels = labels, matches = #labels,
+		selected = record and record.label or nil, hint = view.results:count() == 0 and view.hint or ""}
+end
+
 return {
 	setup = function()
 		qed.meta{description = "Project-wide search with ripgrep"}
 		min_query = qed.options({min_query = 2}, {min_query = "Characters typed before a search runs"}).min_query
 		qed.command{name = "In Files", key = "Alt+F", welcome = true, run = search}
 		qed.command{name = "In Files", scope = "filetree", run = search_tree}
+		qed.command{name = "Next", scope = "search", key = "Down", run = function() move(1) end}
+		qed.command{name = "Previous", scope = "search", key = "Up", run = function() move(-1) end}
+		qed.command{name = "Open", scope = "search", key = "Enter", run = activate}
+		qed.command{name = "Close", scope = "search", key = "Esc", run = close}
 		qed:on("config_changed", function() min_query = qed.config().min_query end)
+		qed.export{state = state}
 	end,
 }

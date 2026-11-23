@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:strconv"
 import "core:strings"
 import "core:testing"
 
@@ -15,54 +16,61 @@ cwd_fixture :: proc(e: ^E2E) {
 	e2e_run(fmt.tprintf("ln -s %s %s", shell_quote(fmt.tprintf("%s/alpha", root)), shell_quote(fmt.tprintf("%s/link", root))))
 }
 
-cwd_pane :: proc(e: ^E2E) -> ^Pane {
-	p := pane_focus(&e.ed)
-	if p == nil || p.owner != "workspace" || pane_path(p) == nil {
-		return nil
+WsState :: struct {
+	open:      bool,
+	query:     string,
+	names:     string,
+	paths:     []string,
+	caret:     int,
+	selection: [2]int,
+	selected:  bool,
+	highlight: string,
+}
+
+cwd_state :: proc(e: ^E2E) -> WsState {
+	out := ft_lua(&e.ed, `local s = qed.plugin("workspace").state()
+		if not s then return "" end
+		local sel = s.selection or {-1, -1}
+		return table.concat({"open", s.query, table.concat(s.labels, ","), table.concat(s.paths, "\1"), s.caret, sel[1], sel[2], s.selected or ""}, "\2")`)
+	if out == "" {
+		return {}
 	}
-	return p
+	parts := strings.split(out, "\x02", context.temp_allocator)
+	caret, _ := strconv.parse_int(parts[4])
+	lo, _ := strconv.parse_int(parts[5])
+	hi, _ := strconv.parse_int(parts[6])
+	paths := strings.split(parts[3], "\x01", context.temp_allocator) if parts[3] != "" else nil
+	return {open = true, query = parts[1], names = parts[2], paths = paths, caret = caret, selection = {lo, hi}, selected = lo >= 0, highlight = parts[7]}
+}
+
+cwd_open :: proc(e: ^E2E) -> bool {
+	return cwd_state(e).open
 }
 
 cwd_names :: proc(e: ^E2E) -> string {
-	p := cwd_pane(e)
-	if p == nil {
-		return "<closed>"
-	}
-	names := make([dynamic]string, context.temp_allocator)
-	for it in test_pane_items(&e.ed, p) {
-		append(&names, it.label)
-	}
-	return strings.join(names[:], ",", context.temp_allocator)
+	state := cwd_state(e)
+	return state.names if state.open else "<closed>"
 }
 
 cwd_first_path :: proc(e: ^E2E) -> string {
-	p := cwd_pane(e)
-	if p == nil || list_count(&e.ed, p) == 0 {
-		return ""
-	}
-	return list_item(&e.ed, p, 0).path
+	state := cwd_state(e)
+	return state.paths[0] if len(state.paths) > 0 else ""
 }
 
 cwd_reopen :: proc(e: ^E2E) {
-	if cwd_pane(e) != nil {
+	if cwd_open(e) {
 		e2e_key(e, .Esc)
 	}
 	e2e_key(e, .Ctrl_O)
 }
 
 cwd_set :: proc(e: ^E2E, query: string) {
-	p := cwd_pane(e)
-	f := pane_path(p)
-	textfield_set(&f.field, query)
-	pane_field_changed(&e.ed, p, f)
+	ft_lua(&e.ed, strings.concatenate({`qed.plugin("workspace").set_query(`, lua_quote(query), `) return ""`}, context.temp_allocator))
 }
 
 cwd_query :: proc(e: ^E2E) -> string {
-	p := cwd_pane(e)
-	if p == nil {
-		return "<closed>"
-	}
-	return textfield_str(&pane_path(p).field)
+	state := cwd_state(e)
+	return state.query if state.open else "<closed>"
 }
 
 cwd_confirm :: proc(e: ^E2E) -> string {
@@ -80,37 +88,34 @@ e2e_cwd_open_prefill :: proc(t: ^testing.T) {
 	root := strings.clone(e.ed.working_root, context.temp_allocator)
 
 	e2e_key(&e, .Ctrl_O)
-	p := cwd_pane(&e)
-	testing.expect(t, p != nil, "Ctrl+O opens the picker")
-	f := pane_path(p)
-	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/", root))
-	testing.expect_value(t, f.caret, len(f.text))
-	_, _, sel := textfield_selection(&f.field)
-	testing.expect(t, !sel, "nothing selected on open")
-	testing.expect_value(t, cwd_names(&e), "Beta,alpha,apple,link")
-	testing.expect_value(t, p.list.sel, 0)
+	state := cwd_state(&e)
+	testing.expect(t, state.open, "Ctrl+O opens the picker")
+	testing.expect_value(t, state.query, fmt.tprintf("%s/", root))
+	testing.expect_value(t, state.caret, len(state.query))
+	testing.expect(t, !state.selected, "nothing selected on open")
+	testing.expect_value(t, state.names, "Beta,alpha,apple,link")
+	testing.expect_value(t, state.highlight, "Beta")
 
-	e2e_render(&e)
-	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + min(pane_count(&e.ed, p), PALETTE_MAX_ROWS))
-	testing.expect_value(t, pane_geom(&e.ed, p).box, box)
+	box := node_rect(&e.ed, "workspace")
+	testing.expect_value(t, box.w, 64)
 	top := e2e_row(&e, box.y)
 	testing.expectf(t, strings.contains(top, "┌──────────") && !strings.contains(top, filepath.base(root)), "no title on the border: %q", top)
 	testing.expect(t, strings.contains(e2e_row(&e, box.y + 1), fmt.tprintf("%s/", filepath.base(root))), "prompt row")
-	testing.expect(t, strings.contains(e2e_row(&e, box.y + 3), "Beta"), "first row under the separator")
+	testing.expect(t, strings.contains(e2e_row(&e, box.y + 2), "Beta"), "first row under the prompt")
 
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Arrow_Down)
-	testing.expect_value(t, p.list.sel, 2)
+	testing.expect_value(t, cwd_state(&e).highlight, "apple")
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/", root))
 	e2e_key(&e, .Arrow_Up)
-	testing.expect_value(t, p.list.sel, 1)
+	testing.expect_value(t, cwd_state(&e).highlight, "alpha")
 
 	e2e_key(&e, .Ctrl_A)
-	lo, hi, all := textfield_selection(&f.field)
-	testing.expect(t, all && lo == 0 && hi == len(f.text), "Ctrl+A selects the whole query")
+	state = cwd_state(&e)
+	testing.expect(t, state.selected && state.selection[0] == 0 && state.selection[1] == len(state.query), "Ctrl+A selects the whole query")
 
 	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, cwd_pane(&e) == nil, "the same chord closes the picker")
+	testing.expect(t, !cwd_open(&e), "the same chord closes the picker")
 
 	owned := e.ed.working_root
 	e.ed.working_root = "/"
@@ -148,7 +153,7 @@ e2e_cwd_filters :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, cwd_names(&e), ".hid,Beta,alpha,apple,link")
 	e2e_key(&e, .Esc)
-	testing.expect(t, cwd_pane(&e) == nil, "Esc closes")
+	testing.expect(t, !cwd_open(&e), "Esc closes")
 }
 
 @(test)
@@ -189,8 +194,8 @@ e2e_cwd_bases :: proc(t: ^testing.T) {
 	e2e_type(&e, "../")
 	testing.expect_value(t, cwd_query(&e), "../")
 	found := false
-	for it in test_pane_items(&e.ed, cwd_pane(&e)) {
-		if it.path == root {
+	for path in cwd_state(&e).paths {
+		if path == root {
 			found = true
 		}
 	}
@@ -206,9 +211,9 @@ e2e_cwd_bases :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_A)
 	e2e_type(&e, "~/")
 	home, _ := filepath.clean(os.get_env("HOME", context.temp_allocator), context.temp_allocator)
-	for it in test_pane_items(&e.ed, cwd_pane(&e)) {
-		testing.expect(t, it.label != "." && it.label != "..", "no . / .. rows")
-		testing.expect_value(t, filepath.dir(it.path), home)
+	for path in cwd_state(&e).paths {
+		testing.expect(t, filepath.base(path) != "." && filepath.base(path) != "..", "no . / .. rows")
+		testing.expect_value(t, filepath.dir(path), home)
 	}
 }
 
@@ -258,42 +263,42 @@ e2e_cwd_backspace :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Ctrl_O)
 	cwd_set(&e, fmt.tprintf("%s/alpha/", root))
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/", root))
 	testing.expect_value(t, cwd_names(&e), "Beta,alpha,apple,link")
 
 	cwd_set(&e, "/")
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	testing.expect_value(t, cwd_query(&e), "/")
 
 	cwd_set(&e, "~/")
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	if home != "/" {
 		parent := filepath.dir(home)
 		testing.expect_value(t, cwd_query(&e), "/" if parent == "/" else fmt.tprintf("%s/", parent))
 	}
 
 	cwd_set(&e, "../../")
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	testing.expect_value(t, cwd_query(&e), "../")
 
 	cwd_set(&e, "")
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	testing.expect_value(t, cwd_query(&e), "")
 
 	cwd_set(&e, fmt.tprintf("%s/al", root))
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/a", root))
 	testing.expect_value(t, cwd_names(&e), "alpha,apple")
 
 	cwd_set(&e, fmt.tprintf("%s/alpha/", root))
 	e2e_key(&e, .Arrow_Left)
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/alph/", root))
 
 	cwd_set(&e, fmt.tprintf("%s/alpha/", root))
 	e2e_key(&e, .Ctrl_A)
-	e2e_key(&e, .Backspace)
+	e2e_key(&e, .Backspace2)
 	testing.expect_value(t, cwd_query(&e), "")
 }
 
@@ -305,12 +310,12 @@ e2e_cwd_mouse_and_paste :: proc(t: ^testing.T) {
 	root := strings.clone(e.ed.working_root, context.temp_allocator)
 
 	e2e_key(&e, .Ctrl_O)
-	e2e_render(&e)
-	g := pane_geom(&e.ed, cwd_pane(&e))
-	e2e_mouse(&e, g.list.x + 2, g.list.y + 1)
-	e2e_mouse(&e, g.list.x + 2, g.list.y + 1)
+	rows := node_rect(&e.ed, "workspace_rows")
+	e2e_mouse(&e, rows.x + 2, rows.y + 1)
+	e2e_mouse(&e, rows.x + 2, rows.y + 1)
+	e2e_ui_settle(&e)
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/alpha/", root))
-	testing.expect(t, cwd_pane(&e) != nil, "double-click drills in, it does not commit")
+	testing.expect(t, cwd_open(&e), "double-click drills in, it does not commit")
 	testing.expect_value(t, e.ed.working_root, root)
 
 	e2e_paste(&e, "in")
@@ -335,30 +340,30 @@ e2e_cwd_commit :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_O)
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Enter)
-	testing.expect(t, cwd_pane(&e) == nil, "Enter on the prefilled root closes, ignoring the highlight")
+	testing.expect(t, !cwd_open(&e), "Enter on the prefilled root closes, ignoring the highlight")
 	testing.expect_value(t, e.ed.working_root, root)
 	testing.expect_value(t, len(e.ed.buffers), 2)
 
 	e2e_key(&e, .Ctrl_O)
 	cwd_set(&e, fmt.tprintf("%s/nope", root))
 	e2e_key(&e, .Enter)
-	testing.expect(t, cwd_pane(&e) != nil, "a missing dir keeps the picker open")
+	testing.expect(t, cwd_open(&e), "a missing dir keeps the picker open")
 	testing.expect_value(t, e.ed.working_root, root)
 	testing.expect_value(t, e.ed.message, fmt.tprintf("Not a directory: %s/nope", root))
 	testing.expect_value(t, e.ed.message_level, LogLevel.Error)
 
 	cwd_set(&e, fmt.tprintf("%s/file.txt", root))
 	e2e_key(&e, .Enter)
-	testing.expect(t, cwd_pane(&e) != nil, "a file is not a directory")
+	testing.expect(t, cwd_open(&e), "a file is not a directory")
 	testing.expect_value(t, e.ed.working_root, root)
 
 	cwd_set(&e, fmt.tprintf("%s/al", root))
 	e2e_key(&e, .Enter)
-	testing.expect(t, cwd_pane(&e) != nil, "Enter commits the written path, not the highlighted completion")
+	testing.expect(t, cwd_open(&e), "Enter commits the written path, not the highlighted completion")
 
 	cwd_set(&e, alpha)
 	e2e_key(&e, .Enter)
-	testing.expect(t, cwd_pane(&e) == nil, "commit closes the picker")
+	testing.expect(t, !cwd_open(&e), "commit closes the picker")
 	testing.expect_value(t, e.ed.working_root, alpha)
 	testing.expect_value(t, len(e.ed.buffers), 1)
 	testing.expect_value(t, editor_buffer(&e.ed).path, inside)
@@ -370,7 +375,7 @@ e2e_cwd_commit :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/", alpha))
 	e2e_key(&e, .Enter)
-	testing.expect(t, cwd_pane(&e) == nil, "trailing slash means the same dir")
+	testing.expect(t, !cwd_open(&e), "trailing slash means the same dir")
 	testing.expect_value(t, e.ed.working_root, alpha)
 
 	e2e_key(&e, .Ctrl_O)
@@ -381,7 +386,7 @@ e2e_cwd_commit :: proc(t: ^testing.T) {
 	testing.expect(t, e.ed.welcome, "no buffers left lands on the welcome screen")
 
 	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, cwd_pane(&e) != nil, "Ctrl+O works on the welcome screen")
+	testing.expect(t, cwd_open(&e), "Ctrl+O works on the welcome screen")
 	e2e_key(&e, .Ctrl_A)
 	e2e_type(&e, "../..")
 	e2e_key(&e, .Enter)
@@ -399,22 +404,19 @@ e2e_cwd_unsaved_confirm :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Ctrl_O)
 	e2e_type(&e, "alpha")
-	p := cwd_pane(&e)
-	f := pane_path(p)
-	query := strings.clone(textfield_str(&f.field), context.temp_allocator)
-	caret := f.caret
-	selected := p.list.sel
+	before := cwd_state(&e)
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, cwd_confirm(&e), "Close 1 buffer? (1 unsaved)")
-	testing.expect(t, cwd_pane(&e) != nil, "the picker stays under the confirm")
+	testing.expect(t, cwd_open(&e), "the picker stays under the confirm")
 	testing.expect_value(t, e.ed.working_root, root)
 	e2e_render(&e)
 
 	e2e_key(&e, .Enter)
-	testing.expect(t, cwd_pane(&e) != nil, "Cancel returns to the picker")
-	testing.expect_value(t, cwd_query(&e), query)
-	testing.expect_value(t, pane_path(cwd_pane(&e)).caret, caret)
-	testing.expect_value(t, cwd_pane(&e).list.sel, selected)
+	testing.expect(t, cwd_open(&e), "Cancel returns to the picker")
+	after := cwd_state(&e)
+	testing.expect_value(t, after.query, before.query)
+	testing.expect_value(t, after.caret, before.caret)
+	testing.expect_value(t, after.highlight, before.highlight)
 	testing.expect_value(t, e.ed.working_root, root)
 	testing.expect_value(t, len(e.ed.buffers), 1)
 	testing.expect(t, editor_buffer(&e.ed).modified, "unsaved buffer survives cancel")
@@ -422,11 +424,11 @@ e2e_cwd_unsaved_confirm :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, cwd_confirm(&e), "Close 1 buffer? (1 unsaved)")
 	e2e_key(&e, .Esc)
-	testing.expect(t, cwd_pane(&e) != nil, "Esc in the confirm returns to the picker")
-	testing.expect_value(t, cwd_query(&e), query)
+	testing.expect(t, cwd_open(&e), "Esc in the confirm returns to the picker")
+	testing.expect_value(t, cwd_query(&e), before.query)
 	testing.expect_value(t, e.ed.working_root, root)
 	e2e_key(&e, .Esc)
-	testing.expect(t, pane_focus(&e.ed) == nil, "second Esc closes the picker")
+	testing.expect(t, !cwd_open(&e), "second Esc closes the picker")
 	testing.expect_value(t, e.ed.working_root, root)
 
 	e2e_key(&e, .Ctrl_O)
@@ -436,7 +438,7 @@ e2e_cwd_unsaved_confirm :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.working_root, fmt.tprintf("%s/alpha", root))
 	testing.expect(t, e.ed.welcome, "confirmed close discards and lands on welcome")
-	testing.expect(t, pane_focus(&e.ed) == nil, "confirm closes the picker too")
+	testing.expect(t, !cwd_open(&e), "confirm closes the picker too")
 }
 
 pane_find_handle :: proc(e: ^E2E, handle: u64) -> ^Pane {
@@ -452,12 +454,12 @@ e2e_cwd_palette_and_welcome :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(palette_labels(&e), "|Workspace: Open Directory|"), "listed on the welcome palette")
 	e2e_key(&e, .Esc)
 	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, cwd_pane(&e) != nil, "Ctrl+O opens on the welcome screen")
+	testing.expect(t, cwd_open(&e), "Ctrl+O opens on the welcome screen")
 	testing.expect_value(t, cwd_query(&e), fmt.tprintf("%s/", e.ed.working_root))
 	testing.expect_value(t, cwd_names(&e), "")
 	e2e_render(&e)
 	e2e_key(&e, .Esc)
-	testing.expect(t, cwd_pane(&e) == nil, "Esc cancels")
+	testing.expect(t, !cwd_open(&e), "Esc cancels")
 }
 
 cwd_tree_select :: proc(e: ^E2E, name: string) -> bool {
@@ -491,7 +493,7 @@ e2e_cwd_tree_set_root :: proc(t: ^testing.T) {
 	testing.expect(t, cwd_tree_select(&e, "file.txt"), "top-level file row")
 	e2e_key(&e, .Ctrl_O)
 	testing.expect_value(t, e.ed.working_root, root)
-	testing.expect(t, cwd_pane(&e) == nil, "Ctrl+O in the tree does not open the picker")
+	testing.expect(t, !cwd_open(&e), "Ctrl+O in the tree does not open the picker")
 
 	testing.expect(t, cwd_tree_select(&e, "alpha"), "alpha row")
 	e2e_key(&e, .Enter)
@@ -510,7 +512,7 @@ e2e_cwd_tree_set_root :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Esc)
 	e2e_key(&e, .Ctrl_O)
-	testing.expect(t, cwd_pane(&e) != nil, "Ctrl+O outside the tree opens the picker")
+	testing.expect(t, cwd_open(&e), "Ctrl+O outside the tree opens the picker")
 	e2e_type(&e, "../../")
 	e2e_key(&e, .Enter)
 	testing.expect_value(t, e.ed.working_root, root)

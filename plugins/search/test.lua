@@ -7,6 +7,11 @@ local function rg(test)
 	return ok
 end
 
+-- the search view while it is open, else whatever pane is up
+local function current(test)
+	return qed.plugin("search").state() or test.ui()
+end
+
 local function write(name, body)
 	local path = qed.path.join(qed.root(), name)
 	qed.fs.write(path, body)
@@ -15,15 +20,15 @@ end
 
 local function results(test)
 	test.wait(function()
-		local ui = test.ui()
+		local ui = current(test)
 		return ui ~= nil and ui.matches > 0
 	end)
-	return test.ui()
+	return current(test)
 end
 
 local function open(test)
 	test.key("Alt+F")
-	test.wait(function() local ui = test.ui(); return ui ~= nil and ui.id == "search" end)
+	test.wait(function() local ui = current(test); return ui ~= nil and ui.id == "search" end)
 end
 
 local function on_screen(test, needle)
@@ -62,7 +67,7 @@ function tests.search_opens_hit(test)
 	test.eq(ui.selected, "hay.txt:2  needle_xyz here", "label is path:row  text")
 	test.ok(on_screen(test, "needle_xyz here"), "the preview or list shows the hit")
 	test.key("Enter")
-	test.wait(function() return test.ui() == nil end)
+	test.wait(function() return current(test) == nil end)
 	test.eq(qed.path.base(qed.buf.current():path()), "hay.txt", "Enter opens the hit")
 	test.eq(qed.buf.current():cursor().row, 2, "on its row")
 end
@@ -75,12 +80,12 @@ function tests.results_sorted_and_counted(test)
 	write("a.txt", "x zz_needle\n")
 	open(test)
 	test.type("zz_needle")
-	test.wait(function() local ui = test.ui(); return ui ~= nil and ui.matches == 3 end)
-	local ui = test.ui()
+	test.wait(function() local ui = current(test); return ui ~= nil and ui.matches == 3 end)
+	local ui = current(test)
 	test.eq(ui.labels[1], "a.txt:1  x zz_needle")
 	test.eq(ui.labels[2], "b.txt:1  zz_needle")
 	test.eq(ui.labels[3], "b.txt:2  zz_needle")
-	test.ok(on_screen(test, "3│"), "the match count renders by the divider")
+	test.ok(on_screen(test, " 3 │"), "the match count renders at the end of the query row")
 	test.key("Esc")
 end
 
@@ -90,17 +95,17 @@ function tests.short_query_hint(test)
 	end
 	write("q.txt", "q\n")
 	open(test)
-	test.wait(function() return test.ui().hint ~= "" end)
+	test.wait(function() return current(test).hint ~= "" end)
 	test.ok(on_screen(test, "Type at least 2 characters to search"), "the hint renders")
 	test.type("q")
 	test.pump(200)
-	test.eq(test.ui().matches, 0, "one char does not search")
+	test.eq(current(test).matches, 0, "one char does not search")
 	test.key("Esc")
 	test.config({min_query = 1}, {hot = true})
 	open(test)
 	test.type("q")
 	results(test)
-	test.eq(test.ui().hint, "", "a search clears the hint")
+	test.eq(current(test).hint, "", "a search clears the hint")
 	test.key("Esc")
 end
 
@@ -115,14 +120,14 @@ function tests.query_not_persisted(test)
 	test.key("Esc")
 
 	open(test)
-	test.eq(test.ui().query, "", "the query does not persist")
+	test.eq(current(test).query, "", "the query does not persist")
 	test.key("Esc")
 
 	qed.buf.current():set_selection({row = 1, col = 1}, {row = 1, col = 11})
 	open(test)
-	test.eq(test.ui().query, "needle_xyz", "a single-line selection pre-fills")
+	test.eq(current(test).query, "needle_xyz", "a single-line selection pre-fills")
 	local ui = results(test)
-	test.eq(ui.selected, test.ui().labels[1], "a pre-fill starts on the first match")
+	test.eq(ui.selected, current(test).labels[1], "a pre-fill starts on the first match")
 	test.key("Esc")
 end
 
@@ -147,14 +152,14 @@ function tests.chord_closes(test)
 	end
 	open(test)
 	test.key("Alt+F")
-	test.eq(test.ui(), nil, "the opening chord closes the picker")
+	test.eq(current(test), nil, "the opening chord closes the picker")
 end
 
 function tests.rg_missing(test)
 	test.fake_spawn("command -v rg", {code = 1})
 	test.key("Alt+F")
 	test.pump(50)
-	test.eq(test.ui(), nil, "no picker without rg")
+	test.eq(current(test), nil, "no picker without rg")
 	local msg, level, source = test.message()
 	test.eq(msg, "ripgrep (rg) not found")
 	test.eq(level, "error")
@@ -177,7 +182,7 @@ function tests.tree_dir_scope(test)
 		test.ok(label:sub(1, 4) == "sub/", "confined to the selected dir: " .. label)
 	end
 	test.key("Esc")
-	test.eq(test.ui().id, "filetree", "Esc closes the search, the tree resumes")
+	test.eq(current(test).id, "filetree", "Esc closes the search, the tree resumes")
 	test.key("Esc")
 end
 
@@ -192,7 +197,7 @@ function tests.tree_open_result_closes_tree(test)
 	test.type("needle_xyz")
 	results(test)
 	test.key("Enter")
-	test.wait(function() return test.ui() == nil end)
+	test.wait(function() return current(test) == nil end)
 	test.ok(not test.editor().tree, "opening a result closes the tree")
 	test.eq(qed.path.base(qed.buf.current():path()), "hay.txt")
 	test.eq(qed.buf.current():cursor().row, 2)
@@ -273,7 +278,7 @@ function tests.enter_while_rg_runs(test)
 	results(test)
 	test.eq(test.procs(), 1, "rg still runs")
 	test.key("Enter")
-	test.wait(function() return test.ui() == nil end)
+	test.wait(function() return current(test) == nil end)
 	test.eq(qed.path.base(qed.buf.current():path()), "a.txt", "Enter opens a visible hit without waiting for rg")
 	test.eq(qed.buf.current():cursor().row, 2)
 	test.eq(test.procs(), 0, "and kills rg")
@@ -290,9 +295,9 @@ function tests.cap_kills_rg(test)
 	fifo_scope(test, table.concat(lines, "\n") .. "\n")
 	open(test)
 	test.type("needle_cap")
-	test.wait(function() local ui = test.ui(); return ui.matches == 500 and test.procs() == 0 end)
+	test.wait(function() local ui = current(test); return ui.matches == 500 and test.procs() == 0 end)
 	test.ok(on_screen(test, "500+"), "the count shows 500+")
-	local ui = test.ui()
+	local ui = current(test)
 	test.eq(ui.labels[1], "a.txt:1  needle_cap 1", "shown in key order")
 	test.eq(ui.labels[2], "a.txt:2  needle_cap 2")
 	test.key("Esc")
@@ -308,7 +313,7 @@ function tests.dedupes_rows(test)
 	test.type("needle_dup")
 	results(test)
 	test.pump(100)
-	test.eq(test.ui().matches, 1, "two hits on one row are one item")
+	test.eq(current(test).matches, 1, "two hits on one row are one item")
 	test.key("Esc")
 end
 
@@ -319,7 +324,7 @@ function tests.rg_failure_hint(test)
 	test.fake_spawn("rg --vimgrep", {code = 2})
 	open(test)
 	test.type("needle_fail")
-	test.wait(function() return test.ui().hint == "Search failed: rg exit code 2" end)
+	test.wait(function() return current(test).hint == "Search failed: rg exit code 2" end)
 	test.key("Esc")
 end
 
