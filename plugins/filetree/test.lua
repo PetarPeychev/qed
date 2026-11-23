@@ -68,7 +68,7 @@ function T.filter_and_enter(t)
 	t.ok(select(t, "c.txt"))
 	t.key("Enter")
 	t.ok(not t.editor().tree, "Enter on a file opens it and closes the tree")
-	t.eq(qed.path.base(qed.buf.path(qed.buf.current())), "c.txt")
+	t.eq(qed.path.base(qed.buf.current():path()), "c.txt")
 end
 
 function T.new_rename_delete(t)
@@ -191,7 +191,7 @@ end
 
 function T.close_discards_only_approved_ids(t)
 	local b = t.open("u.txt", "x")
-	qed.buf.insert(b, {row = 1, col = 1}, "y")
+	b:insert({row = 1, col = 1}, "y")
 	t.ok(not qed.close(b, {discard = {}}), "an unapproved unsaved buffer stays")
 	t.ok(qed.close(b, {discard = {b}}), "an approved one closes")
 end

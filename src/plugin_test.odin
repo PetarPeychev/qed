@@ -765,7 +765,7 @@ plugin_ctx_selection_lazy :: proc(t: ^testing.T) {
 		qed.command{name = "Skip", run = function() qed.message("ran") end}
 		qed.command{name = "Read", run = function(ctx) qed.message(tostring(#ctx.selection_text)) end}
 		qed.command{name = "Late", run = function(ctx)
-			qed.edit(ctx.buf, function() qed.buf.insert(ctx.buf, {row = 1, col = 1}, "x") end)
+			qed.edit(ctx.buf, function() ctx.buf:insert({row = 1, col = 1}, "x") end)
 			qed.message(tostring(ctx.selection_text))
 		end}
 	end}`}}, "", 4 * 1024 * 1024)

@@ -27,16 +27,16 @@ local function fixups(b)
 	if not on.trim and not on.newline then
 		return
 	end
-	local markdown = qed.buf.language(b) == "markdown"
-	local last = qed.buf.line_count(b)
-	local tail = qed.buf.line(b, last)
+	local markdown = b:language() == "markdown"
+	local last = b:line_count()
+	local tail = b:line(last)
 	local last_trim = on.trim and trim_len(tail, markdown) or 0
 	local newline = on.newline and #tail > last_trim
 	local cuts = {}
 	if on.trim then
-		local rows, from, to = qed.buf.find_trailing(b)
+		local rows, from, to = b:find_trailing()
 		for i, row in ipairs(rows) do
-			if not markdown or trim_len(qed.buf.line(b, row), true) > 0 then
+			if not markdown or trim_len(b:line(row), true) > 0 then
 				cuts[#cuts + 1] = {row = row, col = from[i], to = to[i]}
 			end
 		end
@@ -46,15 +46,15 @@ local function fixups(b)
 	end
 	qed.edit(b, function()
 		for _, c in ipairs(cuts) do
-			qed.buf.delete(b, {row = c.row, col = c.col}, {row = c.row, col = c.to})
+			b:delete({row = c.row, col = c.col}, {row = c.row, col = c.to})
 		end
 		if newline then
-			local eof = {row = last, col = #qed.buf.line(b, last) + 1}
-			local cur = qed.buf.cursor(b)
-			local keep = cur.row == eof.row and cur.col == eof.col and not qed.buf.selection(b)
-			qed.buf.insert(b, eof, "\n")
+			local eof = {row = last, col = #b:line(last) + 1}
+			local cur = b:cursor()
+			local keep = cur.row == eof.row and cur.col == eof.col and not b:selection()
+			b:insert(eof, "\n")
 			if keep then
-				qed.buf.set_cursor(b, eof)
+				b:set_cursor(eof)
 			end
 		end
 	end)
@@ -63,13 +63,13 @@ end
 
 local function external(b, cmd, on_save)
 	local tool = cmd:match("^%S+") or cmd
-	local path = qed.buf.path(b)
+	local path = b:path()
 	local file = path ~= "" and path or qed.path.join(qed.root(), "untitled")
 	local run = cmd:gsub("{file}", function() return qed.shell_quote(file) end)
-	local rev = qed.buf.rev(b)
-	local input = qed.buf.text(b)
+	local rev = b:rev()
+	local input = b:text()
 	local r, err = qed.spawn{cmd = run, stdin = input, cwd = qed.path.dir(file)}
-	if not qed.buf.valid(b) then
+	if not b:valid() then
 		return
 	end
 	if not r or r.code ~= 0 or r.stdout == "" then
@@ -89,7 +89,7 @@ local function external(b, cmd, on_save)
 		end
 		return
 	end
-	local set, applied = pcall(qed.buf.set_text, b, out, {rev = rev})
+	local set, applied = pcall(b.set_text, b, out, {rev = rev})
 	if not set then
 		qed.message(("%s failed: %s"):format(tool, applied), "error")
 	elseif not applied then
@@ -102,13 +102,13 @@ local function external(b, cmd, on_save)
 end
 
 local function lsp(b, on_save)
-	local rev = qed.buf.rev(b)
+	local rev = b:rev()
 	local ok, err = qed.lsp.format(b)
-	if on_save or not qed.buf.valid(b) then
+	if on_save or not b:valid() then
 		return
 	end
 	if ok then
-		qed.message(qed.buf.rev(b) ~= rev and "Formatted" or "No formatting changes")
+		qed.message(b:rev() ~= rev and "Formatted" or "No formatting changes")
 	elseif err == "stale" then
 		qed.message("skipped: buffer changed", "warn")
 	elseif LSP_ERRORS[err] then
@@ -117,7 +117,7 @@ local function lsp(b, on_save)
 end
 
 local function format(b, on_save)
-	local cmd = commands[qed.buf.language(b)]
+	local cmd = commands[b:language()]
 	if cmd and cmd ~= "" then
 		external(b, cmd, on_save)
 	else

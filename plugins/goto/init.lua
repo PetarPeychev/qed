@@ -14,12 +14,12 @@ local function find_line(ctx)
 		id = "goto",
 		place = "split",
 		fields = {{text = selection_query(ctx)}},
-		list = {items = qed.buf.line_list(buf)},
+		list = {items = buf:line_list()},
 		preview = "auto",
 		on = {
 			activate = function(v, items)
 				v:close()
-				if items[1] and qed.buf.valid(buf) then
+				if items[1] and buf:valid() then
 					qed.jump(buf, items[1].pos)
 				end
 			end,

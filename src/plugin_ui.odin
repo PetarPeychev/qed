@@ -776,11 +776,11 @@ api_view_item :: proc(L: ^lua.State, editor: ^Editor, t: c.int) -> (it: PaneItem
 	}
 	lua.pop(L, 1)
 	#partial switch lua.getfield(L, t, "buf") {
-	case .NUMBER:
-		it.buf = u64(max(0, lua.tointeger(L, -1)))
+	case .NUMBER, .TABLE:
+		it.buf = api_buffer_id(L, -1)
 	case .NIL:
 	case:
-		plugin_raise(L, "buf must be a buffer id")
+		plugin_raise(L, "buf must be a buffer")
 	}
 	lua.pop(L, 1)
 	#partial switch lua.getfield(L, t, "cells") {

@@ -315,7 +315,7 @@ e2e_deco_set_base_no_git :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	pl := e2e_plugin(&e, "sb", `
 		return {setup = function()
-			qed.buf.set_base(nil, "zero\none\ntwo\nthree\nfive\n", {label = "saved"})
+			qed.buf.current():set_base("zero\none\ntwo\nthree\nfive\n", {label = "saved"})
 		end}`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	e2e_render(&e)
@@ -387,7 +387,7 @@ e2e_deco_set_base_matches_git :: proc(t: ^testing.T) {
 		git_screen[y] = strings.clone(deco_row(&e, y), context.temp_allocator)
 	}
 
-	pl := e2e_plugin(&e, "gb", fmt.tprintf(`return {{setup = function() qed.buf.set_base(nil, %q) end}}`, seed))
+	pl := e2e_plugin(&e, "gb", fmt.tprintf(`return {{setup = function() qed.buf.current():set_base(%q) end}}`, seed))
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	e2e_render(&e)
 	testing.expect_value(t, diffbase_owner(b), "gb")
@@ -427,12 +427,12 @@ e2e_deco_set_base_ownership :: proc(t: ^testing.T) {
 	e := e2e_start("one\ntwo\n")
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
-	a := e2e_plugin(&e, "owna", `return {setup = function() assert(qed.buf.set_base(nil, "one\n") == true) end}`)
+	a := e2e_plugin(&e, "owna", `return {setup = function() assert(qed.buf.current():set_base("one\n") == true) end}`)
 	testing.expect_value(t, a.state, PluginState.Enabled)
 	other := e2e_plugin(&e, "ownb", `return {setup = function()
-		assert(qed.buf.set_base(nil, "zzz\n") == true and qed.buf.base(nil) == "ownb", "a later plugin's base goes on top")
-		assert(qed.buf.set_base(nil, nil) == true and qed.buf.base(nil) == "owna", "clearing it reveals the one beneath")
-		assert(qed.buf.set_base(nil, "zzz\n", {label = ""}) == true, "and setting it again")
+		assert(qed.buf.current():set_base("zzz\n") == true and qed.buf.current():base() == "ownb", "a later plugin's base goes on top")
+		assert(qed.buf.current():set_base(nil) == true and qed.buf.current():base() == "owna", "clearing it reveals the one beneath")
+		assert(qed.buf.current():set_base("zzz\n", {label = ""}) == true, "and setting it again")
 	end}`)
 	testing.expect_value(t, other.state, PluginState.Enabled)
 	testing.expect_value(t, diffbase_owner(b), "ownb")
@@ -551,9 +551,9 @@ inline_start :: proc(t: ^testing.T, e: ^E2E, name := "gh") -> ^Buffer {
 	b.cursor = {0, 2}
 	pl := deco_plugin(e, name, `
 		assert(not qed.deco.inline(nil, ns, {row = 1, col = 1}, "X"), "not at the cursor")
-		assert(not qed.deco.inline(nil, ns, {row = 1, col = 3}, "X", {rev = qed.buf.rev() + 1}), "stale rev")
+		assert(not qed.deco.inline(nil, ns, {row = 1, col = 3}, "X", {rev = qed.buf.current():rev() + 1}), "stale rev")
 		assert(not qed.deco.inline(nil, ns, {row = 1, col = 3}, ""), "empty text")
-		assert(qed.deco.inline(nil, ns, {row = 1, col = 3}, "AAA\nBBB", {rev = qed.buf.rev()}), "shown")`)
+		assert(qed.deco.inline(nil, ns, {row = 1, col = 3}, "AAA\nBBB", {rev = qed.buf.current():rev()}), "shown")`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	testing.expect(t, inline_active(&e.ed), "ghost active at the cursor")
 	return b
@@ -657,10 +657,10 @@ e2e_text_diff_rows_and_markers :: proc(t: ^testing.T) {
 	e := e2e_start("<<<<<<< a\nsame\nold one\n<<<<<<<<\n=======x\n=======\nsame\nnew one\nextra\n>>>>>>>\n>>>>>>> b")
 	defer e2e_stop(&e)
 	pl := deco_plugin(&e, "dr", `
-		local rows, kinds = qed.buf.find_lines(nil, {"<<<<<<<", "=======", ">>>>>>>"}, {word = true})
+		local rows, kinds = qed.buf.current():find_lines({"<<<<<<<", "=======", ">>>>>>>"}, {word = true})
 		assert(table.concat(rows, ",") == "1,6,10,11", "word markers in order: " .. table.concat(rows, ","))
 		assert(table.concat(kinds, ",") == "1,2,3,3", "kinds")
-		assert(#qed.buf.find_lines(nil, "<<<<<<<") == 2 and select(2, qed.buf.find_lines(nil, "=")) == nil, "plain prefix")
+		assert(#qed.buf.current():find_lines("<<<<<<<") == 2 and select(2, qed.buf.current():find_lines("=")) == nil, "plain prefix")
 		local h = qed.text.diff_rows(nil, 2, 3, 7, 9, {words = true})
 		assert(#h == 1 and h[1].a == 3 and h[1].a_count == 1 and h[1].b == 8 and h[1].b_count == 2, "rows are buffer rows")
 		local s = h[1].spans[1]
@@ -675,7 +675,7 @@ e2e_buf_find_trailing :: proc(t: ^testing.T) {
 	e := e2e_start("a  \nclean\n\t\n\nb \t é  \nend")
 	defer e2e_stop(&e)
 	pl := deco_plugin(&e, "ft", `
-		local rows, from, to = qed.buf.find_trailing(nil)
+		local rows, from, to = qed.buf.current():find_trailing()
 		assert(table.concat(rows, ",") == "1,3,5", "rows: " .. table.concat(rows, ","))
 		assert(table.concat(from, ",") == "2,1,7", "from: " .. table.concat(from, ","))
 		assert(table.concat(to, ",") == "4,2,9", "to: " .. table.concat(to, ","))`)

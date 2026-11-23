@@ -194,8 +194,8 @@ end
 local function buffer_paths()
 	local paths = {}
 	for _, b in ipairs(qed.buf.list()) do
-		local p = qed.buf.path(b)
-		if p ~= "" and (scope == "Open" or qed.buf.modified(b)) and qed.fs.exists(p) then
+		local p = b:path()
+		if p ~= "" and (scope == "Open" or b:modified()) and qed.fs.exists(p) then
 			paths[#paths + 1] = p
 		end
 	end
@@ -649,7 +649,7 @@ end
 
 local function buffer_of(path)
 	for _, b in ipairs(qed.buf.list()) do
-		if qed.buf.path(b) == path then
+		if b:path() == path then
 			return b
 		end
 	end
@@ -661,7 +661,7 @@ local function close_buffers(ctx)
 		local b = not it.dir and buffer_of(it.path)
 		if b then
 			paths[#paths + 1] = it.path
-			if qed.buf.modified(b) then
+			if b:modified() then
 				approved[#approved + 1] = b
 			end
 		end

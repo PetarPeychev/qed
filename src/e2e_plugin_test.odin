@@ -129,10 +129,10 @@ e2e_plugin_edit_undo :: proc(t: ^testing.T) {
 				qed.command{name = "Lines", key = "Alt+j", run = function(ctx)
 					local b = ctx.buf
 					qed.edit(b, function()
-						for row = 1, qed.buf.line_count(b) do
-							local line = qed.buf.line(b, row)
-							qed.buf.insert(b, {row = row, col = #line + 1}, "]")
-							qed.buf.insert(b, {row = row, col = 1}, "[")
+						for row = 1, b:line_count() do
+							local line = b:line(row)
+							b:insert({row = row, col = #line + 1}, "]")
+							b:insert({row = row, col = 1}, "[")
 						end
 					end)
 				end}

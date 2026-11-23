@@ -979,179 +979,162 @@ function qed.buf.current() end
 ---@return integer[]
 function qed.buf.list() end
 
+---@class qed.BufferObject
+---@field id integer
+local BufferObject = {}
+
+---Closes the buffer: frees an internal buffer; closes a file buffer like `qed.close`.
+---@param opts? {discard?: integer[]}
+---@return true|nil
+---@return string|nil err
+function BufferObject:close(opts) end
+
 ---True if `b` is the id of an open buffer. Unlike other `qed.buf` calls it never raises, and nil or 0 is not "current" here.
 ---@param b integer|nil
 ---@return boolean
-function qed.buf.valid(b) end
+function BufferObject:valid() end
 
 ---The buffer's file path, or `""` for an unnamed buffer. Raises "buffer closed" for a stale id (as do all `qed.buf` calls taking `b`).
----@param b qed.Buf
 ---@return string
-function qed.buf.path(b) end
+function BufferObject:path() end
 
 ---Language name, e.g. `"odin"`; see `qed.languages()`.
----@param b qed.Buf
 ---@return string
-function qed.buf.language(b) end
+function BufferObject:language() end
 
 ---True if there are unsaved changes.
----@param b qed.Buf
 ---@return boolean
-function qed.buf.modified(b) end
+function BufferObject:modified() end
 
 ---True for a buffer opened from a big file (highlighting, bracket matching and LSP are off).
----@param b qed.Buf
 ---@return boolean
-function qed.buf.big(b) end
+function BufferObject:big() end
 
 ---Edit counter; changes on every edit, so equal values mean unchanged text. Pass it as `opts.rev` to guard stale writes.
----@param b qed.Buf
 ---@return integer
-function qed.buf.rev(b) end
+function BufferObject:rev() end
 
 ---Number of lines; an empty buffer has 1.
----@param b qed.Buf
 ---@return integer
-function qed.buf.line_count(b) end
+function BufferObject:line_count() end
 
 ---Rows `from..to`, inclusive. Defaults to the whole buffer.
----@param b qed.Buf
 ---@param from? integer
 ---@param to? integer
 ---@return string[]
-function qed.buf.lines(b, from, to) end
+function BufferObject:lines(from, to) end
 
 ---Text of `row` without its newline. Raises if `row` is out of range.
----@param b qed.Buf
 ---@param row integer
 ---@return string
-function qed.buf.line(b, row) end
+function BufferObject:line(row) end
 
 ---Rows whose text starts with `prefix` (plain bytes), in order. Cheap on big buffers, so a `buf_changed` handler can find marker lines without copying the text.
 ---With a list of prefixes, also returns each row's prefix index (the first that matches). `word`: the prefix must be followed by the line end or a space.
----@param b qed.Buf
 ---@param prefix string|string[]
 ---@param opts? {word?: boolean}
 ---@return integer[] rows
 ---@return integer[]? kinds
-function qed.buf.find_lines(b, prefix, opts) end
+function BufferObject:find_lines(prefix, opts) end
 
 ---Rows ending in spaces or tabs, in order, with each run's span: `from[i]` is its first column, `to[i]` the line end (`#line + 1`). One core pass, no text copy.
----@param b qed.Buf
 ---@return integer[] rows
 ---@return integer[] from
 ---@return integer[] to
-function qed.buf.find_trailing(b) end
+function BufferObject:find_trailing() end
 
 ---The whole text, lines joined with LF regardless of the file's line endings.
----@param b qed.Buf
 ---@return string
-function qed.buf.text(b) end
+function BufferObject:text() end
 
 ---Insert `text` at `pos`. Cursor and selection shift with the edit. One undo step unless inside `qed.edit`. Raises on an out-of-range `pos` or a `col` inside a UTF-8 sequence.
----@param b qed.Buf
 ---@param pos qed.Pos
 ---@param text string valid UTF-8; CRLF and CR become LF
 ---@return qed.Pos end_pos
-function qed.buf.insert(b, pos, text) end
+function BufferObject:insert(pos, text) end
 
 ---Delete the half-open range `[from, to)`.
----@param b qed.Buf
 ---@param from qed.Pos
 ---@param to qed.Pos
 ---@return string deleted
-function qed.buf.delete(b, from, to) end
+function BufferObject:delete(from, to) end
 
 ---Replace the half-open range `[from, to)` with `text`. Cursor and selection shift; one undo step unless inside `qed.edit`. Raises if `to` is before `from`.
----@param b qed.Buf
 ---@param from qed.Pos
 ---@param to qed.Pos
 ---@param text string
 ---@return qed.Pos end_pos
-function qed.buf.replace(b, from, to, text) end
+function BufferObject:replace(from, to, text) end
 
 ---Replace the whole text with a minimal line diff, so the cursor, undo and highlight
 ---keep their place. One undo step. Returns `nil, "stale"` without editing if `opts.rev` is stale.
----@param b qed.Buf
 ---@param text string
 ---@param opts? {rev?: integer}
 ---@return true|nil ok
 ---@return "stale"|nil err
-function qed.buf.set_text(b, text, opts) end
+function BufferObject:set_text(text, opts) end
 
 ---The caret position.
----@param b qed.Buf
 ---@return qed.Pos
-function qed.buf.cursor(b) end
+function BufferObject:cursor() end
 
 ---Move the caret to `pos`, clear the selection and scroll it into view if `b` is current.
----@param b qed.Buf
 ---@param pos qed.Pos
-function qed.buf.set_cursor(b, pos) end
+function BufferObject:set_cursor(pos) end
 
 ---Terminal row (1-based) showing buffer row `row` (default the caret's visual row), or nil when off screen or `b` is not current.
----@param b qed.Buf
 ---@param row? integer
 ---@return integer|nil
-function qed.buf.screen_row(b, row) end
+function BufferObject:screen_row(row) end
 
 ---Scrolls the editor so buffer row `row` sits on terminal row `screen_row` (clamped to the text area), clamped at the buffer ends. `nil, "not current"` if `b` is not current.
----@param b qed.Buf
 ---@param row integer
 ---@param screen_row integer
 ---@return true|nil ok
 ---@return "not current"|nil err
-function qed.buf.set_screen_row(b, row, screen_row) end
+function BufferObject:set_screen_row(row, screen_row) end
 
 ---Selection as `from, to` in document order, or nil when nothing is selected.
----@param b qed.Buf
 ---@return qed.Pos|nil from
 ---@return qed.Pos|nil to
-function qed.buf.selection(b) end
+function BufferObject:selection() end
 
 ---Select from `anchor` to `cursor`; the caret ends at `cursor`, so a backward selection is allowed.
----@param b qed.Buf
 ---@param anchor qed.Pos
 ---@param cursor qed.Pos
-function qed.buf.set_selection(b, anchor, cursor) end
+function BufferObject:set_selection(anchor, cursor) end
 
 ---Set the buffer's language by name and re-highlight. `nil, err` on an unknown name.
----@param b qed.Buf
 ---@param name string language name as `qed.buf.language` returns it
 ---@return true|nil ok
 ---@return string|nil err
-function qed.buf.set_language(b, name) end
+function BufferObject:set_language(name) end
 
 ---`"auto"` detects from the content. `width` defaults to the current width.
----@param b qed.Buf
 ---@param style "tabs"|"spaces"|"auto"
 ---@param width? integer
-function qed.buf.set_indent(b, style, width) end
+function BufferObject:set_indent(style, width) end
 
 ---The buffer's indent style and width.
----@param b qed.Buf
 ---@return "tabs"|"spaces" style
 ---@return integer width
-function qed.buf.indent(b) end
+function BufferObject:indent() end
 
 ---Diff base: drives the gutter marks, diff-view ghost rows, change navigation and revert hunk.
 ---Each plugin keeps its own base per buffer; the base of the plugin that first set one most recently wins,
 ---and clearing it with `nil` (or unloading) reveals the one beneath. Another plugin's base is never touched.
----@param b qed.Buf
 ---@param text string|nil raw bytes (need not be UTF-8)
 ---@param opts? {label?: string} label shown in the status bar: `±base` when omitted, nothing when `""`
 ---@return true
-function qed.buf.set_base(b, text, opts) end
+function BufferObject:set_base(text, opts) end
 
 ---The id of the plugin whose diff base is shown, or nil when the buffer has none.
----@param b qed.Buf
 ---@return string|nil
-function qed.buf.base(b) end
+function BufferObject:base() end
 
 ---A list handle over the buffer's lines. An edit, a disk reload or the buffer closing shows on the next frame: a filter is recomputed keeping the selected line (a `:N` past the end clamps), a closed buffer empties the list. Items reach Lua as `{label = line text, buf, pos = {row, col}}`, `col` the first non-blank. Under a filter field matches stay in buffer order, and an all-digit `:N` or `:N:M` selects that row (column `M`) instead of matching; a bare number lists row N first, then the text matches. A view over it opens on the match nearest the cursor.
----@param b qed.Buf
 ---@return qed.PaneSource
-function qed.buf.line_list(b) end
+function BufferObject:line_list() end
 
 ---A new internal buffer (not in the buffer list, no LSP, git or autosave) as a buffer object: every `qed.buf.*` function is a method with the buffer bound (`buffer:text()`). The plugin owns it; `buffer:close()` frees it.
 ---@param spec {internal: true}
@@ -1164,14 +1147,11 @@ function qed.buf.create(spec) end
 function qed.buf.get(b) end
 
 ---Subscribes to a buffer's events (`"change"`); handlers get the `buf_changed` arguments. Internal buffers fire only these.
----@param b qed.Buf
 ---@param event "change"
 ---@param handler function
 ---@return {remove: fun()}
-function qed.buf.on(b, event, handler) end
+function BufferObject:on(event, handler) end
 
----@class qed.BufferObject
----@field id integer
 
 qed.fs = {}
 

@@ -15,22 +15,22 @@ local published, ft
 local inrepo = false
 
 local function fetch(b)
-	local path = qed.buf.path(b)
+	local path = b:path()
 	gen[b] = (gen[b] or 0) + 1
 	local mine = gen[b]
 	fetched[b] = path
 	local blob
-	if path ~= "" and not qed.buf.big(b) then
+	if path ~= "" and not b:big() then
 		blob = repo.blob(path, base)
 	end
-	if qed.buf.valid(b) and gen[b] == mine then
-		qed.buf.set_base(b, blob, {label = ""})
+	if b:valid() and gen[b] == mine then
+		b:set_base(blob, {label = ""})
 	end
 end
 
 local function fetch_all()
 	for _, b in ipairs(qed.buf.list()) do
-		if qed.buf.valid(b) then
+		if b:valid() then
 			fetch(b)
 		end
 	end
@@ -190,7 +190,7 @@ end
 
 local function tick()
 	for _, b in ipairs(qed.buf.list()) do
-		if qed.buf.valid(b) and fetched[b] ~= qed.buf.path(b) then
+		if b:valid() and fetched[b] ~= b:path() then
 			fetch(b)
 		end
 	end
@@ -275,7 +275,7 @@ return {
 		end)
 		for _, ev in ipairs({"buf_open", "buf_save", "buf_reload"}) do
 			qed:on(ev, function(b)
-				if ready and qed.buf.valid(b) then
+				if ready and b:valid() then
 					fetch(b)
 				end
 			end)

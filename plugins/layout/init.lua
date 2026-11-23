@@ -29,7 +29,7 @@ local function current_buffer()
 	if #qed.buf.list() == 0 then
 		return nil
 	end
-	return qed.buf.get(qed.buf.current())
+	return qed.buf.current()
 end
 
 local function status_row(buffer)

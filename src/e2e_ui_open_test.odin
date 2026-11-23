@@ -27,7 +27,7 @@ return {setup = function()
 			footer = {hints = {{label = "my hint"}, {label = "palette", cmd = "Command Palette"}}}}
 	end)
 	cmd("Split", function()
-		local dir = qed.path.dir(qed.buf.path())
+		local dir = qed.path.dir(qed.buf.current():path())
 		v = qed.ui.open{place = "split", preview = "auto", fields = {{count = true}},
 			list = {items = {{label = "one", path = qed.path.join(dir, "u1.txt"), pos = {row = 2, col = 1}}}}}
 	end)

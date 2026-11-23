@@ -40,7 +40,7 @@ return {setup = function()
 		show(items)
 	end)
 	cmd("Paths", function()
-		local dir = qed.path.dir(qed.buf.path())
+		local dir = qed.path.dir(qed.buf.current():path())
 		local r = qed.pick{items = {{path = qed.path.join(dir, "p1.txt"), pos = {row = 2, col = 1}}, {label = "second", detail = "DET2", path = qed.path.join(dir, "p2.txt")}}}
 		show(r and r.label)
 	end)

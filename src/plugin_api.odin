@@ -307,6 +307,15 @@ api_buf :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> (^Buffer, int) {
 	return b, i
 }
 
+api_buffer_id :: proc(L: ^lua.State, idx: c.int) -> u64 {
+	idx := lua.absindex(L, idx)
+	if lua.type(L, idx) == .TABLE {
+		id, _ := api_field_int(L, idx, "id")
+		return u64(id)
+	}
+	return u64(lua.tointeger(L, idx))
+}
+
 api_field_int :: proc(L: ^lua.State, t: c.int, key: string) -> (int, bool) {
 	lua.pushodinstring(L, key)
 	lua.rawget(L, t)
@@ -1283,7 +1292,7 @@ qed_close :: proc "c" (L: ^lua.State) -> c.int {
 		if lua.getfield(L, 2, "discard") == .TABLE {
 			for i in 1 ..= int(lua.rawlen(L, -1)) {
 				lua.rawgeti(L, -1, lua.Integer(i))
-				discard ||= u64(lua.tointeger(L, -1)) == b.id
+				discard ||= api_buffer_id(L, -1) == b.id
 				lua.pop(L, 1)
 			}
 		} else if lua.type(L, -1) != .NIL {
@@ -1507,7 +1516,7 @@ qed_set_root :: proc "c" (L: ^lua.State) -> c.int {
 		case .TABLE:
 			for i in 1 ..= int(lua.rawlen(L, -1)) {
 				lua.rawgeti(L, -1, lua.Integer(i))
-				append(&discard, u64(api_int(L, -1, "discard must be a list of buffer ids")))
+				append(&discard, api_buffer_id(L, -1))
 				lua.pop(L, 1)
 			}
 		case .NIL:

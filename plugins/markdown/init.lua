@@ -16,16 +16,16 @@ local function sync_back(v)
 		return
 	end
 	local b = current.buf
-	local src, row = v:source_line(qed.buf.screen_row(b))
+	local src, row = v:source_line(b:screen_row())
 	if not src then
 		return
 	end
-	qed.buf.set_cursor(b, {row = src, col = qed.buf.line(b, src):find("%S") or 1})
-	qed.buf.set_screen_row(b, src, row)
+	b:set_cursor({row = src, col = b:line(src):find("%S") or 1})
+	b:set_screen_row(src, row)
 end
 
 local function preview(b, anchor)
-	local path = qed.buf.path(b)
+	local path = b:path()
 	local v = qed.ui.open{
 		place = "full",
 		scope = "markdown",
@@ -33,7 +33,7 @@ local function preview(b, anchor)
 		max_width = cfg.max_width,
 		backdrop = cfg.backdrop,
 		title = path ~= "" and qed.path.base(path) or "untitled",
-		markdown = qed.buf.text(b),
+		markdown = b:text(),
 		markdown_dir = path ~= "" and qed.path.dir(path) or nil,
 		footer = {hints = {{label = "↑↓ PgUp PgDn scroll  click a link to open it"}, {label = "back", cmd = "Markdown: Back"}, {label = "forward", cmd = "Markdown: Forward"}, {label = "close", cmd = "Markdown: Preview"}}},
 		on = {
@@ -52,18 +52,18 @@ local function preview(b, anchor)
 	if view then
 		stop(view)
 	end
-	v:source_scroll(qed.buf.cursor(b).row, qed.buf.screen_row(b))
+	v:source_scroll(b:cursor().row, b:screen_row())
 	if anchor and anchor ~= "" then
 		local src = v:anchor(anchor)
 		if src then
-			qed.buf.set_cursor(b, {row = src, col = 1})
+			b:set_cursor({row = src, col = 1})
 		end
 	end
 	synced = v:scroll()
 	current = {path = path, buf = b}
 	view, watch = v, qed:on("buf_changed", function(changed)
 		if changed == b then
-			v:markdown(qed.buf.text(b))
+			v:markdown(b:text())
 		end
 	end)
 end
@@ -84,7 +84,7 @@ end
 
 local function show(entry)
 	if not current or entry.buf ~= current.buf then
-		if not qed.buf.valid(entry.buf) then
+		if not entry.buf:valid() then
 			if entry.path == "" or not qed.fs.exists(entry.path) then
 				return
 			end
@@ -95,7 +95,7 @@ local function show(entry)
 			end
 			entry.buf = b
 		end
-		local _, err = qed.jump(entry.buf, qed.buf.cursor(entry.buf))
+		local _, err = qed.jump(entry.buf, entry.buf:cursor())
 		if err then
 			qed.message(err, "error")
 			return
@@ -118,8 +118,8 @@ end
 
 local function target_pos(path)
 	for _, b in ipairs(qed.buf.list()) do
-		if qed.buf.path(b) == path then
-			return qed.buf.cursor(b)
+		if b:path() == path then
+			return b:cursor()
 		end
 	end
 	return {row = 1, col = 1}
@@ -170,7 +170,7 @@ follow = function(v, target)
 end
 
 local function reopen()
-	if current and qed.buf.valid(current.buf) then
+	if current and current.buf:valid() then
 		preview(current.buf)
 	end
 end

@@ -6,7 +6,7 @@ local MARKERS = {"<<<<<<<", "=======", "|||||||", ">>>>>>>"}
 local START, SEP, BASE, FINISH = 1, 2, 3, 4
 
 local function scan(b)
-	local rows, kinds = qed.buf.find_lines(b, MARKERS, {word = true})
+	local rows, kinds = b:find_lines(MARKERS, {word = true})
 	local blocks = {}
 	local i, n = 1, #rows
 	while i <= n do
@@ -39,7 +39,7 @@ end
 
 local function decorate_marker(b, row, color)
 	qed.deco.tint(b, ns, row, row, {color = color, alpha = "conflict_marker"})
-	qed.deco.span(b, ns, {row = row, col = 1}, {row = row, col = #qed.buf.line(b, row) + 1}, {fg = color})
+	qed.deco.span(b, ns, {row = row, col = 1}, {row = row, col = #b:line(row) + 1}, {fg = color})
 end
 
 local function decorate_body(b, lo, hi, color)
@@ -89,10 +89,10 @@ local function sync_hook()
 end
 
 local function full(b, force)
-	if not qed.buf.valid(b) then
+	if not b:valid() then
 		return
 	end
-	local rev = qed.buf.rev(b)
+	local rev = b:rev()
 	local st = state[b]
 	if st and st.rev == rev and not force then
 		return
@@ -104,7 +104,7 @@ local function full(b, force)
 	for _, c in ipairs(blocks) do
 		decorate(b, c)
 	end
-	state[b] = {rev = rev, lines = qed.buf.line_count(b), blocks = blocks}
+	state[b] = {rev = rev, lines = b:line_count(), blocks = blocks}
 	if #blocks > 0 then
 		armed[b] = true
 	elseif force then
@@ -119,11 +119,11 @@ end
 
 changed = function(b, rev, _, lo, hi)
 	local st = state[b]
-	if not armed[b] or not st or st.rev == rev or not qed.buf.valid(b) then
+	if not armed[b] or not st or st.rev == rev or not b:valid() then
 		return
 	end
 	local blocks = scan(b)
-	local lines = qed.buf.line_count(b)
+	local lines = b:line_count()
 	local delta = lines - st.lines
 	local old_hi = hi - delta
 	local kept = {}
@@ -167,17 +167,17 @@ local function block_at(blocks, row)
 end
 
 local function delete_rows(b, lo, hi)
-	local n = qed.buf.line_count(b)
+	local n = b:line_count()
 	local from, to = {row = lo, col = 1}, nil
 	if hi < n then
 		to = {row = hi + 1, col = 1}
 	elseif lo > 1 then
-		from = {row = lo - 1, col = #qed.buf.line(b, lo - 1) + 1}
-		to = {row = hi, col = #qed.buf.line(b, hi) + 1}
+		from = {row = lo - 1, col = #b:line(lo - 1) + 1}
+		to = {row = hi, col = #b:line(hi) + 1}
 	else
-		to = {row = hi, col = #qed.buf.line(b, hi) + 1}
+		to = {row = hi, col = #b:line(hi) + 1}
 	end
-	qed.buf.delete(b, from, to)
+	b:delete(from, to)
 end
 
 local KEEP = {"Keep Ours", "Keep Theirs", "Keep Both"}
@@ -196,7 +196,7 @@ local function resolve(b, c, keep)
 			delete_rows(b, c.start, c.start)
 		end
 	end)
-	qed.buf.set_cursor(b, {row = math.min(c.start, qed.buf.line_count(b)), col = 1})
+	b:set_cursor({row = math.min(c.start, b:line_count()), col = 1})
 end
 
 local function run(ctx)
@@ -209,16 +209,16 @@ local function run(ctx)
 		qed.message("No merge conflicts")
 		return
 	end
-	local row = qed.buf.cursor(b).row
+	local row = b:cursor().row
 	if block_at(blocks, row) then
 		local keep, err = qed.confirm{question = "Resolve merge conflict:", choices = KEEP}
 		if err then
 			qed.message("Cannot resolve while another dialog is open", "warn")
 		end
-		if not keep or not qed.buf.valid(b) then
+		if not keep or not b:valid() then
 			return
 		end
-		local c = block_at(scan(b), qed.buf.cursor(b).row)
+		local c = block_at(scan(b), b:cursor().row)
 		if c then
 			resolve(b, c, keep)
 		end
@@ -231,7 +231,7 @@ local function run(ctx)
 			break
 		end
 	end
-	qed.buf.set_cursor(b, {row = target, col = 1})
+	b:set_cursor({row = target, col = 1})
 end
 
 return {

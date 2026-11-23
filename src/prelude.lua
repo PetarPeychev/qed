@@ -44,19 +44,109 @@ local BUFFER_METHODS = {"valid", "path", "language", "modified", "big", "rev", "
 	"screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base",
 	"base", "line_list", "on"}
 
-local function buffer_meta(qed)
+local BUFFER_EVENTS = {buf_open = true, buf_enter = true, buf_close = true, buf_pre_save = true, buf_save = true,
+	buf_reload = true, buf_changed = true, cursor_moved = true, language_changed = true}
+
+local function buffer_objects(qed)
+	local buf_api = qed.buf
 	local methods = {}
 	for _, name in ipairs(BUFFER_METHODS) do
-		local fn = qed.buf[name]
+		local fn = buf_api[name]
 		methods[name] = function(self, ...)
 			return fn(self.id, ...)
 		end
+		buf_api[name] = nil
 	end
 	local close = qed.close
 	function methods:close(options)
 		return close(self.id, options)
 	end
-	return {__index = methods, __eq = function(left, right) return left.id == right.id end}
+	local meta = {
+		__index = methods,
+		__eq = function(left, right) return left.id == right.id end,
+		__tostring = function(self) return tostring(self.id) end,
+	}
+	local cache = setmetatable({}, {__mode = "v"})
+	local function object(id)
+		if type(id) ~= "number" then
+			return id
+		end
+		local buffer = cache[id]
+		if not buffer then
+			buffer = setmetatable({id = id}, meta)
+			cache[id] = buffer
+		end
+		return buffer
+	end
+	local valid = methods.valid
+	local create, current, list = buf_api.create, buf_api.current, buf_api.list
+	function buf_api.create(spec)
+		return object(create(spec))
+	end
+	function buf_api.get(id)
+		if type(id) ~= "number" or not valid({id = id}) then
+			return nil
+		end
+		return object(id)
+	end
+	function buf_api.current()
+		return object(current())
+	end
+	function buf_api.list()
+		local buffers = list()
+		for i, id in ipairs(buffers) do
+			buffers[i] = object(id)
+		end
+		return buffers
+	end
+	local open, new_buf = qed.open, qed.new_buf
+	function qed.open(path)
+		local id, err = open(path)
+		return object(id), err
+	end
+	function qed.new_buf(spec)
+		local id, err = new_buf(spec)
+		return object(id), err
+	end
+	local set_root = qed.set_root
+	function qed.set_root(path, options)
+		local ok, err, info = set_root(path, options)
+		if type(info) == "table" and type(info.bufs) == "table" then
+			for i, id in ipairs(info.bufs) do
+				info.bufs[i] = object(id)
+			end
+		end
+		return ok, err, info
+	end
+	local on = qed.on
+	function qed:on(event, handler)
+		if BUFFER_EVENTS[event] and type(handler) == "function" then
+			local wrapped = handler
+			handler = function(buffer, ...)
+				return wrapped(object(buffer), ...)
+			end
+		end
+		return on(self, event, handler)
+	end
+	local function with_buffer(fn)
+		if type(fn) ~= "function" then
+			return fn
+		end
+		return function(ctx, ...)
+			if type(ctx) == "table" and type(rawget(ctx, "buf")) == "number" then
+				rawset(ctx, "buf", object(rawget(ctx, "buf")))
+			end
+			return fn(ctx, ...)
+		end
+	end
+	local command = qed.command
+	function qed.command(spec)
+		if type(spec) == "table" then
+			spec.run = with_buffer(spec.run)
+			spec.when = with_buffer(spec.when)
+		end
+		return command(spec)
+	end
 end
 
 return function(qed)
@@ -75,18 +165,7 @@ return function(qed)
 		end
 	end
 
-	local buf_api = qed.buf
-	local create = buf_api.create
-	local meta = buffer_meta(qed)
-	function buf_api.create(spec)
-		return setmetatable({id = create(spec)}, meta)
-	end
-	function buf_api.get(id)
-		if not buf_api.valid(id) then
-			return nil
-		end
-		return setmetatable({id = id}, meta)
-	end
+	buffer_objects(qed)
 
 	function qed.pick(spec)
 		if type(spec) ~= "table" then

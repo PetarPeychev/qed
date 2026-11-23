@@ -73,12 +73,12 @@ local function offset(lines, pos)
 end
 
 local function build_prompt(b, instruction, from, to)
-	local lines = qed.buf.lines(b)
+	local lines = b:lines()
 	local text = table.concat(lines, "\n")
 	local a, z = offset(lines, from), offset(lines, to)
 	local selection = text:sub(a, z - 1)
 	local marked = text:sub(1, a - 1) .. "<<<SELECT\n" .. selection .. "\nSELECT>>>" .. text:sub(z)
-	local path = qed.buf.path(b)
+	local path = b:path()
 	local fill = {
 		{"{path}", path ~= "" and path or "(unsaved buffer)"},
 		{"{instruction}", instruction},
@@ -126,7 +126,7 @@ local function status()
 end
 
 local function retint(b)
-	if not qed.buf.valid(b) then
+	if not b:valid() then
 		return
 	end
 	qed.deco.clear(b, tints)
@@ -180,7 +180,7 @@ local function apply(e, r)
 		return
 	end
 	local b = e.buf
-	if not qed.buf.valid(b) then
+	if not b:valid() then
 		qed.message("Buffer closed, discarded", "error")
 		return
 	end
@@ -190,28 +190,28 @@ local function apply(e, r)
 		return
 	end
 	qed.log(("applied at %d:%d (%dB)"):format(from.row, from.col, #core), "debug")
-	local cursor = qed.buf.cursor(b)
-	local sel_from, sel_to = qed.buf.selection(b)
+	local cursor = b:cursor()
+	local sel_from, sel_to = b:selection()
 	local anchor
 	if sel_from then
 		anchor = (sel_to.row == cursor.row and sel_to.col == cursor.col) and sel_from or sel_to
 	end
 	local new_end
 	qed.edit(b, function()
-		new_end = qed.buf.replace(b, from, to, reframe(core, e.original))
+		new_end = b:replace(from, to, reframe(core, e.original))
 	end)
 	cursor = translate(cursor, from, to, new_end)
 	if anchor then
-		qed.buf.set_selection(b, translate(anchor, from, to, new_end), cursor)
+		b:set_selection(translate(anchor, from, to, new_end), cursor)
 	else
-		qed.buf.set_cursor(b, cursor)
+		b:set_cursor(cursor)
 	end
 	qed.message("Edit applied")
 end
 
 local function edit_selection(ctx)
 	local b = ctx.buf
-	local from, to = qed.buf.selection(b)
+	local from, to = b:selection()
 	if not from then
 		qed.message("Select a block first", "error")
 		return
@@ -222,7 +222,7 @@ local function edit_selection(ctx)
 	local instruction = qed.prompt{prompt = "AI edit:"}
 	waiting[mark] = nil
 	local function abandon(msg)
-		if qed.buf.valid(b) then
+		if b:valid() then
 			retint(b)
 		end
 		if msg then
@@ -236,7 +236,7 @@ local function edit_selection(ctx)
 		return abandon("Empty instruction")
 	end
 	from, to = nil, nil
-	if qed.buf.valid(b) then
+	if b:valid() then
 		from, to = qed.deco.range(b, ranges, mark)
 	end
 	if not from then
@@ -312,7 +312,7 @@ local function prune(b, why, all)
 end
 
 reloaded = function(b)
-	if qed.buf.valid(b) then
+	if b:valid() then
 		prune(b, "file reloaded")
 	end
 end
@@ -335,7 +335,7 @@ end
 
 local function fim_dismiss()
 	fim_stop()
-	if fim.buf and qed.buf.valid(fim.buf) then
+	if fim.buf and fim.buf:valid() then
 		qed.deco.clear(fim.buf, ghosts)
 	end
 end
@@ -353,10 +353,10 @@ local function fim_parse(raw)
 end
 
 local function fim_request(b, gen, typed_at, typed_rev)
-	if gen ~= fim.gen or not qed.buf.valid(b) or qed.buf.current() ~= b or qed.buf.selection(b) then
+	if gen ~= fim.gen or not b:valid() or qed.buf.current() ~= b or b:selection() then
 		return
 	end
-	local pos, rev = qed.buf.cursor(b), qed.buf.rev(b)
+	local pos, rev = b:cursor(), b:rev()
 	if rev ~= typed_rev or pos.row ~= typed_at.row or pos.col ~= typed_at.col then
 		return
 	end
@@ -376,8 +376,8 @@ local function fim_request(b, gen, typed_at, typed_rev)
 		return
 	end
 	local lo = math.max(1, pos.row - cfg.completion_context_lines)
-	local hi = math.min(qed.buf.line_count(b), pos.row + cfg.completion_context_lines)
-	local lines = qed.buf.lines(b, lo, hi)
+	local hi = math.min(b:line_count(), pos.row + cfg.completion_context_lines)
+	local lines = b:lines(lo, hi)
 	local at = pos.row - lo + 1
 	local cur = lines[at]
 	local prefix = table.concat(lines, "\n", 1, at - 1) .. (at > 1 and "\n" or "") .. cur:sub(1, pos.col - 1)
@@ -412,8 +412,8 @@ local function fim_request(b, gen, typed_at, typed_rev)
 	end
 	fim.proc = nil
 	local text = fim_parse(r.stdout):gsub("\n+$", "")
-	local now = qed.buf.valid(b) and qed.buf.cursor(b)
-	local moved = not now or qed.buf.current() ~= b or qed.buf.rev(b) ~= rev or now.row ~= pos.row or now.col ~= pos.col
+	local now = b:valid() and b:cursor()
+	local moved = not now or qed.buf.current() ~= b or b:rev() ~= rev or now.row ~= pos.row or now.col ~= pos.col
 	if r.code ~= 0 then
 		qed.log(("curl exited %d (%dB reply)"):format(r.code, #r.stdout), "debug")
 	else
@@ -428,10 +428,10 @@ end
 
 local function fim_typed(b)
 	fim_stop()
-	if not fim.enabled or qed.buf.selection(b) or qed.buf.big(b) then
+	if not fim.enabled or b:selection() or b:big() then
 		return
 	end
-	local gen, at, rev = fim.gen, qed.buf.cursor(b), qed.buf.rev(b)
+	local gen, at, rev = fim.gen, b:cursor(), b:rev()
 	fim.timer = qed.defer(cfg.completion_debounce_ms, function()
 		fim.timer = nil
 		fim_request(b, gen, at, rev)
@@ -450,7 +450,7 @@ local function configure(c, changed)
 end
 
 changed = function(b, _, typed)
-	if not qed.buf.valid(b) then
+	if not b:valid() then
 		return
 	end
 	if #edits > 0 then

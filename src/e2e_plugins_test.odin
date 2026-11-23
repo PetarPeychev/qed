@@ -23,7 +23,10 @@ g_pt_target: string
 PtCase :: struct {
 	tests: c.int,
 	name:  string,
+	env:   i32,
 }
+
+PT_OPEN_WRAP :: "local t, qed = ... local open = t.open t.open = function(...) return qed.buf.get(open(...)) end return t"
 
 @(private = "file")
 pt_api := [?]lua.L_Reg {
@@ -646,8 +649,16 @@ pt_case_c :: proc "c" (L: ^lua.State) -> c.int {
 	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(tc.tests))
 	lua.pushodinstring(L, tc.name)
 	lua.rawget(L, -2)
+	wrap := PT_OPEN_WRAP
+	if lua.L_loadbuffer(L, raw_data(wrap), c.size_t(len(wrap)), "t", "t") != .OK {
+		return lua.error(L)
+	}
 	lua.newtable(L)
 	lua.L_setfuncs(L, raw_data(pt_api[:]), 0)
+	lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(tc.env))
+	lua.getfield(L, -1, "qed")
+	lua.remove(L, -2)
+	lua.call(L, 2, 1)
 	lua.call(L, 1, 0)
 	return 0
 }
@@ -771,7 +782,7 @@ pt_run :: proc(t: ^testing.T, name: string, f: PluginFile) {
 		saved_theme := strings.clone(THEME, context.temp_allocator)
 		saved_reg := clipboard_register
 		clipboard_register = ""
-		tc := PtCase{tests, names[i]}
+		tc := PtCase{tests, names[i], plugin_find(&e.ed.plugins, fmt.tprintf("%s_test", name)).env}
 		lua.pushcfunction(e.ed.plugins.L, pt_case_c)
 		lua.pushlightuserdata(e.ed.plugins.L, &tc)
 		ok, msg, tb := plugin_call(&e.ed, 1, 0)
@@ -851,6 +862,11 @@ return {setup = function()
 		for _, name in ipairs{"append", "insert", "set", "remove", "clear", "get", "at", "index_of", "count", "sort", "set_query", "positions"} do
 			if type(records[name]) == "function" then out[#out + 1] = "List:" .. name end
 		end
+		local buffer = qed.buf.create{internal = true}
+		for _, name in ipairs{"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line", "find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor", "screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base", "base", "line_list", "on", "close"} do
+			if type(buffer[name]) == "function" then out[#out + 1] = "BufferObject:" .. name end
+		end
+		buffer:close()
 		local matches = qed.fuzzy.list(records, {field = "name"})
 		for _, name in ipairs{"append", "insert", "set", "remove", "clear", "get", "at", "index_of", "count", "sort", "set_query", "positions"} do
 			if type(matches[name]) == "function" then out[#out + 1] = "FuzzyList:" .. name end

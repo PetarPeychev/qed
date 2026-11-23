@@ -56,15 +56,15 @@ plugin_api_set_text_and_lsp_format :: proc(t: ^testing.T) {
 	defer sync.unlock(&e2e_lock)
 	ed := api_test_editor(`
 		local b = qed.buf.current()
-		qed.buf.set_cursor(b, {row = 3, col = 2})
-		local rev = qed.buf.rev(b)
-		assert(not qed.buf.set_text(b, "x", {rev = rev + 1}), "stale rev refused")
-		assert(qed.buf.text(b) == "one\ntwo\nthree", "untouched")
-		assert(qed.buf.set_text(b, "zero\r\none\nTWO\nthree", {rev = rev}), "fresh rev applies")
-		assert(qed.buf.text(b) == "zero\none\nTWO\nthree", "CRLF normalized")
-		local c = qed.buf.cursor(b)
+		b:set_cursor({row = 3, col = 2})
+		local rev = b:rev()
+		assert(not b:set_text("x", {rev = rev + 1}), "stale rev refused")
+		assert(b:text() == "one\ntwo\nthree", "untouched")
+		assert(b:set_text("zero\r\none\nTWO\nthree", {rev = rev}), "fresh rev applies")
+		assert(b:text() == "zero\none\nTWO\nthree", "CRLF normalized")
+		local c = b:cursor()
 		assert(c.row == 4 and c.col == 2, "the cursor follows its line")
-		assert(not pcall(qed.buf.set_text, b, "\xff"), "invalid UTF-8 rejected")
+		assert(not pcall(b.set_text, b, "\xff"), "invalid UTF-8 rejected")
 		local ok, err = qed.lsp.format(b)
 		assert(ok == nil and err == "no server", "no server: " .. tostring(err))
 		assert(not pcall(qed.edit, b, function() qed.lsp.format(b) end), "cannot wait inside qed.edit")
@@ -80,24 +80,24 @@ plugin_api_buf_read :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local b = qed.buf.current()
 		assert(ctx.buf == b, "ctx.buf is the current id")
-		assert(qed.buf.valid(b) and not qed.buf.valid(b + 1000) and not qed.buf.valid(nil), "valid")
+		assert(b:valid() and qed.buf.get(b.id + 1000) == nil, "valid")
 		local ids = qed.buf.list()
 		assert(#ids == 2 and ids[1] == b, "list in buffer order")
 		local other = ids[2]
-		assert(qed.buf.path(b) == "" and qed.buf.language(b) == "text", "path/language " .. qed.buf.language(b))
-		assert(qed.buf.modified() == false and qed.buf.rev(0) == 0, "modified/rev, nil and 0 mean current")
-		assert(qed.buf.line_count(b) == 3 and qed.buf.line_count(other) == 1, "line_count")
-		local all = qed.buf.lines(b)
+		assert(b:path() == "" and b:language() == "text", "path/language " .. b:language())
+		assert(qed.buf.current():modified() == false and qed.buf.current():rev() == 0, "modified/rev, nil and 0 mean current")
+		assert(b:line_count() == 3 and other:line_count() == 1, "line_count")
+		local all = b:lines()
 		assert(#all == 3 and all[1] == "héllo" and all[2] == "" and all[3] == "end", "lines default to the whole buffer")
-		local mid = qed.buf.lines(b, 2, 3)
+		local mid = b:lines(2, 3)
 		assert(#mid == 2 and mid[1] == "" and mid[2] == "end", "lines from..to inclusive")
-		assert(#qed.buf.lines(b, 2, 1) == 0, "to = from - 1 is empty")
-		assert(not pcall(qed.buf.lines, b, 0), "row 0 rejected")
-		assert(not pcall(qed.buf.lines, b, 1, 4), "past the end rejected")
-		assert(qed.buf.line(b, 1) == "héllo" and qed.buf.line(other, 1) == "", "line")
-		assert(not pcall(qed.buf.line, b, 4), "line out of range")
-		assert(qed.buf.text(b) == "héllo\n\nend" and qed.buf.text(other) == "", "text joins rows with \\n")
-		assert(not pcall(qed.buf.path, "x"), "non-integer id rejected")
+		assert(#b:lines(2, 1) == 0, "to = from - 1 is empty")
+		assert(not pcall(b.lines, b, 0), "row 0 rejected")
+		assert(not pcall(b.lines, b, 1, 4), "past the end rejected")
+		assert(b:line(1) == "héllo" and other:line(1) == "", "line")
+		assert(not pcall(b.line, b, 4), "line out of range")
+		assert(b:text() == "héllo\n\nend" and other:text() == "", "text joins rows with \\n")
+		assert(qed.buf.get("x") == nil, "non-integer id rejected")
 	`, "héllo", "", "end")
 	defer api_test_destroy(ed)
 	append(&ed.buffers, test_buffer())
@@ -109,26 +109,26 @@ plugin_api_buf_read :: proc(t: ^testing.T) {
 plugin_api_indexing :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local b = qed.buf.current()
-		local line = qed.buf.line(b, 1)
-		local e = qed.buf.insert(b, {row = 1, col = #line + 1}, "!")
+		local line = b:line(1)
+		local e = b:insert({row = 1, col = #line + 1}, "!")
 		assert(e.row == 1 and e.col == #line + 2, "end-of-line caret insert returns the end")
-		assert(qed.buf.line(b, 1) == "héllo!", "appended")
-		assert(not pcall(qed.buf.insert, b, {row = 1, col = 3}, "x"), "col inside a multi-byte char rejected")
-		assert(not pcall(qed.buf.insert, b, {row = 1, col = 9}, "x"), "col past the caret rejected")
-		assert(not pcall(qed.buf.insert, b, {row = 9, col = 1}, "x"), "row out of range rejected")
-		assert(not pcall(qed.buf.insert, b, {1, 1}, "x"), "positions are named")
-		assert(not pcall(qed.buf.insert, b, {row = 1, col = 1}, "\xff"), "invalid UTF-8 rejected")
-		local s, f = qed.buf.line(b, 1):find("llo")
-		assert(qed.buf.delete(b, {row = 1, col = s}, {row = 1, col = f + 1}) == "llo", "half-open delete")
-		assert(qed.buf.line(b, 1) == "hé!", "deleted")
-		local e2 = qed.buf.insert(b, {row = 1, col = 1}, "a\r\nb\rc")
+		assert(b:line(1) == "héllo!", "appended")
+		assert(not pcall(b.insert, b, {row = 1, col = 3}, "x"), "col inside a multi-byte char rejected")
+		assert(not pcall(b.insert, b, {row = 1, col = 9}, "x"), "col past the caret rejected")
+		assert(not pcall(b.insert, b, {row = 9, col = 1}, "x"), "row out of range rejected")
+		assert(not pcall(b.insert, b, {1, 1}, "x"), "positions are named")
+		assert(not pcall(b.insert, b, {row = 1, col = 1}, "\xff"), "invalid UTF-8 rejected")
+		local s, f = b:line(1):find("llo")
+		assert(b:delete({row = 1, col = s}, {row = 1, col = f + 1}) == "llo", "half-open delete")
+		assert(b:line(1) == "hé!", "deleted")
+		local e2 = b:insert({row = 1, col = 1}, "a\r\nb\rc")
 		assert(e2.row == 3 and e2.col == 2, "multi-line insert end, CRLF and lone CR normalized")
-		assert(qed.buf.text(b) == "a\nb\nché!\nsecond", "text " .. qed.buf.text(b))
-		assert(qed.buf.delete(b, {row = 1, col = 2}, {row = 3, col = 2}) == "\nb\nc", "multi-line delete")
-		assert(not pcall(qed.buf.delete, b, {row = 1, col = 2}, {row = 1, col = 1}), "reversed range rejected")
-		assert(qed.buf.delete(b, {row = 1, col = 1}, {row = 1, col = 1}) == "", "empty range")
-		local r = qed.buf.replace(b, {row = 1, col = 1}, {row = 1, col = 2}, "XY")
-		assert(r.row == 1 and r.col == 3 and qed.buf.line(b, 1) == "XYhé!", "replace")
+		assert(b:text() == "a\nb\nché!\nsecond", "text " .. b:text())
+		assert(b:delete({row = 1, col = 2}, {row = 3, col = 2}) == "\nb\nc", "multi-line delete")
+		assert(not pcall(b.delete, b, {row = 1, col = 2}, {row = 1, col = 1}), "reversed range rejected")
+		assert(b:delete({row = 1, col = 1}, {row = 1, col = 1}) == "", "empty range")
+		local r = b:replace({row = 1, col = 1}, {row = 1, col = 2}, "XY")
+		assert(r.row == 1 and r.col == 3 and b:line(1) == "XYhé!", "replace")
 	`, "héllo", "second")
 	defer api_test_destroy(ed)
 	api_test_run(t, ed)
@@ -139,11 +139,11 @@ plugin_api_indexing :: proc(t: ^testing.T) {
 @(test)
 plugin_api_empty_buffer :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
-		assert(qed.buf.line_count() == 1 and qed.buf.line(nil, 1) == "", "empty buffer is one empty row")
-		assert(qed.buf.text() == "", "empty text")
-		local e = qed.buf.insert(nil, {row = 1, col = 1}, "x\n")
+		assert(qed.buf.current():line_count() == 1 and qed.buf.current():line(1) == "", "empty buffer is one empty row")
+		assert(qed.buf.current():text() == "", "empty text")
+		local e = qed.buf.current():insert({row = 1, col = 1}, "x\n")
 		assert(e.row == 2 and e.col == 1, "insert into empty buffer")
-		local c = qed.buf.cursor()
+		local c = qed.buf.current():cursor()
 		assert(c.row == 2 and c.col == 1, "cursor at the insert point follows the text")
 	`)
 	defer api_test_destroy(ed)
@@ -155,22 +155,22 @@ plugin_api_empty_buffer :: proc(t: ^testing.T) {
 plugin_api_edit_group :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local b = qed.buf.current()
-		local rev = qed.buf.rev(b)
+		local rev = b:rev()
 		assert(qed.edit(b, function()
-			qed.buf.insert(b, {row = 1, col = 1}, "1")
-			qed.buf.insert(b, {row = 1, col = 1}, "2")
-			qed.buf.delete(b, {row = 1, col = 3}, {row = 1, col = 4})
-			qed.edit(b, function() qed.buf.insert(b, {row = 1, col = 1}, "3") end)
+			b:insert({row = 1, col = 1}, "1")
+			b:insert({row = 1, col = 1}, "2")
+			b:delete({row = 1, col = 3}, {row = 1, col = 4})
+			qed.edit(b, function() b:insert({row = 1, col = 1}, "3") end)
 		end, {rev = rev}) == true, "edit returns true")
-		assert(qed.buf.line(b, 1) == "321bc", "edits applied " .. qed.buf.line(b, 1))
+		assert(b:line(1) == "321bc", "edits applied " .. b:line(1))
 		local stale, why = qed.edit(b, function() error("must not run") end, {rev = rev})
 		assert(stale == nil and why == "stale", "stale rev fails without running fn")
 		local ok, err = pcall(qed.edit, b, function()
-			qed.buf.insert(b, {row = 1, col = 1}, "zzz")
+			b:insert({row = 1, col = 1}, "zzz")
 			error("halfway")
 		end)
 		assert(not ok and err:find("halfway"), "error propagates")
-		assert(qed.buf.line(b, 1) == "321bc", "a failed edit rolls back")
+		assert(b:line(1) == "321bc", "a failed edit rolls back")
 		assert(qed.edit(b, function() end), "empty edit")
 	`, "abc")
 	defer api_test_destroy(ed)
@@ -195,10 +195,10 @@ plugin_api_closed_buffer :: proc(t: ^testing.T) {
 		local kept, why = qed.close(third)
 		assert(kept == nil and why == "unsaved", "a modified buffer stays open")
 		assert(qed.close(second) == true, "an unmodified buffer closes")
-		assert(not qed.buf.valid(second), "closed id is invalid")
-		local ok, err = pcall(qed.buf.line, second, 1)
+		assert(not second:valid(), "closed id is invalid")
+		local ok, err = pcall(second.line, second, 1)
 		assert(not ok and err:find("buffer closed"), "closed buffer raises: " .. tostring(err))
-		assert(qed.buf.line(third, 1) == "three", "ids survive reallocation")
+		assert(third:line(1) == "three", "ids survive reallocation")
 	`, "one")
 	defer api_test_destroy(ed)
 	append(&ed.buffers, test_buffer("two"))
@@ -212,34 +212,34 @@ plugin_api_closed_buffer :: proc(t: ^testing.T) {
 plugin_api_cursor_selection :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local b = qed.buf.current()
-		assert(qed.buf.selection(b) == nil, "no selection")
-		qed.buf.set_selection(b, {row = 2, col = 3}, {row = 1, col = 2})
-		local from, to = qed.buf.selection(b)
+		assert(b:selection() == nil, "no selection")
+		b:set_selection({row = 2, col = 3}, {row = 1, col = 2})
+		local from, to = b:selection()
 		assert(from.row == 1 and from.col == 2 and to.row == 2 and to.col == 3, "selection is ordered")
-		local c = qed.buf.cursor(b)
+		local c = b:cursor()
 		assert(c.row == 1 and c.col == 2, "cursor is the moving end")
-		qed.buf.insert(b, {row = 1, col = 1}, ">>")
-		from, to = qed.buf.selection(b)
+		b:insert({row = 1, col = 1}, ">>")
+		from, to = b:selection()
 		assert(from.col == 4 and to.col == 3, "marks follow an insert before them")
-		qed.buf.set_cursor(b, {row = 2, col = 4})
-		assert(qed.buf.selection(b) == nil, "set_cursor clears the selection")
-		assert(qed.buf.set_language(b, "lua") == true, "set_language")
-		assert(qed.buf.language(b) == "lua", "set_language")
-		assert(qed.buf.set_language(b, "lua") == true, "the same language succeeds")
-		local ok, err = qed.buf.set_language(b, "Klingon")
+		b:set_cursor({row = 2, col = 4})
+		assert(b:selection() == nil, "set_cursor clears the selection")
+		assert(b:set_language("lua") == true, "set_language")
+		assert(b:language() == "lua", "set_language")
+		assert(b:set_language("lua") == true, "the same language succeeds")
+		local ok, err = b:set_language("Klingon")
 		assert(ok == nil and err:find("unknown language"), "unknown language fails softly")
 		local langs = qed.languages()
 		local has_lua = false
 		for _, l in ipairs(langs) do has_lua = has_lua or l == "lua"; assert(l ~= "markdown_inline", "injection-only languages hidden") end
 		assert(has_lua, "qed.languages lists lua")
-		qed.buf.set_indent(b, "spaces", 3)
-		qed.buf.set_indent(b, "tabs")
-		local style, width = qed.buf.indent(b)
+		b:set_indent("spaces", 3)
+		b:set_indent("tabs")
+		local style, width = b:indent()
 		assert(style == "tabs" and width == 3, "set_indent without width keeps the width")
-		qed.buf.set_indent(b, "auto")
-		assert((qed.buf.indent(b)) == "spaces", "auto detects spaces on unindented text")
-		qed.buf.set_indent(b, "spaces", 2)
-		assert(not pcall(qed.buf.set_indent, b, "both"), "bad indent style")
+		b:set_indent("auto")
+		assert((b:indent()) == "spaces", "auto detects spaces on unindented text")
+		b:set_indent("spaces", 2)
+		assert(not pcall(b.set_indent, b, "both"), "bad indent style")
 		local names = qed.theme.list()
 		local has_default = false
 		for _, n in ipairs(names) do has_default = has_default or n == "default" end
@@ -272,20 +272,20 @@ plugin_api_open_jump_save :: proc(t: ^testing.T) {
 		local b = assert(qed.open("a.txt"))
 		assert(qed.buf.current() == b and b ~= first, "open switches to the new buffer")
 		assert(qed.open("a.txt") == b, "reopening returns the same id")
-		assert(qed.buf.path(b):sub(-6) == "/a.txt", "relative to the root")
+		assert(b:path():sub(-6) == "/a.txt", "relative to the root")
 		qed.jump(first, {row = 1, col = 1})
 		assert(qed.buf.current() == first, "jump switches")
 		qed.jump(b, {row = 30, col = 3})
-		local c = qed.buf.cursor(b)
+		local c = b:cursor()
 		assert(c.row == 30 and c.col == 3, "jump moves the cursor")
 		qed.jump(b, {row = 99, col = 99})
-		c = qed.buf.cursor(b)
+		c = b:cursor()
 		assert(c.row == 40 and c.col == 8, "jump clamps to the buffer")
 		qed.jump(b, {row = 30, col = 3})
-		qed.buf.insert(b, {row = 1, col = 1}, "x")
-		assert(qed.buf.modified(b), "modified")
+		b:insert({row = 1, col = 1}, "x")
+		assert(b:modified(), "modified")
 		qed.save(b)
-		assert(not qed.buf.modified(b), "saved")
+		assert(not b:modified(), "saved")
 	`, "scratch")
 	defer api_test_destroy(ed)
 	delete(ed.working_root)
@@ -460,14 +460,14 @@ plugin_api_lsp_lua_scoped :: proc(t: ^testing.T) {
 plugin_api_edit_rollback_selection :: proc(t: ^testing.T) {
 	ed := api_test_editor(`
 		local b = qed.buf.current()
-		qed.buf.set_selection(b, {row = 1, col = 6}, {row = 1, col = 4})
+		b:set_selection({row = 1, col = 6}, {row = 1, col = 4})
 		local ok = pcall(qed.edit, b, function()
-			qed.buf.insert(b, {row = 1, col = 1}, "xxxx\nyyyy\n")
-			qed.buf.delete(b, {row = 3, col = 1}, {row = 3, col = 3})
+			b:insert({row = 1, col = 1}, "xxxx\nyyyy\n")
+			b:delete({row = 3, col = 1}, {row = 3, col = 3})
 			error("boom")
 		end)
 		assert(not ok, "edit failed")
-		local from, to = qed.buf.selection(b)
+		local from, to = b:selection()
 		assert(from.row == 1 and from.col == 4 and to.col == 6, "selection restored after rollback")
 	`, "abcdef")
 	defer api_test_destroy(ed)
@@ -489,28 +489,28 @@ plugin_api_edit_one_step :: proc(t: ^testing.T) {
 		local b = qed.buf.current()
 		local other = qed.buf.list()[2]
 		qed.edit(b, function()
-			qed.buf.insert(b, {row = 1, col = 1}, "1")
+			b:insert({row = 1, col = 1}, "1")
 			assert(qed.save(b) == true, "save inside an edit")
-			qed.buf.insert(b, {row = 1, col = 1}, "2")
+			b:insert({row = 1, col = 1}, "2")
 			qed.run("Toggle Comment")
 			local ok = pcall(qed.edit, b, function()
-				qed.buf.insert(b, {row = 2, col = 1}, "lost")
+				b:insert({row = 2, col = 1}, "lost")
 				error("inner")
 			end)
 			assert(not ok, "inner failed")
 			qed.edit(other, function()
-				qed.buf.insert(other, {row = 1, col = 1}, "o")
-				qed.buf.insert(b, {row = 2, col = 1}, "3")
+				other:insert({row = 1, col = 1}, "o")
+				b:insert({row = 2, col = 1}, "3")
 			end)
 		end)
-		assert(qed.buf.lines(b)[2] == "3b", "the failed nested edit inverted only its own part: " .. qed.buf.lines(b)[2])
+		assert(b:lines()[2] == "3b", "the failed nested edit inverted only its own part: " .. b:lines()[2])
 		local ok = pcall(qed.edit, b, function()
-			qed.buf.insert(b, {row = 1, col = 1}, "x")
+			b:insert({row = 1, col = 1}, "x")
 			qed.save(b)
 			qed.run("Toggle Comment")
 			error("outer")
 		end)
-		assert(not ok and qed.buf.line(b, 1) == "-- 21a", "a failed edit rolls back across saves and builtin edits: " .. qed.buf.line(b, 1))
+		assert(not ok and b:line(1) == "-- 21a", "a failed edit rolls back across saves and builtin edits: " .. b:line(1))
 	`, "x")
 	defer api_test_destroy(ed)
 	other := test_buffer("other")
@@ -599,33 +599,33 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 		local ids = qed.buf.list()
 		local spare, dirty = ids[2], ids[3]
 		local ns = qed.deco.ns("t")
-		local rev = qed.buf.rev(b)
+		local rev = b:rev()
 		local v = assert(qed.ui.open{list = {items = {"a"}}})
 		v:close()
 		local cases = {
 			{"close unsaved", "unsaved", function() return qed.close(dirty) end},
 			{"close", true, function() return qed.close(spare) end},
-			{"set_text stale", "stale", function() return qed.buf.set_text(b, "x", {rev = rev + 1}) end},
-			{"set_text", true, function() return qed.buf.set_text(b, "abc") end},
+			{"set_text stale", "stale", function() return b:set_text("x", {rev = rev + 1}) end},
+			{"set_text", true, function() return b:set_text("abc") end},
 			{"edit stale", "stale", function() return qed.edit(b, function() end, {rev = -1}) end},
 			{"edit", true, function() return qed.edit(b, function() end) end},
-			{"set_language unknown", "unknown language", function() return qed.buf.set_language(b, "Klingon") end},
-			{"set_language", true, function() return qed.buf.set_language(b, "lua") end},
+			{"set_language unknown", "unknown language", function() return b:set_language("Klingon") end},
+			{"set_language", true, function() return b:set_language("lua") end},
 			{"new_buf unknown language", "unknown language", function() return qed.new_buf{language = "Klingon"} end},
 			{"theme.set unknown", "unknown theme", function() return qed.theme.set("no-such-theme") end},
 			{"save unnamed", "no file name", function() return qed.save(b) end},
 			{"jump", true, function() return qed.jump(b, {row = 1, col = 1}) end},
 			{"spawn missing", "cannot start", function() return qed.spawn{argv = {"/no/such/qed-prog"}} end},
 			{"spawn_bg missing", "cannot start", function() return qed.spawn_bg{argv = {"/no/such/qed-prog"}} end},
-			{"set_screen_row not current", "not current", function() return qed.buf.set_screen_row(dirty, 1, 1) end},
+			{"set_screen_row not current", "not current", function() return dirty:set_screen_row(1, 1) end},
 			{"inline off cursor", "not at cursor", function() return qed.deco.inline(b, ns, {row = 1, col = 3}, "x") end},
-			{"inline", true, function() return qed.deco.inline(b, ns, qed.buf.cursor(b), "x") end},
+			{"inline", true, function() return qed.deco.inline(b, ns, b:cursor(), "x") end},
 			{"view closed set", "closed", function() return v:set({"b"}) end},
 			{"view closed text", "closed", function() return v:text({"b"}) end},
 			{"view closed select", "closed", function() return v:select(1) end},
 			{"view closed scroll", "closed", function() return v:scroll(1) end},
 			{"close bad arg", "raise", function() return qed.close("x") end},
-			{"closed buffer", "raise", function() return qed.buf.line(spare, 1) end},
+			{"closed buffer", "raise", function() return spare:line(1) end},
 			{"run unknown", "raise", function() return qed.run("No Such Command") end},
 			{"spawn bad spec", "raise", function() return qed.spawn{} end},
 			{"confirm positional", "raise", function() return qed.confirm("Sure?") end},
@@ -635,8 +635,8 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 			{"pick old multi", "raise", function() return qed.pick{items = {}, multi = true} end},
 			{"prompt unknown field", "raise", function() return qed.prompt{prompt = "x", query = "y"} end},
 			{"confirm unknown field", "raise", function() return qed.confirm{question = "x", text = "y"} end},
-			{"set_base", true, function() return qed.buf.set_base(b, "abc") end},
-			{"set_base clear", true, function() return qed.buf.set_base(b, nil) end},
+			{"set_base", true, function() return b:set_base("abc") end},
+			{"set_base clear", true, function() return b:set_base(nil) end},
 		}
 		local bad = {}
 		for _, c in ipairs(cases) do

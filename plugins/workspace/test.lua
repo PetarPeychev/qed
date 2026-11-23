@@ -37,7 +37,7 @@ function T.unsaved_cancel_returns_with_the_typed_path(t)
 	t.sh("mkdir -p sub")
 	local root = qed.root()
 	local b = t.open("a.txt", "x")
-	qed.buf.insert(b, {row = 1, col = 1}, "y")
+	b:insert({row = 1, col = 1}, "y")
 	qed.run(CHANGE)
 	t.type("sub")
 	t.key("Enter")
@@ -53,7 +53,7 @@ function T.unsaved_cancel_returns_with_the_typed_path(t)
 	t.key("Enter")
 	t.ok(t.ui() == nil, "Close all switches and closes")
 	t.eq(qed.root(), root .. "/sub")
-	t.ok(not qed.buf.valid(b), "the unsaved buffer is gone")
+	t.ok(not b:valid(), "the unsaved buffer is gone")
 end
 
 return T

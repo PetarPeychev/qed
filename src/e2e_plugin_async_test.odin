@@ -113,7 +113,7 @@ e2e_plugin_flush_rounds_logged :: proc(t: ^testing.T) {
 	e := e2e_start("abc")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "loop", `return {setup = function()
-		qed:on("buf_changed", function(b) qed.buf.insert(b, {row = 1, col = 1}, "x") end)
+		qed:on("buf_changed", function(b) b:insert({row = 1, col = 1}, "x") end)
 	end}`)
 	plugin_flush(&e.ed)
 	e2e_type(&e, "y")
@@ -158,11 +158,11 @@ e2e_plugin_pre_save_spawn :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "fmt", `
 		return {setup = function()
 			qed:on("buf_pre_save", function(b)
-				local rev = qed.buf.rev(b)
-				local r = qed.spawn{cmd = "fakefmt --stdin", stdin = qed.buf.text(b)}
-				local n = qed.buf.line_count(b)
+				local rev = b:rev()
+				local r = qed.spawn{cmd = "fakefmt --stdin", stdin = b:text()}
+				local n = b:line_count()
 				qed.edit(b, function()
-					qed.buf.replace(b, {row = 1, col = 1}, {row = n, col = #qed.buf.line(b, n) + 1}, r.stdout)
+					b:replace({row = 1, col = 1}, {row = n, col = #b:line(n) + 1}, r.stdout)
 				end, {rev = rev})
 			end)
 		end}`)

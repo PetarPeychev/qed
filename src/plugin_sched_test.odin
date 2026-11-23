@@ -408,7 +408,7 @@ plugin_sched_coalesce :: proc(t: ^testing.T) {
 			changed, moved, last = 0, 0, ""
 			local h = qed:on("buf_changed", function(b, rev)
 				changed = changed + 1
-				last = b .. ":" .. rev
+				last = b.id .. ":" .. rev
 			end)
 			qed:on("cursor_moved", function(b) moved = moved + 1 end)
 			qed.command{name = "Off", run = function() h:off() end}
@@ -460,14 +460,14 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 		{"pre.lua", `
 			return {setup = function()
 				qed:on("buf_pre_save", function(b)
-					local rev = qed.buf.rev(b)
+					local rev = b:rev()
 					qed.sleep(5)
-					qed.edit(b, function() qed.buf.insert(b, {row = 1, col = 1}, "[fmt]") end, {rev = rev})
+					qed.edit(b, function() b:insert({row = 1, col = 1}, "[fmt]") end, {rev = rev})
 				end)
 				qed:on("buf_save", function(b) saved = (saved or 0) + 1 end)
 				qed.command{name = "Do Save", run = function(ctx)
 					local ok = qed.save(ctx.buf)
-					after = tostring(ok) .. " " .. tostring(qed.buf.modified(ctx.buf))
+					after = tostring(ok) .. " " .. tostring(ctx.buf:modified())
 				end}
 			end}`},
 	})

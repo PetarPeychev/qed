@@ -29,8 +29,8 @@ local function set_theme()
 end
 
 local function set_language(ctx)
-	local name = qed.pick{items = qed.languages(), selected = qed.buf.language(ctx.buf)}
-	if name and qed.buf.valid(ctx.buf) and name ~= qed.buf.language(ctx.buf) and qed.buf.set_language(ctx.buf, name) then
+	local name = qed.pick{items = qed.languages(), selected = ctx.buf:language()}
+	if name and ctx.buf:valid() and name ~= ctx.buf:language() and ctx.buf:set_language(name) then
 		qed.message("Language set to " .. name)
 	end
 end
@@ -38,17 +38,17 @@ end
 local function change_indent(ctx)
 	local b = ctx.buf
 	local choice = qed.pick{items = INDENT}
-	if not choice or not qed.buf.valid(b) then
+	if not choice or not b:valid() then
 		return
 	end
 	if choice == "Auto-detect" then
-		qed.buf.set_indent(b, "auto")
+		b:set_indent("auto")
 	elseif choice == "Tabs" then
-		qed.buf.set_indent(b, "tabs")
+		b:set_indent("tabs")
 	else
-		qed.buf.set_indent(b, "spaces", tonumber(choice:match("%d+")))
+		b:set_indent("spaces", tonumber(choice:match("%d+")))
 	end
-	local style, width = qed.buf.indent(b)
+	local style, width = b:indent()
 	qed.message("Indentation set to " .. (style == "tabs" and "Tabs" or ("Spaces:" .. width)))
 end
 
