@@ -371,7 +371,8 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	lua.pushboolean(L, b32(filetree_active(ed)))
 	lua.setfield(L, -2, "tree")
-	lua.pushboolean(L, b32(pane_find(ed, "palette") != nil))
+	ui_resolve(ed)
+	lua.pushboolean(L, b32(pane_find(ed, "palette") != nil || ui_find(&ed.ui, "#palette/palette") != nil))
 	lua.setfield(L, -2, "palette")
 	lua.createtable(L, c.int(len(ed.plugins.status)), 0)
 	for s, i in ed.plugins.status {
@@ -559,6 +560,9 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	pn := test_view(entry.editor)
 	if pn == nil {
+		if filetree_active(entry.editor) {
+			return pt_ui_tree(L, entry.editor)
+		}
 		lua.pushnil(L)
 		return 1
 	}
@@ -625,6 +629,42 @@ pt_ui :: proc "c" (L: ^lua.State) -> c.int {
 	lua.setfield(L, -2, "tab")
 	lua.pushodinstring(L, pn.info)
 	lua.setfield(L, -2, "info")
+	return 1
+}
+
+pt_ui_tree :: proc(L: ^lua.State, editor: ^Editor) -> c.int {
+	entries := ft_entries(editor)
+	selected, has := ft_selected(editor)
+	lua.createtable(L, 0, 6)
+	lua.pushodinstring(L, "tree")
+	lua.setfield(L, -2, "kind")
+	lua.pushodinstring(L, "filetree")
+	lua.setfield(L, -2, "id")
+	lua.pushodinstring(L, ft_query(editor))
+	lua.setfield(L, -2, "query")
+	lua.pushinteger(L, lua.Integer(len(entries)))
+	lua.setfield(L, -2, "matches")
+	lua.createtable(L, c.int(len(entries)), 0)
+	for entry, i in entries {
+		lua.pushodinstring(L, entry.name)
+		lua.rawseti(L, -2, lua.Integer(i + 1))
+	}
+	lua.setfield(L, -2, "labels")
+	if has {
+		lua.pushodinstring(L, selected.name)
+		lua.setfield(L, -2, "selected")
+	}
+	hint := ""
+	editor_render(editor)
+	if node := ui_find(&editor.ui, "#filetree/filetree_hint"); node != nil {
+		sb := strings.builder_make(context.temp_allocator)
+		for span in node.spans {
+			strings.write_string(&sb, span.text)
+		}
+		hint = strings.trim_space(strings.to_string(sb))
+	}
+	lua.pushodinstring(L, hint)
+	lua.setfield(L, -2, "hint")
 	return 1
 }
 

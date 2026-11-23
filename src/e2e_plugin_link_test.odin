@@ -332,26 +332,20 @@ e2e_plugin_export_unload_stops_callers :: proc(t: ^testing.T) {
 e2e_plugin_export_unload_mid_open :: proc(t: ^testing.T) {
 	e := e2e_root_start("x")
 	defer e2e_stop(&e)
-	e2e_plugin_config(&e, "git", `{"enabled": false}`)
+	link_plugin(&e, "slow", `return {setup = function()
+		qed.export{wait = function() qed.sleep(60000) end}
+	end}`)
 	link_plugin(&e, "big", `return {setup = function()
 		qed.command{name = "Open", run = function()
-			local ft = qed.plugin("filetree")
-			local paths = {}
-			for i = 1, 5000 do
-				paths[i] = qed.root() .. "/f" .. i
-			end
-			ft.set_tab{label = "Big", paths = paths}
-			ft.open("Big")
+			qed.plugin("slow").wait()
 			qed.log("opened")
 		end}
 	end}`)
-	e2e_git_settle(&e)
 	cmd, _ := plugin_test_command(&e.ed, "Big: Open")
 	plugin_command_run(&e.ed, cmd)
 	testing.expect_value(t, len(e.ed.plugins.calls), 1)
-	plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "filetree"))
-	e2e_git_settle(&e)
+	plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "slow"))
+	plugin_pump(&e.ed)
 	testing.expect_value(t, link_logged(&e, "Big", "opened"), 0)
-	testing.expect(t, !filetree_active(&e.ed), "the unloaded tree's open does not finish")
 	testing.expect_value(t, len(e.ed.plugins.calls), 0)
 }

@@ -70,7 +70,21 @@ local function run_command(name)
 	qed.run(name)
 end
 
+-- typed keys reach the query before its change event runs: catch up before running
+local function query_sync()
+	local text = palette.query:text()
+	if text ~= palette.applied then
+		palette.applied = text
+		palette.matches:set_query(text)
+		local first = palette.matches:at(1)
+		ui.node("palette_results"):set_state{highlighted = first and first.name or false}
+	end
+end
+
 local function run_highlighted()
+	if palette then
+		query_sync()
+	end
 	run_command(highlighted_key())
 end
 
@@ -150,6 +164,7 @@ local function open_palette()
 			query:set_text((text:gsub("\r?\n", " ")))
 			return
 		end
+		palette.applied = text
 		matches:set_query(text)
 		if (matches:count() == 0) ~= empty then
 			empty = not empty
@@ -157,7 +172,7 @@ local function open_palette()
 		end
 		highlight_first(matches)
 	end)
-	palette = {commands = commands, matches = matches, query = query, handle = handle}
+	palette = {commands = commands, matches = matches, query = query, handle = handle, applied = ""}
 	ui.node("palette_query"):focus()
 	highlight_first(matches)
 end

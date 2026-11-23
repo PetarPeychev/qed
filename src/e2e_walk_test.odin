@@ -478,7 +478,7 @@ e2e_walk_expand_all_streams :: proc(t: ^testing.T) {
 	ft_set_sel(&e.ed, 2)
 	nav_alt(&e, 'e')
 	testing.expect(t, walk_trees_busy(&e.ed), "one dir per fill: the rest is pending")
-	testing.expect(t, len(ft_entries(&e.ed)) < top + 15, "rows stream in")
+	testing.expect(t, len(ft_tree_list(&e.ed).tree.source.entries) < top + 15, "rows stream in")
 	sel, _ := ft_selected(&e.ed)
 	testing.expect_value(t, walk_rel(sel.path, e.dir), "d2")
 	for i := 0; walk_trees_busy(&e.ed) && i < 100; i += 1 {

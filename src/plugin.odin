@@ -1532,6 +1532,18 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 			found = i
 		}
 	}
+	// a pane's own command runs while that pane has focus, as from its palette
+	if found < 0 {
+		for node := ui_focused(editor); node != nil && found < 0; node = node.parent {
+			for scope in node.scope {
+				for cmd, i in editor.plugins.commands {
+					if found < 0 && cmd.scope == scope && cmd.name == name {
+						found = i
+					}
+				}
+			}
+		}
+	}
 	if found < 0 {
 		return plugin_raise(L, fmt.tprintf("unknown command '%s'", name))
 	}

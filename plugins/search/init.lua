@@ -108,7 +108,7 @@ local function search(ctx, scope)
 	}
 end
 
-local function search_tree()
+local function search_tree(ctx)
 	local tree = qed.plugin("filetree")
 	local selection = tree and tree.selection()
 	local paths, gone = {}, false

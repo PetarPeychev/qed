@@ -9,7 +9,7 @@ local TABS = {
 local PREVIEW_DEBOUNCE_MS = 80
 
 local view
-local walk
+local walk, walk_root
 local scope = "All"
 local show = {}
 local clip, clip_cut = {}, false
@@ -180,9 +180,15 @@ local function dimmed(path)
 	return false
 end
 
+-- rows that arrived after the highlight was cleared (a filter still reading) start on the first one
 local function highlighted_path()
 	local state = ui.node("filetree_rows"):state()
-	return state and state.highlighted or nil
+	local path = state and state.highlighted
+	if not path and view and view.tree:count() > 0 then
+		path = view.tree:at(1).path
+		ui.node("filetree_rows"):set_state{highlighted = path}
+	end
+	return path
 end
 
 -- typed keys reach the query before its change event runs: catch up before acting on the rows
@@ -326,7 +332,7 @@ build = function()
 				},
 				ui.row{grow = 1,
 					ui.column{width = {"40%", min = qed.opt("split_tree_min_width"), max = qed.opt("split_tree_max_width")},
-						empty and ui.text{fg = "pane_dim_foreground", " ", empty} or false,
+						empty and ui.text{id = "filetree_hint", fg = "pane_dim_foreground", " ", empty} or false,
 						ui.scroll{id = "filetree_scroll", grow = 1,
 							ui.virtual_column{id = "filetree_rows", data = tree, item = tree_row,
 								highlight_style = {bg = "pane_selection_background"}}},
@@ -364,9 +370,27 @@ local function split_lines(text)
 	return out
 end
 
+-- set_text takes UTF-8 only: a Latin-1 or binary byte shows as U+FFFD
+local function utf8_repair(text)
+	if utf8.len(text) then
+		return text
+	end
+	local out, at = {}, 1
+	while at <= #text do
+		local ok, bad = utf8.len(text, at)
+		if ok then
+			out[#out + 1] = text:sub(at)
+			break
+		end
+		out[#out + 1] = text:sub(at, bad - 1) .. "\u{FFFD}"
+		at = bad + 1
+	end
+	return table.concat(out)
+end
+
 -- diff-only: the changed rows of the file with a little context, runs apart marked by an ellipsis
 local function changed_rows(buffer, base)
-	local current = buffer:lines()
+	local current = split_lines(buffer:text())
 	local hunks = qed.text.diff(split_lines(base), current)
 	if not hunks or #hunks == 0 then
 		return nil
@@ -389,7 +413,7 @@ local function changed_rows(buffer, base)
 			previous = row
 		end
 	end
-	return table.concat(out, "\n")
+	return utf8_repair(table.concat(out, "\n"))
 end
 
 -- a deleted file previews its base: what the change removed
@@ -425,10 +449,10 @@ local function preview_sync()
 		end
 		return
 	end
-	if view.preview and view.preview.path == item.path and not view.preview.stale then
+	if view.preview and view.preview.path == item.path and view.preview.scope == scope and not view.preview.stale then
 		return
 	end
-	local base
+	local base, asked = nil, scope
 	if tab and tab.preview then
 		local ok, result = pcall(tab.preview, item.path)
 		if not ok then
@@ -436,11 +460,30 @@ local function preview_sync()
 		end
 		base = ok and type(result) == "string" and result or nil
 	end
-	if not view or cursor_item() == nil or cursor_item().path ~= item.path then
+	if not view or scope ~= asked or cursor_item() == nil or cursor_item().path ~= item.path then
 		return
 	end
 	preview_load(item.path, base)
+	view.preview.scope = scope
 	rebuild()
+end
+
+-- the count on the query row follows a tree still reading its dirs
+local function follow_loading()
+	if not view or view.following then
+		return
+	end
+	view.following = true
+	local current = view
+	qed.defer(30, function()
+		current.following = false
+		if view == current then
+			rebuild()
+			if current.tree:loading() then
+				follow_loading()
+			end
+		end
+	end)
 end
 
 local function changed()
@@ -448,6 +491,9 @@ local function changed()
 		return
 	end
 	rebuild()
+	if view.tree:loading() then
+		follow_loading()
+	end
 	view.preview_due = (view.preview_due or 0) + 1
 	local token, current = view.preview_due, view
 	qed.defer(PREVIEW_DEBOUNCE_MS, function()
@@ -562,7 +608,14 @@ local function open(tab)
 		end
 	end
 	scope = (builtin(tab) or tab_of(tab)) and tab or "All"
-	walk_new()
+	-- a reopened tree keeps its walk and so its expanded dirs, until the root moves
+	if not walk or walk_root ~= qed.root() then
+		walk_new()
+		walk_root = qed.root()
+	else
+		-- a fresh handle on the same walk makes it see the disk as of now
+		qed.fs.walk{dotfiles = show.dotfiles, ignored = show.ignored}:release()
+	end
 	local current_buffer = qed.buf.current()
 	view = {query = qed.buf.create{internal = true}, current = current_buffer and current_buffer:path() or "",
 		changed = changed, activate = activate, close = close}
@@ -572,6 +625,7 @@ local function open(tab)
 		sync()
 	end
 	view.tree = source()
+	view.tree:set_query("")
 	view.applied = ""
 	view.buffers = buffers_by_path()
 	view.handle = ui.mount("pane", build())
@@ -845,7 +899,11 @@ local function close_buffers()
 			return
 		end
 	end
+	if not view then
+		return
+	end
 	local closed = 0
+	view.closing = true
 	for _, path in ipairs(paths) do
 		local buffer = buffer_of(path)
 		if buffer and qed.close(buffer, {discard = approved}) then
@@ -853,6 +911,9 @@ local function close_buffers()
 		end
 	end
 	if view then
+		view.closing = nil
+		local current = qed.buf.current()
+		view.current = current and current:path() or nil
 		sync()
 	end
 	if closed == 1 then
@@ -1136,7 +1197,9 @@ local exports = {
 		for _, chip in ipairs(chips()) do
 			chip_state[chip.label] = chip.on == true
 		end
+		local tab = tab_of(scope)
 		return {tab = row[at].label, tabs = labels, chips = chip_state, query = view.query:text(),
+			hint = view.tree:count() == 0 and tab and tab.empty or nil,
 			input = view.input and view.input.kind or nil, preview = view.preview and view.preview.path or nil,
 			walk = {dotfiles = show.dotfiles == true, ignored = show.ignored == true}}
 	end,
@@ -1214,7 +1277,21 @@ return {
 		qed.export(exports)
 		qed:on("plugin_unloaded", drop)
 		qed:on("config_changed", function(changed_keys) apply(qed.config(), changed_keys) end)
+		-- a jump elsewhere (a picked location, a buffer switch) closes the tree
+		for _, event in ipairs({"buf_open", "buf_close", "buf_save"}) do
+			qed:on(event, function()
+				if view and scope ~= "All" then
+					schedule()
+				end
+			end)
+		end
+		qed:on("buf_enter", function(buffer)
+			if view and not view.closing and buffer:path() ~= view.current then
+				close()
+			end
+		end)
 		qed:on("root_changed", function()
+			walk_root = nil
 			if view then
 				local label = scope
 				close()

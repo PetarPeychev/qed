@@ -153,12 +153,17 @@ e2e_filetree_added_tab :: proc(t: ^testing.T) {
 
 	testing.expect(t, nav_select(ed, "a.txt"))
 	nav_preview(&e)
+	testing.expect_value(t, ft_preview_line(ed, 0), "one")
+	testing.expect_value(t, ft_preview_line(ed, 1), "two")
+	nav_alt(&e, 'd')
+	nav_preview(&e)
 	preview := ft_preview(ed)
-	testing.expect(t, preview != nil && len(preview.base.slots) > 0, "a base gives a diff preview")
+	testing.expect(t, preview != nil && len(preview.base.slots) > 0, "with diff-only off the whole file previews against its base")
 	if preview != nil {
 		diffbase_update(preview)
 		testing.expect(t, len(preview.base.marks) > 1 && preview.base.marks[1] == .Added, "the added line against the base")
 	}
+	nav_alt(&e, 'd')
 
 	testing.expect(t, nav_select(ed, "new.txt"))
 	nav_preview(&e)

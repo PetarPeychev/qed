@@ -1369,6 +1369,12 @@ fs_lstat :: proc(path: string) -> (st: posix.stat_t, ok: bool) {
 	return
 }
 
+// stat by path, never opening it: os.stat opens, which blocks on a fifo
+fs_stat :: proc(path: string) -> (st: posix.stat_t, ok: bool) {
+	ok = posix.stat(strings.clone_to_cstring(path, context.temp_allocator), &st) == .OK
+	return
+}
+
 fs_lexists :: proc(path: string) -> bool {
 	_, ok := fs_lstat(path)
 	return ok

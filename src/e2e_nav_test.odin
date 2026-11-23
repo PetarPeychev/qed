@@ -254,7 +254,8 @@ e2e_nav_welcome :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	testing.expect(t, filetree_active(&e.ed), "Alt+f opens the file tree from welcome")
 	e2e_key(&e, .Ctrl_P)
-	testing.expect(t, strings.contains(palette_labels(&e), "|File Tree: Copy|"), "the tree's palette lists its commands on welcome")
+	e2e_ui_settle(&e)
+	testing.expect(t, strings.contains(palette_ui_labels(&e), "|File Tree: Copy|"), "the tree's palette lists its commands on welcome")
 	e2e_key(&e, .Esc)
 	e2e_key(&e, .Esc)
 	testing.expect(t, !filetree_active(&e.ed), "Esc closes the file tree")
@@ -392,7 +393,9 @@ e2e_nav_file_open_and_close :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	testing.expect(t, filetree_active(&e.ed), "Alt+f opens the file tree")
 	e2e_type(&e, "second")
+	testing.expect(t, len(ft_entries(&e.ed)) > 0, "the filter lists the match")
 	e2e_key(&e, .Enter)
+	plugin_flush(&e.ed)
 
 	testing.expect(t, !filetree_active(&e.ed), "tree closes after opening")
 	testing.expect_value(t, len(e.ed.buffers), 2)
@@ -425,7 +428,7 @@ e2e_nav_scrollbar :: proc(t: ^testing.T) {
 	e2e_type(&e, "f00")
 	testing.expect(t, len(ft_entries(&e.ed)) <= lay.body_h, "a narrow query should fit without a scrollbar")
 	e2e_render(&e)
-	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), '│')
+	testing.expect_value(t, e2e_cell(&e, lay.div_x, lay.body_top), ' ')
 
 	e2e_key(&e, .Esc)
 	testing.expect(t, ft_query(&e.ed) == "", "Esc first clears the filter")
@@ -897,9 +900,11 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 			ft_set_sel(&e.ed, i)
 		}
 	}
+	e2e_git_settle(&e)
 	nav_preview(&e)
 
 	testing.expect(t, ft_chip(&e.ed, "diff"), "diff-only on by default")
+	testing.expect(t, ft_preview(&e.ed) != nil && ft_preview_line(&e.ed, 0) != "line 01", "the collapsed view starts at the change's context")
 	collapsed := len(ft_preview(&e.ed).lines) if ft_preview(&e.ed) != nil else 0
 
 	nav_alt(&e, 'd') // File Tree: Toggle Diff
@@ -1117,6 +1122,7 @@ e2e_nav_filetree_filter_caps_display :: proc(t: ^testing.T) {
 	)
 
 	// When capped, the filter line shows the cap with a trailing +.
+	nav_preview(&e)
 	lay := ft_layout(&e.ed)
 	e2e_render(&e)
 	testing.expect(
@@ -1140,8 +1146,9 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 
 	// Ctrl+P over the tree lists file commands, not the global set.
 	e2e_key(&e, .Ctrl_P)
-	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette over the tree")
+	e2e_ui_settle(&e)
 	labels := palette_ui_labels(&e)
+	testing.expect(t, labels != "", "Ctrl+P opens the palette over the tree")
 	testing.expect(t, strings.contains(labels, "|Workspace: Open Selected Directory|"), "tree-scoped plugin commands are listed")
 	testing.expect(t, !strings.contains(labels, "|Save|"), "editor commands are not")
 	testing.expect(t, filetree_active(&e.ed), "the palette sits over the tree")
@@ -1368,11 +1375,14 @@ e2e_nav_filetree_root_change_closed_resets :: proc(t: ^testing.T) {
 	testing.expect(t, nav_select(&e.ed, "sub"))
 	e2e_key(&e, .Enter)
 	e2e_key(&e, .Esc)
-	testing.expect(t, ft_expanded_count(&e.ed) > 0, "the closed tree saved its expanded dirs")
+	nav_alt(&e, 'f')
+	testing.expect(t, ft_expanded_count(&e.ed) > 0 && nav_select(&e.ed, "x.txt"), "a reopened tree keeps its expanded dirs")
+	e2e_key(&e, .Esc)
+	editor_change_root(&e.ed, e.dir)
 	editor_change_root(&e.ed, sub)
 	plugin_flush(&e.ed)
+	nav_alt(&e, 'f')
 	testing.expect_value(t, ft_expanded_count(&e.ed), 0)
-	testing.expect_value(t, pane_saved_find(&e.ed, "filetree").key, "")
 }
 
 @(test)
@@ -1445,7 +1455,8 @@ e2e_nav_filetree_delete_dialog_cancel :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Ctrl_D)
 	testing.expect_value(t, ft_mode(&e.ed), FtMode.ConfirmDelete)
-	testing.expect_value(t, pane_focus(&e.ed).list.sel, 0) // Cancel is default-selected
+	dialog, _ := test_dialog(&e.ed)
+	testing.expect_value(t, dialog.selected, "Cancel")
 	testing.expect_value(t, ft_confirm_text(&e.ed), "Delete main.txt?")
 
 	e2e_key(&e, .Esc)

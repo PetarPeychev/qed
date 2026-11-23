@@ -303,8 +303,8 @@ ft_layout :: proc(ed: ^Editor) -> FtLayout {
 		footer_y = inner.y + inner.h - 1,
 		tab_y = inner.y,
 		title_sep_y = box.y,
-		div_x = rows.x + rows.w,
-		left_w = rows.w,
+		div_x = scroll.x + scroll.w - 1,
+		left_w = scroll.w,
 		right_x = preview.x,
 		right_w = preview.w,
 		preview = preview.w > 0,
@@ -354,7 +354,7 @@ ft_preview_settle :: proc(ed: ^Editor) {
 	for ms_since(start) < 3000 {
 		plugin_flush(ed)
 		plugin_pump(ed)
-		pending := false
+		pending := plugin_busy(ed)
 		for timer in ed.plugins.timers {
 			pending ||= timer.owner == "filetree"
 		}

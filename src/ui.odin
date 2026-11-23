@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:sys/posix"
 import "core:unicode/utf8"
 import lua "lib:lua"
 import "lib:tb2"
@@ -708,8 +709,11 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 // a copy for showing a file: an open buffer's live text, else the head of the file on disk
 ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string) {
 	text := ""
-	if index := editor_find_buffer(editor, path); index >= 0 {
+	if index := editor_find_buffer(editor, path); index >= 0 && editor.buffers[index].modified {
 		text = buffer_snapshot(&editor.buffers[index])
+	} else if info, ok := fs_stat(path); !ok || !posix.S_ISREG(info.st_mode) {
+		// a fifo or device would block the read
+		text = ""
 	} else if data, ok := preview_file_bytes(path, PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES, PREVIEW_MAX_LINES); ok {
 		if preview_is_binary(data) {
 			sb := strings.builder_make(context.temp_allocator)
