@@ -11,7 +11,7 @@ local function set_theme()
 	local name, busy = qed.pick{
 		items = qed.theme.list(),
 		selected = original,
-		on = {change = function(_, n) qed.theme.set(n) end},
+		on = {change = function(_, count) qed.theme.set(count) end},
 	}
 	if busy then
 		return
@@ -36,19 +36,19 @@ local function set_language(ctx)
 end
 
 local function change_indent(ctx)
-	local b = ctx.buf
+	local buffer = ctx.buf
 	local choice = qed.pick{items = INDENT}
-	if not choice or not b:valid() then
+	if not choice or not buffer:valid() then
 		return
 	end
 	if choice == "Auto-detect" then
-		b:set_indent("auto")
+		buffer:set_indent("auto")
 	elseif choice == "Tabs" then
-		b:set_indent("tabs")
+		buffer:set_indent("tabs")
 	else
-		b:set_indent("spaces", tonumber(choice:match("%d+")))
+		buffer:set_indent("spaces", tonumber(choice:match("%d+")))
 	end
-	local style, width = b:indent()
+	local style, width = buffer:indent()
 	qed.message("Indentation set to " .. (style == "tabs" and "Tabs" or ("Spaces:" .. width)))
 end
 
@@ -65,8 +65,8 @@ local function open_config()
 			return
 		end
 	end
-	local b, err = qed.open(path)
-	if not b then
+	local buffer, err = qed.open(path)
+	if not buffer then
 		qed.message(err, "error")
 	end
 end

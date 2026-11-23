@@ -15,17 +15,17 @@ local function sync_back(v)
 	if not current or current.buf ~= qed.buf.current() or v:scroll() == synced then
 		return
 	end
-	local b = current.buf
-	local src, row = v:source_line(b:screen_row())
+	local buffer = current.buf
+	local src, row = v:source_line(buffer:screen_row())
 	if not src then
 		return
 	end
-	b:set_cursor({row = src, col = b:line(src):find("%S") or 1})
-	b:set_screen_row(src, row)
+	buffer:set_cursor({row = src, col = buffer:line(src):find("%S") or 1})
+	buffer:set_screen_row(src, row)
 end
 
-local function preview(b, anchor)
-	local path = b:path()
+local function preview(buffer, anchor)
+	local path = buffer:path()
 	local v = qed.ui.open{
 		place = "full",
 		scope = "markdown",
@@ -33,7 +33,7 @@ local function preview(b, anchor)
 		max_width = cfg.max_width,
 		backdrop = cfg.backdrop,
 		title = path ~= "" and qed.path.base(path) or "untitled",
-		markdown = b:text(),
+		markdown = buffer:text(),
 		markdown_dir = path ~= "" and qed.path.dir(path) or nil,
 		footer = {hints = {{label = "↑↓ PgUp PgDn scroll  click a link to open it"}, {label = "back", cmd = "Markdown: Back"}, {label = "forward", cmd = "Markdown: Forward"}, {label = "close", cmd = "Markdown: Preview"}}},
 		on = {
@@ -52,18 +52,18 @@ local function preview(b, anchor)
 	if view then
 		stop(view)
 	end
-	v:source_scroll(b:cursor().row, b:screen_row())
+	v:source_scroll(buffer:cursor().row, buffer:screen_row())
 	if anchor and anchor ~= "" then
 		local src = v:anchor(anchor)
 		if src then
-			b:set_cursor({row = src, col = 1})
+			buffer:set_cursor({row = src, col = 1})
 		end
 	end
 	synced = v:scroll()
-	current = {path = path, buf = b}
+	current = {path = path, buf = buffer}
 	view, watch = v, qed:on("buf_changed", function(changed)
-		if changed == b then
-			v:markdown(b:text())
+		if changed == buffer then
+			v:markdown(buffer:text())
 		end
 	end)
 end
@@ -88,12 +88,12 @@ local function show(entry)
 			if entry.path == "" or not qed.fs.exists(entry.path) then
 				return
 			end
-			local b, err = qed.open(entry.path)
-			if not b then
+			local buffer, err = qed.open(entry.path)
+			if not buffer then
 				qed.message(err, "error")
 				return
 			end
-			entry.buf = b
+			entry.buf = buffer
 		end
 		local _, err = qed.jump(entry.buf, entry.buf:cursor())
 		if err then
@@ -117,9 +117,9 @@ local function step(d)
 end
 
 local function target_pos(path)
-	for _, b in ipairs(qed.buf.list()) do
-		if b:path() == path then
-			return b:cursor()
+	for _, buffer in ipairs(qed.buf.list()) do
+		if buffer:path() == path then
+			return buffer:cursor()
 		end
 	end
 	return {row = 1, col = 1}
