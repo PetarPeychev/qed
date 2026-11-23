@@ -4,14 +4,13 @@ qed-e2e snapshot 80x24 cursor hidden
 
 
 
-
-                         .g8""8q. `7MM""YMMM`7MM"""Yb.
-                       .dP'    `YM. MM    `7  MM    `Yb.
-                       dM'      `MM MM   d    MM     `Mb
-                       MM        MM MMmmMM    MM      MM
-                       MM.      ,MP MM   Y ,  MM     ,MP
-                       `Mb.    ,dP' MM    ,M  MM    ,dP'
-                         `"bmmd"' .JMMmmmMMM.JMMmmmdP'
+                        .g8""8q. `7MM""YMMM`7MM"""Yb.
+                      .dP'    `YM. MM    `7  MM    `Yb.
+                      dM'      `MM MM   d    MM     `Mb
+                      MM        MM MMmmMM    MM      MM
+                      MM.      ,MP MM   Y ,  MM     ,MP
+                      `Mb.    ,dP' MM    ,M  MM    ,dP'
+                        `"bmmd"' .JMMmmmMMM.JMMmmmdP'
                             MMb
                              `bmmd'
 
@@ -22,7 +21,8 @@ qed-e2e snapshot 80x24 cursor hidden
 
 
 
- /tmp/qed-e2e-XXXXXX/root                                               qed dev
+
+ root                                                                   qed dev
 
 -- style
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

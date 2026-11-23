@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 12,6
         │ ←→ tabs  ↑↓ select  Shift+↑↓ e Alt+i ignored  Alt+. dotfiles │
         └──────────────────────────────────────────────────────────────┘
 
- /tmp/qed-e2e-XXXXXX/root                                               qed dev
+ root                                                                   qed dev
 
 -- style
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
