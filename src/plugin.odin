@@ -1555,7 +1555,7 @@ plugin_command_core :: proc(name: string, scope: string) -> bool {
 			}
 		}
 	}
-	for cmd in pane_commands {
+	for cmd in scoped_commands {
 		if cmd.scope == scope && (cmd.name == name || command_config_name(cmd) == name) {
 			return true
 		}
@@ -1569,7 +1569,7 @@ plugin_command_taken :: proc(p: ^Plugins, name: string, scope: string) -> bool {
 			return true
 		}
 	}
-	for cmd in pane_commands {
+	for cmd in scoped_commands {
 		if command_config_name(cmd) == name || (cmd.scope == scope && cmd.name == name) {
 			return true
 		}
@@ -1606,7 +1606,7 @@ plugin_keybind :: proc(cfg: json.Object, owner, key: string) -> (json.Value, boo
 }
 
 plugin_bind_taken :: proc(key: tb2.Key, alt_ch, ch: rune, scope: string) -> string {
-	for cmd in (commands[:] if scope == "" else pane_commands[:]) {
+	for cmd in (commands[:] if scope == "" else scoped_commands[:]) {
 		k, a, sc := command_effective_bind(cmd)
 		if cmd.scope == scope && sc != "" && a == alt_ch && cmd.ch == ch && (alt_ch != 0 || ch != 0 || k == key) {
 			return cmd.name

@@ -622,7 +622,7 @@ ui_scope_check :: proc(editor: ^Editor, scope: string) {
 	if scope in editor.ui.scopes_warned {
 		return
 	}
-	for command in pane_commands {
+	for command in scoped_commands {
 		if command.scope == scope {
 			return
 		}

@@ -921,7 +921,7 @@ mk_core_bind :: proc(name: string) -> bool {
 			return true
 		}
 	}
-	for cmd in pane_commands {
+	for cmd in scoped_commands {
 		if cmd.bind_from == "" && command_config_name(cmd) == name {
 			return true
 		}

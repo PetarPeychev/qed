@@ -430,7 +430,7 @@ settings_destroy :: proc "contextless" () {
 	for &cmd in commands {
 		delete(cmd.shortcut, os.heap_allocator())
 	}
-	for &cmd in pane_commands {
+	for &cmd in scoped_commands {
 		delete(cmd.shortcut, os.heap_allocator())
 	}
 	for it in config_icons {
@@ -620,7 +620,7 @@ config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
 	if kb_val, present := root["keybinds"]; present {
 		if kb_obj, kb_is_obj := kb_val.(json.Object); kb_is_obj {
 			config_apply_keybinds(kb_obj, commands[:], invalid)
-			config_apply_keybinds(kb_obj, pane_commands[:], invalid)
+			config_apply_keybinds(kb_obj, scoped_commands[:], invalid)
 		} else {
 			append(invalid, "keybinds")
 		}
@@ -826,7 +826,7 @@ config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -
 				}
 			}
 			if !found {
-				for cmd in pane_commands {
+				for cmd in scoped_commands {
 					if cmd.bind_from == "" && command_config_name(cmd) == key {
 						found = true
 						break

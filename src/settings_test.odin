@@ -265,7 +265,7 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 	testing.expect(t, found, "embedded theme names a bundled theme")
 	kb, kb_ok := g_config_defaults["keybinds"].(json.Object)
 	testing.expect(t, kb_ok, "embedded keybinds object")
-	for table in ([?][]Command{commands[:], pane_commands[:]}) {
+	for table in ([?][]Command{commands[:], scoped_commands[:]}) {
 		for cmd in table {
 			if cmd.bind_from != "" {
 				continue
@@ -281,7 +281,7 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 	}
 	// A borrowed bind must name a real global command, or the tree command would be
 	// permanently unbound (command_effective_bind returns an empty bind for a typo).
-	for cmd in pane_commands {
+	for cmd in scoped_commands {
 		if cmd.bind_from == "" {
 			continue
 		}
@@ -481,10 +481,13 @@ test_config_files :: proc(t: ^testing.T) {
 	pcmd, pok := command_for_key(.Ctrl_G)
 	testing.expect(t, pok && pcmd.name == "Command Palette", "rebound palette bind dispatches")
 	testing.expect(t, command_matches(tb2.Event{type = .Key, key = .Ctrl_G}, "Command Palette"), "command_matches honors the rebind")
-	ccmd, ccok := pane_command_for_event("editor", tb2.Event{type = .Key, key = .Ctrl_B}, false)
-	testing.expect(t, ccok && ccmd.name == "Copy", "the editor-scope Copy follows the rebound global Copy bind")
-	_, oldc := pane_command_for_event("editor", tb2.Event{type = .Key, key = .Ctrl_C}, false)
-	testing.expect(t, !oldc, "the editor-scope Copy no longer answers the old Ctrl+C")
+	copy_shortcut := ""
+	for cmd in scoped_commands {
+		if cmd.scope == "editor" && cmd.name == "Copy" {
+			_, _, copy_shortcut = command_effective_bind(cmd)
+		}
+	}
+	testing.expect_value(t, copy_shortcut, "Ctrl+b")
 
 	// Pane-scoped binds: a collision in one scope is reported and dropped, a swap is fine.
 	clash_path := fmt.tprintf("%s/clash.json", dir)

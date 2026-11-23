@@ -140,7 +140,7 @@ commands := [?]Command {
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
 }
 
-pane_commands := [?]Command {
+scoped_commands := [?]Command {
 	{name = "Left", scope = "editor", config_name = "Editor: Left", run = ui_command_left},
 	{name = "Right", scope = "editor", config_name = "Editor: Right", run = ui_command_right},
 	{name = "Up", scope = "editor", config_name = "Editor: Up", run = ui_command_up},
@@ -252,26 +252,13 @@ command_bind_matches :: proc(key: tb2.Key, alt_ch, ch: rune, shortcut: string, e
 	return alt_ch == 0 && ch == 0 && key == ev.key
 }
 
-pane_command_for_event :: proc(scope: string, ev: tb2.Event, bare: bool) -> (Command, bool) {
-	for cmd in pane_commands {
-		if cmd.scope != scope {
-			continue
-		}
-		key, alt_ch, shortcut := command_effective_bind(cmd)
-		if command_bind_matches(key, alt_ch, cmd.ch, shortcut, ev, bare) {
-			return cmd, true
-		}
-	}
-	return {}, false
-}
-
 command_shortcut :: proc(name: string) -> string {
 	for cmd in commands {
 		if command_config_name(cmd) == name {
 			return cmd.shortcut
 		}
 	}
-	for cmd in pane_commands {
+	for cmd in scoped_commands {
 		if cmd.bind_from == "" && command_config_name(cmd) == name {
 			return cmd.shortcut
 		}

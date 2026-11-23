@@ -1055,9 +1055,9 @@ qed_commands :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	p := &entry.editor.plugins
 	kb, _ := g_config_defaults["keybinds"].(json.Object)
-	lua.createtable(L, c.int(len(commands) + len(pane_commands) + len(p.commands)), 0)
+	lua.createtable(L, c.int(len(commands) + len(scoped_commands) + len(p.commands)), 0)
 	n := 0
-	for table in ([?][]Command{commands[:], pane_commands[:]}) {
+	for table in ([?][]Command{commands[:], scoped_commands[:]}) {
 		for cmd in table {
 			_, _, shortcut := command_effective_bind(cmd)
 			keybind, key: string

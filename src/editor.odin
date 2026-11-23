@@ -1278,11 +1278,7 @@ editor_render :: proc(editor: ^Editor) {
 		editor_render_overlays(editor, true)
 		return
 	}
-	if editor.welcome {
-		if !ui_layer_used(&editor.ui, "background") {
-			editor_render_welcome(editor)
-		}
-	} else {
+	if !editor.welcome {
 		_, vh := editor_viewport(editor)
 		if !editor_buffer(editor).big {
 			top, bot := editor.scroll_row, editor.scroll_row + vh - 1
@@ -2002,64 +1998,6 @@ editor_render_status :: proc(editor: ^Editor) {
 		msg = fmt.tprintf("%s: %s", editor.message_source, editor.message)
 	}
 	editor_render_row(0, h + 1, full_w, msg, message_fg, COLOR_BG)
-}
-
-editor_render_welcome :: proc(editor: ^Editor) {
-	w := int(tb2.width())
-	h := max(0, int(tb2.height()) - STATUS_ROWS)
-
-	art := [?]string {
-		"  .g8\"\"8q. `7MM\"\"YMMM`7MM\"\"\"Yb.   ",
-		".dP'    `YM. MM    `7  MM    `Yb. ",
-		"dM'      `MM MM   d    MM     `Mb ",
-		"MM        MM MMmmMM    MM      MM ",
-		"MM.      ,MP MM   Y ,  MM     ,MP ",
-		"`Mb.    ,dP' MM    ,M  MM    ,dP' ",
-		"  `\"bmmd\"' .JMMmmmMMM.JMMmmmdP'   ",
-		"      MMb                          ",
-		"       `bmmd'                      ",
-	}
-	hint_specs := [?]struct {
-		cmd, label: string,
-		plugin:     bool,
-	}{{"File Tree: All", "File tree", true}, {"Command Palette", "Command palette", false}, {"Quit", "Quit", false}}
-	hints := make([dynamic]string, context.temp_allocator)
-	for spec in hint_specs {
-		key, known := command_shortcut(spec.cmd), !spec.plugin
-		for cmd in editor.plugins.commands {
-			if spec.plugin && cmd.name == spec.cmd {
-				key, known = cmd.shortcut, true
-			}
-		}
-		// the file tree is a plugin: without Lua its hint goes away
-		if known {
-			append(&hints, fmt.tprintf("%-9s %s", key, spec.label))
-		}
-	}
-
-	hint_w := 0
-	for line in hints {
-		hint_w = max(hint_w, len(line))
-	}
-	hint_x := max(0, (w - hint_w) / 2)
-
-	y := max(0, h / 2 - (len(art) + 1 + len(hints)) / 2)
-	for line in art {
-		editor_render_welcome_line(max(0, (w - len(line)) / 2), y, line)
-		y += 1
-	}
-	y += 1
-	for line in hints {
-		editor_render_welcome_line(hint_x, y, line)
-		y += 1
-	}
-}
-
-editor_render_welcome_line :: proc(x, y: int, text: string) {
-	if y < 0 || y >= int(tb2.height()) || x < 0 {
-		return
-	}
-	draw_text(x, y, int(tb2.width()) - x, text, COLOR_FG, COLOR_BG)
 }
 
 editor_render_gutter :: proc(left, y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {

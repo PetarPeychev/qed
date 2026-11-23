@@ -99,7 +99,7 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 	if chord == "" {
 		return false
 	}
-	for command in pane_commands {
+	for command in scoped_commands {
 		if command.scope != scope || command.run == nil {
 			continue
 		}
