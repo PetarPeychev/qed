@@ -2589,7 +2589,7 @@ qed_on :: proc "c" (L: ^lua.State) -> c.int {
 	pl := api_loaded(L, editor)
 	lua.settop(L, 2)
 	id := plugin_next_id(p)
-	api_handle_push(L, id, {{"off", qed_hook_off}})
+	api_handle_push(L, id, {{"remove", qed_hook_off}})
 	lua.pushvalue(L, 2)
 	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
 	append(&p.hooks, PluginHook{id = id, event = event, name = plugin_name_intern(p, custom) if custom != "" else "", owner = pl.name, ref = ref})

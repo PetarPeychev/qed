@@ -47,7 +47,7 @@ local function highlight(key)
 	ui.node("dialog_rows"):set_state{highlighted = key}
 end
 
-local function query_sync()
+local function apply_query()
 	local text = dialog.query:text()
 	if text == dialog.applied then
 		return
@@ -81,9 +81,6 @@ local function choose()
 		finish(dialog.query:text())
 		return
 	end
-	if dialog.kind == "pick" then
-		query_sync()
-	end
 	local key = highlighted_key()
 	local record = key and dialog.matches:get(key)
 	if not record then
@@ -99,38 +96,12 @@ local function choose()
 	end
 end
 
-local function move(step)
-	if not dialog or not dialog.matches then
-		return
-	end
-	if dialog.kind == "pick" then
-		query_sync()
-	end
-	local matches = dialog.matches
-	local count = matches:count()
-	if count == 0 then
-		return
-	end
-	local before = matches:index_of(highlighted_key() or "") or 0
-	local index = math.max(1, math.min(count, before + step))
-	if index ~= before then
-		ui.node("dialog_rows"):set_state{highlighted = matches:at(index).key}
-		notify()
-	end
-end
-
 local function item_row(record)
 	local item = dialog and dialog.items[record.index]
 	local detail = type(item) == "table" and (item.detail or (item.path and item.label and item.path ~= item.label and item.path)) or nil
 	return ui.row{
 		on = {
-			click = function()
-				ui.node("dialog_rows"):set_state{highlighted = record.key}
-				notify()
-				return true
-			end,
 			double_click = function()
-				ui.node("dialog_rows"):set_state{highlighted = record.key}
 				choose()
 				return true
 			end,
@@ -142,7 +113,7 @@ end
 
 local function frame(id, children)
 	return ui.dismissable{id = id, on_dismiss = function() finish(nil) end,
-		ui.box{float = "screen", anchor = "top", width = WIDTH, height = "fit",
+		ui.box{float = "screen", anchor = "top", width = WIDTH, height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, bg = "pane_background", fg = "pane_foreground",
 			ui.column(children)},
@@ -151,7 +122,7 @@ end
 
 local function rows(scope)
 	return ui.scroll{height = {"fit", max = MAX_ROWS},
-		ui.virtual_column{id = "dialog_rows", scope = scope, data = dialog.matches, item = item_row,
+		ui.virtual_column{id = "dialog_rows", scope = scope, data = dialog.matches, item = item_row, on = {state = notify},
 			highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}}
 end
 
@@ -194,13 +165,13 @@ end
 local function split_frame(prompt, item)
 	local preview = preview_of(item)
 	return ui.dismissable{id = "dialog_pick", on_dismiss = function() finish(nil) end,
-		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
+		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1}, scope = "list",
 			border = true, bg = "pane_background", fg = "pane_foreground",
 			ui.row{
 				ui.column{width = {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")},
-					query_row(prompt, {"dialog_list", "dialog", "editor"}),
+					query_row(prompt, {"dialog", "editor"}),
 					ui.scroll{grow = 1,
-						ui.virtual_column{id = "dialog_rows", data = dialog.matches, item = item_row,
+						ui.virtual_column{id = "dialog_rows", data = dialog.matches, item = item_row, on = {state = notify},
 							highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 				},
 				preview and preview.buffer and ui.editor{id = "dialog_preview", buffer = preview.buffer, grow = 1,
@@ -263,7 +234,7 @@ local function pick(spec)
 		tree = dialog.split(selected_key and items[tonumber(selected_key)] or items[1])
 	else
 		tree = frame("dialog_pick", {
-			query_row(spec.prompt, {"dialog_list", "dialog", "editor"}),
+			query_row(spec.prompt, {"dialog", "editor"}),
 			rows(nil),
 		})
 	end
@@ -278,7 +249,7 @@ local function pick(spec)
 	dialog.applied = ""
 	dialog.query:on("change", function()
 		if dialog == current then
-			query_sync()
+			apply_query()
 		end
 	end)
 	ui.node("dialog_query"):focus()
@@ -317,7 +288,7 @@ local function confirm(spec)
 	dialog.matches = qed.fuzzy.list(dialog.records, {field = "label"})
 	local handle, err = ui.mount("alert", frame("dialog_confirm", {
 		ui.text{id = "dialog_question", wrap = true, " ", spec.question},
-		rows({"dialog_list", "dialog"}),
+		rows({"dialog"}),
 	}))
 	if not handle then
 		dialog = nil
@@ -332,8 +303,6 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Dialog", description = "Pick, prompt and confirm dialogs on qed.ui"}
-		qed.command{name = "Next", scope = "dialog_list", key = "Down", run = function() move(1) end}
-		qed.command{name = "Previous", scope = "dialog_list", key = "Up", run = function() move(-1) end}
 		qed.command{name = "Choose", scope = "dialog", key = "Enter", run = choose}
 		qed.command{name = "Cancel", scope = "dialog", key = "Esc", run = function() finish(nil) end}
 		qed.export{pick = pick, prompt = prompt, confirm = confirm}

@@ -21,7 +21,7 @@ local function close()
 	end
 	local closing = view
 	view = nil
-	closing.watch:off()
+	closing.watch:remove()
 	closing.handle:unmount()
 end
 

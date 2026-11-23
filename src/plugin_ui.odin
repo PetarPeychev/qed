@@ -129,7 +129,7 @@ plugin_ui_unload :: proc(editor: ^Editor, owner: string) {
 	}
 }
 
-QED_LIST_META :: "qed.PaneSource"
+QED_LIST_META :: "qed.Walk"
 
 qed_fs_walk :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)

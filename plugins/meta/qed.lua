@@ -253,7 +253,7 @@ function qed.parse_locations(text, opts) end
 ---@field id integer
 local Handle = {}
 ---Unregisters the handler. A no-op if it is already gone.
-function Handle:off() end
+function Handle:remove() end
 
 ---Handlers run as coroutines in plugin load order. `buf_changed(b, rev, typed, lo, hi)` (`typed`: the latest change was the user typing a character, Enter, Backspace or Delete;
 ---`lo..hi`: the rows touched since the last delivery to any subscriber, in current rows; rows above `lo` are unchanged, rows below `hi` only shifted; a rev change with no recorded edit carries the whole buffer) and
@@ -362,34 +362,34 @@ function qed.every(ms, fn) end
 ---@alias qed.PaneLine string|{text: string, color?: string} color is a theme color key, e.g. `"error_foreground"`
 
 ---A `qed.fs.walk` handle. Items live in core and are built only when drawn; only activated or changed ones reach Lua, as `{label, path?, detail?, buf?, pos?, dir?, depth?}` tables. Freed when collected or when its plugin unloads (a handle passed to another plugin dies with its owner); an open view keeps its own copy.
----@class qed.PaneSource
+---@class qed.Walk
 ---@field id integer
-local PaneSource = {}
+local Walk = {}
 ---Walk handles: the number of items, or `nil, "pending"` while `ready()` is false (it starts the background walk; a `within` handle is always ready).
 ---@return integer|nil
 ---@return "pending"|nil err
-function PaneSource:count() end
+function Walk:count() end
 ---Walk handles: replaces the ignore set of every walk of this root (paths hidden unless `ignored`); a change reruns them. `false` marks it not known yet: no background walk runs and `View:expand(true)` refuses until a list arrives.
 ---@param paths string[]|false
-function PaneSource:ignore(paths) end
+function Walk:ignore(paths) end
 ---Walk handles: false while the walk (or its background prewarm) is still running.
 ---@return boolean
-function PaneSource:ready() end
+function Walk:ready() end
 ---Walk handles: a new handle keeping only `paths`, their ancestors and everything under a listed dir. Listed paths ignore the dotfiles and ignored rules. Raises on an already narrowed handle.
 ---@param paths string[]
----@return qed.PaneSource
-function PaneSource:within(paths) end
+---@return qed.Walk
+function Walk:within(paths) end
 ---Walk handles: a new handle that also lists `paths` (and their missing parent dirs) when they are not on disk, e.g. deleted files. It shares the narrowed handle's paths instead of copying them.
 ---@param paths string[]
----@return qed.PaneSource
-function PaneSource:union(paths) end
+---@return qed.Walk
+function Walk:union(paths) end
 
 ---The visible rows of this walk as a tree list (`max` caps narrowed results).
 ---@param opts? {max?: integer}
 ---@return qed.TreeList
-function PaneSource:tree(opts) end
+function Walk:tree(opts) end
 ---Walk handles: frees the handle now instead of at collection; a view keeps its own copy.
-function PaneSource:release() end
+function Walk:release() end
 
 qed.ui = {}
 
@@ -420,11 +420,11 @@ local NodeRef = {}
 ---@return string|nil err
 function NodeRef:focus() end
 
----The node's widget state: `highlighted` (lists), `offset` (scroll), `scroll` (editor, 1-based top row).
+---The node's widget state: `highlighted` (lists), `extend_from` (virtual_column range start), `offset` (scroll), `scroll` (editor, 1-based top row).
 ---@return table|nil
 function NodeRef:state() end
 
----Changes only the named state fields (`highlighted`, `offset`, `scroll`); no rebuild. A new `highlighted` scrolls into view.
+---Changes only the named state fields (`highlighted`, `extend_from`, `offset`, `scroll`); no rebuild, no `on.state`. A new `highlighted` scrolls into view.
 ---@param patch table
 function NodeRef:set_state(patch) end
 
@@ -474,6 +474,7 @@ function qed.ui.text(props) end
 function qed.ui.editor(props) end
 
 ---Rows built by `item(record)` for the records of `data` (a `qed.list`) in view. Props: `data`, `item`, `highlight_style`.
+---A click on a row highlights it; under a node with scope `"list"` core's `List:` commands (Up/Down, PgUp/PgDn, Home/End, Shift+Up/Down) move it. Either fires `on.state{highlighted, extend_from}`.
 ---@param props table
 ---@return qed.Node
 function qed.ui.virtual_column(props) end
@@ -1172,7 +1173,7 @@ function qed.fs.list(dir) end
 
 ---A list handle over every file and dir under `root` (default `qed.root()`): a threaded parallel walk, prewarmed in the background when a view opens over it, shared by handles with the same options, rerun after `qed.fs` writes under its root (serving the old items until the rerun lands). Dotfiles and the root's ignore set (`List:ignore`) are left out unless `dotfiles`/`ignored`. Items `{label, path, dir?, depth?}`. A filter field ranks paths (capped at `list.max`, default 500, narrowing the previous hits as the query grows), debounced.
 ---@param opts? {root?: string, dotfiles?: boolean, ignored?: boolean}
----@return qed.PaneSource
+---@return qed.Walk
 function qed.fs.walk(opts) end
 
 ---Copies a file or dir tree (modes kept, symlinks copied as links, fifos and devices skipped). Refuses an existing `dst`, a `dst` inside `src` and a special `src`; creates missing parent dirs.

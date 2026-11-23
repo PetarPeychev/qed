@@ -213,3 +213,55 @@ e2e_round7_one_line_fields_do_not_indent_pair_or_break :: proc(t: ^testing.T) {
 	}
 	e2e_key(&e, .Esc)
 }
+
+@(test)
+e2e_round7_core_list_navigation :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_key(&e, .Ctrl_P)
+	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
+	first := palette_selected(&e)
+	e2e_key(&e, .Arrow_Down)
+	second := palette_selected(&e)
+	testing.expect(t, second != "" && second != first, "Down moves the highlight")
+	e2e_key(&e, .End)
+	testing.expect(t, palette_selected(&e) != second, "End jumps to the last row")
+	e2e_key(&e, .Home)
+	testing.expect_value(t, palette_selected(&e), first)
+	e2e_key(&e, .Pgdn)
+	testing.expect(t, palette_selected(&e) != first, "PgDn pages down")
+	e2e_key(&e, .Home)
+	e2e_render(&e)
+	box := node_rect(&e.ed, "palette")
+	e2e_mouse(&e, box.x + 4, box.y + 4)
+	labels := strings.split(palette_labels(&e), "|", context.temp_allocator)
+	testing.expect_value(t, palette_selected(&e), labels[3])
+	for ch in "line wrap" {
+		editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = ch})
+	}
+	wrap := editor_buffer(&e.ed).wrap
+	editor_dispatch(&e.ed, tb2.Event{type = .Key, key = .Enter})
+	plugin_flush(&e.ed)
+	testing.expect(t, editor_buffer(&e.ed).wrap != wrap, "Enter right after typing runs the match for the typed query")
+}
+
+@(test)
+e2e_round7_log_extends_from_core_state :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	for i in 0 ..< 3 {
+		editor_log(&e.ed, .Info, "T", fmt.tprintf("message %d", i), show = false)
+	}
+	e2e_step(&e, tb2.Event{type = .Key, ch = 'l', mod = tb2.Mod.Alt})
+	e2e_ui_settle(&e)
+	e2e_step(&e, tb2.Event{type = .Key, key = .Arrow_Up, mod = tb2.Mod.Shift})
+	node := ui_find(&e.ed.ui, "#log/log_rows")
+	testing.expect(t, node != nil, "the log list is mounted")
+	if node == nil {
+		return
+	}
+	state := ui_node_state_peek(&e.ed.ui, node)
+	testing.expect(t, state.extend_from != "" && state.extend_from != state.highlighted, "Shift+Up extends from the old row")
+	e2e_key(&e, .Arrow_Up)
+	testing.expect_value(t, ui_node_state_peek(&e.ed.ui, node).extend_from, "")
+}

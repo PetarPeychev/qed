@@ -846,7 +846,7 @@ return {setup = function()
 		add("CommandHandle", handle)
 		local h = qed:on("startup", function() end)
 		add("Handle", h)
-		h:off()
+		h:remove()
 		local tm = qed.defer(100000, function() end)
 		add("Timer", tm)
 		tm:stop()
@@ -854,7 +854,7 @@ return {setup = function()
 		add("Proc", pr)
 		pr:kill()
 		local l = qed.fs.walk{}
-		add("PaneSource", l)
+		add("Walk", l)
 		local tree = l:tree()
 		for _, name in ipairs{"get", "at", "index_of", "count", "set_query", "expand", "toggle", "expanded", "reveal", "expand_all", "loading", "more", "release", "expanding", "stop"} do
 			if type(tree[name]) == "function" then out[#out + 1] = "TreeList:" .. name end

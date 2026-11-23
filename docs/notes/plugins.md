@@ -81,7 +81,7 @@ The API forces these core changes:
 The API is one global, `qed`.
 - Buffers are objects (`qed.buf.current()`, `qed.buf.list()`, `ctx.buf`, event arguments); every per-buffer call is a method (`buffer:text()`), and the calling plugin is the owner. APIs taking a buffer (`qed.edit`, `qed.jump`, `qed.close`, `qed.save`, `qed.deco.*`) take an object; ids and `nil` are refused.
 - ⏳ marks a call that yields. Every entry point runs in a coroutine, so yielding is always legal.
-- Failures: an action that can fail returns `true` (or the value it makes, e.g. `qed.open`'s buffer id) on success and `nil, err` on an expected failure (stale rev, unsaved buffer, unknown name, a process that cannot start, a closed view). It raises only for programmer errors: a bad argument type or shape, or a closed buffer id. Actions that cannot fail return nothing; queries return their value, or `nil` when absent. Teardown calls (`handle:off()`, `handle:remove()`, `timer:stop()`, `proc:kill()`, `view:close()`) are no-ops when already done.
+- Failures: an action that can fail returns `true` (or the value it makes, e.g. `qed.open`'s buffer id) on success and `nil, err` on an expected failure (stale rev, unsaved buffer, unknown name, a process that cannot start, a closed view). It raises only for programmer errors: a bad argument type or shape, or a closed buffer id. Actions that cannot fail return nothing; queries return their value, or `nil` when absent. Teardown calls (`handle:remove()`, `handle:remove()`, `timer:stop()`, `proc:kill()`, `view:close()`) are no-ops when already done.
 
 ### Indexing
 - Rows and columns are **1-based**, and columns are **byte** offsets, so `line:find("x")` plugs straight in.
@@ -122,7 +122,7 @@ The API is one global, `qed`.
 | `ctx` | `{buf, path, language, root, selection_text}` (`path` is `""` for an unnamed buffer), plus `items` (the focused pane's selection, any plugin's command), `item` (the item under the cursor in any focused list, shaped like an entry of `items`), `files` (all selected paths, in list order; on a narrowed walk a selected dir stands for its in-scope files) and `view` (this plugin's focused view). A command's ctx is taken when it is invoked, so it stays put across awaits; `files` on a walk keeps the selected rows and expands them on first access, and `selection_text` is read on first access, nil once the buffer changed since the invocation. |
 
 ### Events
-`qed:on(event, fn) -> handle`, removed with `handle:off()`.
+`qed:on(event, fn) -> handle`, removed with `handle:remove()`.
 - Handlers run as coroutines, in plugin load order.
 - A coalesced event fires at most once per main-loop iteration, after dispatch, and again within the same flush for a change a handler (or a task resumed by a dialog) made.
 

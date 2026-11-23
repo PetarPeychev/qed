@@ -72,8 +72,7 @@ local function preview_show(item)
 end
 
 -- a held arrow key reads one file, not one per row
-local function highlight(key)
-	ui.node("search_rows"):set_state{highlighted = key}
+local function preview_soon()
 	local current = view
 	current.preview_due = (current.preview_due or 0) + 1
 	local token = current.preview_due
@@ -84,15 +83,15 @@ local function highlight(key)
 	end)
 end
 
+local function highlight(key)
+	ui.node("search_rows"):set_state{highlighted = key}
+	preview_soon()
+end
+
 local function result_row(record)
 	return ui.row{
 		on = {
-			click = function()
-				highlight(record.key)
-				return true
-			end,
 			double_click = function()
-				highlight(record.key)
 				activate()
 				return true
 			end,
@@ -112,7 +111,7 @@ end
 local function build()
 	local hint = view.results:count() == 0 and view.hint or nil
 	return ui.dismissable{on_dismiss = close,
-		ui.box{id = "search", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
+		ui.box{id = "search", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1}, scope = "list",
 			border = true, title = "Search", bg = "pane_background", fg = "pane_foreground",
 			ui.row{separator = view.preview ~= nil,
 				ui.column{width = view.preview and {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")} or nil, grow = view.preview and 0 or 1,
@@ -124,7 +123,8 @@ local function build()
 					},
 					hint and ui.text{id = "search_hint", fg = "pane_dim_foreground", wrap = true, " ", hint} or false,
 					ui.scroll{grow = 1,
-						ui.virtual_column{id = "search_rows", data = view.results, item = result_row, highlight_style = SELECTED}},
+						ui.virtual_column{id = "search_rows", data = view.results, item = result_row, highlight_style = SELECTED,
+							on = {state = preview_soon}}},
 				},
 				view.preview and ui.editor{id = "search_preview", buffer = view.preview.buffer, grow = 1, readonly = true,
 					syntax = true, line_numbers = true} or false,
@@ -226,20 +226,6 @@ local function query_changed(current)
 	end)
 end
 
-local function move(step)
-	if not view then
-		return
-	end
-	local results = view.results
-	local count = results:count()
-	if count == 0 then
-		return
-	end
-	local record = highlighted()
-	local index = record and results:index_of(record.key) or 0
-	highlight(results:at(math.max(1, math.min(count, index + step))).key)
-end
-
 function activate()
 	if not view then
 		return
@@ -327,8 +313,6 @@ return {
 		min_query = qed.options({min_query = 2}, {min_query = "Characters typed before a search runs"}).min_query
 		qed.command{name = "In Files", key = "Alt+F", welcome = true, run = search}
 		qed.command{name = "In Files", scope = "filetree", run = search_tree}
-		qed.command{name = "Next", scope = "search", key = "Down", run = function() move(1) end}
-		qed.command{name = "Previous", scope = "search", key = "Up", run = function() move(-1) end}
 		qed.command{name = "Open", scope = "search", key = "Enter", run = activate}
 		qed.command{name = "Close", scope = "search", key = "Esc", run = close}
 		qed:on("config_changed", function() min_query = qed.config().min_query end)

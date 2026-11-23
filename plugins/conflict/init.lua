@@ -83,7 +83,7 @@ local function sync_hook()
 	if next(armed) and not hook then
 		hook = qed:on("buf_changed", changed)
 	elseif not next(armed) and hook then
-		hook:off()
+		hook:remove()
 		hook = nil
 	end
 end

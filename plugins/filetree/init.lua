@@ -195,8 +195,7 @@ local function highlighted_path()
 	return path
 end
 
--- typed keys reach the query before its change event runs: catch up before acting on the rows
-local function query_sync()
+local function apply_query()
 	local text = view.query:text()
 	if text ~= view.applied then
 		view.applied = text
@@ -218,7 +217,6 @@ local function selected_range()
 end
 
 local function selected_items()
-	query_sync()
 	local out = {}
 	local low, high = selected_range()
 	for index = low or 1, high or 0 do
@@ -229,7 +227,6 @@ local function selected_items()
 end
 
 local function cursor_item()
-	query_sync()
 	local path = highlighted_path()
 	local row = path and view.tree:get(path)
 	return row and {path = row.path, dir = row.dir} or nil
@@ -267,13 +264,7 @@ local function tree_row(row)
 	end
 	return ui.row{
 		on = {
-			click = function(args)
-				ui.node("filetree_rows"):set_state{highlighted = row.path, extend_from = false}
-				view.changed()
-				return true
-			end,
 			double_click = function()
-				ui.node("filetree_rows"):set_state{highlighted = row.path}
 				view.activate()
 				return true
 			end,
@@ -323,7 +314,7 @@ build = function()
 	local count = tree:count()
 	local empty = count == 0 and tab and tab.empty or nil
 	return ui.dismissable{on_dismiss = function() view.close() end,
-		ui.box{id = "filetree", float = "screen", anchor = "center", width = "100%", height = "100%",
+		ui.box{id = "filetree", float = "screen", anchor = "center", width = "100%", height = "100%", scope = "list",
 			margin = {x = 2, y = 1}, border = true, title = "File Tree", bg = "pane_background", fg = "pane_foreground",
 			ui.column{
 				tab_row(),
@@ -338,7 +329,7 @@ build = function()
 						width = view.preview and {"40%", min = qed.opt("split_tree_min_width"), max = qed.opt("split_tree_max_width")} or nil,
 						empty and ui.text{id = "filetree_hint", fg = "pane_dim_foreground", " ", empty} or false,
 						ui.scroll{id = "filetree_scroll", grow = 1,
-							ui.virtual_column{id = "filetree_rows", data = tree, item = tree_row,
+							ui.virtual_column{id = "filetree_rows", data = tree, item = tree_row, on = {state = function() view.changed() end},
 								highlight_style = {bg = "pane_selection_background"}}},
 					},
 					view.preview and view.preview.buffer and ui.editor{id = "filetree_preview", buffer = view.preview.buffer,
@@ -562,7 +553,7 @@ end
 
 
 local function activate()
-	query_sync()
+	apply_query()
 	local items = selected_items()
 	if #items > 1 then
 		local paths = {}
@@ -651,7 +642,7 @@ local function open(tab)
 			return
 		end
 		local text = view.query:text()
-		query_sync()
+		apply_query()
 		changed()
 	end)
 	ui.node("filetree_query"):focus()
@@ -663,29 +654,6 @@ local function open(tab)
 		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, extend_from = false}
 	end
 	refresh()
-	changed()
-end
-
-local function move(step, extend)
-	if not view then
-		return
-	end
-	query_sync()
-	local tree = view.tree
-	local count = tree:count()
-	if count == 0 then
-		return
-	end
-	local path = highlighted_path()
-	local state = ui.node("filetree_rows"):state()
-	if extend and not (state and state.extend_from) then
-		ui.node("filetree_rows"):set_state{extend_from = path}
-	elseif not extend then
-		ui.node("filetree_rows"):set_state{extend_from = false}
-	end
-	local index = tree:index_of(path or "") or 0
-	index = math.max(1, math.min(count, index + step))
-	ui.node("filetree_rows"):set_state{highlighted = tree:at(index).path}
 	changed()
 end
 
@@ -1248,10 +1216,6 @@ return {
 			spec.scope = "filetree"
 			qed.command(spec)
 		end
-		cmd{name = "Next", key = "Down", run = function() move(1, false) end}
-		cmd{name = "Previous", key = "Up", run = function() move(-1, false) end}
-		cmd{name = "Extend Down", key = "Shift+Down", run = function() move(1, true) end}
-		cmd{name = "Extend Up", key = "Shift+Up", run = function() move(-1, true) end}
 		cmd{name = "Next Tab", key = "Right", run = function() switch_tab(1) end}
 		cmd{name = "Previous Tab", key = "Left", run = function() switch_tab(-1) end}
 		cmd{name = "Activate", key = "Enter", run = activate}

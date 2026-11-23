@@ -102,12 +102,15 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 		}
 		_, _, shortcut := command_effective_bind(command)
 		if shortcut != "" && ui_chord_cached(&editor.ui, shortcut) == chord {
+			// a command acts on what the keys typed before it changed: their change events run first
+			plugin_flush(editor)
 			command.run(editor)
 			return true
 		}
 	}
 	for command in editor.plugins.commands {
 		if command.scope == scope && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
+			plugin_flush(editor)
 			plugin_command_chord(editor, command)
 			return true
 		}
@@ -321,6 +324,10 @@ ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, cell_x, cell_y: int, eve
 ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, cell_y: int, wheel: bool) -> bool {
 	ui := &editor.ui
 	step := -WHEEL_SCROLL_LINES if ev.key == .Mouse_Wheel_Up else WHEEL_SCROLL_LINES
+	if node.is_item && node.parent != nil && node.parent.kind == .Virtual_Column && ev.key == .Mouse_Left && !wheel {
+		ui_list_highlight(editor, node.parent, strings.clone(node.key, context.temp_allocator), false)
+		return true
+	}
 	#partial switch node.kind {
 	case .Terminal:
 		if session := term_find(editor, node.session); session != nil {
@@ -635,3 +642,77 @@ ui_command_dedent :: proc(editor: ^Editor) {
 		buffer_dedent(buffer)
 	}
 }
+
+ui_list_target :: proc(node: ^UiNode) -> ^UiNode {
+	if node == nil {
+		return nil
+	}
+	if node.kind == .Virtual_Column {
+		return node
+	}
+	for child in node.expanded {
+		if found := ui_list_target(child); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+ui_state_changed :: proc(editor: ^Editor, node: ^UiNode) {
+	if node.handlers[.State] == 0 {
+		return
+	}
+	state := ui_node_state_peek(&editor.ui, node)
+	ui_handler_call(editor, node.owner, node.handlers[.State], {state = true, highlighted = state.highlighted, extend_from = state.extend_from})
+}
+
+ui_list_highlight :: proc(editor: ^Editor, node: ^UiNode, key: string, extend: bool) {
+	state := ui_node_state(&editor.ui, node)
+	if state.highlighted == key && extend == (state.extend_from != "") {
+		return
+	}
+	if extend && state.extend_from == "" {
+		state.extend_from = strings.clone(state.highlighted)
+	} else if !extend && state.extend_from != "" {
+		delete(state.extend_from)
+		state.extend_from = ""
+	}
+	delete(state.highlighted)
+	state.highlighted = strings.clone(key)
+	state.reveal = true
+	ui_state_changed(editor, node)
+}
+
+ui_list_move :: proc(editor: ^Editor, step: int, extend := false) {
+	node := ui_list_target(editor.ui.target)
+	if node == nil {
+		return
+	}
+	list := ui_list_find(&editor.ui, node.list)
+	if list == nil {
+		return
+	}
+	ui_list_settle_all(editor, list)
+	count := ui_list_count(list)
+	if count == 0 {
+		return
+	}
+	state := ui_node_state_peek(&editor.ui, node)
+	index, present := ui_list_position(list, state.highlighted)
+	target := clamp(index + step, 0, count - 1) if present else (0 if step > 0 else count - 1)
+	ui_list_highlight(editor, node, strings.clone(ui_list_key(list, target), context.temp_allocator), extend)
+}
+
+ui_list_page :: proc(editor: ^Editor) -> int {
+	node := ui_list_target(editor.ui.target)
+	return max((node.clip.h if node != nil else 1) - 1, 1)
+}
+
+ui_command_list_next :: proc(editor: ^Editor) {ui_list_move(editor, editor_accel_step(editor, .Arrow_Down))}
+ui_command_list_previous :: proc(editor: ^Editor) {ui_list_move(editor, -editor_accel_step(editor, .Arrow_Up))}
+ui_command_list_page_down :: proc(editor: ^Editor) {ui_list_move(editor, ui_list_page(editor))}
+ui_command_list_page_up :: proc(editor: ^Editor) {ui_list_move(editor, -ui_list_page(editor))}
+ui_command_list_first :: proc(editor: ^Editor) {ui_list_move(editor, -max(int) / 2)}
+ui_command_list_last :: proc(editor: ^Editor) {ui_list_move(editor, max(int) / 2)}
+ui_command_list_extend_down :: proc(editor: ^Editor) {ui_list_move(editor, 1, true)}
+ui_command_list_extend_up :: proc(editor: ^Editor) {ui_list_move(editor, -1, true)}

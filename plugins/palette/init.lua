@@ -48,20 +48,6 @@ local function highlighted_key()
 	return state and state.highlighted
 end
 
-local function move_highlight(step)
-	if not palette then
-		return
-	end
-	local matches = palette.matches
-	local count = matches:count()
-	if count == 0 then
-		return
-	end
-	local index = matches:index_of(highlighted_key() or "") or 0
-	index = math.max(1, math.min(count, index + step))
-	ui.node("palette_results"):set_state{highlighted = matches:at(index).name}
-end
-
 local function run_command(name)
 	if not palette or not name then
 		return
@@ -71,31 +57,13 @@ local function run_command(name)
 	qed.run(name, {scope = record and record.scope ~= "global" and record.scope or nil})
 end
 
--- typed keys reach the query before its change event runs: catch up before running
-local function query_sync()
-	local text = palette.query:text()
-	if text ~= palette.applied then
-		palette.applied = text
-		palette.matches:set_query(text)
-		local first = palette.matches:at(1)
-		ui.node("palette_results"):set_state{highlighted = first and first.name or false}
-	end
-end
-
 local function run_highlighted()
-	if palette then
-		query_sync()
-	end
 	run_command(highlighted_key())
 end
 
 local function command_row(record)
 	return ui.row{
 		on = {
-			click = function()
-				ui.node("palette_results"):set_state{highlighted = record.name}
-				return true
-			end,
 			double_click = function()
 				run_command(record.name)
 				return true
@@ -108,7 +76,7 @@ end
 
 local function build(matches, query, empty)
 	return ui.dismissable{on_dismiss = close_palette,
-		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit",
+		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
 			ui.column{
@@ -139,7 +107,7 @@ local function open_palette()
 	-- over a focused pane its own commands, else the global ones
 	local wanted = {}
 	for _, focus_scope in ipairs(qed.ui.focus_scopes()) do
-		if focus_scope ~= "editor" then
+		if focus_scope ~= "editor" and focus_scope ~= "list" then
 			wanted[focus_scope] = true
 		end
 	end
@@ -160,16 +128,14 @@ local function open_palette()
 	options = qed.config()
 	local handle = ui.mount("pane", build(matches, query, empty))
 	query:on("change", function()
-		local text = query:text()
-		palette.applied = text
-		matches:set_query(text)
+		matches:set_query(query:text())
 		if (matches:count() == 0) ~= empty then
 			empty = not empty
 			handle:update(build(matches, query, empty))
 		end
 		highlight_first(matches)
 	end)
-	palette = {commands = commands, matches = matches, query = query, handle = handle, applied = ""}
+	palette = {commands = commands, matches = matches, query = query, handle = handle}
 	ui.node("palette_query"):focus()
 	highlight_first(matches)
 end
@@ -179,8 +145,6 @@ return {
 		qed.meta{display_name = "Palette", description = "Command palette on qed.ui"}
 		options = qed.options({width = 64}, {width = "Width of the palette box in cells"})
 		qed.command{name = "Open", bind_from = "Command Palette", run = open_palette}
-		qed.command{name = "Next", scope = "palette", key = "Down", run = function() move_highlight(1) end}
-		qed.command{name = "Previous", scope = "palette", key = "Up", run = function() move_highlight(-1) end}
 		qed.command{name = "Run", scope = "palette", key = "Enter", run = run_highlighted}
 		qed.command{name = "Close", scope = "palette", key = "Esc", run = close_palette}
 	end,

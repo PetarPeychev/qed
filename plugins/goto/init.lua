@@ -18,7 +18,7 @@ local function close()
 	end
 	local closing = view
 	view = nil
-	closing.watch:off()
+	closing.watch:remove()
 	closing.handle:unmount()
 	closing.query:close()
 	closing.preview:close()
@@ -31,23 +31,22 @@ local function highlighted()
 	return key and view.lines:get(key) or view.lines:at(1)
 end
 
-local function highlight(key)
-	ui.node("goto_rows"):set_state{highlighted = key}
+local function preview_follow()
 	local record = highlighted()
 	if record then
 		view.preview:set_cursor({row = math.min(record.row, view.preview:line_count()), col = 1})
 	end
 end
 
+local function highlight(key)
+	ui.node("goto_rows"):set_state{highlighted = key}
+	preview_follow()
+end
+
 local function line_row(record)
 	return ui.row{
 		on = {
-			click = function()
-				highlight(record.key)
-				return true
-			end,
 			double_click = function()
-				highlight(record.key)
 				activate()
 				return true
 			end,
@@ -59,7 +58,7 @@ end
 
 local function build()
 	return ui.dismissable{on_dismiss = close,
-		ui.box{id = "goto", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1},
+		ui.box{id = "goto", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1}, scope = "list",
 			border = true, title = "Go to Line", bg = "pane_background", fg = "pane_foreground",
 			ui.row{
 				ui.column{width = {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")},
@@ -69,7 +68,8 @@ local function build()
 							placeholder = "text, a line number, or :line:column"},
 					},
 					ui.scroll{grow = 1,
-						ui.virtual_column{id = "goto_rows", data = view.lines, item = line_row, highlight_style = SELECTED}},
+						ui.virtual_column{id = "goto_rows", data = view.lines, item = line_row, highlight_style = SELECTED,
+							on = {state = preview_follow}}},
 				},
 				ui.editor{id = "goto_preview", buffer = view.preview, grow = 1, readonly = true, syntax = true, line_numbers = true},
 			},
@@ -77,7 +77,7 @@ local function build()
 	}
 end
 
-local function query_sync()
+local function apply_query()
 	local text = view.query:text()
 	if text == view.applied then
 		return
@@ -88,26 +88,10 @@ local function query_sync()
 	highlight(first and first.key or false)
 end
 
-local function move(step)
-	if not view then
-		return
-	end
-	query_sync()
-	local lines = view.lines
-	local count = lines:count()
-	if count == 0 then
-		return
-	end
-	local record = highlighted()
-	local index = record and lines:index_of(record.key) or 0
-	highlight(lines:at(math.max(1, math.min(count, index + step))).key)
-end
-
 function activate()
 	if not view then
 		return
 	end
-	query_sync()
 	local record = highlighted()
 	local buffer = view.buffer
 	close()
@@ -143,7 +127,7 @@ local function find_line(ctx)
 	end)
 	query:on("change", function()
 		if view == current then
-			query_sync()
+			apply_query()
 		end
 	end)
 	ui.node("goto_query"):focus()
@@ -151,7 +135,7 @@ local function find_line(ctx)
 	if start then
 		query:set_text(start)
 		query:set_selection({row = 1, col = 1}, {row = 1, col = #start + 1})
-		query_sync()
+		apply_query()
 	else
 		highlight(tostring(buffer:cursor().row))
 	end
@@ -161,7 +145,7 @@ local function state()
 	if not view then
 		return nil
 	end
-	query_sync()
+	apply_query()
 	local labels = {}
 	for index = 1, view.lines:count() do
 		labels[index] = view.lines:at(index).label
@@ -174,8 +158,6 @@ return {
 	setup = function()
 		qed.meta{display_name = "Go to", description = "Fuzzy jump to a line"}
 		qed.command{name = "Line", key = "Ctrl+g", run = find_line}
-		qed.command{name = "Next", scope = "goto", key = "Down", run = function() move(1) end}
-		qed.command{name = "Previous", scope = "goto", key = "Up", run = function() move(-1) end}
 		qed.command{name = "Jump", scope = "goto", key = "Enter", run = activate}
 		qed.command{name = "Close", scope = "goto", key = "Esc", run = close}
 		qed.export{state = state}

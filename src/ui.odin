@@ -114,6 +114,7 @@ UiEvent :: enum u8 {
 	Double_Click,
 	Wheel,
 	Link,
+	State,
 }
 
 ui_event_names := [UiEvent]string {
@@ -123,6 +124,7 @@ ui_event_names := [UiEvent]string {
 	.Double_Click = "double_click",
 	.Wheel        = "wheel",
 	.Link         = "link",
+	.State        = "state",
 }
 
 UiItem :: struct {

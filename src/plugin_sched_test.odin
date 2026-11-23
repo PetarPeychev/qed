@@ -411,7 +411,7 @@ plugin_sched_coalesce :: proc(t: ^testing.T) {
 				last = b.id .. ":" .. rev
 			end)
 			qed:on("cursor_moved", function(b) moved = moved + 1 end)
-			qed.command{name = "Off", run = function() h:off() end}
+			qed.command{name = "Off", run = function() h:remove() end}
 		end}`}}
 	plugin_load(ed, pl)
 	testing.expect_value(t, pl.last_error, "")

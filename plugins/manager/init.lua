@@ -61,13 +61,7 @@ local function plugin_row(record)
 	local fg = STATUS_COLORS[record.status]
 	return ui.row{fg = fg,
 		on = {
-			click = function()
-				ui.node("plugin_rows"):set_state{highlighted = record.id}
-				view.handle:update(view.build())
-				return true
-			end,
 			double_click = function()
-				ui.node("plugin_rows"):set_state{highlighted = record.id}
 				open_source()
 				return true
 			end,
@@ -117,7 +111,8 @@ local function build()
 						ui.text{width = view.widths.source + 1, " Source"},
 						ui.text{width = view.widths.status + 1, " Status"},
 						ui.text{width = view.widths.load + 2, align = "right", "Load "}},
-					ui.virtual_column{id = "plugin_rows", scope = "plugins", data = view.records, item = plugin_row,
+					ui.virtual_column{id = "plugin_rows", scope = {"plugins", "list"}, data = view.records, item = plugin_row,
+						on = {state = function() view.handle:update(view.build()) end},
 						highlight_style = {bg = "pane_selection_background"}}},
 				ui.text{height = 1, fg = selected and selected.error ~= "" and "error_foreground" or "pane_dim_foreground", footer},
 			},
@@ -152,18 +147,6 @@ local function open()
 	view.handle = ui.mount("pane", build())
 	refresh()
 	ui.node("plugin_rows"):focus()
-end
-
-local function move(step)
-	if not view or view.source then
-		return
-	end
-	local records = view.records
-	local selected = highlighted()
-	local index = selected and records:index_of(selected.id) or 0
-	index = math.max(1, math.min(records:count(), index + step))
-	ui.node("plugin_rows"):set_state{highlighted = records:at(index).id}
-	view.handle:update(build())
 end
 
 local function toggle_enabled()
@@ -244,8 +227,6 @@ return {
 		qed.meta{display_name = "Plugin Manager", description = "Lists plugins: enable, disable, reload, source and log"}
 		options = qed.options({max_width = 120}, {max_width = "Max width of the Plugins pane"})
 		qed.command{name = "Open", welcome = true, run = open}
-		qed.command{name = "Next", scope = "plugins", key = "Down", run = function() move(1) end}
-		qed.command{name = "Previous", scope = "plugins", key = "Up", run = function() move(-1) end}
 		qed.command{name = "Enable/Disable", scope = "plugins", key = "e", run = toggle_enabled}
 		qed.command{name = "Reload", scope = "plugins", key = "r", run = reload}
 		qed.command{name = "Show Log", scope = "plugins", key = "l", run = show_log}

@@ -984,6 +984,9 @@ qed_ui_ref_rect :: proc "c" (L: ^lua.State) -> c.int {
 UiHandlerArgs :: struct {
 	chord, text: string,
 	target:      string,
+	state:       bool,
+	highlighted: string,
+	extend_from: string,
 	x, y:        int,
 	button:      string,
 	mouse:       bool,
@@ -1014,6 +1017,16 @@ ui_handler_c :: proc "c" (L: ^lua.State) -> c.int {
 		if args.target != "" {
 			lua.pushodinstring(L, args.target)
 			lua.setfield(L, -2, "target")
+		}
+		if args.state {
+			if args.highlighted != "" {
+				lua.pushodinstring(L, args.highlighted)
+				lua.setfield(L, -2, "highlighted")
+			}
+			if args.extend_from != "" {
+				lua.pushodinstring(L, args.extend_from)
+				lua.setfield(L, -2, "extend_from")
+			}
 		}
 	}
 	lua.call(L, 1, 1)

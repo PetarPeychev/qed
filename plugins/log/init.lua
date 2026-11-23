@@ -12,7 +12,7 @@ local CHIPS = {
 local options
 local filters = {debug = false, info = true, warn = true, error = true, history = false}
 local view
-local close_all, mark_selection, toggle
+local close_all, toggle
 
 local function first_line(text)
 	return (text:match("^[^\n]*"))
@@ -20,16 +20,7 @@ end
 
 local function message_row(record)
 	local style = {fg = LEVEL_COLORS[record.level]}
-	if record.selected then
-		style.bg = "pane_selection_background"
-	end
-	return ui.row{bg = style.bg,
-		on = {click = function()
-			ui.node("log_rows"):set_state{highlighted = record.seq}
-			view.anchor = nil
-			mark_selection()
-			return true
-		end},
+	return ui.row{
 		ui.text{width = 9, fg = "pane_dim_foreground", record.time},
 		ui.text{width = 12, fg = style.fg, record.source},
 		ui.text{grow = 1, fg = style.fg, first_line(record.text)},
@@ -66,7 +57,7 @@ local function build()
 			ui.column{
 				ui.scroll{id = "log_scroll", grow = 1, follow = true,
 					header = ui.row{bold = true, ui.text{width = 9, "Time"}, ui.text{width = 12, "Source"}, ui.text{grow = 1, "Message"}},
-					ui.virtual_column{id = "log_rows", scope = "log", data = view.messages, item = message_row,
+					ui.virtual_column{id = "log_rows", scope = {"log", "list"}, data = view.messages, item = message_row,
 						highlight_style = {bg = "pane_selection_background"}}},
 				chip_row(),
 			},
@@ -85,31 +76,13 @@ end
 
 local function selected_range()
 	local messages = view.messages
-	local cursor = messages:index_of(highlighted() or -1)
+	local state = ui.node("log_rows"):state()
+	local cursor = state and state.highlighted and messages:index_of(state.highlighted)
 	if not cursor then
 		return nil
 	end
-	local anchor = view.anchor and messages:index_of(view.anchor) or cursor
-	return math.min(anchor, cursor), math.max(anchor, cursor)
-end
-
-function mark_selection()
-	local messages = view.messages
-	for seq in pairs(view.marked) do
-		if messages:get(seq) then
-			messages:set(seq, {selected = false})
-		end
-	end
-	view.marked = {}
-	if not view.anchor then
-		return
-	end
-	local low, high = selected_range()
-	for index = low or 1, high or 0 do
-		local record = messages:at(index)
-		messages:set(record.seq, {selected = true})
-		view.marked[record.seq] = true
-	end
+	local from = state.extend_from and messages:index_of(state.extend_from) or cursor
+	return math.min(from, cursor), math.max(from, cursor)
 end
 
 local function messages_of(source)
@@ -125,7 +98,7 @@ end
 
 local function reload()
 	view.messages = messages_of(view.source)
-	view.marked, view.anchor = {}, nil
+	ui.node("log_rows"):set_state{extend_from = false}
 	view.handle:update(build())
 	show_end()
 end
@@ -140,7 +113,7 @@ local function open_log(source)
 		end
 		view.handle:unmount()
 	end
-	view = {source = source, marked = {}, messages = messages_of(source)}
+	view = {source = source, messages = messages_of(source)}
 	view.handle = ui.mount("pane", build())
 	show_end()
 	ui.node("log_rows"):focus()
@@ -164,27 +137,6 @@ close_all = function()
 		view.handle:unmount()
 		view = nil
 	end
-end
-
-local function move(step, extend)
-	if not view then
-		return
-	end
-	local messages = view.messages
-	local count = messages:count()
-	if count == 0 then
-		return
-	end
-	local current = highlighted()
-	if extend and not view.anchor then
-		view.anchor = current
-	elseif not extend then
-		view.anchor = nil
-	end
-	local index = messages:index_of(current or -1) or count
-	index = math.max(1, math.min(count, index + step))
-	ui.node("log_rows"):set_state{highlighted = messages:at(index).seq}
-	mark_selection()
 end
 
 local function selected_records()
@@ -245,10 +197,6 @@ return {
 		options = qed.options({max_width = 120}, {max_width = "Max width of the message log box in cells"})
 		qed.command{name = "Open", key = "Alt+l", welcome = true, run = function() open_log(nil) end}
 		qed.export{show = function(source) open_log(source) end}
-		qed.command{name = "Next", scope = "log", key = "Down", run = function() move(1, false) end}
-		qed.command{name = "Previous", scope = "log", key = "Up", run = function() move(-1, false) end}
-		qed.command{name = "Extend Down", scope = "log", key = "Shift+Down", run = function() move(1, true) end}
-		qed.command{name = "Extend Up", scope = "log", key = "Shift+Up", run = function() move(-1, true) end}
 		qed.command{name = "Copy", scope = "log", bind_from = "Copy", run = copy}
 		qed.command{name = "Full Text", scope = "log", key = "Enter", run = show_full}
 		qed.command{name = "Close", scope = "log", key = "Esc", run = close_log}

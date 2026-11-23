@@ -105,14 +105,14 @@ local function sync_hook()
 	if want and not hook then
 		hook = qed:on("buf_changed", changed)
 	elseif not want and hook then
-		hook:off()
+		hook:remove()
 		hook = nil
 	end
 	if #edits > 0 and not hooks then
 		hooks = {qed:on("buf_reload", reloaded), qed:on("buf_close", closed)}
 	elseif #edits == 0 and hooks then
-		hooks[1]:off()
-		hooks[2]:off()
+		hooks[1]:remove()
+		hooks[2]:remove()
 		hooks = nil
 	end
 end

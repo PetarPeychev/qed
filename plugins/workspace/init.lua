@@ -89,12 +89,7 @@ end
 local function dir_row(record)
 	return ui.row{
 		on = {
-			click = function()
-				ui.node("workspace_rows"):set_state{highlighted = record.name}
-				return true
-			end,
 			double_click = function()
-				ui.node("workspace_rows"):set_state{highlighted = record.name}
 				drill()
 				return true
 			end,
@@ -105,7 +100,7 @@ end
 
 local function build()
 	return ui.dismissable{on_dismiss = close,
-		ui.box{id = "workspace", float = "screen", anchor = "top", width = WIDTH, height = "fit",
+		ui.box{id = "workspace", float = "screen", anchor = "top", width = WIDTH, height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, bg = "pane_background", fg = "pane_foreground",
 			ui.column{
@@ -120,7 +115,7 @@ local function build()
 	}
 end
 
-local function query_sync()
+local function apply_query()
 	local text = view.query:text()
 	if text == view.applied then
 		return
@@ -144,14 +139,13 @@ end
 local function set_query(text)
 	view.query:set_text(text)
 	view.query:set_cursor({row = 1, col = #text + 1})
-	query_sync()
+	apply_query()
 end
 
 function drill()
 	if not view then
 		return
 	end
-	query_sync()
 	local record = highlighted()
 	if record then
 		local text = view.query:text()
@@ -171,11 +165,10 @@ local function type_text(text)
 	else
 		view.query:insert(view.query:cursor(), text)
 	end
-	query_sync()
+	apply_query()
 end
 
 local function slash()
-	query_sync()
 	if caret_at_end() and view.dirs:count() > 0 then
 		drill()
 	else
@@ -200,21 +193,7 @@ local function backspace()
 			view.query:delete({row = 1, col = last}, cursor)
 		end
 	end
-	query_sync()
-end
-
-local function move(step)
-	if not view then
-		return
-	end
-	query_sync()
-	local count = view.dirs:count()
-	if count == 0 then
-		return
-	end
-	local record = highlighted()
-	local index = record and view.dirs:index_of(record.name) or 0
-	ui.node("workspace_rows"):set_state{highlighted = view.dirs:at(math.max(1, math.min(count, index + step))).name}
+	apply_query()
 end
 
 local function picker(text)
@@ -225,7 +204,7 @@ local function picker(text)
 	local current = view
 	view.query:on("change", function()
 		if view == current then
-			query_sync()
+			apply_query()
 		end
 	end)
 	ui.node("workspace_query"):focus()
@@ -294,7 +273,7 @@ local function state()
 	if not view then
 		return nil
 	end
-	query_sync()
+	apply_query()
 	local labels, paths = {}, {}
 	for index = 1, view.dirs:count() do
 		local record = view.dirs:at(index)
@@ -311,8 +290,6 @@ return {
 		qed.meta{description = "Switches the working root directory"}
 		qed.command{name = "Open Directory", key = "Ctrl+o", welcome = true, run = open_directory}
 		qed.command{name = "Open Selected Directory", keybind = "Open Directory", scope = "filetree", run = open_selected}
-		qed.command{name = "Next", scope = "workspace", key = "Down", run = function() move(1) end}
-		qed.command{name = "Previous", scope = "workspace", key = "Up", run = function() move(-1) end}
 		qed.command{name = "Drill", scope = "workspace", key = "Tab", run = drill}
 		qed.command{name = "Slash", scope = "workspace", key = "/", run = slash}
 		qed.command{name = "Back", scope = "workspace", key = "Backspace", run = backspace}

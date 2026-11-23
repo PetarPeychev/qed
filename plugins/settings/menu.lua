@@ -280,11 +280,6 @@ end
 
 local function setting_row(record)
 	return ui.row{
-		on = {click = function()
-			ui.node("settings_rows"):set_state{highlighted = record.key}
-			menu.rebuild()
-			return true
-		end},
 		ui.text{width = 1, fg = "git_modified", record.user and "▎" or " "},
 		ui.text{width = view.name_width, record.name},
 		ui.text{grow = 1, " ", record.value},
@@ -323,7 +318,7 @@ end
 local function build()
 	local columns = COLUMNS[tab]
 	return ui.dismissable{on_dismiss = function() menu.dismiss() end,
-		ui.box{float = "screen", anchor = "center", width = {"100%", max = opts.max_width}, height = "100%",
+		ui.box{float = "screen", anchor = "center", width = {"100%", max = opts.max_width}, height = "100%", scope = "list",
 		margin = {x = 2, y = 1}, border = true, title = "Settings", bg = "pane_background", fg = "pane_foreground",
 		ui.column{
 			tab_row(),
@@ -334,7 +329,7 @@ local function build()
 			},
 			ui.scroll{id = "settings_scroll", grow = 1,
 				header = ui.row{bold = true, ui.text{width = 1, " "}, ui.text{width = view.name_width, columns[1]}, ui.text{grow = 1, " ", columns[2]}},
-				ui.virtual_column{id = "settings_rows", data = view.matches, item = setting_row,
+				ui.virtual_column{id = "settings_rows", data = view.matches, item = setting_row, on = {state = function() menu.rebuild() end},
 					highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 			ui.row{ui.text{width = 1, " "}, ui.text{grow = 1, wrap = true, fg = "pane_dim_foreground", info_of(rows[highlighted() or ""])}},
 			footer(),
@@ -574,21 +569,6 @@ function menu.switch_tab(index)
 	refresh(true)
 end
 
-local function move(step)
-	if not view then
-		return
-	end
-	local matches = view.matches
-	local count = matches:count()
-	if count == 0 then
-		return
-	end
-	local index = matches:index_of(highlighted() or "") or 0
-	index = math.max(1, math.min(count, index + step))
-	ui.node("settings_rows"):set_state{highlighted = matches:at(index).key}
-	menu.rebuild()
-end
-
 function menu.dismiss()
 	if not view then
 		return
@@ -668,8 +648,6 @@ function menu.setup()
 	qed.command{name = "Open", welcome = true, run = menu.open}
 	qed.command{name = "Reset", scope = "settings", key = "Ctrl+d", run = menu.reset}
 	qed.command{name = "Edit", scope = "settings", key = "Enter", run = activate}
-	qed.command{name = "Next", scope = "settings", key = "Down", run = function() move(1) end}
-	qed.command{name = "Previous", scope = "settings", key = "Up", run = function() move(-1) end}
 	qed.command{name = "Next Tab", scope = "settings", key = "Tab", run = function() menu.switch_tab() end}
 	qed.command{name = "Close", scope = "settings", key = "Esc", run = close}
 	qed.command{name = "Submit", scope = "settings_input", key = "Enter", run = submit}

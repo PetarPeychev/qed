@@ -34,7 +34,8 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 - State is core's, keyed by identity, never in the node table: `highlighted` (column, row, virtual_column),
   `extend_from` (virtual_column: the rows from it to `highlighted` draw highlighted too, a range selection),
   `offset` (scroll), `scroll` (editor; per editor node and buffer). `set_state` changes only named fields, fires
-  nothing, and a new `highlighted` scrolls into view. `state()` reports `highlighted` only while that key is in the
+  nothing, and a new `highlighted` scrolls into view. When core changes `highlighted` (list keys, a row click) the
+  node's `on.state{highlighted, extend_from}` fires. `state()` reports `highlighted` only while that key is in the
   data. States of id'd nodes live until their plugin unloads; others go with their node.
 - Replaced trees are freed at the next frame; when a handler changes a mount, bubbling stops.
 
@@ -92,12 +93,17 @@ Positional values are children, named values are props. Common props: `id`, `key
 
 ## 5. Events, keys, focus
 
-- Handlers `on = {key, paste, click, double_click, wheel, link}`, `function(event) -> handled`, synchronous (no yields).
+- Handlers `on = {key, paste, click, double_click, wheel, link, state}`, `function(event) -> handled`, synchronous (no yields).
   Key events carry `chord` (`"Ctrl+s"`, `"Shift+Up"`, `"Esc"`, `"x"`) and `text`; mouse events `x`, `y` (1-based,
   node-relative) and `button`. A double click fires the `click` bubble, then the `double_click` bubble.
 - Keys: from the focused node up to the root; at each node its `scope` names in order (commands of that scope on
   their chord), then `on.key`, then an editor's typing. Then plugin global binds, then core global binds (both by
-  chord). A command of a scope acts on the node whose scope matched. Unknown scope names warn once.
+  chord). A command of a scope acts on the node whose scope matched. Unknown scope names warn once. A command key
+  first runs the change events of the keys typed before it, so it sees their effect.
+- The `list` scope: core's `List: Next/Previous` (held-key acceleration), `Page Down/Up`, `First/Last` and
+  `Extend Down/Up` (set `extend_from`) move the highlight of the first `virtual_column` under the node carrying the
+  scope. A click on a row highlights it. An editor one row high lets Up/Down bubble, so a query field above a list
+  just works.
 - Focus: exactly one node, set by its owner with `ref:focus()` (any node with an id). Editors focus themselves on a
   click. When the focused node leaves the tree, focus returns to the most recent node still there (16 deep).
 - Mouse: the topmost node under the pointer bubbles to the root; unhandled, the next node below continues. Scroll
@@ -148,10 +154,7 @@ The global bus is `qed:on(event, fn)` / `qed:emit("<id>:<event>", data)`; `messa
 ```lua
 local function command_row(record)
 	return ui.row{
-		on = {
-			click = function() ui.node("palette_results"):set_state{highlighted = record.name} return true end,
-			double_click = function() run_command(record.name) return true end,
-		},
+		on = {double_click = function() run_command(record.name) return true end},
 		ui.text{grow = 1, " ", table.unpack(name_spans(record, palette.matches:positions(record.name)))},
 		ui.text{fg = "pane_shortcut_foreground", record.shortcut, " "},
 	}
@@ -160,7 +163,7 @@ end
 local function build(matches, query, empty)
 	return ui.column{float = "screen", width = "100%", height = "100%",
 		on = {click = function() close_palette() return true end},
-		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit",
+		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
 			on = {click = function() return true end},
@@ -204,22 +207,21 @@ local function open_palette()
 end
 
 qed.command{name = "Open", bind_from = "Command Palette", run = open_palette}
-qed.command{name = "Next", scope = "palette", key = "Down", run = function() move_highlight(1) end}
-qed.command{name = "Previous", scope = "palette", key = "Up", run = function() move_highlight(-1) end}
 qed.command{name = "Run", scope = "palette", key = "Enter", run = run_highlighted}
 qed.command{name = "Close", scope = "palette", key = "Esc", run = close_palette}
 ```
 
-The field lists `palette` before `editor`, so Up/Down/Enter/Esc reach the palette's commands before the editor's.
+The field lists `palette` before `editor`, so Enter/Esc reach the palette's commands before the editor's; Up/Down
+bubble to the box's `list` scope.
 The full-screen column closes on an outside click; the box swallows clicks inside.
 
 ## Open
 
-- Not built: `virtual_row` nodes, `qed.markdown.parse`, resizable containers, multi-row
-  virtual items, plain-table `data`, `focus`/`blur`/`state`/`drag`/`release` events, span `on.click`, keyboard
+- Not built: `virtual_row` nodes, resizable containers, multi-row
+  virtual items, plain-table `data`, `focus`/`blur`/`drag`/`release` events, span `on.click`, keyboard
   scrolling of `scroll`.
 - Per-view editor state (cursor, wrap) instead of the buffer's.
-- List navigation helpers and the fuzzy span builder, once a second picker exists.
+- The fuzzy span builder, once a second picker needs it.
 - `qed.commands()`, `qed.fs.walk`, `qed.buffers()` returning `qed.List`; the palette listing the scope chain.
 - Removed with the old panes (no move target): `split_preview_min_width`/`split_preview_max_width`, icon
   `preview_more`, tint `pane_backdrop`.
