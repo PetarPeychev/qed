@@ -29,35 +29,23 @@ rename_open :: proc(editor: ^Editor) {
 	buffer.cursor = {0, len(word)}
 	buffer.selection = Cursor{0, 0}
 
-	node :: proc(kind: UiKind, id := "") -> ^UiNode {
-		n := new(UiNode)
-		n.kind = kind
-		n.id = strings.clone(id)
-		return n
-	}
-	add :: proc(parent, child: ^UiNode) {
-		append(&parent.child_slots, len(parent.children))
-		append(&parent.children, child)
-		child.parent = parent
-	}
-	box := node(.Box, "rename")
+	box := ui_core_node(.Box, "rename")
 	box.float, box.anchor, box.border = .Screen, .Top, true
 	box.width = {form = .Cells, value = SAFETY_WIDTH}
 	box.height = {form = .Fit}
 	box.margin = {3, 2, 2, 2}
-	box.style = {set = {.Fg, .Bg}, fg = strings.clone("pane_foreground"), bg = strings.clone("pane_background")}
-	row := node(.Row)
-	add(box, row)
-	prompt := node(.Text)
-	append(&prompt.spans, UiSpan{text = strings.clone("Rename to: "), style = {set = {.Fg}, fg = strings.clone("pane_prompt_foreground")}})
-	add(row, prompt)
-	field := node(.Editor, "rename_field")
+	box.style = ui_core_pane_style()
+	row := ui_core_node(.Row)
+	ui_core_add(box, row)
+	prompt := ui_core_text("Rename to: ", fg = "pane_prompt_foreground")
+	ui_core_add(row, prompt)
+	field := ui_core_node(.Editor, "rename_field")
 	field.buffer = buffer.id
 	field.height = {form = .Cells, value = 1}
 	field.grow, field.grow_set = 1, true
 	field.scope = make([]string, 1)
 	field.scope[0] = strings.clone("editor")
-	add(row, field)
+	ui_core_add(row, field)
 	editor.rename = {handle = ui_mount_add(editor, "", "alert", box), buffer = buffer}
 	ui_resolve(editor)
 	ui_focus_set(editor, field.identity)

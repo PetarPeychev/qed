@@ -16,6 +16,7 @@ UiMarkdownJob :: struct {
 UiMarkdown :: struct {
 	source: string,
 	dir:    string,
+	lang:   Language,
 	w:      int,
 	lines:  []MdLine,
 	arena:  vmem.Arena,
@@ -30,10 +31,10 @@ ui_markdown_of :: proc(editor: ^Editor, node: ^UiNode) -> ^UiMarkdown {
 		md.w = -1
 		ui.markdowns[strings.clone(node.identity)] = md
 	}
-	if md.source != node.source || md.dir != node.path {
+	if md.source != node.source || md.dir != node.path || md.lang != node.md_lang {
 		delete(md.source)
 		delete(md.dir)
-		md.source, md.dir = strings.clone(node.source), strings.clone(node.path)
+		md.source, md.dir, md.lang = strings.clone(node.source), strings.clone(node.path), node.md_lang
 		ui_markdown_reset(md)
 	}
 	return md
@@ -51,7 +52,7 @@ ui_markdown_lines :: proc(md: ^UiMarkdown, w: int) -> []MdLine {
 		job := new(UiMarkdownJob)
 		job.w = w
 		context.temp_allocator = vmem.arena_allocator(&job.arena)
-		md_job_start(&job.job, strings.clone(md.source, context.temp_allocator), w, .Plain, strings.clone(md.dir, context.temp_allocator))
+		md_job_start(&job.job, strings.clone(md.source, context.temp_allocator), w, md.lang, strings.clone(md.dir, context.temp_allocator))
 		md.job = job
 		ui_markdown_step(md, md_slice_ms)
 	}

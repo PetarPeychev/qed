@@ -225,13 +225,10 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	ui := &editor.ui
 	cell_x, cell_y := int(ev.x), int(ev.y)
 	motion := (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
-	// the hover box takes the wheel over it; any other click or wheel dismisses the caret popups
-	if editor.hover_active && ui_rect_has(editor.hover_rect, cell_x, cell_y) && (ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down) {
-		step := -WHEEL_SCROLL_LINES if ev.key == .Mouse_Wheel_Up else WHEEL_SCROLL_LINES
-		editor.hover_scroll = max(0, editor.hover_scroll + step)
-		return true
-	}
-	if !motion && ev.key != .Mouse_Release {
+	// the wheel over a caret popup scrolls it; any other click or wheel dismisses the caret popups
+	popup := caret_popup_root(editor)
+	over_popup := popup != nil && ui_rect_has(popup.rect, cell_x, cell_y) && (ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down)
+	if !motion && ev.key != .Mouse_Release && !over_popup {
 		editor.hover_active = false
 		completion_dismiss(editor)
 		inline_dismiss(editor)

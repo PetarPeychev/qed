@@ -1143,7 +1143,6 @@ lsp_apply_hover :: proc(editor: ^Editor, obj: json.Object) -> bool {
 	clear(&editor.hover)
 	append(&editor.hover, ..transmute([]u8)text)
 	editor.hover_active = true
-	editor.hover_scroll = 0
 	editor.hover_lang = editor_buffer(editor).language
 	return true
 }

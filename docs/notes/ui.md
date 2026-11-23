@@ -76,6 +76,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `outlet` | none | `id` |
 | `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |
 | `image` | none | `path` (relative to the root); natural size from the pixel size and the cell size; `[image: name]` without graphics |
+| `status` | none | the status bar: core segments (position, indent, `[i/n]`, LSP, diff base) and `qed.status.set` segments, fitted in core (drop order, then clipping with `…`); the `layout` plugin places it |
 | (`qed.markdown.parse(text, opts)`) | none | the rendered document as one core node for a `scroll` (it reports its rows at the scroll width); opts are props: `id`, `dir`, `margin`, `on.link` |
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and
@@ -86,6 +87,8 @@ Positional values are children, named values are props. Common props: `id`, `key
   `rows`, `sources` (source rows of the visible lines), `heading` (source row of the last `heading` set).
   `set_state{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the
   document allows) or `{heading = slug}` moves the holding scroll, now when shown, else at the next layout.
+- `qed.ui.dismissable{on_dismiss = fn, pane, ...}` (prelude): a full-screen catcher column holding the panes; a
+  click outside them calls `on_dismiss`, a click inside stays with the pane after its own `on.click`.
 - `virtual_column`: `item` runs in a batched step between layout passes, only for records coming into view, cached
   per record until that record changes, the query changes, or `data`/`item` identity changes on `update`. Items are
   one row; items far outside the window are evicted. An `item` error draws an error row.
@@ -160,12 +163,10 @@ local function command_row(record)
 end
 
 local function build(matches, query, empty)
-	return ui.column{float = "screen", width = "100%", height = "100%",
-		on = {click = function() close_palette() return true end},
+	return ui.dismissable{on_dismiss = close_palette,
 		ui.box{id = "palette", float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
-			on = {click = function() return true end},
 			ui.column{
 				ui.row{
 					ui.text{fg = "pane_prompt_foreground", "> "},
@@ -212,7 +213,7 @@ qed.command{name = "Close", scope = "palette", key = "Esc", run = close_palette}
 
 The field lists `palette` before `editor`, so Enter/Esc reach the palette's commands before the editor's; Up/Down
 bubble to the box's `list` scope.
-The full-screen column closes on an outside click; the box swallows clicks inside.
+`dismissable` closes the palette on an outside click; a click inside the box stays with it.
 
 ## Open
 

@@ -1,0 +1,67 @@
+qed-e2e snapshot 80x24 cursor 10,6
+-- text
+  1›#include <stdio.h>
+  2
+  3 int add(int a, int b) { return a + b; }
+  4
+  5 int main(void) {
+  6     int x = add(1, 2);
+  7»    ad
+  8     ┌────────────────────────────────┐
+  9     │ add(int a, int b)          int │
+ 10 }   │ BUS_ADRALN    enum <anonymous> │
+ 11     │ BUS_ADRERR    enum <anonymous> │
+        │ SEGV_ADIDERR  enum <anonymous> │
+        │ SEGV_ADIPERR  enum <anonymous> │
+        └────────────────────────────────┘
+
+
+
+
+
+
+
+
+ ≡ root/main.c ●  7/11                                ◆ c  ◈ clangd  ⇥ Spaces:4
+
+-- style
+abbbccccccccdeeeeeeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaagggfffffgggffffgggffffffhhhhhhffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaagggffffffggggfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffgggfffffffffiffiffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ajjjkkkkllkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+aaaaffffmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmffffffffffffffffffffffffffffffffffffff
+aaaaffffmmmmmmmmmmmmmmmmmmmmmmmmmmmmmnnnnmffffffffffffffffffffffffffffffffffffff
+aaaaffffmoooooooooooooooooooooooooooooooomffffffffffffffffffffffffffffffffffffff
+aaaaffffmmmmmmmmmmmmmmmmnnnnnnnnnnnnnnnnnmffffffffffffffffffffffffffffffffffffff
+ffffffffmmmmmmmmmmmmmmmmnnnnnnnnnnnnnnnnnmffffffffffffffffffffffffffffffffffffff
+ffffffffmmmmmmmmmmmmmmmmnnnnnnnnnnnnnnnnnmffffffffffffffffffffffffffffffffffffff
+ffffffffmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#ffdd33 bg=#1b1b1b
+c fg=#ffdd33 bg=#181818 underline
+d fg=#f4f4ff bg=#181818 underline
+e fg=#73c936 bg=#181818 underline
+f fg=#f4f4ff bg=#181818
+g fg=#96a6c8 bg=#181818
+h fg=#ffdd33 bg=#181818
+i fg=#95a99f bg=#181818
+j fg=#f43841 bg=#1b1b1b
+k fg=#f4f4ff bg=#262626
+l fg=#96a6c8 bg=#262626 underline
+m fg=#f4f4ff bg=#2b2b2b
+n fg=#868686 bg=#2b2b2b
+o fg=#f4f4ff bg=#4a4a4a

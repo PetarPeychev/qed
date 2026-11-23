@@ -61,9 +61,8 @@ Editor :: struct {
 	jump_lock:       bool,
 	hover:           [dynamic]u8,
 	hover_active:    bool,
-	hover_scroll:    int,
 	hover_lang:      Language,
-	hover_rect:      Rect,
+	caret_popup:     CaretPopup,
 	completion:      Completion,
 	save_intent:     SaveIntent,
 	save_intent_path: string,
@@ -194,6 +193,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	delete(editor.message_store)
 	editor_log_destroy(editor)
 	delete(editor.hover)
+	caret_popup_free(&editor.caret_popup)
 	completion_destroy(&editor.completion)
 	searches_destroy(editor)
 	jump_destroy(&editor.jumps)
@@ -1041,84 +1041,6 @@ editor_render_overlays :: proc(editor: ^Editor, tree_base: bool) -> (done: bool)
 		return true
 	}
 	return false
-}
-
-editor_render_diag_pane :: proc(editor: ^Editor, cx, cy: int) {
-	b := editor_buffer(editor)
-	d, ok := diagnostic_at(b, b.cursor)
-	if !ok {
-		return
-	}
-	text_w := int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X - 2
-	if text_w < 8 {
-		return
-	}
-	lines := wrap_text(d.message, text_w)
-	editor_render_text_pane(editor, cx, cy, lines[:], diagnostic_color(d.severity))
-}
-
-// a tiny configured hover width still leaves a readable box
-HOVER_MIN_WIDTH :: 20
-
-editor_render_hover_pane :: proc(editor: ^Editor, cx, cy: int) {
-	editor.hover_rect = {}
-	text_w := min(int(tb2.width()) - 2 * DIAG_PANE_MARGIN_X, max(HOVER_MIN_WIDTH, HOVER_MAX_WIDTH)) - 3
-	if text_w < 8 {
-		return
-	}
-	lines := md_render(string(editor.hover[:]), text_w, editor.hover_lang)
-	if len(lines) == 0 {
-		return
-	}
-	sw := int(tb2.width())
-	area := editor_caret_area(editor)
-	room_below := area.y + area.h - (cy + 1)
-	room_above := cy - area.y
-	view_h := min(len(lines), HOVER_PANE_MAX_LINES, max(room_below, room_above) - 2)
-	if view_h <= 0 {
-		return
-	}
-	editor.hover_scroll = clamp(editor.hover_scroll, 0, max(0, len(lines) - view_h))
-	content_w := 0
-	for i in editor.hover_scroll ..< editor.hover_scroll + view_h {
-		content_w = max(content_w, md_line_width(lines[i]))
-	}
-	content_w = clamp(content_w, 1, text_w)
-	pane_w := content_w + 3
-	pane_h := view_h + 2
-	y := room_below >= pane_h ? cy + 1 : cy - pane_h
-	x := clamp(cx, 0, max(0, sw - pane_w))
-	editor.hover_rect = {x, y, pane_w, pane_h}
-	box := draw_box({x, y, pane_w, pane_h})
-	for i in 0 ..< view_h {
-		md_draw_line(box.x, box.y + i, box.w, lines[editor.hover_scroll + i], COLOR_PANE_BG)
-	}
-}
-
-editor_render_text_pane :: proc(editor: ^Editor, cx, cy: int, lines: []string, fg: tb2.Color, max_lines := DIAG_PANE_MAX_LINES) {
-	if len(lines) == 0 {
-		return
-	}
-	sw := int(tb2.width())
-	area := editor_caret_area(editor)
-	room_below := area.y + area.h - (cy + 1)
-	room_above := cy - area.y
-	content_h := min(len(lines), max_lines, max(room_below, room_above) - 2)
-	if content_h <= 0 {
-		return
-	}
-	content_w := 0
-	for line in lines[:content_h] {
-		content_w = max(content_w, len(line))
-	}
-	pane_w := content_w + 2
-	pane_h := content_h + 2
-	y := room_below >= pane_h ? cy + 1 : cy - pane_h
-	x := clamp(cx, 0, max(0, sw - pane_w))
-	box := draw_box({x, y, pane_w, pane_h})
-	for line, i in lines[:content_h] {
-		draw_text(box.x, box.y + i, box.w, line, fg, COLOR_PANE_BG)
-	}
 }
 
 wrap_text :: proc(text: string, width: int, allocator := context.temp_allocator) -> [dynamic]string {

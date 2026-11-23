@@ -33,47 +33,25 @@ safety_open :: proc(editor: ^Editor) -> bool {
 }
 
 @(private = "file")
-safety_node :: proc(kind: UiKind, id := "") -> ^UiNode {
-	node := new(UiNode)
-	node.kind = kind
-	node.id = strings.clone(id)
-	return node
-}
-
-@(private = "file")
-safety_text :: proc(text: string, id := "") -> ^UiNode {
-	node := safety_node(.Text, id)
-	append(&node.spans, UiSpan{text = strings.clone(text)})
-	return node
-}
-
-@(private = "file")
-safety_add :: proc(parent, child: ^UiNode) {
-	append(&parent.child_slots, len(parent.children))
-	append(&parent.children, child)
-	child.parent = parent
-}
-
-@(private = "file")
 safety_mount :: proc(editor: ^Editor, kind: SafetyKind, buf: u64, question: string, choices: []string, selected: int) {
-	box := safety_node(.Box, "safety")
+	box := ui_core_node(.Box, "safety")
 	box.float, box.anchor, box.border = .Screen, .Top, true
 	box.width = {form = .Cells, value = SAFETY_WIDTH}
 	box.height = {form = .Fit}
 	box.margin = {3, 2, 2, 2}
-	box.style = {set = {.Fg, .Bg}, fg = strings.clone("pane_foreground"), bg = strings.clone("pane_background")}
-	column := safety_node(.Column)
-	safety_add(box, column)
-	asked := safety_text(fmt.tprintf(" %s", question))
+	box.style = ui_core_pane_style()
+	column := ui_core_node(.Column)
+	ui_core_add(box, column)
+	asked := ui_core_text(fmt.tprintf(" %s", question))
 	asked.wrap, asked.wrap_set = true, true
-	safety_add(column, asked)
-	rows := safety_node(.Column, "safety_choices")
+	ui_core_add(column, asked)
+	rows := ui_core_node(.Column, "safety_choices")
 	rows.highlight_style = {set = {.Fg, .Bg}, fg = strings.clone("pane_selection_foreground"), bg = strings.clone("pane_selection_background")}
-	safety_add(column, rows)
+	ui_core_add(column, rows)
 	for choice, i in choices {
-		row := safety_text(fmt.tprintf(" %s", choice), fmt.tprintf("safety_choice_%d", i))
+		row := ui_core_text(fmt.tprintf(" %s", choice), fmt.tprintf("safety_choice_%d", i))
 		row.key = strings.clone(fmt.tprintf("%d", i))
-		safety_add(rows, row)
+		ui_core_add(rows, row)
 	}
 	editor.safety = {kind = kind, buf = buf, choices = choices, selected = selected}
 	editor.safety.handle = ui_mount_add(editor, "", "alert", box)

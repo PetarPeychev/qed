@@ -533,12 +533,21 @@ e2e_hover_max_width :: proc(t: ^testing.T) {
 	clear(&e.ed.hover)
 	append(&e.ed.hover, ..transmute([]u8)strings.repeat("word ", 100, context.temp_allocator))
 	defer clear(&e.ed.hover)
-	editor_render_hover_pane(&e.ed, 0, 0)
-	w := e.ed.hover_rect.w
+	e.ed.hover_active = true
+	w := caret_popup_rect(&e).w
 	testing.expectf(t, w <= HOVER_MAX_WIDTH && w > HOVER_MAX_WIDTH - 8, "hover width %d, max %d", w, HOVER_MAX_WIDTH)
 	saved := HOVER_MAX_WIDTH
 	HOVER_MAX_WIDTH = 5
 	defer HOVER_MAX_WIDTH = saved
-	editor_render_hover_pane(&e.ed, 0, 0)
-	testing.expectf(t, e.ed.hover_rect.w > 0 && e.ed.hover_rect.w <= HOVER_MIN_WIDTH, "a tiny max clamps to the pane minimum, got %d", e.ed.hover_rect.w)
+	w = caret_popup_rect(&e).w
+	testing.expectf(t, w > 0 && w <= HOVER_MIN_WIDTH, "a tiny max clamps to the pane minimum, got %d", w)
+}
+
+caret_popup_rect :: proc(e: ^E2E) -> Rect {
+	e2e_render(e)
+	e2e_render(e)
+	if root := caret_popup_root(&e.ed); root != nil {
+		return root.rect
+	}
+	return {}
 }

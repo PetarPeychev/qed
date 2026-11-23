@@ -1,4 +1,4 @@
-# clangd diagnostics and hover on a C file.
+# clangd diagnostics, hover and completion on a C file (core-built popups at the caret).
 requires clangd
 timeout 15000
 config
@@ -23,3 +23,11 @@ key down*5 right*13
 key alt+s
 wait Parameters
 snap hover
+click 40 5
+key enter
+type ad
+wait add(int a
+snap completion
+key down
+snap completion-moved
+key esc

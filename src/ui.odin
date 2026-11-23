@@ -182,6 +182,10 @@ UiNode :: struct {
 	clip:            Rect,
 	hidden:          bool,
 	is_item:         bool,
+	// core-built caret popups only: shift from the caret, prefer above it, a markdown body's code language
+	cursor_dx:       int,
+	cursor_above:    bool,
+	md_lang:         Language,
 }
 
 UiState :: struct {
@@ -305,6 +309,34 @@ ui_destroy :: proc(editor: ^Editor) {
 		delete(chord)
 	}
 	delete(ui.chords)
+}
+
+// core-built trees (safety dialogs, rename prompt, caret popups) need no Lua
+ui_core_node :: proc(kind: UiKind, id := "") -> ^UiNode {
+	node := new(UiNode)
+	node.kind = kind
+	node.id = strings.clone(id)
+	return node
+}
+
+ui_core_text :: proc(text: string, id := "", fg := "") -> ^UiNode {
+	node := ui_core_node(.Text, id)
+	span := UiSpan{text = strings.clone(text)}
+	if fg != "" {
+		span.style = {set = {.Fg}, fg = strings.clone(fg)}
+	}
+	append(&node.spans, span)
+	return node
+}
+
+ui_core_add :: proc(parent, child: ^UiNode) {
+	append(&parent.child_slots, len(parent.children))
+	append(&parent.children, child)
+	child.parent = parent
+}
+
+ui_core_pane_style :: proc() -> UiStyle {
+	return {set = {.Fg, .Bg}, fg = strings.clone("pane_foreground"), bg = strings.clone("pane_background")}
 }
 
 ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
@@ -648,6 +680,16 @@ ui_resolve_node :: proc(editor: ^Editor, node: ^UiNode, visiting: ^map[u64]bool)
 			mount.root.parent = node
 			append(&node.expanded, mount.root)
 			ui_resolve_node(editor, mount.root, visiting)
+		}
+	}
+	if node.kind == .Editor && node.identity == editor.caret_popup.target {
+		for mount in ui.mounts {
+			if mount.outlet == CARET_OUTLET && !visiting[mount.handle] {
+				visiting[mount.handle] = true
+				mount.root.parent = node
+				append(&node.expanded, mount.root)
+				ui_resolve_node(editor, mount.root, visiting)
+			}
 		}
 	}
 	if node.header != nil {
@@ -1313,9 +1355,11 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 			node.rect = {}
 			return
 		}
-		cell_x = clamp(cx, area.x, max(area.x + area.w - width, area.x))
+		cell_x = clamp(cx + node.cursor_dx, area.x, max(area.x + area.w - width, area.x))
 		cell_y = cy + 1
-		if cell_y + height > area.y + area.h && cy - height >= area.y {
+		below := cell_y + height <= area.y + area.h
+		above := cy - height >= area.y
+		if above && (!below || node.cursor_above) {
 			cell_y = cy - height
 		}
 	}
@@ -1484,6 +1528,7 @@ ui_prepare :: proc(editor: ^Editor) {
 	clear(&ui.lists_dead)
 	ui_resolve(editor)
 	ui_focused(editor)
+	caret_popup_sync(editor)
 	editor.terminal.active = false
 	if len(ui.mounts) == 0 {
 		return
@@ -1800,18 +1845,8 @@ ui_render_caret :: proc(editor: ^Editor, popups: bool) {
 			ui.caret = {cell_x, cell_y}
 			ui.caret_shown = true
 			buffer := ui_buffer(editor, focused.buffer)
-			if popups && ui_editor_shows_current(editor, buffer) {
-				ghost := inline_active(editor)
-				if ghost && !buffer.wrap {
-					inline_render(editor, cell_x, cell_y)
-				}
-				if editor.completion.active {
-					completion_render(editor, cell_x, cell_y)
-				} else if !ghost && editor.hover_active {
-					editor_render_hover_pane(editor, cell_x, cell_y)
-				} else if !ghost {
-					editor_render_diag_pane(editor, cell_x, cell_y)
-				}
+			if popups && ui_editor_shows_current(editor, buffer) && inline_active(editor) && !buffer.wrap {
+				inline_render(editor, cell_x, cell_y)
 			}
 		}
 	}
