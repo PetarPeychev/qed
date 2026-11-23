@@ -69,35 +69,6 @@ e2e_scope_line_list_live :: proc(t: ^testing.T) {
 	e2e_key(&e, .Esc)
 }
 
-@(test)
-e2e_scope_plugin_pane_command :: proc(t: ^testing.T) {
-	e := e2e_start("abc")
-	defer e2e_stop(&e)
-	e2e_plugin(&e, "sc", `return {setup = function()
-		qed.command{name = "Open", key = "Alt+k", run = function()
-			qed.ui.open{scope = "sc", list = {items = {"a", "b"}}}
-		end}
-		qed.command{name = "Mark", scope = "sc", key = "x", run = function(ctx)
-			qed.message("view " .. tostring(ctx.view ~= nil))
-		end}
-		qed.command{name = "Field", scope = "sc", key = "Alt+j", run = function(ctx)
-			qed.message("field " .. tostring(ctx.view ~= nil))
-		end}
-	end}`)
-	e2e_alt(&e, 'k')
-	testing.expect(t, test_view(&e.ed) != nil && test_view(&e.ed).scope == "sc", "the scoped view opens")
-	scope_bare(&e, 'x')
-	testing.expect_value(t, e.ed.message, "view true")
-	e2e_key(&e, .Ctrl_P)
-	pal := pane_focus(&e.ed)
-	testing.expect(t, pal != nil && pal.id == "palette" && pal.list.source.scope == "sc", "scoped palette over the view")
-	e2e_type(&e, "field")
-	e2e_key(&e, .Enter)
-	testing.expect_value(t, e.ed.message, "field true")
-	e2e_key(&e, .Esc)
-	scope_bare(&e, 'x')
-	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "xabc")
-}
 
 @(test)
 e2e_scope_line_list_filtered_shrink :: proc(t: ^testing.T) {

@@ -1068,20 +1068,23 @@ qed_commands :: proc "c" (L: ^lua.State) -> c.int {
 				key = string(kb[keybind].(json.String) or_else "")
 			}
 			n += 1
-			api_command_push(L, cmd.name, shortcut, "", cmd.scope, keybind, key)
+			api_command_push(L, cmd.name, shortcut, "", cmd.scope, keybind, key, command_available(entry.editor, cmd.name, cmd.scope))
 			lua.rawseti(L, -2, lua.Integer(n))
 		}
 	}
 	for &cmd in p.commands {
 		n += 1
-		api_command_push(L, cmd.name, cmd.shortcut, cmd.owner, cmd.scope, cmd.config_name, plugin_command_default(p, &cmd))
+		available := !(entry.editor.welcome && cmd.scope == "" && !cmd.welcome) && plugin_command_when(entry.editor, cmd)
+		api_command_push(L, cmd.name, cmd.shortcut, cmd.owner, cmd.scope, cmd.config_name, plugin_command_default(p, &cmd), available)
 		lua.rawseti(L, -2, lua.Integer(n))
 	}
 	return 1
 }
 
-api_command_push :: proc(L: ^lua.State, name, shortcut, owner, scope, keybind, key: string) {
-	lua.createtable(L, 0, 6)
+api_command_push :: proc(L: ^lua.State, name, shortcut, owner, scope, keybind, key: string, available: bool) {
+	lua.createtable(L, 0, 7)
+	lua.pushboolean(L, b32(available))
+	lua.setfield(L, -2, "available")
 	lua.pushodinstring(L, name)
 	lua.setfield(L, -2, "name")
 	lua.pushodinstring(L, shortcut)

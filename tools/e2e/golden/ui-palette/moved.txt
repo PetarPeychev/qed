@@ -11,7 +11,7 @@ qed-e2e snapshot 80x24 cursor 14,4
         │ Terminal: Toggle                                      Alt+t ┃│
         │ Settings: Open Config                                       ┃│
         │ Git: Toggle Diff View                                       ┃│
-        │ Format: Toggle on Save                                       │
+        │ Format: Toggle on Save                                      ┃│
         │ Format: Toggle Trim Whitespace on Save                       │
         └──────────────────────────────────────────────────────────────┘
 

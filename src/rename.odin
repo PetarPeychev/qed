@@ -1,6 +1,22 @@
 package main
 
+import "core:strings"
+import "lib:tb2"
+
+// the LSP rename prompt: core-built qed.ui nodes in the alert layer (an editor over an internal buffer), no Lua
+RenamePrompt :: struct {
+	handle: u64,
+	buffer: ^Buffer,
+}
+
+rename_prompt_open :: proc(editor: ^Editor) -> bool {
+	return editor.rename.handle != 0
+}
+
 rename_open :: proc(editor: ^Editor) {
+	if rename_prompt_open(editor) || safety_open(editor) {
+		return
+	}
 	b := editor_buffer(editor)
 	if _, ok := lsp_rename_ready(editor, b); !ok {
 		return
@@ -8,24 +24,69 @@ rename_open :: proc(editor: ^Editor) {
 	from, to := word_range_at(b, b.cursor)
 	word := buffer_text_range(b, from, to)
 	editor_clear_message(editor)
-	p := pane_open(editor, Pane {
-		id = "rename",
-		place = .Center,
-		size = .Palette,
-		modal = true,
-		fields = []PaneField{{prompt = "Rename to: ", mode = .Input}},
-		on = {activate = rename_submit},
-	})
-	if p != nil {
-		textfield_set(&p.fields[0].field, word)
+	buffer := ui_internal_create(editor, "")
+	buffer_set_text(buffer, word)
+	buffer.cursor = {0, len(word)}
+	buffer.selection = Cursor{0, 0}
+
+	node :: proc(kind: UiKind, id := "") -> ^UiNode {
+		n := new(UiNode)
+		n.kind = kind
+		n.id = strings.clone(id)
+		return n
 	}
+	add :: proc(parent, child: ^UiNode) {
+		append(&parent.child_slots, len(parent.children))
+		append(&parent.children, child)
+		child.parent = parent
+	}
+	box := node(.Box, "rename")
+	box.float, box.anchor, box.border = .Screen, .Top, true
+	box.width = {form = .Cells, value = SAFETY_WIDTH}
+	box.height = {form = .Fit}
+	box.margin = {3, 2, 2, 2}
+	box.style = {set = {.Fg, .Bg}, fg = strings.clone("pane_foreground"), bg = strings.clone("pane_background")}
+	row := node(.Row)
+	add(box, row)
+	prompt := node(.Text)
+	append(&prompt.spans, UiSpan{text = strings.clone("Rename to: "), style = {set = {.Fg}, fg = strings.clone("pane_prompt_foreground")}})
+	add(row, prompt)
+	field := node(.Editor, "rename_field")
+	field.buffer = buffer.id
+	field.height = {form = .Cells, value = 1}
+	field.grow, field.grow_set = 1, true
+	field.scope = make([]string, 1)
+	field.scope[0] = strings.clone("editor")
+	add(row, field)
+	editor.rename = {handle = ui_mount_add(editor, "", "alert", box), buffer = buffer}
+	ui_resolve(editor)
+	ui_focus_set(editor, field.identity)
 }
 
-rename_submit :: proc(editor: ^Editor, p: ^Pane) {
-	name := textfield_str(&p.fields[0].field)
-	if len(name) == 0 {
-		editor_log(editor, .Error, "Rename", "Empty name")
+rename_close :: proc(editor: ^Editor) {
+	if !rename_prompt_open(editor) {
 		return
 	}
-	lsp_rename_send(editor, name)
+	ui_mount_remove(editor, editor.rename.handle)
+	ui_internal_close(editor, editor.rename.buffer.id)
+	editor.rename = {}
+}
+
+// Enter submits and Esc cancels; every other key edits the field
+rename_key :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
+	#partial switch ev.key {
+	case .Enter:
+		name, _ := strings.replace_all(buffer_snapshot(editor.rename.buffer, context.temp_allocator), "\n", "", context.temp_allocator)
+		rename_close(editor)
+		if len(name) == 0 {
+			editor_log(editor, .Error, "Rename", "Empty name")
+			return true
+		}
+		lsp_rename_send(editor, name)
+		return true
+	case .Esc:
+		rename_close(editor)
+		return true
+	}
+	return false
 }

@@ -43,26 +43,29 @@ e2e_welcome_start :: proc() -> E2E {
 }
 
 palette_open_now :: proc(e: ^E2E) -> bool {
-	p := pane_focus(&e.ed)
-	return p != nil && p.id == "palette" && !p.ctx.lua
+	plugin_flush(&e.ed)
+	ui_resolve(&e.ed)
+	return ui_find(&e.ed.ui, "#palette/palette") != nil
 }
 
 palette_selected :: proc(e: ^E2E) -> string {
-	p := pane_find(&e.ed, "palette")
-	if p == nil || pane_count(&e.ed, p) == 0 {
+	plugin_flush(&e.ed)
+	ui_resolve(&e.ed)
+	node := ui_find(&e.ed.ui, "#palette/palette_results")
+	if node == nil {
 		return ""
 	}
-	return test_pane_label(&e.ed, p, p.list.sel)
+	list := ui_list_find(&e.ed.ui, node.list)
+	key := ui_node_state_peek(&e.ed.ui, node).highlighted
+	if list == nil || key == "" {
+		return ""
+	}
+	ui_list_settle_all(&e.ed, list)
+	return list.texts[key] or_else ""
 }
 
 palette_labels :: proc(e: ^E2E) -> string {
-	labels := make([dynamic]string, context.temp_allocator)
-	if p := pane_find(&e.ed, "palette"); p != nil {
-		for it in test_pane_items(&e.ed, p) {
-			append(&labels, it.label)
-		}
-	}
-	return fmt.tprintf("|%s|", strings.join(labels[:], "|", context.temp_allocator))
+	return palette_ui_labels(e)
 }
 
 nav_alt :: proc(e: ^E2E, ch: rune) {
@@ -315,27 +318,23 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
 
-	p := pane_find(&e.ed, "palette")
-	rows := min(pane_count(&e.ed, p), PALETTE_MAX_ROWS)
-	box := pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)
-	border_x := box.x + box.w - 1
-	testing.expect(t, pane_count(&e.ed, p) > rows, "the command list should overflow the palette")
-	testing.expect_value(t, pane_geom(&e.ed, p).box, box)
+	count := strings.count(palette_labels(&e), "|") - 1
+	box := node_rect(&e.ed, "palette")
+	bar_x := box.x + box.w - 2
+	testing.expect(t, count > PALETTE_MAX_ROWS, "the command list should overflow the palette")
+	testing.expect_value(t, box.w, 64)
+	testing.expect_value(t, box.h, 2 + 1 + PALETTE_MAX_ROWS)
 	e2e_render(&e)
-	testing.expect_value(t, e2e_cell(&e, border_x, box.y + 3), '┃')
-	testing.expect_value(t, e2e_cell_fg(&e, border_x, box.y + 3), COLOR_PANE_FG)
+	testing.expect_value(t, e2e_cell(&e, bar_x, box.y + 2), '┃')
 	testing.expect(t, e2e_grid_has(&e, "Ctrl+q"), "the shortcut column shows live binds")
 
 	e2e_type(&e, "line wrap")
-	testing.expect(t, pane_count(&e.ed, p) > 0, "fuzzy query should match a command")
 	testing.expect_value(t, palette_selected(&e), "Toggle Line Wrap")
-
-	rows = min(pane_count(&e.ed, p), PALETTE_MAX_ROWS)
-	box = pane_center(&e.ed, PALETTE_WIDTH, 2 + rows)
 	e2e_render(&e)
-	testing.expect_value(t, e2e_cell(&e, box.x + box.w - 1, box.y + 3), '│')
+	testing.expect(t, e2e_cell(&e, bar_x, box.y + 2) != '┃', "a short list has no scrollbar")
 
 	e2e_key(&e, .Enter)
+	e2e_ui_settle(&e)
 	testing.expect(t, !palette_open_now(&e), "Enter closes the palette")
 	testing.expect(t, !b.wrap, "the selected command actually ran")
 
@@ -348,9 +347,9 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	e2e_paste(&e, "line wrap")
 	testing.expect_value(t, palette_selected(&e), "Toggle Line Wrap")
-	e2e_render(&e)
-	g := pane_geom(&e.ed, pane_find(&e.ed, "palette"))
-	e2e_mouse(&e, g.box.x + g.box.w + 2, g.box.y)
+	box = node_rect(&e.ed, "palette")
+	e2e_mouse(&e, box.x + box.w + 2, box.y)
+	e2e_ui_settle(&e)
 	testing.expect(t, !palette_open_now(&e), "a click outside closes it")
 }
 
@@ -363,22 +362,18 @@ e2e_nav_palette_welcome_filter :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette from welcome")
 
-	has := proc(ed: ^Editor, name: string) -> bool {
-		for it in test_pane_items(ed, pane_find(ed, "palette")) {
-			if it.label == name {
-				return true
-			}
-		}
-		return false
+	labels := palette_labels(&e)
+	has := proc(labels: string, name: string) -> bool {
+		return strings.contains(labels, fmt.tprintf("|%s|", name))
 	}
-	testing.expect(t, !has(&e.ed, "Save"), "a buffer-only command is hidden on welcome")
-	testing.expect(t, !has(&e.ed, "Toggle Comment"), "editing commands are hidden on welcome")
-	testing.expect(t, !has(&e.ed, "LSP: Go to Definition"), "LSP commands are hidden on welcome")
-	testing.expect(t, !has(&e.ed, "Settings: Language"), "buffer-only plugin commands are hidden on welcome")
-	testing.expect(t, !has(&e.ed, "Format: Document"), "plugin commands without welcome are hidden")
-	testing.expect(t, has(&e.ed, "File Tree: All"), "File Tree: All stays available on welcome")
-	testing.expect(t, has(&e.ed, "Settings: Theme"), "Settings: Theme stays available on welcome")
-	testing.expect(t, has(&e.ed, "Quit"), "Quit stays available on welcome")
+	testing.expect(t, !has(labels, "Save"), "a buffer-only command is hidden on welcome")
+	testing.expect(t, !has(labels, "Toggle Comment"), "editing commands are hidden on welcome")
+	testing.expect(t, !has(labels, "LSP: Go to Definition"), "LSP commands are hidden on welcome")
+	testing.expect(t, !has(labels, "Settings: Language"), "buffer-only plugin commands are hidden on welcome")
+	testing.expect(t, !has(labels, "Format: Document"), "plugin commands without welcome are hidden")
+	testing.expect(t, has(labels, "File Tree: All"), "File Tree: All stays available on welcome")
+	testing.expect(t, has(labels, "Settings: Theme"), "Settings: Theme stays available on welcome")
+	testing.expect(t, has(labels, "Quit"), "Quit stays available on welcome")
 }
 
 @(test)

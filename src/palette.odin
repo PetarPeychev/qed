@@ -292,29 +292,13 @@ command_matches :: proc(ev: tb2.Event, name: string) -> bool {
 	return false
 }
 
+// the palette is the bundled palette plugin; core only forwards its chord
 palette_open :: proc(editor: ^Editor) {
-	editor_clear_message(editor)
-	spec := Pane {
-		id = "palette",
-		place = .Center,
-		size = .Palette,
-		chord = "Command Palette",
-		fields = []PaneField{{mode = .Filter}},
-		modal = true,
-		has_list = true,
-		list = {source = {kind = .Commands}},
-		on = {activate = palette_activate},
+	for command in editor.plugins.commands {
+		if command.owner == "palette" && command.bare == "Open" && command.scope == "" {
+			plugin_command_run(editor, command)
+			return
+		}
 	}
-	if f := pane_focus(editor); f != nil && f.scope != "" {
-		spec.kind, spec.parent, spec.list.source.scope = .Child, f.handle, f.scope
-	}
-	if p := pane_open(editor, spec); p != nil {
-		pane_list_load(editor, p)
-	}
-}
-
-palette_activate :: proc(editor: ^Editor, p: ^Pane) {
-	if cmd, ok := list_command(editor, &p.list.source, pane_item_index(p, p.list.sel)); ok {
-		command_run(editor, cmd)
-	}
+	editor_log(editor, .Warn, "", "The command palette is the palette plugin, which is not running")
 }

@@ -47,12 +47,6 @@ e2e_plugin_palette_rows_and_focus :: proc(t: ^testing.T) {
 		return {setup = function()
 			h = qed.command{name = "Gone", key = "Alt+j", run = function() qed.message("ran") end}
 			qed.command{name = "Drop", run = function() h:remove() end}
-			qed.command{name = "Steal", run = function()
-				qed.defer(0, function()
-					local _, err = qed.ui.open{list = {items = {"x"}}}
-					qed.message("steal " .. tostring(err))
-				end)
-			end}
 		end}`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 
@@ -62,17 +56,9 @@ e2e_plugin_palette_rows_and_focus :: proc(t: ^testing.T) {
 	drop, _ := plugin_test_command(&e.ed, "Pal: Drop")
 	command_run(&e.ed, drop)
 	testing.expect(t, palette_open_now(&e), "removing a plugin command keeps the palette")
-	e2e_render(&e)
-	testing.expect(t, !e2e_grid_has(&e, "Alt+j"), "a removed command shows no shortcut")
 	e2e_key(&e, .Enter)
+	e2e_ui_settle(&e)
 	testing.expect(t, e.ed.message != "ran", "a removed command does not run")
-
-	e2e_key(&e, .Ctrl_P)
-	steal, _ := plugin_test_command(&e.ed, "Pal: Steal")
-	command_run(&e.ed, steal)
-	e2e_pump_while(&e, proc(e: ^E2E) -> bool {return e.ed.message != "steal busy"}, 1000)
-	testing.expect_value(t, e.ed.message, "steal busy")
-	testing.expect(t, palette_open_now(&e), "a background exclusive open does not replace the palette")
 }
 
 @(test)

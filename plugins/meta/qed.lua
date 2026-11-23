@@ -123,6 +123,7 @@ function qed.config_unset(keys) end
 ---@class qed.CommandInfo
 ---@field name string visible name
 ---@field shortcut string the live bind, `""` when unbound
+---@field available boolean runnable now (a `when` that passes, a command offered on the welcome screen there, a core command that applies)
 ---@field scope string `"global"`, `"editor"` (editor nodes), `"filetree"`, `"log"`, `"plugins"` or a pane's or node's scope
 ---@field owner? string plugin id; nil for core commands
 ---@field keybind? string its key in `keybinds` (core) or `plugins.<owner>.keybinds`; nil for a core command borrowing another's bind

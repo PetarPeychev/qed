@@ -18,6 +18,7 @@ DIAG_PANE_MAX_LINES :: 8
 
 Editor :: struct {
 	safety:          Safety,
+	rename:          RenamePrompt,
 	buffers:         [dynamic]Buffer,
 	current:         int,
 	working_root:    string,
@@ -366,6 +367,9 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	if safety_open(editor) && (ev.type == .Key || ev.type == .Mouse) {
 		safety_dispatch(editor, ev)
+		return
+	}
+	if rename_prompt_open(editor) && ev.type == .Key && rename_key(editor, ev) {
 		return
 	}
 	// a dialog above the old panes takes every key and click
