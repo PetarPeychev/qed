@@ -1337,7 +1337,9 @@ editor_render :: proc(editor: ^Editor) {
 		return
 	}
 	if editor.welcome {
-		editor_render_welcome(editor)
+		if !ui_layer_used(&editor.ui, "background") {
+			editor_render_welcome(editor)
+		}
 	} else {
 		_, vh := editor_viewport(editor)
 		if !editor_buffer(editor).big {
@@ -1357,7 +1359,9 @@ editor_render :: proc(editor: ^Editor) {
 		}
 		editor_render_buffer(editor)
 	}
-	editor_render_status(editor)
+	if !(editor.welcome && ui_layer_used(&editor.ui, "background")) {
+		editor_render_status(editor)
+	}
 
 	if editor.inspect.active && !editor.welcome {
 		inspect_render(editor)

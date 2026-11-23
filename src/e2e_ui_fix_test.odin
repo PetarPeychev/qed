@@ -294,3 +294,14 @@ e2e_ui_editor_parity_pairs_move_lines_gutter :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, strings.has_prefix(e2e_row_text(&e, 1), " 2»"), "the gutter shows the diagnostic through the shared view renderer")
 }
+
+@(test)
+e2e_ui_welcome_screen_from_layout :: proc(t: ^testing.T) {
+	e := e2e_welcome_start()
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	testing.expect(t, ui_layer_used(&e.ed.ui, "background"), "the welcome screen is a background mount")
+	testing.expect(t, e2e_ui_find_row(&e, "Command palette") >= 0, "hints show")
+	testing.expect(t, e2e_ui_find_row(&e, "MMmmMM") >= 0, "the art shows")
+	testing.expect(t, strings.contains(e2e_row_text(&e, E2E_H - 2), "qed "), "the welcome status row shows the version")
+}

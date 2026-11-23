@@ -1,0 +1,9 @@
+# qed.ui welcome screen: the layout plugin mounts it in the background layer.
+run .
+wait Command palette
+snap welcome
+key ctrl+p
+type file tree all
+snap palette
+key esc
+snap closed
