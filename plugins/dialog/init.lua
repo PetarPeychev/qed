@@ -1,7 +1,5 @@
 local ui = qed.ui
 
-local WIDTH = 64
-local MAX_ROWS = 12
 local PREVIEW_DEBOUNCE_MS = 60
 
 local dialog
@@ -113,7 +111,7 @@ end
 
 local function frame(id, children)
 	return ui.dismissable{id = id, on_dismiss = function() finish(nil) end,
-		ui.box{float = "screen", anchor = "top", width = WIDTH, height = "fit", scope = "list",
+		ui.box{float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, bg = "pane_background", fg = "pane_foreground",
 			ui.column(children)},
@@ -121,7 +119,7 @@ local function frame(id, children)
 end
 
 local function rows(scope)
-	return ui.scroll{height = {"fit", max = MAX_ROWS},
+	return ui.scroll{height = {"fit", max = qed.opt("picker_max_rows")},
 		ui.virtual_column{id = "dialog_rows", scope = scope, data = dialog.matches, item = item_row, on = {state = notify},
 			highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}}
 end
@@ -186,7 +184,7 @@ end
 local function records_of(items)
 	local list = qed.list.new{key = "key"}
 	for index, item in ipairs(items) do
-		list:append{key = tostring(index), index = index, label = label_of(item)}
+		list:append{key = index, index = index, label = label_of(item)}
 	end
 	return list
 end
@@ -220,7 +218,7 @@ local function pick(spec)
 	local selected_key
 	for index, item in ipairs(items) do
 		if index == selected or (selected ~= nil and label_of(item) == selected) then
-			selected_key = tostring(index)
+			selected_key = index
 			break
 		end
 	end

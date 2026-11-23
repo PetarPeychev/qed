@@ -265,3 +265,57 @@ e2e_round7_log_extends_from_core_state :: proc(t: ^testing.T) {
 	e2e_key(&e, .Arrow_Up)
 	testing.expect_value(t, ui_node_state_peek(&e.ed.ui, node).extend_from, "")
 }
+
+@(test)
+e2e_round7_size_knobs_have_one_home :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	saved_picker, saved_pane := PICKER_WIDTH, PANE_MAX_WIDTH
+	defer PICKER_WIDTH, PANE_MAX_WIDTH = saved_picker, saved_pane
+	PICKER_WIDTH, PANE_MAX_WIDTH = 50, 40
+	e2e_key(&e, .Ctrl_P)
+	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
+	testing.expect_value(t, node_rect(&e.ed, "palette").w, 50)
+	e2e_key(&e, .Esc)
+	e2e_step(&e, tb2.Event{type = .Key, ch = 'l', mod = tb2.Mod.Alt})
+	e2e_ui_settle(&e)
+	testing.expect_value(t, node_rect(&e.ed, "log_scroll").w, 40 - 2)
+}
+
+@(test)
+e2e_round7_editor_and_scroll_share_offset :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	ft_lua(&e.ed, `
+		local text = {}
+		for i = 1, 200 do text[i] = "row " .. i end
+		local buffer = qed.buf.create{internal = true}
+		buffer:set_text(table.concat(text, "\n"))
+		_G.r7_mount = qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 10,
+			qed.ui.editor{id = "r7_view", buffer = buffer}})
+		return 0`)
+	e2e_render(&e)
+	testing.expect_value(t, ft_lua(&e.ed, `qed.ui.node("r7_view"):set_state{offset = 40}; return qed.ui.node("r7_view"):state().offset`), "40")
+	e2e_render(&e)
+	testing.expect_value(t, ft_lua(&e.ed, `return qed.ui.node("r7_view"):state().offset`), "40")
+	testing.expect(t, e2e_grid_has(&e, "row 41"), "offset 40 puts row 41 on top")
+}
+
+@(test)
+e2e_round7_list_keys_keep_their_type :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	ft_lua(&e.ed, `
+		_G.r7_list = qed.list.new{key = "id"}
+		for i = 1, 3 do r7_list:append{id = i, label = "item " .. i} end
+		_G.r7_mount = qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 10, scope = "list",
+			qed.ui.virtual_column{id = "r7_rows", data = r7_list, item = function(record) return qed.ui.text{record.label} end}})
+		qed.ui.node("r7_rows"):set_state{highlighted = 2}
+		return 0`)
+	e2e_render(&e)
+	testing.expect_value(t, ft_lua(&e.ed, `local key = qed.ui.node("r7_rows"):state().highlighted; return math.type(key) .. " " .. key`), "integer 2")
+	testing.expect_value(t, ft_lua(&e.ed, `return r7_list:get(3).label`), "item 3")
+	testing.expect(t, strings.contains(ft_lua(&e.ed, `return r7_list:get("3")`), "integers"), "a string key on an integer list raises")
+	testing.expect(t, strings.contains(ft_lua(&e.ed, `r7_list:append{id = "four"}; return 0`), "all strings or all integers"), "mixed key types raise")
+	testing.expect(t, strings.contains(ft_lua(&e.ed, `qed.list.new{key = "id"}:append{id = 1.5}; return 0`), "integer key expected"), "a float key raises")
+}

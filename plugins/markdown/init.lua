@@ -2,7 +2,6 @@ local ui = qed.ui
 
 local MIN_WIDTH = 20
 
-local cfg
 local view
 local history, at = {}, 0
 local follow
@@ -75,7 +74,7 @@ local function build()
 			sync_back()
 			close()
 		end,
-		ui.box{id = "markdown", float = "screen", anchor = "center", width = {"100%", max = math.max(cfg.max_width, MIN_WIDTH)}, height = "100%",
+		ui.box{id = "markdown", float = "screen", anchor = "center", width = {"100%", max = math.max(qed.opt("pane_max_width"), MIN_WIDTH)}, height = "100%",
 			margin = {x = 2, y = 1}, border = true, title = path ~= "" and qed.path.base(path) or "untitled",
 			bg = "pane_background", fg = "pane_foreground",
 			ui.column{separator = true,
@@ -274,7 +273,6 @@ end
 return {
 	setup = function()
 		qed.meta{description = "Rendered markdown preview"}
-		cfg = qed.options({max_width = 120}, {max_width = "Max width of the preview pane"})
 		qed.command{
 			name = "Preview",
 			key = "Alt+p",
@@ -294,7 +292,6 @@ return {
 			close()
 		end}
 		qed:on("config_changed", function()
-			cfg = qed.config()
 			if view then
 				view.handle:update(build())
 			end

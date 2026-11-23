@@ -858,20 +858,21 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 	lua.createtable(L, 0, 3)
 	#partial switch state.kind {
 	case .Column, .Row, .Virtual_Column:
+		list := ui_list_find(&editor.ui, node.list) if node != nil && node.kind == .Virtual_Column else nil
 		if state.highlighted != "" && (node == nil || ui_highlight_present(editor, node, state.highlighted)) {
-			lua.pushodinstring(L, state.highlighted)
+			ui_list_push_key(L, editor, list, state.highlighted)
 			lua.setfield(L, -2, "highlighted")
 		}
 		if state.extend_from != "" && (node == nil || ui_highlight_present(editor, node, state.extend_from)) {
-			lua.pushodinstring(L, state.extend_from)
+			ui_list_push_key(L, editor, list, state.extend_from)
 			lua.setfield(L, -2, "extend_from")
 		}
 	case .Scroll:
 		lua.pushinteger(L, lua.Integer(state.offset))
 		lua.setfield(L, -2, "offset")
 	case .Editor:
-		lua.pushinteger(L, lua.Integer(state.scroll_row + 1))
-		lua.setfield(L, -2, "scroll")
+		lua.pushinteger(L, lua.Integer(state.scroll_row))
+		lua.setfield(L, -2, "offset")
 	case .Markdown:
 		if node != nil {
 			sources, rows := ui_markdown_sources(editor, node)
@@ -934,11 +935,9 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 				state.extend_from = strings.clone(text)
 			}
 		case "offset":
+			// a scroll keeps its rows in `offset`, an editor its top row in `scroll_row`: one name for both
 			state.offset = max(int(lua.tointeger(L, -1)), 0)
-		case "scroll":
-			state.scroll_row = max(int(lua.tointeger(L, -1)) - 1, 0)
-			state.scroll_sub = 0
-			state.md_source, state.md_at = 0, 0
+			state.scroll_row, state.scroll_sub = state.offset, 0
 		case "source":
 			state.md_source = max(int(lua.tointeger(L, -1)), 1)
 		case "at":
@@ -987,6 +986,7 @@ UiHandlerArgs :: struct {
 	state:       bool,
 	highlighted: string,
 	extend_from: string,
+	list:        ^UiList,
 	x, y:        int,
 	button:      string,
 	mouse:       bool,
@@ -1020,11 +1020,11 @@ ui_handler_c :: proc "c" (L: ^lua.State) -> c.int {
 		}
 		if args.state {
 			if args.highlighted != "" {
-				lua.pushodinstring(L, args.highlighted)
+				ui_list_push_key(L, entry.editor, args.list, args.highlighted)
 				lua.setfield(L, -2, "highlighted")
 			}
 			if args.extend_from != "" {
-				lua.pushodinstring(L, args.extend_from)
+				ui_list_push_key(L, entry.editor, args.list, args.extend_from)
 				lua.setfield(L, -2, "extend_from")
 			}
 		}

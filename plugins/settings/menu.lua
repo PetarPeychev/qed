@@ -6,7 +6,6 @@ local TABS = {"Options", "Keybinds"}
 local COLUMNS = {{"Key", "Value"}, {"Command", "Chord"}}
 local NAME_MAX = {48, 60}
 
-local opts
 local schema
 local view
 local tab = 1
@@ -318,7 +317,7 @@ end
 local function build()
 	local columns = COLUMNS[tab]
 	return ui.dismissable{on_dismiss = function() menu.dismiss() end,
-		ui.box{float = "screen", anchor = "center", width = {"100%", max = opts.max_width}, height = "100%", scope = "list",
+		ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%", scope = "list",
 		margin = {x = 2, y = 1}, border = true, title = "Settings", bg = "pane_background", fg = "pane_foreground",
 		ui.column{
 			tab_row(),
@@ -635,9 +634,7 @@ function menu.open()
 end
 
 function menu.setup()
-	opts = qed.options({max_width = 120}, {max_width = "Max width of the settings pane"})
 	qed:on("config_changed", function()
-		opts = qed.config()
 		refresh()
 	end)
 	for _, event in ipairs({"theme_changed", "plugin_loaded", "plugin_unloaded"}) do

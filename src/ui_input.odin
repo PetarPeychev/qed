@@ -663,7 +663,7 @@ ui_state_changed :: proc(editor: ^Editor, node: ^UiNode) {
 		return
 	}
 	state := ui_node_state_peek(&editor.ui, node)
-	ui_handler_call(editor, node.owner, node.handlers[.State], {state = true, highlighted = state.highlighted, extend_from = state.extend_from})
+	ui_handler_call(editor, node.owner, node.handlers[.State], {state = true, highlighted = state.highlighted, extend_from = state.extend_from, list = ui_list_find(&editor.ui, node.list)})
 }
 
 ui_list_highlight :: proc(editor: ^Editor, node: ^UiNode, key: string, extend: bool) {

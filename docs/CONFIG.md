@@ -88,7 +88,8 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `palette_max_rows` | `8` | Max visible palette rows. |
+| `picker_width` / `picker_max_rows` | `64` / `8` | Size of the command palette, pickers and the workspace switcher. |
+| `pane_max_width` | `120` | Widest the message log, settings, plugins and markdown panes get, borders included. |
 | `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Git tab's diff preview. |
 | `split_tree_min_width` / `split_tree_max_width` | `30` / `60` | List column of a `split:tree` pane (the file tree). |
 | `split_code_min_width` / `split_code_max_width` | `50` / `100` | List column of a `split:code` pane (the default split: line find, search). |
@@ -264,7 +265,7 @@ on `PATH`. Rebind both with `plugins.search.keybinds["In Files"]`.
 ### Markdown
 
 *Markdown: Preview* (`Alt+p`, only in a markdown buffer) opens the buffer rendered in a
-full pane capped at `max_width`: markers hidden, headings colored with a rule under H1/H2, code
+full pane capped at `pane_max_width`: markers hidden, headings colored with a rule under H1/H2, code
 blocks on a tinted band with syntax colors, lists, task boxes, quotes, box-drawn tables, links
 underlined. The pane has focus, so it follows changes made outside it (disk reload,
 formatters, plugins) and keeps its scroll; the same chord closes it. The preview follows the cursor:
@@ -282,7 +283,6 @@ jump list too. LSP hover uses the same renderer (plaintext hovers render verbati
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `plugins.markdown.enabled` | `true` | Off removes *Markdown: Preview*. |
-| `plugins.markdown.max_width` | `120` | Widest the preview pane gets, borders included (at least 20). Applies to an open preview. |
 
 ### Git
 

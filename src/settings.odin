@@ -37,7 +37,9 @@ DOUBLE_CLICK_MS: int
 CURSOR_ACCEL_INTERVAL_MS: int
 CURSOR_ACCEL_RAMP_PRESSES: int
 CURSOR_ACCEL_MAX_STEP: int
-PALETTE_MAX_ROWS: int
+PICKER_WIDTH: int
+PICKER_MAX_ROWS: int
+PANE_MAX_WIDTH: int
 PREVIEW_DIFF_CONTEXT: int
 ALT_ESC_TIMEOUT_MS: int
 COMPLETION_MAX_ROWS: int
@@ -63,7 +65,9 @@ config_ints := [?]Config_Int {
 	{"cursor_accel_interval_ms", &CURSOR_ACCEL_INTERVAL_MS},
 	{"cursor_accel_ramp_presses", &CURSOR_ACCEL_RAMP_PRESSES},
 	{"cursor_accel_max_step", &CURSOR_ACCEL_MAX_STEP},
-	{"palette_max_rows", &PALETTE_MAX_ROWS},
+	{"picker_width", &PICKER_WIDTH},
+	{"picker_max_rows", &PICKER_MAX_ROWS},
+	{"pane_max_width", &PANE_MAX_WIDTH},
 	{"preview_diff_context", &PREVIEW_DIFF_CONTEXT},
 	{"alt_esc_timeout_ms", &ALT_ESC_TIMEOUT_MS},
 	{"jump_threshold", &JUMP_THRESHOLD},
@@ -696,7 +700,13 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 }
 
 CONFIG_MOVED :: [?][2]string {
-	{"plugins_pane_max_width", "plugins/manager/max_width"},
+	{"plugins_pane_max_width", "pane_max_width"},
+	{"palette_max_rows", "picker_max_rows"},
+	{"plugins/palette/width", "picker_width"},
+	{"plugins/manager/max_width", "pane_max_width"},
+	{"plugins/log/max_width", "pane_max_width"},
+	{"plugins/settings/max_width", "pane_max_width"},
+	{"plugins/markdown/max_width", "pane_max_width"},
 	{"keybinds/Plugins: Open", "plugins/manager/keybinds/Open"},
 	{"keybinds/Plugins: Enable/Disable", "plugins/manager/keybinds/Enable/Disable"},
 	{"keybinds/Plugins: Reload", "plugins/manager/keybinds/Reload"},
@@ -709,7 +719,7 @@ CONFIG_MOVED :: [?][2]string {
 	{"keybinds/Message Log: Toggle Warn", "plugins/log/keybinds/Toggle Warn"},
 	{"keybinds/Message Log: Toggle Error", "plugins/log/keybinds/Toggle Error"},
 	{"keybinds/Message Log: Toggle History", "plugins/log/keybinds/Toggle History"},
-	{"message_log_max_width", "plugins/log/max_width"},
+	{"message_log_max_width", "pane_max_width"},
 	{"keybinds/Find", "plugins/find/keybinds/In Buffer"},
 	{"keybinds/Replace", "plugins/find/keybinds/Replace"},
 	{"format_on_save", "plugins/format/on_save"},

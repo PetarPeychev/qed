@@ -137,7 +137,7 @@ local function find_line(ctx)
 		query:set_selection({row = 1, col = 1}, {row = 1, col = #start + 1})
 		apply_query()
 	else
-		highlight(tostring(buffer:cursor().row))
+		highlight(buffer:cursor().row)
 	end
 end
 

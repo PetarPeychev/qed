@@ -2,7 +2,6 @@ local ui = qed.ui
 
 local STATUS_COLORS = {disabled = "pane_shortcut_foreground", errored = "error_foreground"}
 
-local options
 local view
 
 local function record_of(plugin)
@@ -84,7 +83,7 @@ end
 
 local function source_box()
 	local record = view.source
-	return ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
+	return ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%",
 		margin = {x = 2, y = 1}, border = true, title = "plugins/" .. record.main .. "  ·  bundled, read-only",
 		bg = "pane_background", fg = "pane_foreground",
 		ui.column{
@@ -101,7 +100,7 @@ local function build()
 		(" ↑↓ select  Enter open  " .. shortcut("Enable/Disable") .. " enable/disable  " .. shortcut("Reload") ..
 		" reload  " .. shortcut("Show Log") .. " log  Esc close")
 	return ui.dismissable{on_dismiss = close,
-		ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
+		ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%",
 			margin = {x = 2, y = 1}, border = true, title = "Plugins", bg = "pane_background", fg = "pane_foreground",
 			ui.column{
 				ui.scroll{id = "plugin_scroll", grow = 1,
@@ -142,7 +141,6 @@ local function open()
 		close()
 		return
 	end
-	options = qed.config()
 	view = {records = qed.list.new{key = "id"}, widths = {display = 4, source = 6, status = 6, load = 4}, build = build}
 	view.handle = ui.mount("pane", build())
 	refresh()
@@ -225,7 +223,6 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Plugin Manager", description = "Lists plugins: enable, disable, reload, source and log"}
-		options = qed.options({max_width = 120}, {max_width = "Max width of the Plugins pane"})
 		qed.command{name = "Open", welcome = true, run = open}
 		qed.command{name = "Enable/Disable", scope = "plugins", key = "e", run = toggle_enabled}
 		qed.command{name = "Reload", scope = "plugins", key = "r", run = reload}

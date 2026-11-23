@@ -4,8 +4,6 @@ qed-e2e snapshot 80x24 cursor 3,2
  2┌─ plugins/dialog/init.lua  ·  bundled, read-only ─────────────────────────┐
   │local ui = qed.ui                                                         │
   │                                                                          │
-  │local WIDTH = 64                                                          │
-  │local MAX_ROWS = 12                                                       │
   │local PREVIEW_DEBOUNCE_MS = 60                                            │
   │                                                                          │
   │local dialog                                                              │
@@ -21,6 +19,8 @@ qed-e2e snapshot 80x24 cursor 3,2
   │    local state = ui.node("dialog_rows"):state()                          │
   │    return state and state.highlighted or nil                             │
   │end                                                                       │
+  │                                                                          │
+  │local function notify()                                                   │
   │ Esc back  ·  fork: copy to ~/.config/qed/plugins/dialog                  │
  ≡└──────────────────────────────────────────────────────────────────────────┘4
 
@@ -29,8 +29,6 @@ abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeedddddddddffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeeddddddddddddffddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdeeeeedddddddddddddddddddddddffdddddddddddddddddddddddddddddddddddddddddddddcc
 ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
@@ -46,6 +44,8 @@ ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdddddeeeeedddddddddddddddddgggggggggggggddddddddddddddddddddddddddddddddddddcc
 ccdddddeeeeeedddddddeeedddddddddddddddddddeedfffddddddddddddddddddddddddddddddcc
 ccdeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ccdhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhdddddddddddddddddddcc
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

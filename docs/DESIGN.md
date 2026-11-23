@@ -683,7 +683,7 @@ menu, and a multi-line ghost floats the popup above the caret (`completion_rende
 
 ## Settings menu
 
-`plugins/settings/menu.lua`, *Settings: Open*: a `full` pane (`plugins.settings.max_width`, `backdrop`) with
+`plugins/settings/menu.lua`, *Settings: Open*: a `full` pane (`pane_max_width`) with
 Options (Key | Value) and Keybinds (Command | Chord) tabs over a filter field; each tab swaps `list.columns`
 (`v:set{columns}`). Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
 nested keys; `lsp.enabled`, `languages.go.lsp`), then per plugin `<id>.enabled` and every `qed.options` leaf as
@@ -994,7 +994,7 @@ underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 rendered-markdown hover (`mdrender.odin`, see Markdown rendering; popup wheel-scrolls while
 hovered, `contentFormat` advertises markdown first), markdown preview (`markdown` plugin,
 *Markdown: Preview* `Alt+p` in markdown buffers: a `full` pane capped at
-`plugins.markdown.max_width`, live on `buf_changed`, scroll kept, synced with the editor cursor on open and (after scrolling) on close, *Markdown: Back*/*Forward* over anchor and file-link history),
+`pane_max_width`, live on `buf_changed`, scroll kept, synced with the editor cursor on open and (after scrolling) on close, *Markdown: Back*/*Forward* over anchor and file-link history),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),

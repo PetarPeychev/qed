@@ -9,7 +9,6 @@ local CHIPS = {
 	{key = "history", label = "history", command = "Toggle History"},
 }
 
-local options
 local filters = {debug = false, info = true, warn = true, error = true, history = false}
 local view
 local close_all, toggle
@@ -52,7 +51,7 @@ end
 local function build()
 	local title = view.source and ("Message Log  ·  " .. view.source) or "Message Log"
 	return ui.dismissable{on_dismiss = function() close_all() end,
-		ui.box{float = "screen", anchor = "center", width = {"100%", max = options.max_width}, height = "100%",
+		ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%",
 			margin = {x = 2, y = 1}, border = true, title = title, bg = "pane_background", fg = "pane_foreground",
 			ui.column{
 				ui.scroll{id = "log_scroll", grow = 1, follow = true,
@@ -63,7 +62,7 @@ local function build()
 			},
 		},
 		view.detail and ui.box{id = "log_detail", float = "screen", anchor = "center",
-			width = {"100%", max = options.max_width}, height = "100%", margin = {x = 2, y = 1}, border = true,
+			width = {"100%", max = qed.opt("pane_max_width")}, height = "100%", margin = {x = 2, y = 1}, border = true,
 			title = "Message Log", bg = "pane_background", fg = "pane_foreground", scope = "log_detail",
 			ui.scroll{id = "log_detail_scroll", ui.text{wrap = true, table.unpack(view.detail)}}} or false,
 	}
@@ -104,7 +103,6 @@ local function reload()
 end
 
 local function open_log(source)
-	options = qed.config()
 	if view then
 		if view.source == source then
 			view.handle:unmount()
@@ -194,7 +192,6 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Message Log", description = "The message log on qed.ui"}
-		options = qed.options({max_width = 120}, {max_width = "Max width of the message log box in cells"})
 		qed.command{name = "Open", key = "Alt+l", welcome = true, run = function() open_log(nil) end}
 		qed.export{show = function(source) open_log(source) end}
 		qed.command{name = "Copy", scope = "log", bind_from = "Copy", run = copy}

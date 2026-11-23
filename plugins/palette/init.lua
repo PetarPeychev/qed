@@ -1,7 +1,6 @@
 local ui = qed.ui
 
 local palette
-local options
 
 local function name_spans(record, positions)
 	local matched = {}
@@ -76,7 +75,7 @@ end
 
 local function build(matches, query, empty)
 	return ui.dismissable{on_dismiss = close_palette,
-		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit", scope = "list",
+		ui.box{id = "palette", float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
 			ui.column{
@@ -86,7 +85,7 @@ local function build(matches, query, empty)
 						scope = {"palette", "editor"}, placeholder = "Type a command"},
 				},
 				empty and ui.text{fg = "pane_dim_foreground", " No matching commands"} or false,
-				ui.scroll{height = {"fit", max = qed.opt("palette_max_rows")},
+				ui.scroll{height = {"fit", max = qed.opt("picker_max_rows")},
 					ui.virtual_column{id = "palette_results", data = matches, item = command_row,
 						highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 			},
@@ -125,7 +124,6 @@ local function open_palette()
 	local matches = qed.fuzzy.list(commands, {field = "name"})
 	local query = qed.buf.create{internal = true}
 	local empty = false
-	options = qed.config()
 	local handle = ui.mount("pane", build(matches, query, empty))
 	query:on("change", function()
 		matches:set_query(query:text())
@@ -143,7 +141,6 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Palette", description = "Command palette on qed.ui"}
-		options = qed.options({width = 64}, {width = "Width of the palette box in cells"})
 		qed.command{name = "Open", bind_from = "Command Palette", run = open_palette}
 		qed.command{name = "Run", scope = "palette", key = "Enter", run = run_highlighted}
 		qed.command{name = "Close", scope = "palette", key = "Esc", run = close_palette}

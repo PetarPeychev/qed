@@ -121,7 +121,7 @@ e2e_mouse_palette_wheel :: proc(t: ^testing.T) {
 
 	e2e_key(&e, .Ctrl_P)
 	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
-	testing.expect(t, strings.count(palette_labels(&e), "|") - 1 > PALETTE_MAX_ROWS, "more commands than fit")
+	testing.expect(t, strings.count(palette_labels(&e), "|") - 1 > PICKER_MAX_ROWS, "more commands than fit")
 	box := node_rect(&e.ed, "palette")
 	e2e_render(&e)
 	top := e2e_row(&e, box.y + 2)

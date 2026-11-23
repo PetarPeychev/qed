@@ -1,7 +1,6 @@
 local ui = qed.ui
 
 local ACTIONS = {"Cancel", "Close All"}
-local WIDTH = 64
 local SELECTED = {bg = "pane_selection_background", fg = "pane_selection_foreground"}
 
 local view
@@ -100,7 +99,7 @@ end
 
 local function build()
 	return ui.dismissable{on_dismiss = close,
-		ui.box{id = "workspace", float = "screen", anchor = "top", width = WIDTH, height = "fit", scope = "list",
+		ui.box{id = "workspace", float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, bg = "pane_background", fg = "pane_foreground",
 			ui.column{
@@ -108,7 +107,7 @@ local function build()
 					ui.text{fg = "pane_prompt_foreground", "> "},
 					ui.editor{id = "workspace_query", buffer = view.query, height = 1, grow = 1, scope = {"workspace", "editor"}},
 				},
-				ui.scroll{height = {"fit", max = qed.opt("palette_max_rows")},
+				ui.scroll{height = {"fit", max = qed.opt("picker_max_rows")},
 					ui.virtual_column{id = "workspace_rows", data = view.dirs, item = dir_row, highlight_style = SELECTED}},
 			},
 		},

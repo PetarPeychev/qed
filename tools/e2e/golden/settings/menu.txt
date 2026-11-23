@@ -18,8 +18,8 @@ qed-e2e snapshot 80x24 cursor 5,3
   │ image_protocol                 auto                                      │
   │ jump_threshold                 10                                        │
   │ line_wrap                      true                                      │
-  │ palette_max_rows               8                                         │
-  │ plugin_command_max_ms          5000                                      │
+  │ pane_max_width                 120                                       │
+  │ picker_max_rows                8                                         │
   │ Wait after Esc for a key to read as Alt+key. Default: 25                 │
   │ Enter edit  Ctrl+d reset                                                 │
  ≡└──────────────────────────────────────────────────────────────────────────┘4

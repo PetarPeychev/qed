@@ -3,6 +3,7 @@ package main
 import "core:c"
 import "core:fmt"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import lua "lib:lua"
 
@@ -55,6 +56,14 @@ UiList :: struct {
 	feed:         UiMessagesFeed,
 	tree:         ^WalkTree,
 	lines:        ^UiLines,
+	key_kind:     UiKeyKind,
+}
+
+// keys are compared as strings in core; Lua gets back the type it gave
+UiKeyKind :: enum u8 {
+	Unset,
+	String,
+	Integer,
 }
 
 ui_list_find :: proc(ui: ^Ui, id: u64) -> ^UiList {
@@ -553,18 +562,49 @@ ui_list_record_key :: proc(L: ^lua.State, list: ^UiList, idx: c.int) -> string {
 	lua.pushodinstring(L, list.key_field)
 	lua.rawget(L, idx)
 	defer lua.pop(L, 1)
-	#partial switch lua.type(L, -1) {
-	case .STRING:
-		text, _ := lua.toodinstring(L, -1)
-		return strings.clone(text, context.temp_allocator)
-	case .NUMBER:
-		if lua.isinteger(L, -1) {
-			return fmt.tprintf("%d", lua.tointeger(L, -1))
-		}
-		return fmt.tprintf("%v", lua.tonumberx(L, -1, nil))
+	if lua.type(L, -1) == .NIL {
+		plugin_raise(L, fmt.tprintf("record has no '%s' (the list's key field)", list.key_field))
 	}
-	plugin_raise(L, fmt.tprintf("record has no '%s' (the list's key field)", list.key_field))
-	return ""
+	key, kind := ui_list_key_read(L, -1, list.key_field)
+	if list.key_kind == .Unset {
+		list.key_kind = kind
+	} else if kind != list.key_kind {
+		plugin_raise(L, fmt.tprintf("'%s' keys of one list are all strings or all integers", list.key_field))
+	}
+	return key
+}
+
+ui_list_key_read :: proc(L: ^lua.State, idx: c.int, what: string) -> (string, UiKeyKind) {
+	#partial switch lua.type(L, idx) {
+	case .STRING:
+		text, _ := lua.toodinstring(L, idx)
+		return strings.clone(text, context.temp_allocator), .String
+	case .NUMBER:
+		if lua.isinteger(L, idx) {
+			return fmt.tprintf("%d", lua.tointeger(L, idx)), .Integer
+		}
+	}
+	plugin_raise(L, fmt.tprintf("%s: a string or integer key expected", what))
+	return "", .Unset
+}
+
+ui_list_keys_owner :: proc(editor: ^Editor, list: ^UiList) -> ^UiList {
+	if list.fuzzy {
+		if source := ui_list_find(&editor.ui, list.source); source != nil {
+			return source
+		}
+	}
+	return list
+}
+
+ui_list_push_key :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, key: string) {
+	if list != nil && ui_list_keys_owner(editor, list).key_kind == .Integer {
+		if number, ok := strconv.parse_i64(key); ok {
+			lua.pushinteger(L, lua.Integer(number))
+			return
+		}
+	}
+	lua.pushodinstring(L, key)
 }
 
 ui_list_sort_value :: proc(L: ^lua.State, list: ^UiList, idx: c.int, record: ^UiListRecord) {
@@ -702,19 +742,13 @@ qed_list_insert :: proc "c" (L: ^lua.State) -> c.int {
 	return 0
 }
 
-ui_list_key_arg :: proc(L: ^lua.State, idx: c.int) -> string {
-	#partial switch lua.type(L, idx) {
-	case .STRING:
-		text, _ := lua.toodinstring(L, idx)
-		return strings.clone(text, context.temp_allocator)
-	case .NUMBER:
-		if lua.isinteger(L, idx) {
-			return fmt.tprintf("%d", lua.tointeger(L, idx))
-		}
-		return fmt.tprintf("%v", lua.tonumberx(L, idx, nil))
+ui_list_key_arg :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, idx: c.int) -> string {
+	key, kind := ui_list_key_read(L, idx, "key")
+	owner := ui_list_keys_owner(editor, list)
+	if owner.key_kind != .Unset && kind != owner.key_kind {
+		plugin_raise(L, fmt.tprintf("this list's keys are %s", "integers" if owner.key_kind == .Integer else "strings"))
 	}
-	lua.L_argerror(L, idx, "key expected")
-	return ""
+	return key
 }
 
 qed_list_set :: proc "c" (L: ^lua.State) -> c.int {
@@ -723,7 +757,7 @@ qed_list_set :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	list := api_ui_list_self(L, editor)
 	ui_list_mutable(L, list)
-	key := ui_list_key_arg(L, 2)
+	key := ui_list_key_arg(L, editor, list, 2)
 	if lua.type(L, 3) != .TABLE {
 		lua.L_argerror(L, 3, "fields table expected")
 	}
@@ -778,7 +812,7 @@ qed_list_remove :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	list := api_ui_list_self(L, editor)
 	ui_list_mutable(L, list)
-	key := ui_list_key_arg(L, 2)
+	key := ui_list_key_arg(L, editor, list, 2)
 	pos, ok := ui_list_position(list, key)
 	if !ok {
 		return 0
@@ -860,7 +894,7 @@ qed_list_positions :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	list := api_ui_list_self(L, editor)
 	ui_list_settle_all(editor, list)
-	key := ui_list_key_arg(L, 2)
+	key := ui_list_key_arg(L, editor, list, 2)
 	if _, ok := list.positions[key]; !ok {
 		lua.pushnil(L)
 		return 1
@@ -880,7 +914,7 @@ qed_list_get :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	list := api_ui_list_self(L, editor)
 	ui_list_settle_all(editor, list)
-	key := ui_list_key_arg(L, 2)
+	key := ui_list_key_arg(L, editor, list, 2)
 	pos, ok := ui_list_position(list, key)
 	if !ok {
 		lua.pushnil(L)
@@ -911,7 +945,7 @@ qed_list_index_of :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	list := api_ui_list_self(L, editor)
 	ui_list_settle_all(editor, list)
-	key := ui_list_key_arg(L, 2)
+	key := ui_list_key_arg(L, editor, list, 2)
 	pos, ok := ui_list_position(list, key)
 	if !ok {
 		lua.pushnil(L)

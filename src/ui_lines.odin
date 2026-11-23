@@ -161,7 +161,7 @@ ui_lines_record_push :: proc(L: ^lua.State, editor: ^Editor, lines: ^UiLines, i:
 		col = min(lines.jump_col, len(text))
 	}
 	lua.createtable(L, 0, 4)
-	lua.pushodinstring(L, fmt.tprintf("%d", row + 1))
+	lua.pushinteger(L, lua.Integer(row + 1))
 	lua.setfield(L, -2, "key")
 	lua.pushinteger(L, lua.Integer(row + 1))
 	lua.setfield(L, -2, "row")
@@ -196,6 +196,7 @@ qed_buf_line_list :: proc "c" (L: ^lua.State) -> c.int {
 	plugin := api_loaded(L, editor)
 	lua.settop(L, 0)
 	list := api_ui_list_push(L, editor, plugin.name, false, lines = true)
+	list.key_kind = .Integer
 	list.lines = new(UiLines)
 	list.lines.buf = id
 	list.lines.stamp = max(u64)

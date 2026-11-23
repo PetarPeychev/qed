@@ -124,6 +124,7 @@ qed_messages :: proc "c" (L: ^lua.State) -> c.int {
 	lua.settop(L, 0)
 	list := api_ui_list_push(L, editor, plugin.name, false)
 	list.key_field = strings.clone("seq")
+	list.key_kind = .Integer
 	feed.source = strings.clone(feed.source)
 	list.feed = feed
 	ui_messages_append(L, editor, list)

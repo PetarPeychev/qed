@@ -319,9 +319,9 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	count := strings.count(palette_labels(&e), "|") - 1
 	box := node_rect(&e.ed, "palette")
 	bar_x := box.x + box.w - 2
-	testing.expect(t, count > PALETTE_MAX_ROWS, "the command list should overflow the palette")
-	testing.expect_value(t, box.w, 64)
-	testing.expect_value(t, box.h, 2 + 1 + PALETTE_MAX_ROWS)
+	testing.expect(t, count > PICKER_MAX_ROWS, "the command list should overflow the palette")
+	testing.expect_value(t, box.w, PICKER_WIDTH)
+	testing.expect_value(t, box.h, 2 + 1 + PICKER_MAX_ROWS)
 	e2e_render(&e)
 	testing.expect_value(t, e2e_cell(&e, bar_x, box.y + 2), '┃')
 	testing.expect(t, e2e_grid_has(&e, "Ctrl+q"), "the shortcut column shows live binds")

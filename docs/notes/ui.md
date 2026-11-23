@@ -33,7 +33,7 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
   positional index (a `false` or `nil` hole keeps later siblings' identity). Duplicate ids or sibling keys raise.
 - State is core's, keyed by identity, never in the node table: `highlighted` (column, row, virtual_column),
   `extend_from` (virtual_column: the rows from it to `highlighted` draw highlighted too, a range selection),
-  `offset` (scroll), `scroll` (editor; per editor node and buffer). `set_state` changes only named fields, fires
+  `offset` (rows scrolled past the top, 0-based: scroll, and editor per node and buffer). `set_state` changes only named fields, fires
   nothing, and a new `highlighted` scrolls into view. When core changes `highlighted` (list keys, a row click) the
   node's `on.state{highlighted, extend_from}` fires. `state()` reports `highlighted` only while that key is in the
   data. States of id'd nodes live until their plugin unloads; others go with their node.
@@ -115,7 +115,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 
 | Call | Does |
 |---|---|
-| `qed.list.new{key = "path"}` | a core-owned list of plain record tables; `key` names the identity field |
+| `qed.list.new{key = "path"}` | a core-owned list of plain record tables; `key` names the identity field: all strings or all integers, handed back as given |
 | `list:append(record)`, `list:insert(position, record)` | add (sorted lists insert in place; `insert` raises on them) |
 | `list:set(key, fields)` | merge into a record (not its key field); rebuilds that record's item |
 | `list:remove(key)`, `list:clear()` | |
@@ -163,7 +163,7 @@ end
 local function build(matches, query, empty)
 	return ui.column{float = "screen", width = "100%", height = "100%",
 		on = {click = function() close_palette() return true end},
-		ui.box{id = "palette", float = "screen", anchor = "top", width = options.width, height = "fit", scope = "list",
+		ui.box{id = "palette", float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
 			margin = {top = 3, right = 2, bottom = 2, left = 2},
 			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
 			on = {click = function() return true end},
@@ -174,7 +174,7 @@ local function build(matches, query, empty)
 						scope = {"palette", "editor"}, placeholder = "Type a command"},
 				},
 				empty and ui.text{fg = "pane_dim_foreground", " No matching commands"} or false,
-				ui.scroll{height = {"fit", max = qed.opt("palette_max_rows")},
+				ui.scroll{height = {"fit", max = qed.opt("picker_max_rows")},
 					ui.virtual_column{id = "palette_results", data = matches, item = command_row,
 						highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 			},

@@ -420,11 +420,11 @@ local NodeRef = {}
 ---@return string|nil err
 function NodeRef:focus() end
 
----The node's widget state: `highlighted` (lists), `extend_from` (virtual_column range start), `offset` (scroll), `scroll` (editor, 1-based top row).
+---The node's widget state: `highlighted` (lists), `extend_from` (virtual_column range start), `offset` (scroll and editor: rows scrolled past the top, 0-based).
 ---@return table|nil
 function NodeRef:state() end
 
----Changes only the named state fields (`highlighted`, `extend_from`, `offset`, `scroll`); no rebuild, no `on.state`. A new `highlighted` scrolls into view.
+---Changes only the named state fields (`highlighted`, `extend_from`, `offset`); no rebuild, no `on.state`. A new `highlighted` scrolls into view.
 ---@param patch table
 function NodeRef:set_state(patch) end
 
@@ -634,7 +634,7 @@ function TreeList:more() end
 
 qed.list = {}
 
----A core-owned record list; `key` names the identity field.
+---A core-owned record list; `key` names the identity field. Keys are all strings or all integers (anything else raises) and come back as given, in `state().highlighted` too.
 ---@param spec {key: string}
 ---@return qed.List
 function qed.list.new(spec) end
@@ -1118,7 +1118,7 @@ function BufferObject:set_base(text, opts) end
 ---@return string|nil
 function BufferObject:base() end
 
----A live list over the buffer's lines, for a `virtual_column`: records `{key = tostring(row), row, col, label = line text}`, built only when read, `col` the first non-blank. An edit, a reload or the buffer closing shows on the next frame (a closed buffer empties it). `set_query(text)` keeps matches in buffer order; `:N` or `:N:M` keeps row N alone (column M, past the end clamps), a bare number lists row N first, then the text matches.
+---A live list over the buffer's lines, for a `virtual_column`: records `{key = row, row, col, label = line text}`, built only when read, `col` the first non-blank. An edit, a reload or the buffer closing shows on the next frame (a closed buffer empties it). `set_query(text)` keeps matches in buffer order; `:N` or `:N:M` keeps row N alone (column M, past the end clamps), a bare number lists row N first, then the text matches.
 ---@return qed.LinesList
 function BufferObject:line_list() end
 
