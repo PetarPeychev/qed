@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 38,2
 -- text
   1 package main
   2                         ┌────────────────────────────────────────────────┐
-  3 import "fmt"            │Find name                      .* Aa        1/4 │
+  3 import "fmt"            │Find name                     .* Aa         1/4 │
   4                         └────────────────────────────────────────────────┘
   5 func greet(name string) string {
   6     return "hello, " + name
@@ -27,7 +27,7 @@ qed-e2e snapshot 80x24 cursor 38,2
 -- style
 aaaabbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaaccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
-aaaabbbbbbceeeeeccccccccccccdfffffddddddddddddddddddddddddddggdggddddddddggggdcc
+aaaabbbbbbceeeeeccccccccccccdfffffdddddddddddddddddddddddddggdggdddddddddggggdcc
 aaaaccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddcc
 ahhhbbbbccccccciiiicjjjjjjccjjjjjjcccccccccccccccccccccccccccccccccccccccccccccc
 aaaaccccbbbbbbceeeeeeeeeccckkkkccccccccccccccccccccccccccccccccccccccccccccccccc

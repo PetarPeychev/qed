@@ -14,7 +14,6 @@ ListSourceKind :: enum {
 	Commands,
 	Dirs,
 	Lines,
-	Log,
 	Plugins,
 	Walk,
 }
@@ -134,13 +133,6 @@ list_stamp :: proc(editor: ^Editor, p: ^Pane) -> u64 {
 		if b, _ := api_buf_find(editor, src.buf); b != nil {
 			return b.rev + 1
 		}
-	case .Log:
-		v := &editor.logview
-		stamp := editor.log_seq << 8 | u64(v.history)
-		for on, level in v.filter {
-			stamp |= u64(on) << (1 + uint(level))
-		}
-		return stamp
 	case .Plugins:
 		return u64(len(editor.plugins.list))
 	case .Walk:
@@ -168,8 +160,6 @@ list_count :: proc(editor: ^Editor, p: ^Pane) -> int {
 	case .Lines:
 		b, _ := api_buf_find(editor, src.buf)
 		return len(b.lines) if b != nil else 0
-	case .Log:
-		return len(list_log_rows(editor, src))
 	case .Plugins:
 		return len(editor.plugins.list)
 	case .Walk:
@@ -193,8 +183,6 @@ list_text :: proc(editor: ^Editor, p: ^Pane, i: int) -> string {
 	case .Lines:
 		b, _ := api_buf_find(editor, src.buf)
 		return string(b.lines[i].text[:])
-	case .Log:
-		return list_log_entry(editor, src, i).text
 	case .Plugins:
 		return editor.plugins.list[i].display
 	case .Walk:
@@ -234,11 +222,6 @@ list_item :: proc(editor: ^Editor, p: ^Pane, i: int) -> (it: PaneItem) {
 		}
 		it.cells = make([]string, 2, context.temp_allocator)
 		it.cells[0], it.cells[1] = fmt.tprintf("%d", i + 1), it.label
-	case .Log:
-		e := list_log_entry(editor, src, i)
-		it.label, it.key, it.color = e.text, fmt.tprintf("%d", e.seq), log_level_color(e.level)
-		it.cells = make([]string, 3, context.temp_allocator)
-		it.cells[0], it.cells[1], it.cells[2] = log_clock(e.time), e.source, e.text
 	case .Plugins:
 		pl := editor.plugins.list[i]
 		it.label, it.key = pl.display, pl.name
@@ -270,8 +253,6 @@ list_columns :: proc(editor: ^Editor, p: ^Pane) -> []PaneColumn {
 		return p.list.columns
 	case .Lines:
 		return slice.clone([]PaneColumn{{size = .Fixed, w = digit_count(list_count(editor, p)), right = true}, {}}, context.temp_allocator)
-	case .Log:
-		return LOG_COLUMNS[:]
 	case .Plugins:
 		return PLUGIN_COLUMNS[:]
 	}
@@ -346,40 +327,6 @@ list_dirs_fill :: proc(editor: ^Editor, p: ^Pane) {
 			append(&src.rows, i)
 		}
 	}
-}
-
-list_log_rows :: proc(editor: ^Editor, src: ^ListSource) -> []int {
-	v := &editor.logview
-	stamp := editor.log_seq << 8 | u64(v.history)
-	for on, level in v.filter {
-		stamp |= u64(on) << (1 + uint(level))
-	}
-	if stamp != src.stamp || v.source != src.path {
-		src.stamp = stamp
-		delete(src.path)
-		src.path = strings.clone(v.source)
-		first := editor.log[0].seq if len(editor.log) > 0 else editor.log_seq + 1
-		for seq in src.rows {
-			if u64(seq) < first {
-				src.evicted += 1
-			}
-		}
-		clear(&src.rows)
-		for e in editor.log {
-			if v.filter[e.level] && (!e.seeded || v.history) && (v.source == "" || e.source == v.source) {
-				append(&src.rows, int(e.seq))
-			}
-		}
-	}
-	return src.rows[:]
-}
-
-list_log_entry :: proc(editor: ^Editor, src: ^ListSource, i: int) -> LogEntry {
-	seq := u64(list_log_rows(editor, src)[i])
-	if len(editor.log) == 0 || seq < editor.log[0].seq || seq - editor.log[0].seq >= u64(len(editor.log)) {
-		return {}
-	}
-	return editor.log[seq - editor.log[0].seq]
 }
 
 // col -1 means the first non-blank

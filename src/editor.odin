@@ -30,7 +30,6 @@ Editor :: struct {
 	message_level:   LogLevel,
 	log:             [dynamic]LogEntry,
 	log_seq:         u64,
-	logview:         LogView,
 	plugins:         Plugins,
 	log_file:        ^os.File,
 	log_open:        bool,
@@ -113,7 +112,6 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 	clipboard_headless = headless
 	editor := Editor {
 		buffers        = make([dynamic]Buffer, 0, 8),
-		logview        = LogView{filter = {.Debug = false, .Info = true, .Warn = true, .Error = true}},
 		headless       = headless,
 	}
 	g_diff_view = DIFF_VIEW
@@ -411,10 +409,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		if ev.type == .Key {
 			if command_matches(ev, "Terminal: Toggle") {
 				term_toggle(editor)
-				return
-			}
-			if command_matches(ev, "Message Log: Open") {
-				logview_open(editor)
 				return
 			}
 			if command_matches(ev, "Plugins: Open") {

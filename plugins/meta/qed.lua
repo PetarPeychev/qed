@@ -733,6 +733,11 @@ function qed.confirm(spec) end
 ---@return string[]
 function qed.languages() end
 
+---A live core list of message log entries `{seq, level, source, text, time, seeded}` (key `seq`): new entries append, evicted ones leave.
+---@param filter? {levels?: {debug?: boolean, info?: boolean, warn?: boolean, error?: boolean}, history?: boolean, source?: string}
+---@return qed.List
+function qed.messages(filter) end
+
 qed.theme = {}
 
 ---Applies a theme. With `persist`, also writes it as config `theme` (only that key); `nil, err` on an unknown name or a failed write.

@@ -55,7 +55,6 @@ PLUGIN_MEMORY_MB: int
 PLUGIN_SLICE_MAX_MS: int
 PLUGIN_COMMAND_MAX_MS: int
 PLUGIN_HOOK_TIMEOUT_MS: int
-MESSAGE_LOG_MAX_WIDTH: int
 PLUGINS_PANE_MAX_WIDTH: int
 IMAGE_MAX_ROWS: int
 
@@ -78,7 +77,6 @@ config_ints := [?]Config_Int {
 	{"split_code_max_width", &SPLIT_CODE_MAX_WIDTH},
 	{"split_preview_min_width", &SPLIT_PREVIEW_MIN_WIDTH},
 	{"split_preview_max_width", &SPLIT_PREVIEW_MAX_WIDTH},
-	{"message_log_max_width", &MESSAGE_LOG_MAX_WIDTH},
 	{"plugins_pane_max_width", &PLUGINS_PANE_MAX_WIDTH},
 	{"image_max_rows", &IMAGE_MAX_ROWS},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
@@ -107,7 +105,6 @@ Config_Str :: struct {
 	ptr: ^string,
 }
 
-MESSAGE_LOG_BACKDROP: PaneBackdrop
 PLUGINS_PANE_BACKDROP: PaneBackdrop
 IMAGE_PROTOCOL: ImageSetting
 
@@ -117,7 +114,6 @@ Config_Backdrop :: struct {
 }
 
 config_backdrops := [?]Config_Backdrop {
-	{"message_log_backdrop", &MESSAGE_LOG_BACKDROP},
 	{"plugins_pane_backdrop", &PLUGINS_PANE_BACKDROP},
 }
 
@@ -749,6 +745,13 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 }
 
 CONFIG_MOVED :: [?][2]string {
+	{"keybinds/Message Log: Open", "plugins/log/keybinds/Open"},
+	{"keybinds/Message Log: Toggle Debug", "plugins/log/keybinds/Toggle Debug"},
+	{"keybinds/Message Log: Toggle Info", "plugins/log/keybinds/Toggle Info"},
+	{"keybinds/Message Log: Toggle Warn", "plugins/log/keybinds/Toggle Warn"},
+	{"keybinds/Message Log: Toggle Error", "plugins/log/keybinds/Toggle Error"},
+	{"keybinds/Message Log: Toggle History", "plugins/log/keybinds/Toggle History"},
+	{"message_log_max_width", "plugins/log/max_width"},
 	{"keybinds/Find", "plugins/find/keybinds/In Buffer"},
 	{"keybinds/Replace", "plugins/find/keybinds/Replace"},
 	{"format_on_save", "plugins/format/on_save"},
@@ -780,7 +783,7 @@ CONFIG_MOVED :: [?][2]string {
 	{"keybinds/Go to Start of File", "keybinds/Go to: Start of File"},
 	{"keybinds/Go to End of File", "keybinds/Go to: End of File"},
 	{"keybinds/File Tree: Git", "plugins/git/keybinds/Changes"},
-	{"keybinds/Debug: Message Log", "keybinds/Message Log: Open"},
+	{"keybinds/Debug: Message Log", "plugins/log/keybinds/Open"},
 	{"keybinds/Debug: Plugins", "keybinds/Plugins: Open"},
 	{"keybinds/Find in Files", "plugins/search/keybinds/In Files"},
 	{"keybinds/Set Theme", "plugins/settings/keybinds/Theme"},

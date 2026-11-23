@@ -515,6 +515,10 @@ plugin_event_push :: proc(L: ^lua.State, q: PluginQueued) -> c.int {
 		lua.pushodinstring(L, q.a)
 		return 1
 	case .Custom:
+		if q.data == 0 {
+			lua.pushodinstring(L, q.b)
+			return 1
+		}
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(q.data))
 		return 1
 	}
@@ -783,6 +787,7 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 		return false
 	}
 	plugin_views_flush(editor)
+	ui_messages_feed(editor)
 	settled := false
 	for _ in 0 ..< PLUGIN_FLUSH_ROUNDS {
 		plugin_buffers_check(editor)

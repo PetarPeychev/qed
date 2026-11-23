@@ -27,7 +27,7 @@ ui_kind_props := [UiKind][]string {
 	.Column         = {"gap", "align", "separator", "highlight_style"},
 	.Row            = {"gap", "align", "separator", "highlight_style"},
 	.Box            = {"border", "title"},
-	.Scroll         = {"header"},
+	.Scroll         = {"header", "follow"},
 	.Text           = {"wrap", "align"},
 	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly"},
 	.Virtual_Column = {"data", "item", "highlight_style"},
@@ -479,6 +479,8 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			}
 		case "separator":
 			node.separator = bool(lua.toboolean(L, value_index))
+		case "follow":
+			node.follow = bool(lua.toboolean(L, value_index))
 		case "border":
 			node.border = bool(lua.toboolean(L, value_index))
 		case "wrap":

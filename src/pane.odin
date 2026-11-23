@@ -1032,15 +1032,6 @@ pane_list_fit :: proc(editor: ^Editor, p: ^Pane, rows: int) {
 			pane_refilter_keep(editor, p, rows, sel, anchor)
 		}
 		p.list.stamp = stamp
-		if src.kind == .Log {
-			list_log_rows(editor, src)
-			d := src.evicted
-			src.evicted = 0
-			p.list.sel, p.list.scroll = max(0, p.list.sel - d), max(0, p.list.scroll - d)
-			if a, ok := p.list.anchor.?; ok {
-				p.list.anchor = max(0, a - d)
-			}
-		}
 	}
 	n := pane_count(editor, p)
 	if a, ok := p.list.anchor.?; ok {

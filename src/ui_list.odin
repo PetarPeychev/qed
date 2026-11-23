@@ -52,6 +52,7 @@ UiList :: struct {
 	matches:      [dynamic]UiFuzzyMatch,
 	source_rev:   u64,
 	fuzzy_dirty:  bool,
+	feed:         UiMessagesFeed,
 }
 
 ui_list_find :: proc(ui: ^Ui, id: u64) -> ^UiList {
@@ -99,6 +100,7 @@ ui_list_free :: proc(editor: ^Editor, list: ^UiList) {
 	delete(list.sort_field)
 	delete(list.field)
 	delete(list.query)
+	delete(list.feed.source)
 	if source := ui_list_find(&editor.ui, list.source); source != nil {
 		for dependent, i in source.dependents {
 			if dependent == list.id {

@@ -59,6 +59,7 @@ qed_api := [?]lua.L_Reg {
 	{"defer", qed_defer},
 	{"every", qed_every},
 	{"languages", qed_languages},
+	{"messages", qed_messages},
 	{nil, nil},
 }
 

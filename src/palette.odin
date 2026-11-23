@@ -107,12 +107,7 @@ cmd_toggle_line_wrap :: proc(editor: ^Editor) {
 }
 
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}
-cmd_message_log :: proc(editor: ^Editor) {logview_open(editor)}
 cmd_plugins :: proc(editor: ^Editor) {pluginview_open(editor)}
-cmd_log_debug :: proc(editor: ^Editor) {logview_toggle(editor, .Debug)}
-cmd_log_info :: proc(editor: ^Editor) {logview_toggle(editor, .Info)}
-cmd_log_warn :: proc(editor: ^Editor) {logview_toggle(editor, .Warn)}
-cmd_log_error :: proc(editor: ^Editor) {logview_toggle(editor, .Error)}
 
 // Keybinds are config: defaults come from the embedded config/config.json
 // `keybinds` section, applied by config_seed_defaults before main.
@@ -145,17 +140,10 @@ commands := [?]Command {
 	{name = "LSP: Previous Diagnostic", lsp = true, run = cmd_diag_prev},
 	{name = "LSP: Restart", lsp = true, run = cmd_lsp_restart},
 	{name = "Debug: Inspect Tokens", run = cmd_inspect_tokens},
-	{name = "Message Log: Open", run = cmd_message_log},
 	{name = "Plugins: Open", run = cmd_plugins},
 }
 
 pane_commands := [?]Command {
-	{name = "Copy", scope = "log", bind_from = "Copy", run = logview_copy},
-	{name = "Toggle Debug", scope = "log", config_name = "Message Log: Toggle Debug", run = cmd_log_debug},
-	{name = "Toggle Info", scope = "log", config_name = "Message Log: Toggle Info", run = cmd_log_info},
-	{name = "Toggle Warn", scope = "log", config_name = "Message Log: Toggle Warn", run = cmd_log_warn},
-	{name = "Toggle Error", scope = "log", config_name = "Message Log: Toggle Error", run = cmd_log_error},
-	{name = "Toggle History", scope = "log", config_name = "Message Log: Toggle History", run = logview_toggle_history},
 	{name = "Enable/Disable", scope = "plugins", config_name = "Plugins: Enable/Disable", run = pluginview_toggle},
 	{name = "Reload", scope = "plugins", config_name = "Plugins: Reload", run = pluginview_reload},
 	{name = "Show Log", scope = "plugins", config_name = "Plugins: Show Log", run = pluginview_log},

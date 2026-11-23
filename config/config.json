@@ -26,9 +26,7 @@
   "line_wrap": true,
   "terminal_escape_closes": true,
   "diff_view": false,
-  "message_log_backdrop": "none",
   "plugins_pane_backdrop": "none",
-  "message_log_max_width": 120,
   "plugins_pane_max_width": 120,
   "image_protocol": "auto",
   "image_max_rows": 24,
@@ -61,6 +59,9 @@
       "enabled": true
     },
     "layout": {
+      "enabled": true
+    },
+    "log": {
       "enabled": true
     },
     "markdown": {
@@ -109,13 +110,7 @@
     "LSP: Previous Diagnostic": "Alt+<",
     "LSP: Restart": "",
     "Debug: Inspect Tokens": "",
-    "Message Log: Open": "Alt+l",
     "Plugins: Open": "",
-    "Message Log: Toggle Debug": "d",
-    "Message Log: Toggle Info": "i",
-    "Message Log: Toggle Warn": "w",
-    "Message Log: Toggle Error": "e",
-    "Message Log: Toggle History": "h",
     "Plugins: Enable/Disable": "e",
     "Plugins: Reload": "r",
     "Plugins: Show Log": "l",

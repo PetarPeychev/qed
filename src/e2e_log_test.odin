@@ -5,304 +5,108 @@ import "core:strings"
 import "core:testing"
 import "lib:tb2"
 
-@(private = "file")
-e2e_log_screen :: proc(e: ^E2E) -> string {
-	sb := strings.builder_make(context.temp_allocator)
-	for y in 0 ..< E2E_H {
-		for x in 0 ..< E2E_W {
-			strings.write_rune(&sb, e2e_cell(e, x, y))
-		}
-		strings.write_rune(&sb, '\n')
-	}
-	return strings.to_string(sb)
-}
-
-// Row y and starting column of the first occurrence of `needle`, or (-1, -1).
-@(private = "file")
-e2e_log_find :: proc(e: ^E2E, needle: string) -> (row, col: int) {
-	for y in 0 ..< E2E_H {
-		sb := strings.builder_make(context.temp_allocator)
-		for x in 0 ..< E2E_W {
-			strings.write_rune(&sb, e2e_cell(e, x, y))
-		}
-		if idx := strings.index(strings.to_string(sb), needle); idx >= 0 {
-			return y, idx
-		}
-	}
-	return -1, -1
-}
-
-@(private = "file")
-log_open :: proc(e: ^E2E) -> bool {
-	p := pane_find(&e.ed, "log")
-	return p != nil && pane_live(&e.ed, p)
-}
-
-@(private = "file")
-log_pane :: proc(e: ^E2E) -> ^Pane {
-	return pane_find(&e.ed, "log")
+log_open_now :: proc(e: ^E2E) {
+	e2e_step(e, tb2.Event{type = .Key, ch = 'l', mod = tb2.Mod.Alt})
+	e2e_ui_settle(e)
 }
 
 @(test)
-e2e_log_pane_renders_and_copies :: proc(t: ^testing.T) {
-	e := e2e_start()
-	defer e2e_stop(&e)
-
-	// A background error entry (not shown on the line) plus a toggle confirmation.
-	editor_log(&e.ed, .Error, "LSP", "boom", show = false)
-	toggle, _ := plugin_test_command(&e.ed, "Format: Toggle on Save")
-	plugin_command_run(&e.ed, toggle)
-	testing.expect(t, strings.contains(e.ed.message, "On save: on"), "toggle sets the message line")
-
-	cmd_message_log(&e.ed)
-	testing.expect(t, log_open(&e), "command opens the log pane")
-	e2e_render(&e)
-
-	screen := e2e_log_screen(&e)
-	testing.expect(t, strings.contains(screen, "Message Log"), "pane title renders")
-	hy, _ := e2e_log_find(&e, "Time")
-	testing.expect(t, hy >= 0 && strings.contains(e2e_row_text(&e, hy), "Source") && strings.contains(e2e_row_text(&e, hy), "Message"), "header row renders")
-	testing.expect(t, strings.contains(screen, "On save: on"), "info entry row renders")
-
-	// The error row (not the selected last row) paints with the error colour.
-	ey, ex := e2e_log_find(&e, "boom")
-	testing.expect(t, ey >= 0, "found the error row")
-	testing.expect(t, strings.contains(e2e_row_text(&e, ey), "LSP"), "the source sits in its own column")
-	fy, _ := e2e_log_find(&e, "On save: on")
-	testing.expect(t, strings.contains(e2e_row_text(&e, fy), "Format"), "a plugin source sits in its column")
-	testing.expect_value(t, e2e_cell_fg(&e, ex, ey), COLOR_ERROR_FG)
-
-	// Select the error row and copy it; the headless gate routes it to the register
-	// (no tool spawned) and the confirmation lands on the message line.
-	saved_reg := clipboard_register
-	clipboard_register = ""
-	defer {
-		delete(clipboard_register)
-		clipboard_register = saved_reg
-	}
-	e2e_key(&e, .Arrow_Up)
-	e2e_render(&e)
-	sy, sx := e2e_log_find(&e, "boom")
-	testing.expect_value(t, e2e_cell_fg(&e, sx, sy), COLOR_ERROR_FG)
-	testing.expect_value(t, e2e_cell_bg(&e, sx, sy), COLOR_PANE_SEL_BG)
-	e2e_key(&e, .Ctrl_C)
-	testing.expect_value(t, e.ed.message, "Copied to clipboard")
-	testing.expect_value(t, clipboard_register, "LSP: boom")
-}
-
-@(test)
-e2e_log_bind_toggles :: proc(t: ^testing.T) {
-	e := e2e_start()
-	defer e2e_stop(&e)
-
-	e2e_alt(&e, 'l')
-	testing.expect(t, log_open(&e), "Alt+l opens the log pane")
-	e2e_alt(&e, 'l')
-	testing.expect(t, !log_open(&e), "Alt+l again closes it")
-	e2e_alt(&e, 'l')
-	testing.expect(t, log_open(&e), "and a third press reopens it")
-}
-
-@(test)
-e2e_log_rebound_bind_toggles :: proc(t: ^testing.T) {
-	e := e2e_start()
-	defer e2e_stop(&e)
-
-	idx := -1
-	for cmd, i in commands {
-		if cmd.name == "Message Log: Open" {
-			idx = i
-			break
-		}
-	}
-	testing.expect(t, idx >= 0, "command exists in the table")
-	saved := commands[idx].alt_ch
-	commands[idx].alt_ch = 'j'
-	defer commands[idx].alt_ch = saved
-
-	e2e_alt(&e, 'j')
-	testing.expect(t, log_open(&e), "rebound chord opens the pane")
-	e2e_alt(&e, 'l')
-	testing.expect(t, log_open(&e), "the old chord no longer closes it")
-	e2e_alt(&e, 'j')
-	testing.expect(t, !log_open(&e), "rebound chord closes it")
-	e2e_alt(&e, 'l')
-	testing.expect(t, !log_open(&e), "the old chord no longer opens it")
-}
-
-@(test)
-e2e_log_multiselect_copy :: proc(t: ^testing.T) {
-	e := e2e_start()
-	defer e2e_stop(&e)
-	saved_reg := clipboard_register
-	clipboard_register = ""
-	defer {
-		delete(clipboard_register)
-		clipboard_register = saved_reg
-	}
-
-	editor_log(&e.ed, .Info, "", "one", show = false)
-	editor_log(&e.ed, .Error, "Git", "two", show = false)
-	editor_log(&e.ed, .Info, "", "three", show = false)
-	cmd_message_log(&e.ed)
-
-	e2e_key(&e, .Arrow_Up, mod = .Shift)
-	e2e_key(&e, .Arrow_Up, mod = .Shift)
-	e2e_render(&e)
-	oy, ox := e2e_log_find(&e, "one")
-	ey, ex := e2e_log_find(&e, "two")
-	ty, tx := e2e_log_find(&e, "three")
-	testing.expect(t, oy >= 0 && ey >= 0 && ty >= 0, "all three rows render")
-	testing.expect_value(t, e2e_cell_bg(&e, ox, oy), COLOR_PANE_SEL_BG)
-	testing.expect_value(t, e2e_cell_bg(&e, ex, ey), COLOR_PANE_SEL_BG)
-	testing.expect_value(t, e2e_cell_bg(&e, tx, ty), COLOR_PANE_SEL_BG)
-	testing.expect_value(t, e2e_cell_fg(&e, ex, ey), COLOR_ERROR_FG)
-
-	e2e_key(&e, .Ctrl_C)
-	testing.expect_value(t, clipboard_register, "one\nGit: two\nthree")
-	testing.expect_value(t, e.ed.message, "Copied 3 entries")
-
-	e2e_key(&e, .Arrow_Down)
-	testing.expect(t, log_pane(&e).list.anchor == nil, "plain arrow collapses the selection")
-	e2e_key(&e, .Ctrl_C)
-	testing.expect_value(t, clipboard_register, "Git: two")
-	testing.expect_value(t, e.ed.message, "Copied to clipboard")
-
-	e2e_key(&e, .Arrow_Up, mod = .Shift)
-	testing.expect(t, log_pane(&e).list.anchor != nil, "shift re-anchors")
-	editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = 'w'})
-	testing.expect(t, log_pane(&e).list.anchor == nil, "filter toggle collapses the selection")
-}
-
-@(test)
-e2e_log_debug_filter :: proc(t: ^testing.T) {
-	e := e2e_start()
-	defer e2e_stop(&e)
-
-	editor_log(&e.ed, .Info, "", "an info line")
-	// Debug never reaches the message line even with show defaulting to true.
-	editor_log(&e.ed, .Debug, "LSP", "a trace line")
-	testing.expect_value(t, e.ed.message, "an info line")
-
-	cmd_message_log(&e.ed)
-	e2e_render(&e)
-	testing.expect(t, !strings.contains(e2e_log_screen(&e), "a trace line"), "Debug hidden by default")
-
-	// `d` toggles Debug visibility on.
-	editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = 'd'})
-	testing.expect(t, e.ed.logview.filter[.Debug], "d enables the Debug filter")
-	e2e_render(&e)
-	testing.expect(t, strings.contains(e2e_log_screen(&e), "a trace line"), "Debug row revealed")
-
-	e2e_key(&e, .Esc)
-	testing.expect(t, !log_open(&e), "Esc closes the pane")
-	cmd_message_log(&e.ed)
-	testing.expect(t, e.ed.logview.filter[.Debug], "Debug filter persists on reopen")
-	e2e_render(&e)
-	testing.expect(t, strings.contains(e2e_log_screen(&e), "a trace line"), "Debug still visible after reopen")
-}
-
-@(test)
-e2e_log_wheel_scroll_and_thumb :: proc(t: ^testing.T) {
-	e := e2e_start()
-	defer e2e_stop(&e)
-
-	for i in 0 ..< 30 {
-		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %02d", i), show = false)
-	}
-	cmd_message_log(&e.ed)
-	e2e_render(&e)
-
-	v := &log_pane(&e).list
-	g := pane_geom(&e.ed, log_pane(&e))
-	lay := struct {
-		inner:    Rect,
-		body_top: int,
-	}{g.inner, g.list.y}
-	h := g.list.h
-	n := pane_count(&e.ed, log_pane(&e))
-	border_x := g.box.x + g.box.w - 1
-	testing.expect(t, n > h + WHEEL_SCROLL_LINES, "the log should overflow the pane")
-	testing.expect_value(t, v.scroll, n - h)
-
-	bottom_start, length := pane_scrollbar_thumb(v.scroll, h, n)
-	testing.expect(t, length > 0, "an overflowing log shows a thumb")
-	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top + bottom_start), '┃')
-	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top), '│')
-
-	e2e_mouse(&e, lay.inner.x + 2, lay.body_top + 1, .Mouse_Wheel_Up)
-	e2e_render(&e)
-	testing.expect(t, !v.stick, "wheel-up unsticks from the newest entry")
-	testing.expect_value(t, v.scroll, n - h - WHEEL_SCROLL_LINES)
-	testing.expect(t, strings.contains(e2e_row(&e, lay.body_top), fmt.tprintf("entry %02d", 30 - h - WHEEL_SCROLL_LINES)), "the top row scrolled up")
-
-	up_start, _ := pane_scrollbar_thumb(v.scroll, h, n)
-	testing.expect(t, up_start < bottom_start, "the thumb tracks the scroll upward")
-	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top + up_start), '┃')
-
-	e2e_mouse(&e, lay.inner.x + 2, lay.body_top + 1, .Mouse_Wheel_Down)
-	e2e_render(&e)
-	testing.expect_value(t, v.scroll, n - h)
-	testing.expect(t, v.stick, "wheel-down to the end re-sticks")
-
-	for _ in 0 ..< h {
-		e.ed.accel_tick = {}
-		e2e_key(&e, .Arrow_Up)
-	}
-	e2e_render(&e)
-	testing.expect_value(t, v.scroll, n - h - 1)
-	arrow_start, _ := pane_scrollbar_thumb(v.scroll, h, n)
-	testing.expect_value(t, e2e_cell(&e, border_x, lay.body_top + arrow_start), '┃')
-}
-
-@(test)
-e2e_log_history_filter :: proc(t: ^testing.T) {
-	e := e2e_start()
-	defer e2e_stop(&e)
-
-	editor_log_seed_text(
-		&e.ed,
-		"=== qed v0.9.0 — session started 2026-07-10 09:15:00 ===\n" +
-		"2026-07-10 09:15:01 [INFO] a previous session line\n",
-	)
-	editor_log(&e.ed, .Info, "", "a live line")
-
-	cmd_message_log(&e.ed)
-	e2e_render(&e)
-	testing.expect(t, !strings.contains(e2e_log_screen(&e), "a previous session line"), "history hidden by default")
-	testing.expect(t, strings.contains(e2e_log_screen(&e), "a live line"), "live entries always show")
-
-	editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = 'h'})
-	testing.expect(t, e.ed.logview.history, "h enables the history filter")
-	e2e_render(&e)
-	testing.expect(t, strings.contains(e2e_log_screen(&e), "a previous session line"), "history row revealed")
-	testing.expect(t, strings.contains(e2e_log_screen(&e), "session started"), "old session marker revealed too")
-
-	e2e_key(&e, .Esc)
-	testing.expect(t, !log_open(&e), "Esc closes the pane")
-	cmd_message_log(&e.ed)
-	testing.expect(t, e.ed.logview.history, "History filter persists on reopen")
-	e2e_render(&e)
-	testing.expect(t, strings.contains(e2e_log_screen(&e), "a previous session line"), "history still visible after reopen")
-}
-
-@(test)
-e2e_log_full_entry :: proc(t: ^testing.T) {
+e2e_log_opens_filters_and_closes :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
-	e2e_resize(&e, 60, 20)
-	long := strings.repeat("word ", 40, context.temp_allocator)
-	editor_log(&e.ed, .Warn, "", fmt.tprintf("%sTHE-END", long), show = false)
-	cmd_message_log(&e.ed)
-	e2e_render(&e)
-	testing.expect(t, !e2e_grid_has(&e, "THE-END"), "the row clips the long entry")
-	e2e_key(&e, .Enter)
-	e2e_render(&e)
-	p := pane_find(&e.ed, "log_entry")
-	testing.expect(t, p != nil, "Enter opens the entry")
-	e2e_key(&e, .End)
-	e2e_render(&e)
-	testing.expect(t, e2e_grid_has(&e, "THE-END"), "the full text wraps into view")
+	e2e_new_ui(&e)
+	editor_log(&e.ed, .Info, "Git", "branch main", show = false)
+	editor_log(&e.ed, .Debug, "LSP", "spawned ols", show = false)
+	editor_log(&e.ed, .Error, "", "boom", show = false)
+	log_open_now(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "Message Log") >= 0, "Alt+l opens the log")
+	testing.expect(t, e2e_ui_find_row(&e, "branch main") >= 0, "info shows")
+	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") < 0, "debug is off by default")
+	error_row := e2e_ui_find_row(&e, "boom")
+	testing.expect(t, error_row >= 0 && e2e_rgb(e2e_cell_fg(&e, 25, error_row)) == e2e_rgb(COLOR_ERROR_FG), "errors are colored")
+	e2e_type(&e, "d")
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") >= 0, "d toggles debug")
+	e2e_type(&e, "i")
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "branch main") < 0, "i toggles info")
 	e2e_key(&e, .Esc)
-	testing.expect(t, pane_find(&e.ed, "log_entry") == nil && pane_find(&e.ed, "log") != nil, "Esc returns to the log")
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "Message Log") < 0, "Esc closes")
+	e2e_type(&e, "i")
+	e2e_ui_settle(&e)
+	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "ix")
+}
+
+@(test)
+e2e_log_select_copy_and_full_text :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	saved := clipboard_register
+	clipboard_register = ""
+	defer {
+		delete(clipboard_register)
+		clipboard_register = saved
+	}
+	for i in 0 ..< 5 {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %d", i), show = false)
+	}
+	editor_log(&e.ed, .Warn, "Fmt", "first line\nsecond line", show = false)
+	log_open_now(&e)
+	e2e_key(&e, .Arrow_Up)
+	e2e_key(&e, .Arrow_Up, tb2.Mod.Shift)
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Ctrl_C, tb2.Mod.Ctrl)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, clipboard_register, "entry 3\nentry 4")
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Arrow_Down)
+	e2e_key(&e, .Enter)
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "second line") >= 0, "Enter shows the full text")
+	e2e_key(&e, .Esc)
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "second line") < 0, "Esc goes back to the list")
+	testing.expect(t, e2e_ui_find_row(&e, "Message Log") >= 0, "the list stays")
+}
+
+@(test)
+e2e_log_follows_new_entries_and_eviction :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	for i in 0 ..< LOG_MAX {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %04d", i), show = false)
+	}
+	log_open_now(&e)
+	testing.expect(t, e2e_ui_find_row(&e, fmt.tprintf("entry %04d", LOG_MAX - 1)) >= 0, "opens at the end")
+	editor_log(&e.ed, .Info, "", "late arrival", show = false)
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "late arrival") >= 0, "a new entry shows while at the end")
+	testing.expect(t, e2e_ui_find_row(&e, "entry 0000") < 0, "evicted entries leave")
+	count := 0
+	for list in e.ed.ui.lists {
+		if list.feed.active {
+			count = len(list.records)
+		}
+	}
+	testing.expect_value(t, count, LOG_MAX)
+}
+
+@(test)
+e2e_log_history_and_source :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	editor_log(&e.ed, .Info, "Alpha", "from alpha", show = false)
+	editor_log(&e.ed, .Info, "Beta", "from beta", show = false)
+	message := ut_plugin_run(&e, `return {setup = function()
+	qed.command{name = "Run", run = function()
+		local only = qed.messages{source = "Alpha"}
+		local all = qed.messages{levels = {info = true}}
+		qed.message(("%d %s"):format(only:count(), tostring(all:count() >= 2)))
+	end}
+end}`)
+	testing.expect(t, strings.has_prefix(message, "1 true"), message)
 }

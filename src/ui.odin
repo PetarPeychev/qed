@@ -137,6 +137,7 @@ UiNode :: struct {
 	style:           UiStyle,
 	gap:             int,
 	separator:       bool,
+	follow:          bool,
 	align:           UiAlign,
 	highlight_style: UiStyle,
 	border:          bool,
@@ -172,6 +173,7 @@ UiState :: struct {
 	reveal:      bool,
 	cursor_seen: Cursor,
 	kept:        bool,
+	at_end:      bool,
 	buffer:      u64,
 	kind:        UiKind,
 }
@@ -960,9 +962,14 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 			if child.float != .None {
 				continue
 			}
-			_, ch := ui_measure_slot(editor, child, content.w, UI_UNBOUNDED)
-			total := max(ch, content.h)
-			state.offset = clamp(state.offset, 0, max(0, ch - content.h))
+			_, content_height := ui_measure_slot(editor, child, content.w, UI_UNBOUNDED)
+			total := max(content_height, content.h)
+			max_offset := max(0, content_height - content.h)
+			if node.follow && state.at_end {
+				state.offset = max_offset
+			}
+			state.offset = clamp(state.offset, 0, max_offset)
+			state.at_end = state.offset >= max_offset
 			slot := Rect{content.x, content.y - state.offset, content.w, total}
 			ui_layout_node(editor, child, ui_rect_shrink(slot, child.margin), ui_rect_intersect(content, node.clip))
 			break

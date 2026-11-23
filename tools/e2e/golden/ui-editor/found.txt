@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 39,2
 -- text
  1 def greet(name):
  2     return "hello " + nam┌────────────────────────────────────────────────┐
- 3 print(greet("linus")) # (│Find greet                     .* Aa        3/3 │
+ 3 print(greet("linus")) # (│Find greet                    .* Aa         3/3 │
  4                          └────────────────────────────────────────────────┘
  5 print(greet("ada"))
  6
@@ -27,7 +27,7 @@ qed-e2e snapshot 80x24 cursor 39,2
 -- style
 aaabbbcdddddcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaccccbbbbbbceeeeeeeeccccccffffffffffffffffffffffffffffffffffffffffffffffffffcc
-aaabbbbbcdddddceeeeeeecccgggfhhhhhffffffffffffffffffffffffffiifiiffffffffiiiifcc
+aaabbbbbcdddddceeeeeeecccgggfhhhhhfffffffffffffffffffffffffiifiifffffffffiiiifcc
 aaacccccccccccccccccccccccccffffffffffffffffffffffffffffffffffffffffffffffffffcc
 ajjbbbbbckkkkkceeeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

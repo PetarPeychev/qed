@@ -1,0 +1,17 @@
+# Message log plugin on qed.ui: levels, selection, full text (timestamps vary, so only the closed state is a golden).
+file notes.txt
+hello
+end
+run notes.txt
+wait hello
+key ctrl+s
+wait Saved
+key alt+l
+wait Message Log
+type d
+wait loaded layout
+key up shift+up
+key enter
+wait Message Log
+key esc esc
+snap closed

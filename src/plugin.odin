@@ -140,6 +140,7 @@ bundled_plugin_dir_files := [?]PluginFile {
 	{"find/init.lua", #load("../plugins/find/init.lua", string)},
 	{"goto/init.lua", #load("../plugins/goto/init.lua", string)},
 	{"layout/init.lua", #load("../plugins/layout/init.lua", string)},
+	{"log/init.lua", #load("../plugins/log/init.lua", string)},
 	{"palette/init.lua", #load("../plugins/palette/init.lua", string)},
 	{"settings/init.lua", #load("../plugins/settings/init.lua", string)},
 	{"settings/menu.lua", #load("../plugins/settings/menu.lua", string)},
@@ -2317,9 +2318,11 @@ pluginview_reload :: proc(editor: ^Editor) {
 }
 
 pluginview_log :: proc(editor: ^Editor) {
-	pn := pane_find(editor, "plugins")
 	if pl := pluginview_selected(editor); pl != nil {
-		logview_open(editor, pl.display, pn.handle)
+		plugin_queue(editor, {event = .Custom, a = "log:show", b = pl.display})
+		if pn := pane_find(editor, "plugins"); pn != nil {
+			pane_end(editor, pn.handle, false)
+		}
 	}
 }
 
