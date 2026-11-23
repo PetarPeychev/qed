@@ -15,8 +15,6 @@
   "split_tree_max_width": 60,
   "split_code_min_width": 50,
   "split_code_max_width": 100,
-  "split_preview_min_width": 70,
-  "split_preview_max_width": 130,
   "plugin_memory_mb": 256,
   "plugin_hook_timeout_ms": 2000,
   "plugin_slice_max_ms": 1000,

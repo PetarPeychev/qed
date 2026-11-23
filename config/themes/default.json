@@ -111,7 +111,6 @@
     "tree_expanded": "▾",
     "tree_collapsed": "▸",
     "tree_renamed": "←",
-    "preview_more": "⋮",
     "lsp_starting": "…",
     "lsp_failed": "✗",
     "diagnostic_error": "»",
@@ -128,7 +127,6 @@
     "conflict_marker": 0.32,
     "conflict_word": 0.34,
     "decoration": 0.12,
-    "markdown_code": 0.35,
-    "pane_backdrop": 0.6
+    "markdown_code": 0.35
   }
 }

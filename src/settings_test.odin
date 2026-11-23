@@ -448,11 +448,11 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !LINE_WRAP, "bool value applied")
 
 	moved_path := fmt.tprintf("%s/moved.json", dir)
-	_ = os.write_entire_file(moved_path, transmute([]byte)string(`{"format_on_save": true, "filetree_show_dotfiles": true, "preview_max_width": 90}`))
+	_ = os.write_entire_file(moved_path, transmute([]byte)string(`{"format_on_save": true, "filetree_show_dotfiles": true, "code_list_max_width": 90}`))
 	msg, _ = config_load_from(moved_path)
 	testing.expectf(t, strings.contains(msg, `"format_on_save" moved to "plugins/format/on_save"`), "an old entry points at the final name: %s", msg)
 	testing.expect(t, strings.contains(msg, `"filetree_show_dotfiles" moved to "plugins/filetree/show_dotfiles"`), "a core knob moved to a plugin")
-	testing.expectf(t, strings.contains(msg, `"preview_max_width" moved to "split_preview_max_width"`), "a renamed core knob: %s", msg)
+	testing.expectf(t, strings.contains(msg, `"code_list_max_width" moved to "split_code_max_width"`), "a renamed core knob: %s", msg)
 
 	kb_path := fmt.tprintf("%s/keybinds.json", dir)
 	_ = os.write_entire_file(

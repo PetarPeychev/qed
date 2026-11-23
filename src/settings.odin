@@ -49,8 +49,6 @@ SPLIT_TREE_MIN_WIDTH: int
 SPLIT_TREE_MAX_WIDTH: int
 SPLIT_CODE_MIN_WIDTH: int
 SPLIT_CODE_MAX_WIDTH: int
-SPLIT_PREVIEW_MIN_WIDTH: int
-SPLIT_PREVIEW_MAX_WIDTH: int
 PLUGIN_MEMORY_MB: int
 PLUGIN_SLICE_MAX_MS: int
 PLUGIN_COMMAND_MAX_MS: int
@@ -74,8 +72,6 @@ config_ints := [?]Config_Int {
 	{"split_tree_max_width", &SPLIT_TREE_MAX_WIDTH},
 	{"split_code_min_width", &SPLIT_CODE_MIN_WIDTH},
 	{"split_code_max_width", &SPLIT_CODE_MAX_WIDTH},
-	{"split_preview_min_width", &SPLIT_PREVIEW_MIN_WIDTH},
-	{"split_preview_max_width", &SPLIT_PREVIEW_MAX_WIDTH},
 	{"image_max_rows", &IMAGE_MAX_ROWS},
 	{"plugin_memory_mb", &PLUGIN_MEMORY_MB},
 	{"plugin_hook_timeout_ms", &PLUGIN_HOOK_TIMEOUT_MS},
@@ -235,7 +231,6 @@ ICON_MODIFIED: string
 ICON_TREE_EXPANDED: string
 ICON_TREE_COLLAPSED: string
 ICON_TREE_RENAMED: string
-ICON_PREVIEW_MORE: string
 ICON_LSP_STARTING: string
 ICON_LSP_FAILED: string
 ICON_DIAG_ERROR: string
@@ -255,7 +250,6 @@ config_icons := [?]Config_Str {
 	{"tree_expanded", &ICON_TREE_EXPANDED},
 	{"tree_collapsed", &ICON_TREE_COLLAPSED},
 	{"tree_renamed", &ICON_TREE_RENAMED},
-	{"preview_more", &ICON_PREVIEW_MORE},
 	{"lsp_starting", &ICON_LSP_STARTING},
 	{"lsp_failed", &ICON_LSP_FAILED},
 	{"diagnostic_error", &ICON_DIAG_ERROR},
@@ -273,7 +267,6 @@ CONFLICT_MARKER_TINT: f32
 CONFLICT_WORD_TINT: f32
 DECO_TINT: f32
 MARKDOWN_CODE_TINT: f32
-PANE_BACKDROP_TINT: f32
 
 config_tints := [?]Config_Float {
 	{"current_line", &CURRENT_LINE_TINT},
@@ -286,7 +279,6 @@ config_tints := [?]Config_Float {
 	{"conflict_word", &CONFLICT_WORD_TINT},
 	{"decoration", &DECO_TINT},
 	{"markdown_code", &MARKDOWN_CODE_TINT},
-	{"pane_backdrop", &PANE_BACKDROP_TINT},
 }
 
 config_path :: proc(allocator := context.temp_allocator) -> string {
@@ -730,8 +722,6 @@ CONFIG_MOVED :: [?][2]string {
 	{"filetree_list_max_width", "split_tree_max_width"},
 	{"code_list_min_width", "split_code_min_width"},
 	{"code_list_max_width", "split_code_max_width"},
-	{"preview_min_width", "split_preview_min_width"},
-	{"preview_max_width", "split_preview_max_width"},
 	{"modules/lsp", "lsp"},
 	{"modules/ai", "plugins/ai"},
 	{"modules/ai/chat_command", "plugins/ai/edit_command"},

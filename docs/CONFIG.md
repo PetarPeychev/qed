@@ -92,7 +92,6 @@ still goes ahead, unformatted). A save waits for formatting up to
 | `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Git tab's diff preview. |
 | `split_tree_min_width` / `split_tree_max_width` | `30` / `60` | List column of a `split:tree` pane (the file tree). |
 | `split_code_min_width` / `split_code_max_width` | `50` / `100` | List column of a `split:code` pane (the default split: line find, search). |
-| `split_preview_min_width` / `split_preview_max_width` | `70` / `130` | Preview column of any split pane. |
 
 ## Search & navigation
 
@@ -378,7 +377,7 @@ Bundled themes: `default`, `atom-one-dark`, `catppuccin-mocha`,
 To customize colors, create `~/.config/qed/themes/<name>.json`, a sparse per-key
 diff over the bundled theme of the same name (or over `default` for a new name).
 The four sections are `colors`, `captures` (tree-sitter capture to color),
-`icons`, and `tints` (line-background strengths; `pane_backdrop` is how far a `"dim"` backdrop fades text; `markdown_code` is the code band in
+`icons`, and `tints` (line-background strengths; `markdown_code` is the code band in
 rendered markdown, the pane selection color over the pane background). The complete key list is
 [`config/themes/default.json`](../config/themes/default.json); qed never writes
 theme files.

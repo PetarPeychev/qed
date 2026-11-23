@@ -19,8 +19,6 @@ MASTER_CONFIG_PATHS := [?]string {
 	"filetree_list_max_width",
 	"code_list_min_width",
 	"code_list_max_width",
-	"preview_min_width",
-	"preview_max_width",
 	"format_on_save",
 	"trim_trailing_whitespace_on_save",
 	"ensure_final_newline_on_save",
