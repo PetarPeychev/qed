@@ -53,6 +53,7 @@ UiList :: struct {
 	source_rev:   u64,
 	fuzzy_dirty:  bool,
 	feed:         UiMessagesFeed,
+	tree:         ^WalkTree,
 }
 
 ui_list_find :: proc(ui: ^Ui, id: u64) -> ^UiList {
@@ -101,6 +102,9 @@ ui_list_free :: proc(editor: ^Editor, list: ^UiList) {
 	delete(list.field)
 	delete(list.query)
 	delete(list.feed.source)
+	if list.tree != nil {
+		walk_tree_free(list.tree)
+	}
 	if source := ui_list_find(&editor.ui, list.source); source != nil {
 		for dependent, i in source.dependents {
 			if dependent == list.id {
@@ -137,10 +141,16 @@ ui_list_reindex :: proc(list: ^UiList) {
 }
 
 ui_list_count :: proc(list: ^UiList) -> int {
+	if list.tree != nil {
+		return len(list.tree.source.entries)
+	}
 	return len(list.matches) if list.fuzzy else len(list.records)
 }
 
 ui_list_key :: proc(list: ^UiList, i: int) -> string {
+	if list.tree != nil {
+		return list.tree.source.entries[i].path
+	}
 	return list.matches[i].key if list.fuzzy else list.records[i].key
 }
 
@@ -150,6 +160,9 @@ ui_list_position :: proc(list: ^UiList, key: string) -> (int, bool) {
 }
 
 ui_list_record_rev :: proc(list: ^UiList, i: int) -> u64 {
+	if list.tree != nil {
+		return list.tree.gen
+	}
 	if list.fuzzy {
 		return list.matches[i].rev ~ (list.query_gen << 40)
 	}
@@ -230,6 +243,9 @@ api_ui_list_lookup :: proc(L: ^lua.State, editor: ^Editor, idx: c.int) -> (list:
 	lua.pop(L, 1)
 	lua.getfield(L, lua.REGISTRYINDEX, UI_FUZZY_LIST_META)
 	is_list = is_list || lua.rawequal(L, -1, -2) != 0
+	lua.pop(L, 1)
+	lua.getfield(L, lua.REGISTRYINDEX, UI_TREE_LIST_META)
+	is_list = is_list || lua.rawequal(L, -1, -2) != 0
 	lua.pop(L, 2)
 	if !is_list {
 		return nil, false
@@ -255,14 +271,14 @@ api_ui_list_self :: proc(L: ^lua.State, editor: ^Editor) -> ^UiList {
 	return list
 }
 
-api_ui_list_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, fuzzy: bool) -> ^UiList {
+api_ui_list_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, fuzzy: bool, tree := false) -> ^UiList {
 	plugins := &editor.plugins
 	id := plugin_next_id(plugins)
 	lua.createtable(L, 0, 1)
 	lua.pushinteger(L, lua.Integer(id))
 	lua.setfield(L, -2, "id")
-	meta_name: cstring = UI_FUZZY_LIST_META if fuzzy else UI_LIST_META
-	methods := ui_fuzzy_list_methods[:] if fuzzy else ui_list_methods[:]
+	meta_name: cstring = UI_TREE_LIST_META if tree else UI_FUZZY_LIST_META if fuzzy else UI_LIST_META
+	methods := ui_tree_list_methods[:] if tree else ui_fuzzy_list_methods[:] if fuzzy else ui_list_methods[:]
 	if lua.getfield(L, lua.REGISTRYINDEX, meta_name) != .TABLE {
 		lua.pop(L, 1)
 		lua.createtable(L, 0, 4)
@@ -299,6 +315,126 @@ ui_list_methods := [?]lua.L_Reg {
 	{"index_of", qed_list_index_of},
 	{"count", qed_list_count},
 	{"sort", qed_list_sort},
+}
+
+UI_TREE_LIST_META :: "qed.TreeList"
+
+ui_tree_list_methods := [?]lua.L_Reg {
+	{"get", qed_list_get},
+	{"at", qed_list_at},
+	{"index_of", qed_list_index_of},
+	{"count", qed_list_count},
+	{"set_query", qed_tree_set_query},
+	{"expand", qed_tree_expand},
+	{"toggle", qed_tree_toggle},
+	{"expanded", qed_tree_expanded},
+	{"reveal", qed_tree_reveal},
+	{"expand_all", qed_tree_expand_all},
+	{"loading", qed_tree_loading},
+	{"more", qed_tree_more},
+}
+
+api_tree_self :: proc(L: ^lua.State, editor: ^Editor) -> ^WalkTree {
+	list := api_ui_list_self(L, editor)
+	if list.tree == nil {
+		lua.L_argerror(L, 1, "tree list expected")
+	}
+	walk_trees_settle(editor)
+	return list.tree
+}
+
+qed_tree_set_query :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	query := api_string(L, 2)
+	if query != tree.query {
+		delete(tree.query)
+		tree.query = strings.clone(query)
+		tree.due = true
+	}
+	walk_trees_settle(entry.editor)
+	return 0
+}
+
+qed_tree_expand :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	path := api_path(entry.editor, api_string(L, 2))
+	on := lua.type(L, 3) <= .NIL || bool(lua.toboolean(L, 3))
+	if on {
+		// reopening a dir is how a user rereads it
+		delete_key(&tree.source.dirs, path)
+	}
+	walk_tree_set(tree, path, on)
+	walk_trees_settle(entry.editor)
+	return 0
+}
+
+qed_tree_toggle :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	path := api_path(entry.editor, api_string(L, 2))
+	on := !walk_tree_expanded(tree, path)
+	if on {
+		delete_key(&tree.source.dirs, path)
+	}
+	walk_tree_set(tree, path, on)
+	walk_trees_settle(entry.editor)
+	lua.pushboolean(L, b32(on))
+	return 1
+}
+
+qed_tree_expanded :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	lua.pushboolean(L, b32(walk_tree_expanded(tree, api_path(entry.editor, api_string(L, 2)))))
+	return 1
+}
+
+qed_tree_reveal :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	path := api_path(entry.editor, api_string(L, 2))
+	walk_tree_reveal(tree, path)
+	walk_trees_settle(entry.editor)
+	found := false
+	for row in tree.source.entries {
+		found ||= row.path == path
+	}
+	lua.pushboolean(L, b32(found))
+	return 1
+}
+
+qed_tree_expand_all :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	on := lua.type(L, 2) <= .NIL || bool(lua.toboolean(L, 2))
+	ok := walk_tree_expand_all(tree, on)
+	walk_trees_settle(entry.editor)
+	lua.pushboolean(L, b32(ok))
+	return 1
+}
+
+qed_tree_loading :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	lua.pushboolean(L, b32(tree.due))
+	return 1
+}
+
+qed_tree_more :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	tree := api_tree_self(L, entry.editor)
+	lua.pushboolean(L, b32(tree.more))
+	return 1
 }
 
 ui_fuzzy_list_methods := [?]lua.L_Reg {
@@ -631,6 +767,10 @@ qed_list_clear :: proc "c" (L: ^lua.State) -> c.int {
 }
 
 ui_list_record_push :: proc(L: ^lua.State, editor: ^Editor, list: ^UiList, pos: int) {
+	if list.tree != nil {
+		walk_tree_record_push(L, list.tree, pos)
+		return
+	}
 	if !list.fuzzy {
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(list.records[pos].ref))
 		return

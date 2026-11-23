@@ -57,8 +57,8 @@ main :: proc() {
 		}
 		got_event := false
 		for !got_event {
-			if lsp_running() || highlight_jobs_busy(&editor) || term_alive(&editor) || pane_stack_pending(&editor) || walk_busy(&editor) || plugin_busy(&editor) || plugin_gc_due(&editor.plugins) || image_busy() {
-				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_stepping(&editor) || editor.terminal.more || plugin_gc_due(&editor.plugins) else LSP_POLL_MS))) == .Ok {
+			if lsp_running() || highlight_jobs_busy(&editor) || term_alive(&editor) || pane_stack_pending(&editor) || walk_trees_busy(&editor) || walk_busy(&editor) || plugin_busy(&editor) || plugin_gc_due(&editor.plugins) || image_busy() {
+				if tb2.peek_event(&ev, i32(plugin_timeout_ms(&editor, 0 if pane_stepping(&editor) || walk_trees_busy(&editor) || editor.terminal.more || plugin_gc_due(&editor.plugins) else LSP_POLL_MS))) == .Ok {
 					got_event = true
 				}
 				redraw := false
@@ -72,6 +72,9 @@ main :: proc() {
 					redraw = true
 				}
 				if pane_stack_pump(&editor) {
+					redraw = true
+				}
+				if walk_trees_busy(&editor) {
 					redraw = true
 				}
 				if completion_due(&editor) {

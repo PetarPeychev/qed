@@ -886,6 +886,10 @@ return {setup = function()
 		pr:kill()
 		local l = qed.fs.walk{}
 		add("PaneSource", l)
+		local tree = l:tree()
+		for _, name in ipairs{"get", "at", "index_of", "count", "set_query", "expand", "toggle", "expanded", "reveal", "expand_all", "loading", "more"} do
+			if type(tree[name]) == "function" then out[#out + 1] = "TreeList:" .. name end
+		end
 		l:release()
 		local v = qed.ui.open{list = {items = {"a"}}}
 		add("View", v)

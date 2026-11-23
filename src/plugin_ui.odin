@@ -106,6 +106,7 @@ qed_walk_methods := [?]lua.L_Reg {
 	{"ignore", qed_walk_ignore},
 	{"within", qed_walk_within},
 	{"union", qed_walk_union},
+	{"tree", qed_walk_tree},
 	{"release", qed_list_release},
 }
 
@@ -643,6 +644,27 @@ qed_walk_union :: proc "c" (L: ^lua.State) -> c.int {
 	dst.walk = w
 	dst.wscope = walk_scope_new(w.root, parent, nil, paths)
 	dst.wscope.all = parent == nil || parent.all
+	return 1
+}
+
+qed_walk_tree :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	src := api_walk_handle(L, editor)
+	walk, scope := src.walk, src.wscope
+	max := 0
+	if lua.type(L, 2) == .TABLE {
+		if limit, ok := api_field_int(L, 2, "max"); ok {
+			max = limit
+		}
+	}
+	plugin := api_loaded(L, editor)
+	lua.settop(L, 0)
+	list := api_ui_list_push(L, editor, plugin.name, false, tree = true)
+	list.tree = walk_tree_new(walk, scope)
+	list.tree.max = max
+	walk_trees_settle(editor)
 	return 1
 }
 

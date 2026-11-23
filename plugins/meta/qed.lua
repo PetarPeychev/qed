@@ -392,6 +392,11 @@ function PaneSource:within(paths) end
 ---@param paths string[]
 ---@return qed.PaneSource
 function PaneSource:union(paths) end
+
+---The visible rows of this walk as a tree list (`max` caps narrowed results).
+---@param opts? {max?: integer}
+---@return qed.TreeList
+function PaneSource:tree(opts) end
 ---Walk handles: frees the handle now instead of at collection; a view keeps its own copy.
 function PaneSource:release() end
 
@@ -724,6 +729,46 @@ function FuzzyList:set_query(query) end
 ---@param key string|integer
 ---@return integer[]|nil
 function FuzzyList:positions(key) end
+
+---The visible rows of a walk as a list a `virtual_column` reads (from `walk:tree{max?}`): records `{path, name, depth, dir, expanded}` keyed by `path`. Reading dirs runs in slices; `loading()` is true while some are unread.
+---@class qed.TreeList
+local TreeList = {}
+---@param key string
+---@return table|nil
+function TreeList:get(key) end
+---@param index integer
+---@return table|nil
+function TreeList:at(index) end
+---@param key string
+---@return integer|nil
+function TreeList:index_of(key) end
+---@return integer
+function TreeList:count() end
+---Narrows to the fuzzy matches of `query` over every path (flat rows); "" shows the tree again.
+---@param query string
+function TreeList:set_query(query) end
+---@param path string
+---@param on? boolean default true
+function TreeList:expand(path, on) end
+---@param path string
+---@return boolean expanded
+function TreeList:toggle(path) end
+---@param path string
+---@return boolean
+function TreeList:expanded(path) end
+---Expands the path's ancestors; true when the row is shown now.
+---@param path string
+---@return boolean
+function TreeList:reveal(path) end
+---False when the walk's ignore set is not known yet (it would descend into ignored dirs).
+---@param on? boolean default true
+---@return boolean
+function TreeList:expand_all(on) end
+---@return boolean
+function TreeList:loading() end
+---True when a narrowed list holds only the first `max` matches.
+---@return boolean
+function TreeList:more() end
 
 qed.list = {}
 

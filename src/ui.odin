@@ -1396,6 +1396,7 @@ ui_prepare :: proc(editor: ^Editor) {
 	if len(ui.mounts) == 0 {
 		return
 	}
+	walk_trees_settle(editor)
 	for node in ui.virtuals {
 		if list := ui_list_find(ui, node.list); list != nil {
 			ui_list_settle_all(editor, list)
