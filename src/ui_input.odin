@@ -76,6 +76,11 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 				return
 			}
 		}
+		// a pre-command flush that replaced the tree hands the key on from the same node in the new tree
+		if ui.gen != gen && ui.target != nil {
+			node = ui.target
+			gen = ui.gen
+		}
 		if node.handlers[.Key] != 0 && ui_handler_call(editor, node.owner, node.handlers[.Key], {chord = chord, text = text}) {
 			return
 		}
@@ -98,24 +103,20 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 }
 
 ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
-	if chord == "" {
+	if chord == "" || !ui_scope_has_chord(editor, scope, chord) {
 		return false
 	}
+	if !ui_flush_before_command(editor) {
+		return true
+	}
 	for command in scoped_commands {
-		if command.scope != scope || command.run == nil || (command.applies != nil && !command.applies(editor)) {
-			continue
-		}
-		_, _, shortcut := command_effective_bind(command)
-		if shortcut != "" && ui_chord_cached(&editor.ui, shortcut) == chord {
-			if ui_flush_before_command(editor) {
-				command.run(editor)
-			}
+		if command.scope == scope && command.run != nil && ui_core_chord(editor, command) == chord && (command.applies == nil || command.applies(editor)) {
+			command.run(editor)
 			return true
 		}
 	}
 	for command in editor.plugins.commands {
 		if command.scope == scope && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord && plugin_command_when(editor, command) {
-			plugin_flush(editor)
 			plugin_command_run(editor, command)
 			return true
 		}
@@ -123,8 +124,30 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 	return false
 }
 
-// a command acts on what the keys typed before it changed, so their change events run first; one that replaced the
-// tree leaves the command the new node with the same identity, or nothing to act on when that node is gone
+@(private = "file")
+ui_core_chord :: proc(editor: ^Editor, command: Command) -> string {
+	_, _, shortcut := command_effective_bind(command)
+	return ui_chord_cached(&editor.ui, shortcut) if shortcut != "" else ""
+}
+
+@(private = "file")
+ui_scope_has_chord :: proc(editor: ^Editor, scope, chord: string) -> bool {
+	for command in scoped_commands {
+		if command.scope == scope && command.run != nil && ui_core_chord(editor, command) == chord {
+			return true
+		}
+	}
+	for command in editor.plugins.commands {
+		if command.scope == scope && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
+			return true
+		}
+	}
+	return false
+}
+
+// a command acts on what the keys typed before it changed, so their change events run first, and only then is it
+// asked whether it applies. A handler that replaced the tree leaves the command the new node with the same identity,
+// laid out as the next frame would; when that node is gone there is nothing to act on
 ui_flush_before_command :: proc(editor: ^Editor) -> bool {
 	ui := &editor.ui
 	identity := strings.clone(ui.target.identity, context.temp_allocator) if ui.target != nil else ""
@@ -135,7 +158,11 @@ ui_flush_before_command :: proc(editor: ^Editor) -> bool {
 	}
 	ui_resolve(editor)
 	ui.target = ui_find(ui, identity)
-	return ui.target != nil
+	if ui.target == nil {
+		return false
+	}
+	ui_layout(editor)
+	return true
 }
 
 ui_global_binds :: proc(editor: ^Editor, ev: tb2.Event) {
@@ -396,8 +423,9 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		if wheel {
 			state := ui_node_state(ui, node)
 			state.offset = max(state.offset + step, 0)
-			// layout recomputes it; left set, `follow` would snap the view back to the end
-			state.at_end = false
+			// layout recomputes it from the offset (left set, `follow` would snap back); the user scrolling is the newer
+			// intent than a parked highlight, so reaching the end by wheel follows again
+			state.at_end, state.parked = false, false
 			return true
 		}
 	case .Editor:

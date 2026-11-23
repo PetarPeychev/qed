@@ -21,8 +21,8 @@ e2e_round9_a_jump_centres_its_own_view_only :: proc(t: ^testing.T) {
 	e := e2e_start(r9_lines(2000))
 	defer e2e_stop(&e)
 	ft_lua(&e.ed, `
-		qed.ui.mount("pane", qed.ui.box{float = "screen", anchor = "bottom_right", width = 30, height = 8,
-			qed.ui.editor{id = "r9_second", buffer = qed.buf.current()}})
+		qed.ui.mount("background", qed.ui.box{float = "screen", anchor = "bottom_right", width = 30, height = 20,
+			qed.ui.editor{id = "r9_second", buffer = qed.buf.current(), scope = "editor"}})
 		return 0`)
 	e2e_render(&e)
 	editor_goto(&e.ed, 1499, 0)
@@ -30,7 +30,13 @@ e2e_round9_a_jump_centres_its_own_view_only :: proc(t: ^testing.T) {
 	node := ui_find(&e.ed.ui, "#layout/main_editor")
 	testing.expectf(t, abs(1499 - view.scroll_row - node.rect.h / 2) <= 1, "the main view centres: top %d", view.scroll_row)
 	second := ui_find(&e.ed.ui, "#fthelper/r9_second")
-	testing.expect(t, second != nil && !ui_node_state_peek(&e.ed.ui, second).center, "the other view of the buffer is not told to centre")
+	testing.expect(t, second != nil, "the second view is mounted")
+	if second == nil {
+		return
+	}
+	top := ui_node_state_peek(&e.ed.ui, second).scroll_row
+	margin := min(SCROLL_MARGIN, (second.rect.h - 1) / 2)
+	testing.expectf(t, top == 1499 - (second.rect.h - 1 - margin), "the second view keeps the margin rule, not the centre: top %d, height %d", top, second.rect.h)
 }
 
 @(test)
@@ -292,7 +298,6 @@ e2e_round9_log_eviction_keeps_the_selection :: proc(t: ^testing.T) {
 	rows := ui_find(&e.ed.ui, "#log/log_rows")
 	list := ui_list_find(&e.ed.ui, rows.list)
 	picked := strings.clone(ui_node_state_peek(&e.ed.ui, rows).highlighted, context.temp_allocator)
-	picked_text := strings.clone(list.texts[picked] or_else "", context.temp_allocator)
 	for i in 0 ..< 20 {
 		editor_log(&e.ed, .Info, "", fmt.tprintf("late %d", i), show = false)
 	}
@@ -301,7 +306,6 @@ e2e_round9_log_eviction_keeps_the_selection :: proc(t: ^testing.T) {
 	_, present := ui_list_position(list, picked)
 	testing.expect(t, present, "the selected entry is still listed after the oldest were evicted")
 	testing.expect(t, e2e_ui_find_row(&e, "entry 0994") >= 0, "the view stays on the selection")
-	_ = picked_text
 }
 
 @(test)
@@ -394,6 +398,14 @@ e2e_round9_completion_box_stays_at_the_word :: proc(t: ^testing.T) {
 	b.cursor = {0, len(line)}
 	popup = r9_popup(&e)
 	testing.expect(t, popup != nil && popup.rect.x == left, "a word start on an earlier wrap segment puts the box at the left edge")
+	// wrap on, the word on a later segment with the caret: the box starts at the word on that segment
+	second := strings.concatenate({strings.repeat("y ", 60, context.temp_allocator), "al"}, context.temp_allocator)
+	buffer_set_text(b, second)
+	b.cursor = {0, len(second)}
+	r9_completion(&e, {"alpha", "alpine"}, {0, len(second) - 2})
+	popup = r9_popup(&e)
+	caret_x, _, _ := ui_editor_caret_pos(&e.ed, node)
+	testing.expect(t, popup != nil && popup.rect.x == caret_x - 2, "a word on the caret's later segment starts the box at the word")
 }
 
 @(test)

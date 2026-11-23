@@ -414,11 +414,11 @@ local NodeRef = {}
 ---@return string|nil err
 function NodeRef:focus() end
 
----The node's widget state: `highlighted` (lists), `extend_from` (virtual_column range start), `offset` (scroll and editor: rows scrolled past the top, 0-based).
+---The node's widget state: `highlighted` (lists), `extend_from` (virtual_column range start), `offset` (0-based: a scroll's rows past the top, an editor's top buffer line).
 ---@return table|nil
 function NodeRef:state() end
 
----Changes only the named state fields (`highlighted`, `extend_from`, `offset`); no rebuild, no `on.state`. A new `highlighted` scrolls into view.
+---Changes only the named state fields (`highlighted`, `extend_from`, `offset`); no rebuild, no `on.state`. A new `highlighted` scrolls into view. A key must match its list's kind (string or integer): a rejected key raises and changes nothing.
 ---@param patch table
 function NodeRef:set_state(patch) end
 
@@ -452,7 +452,7 @@ function qed.ui.row(props) end
 ---@return qed.Node
 function qed.ui.box(props) end
 
----Exactly one laid-out child, scrolled; slot `header` pinned above it. Takes the wheel.
+---Exactly one laid-out child, scrolled; slot `header` pinned above it. Takes the wheel. `follow = true`: opens at the end and stays there while it is there; a user highlight off its list's last row parks it until the user reaches the end again (keys, click, wheel, `set_state`) or that row leaves the data.
 ---@param props table
 ---@return qed.Node
 function qed.ui.scroll(props) end
@@ -468,7 +468,7 @@ function qed.ui.text(props) end
 function qed.ui.editor(props) end
 
 ---Rows built by `item(record)` for the records of `data` (a `qed.list`) in view. Props: `data`, `item`, `highlight_style`.
----A click on a row highlights it; under a node with scope `"list"` core's `List:` commands (Up/Down, PgUp/PgDn, Home/End, Shift+Up/Down) move it. Either fires `on.state{highlighted, extend_from}`.
+---A click on a row highlights it; under a node with scope `"list"` core's `List:` commands (Up/Down, PgUp/PgDn, Home/End) move it; under `"list_range"` Shift+Up/Down and a drag extend a range (`extend_from`). Each fires `on.state{highlighted, extend_from}`.
 ---@param props table
 ---@return qed.Node
 function qed.ui.virtual_column(props) end

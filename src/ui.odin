@@ -183,8 +183,7 @@ UiNode :: struct {
 	hidden:          bool,
 	is_item:         bool,
 	// core-built caret popups only: start at a buffer position on the caret's row, prefer above, a code language
-	cursor_from:     Cursor,
-	cursor_from_set: bool,
+	cursor_from:     Maybe(Cursor),
 	cursor_above:    bool,
 	md_lang:         Language,
 }
@@ -1137,6 +1136,10 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 			}
 			total := max(content_height, content.h)
 			max_offset := max(0, content_height - content.h)
+			// parked on a row means parked only while that row exists; when it goes, following resumes
+			if state.parked && !ui_parked_row_present(editor, child) {
+				state.parked, state.at_end = false, true
+			}
 			if node.follow && state.at_end && !state.parked {
 				state.offset = max_offset
 			}
@@ -1155,6 +1158,19 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 			ui_layout_float(editor, child, node)
 		}
 	}
+}
+
+ui_parked_row_present :: proc(editor: ^Editor, child: ^UiNode) -> bool {
+	rows := ui_list_target(child)
+	if rows == nil {
+		return false
+	}
+	list := ui_list_find(&editor.ui, rows.list)
+	if list == nil {
+		return false
+	}
+	_, present := ui_list_position(list, ui_node_state_peek(&editor.ui, rows).highlighted)
+	return present
 }
 
 ui_layout_single :: proc(editor: ^Editor, child: ^UiNode, area, clip: Rect) {
@@ -1361,8 +1377,8 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 			node.rect = {}
 			return
 		}
-		if node.cursor_from_set {
-			cx = ui_editor_x_on_caret_row(editor, parent, node.cursor_from, cx)
+		if from, set := node.cursor_from.?; set {
+			cx = ui_editor_x_on_caret_row(editor, parent, from)
 		}
 		cell_x = clamp(cx, area.x, max(area.x + area.w - width, area.x))
 		cell_y = cy + 1
@@ -1422,62 +1438,57 @@ ui_editor_text_width :: proc(node: ^UiNode, buffer: ^Buffer) -> int {
 	return max(node.rect.w - gutter, 0)
 }
 
-ui_editor_caret_pos :: proc(editor: ^Editor, node: ^UiNode) -> (cell_x, cell_y: int, ok: bool) {
+ui_editor_pos_cell :: proc(editor: ^Editor, node: ^UiNode, pos: Cursor) -> (cell_x, cell_y: int, known, on_screen: bool) {
 	if node == nil || node.kind != .Editor {
 		return
 	}
 	buffer := ui_buffer(editor, node.buffer)
-	if buffer == nil {
+	if buffer == nil || pos.row < 0 || pos.row >= len(buffer.lines) {
 		return
 	}
 	state := ui_node_state(&editor.ui, node)
 	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
 	width := ui_editor_text_width(node, buffer)
-	text := buffer.lines[buffer.cursor.row].text[:]
-	if buffer.cursor.row < state.scroll_row {
+	text := buffer.lines[pos.row].text[:]
+	col := clamp(pos.col, 0, len(text))
+	if pos.row < state.scroll_row {
 		return
 	}
 	cx, cy: int
 	if buffer.wrap && width > 0 {
-		segs := buffer_line_wrap(buffer, buffer.cursor.row, width)
-		sub := wrap_subrow(segs, buffer.cursor.col)
-		if buffer.cursor.row == state.scroll_row && sub < state.scroll_sub {
+		segs := buffer_line_wrap(buffer, pos.row, width)
+		sub := wrap_subrow(segs, col)
+		if pos.row == state.scroll_row && sub < state.scroll_sub {
 			return
 		}
-		cx = visual_col(text, buffer.cursor.col) - visual_col(text, segs[sub])
-		cy = vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, buffer.cursor.row, sub, node.rect.h + 1)
+		cx = visual_col(text, col) - visual_col(text, segs[sub])
+		cy = vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, pos.row, sub, node.rect.h + 1)
 	} else {
-		cx = visual_col(text, buffer.cursor.col) - state.scroll_col
-		cy = buffer.cursor.row - state.scroll_row
+		cx = visual_col(text, col) - state.scroll_col
+		cy = pos.row - state.scroll_row
 	}
-	if cy < 0 || cy >= node.rect.h || cx < 0 || cx >= width {
-		return
-	}
-	return node.rect.x + gutter + cx, node.rect.y + cy, true
+	return node.rect.x + gutter + cx, node.rect.y + cy, true, cy >= 0 && cy < node.rect.h && cx >= 0 && cx < width
 }
 
-// the screen column of a buffer position on the caret's visual row, read every layout so it follows the caret;
-// a position off that row (an earlier wrap segment) or scrolled out left gives the text's left edge
-ui_editor_x_on_caret_row :: proc(editor: ^Editor, node: ^UiNode, pos: Cursor, caret_x: int) -> int {
+ui_editor_caret_pos :: proc(editor: ^Editor, node: ^UiNode) -> (cell_x, cell_y: int, ok: bool) {
+	buffer := ui_buffer(editor, node.buffer) if node != nil && node.kind == .Editor else nil
+	if buffer == nil {
+		return
+	}
+	x, y, _, on_screen := ui_editor_pos_cell(editor, node, buffer.cursor)
+	return x, y, on_screen
+}
+
+// off the caret's screen row (an earlier wrap segment) or scrolled out on the left: the text's left edge
+ui_editor_x_on_caret_row :: proc(editor: ^Editor, node: ^UiNode, pos: Cursor) -> int {
 	buffer := ui_buffer(editor, node.buffer)
-	if buffer == nil || pos.row != buffer.cursor.row {
-		return caret_x
+	_, caret_y, _, _ := ui_editor_pos_cell(editor, node, buffer.cursor)
+	left := node.rect.x + node.rect.w - ui_editor_text_width(node, buffer)
+	x, y, known, _ := ui_editor_pos_cell(editor, node, pos)
+	if !known || y != caret_y {
+		return left
 	}
-	state := ui_node_state(&editor.ui, node)
-	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
-	left := node.rect.x + gutter
-	text := buffer.lines[pos.row].text[:]
-	col := clamp(pos.col, 0, len(text))
-	width := ui_editor_text_width(node, buffer)
-	if buffer.wrap && width > 0 {
-		segs := buffer_line_wrap(buffer, pos.row, width)
-		sub := wrap_subrow(segs, buffer.cursor.col)
-		if wrap_subrow(segs, col) != sub {
-			return left
-		}
-		return left + visual_col(text, col) - visual_col(text, segs[sub])
-	}
-	return max(left + visual_col(text, col) - state.scroll_col, left)
+	return max(x, left)
 }
 
 ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {

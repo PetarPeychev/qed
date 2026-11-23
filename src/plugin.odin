@@ -1709,15 +1709,6 @@ plugin_command_matches :: proc(cmd: Command, ev: tb2.Event, bare := false) -> bo
 	return command_bind_matches(cmd.key, cmd.alt_ch, cmd.ch, cmd.shortcut, ev, bare)
 }
 
-plugin_command_for_event :: proc(editor: ^Editor, ev: tb2.Event, scope: string, bare := false) -> (Command, bool) {
-	for cmd in editor.plugins.commands {
-		if cmd.scope == scope && plugin_command_matches(cmd, ev, bare) {
-			return cmd, true
-		}
-	}
-	return {}, false
-}
-
 plugin_ctx_push :: proc(L: ^lua.State, editor: ^Editor, owner: string, snapshot := false) {
 	lua.L_checkstack(L, 8, "ctx")
 	lua.createtable(L, 0, 8)

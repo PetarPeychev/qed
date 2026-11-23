@@ -153,8 +153,8 @@ per write, rotated to `qed.log.old` past `LOG_ROTATE_BYTES` (4 MB) at session st
 session-start marker with version);
 disk logging is skipped when `headless`. *Message Log: Open* (`Alt+l`) is the `log` plugin: a `qed.ui` box over
 `qed.messages` (a live core list of the ring): Time/Source/Message under a header, rows coloured by level, a `follow`
-scroll (sticks to the newest until the wheel moves it), the `list` scope's keys, `Shift+↑↓` extends a range
-(`extend_from`), *Copy* copies it (newline-joined), `Enter` shows the entry in full, wrapped, and clickable chips for
+scroll (sticks to the newest; parked while the selection is off the last row, until the user returns to the end or
+that row is evicted), the `list` and `list_range` scopes' keys, `Shift+↑↓` or a drag extends a range (`extend_from`), *Copy* copies it (newline-joined), `Enter` shows the entry in full, wrapped, and clickable chips for
 the scoped *Message Log: Toggle Debug/Info/Warn/Error* (`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history
 off by default, kept for the session; seeded entries carry `LogEntry.seeded`).
 Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
@@ -224,7 +224,7 @@ member group is no longer on top).
   Selected cells render inverted.
 - Viewport: each editor node's state (`scroll_row`/`scroll_sub`/`scroll_col`, per node and buffer) is the view.
   `ui_editor_reveal` scrolls when the cursor moved since the node last saw it: the minimum to keep `scroll_margin`
-  rows, or centred after a jump (`Buffer.reveal_center`, set by `editor_goto`); a no-cursor command (save, toggles,
+  rows, or centred after a jump (the view state's `center`, set by `editor_goto` on the view showing the buffer); a no-cursor command (save, toggles,
   wheel scroll) leaves the view put. With soft wrap, `scroll_col` is 0 and `scroll_sub` anchors the visual sub-row
   of `scroll_row` at the top (all visibility math in visual rows, see `wrap.odin`). `buffer:screen_row` and
   `set_screen_row` read and write the view showing the buffer (`ui_buffer_view`). When the caret is scrolled out of
@@ -697,7 +697,7 @@ in the editor and tree scopes, and a chord another command holds in the same sco
 writes `""` for the other, or unsets it when its default is empty). Every edit writes one key with `qed.config_set`,
 or `config_unset` when it equals the default; *Settings: Reset* (`Ctrl+d`, scoped) unsets the selected row. The view
 refreshes after each write and on `config_changed`, `theme_changed`, `plugin_loaded` and `plugin_unloaded`, updating
-changed rows in place (`v:update`) so the selection and scroll stay. `qed.config_set` marks the write as the
+changed rows in place (`list:set`) so the selection and scroll stay. `qed.config_set` marks the write as the
 editor's own and zeroes the disk-poll clock (the idle wait is the time to the next poll), so the hot reload applies
 it on the next loop without a "reloaded" message.
 
@@ -918,7 +918,7 @@ or flood the tab's plugin with base requests.
 options and refcounted by list sources (`walk_gc` frees unreferenced ones once their prewarm landed); the candidate
 set comes from the parallel `readdir` walk (`walk_run`) or a background prewarm (ignore-set snapshot, adopted only
 if `Walk.gen` did not move meanwhile). Each root has one ignore set (`walk_ignore_set`, fed by `h:ignore`; `false`
-marks it not known yet, which holds the prewarm and `v:expand(true)` back; only a changed set restales). A `qed.fs`
+marks it not known yet, which holds the prewarm and Expand All back; only a changed set restales). A `qed.fs`
 write (`fs_*`, `qed.fs.write`) restales only the walks whose root can contain the path (`walk_invalidate`); a
 `qed.fs.walk` call restales just that walk. A stale walk keeps serving its old candidates while the prewarm reruns
 it; only a first walk with nothing to serve runs on the main thread. Restaling and adopting bump `Walk.gen`, the list

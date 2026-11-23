@@ -449,28 +449,29 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "core").last_error, "'Save' is a core command"), "a bare name equal to a core command is rejected")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
-	a, ok := plugin_command_for_event(ed, alt('k'), "")
-	testing.expect(t, ok && a.name == "Cmd: A", "config keybind overrides the plugin key")
-	testing.expect_value(t, a.shortcut, "Alt+k")
-	_, old := plugin_command_for_event(ed, alt('j'), "")
-	testing.expect(t, !old, "the plugin default key is gone once overridden")
-	_, unbound := plugin_command_for_event(ed, alt('w'), "")
-	testing.expect(t, !unbound, "an empty config bind unbinds")
-	tree, tok := plugin_command_for_event(ed, alt('j'), "filetree")
-	testing.expect(t, tok && tree.name == "Cmd: Tree", "filetree scope dispatches only in the tree")
-
-	plugin_command_chord(ed, a)
+	press :: proc(ed: ^Editor, ev: tb2.Event) {
+		editor_clear_message(ed)
+		editor_dispatch(ed, ev)
+		plugin_flush(ed)
+	}
+	press(ed, alt('k'))
 	testing.expect_value(t, ed.message, "B 1")
 	testing.expect_value(t, ed.message_source, "Cmd")
+	a, _ := plugin_test_command(ed, "Cmd: A")
+	testing.expect_value(t, a.shortcut, "Alt+k")
+	press(ed, alt('j'))
+	testing.expect_value(t, ed.message, "")
+	unbound, _ := plugin_test_command(ed, "Cmd: Unbound")
+	testing.expect_value(t, unbound.shortcut, "")
+	tree, _ := plugin_test_command(ed, "Cmd: Tree")
+	testing.expect(t, tree.shortcut == "Alt+j" && tree.scope == "filetree", "the tree's command keeps its key, in its scope only")
 
-	gated, _ := plugin_test_command(ed, "Cmd: Gated")
-	editor_clear_message(ed)
-	plugin_command_chord(ed, gated)
+	press(ed, alt('y'))
 	testing.expect_value(t, ed.message, "")
 	b := editor_buffer(ed)
 	b.selection = Cursor{0, 0}
 	b.cursor = Cursor{0, 5}
-	plugin_command_chord(ed, gated)
+	press(ed, alt('y'))
 	testing.expect_value(t, ed.message, "sel hello")
 
 	fail, _ := plugin_test_command(ed, "Cmd: Fail")
@@ -485,8 +486,8 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 
 	ed.plugins.config_override = nil
 	plugins_rebind(ed)
-	a2, ok2 := plugin_command_for_event(ed, alt('j'), "")
-	testing.expect(t, ok2 && a2.name == "Cmd: A", "rebinding without the override restores the plugin key")
+	a2, _ := plugin_test_command(ed, "Cmd: A")
+	testing.expect_value(t, a2.shortcut, "Alt+j")
 }
 
 @(test)
@@ -719,33 +720,28 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Warn, "D", `plugins/d/keybinds/Clash (Alt+2 is "B: Run")`), "a key taken by another plugin's command warns")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds/File Tree: Restore File" moved to "plugins/git/keybinds/Restore File"`), "old bundled bind names say where they moved")
 
-	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
-	a, aok := plugin_command_for_event(ed, alt('k'), "")
-	testing.expect(t, aok && a.name == "A: Run", "plugins.a.keybinds overrides a's key")
-	_, old := plugin_command_for_event(ed, alt('1'), "")
-	testing.expect(t, !old, "a's default is replaced")
-	b, bok := plugin_command_for_event(ed, alt('2'), "")
-	testing.expect(t, bok && b.name == "B: Run", "the same bare name in b keeps its own key")
-	tree, tok := plugin_command_for_event(ed, alt('n'), "filetree")
-	testing.expect(t, tok && tree.name == "A: Search Tree", "keybind shares the bind key within the plugin")
-	ed_search, sok := plugin_command_for_event(ed, alt('n'), "")
-	testing.expect(t, sok && ed_search.name == "A: Search", "both sharing commands move together")
+	shortcut :: proc(ed: ^Editor, name: string) -> string {
+		cmd, _ := plugin_test_command(ed, name)
+		return cmd.shortcut
+	}
+	testing.expect_value(t, shortcut(ed, "A: Run"), "Alt+k")
+	testing.expect_value(t, shortcut(ed, "B: Run"), "Alt+2")
+	testing.expect_value(t, shortcut(ed, "A: Search Tree"), "Alt+n")
+	testing.expect_value(t, shortcut(ed, "A: Search"), "Alt+n")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "plugins/a/keybinds/Nope"`), "an unknown command in a loaded plugin's keybinds warns")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/a/keybinds/"Run"`), "known commands do not warn")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "Whatever"), "a disabled plugin's keybinds do not warn")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds/Run" moved to "plugins/`), "a plugin command in the top-level keybinds warns where it moved")
 
 	plugin_enabled_set(ed, plugin_find(&ed.plugins, "b"), false)
-	_, gone := plugin_command_for_event(ed, alt('2'), "")
-	testing.expect(t, !gone, "disabling a plugin drops its binds")
+	_, b_listed := plugin_test_command(ed, "B: Run")
+	testing.expect(t, !b_listed, "disabling a plugin drops its commands and binds")
 
 	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"a": {"keybinds": {"Run": 5}}}}`)
 	plugins_config_apply(ed, false)
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", "plugins/a/keybinds/Run"), "an invalid plugin bind warns")
-	shared, shok := plugin_command_for_event(ed, alt('j'), "filetree")
-	testing.expect(t, shok && shared.name == "A: Search Tree", "a keybind sharer without key takes the shared default")
-	_, a1 := plugin_command_for_event(ed, alt('1'), "")
-	testing.expect(t, !a1, "an invalid user bind leaves the command unbound")
+	testing.expect_value(t, shortcut(ed, "A: Search Tree"), "Alt+j")
+	testing.expect_value(t, shortcut(ed, "A: Run"), "")
 }
 
 @(test)

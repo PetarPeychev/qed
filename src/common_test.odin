@@ -608,9 +608,3 @@ editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
 	h = max(0, int(tb2.height()) - STATUS_ROWS)
 	return
 }
-
-plugin_command_chord :: proc(editor: ^Editor, cmd: Command) {
-	if plugin_command_when(editor, cmd) {
-		plugin_command_run(editor, cmd)
-	}
-}

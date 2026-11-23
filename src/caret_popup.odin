@@ -14,8 +14,7 @@ CaretPopup :: struct {
 	target:    string,
 	signature: string,
 	// the diagnostic box closed by the wheel stays closed until the caret moves
-	diag_closed:    bool,
-	diag_closed_at: Cursor,
+	diag_closed_at: Maybe(Cursor),
 }
 
 @(private = "file")
@@ -25,7 +24,6 @@ buffer_is_elsewhere :: proc(editor: ^Editor, at: Cursor) -> bool {
 
 caret_diagnostic_close :: proc(editor: ^Editor) {
 	if editor.caret_popup.handle != 0 && strings.has_prefix(editor.caret_popup.signature, "diag|") {
-		editor.caret_popup.diag_closed = true
 		editor.caret_popup.diag_closed_at = editor_buffer(editor).cursor
 	}
 }
@@ -40,8 +38,8 @@ caret_popup_sync :: proc(editor: ^Editor) {
 	popup := &editor.caret_popup
 	target, signature := "", ""
 	root: ^UiNode
-	if popup.diag_closed && buffer_is_elsewhere(editor, popup.diag_closed_at) {
-		popup.diag_closed = false
+	if at, closed := popup.diag_closed_at.?; closed && buffer_is_elsewhere(editor, at) {
+		popup.diag_closed_at = nil
 	}
 	focus := ui_focused(editor)
 	buffer := ui_buffer(editor, focus.buffer) if focus != nil && focus.kind == .Editor else nil
@@ -59,7 +57,7 @@ caret_popup_sync :: proc(editor: ^Editor) {
 			if signature != popup.signature {
 				root = caret_hover_build(editor)
 			}
-		} else if d, ok := diagnostic_at(buffer, buffer.cursor); !ghost && ok && !(popup.diag_closed && popup.diag_closed_at == buffer.cursor) {
+		} else if d, ok := diagnostic_at(buffer, buffer.cursor); !ghost && ok && popup.diag_closed_at == nil {
 			signature = fmt.tprintf("diag|%s|%d|%d|%s", target, tb2.width(), d.severity, d.message)
 			if signature != popup.signature {
 				root = caret_diag_build(d)
@@ -153,7 +151,7 @@ caret_completion_build :: proc(editor: ^Editor, buffer: ^Buffer) -> ^UiNode {
 	content_w = clamp(content_w, 10, COMPLETION_MAX_WIDTH)
 	box := caret_box("caret_completion", content_w + 4, rows + 2)
 	// the box starts at the completed word, not the caret
-	box.cursor_from, box.cursor_from_set = {c.anchor_row, c.anchor_col}, true
+	box.cursor_from = Cursor{c.anchor_row, c.anchor_col}
 	// a multi-line ghost fills the rows below the caret
 	box.cursor_above = inline_gap(editor) > 0
 	column := ui_core_node(.Column, "caret_completion_rows")

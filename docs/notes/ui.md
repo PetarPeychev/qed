@@ -32,11 +32,13 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
   positional index (a `false` or `nil` hole keeps later siblings' identity). Duplicate ids or sibling keys raise.
 - State is core's, keyed by identity, never in the node table: `highlighted` (column, row, virtual_column),
   `extend_from` (virtual_column: the rows from it to `highlighted` draw highlighted too, a range selection),
-  `offset` (rows scrolled past the top, 0-based: scroll, and editor per node and buffer). `set_state` changes only named fields, fires
-  nothing, and a new `highlighted` scrolls into view. When core changes `highlighted` (list keys, a row click) the
+  `offset` (0-based: a scroll's rows past the top; an editor's top buffer line, per node and buffer). `set_state`
+  changes only named fields, fires nothing, and a new `highlighted` scrolls into view. A key must match its list's
+  kind (string or integer); a rejected key raises and leaves the state as it was. When core changes `highlighted` (list keys, a row click) the
   node's `on.state{highlighted, extend_from}` fires. `state()` reports `highlighted` only while that key is in the
   data. States of id'd nodes live until their plugin unloads; others go with their node.
-- Replaced trees are freed at the next frame; when a handler changes a mount, bubbling stops.
+- Replaced trees are freed at the next frame. A key handler that changes a mount stops the bubbling; a command's
+  pre-command flush that replaced the tree hands the key on from the node with the same identity in the new tree.
 
 ## 3. Layout
 
@@ -69,7 +71,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 |---|---|---|
 | `column`, `row` | nodes | `gap`, `align`, `separator`, `highlight_style` (the child whose `key` is `highlighted`) |
 | `box` | exactly one laid out | `border`, `title` |
-| `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (opens at the end and stays there; a user highlight off the list's last row parks it until it returns) |
+| `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (opens at the end and stays there; a user highlight off the list's last row parks it, until the user reaches the end again by any means or the parked row leaves the data) |
 | `text` | strings and spans `{fg =, bold =, "text", ...}` | `wrap` (by cluster), `align`; overflow clips with `…` |
 | `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly` |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
@@ -81,15 +83,18 @@ Positional values are children, named values are props. Common props: `id`, `key
 
 - `editor`: without `scope = "editor"` it is a view (click places the caret, wheel scrolls). With it, typing and
   paste insert, and the `editor` scope's core commands edit (`Editor: Left` ... `Dedent`, plus Undo, Redo, Copy,
-  Cut, Paste, Select All borrowing the global binds). `scope = "editor"` on another node type raises.
+  Cut, Paste, Select All borrowing the global binds). `scope = "editor"` on another node type raises. An editor one
+  row high is a field: no indent, auto-pairs or newlines, and every paste (bracketed or Ctrl+V) flattens newlines
+  to spaces. Double and triple clicks select a word and a line; a drag past an edge scrolls.
 - `qed.markdown.parse`: rendered in slices, the last render stays up while a newer one runs; the holding scroll owns
   offset, bar and wheel. A link click fires `on.link{target}`; an unhandled `#slug` scrolls to the heading. State:
   `rows`, `sources` (source rows of the visible lines), `heading` (source row of the last `heading` set).
   `set_state{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the
   document allows) or `{heading = slug}` moves the holding scroll, now when shown, else at the next layout.
 - Caret popups: the completion menu, the hover and the diagnostic under the caret are core-built floats
-  (`anchor = "cursor"`) that core attaches under the focused editor showing the current buffer; the wheel scrolls
-  the hover, any other click or key dismisses them.
+  (`anchor = "cursor"`) that core mounts in its `caret` outlet (a reserved name) and attaches under the focused
+  editor showing the current buffer. The wheel scrolls the hover; over the completion menu or the diagnostic box it
+  closes them (the diagnostic box until the caret moves); any other click or key dismisses them.
 - `qed.ui.dismissable{on_dismiss = fn, pane, ...}` (prelude): a full-screen catcher column holding the panes; a
   click outside them calls `on_dismiss`, a click inside stays with the pane after its own `on.click`.
 - `virtual_column`: `item` runs in a batched step between layout passes, only for records coming into view, cached
@@ -103,14 +108,16 @@ Positional values are children, named values are props. Common props: `id`, `key
   node-relative) and `button`. A double click fires the `click` bubble, then the `double_click` bubble.
 - Keys: from the focused node up to the root; at each node its `scope` names in order (commands of that scope on
   their chord), then `on.key`, then an editor's typing. Then plugin global binds, then core global binds (both by
-  chord). A command of a scope acts on the node whose scope matched. Unknown scope names warn once. A command key
-  first runs the change events of the keys typed before it, so it sees their effect.
+  chord). A command of a scope acts on the node whose scope matched. Unknown scope names warn once.
 - The `list` scope: core's `List: Next/Previous` (held-key acceleration), `Page Down/Up` and `First/Last` move the
   highlight of the first `virtual_column` under the node carrying the scope. A click on a row highlights it. An
   editor one row high lets Up/Down bubble, so a query field above a list just works. The `list_range` scope opts a
-  list into ranges: `List: Extend Down/Up` (Shift+Up/Down) and a drag across rows set `extend_from`. A command that
-  does not apply (core `applies`, plugin `when`) lets its chord pass. A command whose pre-command flush replaced
-  the tree acts on the new node with the same identity, or not at all when it is gone.
+  list into ranges: `List: Extend Down/Up` (Shift+Up/Down) and a drag across rows set `extend_from`.
+- Commands, core and plugin alike: a chord that has a command in a scope first runs the change events of the keys
+  typed before it (the pre-command flush), then asks whether the command applies (core `applies`, plugin `when`);
+  one that does not lets its chord pass. When the flush replaced the tree the command acts on the node with the same
+  identity in the new tree, laid out; when that node is gone it does nothing. Global binds follow the same pass
+  rule, and with nothing focused (no layout) they still run.
 - Focus: exactly one node, set by its owner with `ref:focus()` (any node with an id). Editors focus themselves on a
   click. When the focused node leaves the tree, focus returns to the most recent node still there (16 deep).
 - Mouse: the topmost node under the pointer bubbles to the root; unhandled, the next node below continues. Scroll

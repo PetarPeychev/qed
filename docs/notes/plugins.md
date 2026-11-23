@@ -173,8 +173,6 @@ Panes, lists and fields are `qed.ui` node trees: see [ui.md](ui.md).
 |---|---|
 | `qed.message(text, level?)`, `qed.log(text, level?)` | Level last, default `"info"`. Always attributed to the plugin's display name. `qed.message("")` clears the message line. |
 | `qed.open_url(url) -> true \| nil, err` | Platform opener (macOS `open`, WSL `wslview` else `explorer.exe`, Linux `xdg-open`), detached; headless sessions only log `Open URL:` at Debug. |
-| `v:tab(i?, tabs?) -> i \| nil, "closed"` | The active tab; `i` switches without `on.tab`; `tabs` replaces the tab row first (validated before anything changes). |
-| ⏳ `v:wait() -> items \| nil, index \| nil, text \| nil` | The next activate (items, the first one's index, the first field's text) or the close (`nil, nil, text`). |
 | `qed.pick{items, prompt?, selected?, on?} -> item \| nil` | The bundled `dialog` plugin's export (a qed.ui mount in the `alert` layer). Items with `path` get a list + `preview` split. `selected` is an item index or label; `on = {change}` runs on every highlight move (live preview). Esc or an outside click returns `nil`. |
 | `qed.prompt{prompt, text?} -> string \| nil` | The `dialog` plugin: one input field. |
 | `qed.confirm{question, choices?} -> index \| nil` | The `dialog` plugin: the question and a choice list; `choices` defaults to `{"Yes", "No"}`. |
