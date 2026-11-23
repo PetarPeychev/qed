@@ -44,34 +44,28 @@ command_effective_bind :: proc(cmd: Command) -> (key: tb2.Key, alt_ch: rune, sho
 
 cmd_undo :: proc(editor: ^Editor) {
 	editor_undo(editor)
-	editor_scroll(editor)
 }
 cmd_redo :: proc(editor: ^Editor) {
 	editor_redo(editor)
-	editor_scroll(editor)
 }
 cmd_select_all :: proc(editor: ^Editor) {
 	cursor_select_all(editor_buffer(editor))
-	editor_scroll(editor)
 }
 
 cmd_buffer_start :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.selection = nil
 	cursor_move_buffer_start(b)
-	editor_scroll(editor)
 }
 
 cmd_buffer_end :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.selection = nil
 	cursor_move_buffer_end(b)
-	editor_scroll(editor)
 }
 
 cmd_toggle_comment :: proc(editor: ^Editor) {
 	buffer_toggle_comment(editor_buffer(editor))
-	editor_scroll(editor)
 }
 cmd_lsp_restart :: proc(editor: ^Editor) {lsp_restart(editor)}
 cmd_lsp_definition :: proc(editor: ^Editor) {lsp_definition(editor)}
@@ -91,9 +85,6 @@ cmd_toggle_diff_view :: proc(editor: ^Editor) {
 cmd_toggle_line_wrap :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	b.wrap = !b.wrap
-	editor.scroll_col = 0
-	editor.scroll_sub = 0
-	editor_scroll(editor)
 	editor_log(editor, .Info, "", fmt.tprintf("Line wrap: %s", "on" if b.wrap else "off"))
 }
 
@@ -154,6 +145,7 @@ scoped_commands := [?]Command {
 	{name = "Select Paragraph Down", scope = "editor", config_name = "Editor: Select Paragraph Down", run = ui_command_select_paragraph_down},
 	{name = "Newline", scope = "editor", config_name = "Editor: Newline", run = ui_command_newline, applies = ui_target_multiline},
 	{name = "Backspace", scope = "editor", config_name = "Editor: Backspace", run = ui_command_backspace},
+	{name = "Field Backspace", scope = "editor", config_name = "Editor: Field Backspace", run = ui_command_backspace, applies = ui_target_one_line},
 	{name = "Delete", scope = "editor", config_name = "Editor: Delete", run = ui_command_delete},
 	{name = "Indent", scope = "editor", config_name = "Editor: Indent", run = ui_command_indent, applies = ui_target_multiline},
 	{name = "Dedent", scope = "editor", config_name = "Editor: Dedent", run = ui_command_dedent, applies = ui_target_multiline},
@@ -166,8 +158,8 @@ scoped_commands := [?]Command {
 	{name = "Page Up", scope = "list", config_name = "List: Page Up", run = ui_command_list_page_up},
 	{name = "First", scope = "list", config_name = "List: First", run = ui_command_list_first},
 	{name = "Last", scope = "list", config_name = "List: Last", run = ui_command_list_last},
-	{name = "Extend Down", scope = "list", config_name = "List: Extend Down", run = ui_command_list_extend_down},
-	{name = "Extend Up", scope = "list", config_name = "List: Extend Up", run = ui_command_list_extend_up},
+	{name = "Extend Down", scope = "list_range", config_name = "List: Extend Down", run = ui_command_list_extend_down},
+	{name = "Extend Up", scope = "list_range", config_name = "List: Extend Up", run = ui_command_list_extend_up},
 	{name = "Undo", scope = "editor", bind_from = "Undo", run = ui_command_undo},
 	{name = "Redo", scope = "editor", bind_from = "Redo", run = ui_command_redo},
 	{name = "Select All", scope = "editor", bind_from = "Select All", run = ui_command_select_all},

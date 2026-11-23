@@ -1,0 +1,28 @@
+# Project search (Alt+F): rg results streamed into the list, a live preview of the hit, Enter opens it there.
+requires rg
+file main.c
+#include "util.h"
+
+int main(void) {
+    return helper(2);
+}
+end
+file util.c
+int helper(int x) {
+    return x * 2;
+}
+end
+file util.h
+int helper(int x);
+end
+run main.c
+wait include
+key alt+F
+wait Search
+type helper
+wait util.h:1
+snap results
+key down
+snap moved
+key enter
+snap opened

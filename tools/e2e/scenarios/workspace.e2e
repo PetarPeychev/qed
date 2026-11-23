@@ -1,0 +1,28 @@
+# Open Directory (Ctrl+O): the path picker lists subdirectories, Tab and / drill, Backspace goes back, Enter switches.
+file alpha/inner/a.txt
+a
+end
+file apple/b.txt
+b
+end
+file beta/c.txt
+c
+end
+file notes.txt
+root notes
+end
+run notes.txt
+wait root notes
+key ctrl+o
+wait apple
+snap open
+type a
+snap filtered
+key tab
+snap drilled
+key backspace
+snap back
+type be
+key tab
+key enter
+snap switched

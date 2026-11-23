@@ -773,9 +773,7 @@ qed_buf_set_text :: proc "c" (L: ^lua.State) -> c.int {
 	if api_rev_stale(L, 3, b) {
 		return api_fail(L, "stale")
 	}
-	if buffer_set_text(b, text) && idx == editor.current {
-		editor_scroll(editor)
-	}
+	buffer_set_text(b, text)
 	lua.pushboolean(L, true)
 	return 1
 }
@@ -829,9 +827,6 @@ qed_buf_set_cursor :: proc "c" (L: ^lua.State) -> c.int {
 	b.cursor = api_pos(L, 2, b)
 	b.selection = nil
 	cursor_goal_sync(b)
-	if idx == editor.current {
-		editor_scroll(editor)
-	}
 	return 0
 }
 
@@ -839,19 +834,26 @@ qed_buf_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	b, idx := api_buf(L, editor, 1)
+	b, _ := api_buf(L, editor, 1)
+	node, state := ui_buffer_view(editor, b)
+	if node == nil {
+		lua.pushnil(L)
+		return 1
+	}
+	// a cursor set since the last frame scrolls first, as the next frame would
+	ui_buffer_view_reveal(editor, node, b)
+	w, h := ui_editor_text_width(node, b), node.rect.h
 	row, sub := b.cursor.row, 0
-	w, h := editor_viewport(editor)
 	if lua.type(L, 2) > .NIL {
 		row = api_int(L, 2, "row must be an integer") - 1
 	} else if b.wrap && w > 0 {
 		sub = wrap_subrow(buffer_line_wrap(b, row, w), b.cursor.col)
 	}
-	if idx != editor.current || row < 0 || row >= len(b.lines) || vpos_cmp(row, sub, editor.scroll_row, editor.scroll_sub) < 0 {
+	if row < 0 || row >= len(b.lines) || vpos_cmp(row, sub, state.scroll_row, state.scroll_sub) < 0 {
 		lua.pushnil(L)
 		return 1
 	}
-	d := vpos_dist(b, w, editor.scroll_row, editor.scroll_sub, row, sub, h)
+	d := vpos_dist(b, w, state.scroll_row, state.scroll_sub, row, sub, h)
 	if d >= h {
 		lua.pushnil(L)
 		return 1
@@ -864,20 +866,23 @@ qed_buf_set_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	editor := entry.editor
-	b, idx := api_buf(L, editor, 1)
+	b, _ := api_buf(L, editor, 1)
 	row := clamp(api_int(L, 2, "row must be an integer") - 1, 0, len(b.lines) - 1)
 	at := api_int(L, 3, "screen row must be an integer")
-	if idx != editor.current {
-		return api_fail(L, "not current")
+	node, state := ui_buffer_view(editor, b)
+	if node == nil {
+		return api_fail(L, "not shown")
 	}
-	w, h := editor_viewport(editor)
+	w, h := ui_editor_text_width(node, b), node.rect.h
 	top_r, top_s := vpos_up(b, w, row, 0, clamp(at, 1, max(1, h)) - 1)
 	last := len(b.lines) - 1
 	max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
 	if vpos_cmp(top_r, top_s, max_r, max_s) > 0 {
 		top_r, top_s = max_r, max_s
 	}
-	editor.scroll_row, editor.scroll_sub = top_r, top_s
+	state.scroll_row, state.scroll_sub = top_r, top_s
+	// the cursor set before this call must not scroll the view back on the next frame
+	state.cursor_seen, state.reveal, b.reveal_center = b.cursor, false, false
 	lua.pushboolean(L, true)
 	return 1
 }
@@ -905,9 +910,6 @@ qed_buf_set_selection :: proc "c" (L: ^lua.State) -> c.int {
 	b.cursor = api_pos(L, 3, b)
 	b.selection = anchor
 	cursor_goal_sync(b)
-	if idx == editor.current {
-		editor_scroll(editor)
-	}
 	return 0
 }
 

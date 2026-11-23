@@ -208,9 +208,6 @@ search_select :: proc(editor: ^Editor, search: ^Search, buffer: ^Buffer) {
 	buffer.selection = Cursor{match.row, match.from}
 	buffer.cursor = {match.row, match.to}
 	cursor_goal_sync(buffer)
-	if !editor.welcome && editor_buffer(editor) == buffer {
-		editor_scroll(editor)
-	}
 }
 
 search_replace :: proc(editor: ^Editor, search: ^Search, replacement: string, all: bool) -> int {

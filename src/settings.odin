@@ -668,6 +668,10 @@ config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
 }
 
 CONFIG_MOVED :: [?][2]string {
+	{"plugins/*/keybinds/Next", "keybinds/List: Next"},
+	{"plugins/*/keybinds/Previous", "keybinds/List: Previous"},
+	{"plugins/*/keybinds/Extend Down", "keybinds/List: Extend Down"},
+	{"plugins/*/keybinds/Extend Up", "keybinds/List: Extend Up"},
 	{"plugins_pane_max_width", "pane_max_width"},
 	{"palette_max_rows", "picker_max_rows"},
 	{"plugins/palette/width", "picker_width"},

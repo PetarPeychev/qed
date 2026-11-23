@@ -983,9 +983,6 @@ lsp_apply_rename :: proc(editor: ^Editor, obj: json.Object) -> bool {
 		editor_log(editor, .Info, "Rename", "No rename changes")
 		return true
 	}
-	if touched_current {
-		editor_scroll(editor)
-	}
 	if files < total {
 		editor_log(editor, .Warn, "Rename", fmt.tprintf("Renamed in %d/%d files (rest unreadable)", files, total))
 	} else {
@@ -1170,9 +1167,6 @@ lsp_apply_format :: proc(editor: ^Editor, p: LspPending, obj: json.Object) -> bo
 		b.cursor.col = clamp(b.cursor.col, 0, len(b.lines[b.cursor.row].text))
 		b.selection = nil
 		cursor_goal_sync(b)
-		if b == editor_buffer(editor) {
-			editor_scroll(editor)
-		}
 	}
 	plugin_lsp_done(editor, p.token, true, "")
 	return true
@@ -1249,7 +1243,6 @@ diag_goto :: proc(editor: ^Editor, dir: int) {
 	b.selection = nil
 	b.cursor = {row, clamp(target.col, 0, len(b.lines[row].text))}
 	cursor_goal_sync(b)
-	editor_scroll(editor)
 }
 
 lsp_num :: proc(v: json.Value) -> (int, bool) {

@@ -210,7 +210,7 @@ return {setup = function()
 	qed.command{name = "Open", run = function() handle = ui.mount("pane", build()) end}
 	qed.command{name = "Rebuild", run = function() handle:update(build()) end}
 	qed.command{name = "Change", run = function() records:set(3, {label = "changed"}) end}
-	qed.command{name = "Jump", run = function() ui.node("vlist"):set_state{highlighted = "500"} end}
+	qed.command{name = "Jump", run = function() ui.node("vlist"):set_state{highlighted = 500} end}
 end}`)
 	ut_run(&e, "Open")
 	testing.expect_value(t, e.ed.ui.builds, 10)

@@ -10,14 +10,14 @@ section when its item ships.
 
 `bracket_scan_forward`/`backward` (`pairs.odin`) walk until they find the
 partner — for an unmatched bracket that means to EOF/BOF, **every frame**,
-since `editor_render_buffer` calls `bracket_match` per render. Gated on
+since `editor_render_view` calls `bracket_match` per render. Gated on
 `!b.big`, so a just-under-2 MB file still scans ~2 MB per frame to draw an
 underline. Fix: cap the scan at a few thousand lines from the cursor and
 return not-found past it; an unmatched-bracket underline loses nothing.
 
 ### Cache `merge_scan` / `merge_word_map` per rev
 
-Both run per render (`editor_render_buffer`, also `inline_render`): O(n) marker
+Both run per render (`editor_render_view`, also `inline_render`): O(n) marker
 prefix checks plus a Myers diff + word spans when conflicts exist. Cache the
 conflict list + span map on the buffer keyed by `b.rev` (the git-gutter
 pattern again). Only matters for large files, but the fix is mechanical.
@@ -107,7 +107,7 @@ Generalize the walkers' git-specific hooks into one per-buffer provider —
 "N extra rows above/below row R, rendered by X" — and one ghost-row renderer.
 Then the inline ghost stops special-casing wrap vs no-wrap, and inline diagnostics /
 sticky scroll drop in without adding a fourth interleaved concern to
-`editor_render_buffer` (already a ~150-line loop juggling seven). **Do this
+`editor_render_view` (already a ~150-line loop juggling seven). **Do this
 before starting the inline-diagnostics TODO.**
 
 ### Per-buffer viewport state

@@ -545,7 +545,6 @@ diffbase_revert :: proc(editor: ^Editor) {
 	b.selection = nil
 	b.cursor = {clamp(top, 0, len(b.lines) - 1), 0}
 	cursor_goal_sync(b)
-	editor_scroll(editor)
 	editor_log(editor, .Info, "Diff", fmt.tprintf("Reverted %d hunk%s", count, "" if count == 1 else "s"))
 }
 

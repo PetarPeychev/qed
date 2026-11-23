@@ -11,7 +11,12 @@ ui_dispatch :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	case .Key:
 		focus := ui_focused(editor)
 		if focus == nil {
-			return false
+			// no layout (disabled or broken): the global binds still work, so Quit, Save and the palette do
+			if editor.welcome {
+				return false
+			}
+			ui_global_binds(editor, ev)
+			return true
 		}
 		ui_dispatch_key(editor, focus, ev)
 		return true
@@ -109,9 +114,9 @@ ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
 		}
 	}
 	for command in editor.plugins.commands {
-		if command.scope == scope && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
+		if command.scope == scope && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord && plugin_command_when(editor, command) {
 			plugin_flush(editor)
-			plugin_command_chord(editor, command)
+			plugin_command_run(editor, command)
 			return true
 		}
 	}
@@ -123,17 +128,16 @@ ui_global_binds :: proc(editor: ^Editor, ev: tb2.Event) {
 	if chord == "" {
 		return
 	}
+	// one rule for every command: one that does not apply now lets its chord pass to the next
 	for command in editor.plugins.commands {
-		if command.scope == "" && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
-			plugin_command_chord(editor, command)
+		if command.scope == "" && command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord && plugin_command_when(editor, command) {
+			plugin_command_run(editor, command)
 			return
 		}
 	}
 	for command in commands {
-		if command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord {
-			if command_enabled(command) {
-				command.run(editor)
-			}
+		if command.shortcut != "" && ui_chord_cached(&editor.ui, command.shortcut) == chord && command_enabled(command) {
+			command.run(editor)
 			return
 		}
 	}
@@ -155,6 +159,11 @@ ui_node_one_line :: proc(node: ^UiNode) -> bool {
 
 ui_target_multiline :: proc(editor: ^Editor) -> bool {
 	return editor.ui.target != nil && !ui_node_one_line(editor.ui.target)
+}
+
+// a terminal with erase ^H sends Ctrl+h for Backspace: a field takes it, the main editor leaves it to Replace
+ui_target_one_line :: proc(editor: ^Editor) -> bool {
+	return editor.ui.target != nil && ui_node_one_line(editor.ui.target)
 }
 
 ui_editor_type :: proc(editor: ^Editor, node: ^UiNode, character: rune) {
@@ -196,14 +205,7 @@ ui_paste :: proc(editor: ^Editor, text: string) -> bool {
 		}
 		if node.kind == .Editor && !node.readonly && ui_node_edits(node) {
 			if buffer := ui_buffer(editor, node.buffer); buffer != nil {
-				pasted := text
-				if ui_node_one_line(node) {
-					pasted, _ = strings.replace_all(text, "\r\n", " ", context.temp_allocator)
-					pasted, _ = strings.replace_all(pasted, "\n", " ", context.temp_allocator)
-					pasted, _ = strings.replace_all(pasted, "\r", " ", context.temp_allocator)
-				}
-				buffer_paste(buffer, pasted)
-				ui_node_state(&editor.ui, node).reveal = true
+				ui_node_paste(editor, node, buffer, text)
 			}
 			return true
 		}
@@ -626,8 +628,22 @@ ui_command_cut :: proc(editor: ^Editor) {
 
 ui_command_paste :: proc(editor: ^Editor) {
 	if buffer := ui_target_buffer(editor, true); buffer != nil {
-		buffer_paste_clipboard(buffer)
+		if text := clipboard_get(context.temp_allocator); len(text) > 0 {
+			ui_node_paste(editor, editor.ui.target, buffer, text)
+		}
 	}
+}
+
+// every paste into a one-row field (bracketed or Ctrl+V) lands on its one line
+ui_node_paste :: proc(editor: ^Editor, node: ^UiNode, buffer: ^Buffer, text: string) {
+	pasted := text
+	if ui_node_one_line(node) {
+		pasted, _ = strings.replace_all(text, "\r\n", " ", context.temp_allocator)
+		pasted, _ = strings.replace_all(pasted, "\n", " ", context.temp_allocator)
+		pasted, _ = strings.replace_all(pasted, "\r", " ", context.temp_allocator)
+	}
+	buffer_paste(buffer, pasted)
+	ui_node_state(&editor.ui, node).reveal = true
 }
 
 ui_command_indent :: proc(editor: ^Editor) {
@@ -679,6 +695,9 @@ ui_list_highlight :: proc(editor: ^Editor, node: ^UiNode, key: string, extend: b
 	delete(state.highlighted)
 	state.highlighted = strings.clone(key)
 	state.reveal = true
+	if list := ui_list_find(&editor.ui, node.list); list != nil {
+		state.key_kind = ui_list_keys_owner(editor, list).key_kind
+	}
 	ui_state_changed(editor, node)
 }
 

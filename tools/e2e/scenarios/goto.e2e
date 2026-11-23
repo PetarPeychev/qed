@@ -1,0 +1,31 @@
+# Go to Line (Ctrl+G): fuzzy text query, a line number, :line:column, the live preview, Enter jumps.
+file story.txt
+Once upon a time
+there was a small fox
+who lived by the river.
+Every morning the fox
+walked to the old bridge,
+looked at the water,
+and counted the fish.
+One day the river was dry.
+The fox walked further
+than ever before
+and found the sea.
+end
+run story.txt
+wait Once upon
+key ctrl+g
+wait Go to Line
+snap open
+type fox
+snap fuzzy
+key down
+snap moved
+key ctrl+a
+type 8
+snap number
+key ctrl+a
+type :10:5
+snap line-column
+key enter
+snap jumped

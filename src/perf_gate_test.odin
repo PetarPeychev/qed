@@ -199,7 +199,6 @@ gate_place :: proc(e: ^E2E, row, col: int) {
 	b := editor_buffer(&e.ed)
 	b.cursor = {min(row, len(b.lines) - 1), col}
 	b.selection = nil
-	editor_scroll(&e.ed)
 	editor_render(&e.ed)
 	free_all(context.temp_allocator)
 }

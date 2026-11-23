@@ -16,7 +16,7 @@ Non-goals
 - Project-local plugins, sandboxing, trust prompts. Plugins are global and written by Petar.
 - Lua on any render path or on the raw per-keystroke path.
 - A package manager, a versioned API, backwards compatibility.
-- Moving LSP, tree-sitter, PTY/vterm into Lua. (The file tree is a bundled plugin on core walk handles since [panes.md](panes.md) M5.)
+- Moving LSP, tree-sitter, PTY/vterm into Lua. (The file tree is a bundled plugin on core walk handles.)
 - Threads in Lua, or more than one Lua state.
 
 ## 2. Core vs plugin boundary
@@ -149,7 +149,7 @@ There is deliberately no `key` event.
 
 ### Plugin communication
 
-Per [panes.md](panes.md) §6 (D10). Setup registers only; cross-plugin calls happen in `startup` and on `plugin_loaded`.
+Setup registers only; cross-plugin calls happen in `startup` and on `plugin_loaded`.
 
 | Function | Notes |
 |---|---|
@@ -373,7 +373,7 @@ Each phase is one agent-sized step, ships green, and includes its tests.
 | M7 | The merge-conflict UI becomes the bundled `conflict` plugin (*Conflict: Resolve*, `Alt+m`, `plugins.conflict.keybinds.Resolve`; the top-level `Git: Resolve Conflict` bind warns where it moved); the bundled `ai` plugin (*AI: Edit Selection*, *Cancel Edits*, *Toggle Inline Completion*, `plugins.ai.*`, binds under `plugins.ai.keybinds`); `qed.buf.find_lines` (lists, `word`), `qed.buf.big`, `qed.text.diff`/`diff_rows`, `qed.deco.mark`/`range`/`inline`, theme tint keys as deco alphas, blended spans, `buf_changed`'s `typed`/`lo`/`hi`, change detection every flush round, hunk-applied reloads; `conflict.odin`, the core `merge` pane, `aiedit.odin`, `llm.odin`, `fim.odin`, `modules.ai` and `.Ai` are gone. | minor |
 | M8 | The module system is removed (`module.odin`, `Module`, `module_enabled`, `Command.module`, `config_module_defs`, the `modules` parsing); old `modules.ai/git/lsp` keys still warn "moved to". | minor |
 | M9 | Config key review: one `CONFIG_MOVED` table drives every "moved to" warning; `filetree_show_dotfiles`/`_ignored`/`_diff_only` become `plugins.filetree.show_dotfiles`/`show_ignored`/`diff_only` (live), `filetree_list_*`/`code_list_*`/`preview_*_width` become `split_tree_*`/`split_code_*`/`split_preview_*`, `plugins.ai.chat_command` becomes `edit_command`, the `format` knobs become `on_save`/`trim_whitespace_on_save`/`final_newline_on_save`; *Diff: Toggle View*, *Message Log: Open*, *Plugins: Open*, *Go to: Line*; the workspace picker follows the tree's dotfiles (`filetree` export `dotfiles`); markdown Back/Forward use `bind_from`; a disk reload is one undo step (cleared above `big_file_bytes`). | minor |
-| later | The remaining panes: the pane model's M steps ([panes.md](panes.md) §7). `qed --test-plugin`. | |
+| later | `qed --test-plugin`. | |
 
 ## 9. Decisions
 

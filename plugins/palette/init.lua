@@ -2,32 +2,34 @@ local ui = qed.ui
 
 local palette
 
+-- runs of matched characters become one bold span each: few spans per row keep typing cheap
 local function name_spans(record, positions)
-	local matched = {}
-	for _, offset in ipairs(positions or {}) do
-		matched[offset] = true
+	local name = record.name
+	if not positions or #positions == 0 then
+		return {name}
 	end
 	local spans = {}
-	local plain = {}
-	local name = record.name
-	for position, code in utf8.codes(name) do
-		local character = utf8.char(code)
-		local hit = false
-		for offset = position, position + #character - 1 do
-			hit = hit or matched[offset]
-		end
-		if hit then
-			if #plain > 0 then
-				spans[#spans + 1] = table.concat(plain)
-				plain = {}
-			end
-			spans[#spans + 1] = {fg = "pane_prompt_foreground", bold = true, character}
-		else
-			plain[#plain + 1] = character
+	local plain_from, run_from, run_to = 1, nil, nil
+	local function close_run()
+		if run_from then
+			spans[#spans + 1] = {fg = "pane_prompt_foreground", bold = true, name:sub(run_from, run_to)}
+			plain_from, run_from = run_to + 1, nil
 		end
 	end
-	if #plain > 0 then
-		spans[#spans + 1] = table.concat(plain)
+	for _, offset in ipairs(positions) do
+		local stop = (utf8.offset(name, 2, offset) or #name + 1) - 1
+		if not (run_from and offset == run_to + 1) then
+			close_run()
+			if offset > plain_from then
+				spans[#spans + 1] = name:sub(plain_from, offset - 1)
+			end
+			run_from = offset
+		end
+		run_to = stop
+	end
+	close_run()
+	if plain_from <= #name then
+		spans[#spans + 1] = name:sub(plain_from)
 	end
 	return spans
 end
@@ -106,16 +108,17 @@ local function open_palette()
 	-- over a focused pane its own commands, else the global ones
 	local wanted = {}
 	for _, focus_scope in ipairs(qed.ui.focus_scopes()) do
-		if focus_scope ~= "editor" and focus_scope ~= "list" then
+		if focus_scope ~= "editor" and focus_scope ~= "list" and focus_scope ~= "list_range" then
 			wanted[focus_scope] = true
 		end
 	end
+	local all = qed.commands()
 	local scoped = false
-	for _, command in ipairs(qed.commands()) do
+	for _, command in ipairs(all) do
 		scoped = scoped or wanted[command.scope] == true
 	end
 	local commands = qed.list.new{key = "name"}
-	for _, command in ipairs(qed.commands()) do
+	for _, command in ipairs(all) do
 		local listed = scoped and wanted[command.scope] or (not scoped and command.scope == "global")
 		if listed and command.available and command.owner ~= "palette" and command.name ~= "Command Palette" then
 			commands:append{name = command.name, shortcut = command.shortcut, scope = command.scope}

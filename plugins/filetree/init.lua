@@ -314,7 +314,7 @@ build = function()
 	local count = tree:count()
 	local empty = count == 0 and tab and tab.empty or nil
 	return ui.dismissable{on_dismiss = function() view.close() end,
-		ui.box{id = "filetree", float = "screen", anchor = "center", width = "100%", height = "100%", scope = "list",
+		ui.box{id = "filetree", float = "screen", anchor = "center", width = "100%", height = "100%", scope = {"list", "list_range"},
 			margin = {x = 2, y = 1}, border = true, title = "File Tree", bg = "pane_background", fg = "pane_foreground",
 			ui.column{
 				tab_row(),

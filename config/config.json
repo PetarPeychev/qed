@@ -137,6 +137,7 @@
     "Editor: Select Paragraph Down": "Ctrl+Shift+Down",
     "Editor: Newline": "Enter",
     "Editor: Backspace": "Backspace",
+    "Editor: Field Backspace": "",
     "Editor: Delete": "Delete",
     "Editor: Indent": "Tab",
     "Editor: Dedent": "Shift+Tab",

@@ -155,3 +155,151 @@ e2e_round8_completion_is_a_node_at_the_word :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui_node_state_peek(&e.ed.ui, rows).highlighted, "1")
 	testing.expect_value(t, e2e_rgb(e2e_cell_bg(&e, popup.rect.x + 2, popup.rect.y + 2)), e2e_rgb(COLOR_PANE_SEL_BG))
 }
+
+@(private = "file")
+r8_lines :: proc(count: int) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for i in 1 ..= count {
+		fmt.sbprintf(&sb, "line %d\n", i)
+	}
+	return strings.to_string(sb)
+}
+
+@(test)
+e2e_round8_screen_row_reads_the_drawn_view :: proc(t: ^testing.T) {
+	e := e2e_start(r8_lines(2000))
+	defer e2e_stop(&e)
+	e2e_render(&e)
+	editor_goto(&e.ed, 1499, 0)
+	e2e_render(&e)
+	node := ui_find(&e.ed.ui, "#layout/main_editor")
+	drawn := e.ed.ui.caret.y - node.rect.y + 1
+	testing.expect_value(t, ft_lua(&e.ed, `return qed.buf.current():screen_row()`), fmt.tprintf("%d", drawn))
+	e2e_mouse(&e, 10, 3, .Mouse_Wheel_Down)
+	e2e_render(&e)
+	testing.expect_value(t, ft_lua(&e.ed, `return qed.buf.current():screen_row()`), fmt.tprintf("%d", drawn - WHEEL_SCROLL_LINES))
+	ft_lua(&e.ed, `return qed.buf.current():set_screen_row(1000, 1)`)
+	e2e_render(&e)
+	testing.expect(t, strings.contains(e2e_row_text(&e, node.rect.y), "line 1000"), e2e_row_text(&e, node.rect.y))
+}
+
+@(test)
+e2e_round8_jump_in_place_leaves_no_centre_flag :: proc(t: ^testing.T) {
+	e := e2e_start(r8_lines(200))
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.cursor = {30, 0}
+	main_view(&e)
+	editor_goto(&e.ed, 30, 0)
+	view := main_view(&e)
+	testing.expect(t, !b.reveal_center, "a jump to the cursor's own position is consumed")
+	centred := view.scroll_row
+	e2e_key(&e, .Arrow_Right)
+	testing.expect_value(t, main_view(&e).scroll_row, centred)
+}
+
+@(test)
+e2e_round8_ctrl_v_into_a_field_stays_one_line :: proc(t: ^testing.T) {
+	e := e2e_start("go\nto\n")
+	defer e2e_stop(&e)
+	saved := clipboard_register
+	clipboard_register = strings.clone("go\nto\n")
+	defer {
+		delete(clipboard_register)
+		clipboard_register = saved
+	}
+	for field in ([]string{"#palette/palette_query", "#find/find_query"}) {
+		if field == "#palette/palette_query" {
+			e2e_key(&e, .Ctrl_P)
+		} else {
+			e2e_key(&e, .Ctrl_F, tb2.Mod.Ctrl)
+		}
+		e2e_ui_settle(&e)
+		e2e_key(&e, .Ctrl_V, tb2.Mod.Ctrl)
+		e2e_ui_settle(&e)
+		node := ui_find(&e.ed.ui, field)
+		buffer := ui_buffer(&e.ed, node.buffer) if node != nil else nil
+		testing.expectf(t, buffer != nil, "%s is mounted", field)
+		if buffer != nil {
+			testing.expectf(t, len(buffer.lines) == 1, "%s: one line, got %d", field, len(buffer.lines))
+			testing.expectf(t, string(buffer.lines[0].text[:]) == "go to ", "%s: got %q", field, string(buffer.lines[0].text[:]))
+		}
+		e2e_key(&e, .Esc)
+		e2e_ui_settle(&e)
+	}
+	testing.expect_value(t, len(editor_buffer(&e.ed).lines), 3)
+}
+
+@(test)
+e2e_round8_without_the_layout_global_keys_still_work :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_bare(&e)
+	e2e_ui_settle(&e)
+	testing.expect(t, ui_focused(&e.ed) == nil, "nothing has focus without the layout")
+	e2e_key(&e, .Ctrl_P)
+	testing.expect(t, palette_open_now(&e), "Ctrl+P still opens the palette")
+	e2e_key(&e, .Esc)
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Ctrl_Q)
+	testing.expect(t, e.ed.quit, "Ctrl+Q still quits")
+}
+
+@(test)
+e2e_round8_a_command_that_does_not_apply_lets_its_key_pass :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "gate", `return {setup = function()
+		qed.command{name = "Inner", scope = "gate_inner", key = "Esc", when = function() return false end,
+			run = function() qed.message("inner") end}
+		qed.command{name = "Outer", scope = "gate_outer", key = "Esc", run = function() qed.message("outer") end}
+		qed.command{name = "Gate Open", run = function()
+			qed.ui.mount("pane", qed.ui.box{float = "screen", width = 20, height = 3, scope = "gate_outer",
+				qed.ui.text{id = "gate_field", scope = "gate_inner", "gate"}})
+			qed.ui.node("gate_field"):focus()
+		end}
+	end}`)
+	ft_run(&e.ed, "Gate Open")
+	e2e_ui_settle(&e)
+	e2e_key(&e, .Esc)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "outer")
+}
+
+@(test)
+e2e_round8_ranges_only_where_a_list_opts_in :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_key(&e, .Ctrl_P)
+	testing.expect(t, palette_open_now(&e), "Ctrl+P opens the palette")
+	first := palette_selected(&e)
+	e2e_step(&e, tb2.Event{type = .Key, key = .Arrow_Down, mod = tb2.Mod.Shift})
+	e2e_step(&e, tb2.Event{type = .Key, key = .Arrow_Down, mod = tb2.Mod.Shift})
+	node := ui_find(&e.ed.ui, "#palette/palette_results")
+	testing.expect_value(t, ui_node_state_peek(&e.ed.ui, node).extend_from, "")
+	testing.expect_value(t, palette_selected(&e), first)
+}
+
+@(test)
+e2e_round8_state_keys_follow_the_list_kind :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	ft_lua(&e.ed, `
+		_G.r8_list = qed.list.new{key = "id"}
+		for i = 1, 3 do r8_list:append{id = i, label = "item " .. i} end
+		_G.r8_mount = qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 10,
+			qed.ui.virtual_column{id = "r8_rows", data = r8_list, item = function(record) return qed.ui.text{record.label} end}})
+		return 0`)
+	e2e_render(&e)
+	testing.expect(t, strings.contains(ft_lua(&e.ed, `qed.ui.node("r8_rows"):set_state{highlighted = "2"}; return 0`), "keys are integers"), "a string key on an integer list raises")
+	testing.expect(t, strings.contains(ft_lua(&e.ed, `qed.ui.node("r8_rows"):set_state{highlighted = 2.5}; return 0`), "integer key expected"), "a float key raises")
+	ft_lua(&e.ed, `qed.ui.node("r8_rows"):set_state{highlighted = 2}; r8_mount:unmount(); return 0`)
+	e2e_render(&e)
+	testing.expect_value(t, ft_lua(&e.ed, `local key = qed.ui.node("r8_rows"):state().highlighted; return math.type(key) .. " " .. key`), "integer 2")
+}
+
+@(test)
+test_round8_old_list_binds_point_at_the_core_ones :: proc(t: ^testing.T) {
+	testing.expect_value(t, config_unknown_msg("plugins/palette/keybinds/Next"), `"plugins/palette/keybinds/Next" moved to "keybinds/List: Next"`)
+	testing.expect_value(t, config_unknown_msg("plugins/filetree/keybinds/Extend Up"), `"plugins/filetree/keybinds/Extend Up" moved to "keybinds/List: Extend Up"`)
+}

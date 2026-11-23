@@ -266,7 +266,7 @@ local function state()
 		return nil
 	end
 	local body_state, rect, box = body():state(), scroller():rect(), ui.node("markdown"):rect()
-	return {kind = "pane", width = box and box.width or 0, scroll = scroll(), rows = body_state and body_state.rows or 0,
+	return {kind = "pane", width = box and box.width or 0, offset = scroll(), rows = body_state and body_state.rows or 0,
 		body_y = rect and rect.y - 1 or 0, body_h = rect and rect.height or 0}
 end
 

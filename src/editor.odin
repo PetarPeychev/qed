@@ -23,9 +23,6 @@ Editor :: struct {
 	current:         int,
 	working_root:    string,
 	welcome:         bool,
-	scroll_row:      int,
-	scroll_sub:      int,
-	scroll_col:      int,
 	message:         string,
 	message_store:   [dynamic]u8,
 	message_source:  string,
@@ -307,12 +304,6 @@ editor_gutter_width :: proc(editor: ^Editor) -> int {
 	return digit_count(len(editor_buffer(editor).lines)) + 2
 }
 
-editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
-	w = max(0, int(tb2.width()) - editor_gutter_width(editor))
-	h = max(0, int(tb2.height()) - STATUS_ROWS)
-	return
-}
-
 editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	origin := jump_here(editor)
 	defer jump_record(editor, origin)
@@ -362,7 +353,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			return
 		}
 	}
-	// a dialog above the old panes takes every key and click
+	// a dialog in the alert layer takes every key and click
 	if ui_layer_used(&editor.ui, "alert") && (ev.type == .Mouse || ui_focus_in_layer(editor, "alert")) {
 		ui_dispatch(editor, ev)
 		return
@@ -401,7 +392,6 @@ editor_paste_route :: proc(editor: ^Editor, text: string) {
 	}
 	editor_clear_message(editor)
 	buffer_paste(editor_buffer(editor), text)
-	editor_scroll(editor)
 }
 
 editor_wrap_col :: proc(b: ^Buffer, w, row, sub, gutter, x: int) -> int {
@@ -487,10 +477,6 @@ editor_switch_to :: proc(editor: ^Editor, idx: int) {
 	completion_dismiss(editor)
 	editor.current = idx
 	editor.welcome = false
-	editor.scroll_row = 0
-	editor.scroll_sub = 0
-	editor.scroll_col = 0
-	editor_scroll(editor)
 	plugin_queue(editor, {event = .Buf_Enter, buf = editor.buffers[idx].id})
 }
 
@@ -521,9 +507,6 @@ editor_close_index :: proc(editor: ^Editor, idx: int) {
 		append(&editor.buffers, buffer_new())
 		editor.current = 0
 		editor.welcome = true
-		editor.scroll_row = 0
-		editor.scroll_sub = 0
-		editor.scroll_col = 0
 		return
 	}
 	if editor.current == idx {
@@ -603,7 +586,6 @@ buffer_copy :: proc(b: ^Buffer) {
 
 editor_cut :: proc(editor: ^Editor) {
 	buffer_cut(editor_buffer(editor))
-	editor_scroll(editor)
 }
 
 buffer_cut :: proc(b: ^Buffer) {
@@ -617,7 +599,6 @@ buffer_cut :: proc(b: ^Buffer) {
 
 editor_paste :: proc(editor: ^Editor) {
 	buffer_paste_clipboard(editor_buffer(editor))
-	editor_scroll(editor)
 }
 
 buffer_paste_clipboard :: proc(b: ^Buffer) {
@@ -742,7 +723,6 @@ editor_reload_buffer :: proc(editor: ^Editor, b: ^Buffer) {
 	case .None:
 		plugin_queue(editor, {event = .Buf_Reload, buf = b.id})
 		if b == editor_buffer(editor) {
-			editor_scroll(editor)
 			editor_log(editor, .Info, "", "Reloaded from disk")
 		} else {
 			editor_log(editor, .Info, "", fmt.tprintf("reloaded %s from disk", editor_display_path(editor, b.path)), show = false)
@@ -898,57 +878,6 @@ editor_poll_disk :: proc(editor: ^Editor) -> bool {
 	return changed
 }
 
-editor_scroll :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
-	w, h := editor_viewport(editor)
-	b.wrap_width = w
-	cur := b.cursor
-
-	if b.wrap && w > 0 {
-		editor.scroll_col = 0
-		editor_scroll_vert(editor, b, w, h)
-		return
-	}
-	editor.scroll_sub = 0
-	editor_scroll_vert(editor, b, w, h)
-
-	cur_vcol := visual_col(b.lines[cur.row].text[:], cur.col)
-	if cur_vcol < editor.scroll_col + SCROLL_MARGIN {
-		editor.scroll_col = cur_vcol - SCROLL_MARGIN
-	}
-	if cur_vcol > editor.scroll_col + w - 1 - SCROLL_MARGIN {
-		editor.scroll_col = cur_vcol - w + 1 + SCROLL_MARGIN
-	}
-	editor.scroll_col = max(0, editor.scroll_col)
-}
-
-editor_scroll_vert :: proc(editor: ^Editor, b: ^Buffer, w, h: int) {
-	cur := b.cursor
-	cur_sub := 0
-	if b.wrap && w > 0 {
-		cur_sub = wrap_subrow(buffer_line_wrap(b, cur.row, w), cur.col)
-	}
-
-	top_r := clamp(editor.scroll_row, 0, len(b.lines) - 1)
-	top_s := clamp(editor.scroll_sub, 0, line_rows(b, w, top_r) - 1)
-
-	mr, ms := vpos_up(b, w, cur.row, cur_sub, SCROLL_MARGIN)
-	if vpos_cmp(top_r, top_s, mr, ms) > 0 {
-		top_r, top_s = mr, ms
-	}
-	lr, ls := vpos_up(b, w, cur.row, cur_sub, h - 1 - SCROLL_MARGIN)
-	if vpos_cmp(top_r, top_s, lr, ls) < 0 {
-		top_r, top_s = lr, ls
-	}
-	last := len(b.lines) - 1
-	max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
-	if vpos_cmp(top_r, top_s, max_r, max_s) > 0 {
-		top_r, top_s = max_r, max_s
-	}
-	editor.scroll_row = top_r
-	editor.scroll_sub = top_s
-}
-
 editor_goto :: proc(editor: ^Editor, row, col: int) {
 	b := editor_buffer(editor)
 	r := clamp(row, 0, len(b.lines) - 1)
@@ -1008,11 +937,7 @@ editor_render :: proc(editor: ^Editor) {
 }
 
 editor_caret_area :: proc(editor: ^Editor) -> EditorView {
-	if editor.caret_view.h > 0 {
-		return editor.caret_view
-	}
-	w, h := editor_viewport(editor)
-	return {w = w, h = h, gutter = editor_gutter_width(editor), scroll_col = editor.scroll_col}
+	return editor.caret_view
 }
 
 editor_syntax_errors_report :: proc(editor: ^Editor) {
@@ -1192,26 +1117,6 @@ EditorView :: struct {
 	fg_set:                             bool,
 	syntax, current_line:               bool,
 	find, inline:                       bool,
-}
-
-editor_render_buffer :: proc(editor: ^Editor) {
-	w, h := editor_viewport(editor)
-	view := EditorView {
-		buffer       = editor_buffer(editor),
-		w            = w,
-		h            = h,
-		gutter       = editor_gutter_width(editor),
-		scroll_row   = editor.scroll_row,
-		scroll_sub   = editor.scroll_sub,
-		scroll_col   = editor.scroll_col,
-		bg           = COLOR_BG,
-		syntax       = true,
-		current_line = true,
-		find         = find_shows(editor, editor_buffer(editor)),
-		inline       = true,
-	}
-	editor.caret_view = view
-	editor_render_view(editor, &view)
 }
 
 editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
@@ -1489,7 +1394,7 @@ status_fit :: proc(left, right: []StatusSeg, width: int) {
 	}
 }
 
-status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
+status_draw :: proc(segs: []StatusSeg, x, y, max_x: int, bg: tb2.Color) {
 	x := x
 	first := true
 	for s in segs {
@@ -1504,12 +1409,12 @@ status_draw :: proc(segs: []StatusSeg, x, y, max_x: int) {
 			cx := x
 			for ch in s.chunks {
 				if cx < max_x {
-					draw_text(cx, y, int(tb2.width()) - cx, ch.text, ch.fg, COLOR_PANE_BG)
+					draw_text(cx, y, int(tb2.width()) - cx, ch.text, ch.fg, bg)
 				}
 				cx += visual_width(transmute([]u8)ch.text)
 			}
 		} else if x < max_x {
-			draw_text(x, y, int(tb2.width()) - x, s.text, s.fg, COLOR_PANE_BG)
+			draw_text(x, y, int(tb2.width()) - x, s.text, s.fg, bg)
 		}
 		x += visual_width(transmute([]u8)s.text)
 	}
@@ -1563,9 +1468,9 @@ status_render :: proc(editor: ^Editor, rect: Rect, bg: tb2.Color) {
 	status_segments(editor, &left, &right)
 	status_fit(left[:], right[:], rect.w)
 	editor_render_row(rect.x, rect.y, rect.w, "", COLOR_PANE_FG, bg)
-	status_draw(left[:], rect.x, rect.y, rect.x + rect.w)
+	status_draw(left[:], rect.x, rect.y, rect.x + rect.w, bg)
 	if rw := status_width(right[:]); rw > 0 {
-		status_draw(right[:], rect.x + rect.w - rw - 1, rect.y, rect.x + rect.w)
+		status_draw(right[:], rect.x + rect.w - rw - 1, rect.y, rect.x + rect.w, bg)
 	}
 }
 

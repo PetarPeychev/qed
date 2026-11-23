@@ -159,7 +159,6 @@ e2e_deco_ghost_scroll :: proc(t: ^testing.T) {
 		for r = 1, 20 do qed.deco.ghost(qed.buf.current(), ns, r, {"a", "b"}) end`)
 	_, h := editor_viewport(&e.ed)
 	b.cursor = {15, 0}
-	editor_scroll(&e.ed)
 	e2e_render(&e)
 	w, _ := editor_viewport(&e.ed)
 	cy := vpos_dist(b, w, main_view(&e).scroll_row, main_view(&e).scroll_sub, b.cursor.row, 0, h)

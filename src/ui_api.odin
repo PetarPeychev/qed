@@ -838,6 +838,21 @@ qed_ui_ref_focus :: proc "c" (L: ^lua.State) -> c.int {
 	return 1
 }
 
+// a list's keys are all strings or all integers: a state key must match the list's kind
+ui_state_key_arg :: proc(L: ^lua.State, editor: ^Editor, identity: string, state: ^UiState, what: string) -> string {
+	key, kind := ui_list_key_read(L, -1, what)
+	if node := ui_find(&editor.ui, identity); node != nil && node.kind == .Virtual_Column {
+		if list := ui_list_find(&editor.ui, node.list); list != nil {
+			owner := ui_list_keys_owner(editor, list)
+			if owner.key_kind != .Unset && owner.key_kind != kind {
+				plugin_raise(L, fmt.tprintf("%s: this list's keys are %s", what, "integers" if owner.key_kind == .Integer else "strings"))
+			}
+		}
+	}
+	state.key_kind = kind
+	return key
+}
+
 qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
@@ -859,13 +874,19 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 	#partial switch state.kind {
 	case .Column, .Row, .Virtual_Column:
 		list := ui_list_find(&editor.ui, node.list) if node != nil && node.kind == .Virtual_Column else nil
-		if state.highlighted != "" && (node == nil || ui_highlight_present(editor, node, state.highlighted)) {
-			ui_list_push_key(L, editor, list, state.highlighted)
-			lua.setfield(L, -2, "highlighted")
-		}
-		if state.extend_from != "" && (node == nil || ui_highlight_present(editor, node, state.extend_from)) {
-			ui_list_push_key(L, editor, list, state.extend_from)
-			lua.setfield(L, -2, "extend_from")
+		for field in ([2]struct {
+				name, key: string,
+			}{{"highlighted", state.highlighted}, {"extend_from", state.extend_from}}) {
+			if field.key == "" || (node != nil && !ui_highlight_present(editor, node, field.key)) {
+				continue
+			}
+			// an unmounted node has no list to ask: the kind its key was set with answers
+			if list == nil && state.key_kind == .Integer {
+				lua.pushinteger(L, lua.Integer(strconv.parse_i64(field.key) or_else 0))
+			} else {
+				ui_list_push_key(L, editor, list, field.key)
+			}
+			lua.setfield(L, -2, strings.clone_to_cstring(field.name, context.temp_allocator))
 		}
 	case .Scroll:
 		lua.pushinteger(L, lua.Integer(state.offset))
@@ -922,17 +943,15 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 		case "highlighted":
 			delete(state.highlighted)
 			state.highlighted = ""
-			if lua.type(L, -1) == .STRING || lua.type(L, -1) == .NUMBER {
-				text, _ := lua.toodinstring(L, -1)
-				state.highlighted = strings.clone(text)
+			if lua.type(L, -1) != .NIL && lua.type(L, -1) != .BOOLEAN {
+				state.highlighted = strings.clone(ui_state_key_arg(L, editor, identity, state, "highlighted"))
 				state.reveal = true
 			}
 		case "extend_from":
 			delete(state.extend_from)
 			state.extend_from = ""
-			if lua.type(L, -1) == .STRING || lua.type(L, -1) == .NUMBER {
-				text, _ := lua.toodinstring(L, -1)
-				state.extend_from = strings.clone(text)
+			if lua.type(L, -1) != .NIL && lua.type(L, -1) != .BOOLEAN {
+				state.extend_from = strings.clone(ui_state_key_arg(L, editor, identity, state, "extend_from"))
 			}
 		case "offset":
 			// a scroll keeps its rows in `offset`, an editor its top row in `scroll_row`: one name for both

@@ -68,8 +68,10 @@ Vt :: struct {
 
 // libvterm stands in for a terminal whose width table and clustering differ from termbox's
 @(private = "file")
-vt_begin :: proc() -> Vt {
-	e2e_enter()
+vt_begin :: proc(entered := false) -> Vt {
+	if !entered {
+		e2e_enter()
+	}
 	v: Vt
 	v.vt = vterm.new(E2E_H, E2E_W)
 	vterm.set_utf8(v.vt, 1)
@@ -85,13 +87,15 @@ vt_begin :: proc() -> Vt {
 }
 
 @(private = "file")
-vt_end :: proc(v: ^Vt) {
+vt_end :: proc(v: ^Vt, entered := false) {
 	sync.mutex_lock(&e2e_tap_lock)
 	e2e_tapping = false
 	clear(&e2e_tap)
 	sync.mutex_unlock(&e2e_tap_lock)
 	vterm.free(v.vt)
-	sync.mutex_unlock(&e2e_lock)
+	if !entered {
+		sync.mutex_unlock(&e2e_lock)
+	}
 }
 
 // presents the back buffer, then: every lone width-1 glyph termbox placed is at that column in
@@ -301,6 +305,41 @@ test_box_edges_over_wide_clusters :: proc(t: ^testing.T) {
 				got := vterm_rune(v.screen, x, y)
 				testing.expectf(t, got == '│', "frame %d, %q row: col %d shows %q, want the border", f, c, x, got)
 			}
+		}
+	}
+}
+
+// a readonly editor node beside a list swaps between odd text and plain code (a picker preview moving between hits)
+@(test)
+test_preview_swap_keeps_a_disagreeing_terminal_in_sync :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	odd := strings.join(ODD_ROWS, "\n", context.temp_allocator)
+	code := strings.repeat("static int helper(struct state *s, const char *name, size_t len) {\n", E2E_H, context.temp_allocator)
+	ft_lua(&e.ed, `
+		_G.swap_buffer = qed.buf.create{internal = true}
+		qed.ui.mount("pane", qed.ui.row{float = "screen", width = "100%", height = "100%", separator = true,
+			qed.ui.text{width = 19, "list"},
+			qed.ui.editor{id = "swap_preview", buffer = swap_buffer, grow = 1, readonly = true}})
+		return 0`)
+	e2e_render(&e)
+	v := vt_begin(true)
+	defer vt_end(&v, true)
+	node := ui_find(&e.ed.ui, "#fthelper/swap_preview")
+	testing.expect(t, node != nil, "the preview editor is mounted")
+	if node == nil {
+		return
+	}
+	for text, i in ([]string{odd, code, odd, code}) {
+		buffer_set_text(ui_buffer(&e.ed, node.buffer), text)
+		e2e_render(&e)
+		vt_present_check(t, &v, fmt.tprintf("preview %d", i), false)
+		if text != odd {
+			continue
+		}
+		for y in ([]int{0, 4, 6}) {
+			got := vterm_row_text(v.screen, y)
+			testing.expectf(t, strings.contains(got, ODD_ROWS[y][:12]), "preview %d row %d: terminal shows %q", i, y, got)
 		}
 	}
 }

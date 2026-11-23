@@ -191,6 +191,7 @@ UiNode :: struct {
 UiState :: struct {
 	highlighted: string,
 	extend_from: string,
+	key_kind:    UiKeyKind,
 	offset:      int,
 	scroll_row:  int,
 	scroll_sub:  int,
@@ -1366,6 +1367,46 @@ ui_layout_float :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiNode) {
 	ui_layout_node(editor, node, {cell_x, cell_y, width, height}, ui_screen())
 }
 
+// the view a buffer's caret is in: the focused editor node showing it, else the first editing node showing it
+ui_buffer_view :: proc(editor: ^Editor, buffer: ^Buffer) -> (^UiNode, ^UiState) {
+	ui := &editor.ui
+	ui_resolve(editor)
+	found: ^UiNode
+	for node in ui.editors {
+		if node.buffer != buffer.id || node.hidden {
+			continue
+		}
+		if node.identity == ui.focus {
+			found = node
+			break
+		}
+		if found == nil && ui_node_edits(node) {
+			found = node
+		}
+	}
+	if found != nil {
+		return found, ui_node_state(ui, found)
+	}
+	// the current buffer before the layout's next update: the view showing the previous current buffer is its view
+	if buffer != editor_buffer(editor) {
+		return nil, nil
+	}
+	for node in ui.editors {
+		if !node.hidden && ui_node_edits(node) && ui_shows_user_buffer(editor, node) {
+			return node, ui_state_key(ui, fmt.tprintf("%s|%d", node.identity, buffer.id), node.id != "", buffer.id)
+		}
+	}
+	return nil, nil
+}
+
+// reveal for the buffer the view is about to show (see ui_buffer_view)
+ui_buffer_view_reveal :: proc(editor: ^Editor, node: ^UiNode, buffer: ^Buffer) {
+	shown := node.buffer
+	node.buffer = buffer.id
+	ui_editor_reveal(editor, node)
+	node.buffer = shown
+}
+
 ui_editor_text_width :: proc(node: ^UiNode, buffer: ^Buffer) -> int {
 	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
 	return max(node.rect.w - gutter, 0)
@@ -1411,7 +1452,8 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 		return
 	}
 	state := ui_node_state(&editor.ui, node)
-	if buffer.cursor != state.cursor_seen {
+	// a jump to where the cursor already is still centres, and leaves no flag behind for a later move
+	if buffer.cursor != state.cursor_seen || buffer.reveal_center {
 		state.cursor_seen = buffer.cursor
 		state.reveal = true
 	}
@@ -1770,7 +1812,7 @@ ui_fill :: proc(paint: ^UiPaint, rect: Rect, bg: tb2.Color) {
 	}
 }
 
-// the alert layer draws after the old panes (ui_render_alert), so a dialog sits above them
+// the alert layer draws last (ui_render_alert, after the overlays), so a dialog sits above everything
 ui_render :: proc(editor: ^Editor) {
 	ui := &editor.ui
 	clear(&ui.hits)
@@ -2102,6 +2144,15 @@ ui_editor_advance :: proc(buffer: ^Buffer, width, row, sub_row, rows: int) -> (i
 		}
 	}
 	return row, sub_row
+}
+
+ui_shows_user_buffer :: proc(editor: ^Editor, node: ^UiNode) -> bool {
+	for &buffer in editor.buffers {
+		if buffer.id == node.buffer {
+			return true
+		}
+	}
+	return false
 }
 
 ui_editor_shows_current :: proc(editor: ^Editor, buffer: ^Buffer) -> bool {

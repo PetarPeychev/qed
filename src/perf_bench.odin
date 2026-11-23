@@ -766,7 +766,6 @@ bench_decorations :: proc(t: ^testing.T) {
 			deco_add(b, Deco{kind = .Ghost, ns = 1, from = {row, 0}, to = {row, 0}, text = "ghost", lines = 1})
 		}
 		b.cursor = {LINES / 2, 0}
-		editor_scroll(&e.ed)
 		KEYS :: 2000
 		start := time.tick_now()
 		for i in 0 ..< KEYS {
@@ -774,7 +773,6 @@ bench_decorations :: proc(t: ^testing.T) {
 			b.cursor = {b.cursor.row + (1 if i % 40 == 39 else 0), 0 if i % 40 == 39 else b.cursor.col + 1}
 		}
 		key_us := ms_since(start) * 1000 / KEYS
-		editor_scroll(&e.ed)
 		FRAMES :: 200
 		e2e_render(&e)
 		start = time.tick_now()
@@ -988,7 +986,6 @@ bench_conflict_keystroke :: proc(t: ^testing.T) {
 		b := editor_buffer(&e.ed)
 		b.wrap = huge < 0
 		b.cursor = {row, 0}
-		editor_scroll(&e.ed)
 		KEYS := 50 if huge < 0 else 10
 		test_slice_on = true
 		clear(&test_slice_max)
@@ -1071,4 +1068,70 @@ bench_text_hunks :: proc(t: ^testing.T) {
 	run("200 modified lines", 500, false)
 	run("200 modified + inserted lines", 500, true)
 	run("200 modified in last 20k", 100, false, 80_000)
+}
+
+@(private = "file")
+BenchPhases :: struct {
+	dispatch, flush, prepare, render: f64,
+	n:                                int,
+}
+
+@(private = "file")
+bench_phase_step :: proc(e: ^E2E, ev: tb2.Event, phases: ^BenchPhases) {
+	at := time.tick_now()
+	editor_dispatch(&e.ed, ev)
+	phases.dispatch += ms_since(at)
+	at = time.tick_now()
+	plugin_flush(&e.ed)
+	phases.flush += ms_since(at)
+	at = time.tick_now()
+	ui_prepare(&e.ed)
+	phases.prepare += ms_since(at)
+	at = time.tick_now()
+	editor_render(&e.ed)
+	phases.render += ms_since(at)
+	phases.n += 1
+	free_all(context.temp_allocator)
+}
+
+@(private = "file")
+bench_phase_print :: proc(label: string, phases: BenchPhases) {
+	n := f64(max(phases.n, 1))
+	fmt.eprintfln("%-16s dispatch %.3f  flush %.3f  prepare %.3f  render %.3f  total %.3f ms", label, phases.dispatch / n, phases.flush / n, phases.prepare / n, phases.render / n, (phases.dispatch + phases.flush + phases.prepare + phases.render) / n)
+}
+
+@(test)
+bench_palette :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_render(&e)
+	open, typing: BenchPhases
+	for _ in 0 ..< 40 {
+		bench_phase_step(&e, tb2.Event{type = .Key, key = .Ctrl_P}, &open)
+		for ch in "togwrap" {
+			bench_phase_step(&e, tb2.Event{type = .Key, ch = ch}, &typing)
+		}
+		e2e_key(&e, .Esc)
+		e2e_render(&e)
+	}
+	bench_phase_print("palette open", open)
+	bench_phase_print("palette typing", typing)
+	fmt.eprintln("palette pieces", ft_lua(&e.ed, `
+		local clock = os.clock
+		local at = clock()
+		for _ = 1, 100 do qed.commands() end
+		local commands_ms = (clock() - at) * 10
+		local list = qed.list.new{key = "name"}
+		for _, command in ipairs(qed.commands()) do if command.scope == "global" then list:append{name = command.name, shortcut = command.shortcut} end end
+		at = clock()
+		for _ = 1, 100 do
+			local fresh = qed.list.new{key = "name"}
+			for _, command in ipairs(qed.commands()) do if command.scope == "global" then fresh:append{name = command.name, shortcut = command.shortcut} end end
+		end
+		local fill_ms = (clock() - at) * 10
+		local fuzzy = qed.fuzzy.list(list, {field = "name"})
+		at = clock()
+		for i = 1, 100 do fuzzy:set_query(i % 2 == 0 and "tog" or "togw"); fuzzy:count() end
+		local query_ms = (clock() - at) * 10
+		return ("commands %.3f  fill %.3f  query %.3f  (#%d)"):format(commands_ms, fill_ms, query_ms, #qed.commands())`))
 }

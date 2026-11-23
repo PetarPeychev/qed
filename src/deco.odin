@@ -437,7 +437,6 @@ inline_accept :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	text := strings.clone(b.deco.inline.text, context.temp_allocator)
 	buffer_insert_text(b, text, .Atomic)
-	editor_scroll(editor)
 }
 
 inline_accept_word :: proc(editor: ^Editor) {
@@ -449,7 +448,6 @@ inline_accept_word :: proc(editor: ^Editor) {
 	if rest := ghost[n:]; len(strings.trim_space(rest)) > 0 {
 		inline_set(b, ns, b.cursor, rest)
 	}
-	editor_scroll(editor)
 }
 
 inline_word_len :: proc(s: string) -> int {

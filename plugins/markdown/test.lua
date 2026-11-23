@@ -56,15 +56,15 @@ function tests.scroll_keys(test)
 	local ui = open(test)
 	test.ok(ui.rows > 100, "many rendered rows")
 	test.key("PgDn")
-	test.ok(current(test).scroll > 0, "PgDn scrolls")
+	test.ok(current(test).offset > 0, "PgDn scrolls")
 	test.key("End")
-	local bottom = current(test).scroll
+	local bottom = current(test).offset
 	test.ok(bottom > 20, "End jumps to the bottom")
 	test.ok(on_screen(test, "para 80 with bold"), "End shows the last line")
 	test.key("Up")
-	test.eq(current(test).scroll, bottom - 1, "Up scrolls one row")
+	test.eq(current(test).offset, bottom - 1, "Up scrolls one row")
 	test.key("Home")
-	test.eq(current(test).scroll, 0, "Home")
+	test.eq(current(test).offset, 0, "Home")
 	test.key("Esc")
 end
 
@@ -73,11 +73,11 @@ function tests.live_update_keeps_scroll(test)
 	local ui = open(test)
 	test.key("PgDn")
 	test.key("PgDn")
-	local scroll = current(test).scroll
+	local scroll = current(test).offset
 	test.ok(scroll > 0, "scrolled")
 	buffer:insert({row = 1, col = 1}, "Intro line\n\n")
 	test.wait(function() return current(test).rows == ui.rows + 2 end)
-	test.eq(current(test).scroll, scroll, "the scroll position is kept")
+	test.eq(current(test).offset, scroll, "the scroll position is kept")
 	test.key("Home")
 	test.ok(on_screen(test, "Intro line"), "the new text renders")
 	test.key("Esc")
@@ -116,7 +116,7 @@ function tests.open_syncs_to_cursor(test)
 	expect_synced(test, buffer, 40, "editor top")
 	buffer:set_cursor({row = para_row(80), col = 1})
 	local ui = open(test)
-	test.eq(ui.scroll, ui.rows - ui.body_h, "near the end the preview stops at the bottom")
+	test.eq(ui.offset, ui.rows - ui.body_h, "near the end the preview stops at the bottom")
 	test.ok(on_screen(test, "para 80 with"), "the last block is shown")
 	test.key("Esc")
 end
@@ -134,7 +134,7 @@ function tests.sync_keeps_the_terminal_row(test)
 	test.key("Esc")
 	test.wait(function() return buffer:cursor().row ~= para_row(40) end)
 	test.eq(buffer:cursor().row, para_row(41), "the cursor is on the line now under that terminal row")
-	test.eq(buffer:screen_row(), 12, "on the same terminal row")
+	test.eq(test.caret_row(), 12, "on the same terminal row")
 end
 
 function tests.open_clamps_at_start(test)
@@ -146,9 +146,9 @@ function tests.open_clamps_at_start(test)
 	parts[#parts + 1] = "first para"
 	local buffer = test.open("refs.md", table.concat(parts, "\n") .. "\n\n" .. long_doc())
 	buffer:set_cursor({row = 12, col = 1})
-	test.eq(buffer:screen_row(), 12, "the cursor is low on screen")
+	test.eq(test.caret_row(), 12, "the cursor is low on screen")
 	local ui = open(test)
-	test.eq(ui.scroll, 0, "the preview cannot scroll above the document")
+	test.eq(ui.offset, 0, "the preview cannot scroll above the document")
 	test.eq(body_y(test, "first para"), ui.body_y, "the block is at the top")
 	test.key("Esc")
 end
@@ -173,7 +173,7 @@ function tests.code_block_lines_sync_exactly(test)
 	test.wait(function() return buffer:cursor().row ~= 33 end)
 	test.eq(buffer:cursor().row, 3 + tonumber(number), "the cursor is on that code line")
 	test.eq(buffer:cursor().col, 3, "at its first non-blank column")
-	test.eq(buffer:screen_row(), 10, "at the same screen row")
+	test.eq(test.caret_row(), 10, "at the same screen row")
 end
 
 function tests.close_without_scroll_keeps_cursor(test)
@@ -186,7 +186,7 @@ function tests.close_without_scroll_keeps_cursor(test)
 	test.pump(20)
 	test.eq(buffer:cursor().row, para_row(30), "the cursor row is untouched")
 	test.eq(buffer:cursor().col, 4, "the cursor col is untouched")
-	test.eq(buffer:screen_row(), 6, "the editor view is untouched")
+	test.eq(test.caret_row(), 6, "the editor view is untouched")
 end
 
 function tests.close_after_scroll_moves_cursor(test)
@@ -194,9 +194,9 @@ function tests.close_after_scroll_moves_cursor(test)
 	buffer:set_cursor({row = para_row(10), col = 4})
 	buffer:set_screen_row(para_row(10), 8)
 	local ui = open(test)
-	local before = ui.scroll
+	local before = ui.offset
 	test.key("PgDn")
-	test.ok(current(test).scroll > before, "scrolled")
+	test.ok(current(test).offset > before, "scrolled")
 	local number
 	for screen_row = 7, ui.body_y, -1 do
 		number = test.screen(screen_row):match("para (%d+) with")
@@ -210,7 +210,7 @@ function tests.close_after_scroll_moves_cursor(test)
 	test.wait(function() return buffer:cursor().row ~= para_row(10) end)
 	test.eq(buffer:cursor().row, para_row(tonumber(number)), "the cursor is on that block's source line")
 	test.eq(buffer:cursor().col, 1, "at its first non-blank column")
-	test.eq(buffer:screen_row(), 8, "at the same screen row")
+	test.eq(test.caret_row(), 8, "at the same screen row")
 end
 
 function tests.max_width(test)
@@ -237,12 +237,12 @@ function tests.close_after_anchor_goes_to_first_non_blank(test)
 	local buffer = test.open("anchor-sync.md", pad(table.concat(parts, "\n")))
 	local top = open(test).body_y
 	test.click("go-there")
-	test.ok(current(test).scroll > 0, "the anchor scrolls")
+	test.ok(current(test).offset > 0, "the anchor scrolls")
 	test.key("Esc")
 	test.wait(function() return buffer:cursor().row ~= 1 end)
 	test.eq(buffer:cursor().row, 129, "the cursor is on the heading")
 	test.eq(buffer:cursor().col, 3, "at its first non-blank column")
-	test.eq(buffer:screen_row(), top + 1, "on the terminal row it showed on, the body top")
+	test.eq(test.caret_row(), top + 1, "on the terminal row it showed on, the body top")
 end
 
 function tests.anchor_link_scrolls(test)
@@ -257,7 +257,7 @@ function tests.anchor_link_scrolls(test)
 	test.open("anchors.md", pad(table.concat(parts, "\n")))
 	open(test)
 	test.click("jump-to-second")
-	test.ok(current(test).scroll > 0, "the anchor scrolls the preview")
+	test.ok(current(test).offset > 0, "the anchor scrolls the preview")
 	test.ok(on_screen(test, "tail text"), "the heading is in view")
 	test.key("Esc")
 end
@@ -308,14 +308,14 @@ function tests.back_forward_anchor(test)
 	test.open("hist.md", pad(table.concat(parts, "\n")))
 	open(test)
 	test.click("jump-to-second")
-	local deep = current(test).scroll
+	local deep = current(test).offset
 	test.ok(deep > 0, "the anchor scrolls")
 	test.key("Alt+,")
-	test.eq(current(test).scroll, 0, "Back returns to where the jump started")
+	test.eq(current(test).offset, 0, "Back returns to where the jump started")
 	test.key("Alt+.")
-	test.eq(current(test).scroll, deep, "Forward goes to the anchor again")
+	test.eq(current(test).offset, deep, "Forward goes to the anchor again")
 	test.key("Alt+.")
-	test.eq(current(test).scroll, deep, "Forward past the end does nothing")
+	test.eq(current(test).offset, deep, "Forward past the end does nothing")
 	test.key("Esc")
 end
 

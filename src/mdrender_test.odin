@@ -502,7 +502,7 @@ test_md_fuzz :: proc(t: ^testing.T) {
 		}
 		free_all(context.temp_allocator)
 	}
-	docs := []string{"README.md", "docs/DESIGN.md", "docs/CONFIG.md", "docs/TODO.md", "docs/notes/panes.md", "docs/notes/plugins.md"}
+	docs := []string{"README.md", "docs/DESIGN.md", "docs/CONFIG.md", "docs/TODO.md", "docs/notes/ui.md", "docs/notes/plugins.md"}
 	for d in docs {
 		data, err := os.read_entire_file(fmt.tprintf("%s/../%s", #directory, d), context.temp_allocator)
 		testing.expectf(t, err == nil, "read %s", d)

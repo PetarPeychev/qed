@@ -1,0 +1,59 @@
+qed-e2e snapshot 80x24 cursor 8,2
+-- text
+  1 Once upon a time
+  ┌─ Go to Line ─────────────────────────────────────────────────────────────┐
+  │> fox                                               1 Once upon a time    │
+  │  2 there was a small fox                           2 there was a small fo│
+  │  4 Every morning the fox                           3 who lived by the riv│
+  │  9 The fox walked further                          4 Every morning the fo│
+  │                                                    5 walked to the old br│
+  │                                                    6 looked at the water,│
+  │                                                    7 and counted the fish│
+ 1│                                                    8 One day the river wa│
+ 1│                                                    9 The fox walked furth│
+ 1│                                                   10 than ever before    │
+  │                                                   11 and found the sea.  │
+  │                                                   12                     │
+  │                                                                          │
+  │                                                                          │
+  │                                                                          │
+  │                                                                          │
+  │                                                                          │
+  │                                                                          │
+  │                                                                          │
+  │                                                                          │
+ ≡└──────────────────────────────────────────────────────────────────────────┘4
+
+-- style
+abbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+aadeeddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+aadddfdddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+aadgggggggggggggggggggggggggggggggggggggggggggggggggdaaaadddddddddddddddddddddcc
+aadddfdddddddddddddddddddddddddddddddddddddddddddddddabbbdddddddddddddddddddddcc
+aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+ccdddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+ccdddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#f4f4ff bg=#181818
+d fg=#f4f4ff bg=#2b2b2b
+e fg=#ffdd33 bg=#2b2b2b
+f fg=#868686 bg=#2b2b2b
+g fg=#f4f4ff bg=#4a4a4a

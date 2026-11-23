@@ -22,7 +22,6 @@ e2e_long_line_wrapped_segments_render :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.wrap = true
 	b.cursor = {0, len(line) / 2}
-	editor_scroll(&e.ed)
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)
 	w := int(80) - gutter
@@ -37,7 +36,6 @@ e2e_long_line_wrapped_segments_render :: proc(t: ^testing.T) {
 	}
 
 	b.cursor = {1, 0}
-	editor_scroll(&e.ed)
 	e2e_render(&e)
 	found := false
 	for y in 0 ..< 22 {
@@ -83,10 +81,10 @@ clip_check :: proc(t: ^testing.T, e: ^E2E, label: string) {
 	testing.expectf(t, colored > 100, "%s: screen is highlighted (%d colored cells)", label, colored)
 
 	highlight_query_paint(b, syntax_for(b.language), b.hl.top, b.hl.bot)
-	view := main_view(e)
-	e.ed.scroll_row, e.ed.scroll_sub, e.ed.scroll_col = view.scroll_row, view.scroll_sub, view.scroll_col
+	main_view(e)
+	view := e.ed.caret_view
 	tb2.clear()
-	editor_render_buffer(&e.ed)
+	editor_render_view(&e.ed, &view)
 	full := clip_screen_fg()
 	w := int(tb2.width())
 	for c, i in clipped {

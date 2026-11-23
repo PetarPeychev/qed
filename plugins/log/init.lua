@@ -56,7 +56,7 @@ local function build()
 			ui.column{
 				ui.scroll{id = "log_scroll", grow = 1, follow = true,
 					header = ui.row{bold = true, ui.text{width = 9, "Time"}, ui.text{width = 12, "Source"}, ui.text{grow = 1, "Message"}},
-					ui.virtual_column{id = "log_rows", scope = {"log", "list"}, data = view.messages, item = message_row,
+					ui.virtual_column{id = "log_rows", scope = {"log", "list", "list_range"}, data = view.messages, item = message_row,
 						highlight_style = {bg = "pane_selection_background"}}},
 				chip_row(),
 			},

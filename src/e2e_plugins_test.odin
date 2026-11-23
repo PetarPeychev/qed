@@ -51,6 +51,7 @@ pt_api := [?]lua.L_Reg {
 	{"ui", pt_ui},
 	{"config_path", pt_config_path},
 	{"screen", pt_screen},
+	{"caret_row", pt_caret_row},
 	{"click", pt_click},
 	{"sh", pt_sh},
 	{"marks", pt_marks},
@@ -297,6 +298,8 @@ pt_open :: proc "c" (L: ^lua.State) -> c.int {
 	if !editor_open_path(entry.editor, path) {
 		return plugin_raise(L, fmt.tprintf("t.open: cannot open %s", path))
 	}
+	// a frame follows an open in the main loop: views are laid out before the next command
+	e2e_render(g_pt)
 	api_buffer_object_push(L, editor_buffer(entry.editor).id)
 	return 1
 }
@@ -433,6 +436,18 @@ pt_screen :: proc "c" (L: ^lua.State) -> c.int {
 	y := api_int(L, 1, "row expected")
 	e2e_render(g_pt)
 	lua.pushodinstring(L, e2e_row_text(g_pt, y))
+	return 1
+}
+
+@(private = "file")
+pt_caret_row :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	e2e_render(g_pt)
+	if !g_pt.ed.ui.caret_shown {
+		lua.pushnil(L)
+		return 1
+	}
+	lua.pushinteger(L, lua.Integer(g_pt.ed.ui.caret.y + 1))
 	return 1
 }
 

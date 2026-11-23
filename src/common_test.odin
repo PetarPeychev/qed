@@ -602,3 +602,9 @@ api_buffer_object_push :: proc(L: ^lua.State, id: u64) {
 	lua.pushinteger(L, lua.Integer(id))
 	lua.call(L, 1, 1)
 }
+
+editor_viewport :: proc(editor: ^Editor) -> (w, h: int) {
+	w = max(0, int(tb2.width()) - editor_gutter_width(editor))
+	h = max(0, int(tb2.height()) - STATUS_ROWS)
+	return
+}

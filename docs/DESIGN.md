@@ -222,14 +222,13 @@ member group is no longer on top).
   Editing replaces the selection — except Tab/Shift+Tab, which block indent/dedent
   every touched line (exact inverses; trailing line ending at col 0 not counted).
   Selected cells render inverted.
-- Viewport: `scroll_row`/`scroll_col` track the top-left cell. Each command owns
-  its own reveal — a command that moves the cursor calls `editor_scroll`; opening
-  a pane / a no-cursor command (save, toggles, wheel scroll) leaves the viewport
-  put. `editor_scroll` scrolls the minimum to keep the cursor visible honoring
-  `SCROLL_MARGIN`. With soft wrap, `scroll_col` is 0 and `scroll_sub` anchors the
-  visual sub-row of `scroll_row` at the top (all visibility math in visual rows —
-  see `wrap.odin`). When the caret is scrolled out of the viewport it is hidden,
-  not clamped to an edge.
+- Viewport: each editor node's state (`scroll_row`/`scroll_sub`/`scroll_col`, per node and buffer) is the view.
+  `ui_editor_reveal` scrolls when the cursor moved since the node last saw it: the minimum to keep `scroll_margin`
+  rows, or centred after a jump (`Buffer.reveal_center`, set by `editor_goto`); a no-cursor command (save, toggles,
+  wheel scroll) leaves the view put. With soft wrap, `scroll_col` is 0 and `scroll_sub` anchors the visual sub-row
+  of `scroll_row` at the top (all visibility math in visual rows, see `wrap.odin`). `buffer:screen_row` and
+  `set_screen_row` read and write the view showing the buffer (`ui_buffer_view`). When the caret is scrolled out of
+  the view it is hidden, not clamped to an edge.
 - Mouse: click positions, drag extends (auto-scrolls past the edge), wheel
   scrolls, double/triple-click selects word/line. `editor_step` coalesces a
   burst of queued same-direction wheel events (0 ms peek) into one dispatch run
@@ -409,11 +408,11 @@ started at the end of `editor_init`. Invariants the code can't show:
   an edit made by a handler or after an awaited dialog fires in the same flush. `buf_changed`'s `lo..hi`
   is the union of rows the primitives touched since the last delivery (`Buffer.plugin_lo/hi`, shifted by
   later edits: rows above are untouched, rows below only shifted); its `typed` is `Buffer.typed_rev == rev`, which
-  `editor_dispatch_key` sets when a character, Enter, Backspace or Delete without Ctrl/Alt changed the buffer. Exceptions: `buf_pre_save` runs inside
+  the editor node's typing and its Enter/Backspace/Delete commands set. Exceptions: `buf_pre_save` runs inside
   `editor_save_full`; a handler that waits parks the save in `Plugins.saves` until
   its tasks end or `plugin_hook_timeout_ms` passes (`editor_save_id` finishes it).
   `quit` runs after the main loop, pumping until done or the same timeout.
-- Plugin communication ([notes/panes.md](notes/panes.md) §6): `qed.export` (setup only, once) stores a table of
+- Plugin communication ([notes/plugins.md](notes/plugins.md)): `qed.export` (setup only, once) stores a table of
   functions on `Plugin.exports`; `qed.plugin(id)` (raises during setup) builds a fresh proxy of C closures holding
   owner, load generation (`Plugin.gen`), caller and name, so a call after the owner unloads or reloads raises and
   the proxy keeps nothing alive. A call runs in the caller's task through `lua_pcallk` (yields allowed), with a
@@ -502,7 +501,7 @@ started at the end of `editor_init`. Invariants the code can't show:
   shift by byte position and are removed when an edit overlaps their inside. The inline ghost
   (`DecoStore.inline`, one per buffer) is cleared by any edit (a reload is hunk edits); core renders it while the cursor
   sits on it (`inline_gap` reserves the rows below for its continuation lines) and handles its keys in
-  `editor_dispatch_key` before anything else: `Tab` inserts it, `Ctrl+Right` one word (`inline_word_len`),
+  `ui_dispatch_key` before anything else: `Tab` inserts it, `Ctrl+Right` one word (`inline_word_len`),
   any other key or a click drops it, all synchronously. Colors are interned theme keys
   (`Plugins.colors`), resolved into a per-frame palette; a tint or span alpha may be a theme tint key
   (`Deco.tint`, an index into `config_tints`), also resolved per frame. `deco_rows` buckets the visible

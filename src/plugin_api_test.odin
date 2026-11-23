@@ -615,7 +615,7 @@ plugin_api_return_conventions :: proc(t: ^testing.T) {
 			{"jump", true, function() return qed.jump(b, {row = 1, col = 1}) end},
 			{"spawn missing", "cannot start", function() return qed.spawn{argv = {"/no/such/qed-prog"}} end},
 			{"spawn_bg missing", "cannot start", function() return qed.spawn_bg{argv = {"/no/such/qed-prog"}} end},
-			{"set_screen_row not current", "not current", function() return dirty:set_screen_row(1, 1) end},
+			{"set_screen_row not shown", "not shown", function() return dirty:set_screen_row(1, 1) end},
 			{"inline off cursor", "not at cursor", function() return qed.deco.inline(b, ns, {row = 1, col = 3}, "x") end},
 			{"inline", true, function() return qed.deco.inline(b, ns, b:cursor(), "x") end},
 			{"close bad arg", "raise", function() return qed.close("x") end},

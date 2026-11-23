@@ -357,7 +357,6 @@ completion_accept :: proc(editor: ^Editor) {
 	b.selection = nil
 	cursor_goal_sync(b)
 	completion_dismiss(editor)
-	editor_scroll(editor)
 }
 
 completion_keeps :: proc(ev: tb2.Event) -> bool {

@@ -462,7 +462,7 @@ function qed.ui.scroll(props) end
 ---@return qed.Node
 function qed.ui.text(props) end
 
----A view over a buffer. Props: `buffer`, `placeholder`, `line_numbers`, `highlight`, `wrap`, `readonly`, `current_line_style`. Typing inserts; movement and editing are the `editor` scope's commands.
+---A view over a buffer. Props: `buffer`, `placeholder`, `line_numbers`, `syntax`, `wrap`, `readonly`. With `scope = "editor"` typing inserts and the `editor` scope's commands move and edit; one row high it is a field (no indent, pairs or newlines; pastes flatten).
 ---@param props table
 ---@return qed.Node
 function qed.ui.editor(props) end
@@ -1062,16 +1062,16 @@ function BufferObject:cursor() end
 ---@param pos qed.Pos
 function BufferObject:set_cursor(pos) end
 
----Terminal row (1-based) showing buffer row `row` (default the caret's visual row), or nil when off screen or `b` is not current.
+---Row (1-based, from the top of the editor view showing `b`) of buffer row `row` (default the caret's visual row), or nil when off screen or not shown.
 ---@param row? integer
 ---@return integer|nil
 function BufferObject:screen_row(row) end
 
----Scrolls the editor so buffer row `row` sits on terminal row `screen_row` (clamped to the text area), clamped at the buffer ends. `nil, "not current"` if `b` is not current.
+---Scrolls the editor view showing `b` so buffer row `row` sits on its row `screen_row` (clamped to the view), clamped at the buffer ends. `nil, "not shown"` when no view shows `b`.
 ---@param row integer
 ---@param screen_row integer
 ---@return true|nil ok
----@return "not current"|nil err
+---@return "not shown"|nil err
 function BufferObject:set_screen_row(row, screen_row) end
 
 ---Selection as `from, to` in document order, or nil when nothing is selected.
