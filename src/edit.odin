@@ -495,6 +495,7 @@ buffer_type_rune :: proc(b: ^Buffer, r: rune) {
 		bytes, n := utf8.encode_rune(r)
 		buffer_replace_selection(b, string(bytes[:n]))
 	} else {
+		b.selection = nil
 		buffer_insert_rune(b, r)
 	}
 }

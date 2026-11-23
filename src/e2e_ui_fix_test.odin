@@ -395,3 +395,52 @@ end}`)
 	testing.expect_value(t, hooks_after, 0)
 }
 
+@(test)
+e2e_ui_select_all_empty_then_type :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "uitest", `return {setup = function()
+	local query = qed.buf.create{internal = true}
+	qed.command{name = "Show", run = function() qed.message("text " .. query:text()) end}
+	qed.command{name = "Run", run = function()
+		qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 5, border = true,
+			qed.ui.editor{id = "q", buffer = query, height = 1, scope = {"uit", "editor"}}})
+		qed.ui.node("q"):focus()
+	end}
+end}`)
+	ut_run(&e, "Run")
+	e2e_key(&e, .Ctrl_A, .Ctrl)
+	e2e_type(&e, "abc")
+	ut_run(&e, "Show")
+	testing.expect_value(t, e.ed.message, "text abc")
+	e2e_key(&e, .Ctrl_A, .Ctrl)
+	e2e_type(&e, "xyz")
+	ut_run(&e, "Show")
+	testing.expect_value(t, e.ed.message, "text xyz")
+}
+
+
+@(test)
+e2e_scoped_command_pick_keeps_its_chord :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "uitest", `return {setup = function()
+	local query = qed.buf.create{internal = true}
+	qed.command{name = "Run", run = function()
+		qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 5, border = true,
+			qed.ui.editor{id = "q", buffer = query, height = 1, scope = {"uit", "editor"}}})
+		qed.ui.node("q"):focus()
+	end}
+	qed.command{name = "Pick", scope = "uit", key = "Enter", run = function()
+		local choice, err = qed.pick{items = {"none", "dim", "blank"}}
+		qed.message("picked " .. tostring(choice) .. " " .. tostring(err))
+	end}
+end}`)
+	ut_run(&e, "Run")
+	e2e_key(&e, .Enter)
+	e2e_ui_settle(&e)
+	testing.expect(t, pane_focus(&e.ed) != nil, "Enter in the scope opens the pick")
+	e2e_type(&e, "dim\n")
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "picked dim nil")
+}

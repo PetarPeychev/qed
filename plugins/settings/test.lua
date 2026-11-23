@@ -180,90 +180,128 @@ local function count(tbl)
 	return n
 end
 
-local function open_menu(t, tab)
-	qed.run("Settings: Open")
-	local ui = t.ui()
-	t.ok(ui and ui.id == "settings", "the settings pane opens")
-	if tab == 2 then
-		t.key("Right")
-		t.wait(function() return t.ui().tab == 2 and t.ui().info:find("Scope: ") ~= nil end)
+local function screen_has(t, text)
+	for y = 0, 23 do
+		if t.screen(y):find(text, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function settings_open(t)
+	return screen_has(t, "─ Settings ─")
+end
+
+local function first_is(t, name)
+	for y = 0, 22 do
+		local line = t.screen(y)
+		if line:find("│ Key ", 1, true) or line:find("│ Command ", 1, true) then
+			local row = t.screen(y + 1)
+			return (row:find("│ " .. name .. " ", 1, true) or row:find("│▎" .. name .. " ", 1, true)) ~= nil
+		end
+	end
+	return false
+end
+
+local function row_line(t, name)
+	local escaped = name:gsub("%p", "%%%0")
+	for y = 0, 23 do
+		local line = t.screen(y)
+		local before, value = line:match("^(.-)" .. escaped .. " +(.-)%s*\226\148[\130\131]%s*$")
+		if before and (before:sub(-4) == "│ " or before:sub(-6) == "│▎") then
+			return line, (value:gsub("%s*\226\148\131$", "")), before:sub(-6) == "│▎"
+		end
 	end
 end
 
-local function select(t, filter, label)
-	if t.ui().query ~= "" then
-		t.key("Esc")
-	end
-	t.type(filter)
-	t.eq(t.ui().selected, label, "filtering selects " .. label)
-end
+local selected_name
 
 local function value(t)
-	return t.ui().cells[2]
+	local _, text = row_line(t, selected_name)
+	return text
+end
+
+local function marked(t)
+	local _, _, mark = row_line(t, selected_name)
+	return mark
+end
+
+local function open_menu(t, tab)
+	qed.run("Settings: Open")
+	t.wait(function() return settings_open(t) end)
+	t.ok(screen_has(t, "Settings"), "the settings pane opens")
+	if tab == 2 then
+		t.key("Tab")
+		t.wait(function() return screen_has(t, "Command") and screen_has(t, "Scope: ") end)
+	end
+end
+
+local function select(t, filter)
+	t.key("Ctrl+a")
+	t.type(filter)
+	selected_name = filter
+	t.ok(first_is(t, filter), "filtering selects " .. filter)
 end
 
 function T.menu_lists_core_and_plugin_options(t)
 	open_menu(t)
-	t.eq(t.ui().tab, 1, "it opens on Options")
-	select(t, "line_wrap", "line_wrap")
-	local cells = t.ui().cells
-	t.eq(#cells, 2, "Key and Value columns")
-	t.eq(cells[1], "line_wrap")
-	t.eq(cells[2], "true", "the current value")
-	t.wait(function() return t.ui().info == "Soft wrap long lines in new buffers. Default: true" end)
-	t.ok(t.ui().mark == nil, "a default is not marked")
-	select(t, "lsp.enabled", "lsp.enabled")
-	t.wait(function() return t.ui().info == "Start language servers. Default: true" end)
-	select(t, "languages.python.lsp", "languages.python.lsp")
+	t.ok(screen_has(t, "Key") and screen_has(t, "Value"), "it opens on Options with Key and Value columns")
+	select(t, "line_wrap")
+	t.eq(value(t), "true", "the current value")
+	t.ok(screen_has(t, "Soft wrap long lines in new buffers. Default: true"), "the info line")
+	t.ok(not marked(t), "a default is not marked")
+	select(t, "lsp.enabled")
+	t.ok(screen_has(t, "Start language servers. Default: true"))
+	select(t, "languages.python.lsp")
 	t.eq(value(t), "pyright-langserver --stdio")
-	select(t, "search.min_query", "search.min_query")
+	select(t, "search.min_query")
 	t.eq(value(t), "2")
-	t.wait(function() return t.ui().info == "Characters typed before a search runs. Default: 2" end)
-	select(t, "search.enabled", "search.enabled")
+	t.ok(screen_has(t, "Characters typed before a search runs. Default: 2"))
+	select(t, "search.enabled")
 	t.eq(value(t), "true")
-	select(t, "format.commands.python", "format.commands.python")
-	t.wait(function() return t.ui().info:find("^Formatter per language: a stdin to stdout command, {file} is the path%.") ~= nil end)
+	select(t, "format.commands.python")
+	t.ok(screen_has(t, "Formatter per language: a stdin to stdout command, {file} is the path."))
 	t.type("ZZZ")
-	t.eq(t.ui().matches, 0)
+	t.ok(not first_is(t, "ZZZ") and not screen_has(t, "line_wrap"), "nothing matches")
 	t.key("Esc")
+	t.ok(settings_open(t), "Esc clears the filter")
 	t.key("Esc")
-	t.ok(t.ui() == nil, "Esc clears the filter, then closes")
+	t.ok(not settings_open(t), "then closes")
 end
 
 function T.menu_bool_toggle_writes_only_that_key(t)
 	qed.fs.write(t.config_path(), '{"tab_width": 2}')
 	open_menu(t)
-	select(t, "line_wrap", "line_wrap")
+	select(t, "line_wrap")
 	t.key("Enter")
 	t.wait(function() return value(t) == "false" end)
 	local cfg = user_cfg(t)
 	t.eq(cfg.line_wrap, false, "the toggled key is written")
 	t.eq(cfg.tab_width, 2, "other keys are kept")
 	t.eq(count(cfg), 2, "nothing else is written")
-	t.eq(t.ui().mark, "git_modified", "the override is marked")
-	t.eq(t.ui().selected, "line_wrap", "the selection stays")
+	t.ok(marked(t), "the override is marked")
+	t.ok(first_is(t, "line_wrap"), "the selection stays")
 	t.key("Enter")
 	t.wait(function() return value(t) == "true" end)
 	cfg = user_cfg(t)
 	t.eq(cfg.line_wrap, nil, "toggling back to the default removes the key")
 	t.eq(count(cfg), 1)
-	t.ok(t.ui().mark == nil, "no longer marked")
+	t.ok(not marked(t), "no longer marked")
 	t.key("Esc")
 	t.key("Esc")
 end
 
 function T.menu_number_validation(t)
 	open_menu(t)
-	select(t, "tab_width", "tab_width")
+	select(t, "tab_width")
 	t.key("Enter")
-	t.wait(function() return t.ui().input ~= nil end)
-	t.eq(t.ui().input, "tab_width: ", "an inline prompt")
-	t.eq(t.ui().input_text, "4", "prefilled with the current value")
+	t.wait(function() return screen_has(t, "tab_width: 4") end)
 	t.key("Ctrl+a")
 	t.type("abc\n")
 	t.wait(function() return (t.message()) == "tab_width needs a whole number" end)
 	t.ok(not qed.fs.exists(t.config_path()), "garbage writes nothing")
-	t.ok(t.ui().input == nil, "the prompt is gone")
+	t.ok(not screen_has(t, "tab_width: "), "the prompt is gone")
 	t.key("Enter")
 	t.key("Ctrl+a")
 	t.type("1.5\n")
@@ -281,7 +319,7 @@ function T.menu_number_validation(t)
 	t.eq((t.message()), "tab_width set to 8")
 	t.key("Enter")
 	t.key("Esc")
-	t.ok(t.ui().input == nil, "Esc cancels the prompt")
+	t.ok(not screen_has(t, "tab_width: "), "Esc cancels the prompt")
 	t.eq(user_cfg(t).tab_width, 8)
 	t.key("Esc")
 	t.key("Esc")
@@ -289,15 +327,15 @@ end
 
 function T.menu_string_and_list_values(t)
 	open_menu(t)
-	select(t, "languages.python.lsp", "languages.python.lsp")
+	select(t, "languages.python.lsp")
 	t.key("Enter")
 	t.key("Ctrl+a")
 	t.type("pylsp\n")
 	t.wait(function() return value(t) == "pylsp" end)
 	t.eq(user_cfg(t).languages.python.lsp, "pylsp")
-	select(t, "languages.python.patterns", "languages.python.patterns")
+	select(t, "languages.python.patterns")
 	t.key("Enter")
-	t.eq(t.ui().input_text, '["*.py","*.pyw"]', "a list edits as JSON")
+	t.ok(screen_has(t, 'languages.python.patterns: ["*.py","*.pyw"]'), "a list edits as JSON")
 	t.key("Ctrl+a")
 	t.type('"x"\n')
 	t.wait(function() return (t.message()) == "languages.python.patterns needs a JSON list" end)
@@ -314,20 +352,20 @@ end
 
 function T.menu_enum_picker(t)
 	open_menu(t)
-	select(t, "plugins_pane_backdrop", "plugins_pane_backdrop")
+	select(t, "plugins_pane_backdrop")
 	t.key("Enter")
-	t.wait(function() return t.ui().kind == "pick" end)
+	t.wait(function() return t.ui() and t.ui().kind == "pick" end)
 	t.eq(t.ui().matches, 3, "the schema choices")
 	t.eq(t.ui().selected, "none", "the current value is highlighted")
 	t.type("dim\n")
-	t.wait(function() return t.ui().id == "settings" and value(t) == "dim" end)
+	t.wait(function() return t.ui() == nil and value(t) == "dim" end)
 	t.eq(user_cfg(t).plugins_pane_backdrop, "dim")
-	select(t, "markdown.backdrop", "markdown.backdrop")
+	select(t, "markdown.backdrop")
 	t.key("Enter")
-	t.wait(function() return t.ui().kind == "pick" end)
+	t.wait(function() return t.ui() and t.ui().kind == "pick" end)
 	t.eq(t.ui().selected, "dim", "a plugin's choices")
 	t.key("Esc")
-	t.wait(function() return t.ui().id == "settings" end)
+	t.wait(function() return t.ui() == nil end)
 	t.eq(user_cfg(t).plugins, nil, "Esc picks nothing")
 	t.key("Esc")
 	t.key("Esc")
@@ -336,15 +374,15 @@ end
 function T.menu_reset_removes_the_key(t)
 	qed.fs.write(t.config_path(), '{"line_wrap": false, "tab_width": 2}')
 	open_menu(t)
-	select(t, "line_wrap", "line_wrap")
-	t.eq(t.ui().mark, "git_modified", "an override is marked")
+	select(t, "line_wrap")
+	t.ok(marked(t), "an override is marked")
 	t.eq(value(t), "false", "the user value shows")
 	t.key("Ctrl+d")
 	t.wait(function() return value(t) == "true" end)
 	local cfg = user_cfg(t)
 	t.eq(cfg.line_wrap, nil, "reset removes the key")
 	t.eq(cfg.tab_width, 2, "other keys stay")
-	t.ok(t.ui().mark == nil, "no longer marked")
+	t.ok(not marked(t), "no longer marked")
 	t.eq((t.message()), "line_wrap reset to true")
 	t.key("Ctrl+d")
 	t.eq((t.message()), "line_wrap is already the default")
@@ -354,41 +392,41 @@ end
 
 function T.menu_live_update_keeps_selection(t)
 	open_menu(t)
-	select(t, "tab_width", "tab_width")
+	select(t, "tab_width")
 	qed.fs.write(t.config_path(), '{"tab_width": 3}')
 	t.config({}, {hot = true})
 	t.wait(function() return value(t) == "3" end)
-	t.eq(t.ui().mark, "git_modified", "the new override is marked")
-	t.eq(t.ui().selected, "tab_width", "the selection stays")
+	t.ok(marked(t), "the new override is marked")
+	t.ok(first_is(t, "tab_width"), "the selection stays")
 	t.key("Esc")
 	t.key("Esc")
 end
 
 function T.menu_chord_capture(t)
 	open_menu(t, 2)
-	select(t, "Toggle Line Wrap", "Toggle Line Wrap")
-	t.eq(t.ui().cells[2], "", "unbound by default")
-	t.wait(function() return t.ui().info == "Toggle Line Wrap. Default: none. Scope: global" end)
+	select(t, "Toggle Line Wrap")
+	t.eq(value(t), "", "unbound by default")
+	t.ok(screen_has(t, "Toggle Line Wrap. Default: none. Scope: global"))
 	t.key("Enter")
-	t.wait(function() return t.ui().input ~= nil end)
-	t.eq(t.ui().input, "Press a chord for Toggle Line Wrap (Esc cancels)")
+	t.wait(function() return screen_has(t, "Press a chord for Toggle Line Wrap (Esc cancels)") end)
 	t.key("Esc")
-	t.ok(t.ui().input == nil, "Esc cancels the capture")
+	t.ok(not screen_has(t, "Press a chord"), "Esc cancels the capture")
+	t.ok(settings_open(t), "the menu stays")
 	t.ok(not qed.fs.exists(t.config_path()), "a cancelled capture writes nothing")
 	t.key("Enter")
 	t.key("Alt+w")
-	t.wait(function() return t.ui().cells[2] == "Alt+w" end)
+	t.wait(function() return value(t) == "Alt+w" end)
 	local cfg = user_cfg(t)
 	t.eq(cfg.keybinds["Toggle Line Wrap"], "Alt+w", "the chord is written under keybinds")
 	t.eq(count(cfg), 1)
-	t.eq(t.ui().mark, "git_modified")
-	select(t, "Go to: Line", "Go to: Line Ctrl+g")
+	t.ok(marked(t))
+	select(t, "Go to: Line")
 	t.key("Enter")
 	t.key("Ctrl+e")
-	t.wait(function() return t.ui().cells[2] == "Ctrl+e" end)
+	t.wait(function() return value(t) == "Ctrl+e" end)
 	t.eq(user_cfg(t).plugins["goto"].keybinds.Line, "Ctrl+e", "a plugin bind is written under its plugin")
 	t.key("Ctrl+d")
-	t.wait(function() return t.ui().cells[2] == "Ctrl+g" end)
+	t.wait(function() return value(t) == "Ctrl+g" end)
 	t.eq(user_cfg(t).plugins, nil, "reset restores the default bind")
 	t.key("Esc")
 	t.key("Esc")
@@ -396,21 +434,21 @@ end
 
 function T.menu_chord_conflict(t)
 	open_menu(t, 2)
-	select(t, "Toggle Line Wrap", "Toggle Line Wrap")
+	select(t, "Toggle Line Wrap")
 	t.key("Enter")
 	t.key("Ctrl+s")
-	t.wait(function() return t.ui().kind == "confirm" end)
+	t.wait(function() return t.ui() and t.ui().kind == "confirm" end)
 	t.eq(t.ui().labels[1], "Cancel")
 	t.eq(t.ui().labels[2], "Replace")
 	t.key("Enter")
-	t.wait(function() return t.ui().id == "settings" end)
+	t.wait(function() return t.ui() == nil end)
 	t.ok(not qed.fs.exists(t.config_path()), "Cancel writes nothing")
 	t.key("Enter")
 	t.key("Ctrl+s")
-	t.wait(function() return t.ui().kind == "confirm" end)
+	t.wait(function() return t.ui() and t.ui().kind == "confirm" end)
 	t.key("Down")
 	t.key("Enter")
-	t.wait(function() return t.ui().id == "settings" and t.ui().cells[2] == "Ctrl+s" end)
+	t.wait(function() return t.ui() == nil and value(t) == "Ctrl+s" end)
 	local kb = user_cfg(t).keybinds
 	t.eq(kb["Toggle Line Wrap"], "Ctrl+s")
 	t.eq(kb.Save, "", "Replace unbinds the other command")
@@ -420,15 +458,6 @@ function T.menu_chord_conflict(t)
 	t.wait(function() return (t.message()) == "Toggle Line Wrap: a single key binds only in a pane" end)
 	t.key("Esc")
 	t.key("Esc")
-end
-
-local function screen_has(t, text)
-	for y = 0, 23 do
-		if t.screen(y):find(text, 1, true) then
-			return true
-		end
-	end
-	return false
 end
 
 function T.info_strip_wraps(t)

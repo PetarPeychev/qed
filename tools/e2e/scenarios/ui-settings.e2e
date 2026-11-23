@@ -1,0 +1,31 @@
+# Settings menu on qed.ui: filter, toggle a bool, number prompt, keybinds tab with chord capture.
+file a.txt
+x
+end
+run a.txt
+wait x
+key ctrl+p
+type settings open
+key enter
+wait auto_close_pairs
+type line_wrap
+wait Soft wrap
+key enter
+wait line_wrap set to false
+snap toggled
+key ctrl+a
+type tab_width
+wait Display width
+key enter
+wait tab_width: 4
+snap prompt
+key esc
+key tab
+wait Chord
+key ctrl+a
+type toggle line wrap
+key enter
+wait Press a chord
+snap chord
+key esc esc esc
+snap closed

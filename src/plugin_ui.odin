@@ -1183,7 +1183,12 @@ qed_ui_open :: proc "c" (L: ^lua.State) -> c.int {
 	spec.ctx.lua = true
 	spec.on = {activate = plugin_view_activate, close = plugin_view_closed, link = plugin_view_link, tab = plugin_view_tab, submit = plugin_view_submit, expand = plugin_view_expand}
 	if t := plugin_task_of(p, L); t != nil {
-		spec.toggle = t.command
+		for cmd in p.commands {
+			// a scoped command's chord belongs to its pane, so it does not close what it opens
+			if cmd.id == t.command && cmd.scope == "" {
+				spec.toggle = t.command
+			}
+		}
 	}
 	if lua.getfield(L, 1, "toggle") == .BOOLEAN {
 		if lua.toboolean(L, -1) {
