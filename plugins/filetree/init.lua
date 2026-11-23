@@ -9,7 +9,7 @@ local PREVIEW_DEBOUNCE_MS = 80
 -- marks pushed between yields, so no slice nears the task budget
 local CHUNK = 4000
 
-local v, walk, auto
+local tree_view, walk, auto
 local scope = "All"
 local show = {}
 local clip, clip_cut = {}, false
@@ -24,8 +24,8 @@ local based = {}
 local sync_job, ask = 0, 0
 local due, ignore_moved = false, false
 
-local function parent(p)
-	return p:match("^(.+)/[^/]*$") or p
+local function parent(file_path)
+	return file_path:match("^(.+)/[^/]*$") or file_path
 end
 
 local function exists(path)
@@ -33,8 +33,8 @@ local function exists(path)
 end
 
 local function builtin(label)
-	for _, t in ipairs(TABS) do
-		if t.label == label then
+	for _, tab_entry in ipairs(TABS) do
+		if tab_entry.label == label then
 			return true
 		end
 	end
@@ -42,9 +42,9 @@ local function builtin(label)
 end
 
 local function tab_of(label)
-	for _, t in ipairs(added) do
-		if t.label == label then
-			return t
+	for _, tab_entry in ipairs(added) do
+		if tab_entry.label == label then
+			return tab_entry
 		end
 	end
 end
@@ -62,20 +62,20 @@ local function marks(my)
 	if built.marks then
 		return built.marks
 	end
-	local ids, m, n = owners(marks_of), {}, 0
+	local ids, merged_marks, total = owners(marks_of), {}, 0
 	if #ids == 1 then
-		m = marks_of[ids[1]]
-		for _ in pairs(m) do
-			n = n + 1
+		merged_marks = marks_of[ids[1]]
+		for _ in pairs(merged_marks) do
+			total = total + 1
 		end
 	else
 		for _, id in ipairs(ids) do
-			for path, e in pairs(marks_of[id]) do
-				if not m[path] then
-					n = n + 1
+			for path, entry in pairs(marks_of[id]) do
+				if not merged_marks[path] then
+					total = total + 1
 				end
-				m[path] = e
-				if n % CHUNK == 0 then
+				merged_marks[path] = entry
+				if total % CHUNK == 0 then
 					qed.sleep(0)
 					if my ~= sync_job then
 						return nil
@@ -84,24 +84,24 @@ local function marks(my)
 			end
 		end
 	end
-	built.marks, built.count = m, n
-	return m
+	built.marks, built.count = merged_marks, total
+	return merged_marks
 end
 
 local function alive(my, view)
-	return my == sync_job and v ~= nil and v == view
+	return my == sync_job and tree_view ~= nil and tree_view == view
 end
 
 local function push_marks(my)
-	local view, gen = v, marks_gen
-	local t = tab_of(scope)
-	local detail = t ~= nil and t.detail == true
+	local view, gen = tree_view, marks_gen
+	local tab_entry = tab_of(scope)
+	local detail = tab_entry ~= nil and tab_entry.detail == true
 	if shown.marks == gen then
 		view:marks({}, {detail = detail})
 		return true
 	end
-	local m = marks(my)
-	if not m or not alive(my, view) then
+	local merged_marks = marks(my)
+	if not merged_marks or not alive(my, view) then
 		return false
 	end
 	-- a big push starts in a slice of its own, not on top of the open or refill that asked for it
@@ -111,13 +111,13 @@ local function push_marks(my)
 			return false
 		end
 	end
-	local chunk, n, first = {}, 0, true
-	for path, e in pairs(m) do
-		chunk[path] = e
-		n = n + 1
-		if n == CHUNK then
+	local chunk, in_chunk, first = {}, 0, true
+	for path, entry in pairs(merged_marks) do
+		chunk[path] = entry
+		in_chunk = in_chunk + 1
+		if in_chunk == CHUNK then
 			view:marks(chunk, {replace = first, detail = detail, total = built.count})
-			chunk, n, first = {}, 0, false
+			chunk, in_chunk, first = {}, 0, false
 			qed.sleep(0)
 			if not alive(my, view) or marks_gen ~= gen then
 				return false
@@ -131,12 +131,12 @@ end
 
 local function tabs()
 	local out, at = {TABS[1], TABS[2]}, 1
-	for _, t in ipairs(added) do
-		out[#out + 1] = {label = t.label, cmd = t.cmd}
+	for _, tab_entry in ipairs(added) do
+		out[#out + 1] = {label = tab_entry.label, cmd = tab_entry.cmd}
 	end
 	out[#out + 1] = TABS[3]
-	for i, t in ipairs(out) do
-		if t.label == scope then
+	for i, tab_entry in ipairs(out) do
+		if tab_entry.label == scope then
 			at = i
 		end
 	end
@@ -144,10 +144,10 @@ local function tabs()
 end
 
 local function chips()
-	local t = tab_of(scope)
+	local tab_entry = tab_of(scope)
 	if scope == "All" then
 		return {{label = "ignored", cmd = "File Tree: Toggle Ignored", on = show.ignored}, {label = "dotfiles", cmd = "File Tree: Toggle Dotfiles", on = show.dotfiles}}
-	elseif t and t.preview then
+	elseif tab_entry and tab_entry.preview then
 		return {{label = "diff", cmd = "File Tree: Toggle Diff", on = show.diff}}
 	end
 	return {}
@@ -166,8 +166,8 @@ local function ignore_push()
 		if #ids == 1 then
 			all = paths
 		else
-			for _, p in ipairs(paths) do
-				all[#all + 1] = p
+			for _, file_path in ipairs(paths) do
+				all[#all + 1] = file_path
 			end
 		end
 	end
@@ -177,9 +177,9 @@ end
 local function walk_new()
 	local opts = tostring(show.dotfiles) .. tostring(show.ignored)
 	if scopes.opts ~= opts then
-		for _, c in pairs(scopes) do
-			if type(c) == "table" then
-				c.h:release()
+		for _, cached in pairs(scopes) do
+			if type(cached) == "table" then
+				cached.h:release()
 			end
 		end
 		scopes = {opts = opts}
@@ -193,10 +193,10 @@ end
 
 local function buffer_paths()
 	local paths = {}
-	for _, b in ipairs(qed.buf.list()) do
-		local p = b:path()
-		if p ~= "" and (scope == "Open" or b:modified()) and qed.fs.exists(p) then
-			paths[#paths + 1] = p
+	for _, buffer in ipairs(qed.buf.list()) do
+		local file_path = buffer:path()
+		if file_path ~= "" and (scope == "Open" or buffer:modified()) and qed.fs.exists(file_path) then
+			paths[#paths + 1] = file_path
 		end
 	end
 	return paths
@@ -206,34 +206,34 @@ local function source()
 	if scope == "All" then
 		return walk, false
 	end
-	local t = tab_of(scope)
-	local paths = not t and buffer_paths()
-	local stamp = paths and table.concat(paths, "\0") or t.stamp
-	local c = scopes[scope]
-	if c and c.stamp == stamp then
-		return c.h, false
+	local tab_entry = tab_of(scope)
+	local paths = not tab_entry and buffer_paths()
+	local stamp = paths and table.concat(paths, "\0") or tab_entry.stamp
+	local cached = scopes[scope]
+	if cached and cached.stamp == stamp then
+		return cached.h, false
 	end
-	if c then
-		c.h:release()
+	if cached then
+		cached.h:release()
 	end
-	local h
+	local handle
 	if paths then
-		h = walk:within(paths)
+		handle = walk:within(paths)
 	else
-		h = walk:within(t.paths)
-		if t.virtual and #t.virtual > 0 then
-			local u = h:union(t.virtual)
-			h:release()
-			h = u
+		handle = walk:within(tab_entry.paths)
+		if tab_entry.virtual and #tab_entry.virtual > 0 then
+			local merged = handle:union(tab_entry.virtual)
+			handle:release()
+			handle = merged
 		end
 	end
-	scopes[scope] = {h = h, stamp = stamp}
-	return h, #(paths or t.paths) > CHUNK
+	scopes[scope] = {h = handle, stamp = stamp}
+	return handle, #(paths or tab_entry.paths) > CHUNK
 end
 
 local function show_source(my, view)
-	local h, fresh = source()
-	if shown.h == h then
+	local handle, fresh = source()
+	if shown.h == handle then
 		return true
 	end
 	if fresh then
@@ -242,28 +242,28 @@ local function show_source(my, view)
 			return false
 		end
 	end
-	local t = tab_of(scope)
-	view:set(h, {hint = t and t.empty})
-	shown.h = h
+	local tab_entry = tab_of(scope)
+	view:set(handle, {hint = tab_entry and tab_entry.empty})
+	shown.h = handle
 	return true
 end
 
 local function preview_show(path, base)
 	if base then
-		v:preview{path = path, base = base, diff_only = show.diff}
+		tree_view:preview{path = path, base = base, diff_only = show.diff}
 	else
-		v:preview{path = path}
+		tree_view:preview{path = path}
 	end
 end
 
 local function preview_changed(item, blank, reuse)
-	local t = v and tab_of(scope)
-	if not t or not t.preview then
+	local tab_entry = tree_view and tab_of(scope)
+	if not tab_entry or not tab_entry.preview then
 		return
 	end
 	if not item or item.dir or not item.path then
 		wanted = nil
-		v:preview(false)
+		tree_view:preview(false)
 		return
 	end
 	wanted = item.path
@@ -272,12 +272,12 @@ local function preview_changed(item, blank, reuse)
 		return
 	end
 	if blank then
-		v:preview(false)
+		tree_view:preview(false)
 	end
 	ask = ask + 1
-	local my, view = ask, v
-	local ok, base = pcall(t.preview, item.path)
-	if my ~= ask or v ~= view or wanted ~= item.path then
+	local my, view = ask, tree_view
+	local ok, base = pcall(tab_entry.preview, item.path)
+	if my ~= ask or tree_view ~= view or wanted ~= item.path then
 		return
 	end
 	if not ok then
@@ -294,25 +294,25 @@ local function on_change(_, item)
 end
 
 local function preview_mode()
-	local t = tab_of(scope)
-	if not t or not t.preview then
-		v:on("change", false)
+	local tab_entry = tab_of(scope)
+	if not tab_entry or not tab_entry.preview then
+		tree_view:on("change", false)
 		if not auto then
 			auto = true
-			v:preview("auto")
+			tree_view:preview("auto")
 		end
 		return
 	end
-	v:on("change", on_change)
+	tree_view:on("change", on_change)
 	if auto then
 		auto = false
-		v:preview(false)
+		tree_view:preview(false)
 	end
 end
 
 local function sync(blank)
 	sync_job = sync_job + 1
-	local my, view = sync_job, v
+	local my, view = sync_job, tree_view
 	if not builtin(scope) and not tab_of(scope) then
 		scope = "All"
 	end
@@ -335,8 +335,8 @@ end
 
 local function reveal(path)
 	refresh()
-	if v then
-		v:reveal(path)
+	if tree_view then
+		tree_view:reveal(path)
 	end
 end
 
@@ -355,8 +355,8 @@ local handlers = {
 				return
 			end
 			view:close()
-			for _, p in ipairs(paths) do
-				qed.open(p)
+			for _, file_path in ipairs(paths) do
+				qed.open(file_path)
 			end
 			return
 		end
@@ -365,9 +365,9 @@ local handlers = {
 			return
 		end
 		if not exists(it.path) then
-			local t = tab_of(scope)
-			if t and t.missing then
-				t.missing(it.path)
+			local tab_entry = tab_of(scope)
+			if tab_entry and tab_entry.missing then
+				tab_entry.missing(it.path)
 			else
 				qed.message("Deleted file")
 			end
@@ -377,20 +377,20 @@ local handlers = {
 		qed.open(it.path)
 	end,
 	tab = function(view, i)
-		local t = tabs()[i]
-		if not t then
+		local tab_entry = tabs()[i]
+		if not tab_entry then
 			-- the tab row and the added tabs disagree (one came or went meanwhile): rebuild the view
 			view:close()
 			open(scope)
 			return
 		end
-		scope = t.label
+		scope = tab_entry.label
 		sync(true)
 	end,
 	submit = function(_, text)
-		local m, at = mode, target
+		local current_mode, at = mode, target
 		mode, target = nil, nil
-		if not m or not text or not at then
+		if not current_mode or not text or not at then
 			return
 		end
 		local name = text:gsub("^%s+", ""):gsub("%s+$", "")
@@ -398,7 +398,7 @@ local handlers = {
 			qed.message("Empty name", "error")
 			return
 		end
-		if m == "rename" then
+		if current_mode == "rename" then
 			local full = qed.path.join(qed.path.dir(at), name)
 			if full == at then
 				return
@@ -435,8 +435,8 @@ local handlers = {
 		reveal(full)
 	end,
 	close = function(view)
-		if v == view then
-			v, mode, target, wanted = nil, nil, nil, nil
+		if tree_view == view then
+			tree_view, mode, target, wanted = nil, nil, nil, nil
 		end
 	end,
 }
@@ -446,7 +446,7 @@ open = function(tab)
 	mode, target, wanted = nil, nil, nil
 	auto = true
 	walk_new()
-	local t, at = tabs()
+	local tab_entry, at = tabs()
 	local items, fresh = source()
 	if fresh then
 		qed.sleep(0)
@@ -458,7 +458,7 @@ open = function(tab)
 		scope = "filetree",
 		toggle = false,
 		jump_closes = true,
-		tabs = t,
+		tabs = tab_entry,
 		tab = at,
 		fields = {{text = "", count = true, hint = "type to filter", esc_clears = true}},
 		list = {items = items, tree = true, multi = true},
@@ -469,16 +469,16 @@ open = function(tab)
 	if not view then
 		return
 	end
-	v, shown = view, {h = items}
+	tree_view, shown = view, {h = items}
 	refresh()
 	sync(true)
 end
 
 local function reopen()
-	local s = scope
-	v:close()
-	v = nil
-	open(s)
+	local kept_scope = scope
+	tree_view:close()
+	tree_view = nil
+	open(kept_scope)
 end
 
 local function cursor(ctx)
@@ -514,14 +514,14 @@ local function tops(items)
 		sel[it.path] = true
 	end
 	for _, it in ipairs(items) do
-		local p, nested = it.path, false
+		local file_path, nested = it.path, false
 		while not nested do
-			local np = parent(p)
-			if np == p then
+			local np = parent(file_path)
+			if np == file_path then
 				break
 			end
-			p = np
-			nested = sel[p] ~= nil
+			file_path = np
+			nested = sel[file_path] ~= nil
 		end
 		if not nested then
 			out[#out + 1] = it
@@ -572,8 +572,8 @@ local function paste(ctx)
 		return
 	end
 	local dir = target_dir(ctx)
-	local s = qed.fs.stat(dir)
-	if not s or s.type ~= "dir" then
+	local info = qed.fs.stat(dir)
+	if not info or info.type ~= "dir" then
 		qed.message("Deleted directory: restore a file in it first")
 		return
 	end
@@ -637,20 +637,20 @@ local function delete(ctx)
 		view:select(math.max(1, math.min(row, anchor or row) - 1))
 	end
 	refresh()
-	local n = #items - failed
+	local deleted = #items - failed
 	if failed > 0 then
-		qed.message(("Deleted %d, %d failed: %s"):format(n, failed, tostring(reason)), "error")
-	elseif n == 1 then
+		qed.message(("Deleted %d, %d failed: %s"):format(deleted, failed, tostring(reason)), "error")
+	elseif deleted == 1 then
 		qed.message("Deleted " .. qed.path.base(items[1].path) .. (items[1].dir and "/" or ""))
 	else
-		qed.message(("Deleted %d items"):format(n))
+		qed.message(("Deleted %d items"):format(deleted))
 	end
 end
 
 local function buffer_of(path)
-	for _, b in ipairs(qed.buf.list()) do
-		if b:path() == path then
-			return b
+	for _, buffer in ipairs(qed.buf.list()) do
+		if buffer:path() == path then
+			return buffer
 		end
 	end
 end
@@ -658,11 +658,11 @@ end
 local function close_buffers(ctx)
 	local paths, approved = {}, {}
 	for _, it in ipairs(ctx.items or {}) do
-		local b = not it.dir and buffer_of(it.path)
-		if b then
+		local buffer = not it.dir and buffer_of(it.path)
+		if buffer then
 			paths[#paths + 1] = it.path
-			if b:modified() then
-				approved[#approved + 1] = b
+			if buffer:modified() then
+				approved[#approved + 1] = buffer
 			end
 		end
 	end
@@ -678,12 +678,12 @@ local function close_buffers(ctx)
 	end
 	local closed = 0
 	for _, path in ipairs(paths) do
-		local b = buffer_of(path)
-		if b and qed.close(b, {discard = approved}) then
+		local buffer = buffer_of(path)
+		if buffer and qed.close(buffer, {discard = approved}) then
 			closed = closed + 1
 		end
 	end
-	if v then
+	if tree_view then
 		sync(false)
 	end
 	if closed == 1 then
@@ -693,8 +693,8 @@ local function close_buffers(ctx)
 	end
 end
 
-local function prompt(ctx, m)
-	if m == "rename" then
+local function prompt(ctx, kind)
+	if kind == "rename" then
 		if gone(ctx.items or {}) then
 			return
 		end
@@ -705,21 +705,21 @@ local function prompt(ctx, m)
 		target = target_dir(ctx)
 		ctx.view:footer{input = {prompt = "New: ", text = ""}}
 	end
-	mode = m
+	mode = kind
 	qed.message("")
 end
 
 local function walk_changed()
-	if v then
+	if tree_view then
 		walk_new()
 		sync(false)
 	end
 end
 
 local function diff_changed()
-	if v then
-		v:footer{chips = chips()}
-		preview_changed(v:selection(), false, true)
+	if tree_view then
+		tree_view:footer{chips = chips()}
+		preview_changed(tree_view:selection(), false, true)
 	end
 end
 
@@ -755,8 +755,8 @@ local function apply(cfg, changed)
 end
 
 local function has_preview()
-	for _, t in ipairs(added) do
-		if t.preview then
+	for _, tab_entry in ipairs(added) do
+		if tab_entry.preview then
 			return true
 		end
 	end
@@ -772,7 +772,7 @@ local function schedule()
 		due = false
 		local ignore = ignore_moved
 		ignore_moved = false
-		if not v then
+		if not tree_view then
 			return
 		end
 		if ignore then
@@ -820,26 +820,26 @@ local exports = {
 		if builtin(spec.label) then
 			error(("set_tab: %q is a built-in tab"):format(spec.label), 2)
 		end
-		local t = tab_of(spec.label)
-		if t and t.owner ~= id then
-			error(("set_tab: %q belongs to %s"):format(spec.label, t.owner), 2)
+		local tab_entry = tab_of(spec.label)
+		if tab_entry and tab_entry.owner ~= id then
+			error(("set_tab: %q belongs to %s"):format(spec.label, tab_entry.owner), 2)
 		end
-		if not t then
-			t = {owner = id, label = spec.label}
-			added[#added + 1] = t
+		if not tab_entry then
+			tab_entry = {owner = id, label = spec.label}
+			added[#added + 1] = tab_entry
 		end
-		if t.paths ~= spec.paths or t.virtual ~= spec.virtual or t.empty ~= spec.empty then
+		if tab_entry.paths ~= spec.paths or tab_entry.virtual ~= spec.virtual or tab_entry.empty ~= spec.empty then
 			stamps = stamps + 1
-			t.stamp = stamps
+			tab_entry.stamp = stamps
 		end
-		t.cmd, t.paths, t.virtual, t.detail, t.preview, t.missing, t.empty = spec.cmd, spec.paths, spec.virtual, spec.detail, spec.preview, spec.missing, spec.empty
+		tab_entry.cmd, tab_entry.paths, tab_entry.virtual, tab_entry.detail, tab_entry.preview, tab_entry.missing, tab_entry.empty = spec.cmd, spec.paths, spec.virtual, spec.detail, spec.preview, spec.missing, spec.empty
 		based = {}
 		schedule()
 	end,
 	remove_tab = function(label)
 		local id = caller()
-		for i, t in ipairs(added) do
-			if t.label == label and t.owner == id then
+		for i, tab_entry in ipairs(added) do
+			if tab_entry.label == label and tab_entry.owner == id then
 				release(label)
 				table.remove(added, i)
 				schedule()
@@ -847,12 +847,12 @@ local exports = {
 			end
 		end
 	end,
-	set_marks = function(m)
+	set_marks = function(marks_map)
 		local id = caller()
-		if type(m) ~= "table" then
+		if type(marks_map) ~= "table" then
 			error("set_marks: table expected", 2)
 		end
-		marks_of[id] = m
+		marks_of[id] = marks_map
 		marks_gen, built = marks_gen + 1, {}
 		schedule()
 	end,
@@ -884,9 +884,9 @@ return {
 			show_ignored = "Show ignored files when the tree opens",
 			diff_only = "Diff previews show only the changed hunks",
 		}))
-		for _, t in ipairs({{"All", "Alt+f"}, {"Open", "Alt+o"}, {"Unsaved", "Alt+u"}}) do
-			qed.command{name = t[1], key = t[2], welcome = true, run = function()
-				open(t[1])
+		for _, tab_entry in ipairs({{"All", "Alt+f"}, {"Open", "Alt+o"}, {"Unsaved", "Alt+u"}}) do
+			qed.command{name = tab_entry[1], key = tab_entry[2], welcome = true, run = function()
+				open(tab_entry[1])
 			end}
 		end
 		local function cmd(spec)
@@ -898,9 +898,9 @@ return {
 		cmd{name = "Paste", bind_from = "Paste", run = paste}
 		cmd{name = "Close Buffers", bind_from = "Close Buffer", run = close_buffers}
 		cmd{name = "Select All", bind_from = "Select All", run = function(ctx)
-			local _, _, _, n = ctx.view:selection()
-			if n > 0 then
-				ctx.view:select(n, 1)
+			local _, _, _, rows = ctx.view:selection()
+			if rows > 0 then
+				ctx.view:select(rows, 1)
 			end
 		end}
 		cmd{name = "Delete", key = "Ctrl+d", run = delete}
@@ -918,11 +918,11 @@ return {
 		qed:on("plugin_unloaded", drop)
 		qed:on("config_changed", function(changed) apply(qed.config(), changed) end)
 		qed:on("root_changed", function()
-			if v then
+			if tree_view then
 				reopen()
 				-- dirs expanded under the old root mean nothing now: back to the tab's default
-				if v then
-					v:expand(scope ~= "All")
+				if tree_view then
+					tree_view:expand(scope ~= "All")
 				end
 			end
 		end)
