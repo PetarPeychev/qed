@@ -1,6 +1,6 @@
 local repo = require("repo")
 
-local M = {}
+local tree = {}
 
 local RANK = {added = 1, modified = 2, deleted = 3}
 local BAR = {added = "git_added", modified = "git_modified", deleted = "git_deleted"}
@@ -9,19 +9,19 @@ local BAR_RANK = {git_added = 1, git_modified = 2, git_deleted = 3}
 local SPACE = {[9] = true, [10] = true, [11] = true, [12] = true, [13] = true, [32] = true}
 
 -- almost every path needs nothing stripped, so the gsubs run only when an end byte says so
-local function clean(s)
-	local a, z = s:byte(1), s:byte(-1)
-	if not (SPACE[a] or SPACE[z] or a == 34 or z == 34 or z == 47) then
-		return s
+local function clean(text)
+	local first, last = text:byte(1), text:byte(-1)
+	if not (SPACE[first] or SPACE[last] or first == 34 or last == 34 or last == 47) then
+		return text
 	end
-	s = s:gsub("^%s+", ""):gsub("%s+$", "")
-	return (s:gsub('^"', ""):gsub('"$', ""):gsub("/$", ""))
+	text = text:gsub("^%s+", ""):gsub("%s+$", "")
+	return (text:gsub('^"', ""):gsub('"$', ""):gsub("/$", ""))
 end
 
-function M.name_status_line(line)
+function tree.name_status_line(line)
 	local parts = {}
-	for f in (line .. "\t"):gmatch("([^\t]*)\t") do
-		parts[#parts + 1] = f
+	for field in (line .. "\t"):gmatch("([^\t]*)\t") do
+		parts[#parts + 1] = field
 	end
 	if #parts < 2 or parts[1] == "" then
 		return nil
@@ -41,11 +41,11 @@ function M.name_status_line(line)
 	return path, mark
 end
 
-function M.porcelain_line(line)
+function tree.porcelain_line(line)
 	if #line < 4 then
 		return nil
 	end
-	local x, y, rel = line:byte(1), line:byte(2), line:sub(4)
+	local index_status, tree_status, rel = line:byte(1), line:byte(2), line:sub(4)
 	local from
 	local arrow = rel:find(" -> ", 1, true)
 	if arrow then
@@ -57,35 +57,35 @@ function M.porcelain_line(line)
 		return nil
 	end
 	-- status letters as bytes: ? 63, ! 33, A 65, D 68, R 82
-	if x == 63 and y == 63 then
+	if index_status == 63 and tree_status == 63 then
 		return path, "added"
-	elseif x == 33 and y == 33 then
+	elseif index_status == 33 and tree_status == 33 then
 		return path, "ignored"
-	elseif x == 65 and y == 68 then
+	elseif index_status == 65 and tree_status == 68 then
 		return nil
-	elseif x == 82 and y == 68 then
+	elseif index_status == 82 and tree_status == 68 then
 		return from, "deleted"
-	elseif x == 68 or y == 68 then
+	elseif index_status == 68 or tree_status == 68 then
 		return path, "deleted"
-	elseif x == 82 then
+	elseif index_status == 82 then
 		return path, "modified", from
-	elseif x == 65 or y == 65 then
+	elseif index_status == 65 or tree_status == 65 then
 		return path, "added"
 	end
 	return path, "modified"
 end
 
 -- a rename prints `old => new` or `dir/{old => new}/f`; sizes key on the new path
-function M.numstat_path(s)
-	if s:byte(1) ~= 34 and s:byte(-1) ~= 34 and not s:find(" => ", 1, true) then
-		return s
+function tree.numstat_path(text)
+	if text:byte(1) ~= 34 and text:byte(-1) ~= 34 and not text:find(" => ", 1, true) then
+		return text
 	end
-	local p = s:gsub('^"', ""):gsub('"$', "")
-	local arrow = p:find(" => ", 1, true)
+	local unquoted = text:gsub('^"', ""):gsub('"$', "")
+	local arrow = unquoted:find(" => ", 1, true)
 	if not arrow then
-		return p
+		return unquoted
 	end
-	local before, after = p:sub(1, arrow - 1), p:sub(arrow + 4)
+	local before, after = unquoted:sub(1, arrow - 1), unquoted:sub(arrow + 4)
 	local lb = before:match(".*(){")
 	local rb = after:find("}", 1, true)
 	if not lb or not rb then
@@ -95,50 +95,50 @@ function M.numstat_path(s)
 	return (joined:gsub("//", "/"):gsub("^/+", ""))
 end
 
-function M.numstat_line(line, untracked)
+function tree.numstat_line(line, untracked)
 	if untracked then
-		local path, n = line:match("^(.+):(%d+)$")
+		local path, count = line:match("^(.+):(%d+)$")
 		if not path then
 			return nil
 		end
-		return path, tonumber(n), 0
+		return path, tonumber(count), 0
 	end
-	local a, d, rest = line:match("^(%d+)\t(%d+)\t(.*)$")
-	if not a then
+	local added, deleted, rest = line:match("^(%d+)\t(%d+)\t(.*)$")
+	if not added then
 		return nil
 	end
-	return M.numstat_path(rest), tonumber(a), tonumber(d)
+	return tree.numstat_path(rest), tonumber(added), tonumber(deleted)
 end
 
-M.MAX = 50000
+tree.MAX = 50000
 
 local function add(st, rel, mark, from)
 	local path = st.under .. rel
 	if mark == "deleted" and qed.fs.exists(path) then
 		mark = "modified"
 	end
-	local e = st.files[path]
-	if not e then
-		if st.count >= M.MAX then
+	local entry = st.files[path]
+	if not entry then
+		if st.count >= tree.MAX then
 			st.full = true
 			return
 		end
 		st.count = st.count + 1
-		e = {mark = mark}
-		st.files[path] = e
-		st.byrel[rel] = e
-	elseif RANK[mark] > RANK[e.mark] then
-		e.mark = mark
+		entry = {mark = mark}
+		st.files[path] = entry
+		st.byrel[rel] = entry
+	elseif RANK[mark] > RANK[entry.mark] then
+		entry.mark = mark
 	end
-	if from and not e.from then
-		e.from = st.top .. "/" .. from
+	if from and not entry.from then
+		entry.from = st.top .. "/" .. from
 	end
 end
 
 local function parse_base(st, text)
 	st.based = true
 	for line in repo.each(text) do
-		local rel, mark, from = M.name_status_line(line)
+		local rel, mark, from = tree.name_status_line(line)
 		if rel then
 			add(st, rel, mark, from)
 		end
@@ -147,9 +147,9 @@ end
 
 local function parse_status(st, text)
 	for line in repo.each(text) do
-		local rel, mark, from = M.porcelain_line(line)
+		local rel, mark, from = tree.porcelain_line(line)
 		if mark == "ignored" then
-			if #st.ignored < M.MAX then
+			if #st.ignored < tree.MAX then
 				st.ignored[#st.ignored + 1] = st.top .. "/" .. rel
 			end
 		elseif rel and not (st.based and line:sub(1, 2) ~= "??") then
@@ -160,12 +160,12 @@ end
 
 local function parse_sizes(st, text, untracked)
 	for line in repo.each(text) do
-		local rel, a, d = M.numstat_line(line, untracked)
+		local rel, added, deleted = tree.numstat_line(line, untracked)
 		-- keyed by the short relative path: no absolute path is built or hashed per line
-		if rel and (a > 0 or d > 0) then
-			local e = st.byrel[rel] or st.files[st.under .. rel]
-			if e and not e.added then
-				e.added, e.removed = a, d
+		if rel and (added > 0 or deleted > 0) then
+			local entry = st.byrel[rel] or st.files[st.under .. rel]
+			if entry and not entry.added then
+				entry.added, entry.removed = added, deleted
 			end
 		end
 	end
@@ -175,7 +175,7 @@ local function state(files, ignored, top)
 	return {files = files, ignored = ignored, top = top, under = top .. "/", count = 0, byrel = {}, based = false, full = false}
 end
 
-function M.parse(files, ignored, top, out)
+function tree.parse(files, ignored, top, out)
 	local st = state(files, ignored, top)
 	if out.base then
 		parse_base(st, out.base)
@@ -195,18 +195,18 @@ local function run(job, spec, partial)
 		return ""
 	end
 	job.proc = proc
-	local r = proc:wait()
+	local result = proc:wait()
 	job.proc = nil
 	if job.cancelled then
 		return nil
 	end
-	return (r.code == 0 or partial) and r.stdout or "", r.code == 0
+	return (result.code == 0 or partial) and result.stdout or "", result.code == 0
 end
 
 local function git(job, top, args)
 	local argv = {"git", "-C", top, "-c", "core.quotePath=false"}
-	for _, a in ipairs(args) do
-		argv[#argv + 1] = a
+	for _, arg in ipairs(args) do
+		argv[#argv + 1] = arg
 	end
 	return run(job, {argv = argv, cwd = top})
 end
@@ -225,7 +225,7 @@ local function repos(root, job)
 	return out
 end
 
-function M.scan(root, base, job)
+function tree.scan(root, base, job)
 	local files, ignored, full, count, failed = {}, {}, false, 0, false
 	local tops = repos(root, job)
 	for _, top in ipairs(tops) do
@@ -275,96 +275,96 @@ local function tick(i, stop)
 	return false
 end
 
-local function parent(p)
-	return p:match("^(.+)/[^/]*$") or p
+local function parent(path)
+	return path:match("^(.+)/[^/]*$") or path
 end
 
-function M.compare(a, b, stop)
-	local n, fields = 0, false
-	for path, f in pairs(a.files) do
-		local g = b.files[path]
-		if not g or (g.mark == "deleted") ~= (f.mark == "deleted") then
+function tree.compare(old, new, stop)
+	local count, fields = 0, false
+	for path, file in pairs(old.files) do
+		local other = new.files[path]
+		if not other or (other.mark == "deleted") ~= (file.mark == "deleted") then
 			return "paths"
 		end
-		fields = fields or g.mark ~= f.mark or g.from ~= f.from or g.added ~= f.added or g.removed ~= f.removed
-		n = n + 1
-		if tick(n, stop) then
+		fields = fields or other.mark ~= file.mark or other.from ~= file.from or other.added ~= file.added or other.removed ~= file.removed
+		count = count + 1
+		if tick(count, stop) then
 			return nil
 		end
 	end
-	for _ in pairs(b.files) do
-		n = n - 1
+	for _ in pairs(new.files) do
+		count = count - 1
 	end
-	if n ~= 0 then
+	if count ~= 0 then
 		return "paths"
 	end
-	fields = fields or #a.ignored ~= #b.ignored
-	for i, p in ipairs(a.ignored) do
-		fields = fields or b.ignored[i] ~= p
+	fields = fields or #old.ignored ~= #new.ignored
+	for i, ignored_path in ipairs(old.ignored) do
+		fields = fields or new.ignored[i] ~= ignored_path
 	end
 	return fields and "fields" or "same"
 end
 
-function M.view(files, ignored, stop)
+function tree.view(files, ignored, stop)
 	local marks, changed, gone = {}, {}, {}
 	local under = qed.root() .. "/"
 	local function set(path, mark)
-		local e = marks[path]
-		if not e then
+		local entry = marks[path]
+		if not entry then
 			marks[path] = {bar = BAR[mark]}
 			return false
 		end
-		if BAR_RANK[e.bar] >= RANK[mark] then
+		if BAR_RANK[entry.bar] >= RANK[mark] then
 			return true
 		end
-		e.bar = BAR[mark]
+		entry.bar = BAR[mark]
 		return false
 	end
-	local n = 0
-	for path, f in pairs(files) do
-		set(path, f.mark)
+	local count = 0
+	for path, file in pairs(files) do
+		set(path, file.mark)
 		changed[#changed + 1] = path
-		if f.mark == "deleted" then
+		if file.mark == "deleted" then
 			gone[#gone + 1] = path
 		end
-		local up, p = f.mark == "deleted" and "modified" or f.mark, path
+		local up, ancestor = file.mark == "deleted" and "modified" or file.mark, path
 		-- every ancestor at least as long as under shares the prefix, so it is checked once
-		local inside = p:find(under, 1, true) == 1
-		while inside and #p >= #under do
-			local np = parent(p)
-			if np == p or set(np, up) then
+		local inside = ancestor:find(under, 1, true) == 1
+		while inside and #ancestor >= #under do
+			local np = parent(ancestor)
+			if np == ancestor or set(np, up) then
 				break
 			end
-			p = np
+			ancestor = np
 		end
-		n = n + 1
-		if tick(n, stop) then
+		count = count + 1
+		if tick(count, stop) then
 			return nil
 		end
 	end
 	local icon = qed.theme.icon("tree_renamed")
-	for path, f in pairs(files) do
-		local e = marks[path]
-		if e.bar == "git_deleted" and not qed.fs.exists(path, {follow = false}) then
-			e.fg = "git_deleted"
+	for path, file in pairs(files) do
+		local entry = marks[path]
+		if entry.bar == "git_deleted" and not qed.fs.exists(path, {follow = false}) then
+			entry.fg = "git_deleted"
 		end
-		if f.from then
-			e.suffix = icon .. " " .. (qed.path.rel(f.from, qed.path.dir(path)) or f.from)
+		if file.from then
+			entry.suffix = icon .. " " .. (qed.path.rel(file.from, qed.path.dir(path)) or file.from)
 		end
-		if (f.added or 0) > 0 or (f.removed or 0) > 0 then
-			e.added, e.removed = f.added or 0, f.removed or 0
+		if (file.added or 0) > 0 or (file.removed or 0) > 0 then
+			entry.added, entry.removed = file.added or 0, file.removed or 0
 		end
-		n = n + 1
-		if tick(n, stop) then
+		count = count + 1
+		if tick(count, stop) then
 			return nil
 		end
 	end
 	for _, path in ipairs(ignored) do
-		local e = marks[path] or {}
-		e.dim = true
-		marks[path] = e
+		local entry = marks[path] or {}
+		entry.dim = true
+		marks[path] = entry
 	end
 	return {marks = marks, changed = changed, deleted = gone}
 end
 
-return M
+return tree
