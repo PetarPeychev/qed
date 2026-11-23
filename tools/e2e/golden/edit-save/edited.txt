@@ -22,7 +22,7 @@ qed-e2e snapshot 80x24 cursor 3,3
 
 
 
- hello.txt ●                                                           4:1 text
+ ● hello.txt                                                           4:1 text
 
 -- style
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -47,12 +47,12 @@ aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-ddddddddddeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddfffff
+ddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffff
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#f4f4ff bg=#181818
 c fg=#d8d8d8 bg=#1b1b1b
-d fg=#f4f4ff bg=#2b2b2b
-e fg=#ffdd33 bg=#2b2b2b
+d fg=#ffdd33 bg=#2b2b2b
+e fg=#f4f4ff bg=#2b2b2b
 f fg=#686868 bg=#2b2b2b

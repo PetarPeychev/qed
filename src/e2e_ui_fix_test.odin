@@ -91,10 +91,17 @@ return {setup = function()
 		raises(function() qed.on("startup", function() end) end, "qed:on")
 		check(field.text and field.close and not field.create and not field.list, "buffer objects carry per-buffer methods only")
 		check(field:close() == true and not qed.buf.valid(field.id), "buffer:close frees an internal buffer")
+		local probe = ui.mount("pane", ui.text{scope = "no_such_scope", "x"})
+		probe:unmount()
 		qed.message("fixes ok")
 	end}
 end}`)
 	testing.expect_value(t, message, "fixes ok")
+	warned := false
+	for entry in e.ed.log {
+		warned ||= entry.text == "scope 'no_such_scope' has no commands"
+	}
+	testing.expect(t, warned, "an unknown scope warns")
 }
 
 @(test)

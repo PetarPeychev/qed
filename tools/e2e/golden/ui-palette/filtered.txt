@@ -5,17 +5,17 @@ qed-e2e snapshot 80x24 cursor 14,4
    across the field, past the barn, over the hill, and far beyond the river
    until┌─ Command Palette ────────────────────────────────────────────┐
  3      │> tog                                                         │
-        │ Toggle Comment                                       Ctrl+/  │
-        │ Toggle Line Wrap                                             │
-        │ AI: Toggle Inline Completion                                 │
-        │ Terminal: Toggle                                      Alt+t  │
-        │ Settings: Open Config                                        │
-        │ Git: Toggle Diff View                                        │
+        │ Toggle Comment                                       Ctrl+/ ┃│
+        │ Toggle Line Wrap                                            ┃│
+        │ AI: Toggle Inline Completion                                ┃│
+        │ Terminal: Toggle                                      Alt+t ┃│
+        │ Settings: Open Config                                       ┃│
+        │ Git: Toggle Diff View                                       ┃│
         │ Format: Toggle on Save                                       │
         │ Format: Toggle Trim Whitespace on Save                       │
-        │ Format: Toggle Final Newline on Save                         │
-        │ Git: Previous Change                                  Alt+;  │
         └──────────────────────────────────────────────────────────────┘
+
+
 
 
 
@@ -38,9 +38,9 @@ aaabbbbbccccgcccccccgcccccccccgcccccccccccccccccccccccccccccccccccccchccbbbbbbbb
 aaabbbbbccccgcccggccccccccccccccccccccccccccccccccccccccccccccccccccchccbbbbbbbb
 aaabbbbbcccccccgcccggcccccccccccccccccccccccccccccccccccccccccccccccchccbbbbbbbb
 aaabbbbbcccccccgcccggcccccccccccccccccccccccccccccccccccccccccccccccchccbbbbbbbb
-aaabbbbbcccccccgcccggcccccccccccccccccccccccccccccccccccccccccccccccchccbbbbbbbb
-aaabbbbbccccgcccccccgcccccccgccccccccccccccccccccccccccccccccccchhhhhhccbbbbbbbb
 aaabbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbbbbbbb
+aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
