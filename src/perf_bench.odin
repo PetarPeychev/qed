@@ -558,9 +558,7 @@ bench_filetree_walk :: proc(t: ^testing.T) {
 		start := time.tick_now()
 		walk_run(&admit, root, &out, threads)
 		fmt.eprintfln("filetree_walk %s (%s): %.2f ms, %d candidates", root, label, ms_since(start), len(out))
-		for e in out {
-			delete(e.path)
-		}
+		walk_entries_free(&out)
 		delete(out)
 	}
 

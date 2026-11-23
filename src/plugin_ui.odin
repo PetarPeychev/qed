@@ -85,16 +85,6 @@ plugin_prelude_install :: proc(L: ^lua.State) {
 
 QED_BUFFER_OBJECT :: "qed.buffer_object"
 
-api_buffer_object_push :: proc(L: ^lua.State, id: u64) {
-	if lua.getfield(L, lua.REGISTRYINDEX, QED_BUFFER_OBJECT) != .FUNCTION {
-		lua.pop(L, 1)
-		lua.pushinteger(L, lua.Integer(id))
-		return
-	}
-	lua.pushinteger(L, lua.Integer(id))
-	lua.call(L, 1, 1)
-}
-
 plugin_list_free :: proc(p: ^Plugins, i: int) {
 	list_source_free(&p.lists[i].src)
 	ordered_remove(&p.lists, i)

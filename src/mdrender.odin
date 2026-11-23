@@ -1270,33 +1270,6 @@ md_emit :: proc(r: ^MdRender, content: []MdSpan, fill: rune = 0, fill_fg: tb2.Co
 	append(&r.out, MdLine{spans = out, fill = fill, fill_fg = fill_fg, fill_bg = fill_bg, src = r.src, block = r.block})
 }
 
-// rendered lines run in source order: find the block holding src, then its first line from the closest row at or above src
-md_line_of_src :: proc(lines: []MdLine, src: int) -> int {
-	block := -1
-	for line in lines {
-		if line.block > src {
-			break
-		}
-		block = line.block
-	}
-	first, at, best := -1, 0, -1
-	for line, i in lines {
-		if line.block > block {
-			break
-		}
-		if line.block != block {
-			continue
-		}
-		if first < 0 {
-			first = i
-		}
-		if line.src <= src && line.src > best {
-			at, best = i, line.src
-		}
-	}
-	return at if best >= 0 else max(first, 0)
-}
-
 md_emit_blank :: proc(r: ^MdRender) {
 	spans := md_prefix_spans(r, false)
 	for len(spans) > 0 {

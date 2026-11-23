@@ -355,6 +355,8 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		if wheel {
 			state := ui_node_state(ui, node)
 			state.offset = max(state.offset + step, 0)
+			// layout recomputes it; left set, `follow` would snap the view back to the end
+			state.at_end = false
 			return true
 		}
 	case .Editor:

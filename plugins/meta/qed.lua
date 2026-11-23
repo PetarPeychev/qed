@@ -21,7 +21,7 @@
 ---@field when? fun(ctx: qed.Ctx): boolean
 ---@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`; a bare key (`"x"`) is allowed outside the editor scope and fires only in a pane without fields
 ---@field bind_from? string without `key`: take the bind of this core command (e.g. `"Copy"`), re-read at every rebind so it follows that command's config
----@field scope? string `"global"` (default), a core pane's scope (`"log"`, `"plugins"`), a `qed.ui.open{scope}` (the file tree's is `"filetree"`) or a `qed.ui` node scope: the command runs on its chord while focus is inside a node or pane of that scope
+---@field scope? string `"global"` (default), or a `qed.ui` node scope (`"log"`, `"filetree"`, ...): the command runs on its chord while focus is inside a node or pane of that scope
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
 ---@field keybind? string the key in `plugins.<id>.keybinds`, default `name`; commands sharing it share the bind and the first `key` among them
 
@@ -346,18 +346,12 @@ function qed.defer(ms, fn) end
 ---@return qed.Timer
 function qed.every(ms, fn) end
 
----@class qed.UiItem
+---@class qed.PickItem
 ---@field label? string defaults to `path`
 ---@field detail? string shown dim, right-aligned
----@field value? any carried through untouched
----@field path? string previewed by a split pane with `preview = "auto"`; a `qed.pick` item with a path switches it to the list + file preview layout
+---@field path? string switches `qed.pick` to the list + file preview layout
 ---@field pos? qed.Pos preview focus row (and column)
----@field buf? qed.Buf previewed live from this open buffer (unsaved edits included) instead of `path`
----@field key? string identity for `View:update`, `View:marks` and for restoring the selection by `id` (default `label`; a walk item's is its path)
----@field cells? string[] one string per `list.columns` entry
----@field dir? boolean walk items: a directory
----@field depth? integer walk items: tree depth (0 at the root)
----Other fields of a Lua item are kept: `activate`, `change` and `ctx.items` hand back the same table.
+---Other fields are kept: the pick returns the same table.
 
 ---@alias qed.PaneLine string|{text: string, color?: string} color is a theme color key, e.g. `"error_foreground"`
 
@@ -648,15 +642,15 @@ qed.fuzzy = {}
 function qed.fuzzy.list(source, spec) end
 
 ---@class qed.PickSpec
----@field items (string|qed.UiItem)[]
+---@field items (string|qed.PickItem)[]
 ---@field prompt? string replaces the `>` prefix
 ---@field selected? integer|string item index or label to start on
----@field on? {change?: fun(_: nil, item: string|qed.UiItem)} the highlighted item changed (live preview); the first argument is always nil
+---@field on? {change?: fun(_: nil, item: string|qed.PickItem)} the highlighted item changed (live preview); the first argument is always nil
 
 ---Waits for a fuzzy pick (the bundled `dialog` plugin, on qed.ui). Returns the chosen item (the value passed in), or `nil` on Esc. Items with a `path` get a list + read-only file preview (centered on `pos.row`). `on.change(nil, item)` runs on every move.
 ---The opening command's chord closes it like Esc. Stacks on an open pane or overlay (outside a user's command only on the plugin's own pane, or from a view's `activate` on that view and its children); otherwise `nil, "busy"` only while a quit, close or conflict dialog shows.
 ---@param spec qed.PickSpec
----@return string|qed.UiItem|nil
+---@return string|qed.PickItem|nil
 ---@return "busy"|nil err
 function qed.pick(spec) end
 

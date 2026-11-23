@@ -108,10 +108,3 @@ test_status_fit_clips_undroppable_plugin_segment :: proc(t: ^testing.T) {
 	status_fit(left[:], right[:], 12)
 	testing.expect(t, status_overflow(left[:], right[:], 12) <= 0, "segments too narrow to clip hide")
 }
-
-@(test)
-test_cell_clip_wide_at_edge :: proc(t: ^testing.T) {
-	testing.expect_value(t, cell_clip("abcde中f", 5), "abcd…")
-	testing.expect_value(t, cell_clip("abc中", 4), "abc…")
-	testing.expect_value(t, cell_clip("abcdefgh", 5), "abcd…")
-}

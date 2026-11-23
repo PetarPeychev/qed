@@ -124,3 +124,56 @@ e2e_log_outside_click_closes :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "Message Log") < 0, "an outside click closes it")
 }
+
+@(private = "file")
+log_click_text :: proc(e: ^E2E, text: string) -> bool {
+	y := e2e_ui_find_row(e, text)
+	if y < 0 {
+		return false
+	}
+	row := e2e_row_text(e, y)
+	x := strings.rune_count(row[:strings.index(row, text)])
+	e2e_mouse(e, x, y)
+	e2e_ui_settle(e)
+	return true
+}
+
+@(test)
+e2e_log_chips_click_persist_and_follow_binds :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	editor_log(&e.ed, .Debug, "LSP", "spawned ols", show = false)
+	log_open_now(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") < 0, "debug is off by default")
+	testing.expect(t, log_click_text(&e, "debug"), "the debug chip shows")
+	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") >= 0, "a chip click toggles its filter")
+	e2e_key(&e, .Esc)
+	log_open_now(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") >= 0, "filters persist across reopening")
+	e2e_key(&e, .Esc)
+	e2e_plugin_config(&e, "log", `{"keybinds": {"Toggle Debug": "F7"}}`)
+	log_open_now(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "F7 debug") >= 0, "the chip shows the rebound key")
+}
+
+@(test)
+e2e_log_wheel_unsticks_follow :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	for i in 0 ..< 200 {
+		editor_log(&e.ed, .Info, "", fmt.tprintf("entry %04d", i), show = false)
+	}
+	log_open_now(&e)
+	y := e2e_ui_find_row(&e, "entry 0199")
+	testing.expect(t, y >= 0, "opens at the end")
+	for _ in 0 ..< 5 {
+		e2e_mouse(&e, 20, y, .Mouse_Wheel_Up)
+	}
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "entry 0199") < 0, "the wheel scrolls up")
+	editor_log(&e.ed, .Info, "", "late arrival", show = false)
+	e2e_ui_settle(&e)
+	testing.expect(t, e2e_ui_find_row(&e, "late arrival") < 0, "scrolled up, a new entry does not pull the view down")
+}

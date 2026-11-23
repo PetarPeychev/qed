@@ -55,7 +55,6 @@ WalkPrewarm :: struct {
 	ignore:  map[string]bool,
 	root:    string,
 	staging: [dynamic]FileEntry,
-	heap:    runtime.Allocator,
 	gen:     u64,
 	active:  bool,
 	restart: bool,
@@ -86,7 +85,7 @@ WalkScope :: struct {
 
 walk_entries_free :: proc(entries: ^[dynamic]FileEntry) {
 	for e in entries {
-		delete(e.path)
+		delete(e.path, runtime.heap_allocator())
 	}
 	clear(entries)
 }
@@ -152,8 +151,9 @@ walk_worker :: proc(th: ^thread.Thread) {
 	}
 }
 
+// walker threads allocate the paths: the heap is thread safe where a caller's allocator need not be
 walk_run :: proc(a: ^WalkAdmit, root: string, out: ^[dynamic]FileEntry, threads := -1) {
-	heap := context.allocator
+	heap := runtime.heap_allocator()
 	top := make([dynamic]FileEntry, context.temp_allocator)
 	walk_top: {
 		dirp := posix.opendir(strings.clone_to_cstring(root, context.temp_allocator))
@@ -396,7 +396,6 @@ walk_prewarm :: proc(editor: ^Editor, w: ^Walk) {
 	walk_set_copy(&pw.ignore, w.ignore)
 	pw.admit = {dotfiles = w.dotfiles, ignored = w.ignored, ignore = &pw.ignore}
 	pw.root = strings.clone(w.root)
-	pw.heap = context.allocator
 	pw.gen = w.gen
 	pw.done, pw.restart, pw.active = false, false, true
 	pw.thread = thread.create(walk_prewarm_run)
@@ -406,8 +405,7 @@ walk_prewarm :: proc(editor: ^Editor, w: ^Walk) {
 
 walk_prewarm_run :: proc(th: ^thread.Thread) {
 	pw := (^WalkPrewarm)(th.data)
-	// staging is freed by the main thread, so clone with its allocator
-	context.allocator = pw.heap
+	context.allocator = runtime.heap_allocator()
 	walk_run(&pw.admit, pw.root, &pw.staging)
 	sync.atomic_store(&pw.done, true)
 }
@@ -620,7 +618,7 @@ walk_scope_cands :: proc(editor: ^Editor, w: ^Walk, s: ^WalkScope) -> []FileEntr
 		}
 		walk_entries_free(&s.cands)
 		for e in base {
-			append(&s.cands, FileEntry{strings.clone(e.path), "", 0, e.is_dir})
+			append(&s.cands, FileEntry{strings.clone(e.path, runtime.heap_allocator()), "", 0, e.is_dir})
 		}
 	} else {
 		w.walk_ms = 0
@@ -641,7 +639,7 @@ walk_scope_cands :: proc(editor: ^Editor, w: ^Walk, s: ^WalkScope) -> []FileEntr
 		for d in sc.virtual {
 			for p := d; strings.has_prefix(p, under) && !(p in seen) && !os.exists(p); p = path_parent(p) {
 				seen[p] = true
-				append(&s.cands, FileEntry{strings.clone(p), "", 0, p != d})
+				append(&s.cands, FileEntry{strings.clone(p, runtime.heap_allocator()), "", 0, p != d})
 			}
 		}
 	}
@@ -1254,7 +1252,6 @@ ListSource :: struct {
 	dirs_walk: ^Walk,
 	dirs_stales: u64,
 	pending:   map[string]bool,
-	keep:      string,
 	expanding: bool,
 	resume:    bool,
 }
@@ -1275,7 +1272,6 @@ list_source_free :: proc(s: ^ListSource) {
 	delete(s.dirs)
 	vmem.arena_destroy(&s.dirs_arena)
 	delete(s.pending)
-	delete(s.keep)
 	s^ = {}
 }
 
@@ -1300,54 +1296,6 @@ all_digits :: proc(s: string) -> bool {
 		}
 	}
 	return true
-}
-
-path_split :: proc(text: string) -> (base, term: string) {
-	idx := strings.last_index_byte(text, '/')
-	if idx < 0 {
-		return "", text
-	}
-	if idx == 0 {
-		return "/", text[1:]
-	}
-	return text[:idx], text[idx + 1:]
-}
-
-path_resolve :: proc(root, home, base: string, allocator := context.temp_allocator) -> string {
-	switch {
-	case base == "":
-		p, _ := filepath.clean(root, allocator)
-		return p
-	case base == "~":
-		p, _ := filepath.clean(home, allocator)
-		return p
-	case strings.has_prefix(base, "~/"):
-		p, _ := filepath.join({home, base[2:]}, allocator)
-		return p
-	case strings.has_prefix(base, "/"):
-		p, _ := filepath.clean(base, allocator)
-		return p
-	}
-	p, _ := filepath.join({root, base}, allocator)
-	return p
-}
-
-path_back :: proc(text, home: string) -> string {
-	trimmed := strings.trim_right(text, "/")
-	if trimmed == "" {
-		return "/"
-	}
-	if trimmed == "~" {
-		clean, _ := filepath.clean(home, context.temp_allocator)
-		parent := filepath.dir(clean)
-		return "/" if parent == "/" else fmt.tprintf("%s/", parent)
-	}
-	seg := trimmed[strings.last_index_byte(trimmed, '/') + 1:]
-	return text[:len(trimmed) - len(seg)]
-}
-
-path_prefix_match :: proc(name, term: string) -> bool {
-	return len(name) >= len(term) && find_eq(name[:len(term)], term, smart_case_insensitive(term))
 }
 
 path_under :: proc(path, root: string) -> bool {

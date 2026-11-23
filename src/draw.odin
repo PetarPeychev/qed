@@ -92,18 +92,6 @@ cell_put_cluster :: proc(x, y: int, cluster: []u8, fg, bg: tb2.Color) {
 	}
 }
 
-cell_clip :: proc(text: string, w: int) -> string {
-	if w <= 0 {
-		return ""
-	}
-	b := transmute([]u8)text
-	c := col_at_visual(b, w - 1)
-	if visual_width(b[:c]) > w - 1 {
-		c = col_at_visual(b, w - 2)
-	}
-	return fmt.tprintf("%s…", text[:c])
-}
-
 ev_motion :: proc(ev: tb2.Event) -> bool {
 	return (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
 }

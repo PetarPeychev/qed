@@ -167,16 +167,17 @@ task; `missing(path)` runs on Enter over a listed path missing on disk; `empty` 
 `filetree:refresh` when it opens and after its file operations.
 
 ### UI
+Panes, lists and fields are `qed.ui` node trees: see [ui.md](ui.md).
+
 | Function | Notes |
 |---|---|
 | `qed.message(text, level?)`, `qed.log(text, level?)` | Level last, default `"info"`. Always attributed to the plugin's display name. `qed.message("")` clears the message line. |
-| `on.activate(v, items)`, `on.change(v, item)`, `on.query(v, text)`, `on.close(v)` | Queued during input dispatch, run as tasks in the flush before the next frame. `change` coalesces per flush and kills the previous run; `query` runs at open and `PANE_QUERY_DEBOUNCE_MS` (120) after typing stops, killing the previous run and the `qed.spawn` it waits on (not `spawn_bg`); close kills both. Activate leaves the pane open. |
 | `qed.open_url(url) -> true \| nil, err` | Platform opener (macOS `open`, WSL `wslview` else `explorer.exe`, Linux `xdg-open`), detached; headless sessions only log `Open URL:` at Debug. |
 | `v:tab(i?, tabs?) -> i \| nil, "closed"` | The active tab; `i` switches without `on.tab`; `tabs` replaces the tab row first (validated before anything changes). |
 | ⏳ `v:wait() -> items \| nil, index \| nil, text \| nil` | The next activate (items, the first one's index, the first field's text) or the close (`nil, nil, text`). |
-| ⏳ `qed.pick{items, prompt?, selected?, on?} -> item \| nil` | The bundled `dialog` plugin's export (a qed.ui mount in the `alert` layer). Items with `path` get a list + `preview` split. `selected` is an item index or label; `on = {change}` runs on every highlight move (live preview). Esc or an outside click returns `nil`. |
-| ⏳ `qed.prompt{prompt, text?} -> string \| nil` | The `dialog` plugin: one input field. |
-| ⏳ `qed.confirm{question, choices?} -> index \| nil` | The `dialog` plugin: the question and a choice list; `choices` defaults to `{"Yes", "No"}`. |
+| `qed.pick{items, prompt?, selected?, on?} -> item \| nil` | The bundled `dialog` plugin's export (a qed.ui mount in the `alert` layer). Items with `path` get a list + `preview` split. `selected` is an item index or label; `on = {change}` runs on every highlight move (live preview). Esc or an outside click returns `nil`. |
+| `qed.prompt{prompt, text?} -> string \| nil` | The `dialog` plugin: one input field. |
+| `qed.confirm{question, choices?} -> index \| nil` | The `dialog` plugin: the question and a choice list; `choices` defaults to `{"Yes", "No"}`. |
 | `qed.status.set(id, {text, color?, side?, drop?, sep?})`, `qed.status.clear(id)` | Pushed segment, fitted by `status_fit`. `id` is per plugin; `set` replaces it in place. `text` is a string or a list of `{text, color?}` chunks, each painted in its color; `""` hides the segment but keeps its place. `sep` is the text before it (two spaces). A segment that still overflows once nothing is left to drop is clipped with `…`. `side` defaults to `left` (after the builtins and the `[n/m]` buffer counter); `early = true` puts a left segment before `[n/m]` and another plugin's base label (the git segments); `right` segments sit left of the builtins. `drop` defaults to 1 (among the first dropped); 0 is never dropped. Tabs and newlines become spaces. Cleared on unload. |
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |

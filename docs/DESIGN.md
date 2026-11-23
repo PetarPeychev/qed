@@ -151,13 +151,12 @@ draws `Source: text` and colours by level — `.Info` → `COLOR_FG`, `.Warn` �
 is never logged. The disk log lives at `$XDG_STATE_HOME/qed/qed.log` (append, flushed
 per write, rotated to `qed.log.old` past `LOG_ROTATE_BYTES` (4 MB) at session start and again mid-session,
 session-start marker with version);
-disk logging is skipped when `headless`. *Message Log: Open* (`Alt+l`) opens a
-full core pane (`log`, scope `log`, see Panes) over the ring through the `.Log` source:
-Time/Source/Message columns under a header, rows coloured by level (`sel_bg`), `follow` (sticks to the newest),
-arrow/wheel scroll + select, `Shift+↑↓` extends a contiguous selection, *Copy* copies it
-(newline-joined), `Enter` shows the selected entries in full, wrapped (child `log_entry`), and footer chips for the scoped *Message Log: Toggle Debug/Info/Warn/Error*
-(`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history off by
-default, kept for the session by the `log` plugin over `qed.messages`; seeded entries carry `LogEntry.seeded`).
+disk logging is skipped when `headless`. *Message Log: Open* (`Alt+l`) is the `log` plugin: a `qed.ui` box over
+`qed.messages` (a live core list of the ring): Time/Source/Message under a header, rows coloured by level, a `follow`
+scroll (sticks to the newest until the wheel moves it), the `list` scope's keys, `Shift+↑↓` extends a range
+(`extend_from`), *Copy* copies it (newline-joined), `Enter` shows the entry in full, wrapped, and clickable chips for
+the scoped *Message Log: Toggle Debug/Info/Warn/Error* (`d`/`i`/`w`/`e`) and *Toggle History* (`h`) (Debug and history
+off by default, kept for the session; seeded entries carry `LogEntry.seeded`).
 Timestamps render local wall-clock (`core:time/timezone`, lazy tzdb region, silent
 UTC fallback). At startup the ring seeds from the disk-log tail (parsed back,
 local→UTC via `datetime_to_utc`, never re-written), so the pane can show
@@ -683,19 +682,18 @@ menu, and a multi-line ghost floats the popup above the caret (`completion_rende
 
 ## Settings menu
 
-`plugins/settings/menu.lua`, *Settings: Open*: a `full` pane (`pane_max_width`) with
-Options (Key | Value) and Keybinds (Command | Chord) tabs over a filter field; each tab swaps `list.columns`
-(`v:set{columns}`). Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
+`plugins/settings/menu.lua`, *Settings: Open*: a centered `qed.ui` box (`pane_max_width`) with
+Options (Key | Value) and Keybinds (Command | Chord) tabs over a filter field and a `virtual_column` of rows. Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
 nested keys; `lsp.enabled`, `languages.go.lsp`), then per plugin `<id>.enabled` and every `qed.options` leaf as
-`<id>.<key>` (an object option's user-added keys too). The info strip (`v:info` from `on.change`) shows the selected
+`<id>.<key>` (an object option's user-added keys too). The info strip (rebuilt on the list's `on.state`) shows the selected
 option's description, from the embedded `config/schema.json` (`qed.config_schema`, completeness test-enforced) or the
 plugin's `qed.options` info, and its default; on Keybinds the command name, default chord and scope. Core keybinds show
 their config name. Values are
 the user config.json read from disk over the defaults; a row whose key the file sets gets a `git_modified` bar.
 Enter edits by the default's type: a bool toggles, choices (schema, info, the theme list) open a `qed.pick`, numbers,
-strings and lists (as JSON) edit in a footer input prefilled with the value and validated (whole number, `min`,
+strings and lists (as JSON) edit in an input row prefilled with the value and validated (whole number, `min`,
 list of strings; bad input writes nothing); a multi-line string is refused. Keybinds lists every command with a bind
-key (`qed.commands`), one row per shared key; Enter captures a chord (footer `chord` input), a single key is refused
+key (`qed.commands`), one row per shared key; Enter captures a chord (an input row), a single key is refused
 in the editor and tree scopes, and a chord another command holds in the same scope asks Cancel / Replace (Replace
 writes `""` for the other, or unsets it when its default is empty). Every edit writes one key with `qed.config_set`,
 or `config_unset` when it equals the default; *Settings: Reset* (`Ctrl+d`, scoped) unsets the selected row. The view
@@ -760,11 +758,13 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
 + undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
 defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
-`confirm` (quit/close/conflict safety dialogs as core-built `qed.ui` nodes in the alert layer) · `rename` (the LSP rename prompt, core-built) · `draw` (box, text and cell drawing helpers, `Rect`) · `log` (message ring + disk log + *Message Log: Open* pane) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `preview` (preview read limits, binary check, hexdump rows) · `palette` · `walk` (walk service, `qed.fs` writes) · `walk_tree` (`walk:tree()` list kind) · `fuzzy` ·
+`confirm` (quit/close/conflict safety dialogs as core-built `qed.ui` nodes in the alert layer) · `rename` (the LSP rename prompt, core-built) · `draw` (box, text and cell drawing helpers, `Rect`) · `log` (message ring + disk log) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `preview` (preview read limits, binary check, hexdump rows) · `palette` · `walk` (walk service, `qed.fs` writes) · `walk_tree` (`walk:tree()` list kind) · `fuzzy` ·
 `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (walk handles, `qed.theme`, `qed.status`) · `ui`/`ui_api`/`ui_input`/`ui_list`/`ui_lines`/`ui_markdown` (the `qed.ui` engine, lists, line lists, the markdown node) · `prelude.lua` (node constructors, `qed.markdown.parse`, `qed.ui.dismissable`, `qed.pick`/`prompt`/`confirm` forwarding to the `dialog` plugin) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
-Bundled Lua plugins live in `plugins/` at the repo root (`ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
+Bundled Lua plugins live in `plugins/` at the repo root (`layout/`: the default UI (main editor, status row, message
+line, welcome); `palette/`: the command palette; `dialog/`: `qed.pick`/`prompt`/`confirm`; `find/`: in-buffer
+find/replace bar; `log/`: the message log; `manager/`: the Plugins pane; `terminal/`: the terminal pane; `ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -842,7 +842,7 @@ rebind-aware pane self-close chords (`command_matches`), Debug-level internals
 instrumentation (startup context, subprocess/AI/FIM/save/config/clipboard/terminal trails,
 LSP request/response/diagnostics, completion counts, git branch + scan, disk reload/conflict —
 full AI prompt/response bodies logged at Debug, no env-var dumps), welcome screen, quit guard across
-modified buffers, pane model + stack (`qed.ui.open` plugin panes: center/full/split, filter/query/input/path fields, streaming lists, accessor-backed core list handles (`qed.fs.dirs`, `qed.buf.line_list`), pane-scoped commands with a scoped Ctrl+P, footer chips, queued events, exclusive panes keep their selection by `id` (never the field text); pick/prompt/confirm stack over open panes, safety dialogs on top; tabs, marks, footer input and tree lists over `qed.fs.walk` handles; `qed.fs.copy/rename/remove/mkdir`), command palette (a core pane over the commands source; context-filtered via
+modified buffers, the `qed.ui` node tree (layers, core leaves, scoped commands with a scoped Ctrl+P, the `list` scope's core navigation, live core lists: `qed.list`, `qed.fuzzy.list`, `buffer:line_list()`, `walk:tree()`, `qed.messages`); pick/prompt/confirm (the `dialog` plugin) in the `alert` layer, safety dialogs core-built; `qed.fs.copy/rename/remove/mkdir`), command palette (the `palette` plugin over `qed.commands()`; context-filtered via
 `command_available`: welcome lists only the working whitelist, big-file buffers
 hide the LSP/inspect commands),
 multiple buffers, close buffer (buffer switching folded into the file-tree **Open** tab —
@@ -852,7 +852,7 @@ confirm when any are unsaved; standalone switcher removed), find/replace in buff
 literal or regex `.*` toggle, smart-case `Aa` toggle, all matches highlighted +
 current shown as selection, `Enter`/arrows next/prev with wrap, `Alt+a` replace-all,
 single-line/per-line), fuzzy line jump (`goto` plugin, *Go to: Line* `Ctrl+G`, filter over the list column,
-matches in file order, a query extending the last one rescans only its hits; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui.open` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, `plugins.search.min_query`;
+matches in file order, a query extending the last one rescans only its hits; a `:N`/`:N:C` query is an exact line/column jump instead), project-wide search (`search` plugin: a `qed.ui` query pane, **debounced** parallel `rg --line-buffered` streamed into a key-sorted list as lines arrive, `plugins.search.min_query`;
 whole-project via `Alt+F`, or scoped to a file-tree selection via the tree's `Alt+F`; file-tree-style
 layout: left-half search box, full-height preview, match count (`N`, or `500+` when capped) by the divider),
 file tree (`filetree` plugin, see File tree: `Alt+f`/`Alt+o`/`Alt+u` open it on the All/Open/Unsaved tab and
@@ -943,8 +943,9 @@ source (`into itself`), special files (fifos, sockets, devices; skipped inside a
 an ancestor; they never follow symlinks (copied as links), stream file data through a fixed buffer, fall back to
 copy + remove only on `EXDEV` (keeping mtimes; a failed remove drops the copy and fails) and repath buffers.
 
-**File tree** (`plugins/filetree`, D1: not in the works-without-Lua set): a `split:tree` view (`id = "filetree"`,
-scope `filetree`, `toggle = false`, `jump_closes`) over a `qed.fs.walk` handle made at each open and toggle. Tabs are
+**File tree** (`plugins/filetree`, D1: not in the works-without-Lua set): a full-screen `qed.ui` box (`id = "filetree"`,
+scopes `filetree` and `list`): tab row, query field, a `virtual_column` over `walk:tree()` and a preview split
+(`split_tree_*`), over a `qed.fs.walk` handle made at each open and toggle; a jump closes it. Tabs are
 `within` handles (Open, Unsaved: buffer paths; an added tab: its `paths` plus `union` of its `virtual` ones); each
 tab's `cmd` is an editor command (*File Tree: All/Open/Unsaved*, *Git: Changes*), so a chord switches tabs and the
 active tab's closes. Other plugins reach the tree only through its exports (`qed.plugin("filetree")`): `set_tab{label,
@@ -952,16 +953,15 @@ paths, virtual?, cmd?, detail?, preview?, missing?}` adds or replaces the caller
 same `paths`/`virtual` tables keep the cached narrowed handle), `remove_tab(label)`, `set_marks(marks)` (shown on every
 tab; several callers merge, later id wins per path), `set_ignored(paths|false)` (fed to the walks' ignore set; `false`
 holds the prewarm), `open(label)` (the whole open, narrowed fill included, runs in the caller's task) and `dotfiles()` (the live dotfiles state the workspace picker follows). All of it is keyed by `qed.caller()` and dropped on `plugin_unloaded`; an export
-stores and defers one `sync` (`qed.defer(0)`), which updates the tab row in place (`v:tab(i, tabs)`), source, marks
-and preview. Marks go out with `v:marks` (suffix and sizes only on a `detail` tab), chips with `v:footer`, New:/Rename:
-as the footer input, delete and close confirms as `qed.confirm` children with their targets taken before the
+stores and defers one `sync` (`qed.defer(0)`), which rebuilds the tab row, source, marks and preview. Marks draw in
+the rows (suffix and sizes only on a `detail` tab), chips in a row under the list, New:/Rename: as an input row,
+delete and close confirms as `qed.confirm` children with their targets taken before the
 dialog; a tab with `preview` turns the auto preview off and calls it (pcall, in the tree's task) per item after an
-80 ms sleep in `change` (a newer change kills it, so a held arrow asks once; `change` is set only on that tab). Enter
+80 ms debounce on the list's `on.state` (a held arrow asks once). Enter
 on a listed path missing on disk calls the tab's `missing`. File operations emit `filetree:refresh`. Tree
 commands take the binds of the core *Copy*/*Cut*/*Paste*/*Close Buffer*/*Select All* through `bind_from`
 (`plugin_command_bind` reads the core command at every rebind). A status push is compared with the last one and
-marks are pushed in chunks with `qed.sleep(0)` between, narrowed handles are cached per tab and released when
-replaced, and a tab switch only flips `v:marks{detail}`. A root change reopens the view, back to each tab's default
+narrowed handles are cached per tab and released when replaced. A root change reopens the view, back to each tab's default
 expansion.
 
 **Git tab** (`plugins/git`): at `startup` and on `plugin_loaded("filetree")` git takes the tree's exports and

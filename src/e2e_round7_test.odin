@@ -319,3 +319,39 @@ e2e_round7_list_keys_keep_their_type :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(ft_lua(&e.ed, `r7_list:append{id = "four"}; return 0`), "all strings or all integers"), "mixed key types raise")
 	testing.expect(t, strings.contains(ft_lua(&e.ed, `qed.list.new{key = "id"}:append{id = 1.5}; return 0`), "integer key expected"), "a float key raises")
 }
+
+@(test)
+e2e_round7_bad_shapes_raise :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	Case :: struct {
+		tree, want: string,
+	}
+	cases := []Case {
+		{`qed.ui.column{bogus = 1}`, "unknown prop 'bogus'"},
+		{`qed.ui.box{qed.ui.text{"a"}, qed.ui.text{"b"}}`, "exactly one laid-out child expected, got 2"},
+		{`qed.ui.column{width = "wide"}`, "is not a size"},
+		{`qed.ui.column{width = 1.5}`, "whole cells expected"},
+		{`qed.ui.column{margin = "x"}`, "margin: a number"},
+		{`qed.ui.column{fg = 3}`, "theme color name expected"},
+		{`qed.ui.text{{fg = "pane_foreground", nope = 1, "a"}}`, "span: unknown field 'nope'"},
+		{`qed.ui.text{qed.ui.column{}}`, "not nodes"},
+		{`qed.ui.column{float = "air"}`, "float:"},
+		{`qed.ui.column{float = "screen", anchor = "middle"}`, "anchor: unknown 'middle'"},
+		{`qed.ui.row{align = "sideways"}`, "align:"},
+		{`qed.ui.column{scope = "editor"}`, "only goes on an editor node"},
+		{`qed.ui.column{on = {click = 1}}`, "on.click: function expected"},
+		{`qed.ui.column{on = {hover = function() end}}`, "unknown event 'hover'"},
+		{`qed.ui.column{qed.ui.text{key = "k", "a"}, qed.ui.text{key = "k", "b"}}`, "duplicate key 'k'"},
+		{`qed.ui.virtual_column{}`, "data and item expected"},
+		{`qed.ui.editor{}`, "editor: buffer expected"},
+		{`qed.ui.image{}`, "image: path expected"},
+		{`qed.ui.outlet{}`, "outlet: id expected"},
+		{`qed.ui.scroll{header = 1, qed.ui.text{"a"}}`, "header: node expected"},
+		{`{}`, "node expected"},
+	}
+	for c in cases {
+		got := ft_lua(&e.ed, fmt.tprintf(`local ok, err = pcall(qed.ui.mount, "pane", %s); return ok and "mounted" or tostring(err)`, c.tree))
+		testing.expectf(t, strings.contains(got, c.want), "%s: got %q, want %q", c.tree, got, c.want)
+	}
+}

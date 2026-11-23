@@ -1,5 +1,6 @@
 package main
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -45,7 +46,7 @@ walk_reference_set :: proc(root: string) -> map[string]bool {
 	walk_run(&admit, root, &out, 4)
 	set := rel_set(out[:], root)
 	for e in out {
-		delete(e.path)
+		delete(e.path, runtime.heap_allocator())
 	}
 	return set
 }
@@ -102,7 +103,7 @@ walk_gather :: proc(ft: ^WalkOpts, root: string, threads := 4) -> (rel: map[stri
 	for e in out {
 		r := strings.trim_prefix(strings.trim_prefix(e.path, root), "/")
 		rel[strings.clone(r, context.temp_allocator)] = e.is_dir
-		delete(e.path)
+		delete(e.path, runtime.heap_allocator())
 	}
 	return
 }

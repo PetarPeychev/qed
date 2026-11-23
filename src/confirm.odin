@@ -28,20 +28,6 @@ Safety :: struct {
 	handle:   u64,
 }
 
-safety_dialog :: proc(editor: ^Editor) -> string {
-	switch editor.safety.kind {
-	case .None:
-		return ""
-	case .Quit:
-		return "quit"
-	case .Close:
-		return "close"
-	case .Conflict:
-		return "conflict"
-	}
-	return ""
-}
-
 safety_open :: proc(editor: ^Editor) -> bool {
 	return editor.safety.kind != .None
 }

@@ -26,16 +26,6 @@ Command :: struct {
 	key_default: string,
 }
 
-command_run :: proc(editor: ^Editor, cmd: Command) {
-	if cmd.owner != "" {
-		plugin_command_run(editor, cmd)
-		return
-	}
-	if command_enabled(cmd) {
-		cmd.run(editor)
-	}
-}
-
 command_config_name :: proc(cmd: Command) -> string {
 	return cmd.config_name if cmd.config_name != "" else cmd.name
 }

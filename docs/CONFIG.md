@@ -337,7 +337,7 @@ name (`chat_command` is now `edit_command`), and the old `keybinds` entries (`AI
 A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool,
 `qed.parse_locations` turns `file:line:col: msg` output into `qed.pick` items (list
 with file preview), and `qed.jump` opens the file there. Panes with live data (a
-query field, streamed results) use `qed.ui.open`; `plugins/search` is the example. A plugin's own config keys
+query field, streamed results) are `qed.ui` node trees; `plugins/search` is the example. A plugin's own config keys
 come from `local cfg = qed.options{key = default}` in `setup`, overridden under
 `plugins.<id>`. The API reference with types is `plugins/meta/qed.lua`.
 

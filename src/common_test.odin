@@ -6,6 +6,9 @@ import "core:strconv"
 import "core:strings"
 import "core:sys/posix"
 import "core:time"
+import "core:unicode/utf8"
+import lua "lib:lua"
+import "lib:tb2"
 
 test_buffer :: proc(lines: ..string) -> Buffer {
 	b: Buffer
@@ -505,4 +508,97 @@ main_view :: proc(e: ^E2E) -> ^UiState {
 		return &empty
 	}
 	return ui_node_state(&e.ed.ui, node)
+}
+
+bind_format :: proc(ev: tb2.Event, allocator := context.temp_allocator) -> (string, bool) {
+	if ev.type != .Key {
+		return "", false
+	}
+	if ev.ch != 0 {
+		if ev_alt(ev) {
+			return fmt.aprintf("Alt+%c", ev.ch, allocator = allocator), true
+		}
+		if ev.ch > ' ' && ev.ch != utf8.RUNE_ERROR {
+			return fmt.aprintf("%c", ev.ch, allocator = allocator), true
+		}
+		return "", false
+	}
+	if ev_alt(ev) {
+		return "", false
+	}
+	#partial switch ev.key {
+	case .Ctrl_Tilde:
+		return "Ctrl+~", true
+	case .Ctrl_Slash:
+		return "Ctrl+/", true
+	case .Ctrl_Backslash:
+		return "Ctrl+\\", true
+	case .Tab, .Enter:
+		return "", false
+	}
+	if ev.key >= .Ctrl_A && ev.key <= .Ctrl_Z {
+		return fmt.aprintf("Ctrl+%c", 'a' + rune(ev.key) - 1, allocator = allocator), true
+	}
+	return "", false
+}
+
+// rendered lines run in source order: find the block holding src, then its first line from the closest row at or above src
+md_line_of_src :: proc(lines: []MdLine, src: int) -> int {
+	block := -1
+	for line in lines {
+		if line.block > src {
+			break
+		}
+		block = line.block
+	}
+	first, at, best := -1, 0, -1
+	for line, i in lines {
+		if line.block > block {
+			break
+		}
+		if line.block != block {
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		if line.src <= src && line.src > best {
+			at, best = i, line.src
+		}
+	}
+	return at if best >= 0 else max(first, 0)
+}
+
+command_run :: proc(editor: ^Editor, cmd: Command) {
+	if cmd.owner != "" {
+		plugin_command_run(editor, cmd)
+		return
+	}
+	if command_enabled(cmd) {
+		cmd.run(editor)
+	}
+}
+
+safety_dialog :: proc(editor: ^Editor) -> string {
+	switch editor.safety.kind {
+	case .None:
+		return ""
+	case .Quit:
+		return "quit"
+	case .Close:
+		return "close"
+	case .Conflict:
+		return "conflict"
+	}
+	return ""
+}
+
+api_buffer_object_push :: proc(L: ^lua.State, id: u64) {
+	if lua.getfield(L, lua.REGISTRYINDEX, QED_BUFFER_OBJECT) != .FUNCTION {
+		lua.pop(L, 1)
+		lua.pushinteger(L, lua.Integer(id))
+		return
+	}
+	lua.pushinteger(L, lua.Integer(id))
+	lua.call(L, 1, 1)
 }

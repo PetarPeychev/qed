@@ -745,7 +745,7 @@ ui_internal_load :: proc(editor: ^Editor, buffer: ^Buffer, path: string) {
 		// a fifo or device would block the read
 		text = ""
 	} else if data, read_ok := ui_preview_read(path); read_ok {
-		text = string(data)
+		text, _ = strings.replace_all(string(data), "\r\n", "\n", context.temp_allocator)
 	}
 	if data := transmute([]u8)text; preview_is_binary(data[:min(len(data), PREVIEW_HEX_BYTES * PREVIEW_MAX_LINES)]) {
 		sb := strings.builder_make(context.temp_allocator)
