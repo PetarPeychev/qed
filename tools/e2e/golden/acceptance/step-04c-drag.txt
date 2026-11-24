@@ -1,0 +1,103 @@
+qed-e2e snapshot 160x45 cursor 5,3
+-- text
+ 1 alpha beta gamma
+ 2┌─ File Tree ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ 3│ All │ Open │ Git │ Unsaved                                                                                                                               │
+ 4│> type to filter                                                                                                                                        4 │
+ 5│ ▸ proj                                                     │    1 line 1 with a few words                                                                │
+ 6│ ▸ src                                                      │    2 line 2 with a few words                                                                │
+ 7│   big.txt                                                  │    3 line 3 with a few words                                                                │
+ 8│   notes.txt ●                                              │    4 line 4 with a few words                                                                │
+  │                                                            │    5 line 5 with a few words                                                                │
+  │                                                            │    6 line 6 with a few words                                                                │
+  │                                                            │    7 line 7 with a few words                                                                │
+  │                                                            │    8 line 8 with a few words                                                                │
+  │                                                            │    9 line 9 with a few words                                                                │
+  │                                                            │   10 line 10 with a few words                                                               │
+  │                                                            │   11 line 11 with a few words                                                               │
+  │                                                            │   12 line 12 with a few words                                                               │
+  │                                                            │   13 line 13 with a few words                                                               │
+  │                                                            │   14 line 14 with a few words                                                               │
+  │                                                            │   15 line 15 with a few words                                                               │
+  │                                                            │   16 line 16 with a few words                                                               │
+  │                                                            │   17 line 17 with a few words                                                               │
+  │                                                            │   18 line 18 with a few words                                                               │
+  │                                                            │   19 line 19 with a few words                                                               │
+  │                                                            │   20 line 20 with a few words                                                               │
+  │                                                            │   21 line 21 with a few words                                                               │
+  │                                                            │   22 line 22 with a few words                                                               │
+  │                                                            │   23 line 23 with a few words                                                               │
+  │                                                            │   24 line 24 with a few words                                                               │
+  │                                                            │   25 line 25 with a few words                                                               │
+  │                                                            │   26 line 26 with a few words                                                               │
+  │                                                            │   27 line 27 with a few words                                                               │
+  │                                                            │   28 line 28 with a few words                                                               │
+  │                                                            │   29 line 29 with a few words                                                               │
+  │                                                            │   30 line 30 with a few words                                                               │
+  │                                                            │   31 line 31 with a few words                                                               │
+  │                                                            │   32 line 32 with a few words                                                               │
+  │                                                            │   33 line 33 with a few words                                                               │
+  │                                                            │   34 line 34 with a few words                                                               │
+  │                                                            │   35 line 35 with a few words                                                               │
+  │                                                            │   36 line 36 with a few words                                                               │
+  │                                                            │   37 line 37 with a few words                                                               │
+  │                                                            │   38 line 38 with a few words                                                               │
+  │ ←→ tabs  ↑↓ select  Shift+↑↓ extend  Enter open  Ctrl+P commands                                                                       ignored  dotfiles │
+ ≡└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘4
+
+-- style
+aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+aaccdddeeeeeeeeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+aacffeeeeeeeeeeeeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceecbb
+agchhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhciagggggccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+aachhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+aachhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+aaccfffffffffffffcccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccciaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
+bbceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceeeeeeeeeeeeeeeeeeecbb
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#f4f4ff bg=#181818
+c fg=#f4f4ff bg=#2b2b2b
+d fg=#ffdd33 bg=#2b2b2b bold
+e fg=#686868 bg=#2b2b2b
+f fg=#ffdd33 bg=#2b2b2b
+g fg=#d8d8d8 bg=#1b1b1b
+h fg=#f4f4ff bg=#4a4a4a
+i fg=#868686 bg=#2b2b2b

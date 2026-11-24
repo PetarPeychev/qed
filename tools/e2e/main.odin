@@ -60,6 +60,7 @@ Session :: struct {
 	stalled:        bool,
 	clock:          f64,
 	record:         strings.Builder,
+	snap_times:     strings.Builder,
 	utf8_tail:      [dynamic]u8,
 	truecolor_seen: bool,
 	tail:           [8]u8,
@@ -123,6 +124,7 @@ session_start :: proc(s: ^Session, qed: string, args: []string, env: []string, w
 	vterm.screen_reset(s.screen, 1)
 	s.cursor_visible = true
 	s.record = strings.builder_make()
+	s.snap_times = strings.builder_make()
 	fmt.sbprintf(&s.record, `{{"version": 2, "width": %d, "height": %d, "env": {{"TERM": "xterm-256color"}}}}`, w, h)
 	strings.write_byte(&s.record, '\n')
 	return true
@@ -138,6 +140,7 @@ session_stop :: proc(s: ^Session) {
 	posix.close(s.fd)
 	vterm.free(s.vt)
 	strings.builder_destroy(&s.record)
+	strings.builder_destroy(&s.snap_times)
 	delete(s.utf8_tail)
 }
 
@@ -283,9 +286,23 @@ session_text :: proc(s: ^Session, allocator := context.temp_allocator) -> []stri
 			}
 		}
 		row, _ := strings.replace_all(strings.trim_right(strings.to_string(sb), " "), sandbox_token, SANDBOX_MASK, allocator)
-		rows[y] = row
+		rows[y] = clock_mask(row)
 	}
 	return rows
+}
+
+// wall-clock times (the message log's HH:MM:SS) differ per run: goldens see a fixed mask
+clock_mask :: proc(row: string) -> string {
+	bytes := transmute([]u8)row
+	digit :: proc(b: u8) -> bool {return b >= '0' && b <= '9'}
+	for i := 0; i + 8 <= len(bytes); i += 1 {
+		window := bytes[i:i + 8]
+		if digit(window[0]) && digit(window[1]) && window[2] == ':' && digit(window[3]) && digit(window[4]) && window[5] == ':' && digit(window[6]) && digit(window[7]) {
+			copy(window, "HH:MM:SS")
+			i += 7
+		}
+	}
+	return row
 }
 
 session_contains :: proc(s: ^Session, text: string) -> bool {
@@ -532,7 +549,7 @@ scenario_parse :: proc(path: string) -> (sc: Scenario, ok: bool) {
 		case "requires":
 			append(&sc.requires, ..step.args)
 			continue
-		case "file", "config", "expect-file":
+		case "file", "home-file", "config", "expect-file":
 			sb := strings.builder_make()
 			i += 1
 			for i < len(lines) && strings.trim_right(lines[i], "\r") != "end" {
@@ -606,6 +623,12 @@ session_key :: proc(s: ^Session, name: string) -> bool {
 		named = .PageUp
 	case "pgdn":
 		named = .PageDown
+	}
+	// libvterm's VTERM_KEY_FUNCTION(n) is 256 + n
+	if len(key) >= 2 && key[0] == 'f' {
+		if n, ok := strconv.parse_int(key[1:]); ok && n >= 1 && n <= 12 {
+			named = vterm.Key(256 + n)
+		}
 	}
 	if named != .None {
 		vterm.keyboard_key(s.vt, named, mod)
@@ -747,7 +770,7 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 	defer if s.vt != nil {session_stop(&s)}
 	timeout := 5000.0
 	for step in sc.steps {
-		if s.vt != nil && (s.exited || s.stalled) {
+		if s.vt != nil && (s.exited || s.stalled) && step.op != "expect-file" && step.op != "expect-exit" {
 			scenario_fail(run, sc, step, &s, "qed exited unexpectedly" if s.exited else "qed stopped reading input")
 			return false
 		}
@@ -758,6 +781,36 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			_ = os.write_entire_file(path, step.body)
 		case "config":
 			_ = os.write_entire_file(fmt.tprintf("%s/.config/qed/config.json", home_dir), step.body)
+		case "home-file":
+			// a file under the sandbox HOME (a user plugin, say); never the real home
+			path := fmt.tprintf("%s/%s", home_dir, step.rest)
+			os.make_directory_all(filepath.dir(path))
+			_ = os.write_entire_file(path, step.body)
+		case "wheel":
+			if len(step.args) < 3 {
+				scenario_fail(run, sc, step, &s, "wheel needs X Y up|down [count]")
+				return false
+			}
+			x, y := int_parse(step.args[0]), int_parse(step.args[1])
+			button := c.int(4 if step.args[2] == "up" else 5)
+			count := max(1, int_parse(step.args[3]) if len(step.args) > 3 else 1)
+			vterm.mouse_move(s.vt, c.int(y), c.int(x), vterm.MOD_NONE)
+			for _ in 0 ..< count {
+				s.clock += 0.1
+				vterm.mouse_button(s.vt, button, true, vterm.MOD_NONE)
+				session_flush_output(&s)
+				session_pump(&s, 10, 100)
+			}
+			session_settle(&s, KEY_QUIET_MS)
+		case "expect-exit":
+			start := time.tick_now()
+			for !s.exited {
+				if tick_elapsed(start) > timeout {
+					scenario_fail(run, sc, step, &s, "timed out: expect-exit")
+					return false
+				}
+				session_pump(&s, 20, 50)
+			}
 		case "timeout":
 			timeout = f64(int_parse(step.rest))
 		case "run":
@@ -775,6 +828,16 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			for !session_contains(&s, step.rest) {
 				if tick_elapsed(start) > timeout || s.exited {
 					scenario_fail(run, sc, step, &s, fmt.tprintf("timed out: wait %q", step.rest))
+					return false
+				}
+				session_pump(&s, 20, 50)
+			}
+			session_settle(&s, KEY_QUIET_MS)
+		case "wait-gone":
+			start := time.tick_now()
+			for session_contains(&s, step.rest) {
+				if tick_elapsed(start) > timeout || s.exited {
+					scenario_fail(run, sc, step, &s, fmt.tprintf("timed out: wait-gone %q", step.rest))
 					return false
 				}
 				session_pump(&s, 20, 50)
@@ -857,6 +920,7 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 	if run.mode == .Demo && s.vt != nil {
 		path := fmt.tprintf("%s/%s.cast", run.out, sc.name)
 		_ = os.write_entire_file(path, strings.to_string(s.record))
+		_ = os.write_entire_file(fmt.tprintf("%s/%s.snaps", run.out, sc.name), strings.to_string(s.snap_times))
 		fmt.printfln("  cast %s", path)
 	}
 	if s.vt != nil && s.truecolor_seen && !run.colorterm {
@@ -913,6 +977,8 @@ snap_step :: proc(run: ^Run, sc: ^Scenario, step: Step, s: ^Session) -> bool {
 			return true
 		}
 	case .Demo:
+		// the recording's time at each snap, so a frame per step can be cut from the cast
+		fmt.sbprintf(&s.snap_times, "%.3f %s\n", s.clock, name)
 		s.clock += 1.5
 	case .Matrix:
 		os.make_directory_all(out_dir)

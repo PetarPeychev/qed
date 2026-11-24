@@ -43,8 +43,11 @@ Closing a ticket has a fixed sequence:
    run `./qed` to test, never rebuild himself. A user-visible feature or plugin
    also gets an e2e scenario (`tools/e2e/scenarios/`) and its demo GIF
    (`tools/e2e.sh demo`), so he can see it before running it.
-2. Tell him exactly what to **test manually** (a concrete checklist), then prompt
-   him to confirm.
+2. The proof is an **acceptance recording**, not a manual checklist: one e2e
+   scenario that walks every user-visible behaviour of the change in order, with
+   an assertion and a golden snap per step. Its GIF is what Petar watches. List
+   manual steps only for what the harness can't drive (the real Windows Terminal,
+   the clipboard, images in his terminal), briefly, then prompt him to confirm.
 3. **Only after Petar verifies it** — never self-check first — *you* remove the
    item from `docs/TODO.md`, update DESIGN.md (Shipped list / architecture) if it
    changed anything, then commit & push (direct to `master`), then tag the release

@@ -1,0 +1,111 @@
+qed-e2e snapshot 160x45 cursor 23,3
+-- text
+ 11  * Doc line 8: the helper combines its two operands.
+ 12  * Doc line 9: t┌─ Settings ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ 13  * Doc line 10: │ Options  Keybinds   Tab switches                                                                                     │
+ 14  * Doc line 11: │> type to filter                                                                                                      │
+ 15  * Doc line 12: │ Key                            Value                                                                                 │
+ 16  * Doc line 13: │ alt_esc_timeout_ms             25                                                                                   ┃│
+ 17  * Doc line 14: │ auto_close_pairs               true                                                                                 ┃│
+ 18  * Doc line 15: │ big_file_bytes                 2097152                                                                              ┃│
+ 19  * Doc line 16: │ cursor_accel                   true                                                                                 ┃│
+ 20  * Doc line 17: │ cursor_accel_interval_ms       55                                                                                   ┃│
+ 21  * Doc line 18: │ cursor_accel_max_step          6                                                                                    ┃│
+ 22  * Doc line 19: │ cursor_accel_ramp_presses      20                                                                                   ┃│
+ 23  * Doc line 20: │ diff_view                      false                                                                                ┃│
+ 24  * Doc line 21: │ double_click_ms                400                                                                                  ┃│
+ 25  * Doc line 22: │ image_max_rows                 24                                                                                   ┃│
+ 26  * Doc line 23: │ image_protocol                 auto                                                                                 ┃│
+ 27  * Doc line 24: │ jump_threshold                 10                                                                                    │
+ 28  * Doc line 25: │▎line_wrap                      false                                                                                 │
+ 29  * Doc line 26: │ pane_max_width                 120                                                                                   │
+ 30  * Doc line 27: │ picker_max_rows                8                                                                                     │
+ 31  * Doc line 28: │ picker_width                   64                                                                                    │
+ 32  * Doc line 29: │ plugin_command_max_ms          5000                                                                                  │
+ 33  * Doc line 30: │ plugin_hook_timeout_ms         2000                                                                                  │
+ 34  * Doc line 31: │ plugin_memory_mb               256                                                                                   │
+ 35  * Doc line 32: │ plugin_slice_max_ms            1000                                                                                  │
+ 36  * Doc line 33: │ preview_diff_context           3                                                                                     │
+ 37  * Doc line 34: │ scroll_margin                  3                                                                                     │
+ 38  * Doc line 35: │ split_code_max_width           100                                                                                   │
+ 39  * Doc line 36: │ split_code_min_width           50                                                                                    │
+ 40  * Doc line 37: │ split_tree_max_width           60                                                                                    │
+ 41  * Doc line 38: │ split_tree_min_width           30                                                                                    │
+ 42  * Doc line 39: │ tab_width                      4                                                                                     │
+ 43  * Doc line 40: │ theme                          default                                                                               │
+ 44  */             │ wheel_scroll_lines             3                                                                                     │
+ 45 int add(int a, i│ languages.c.lsp                clangd                                                                                │
+ 46                 │ languages.c.patterns           ["*.c","*.h"]                                                                         │
+ 47 int main(void) {│ languages.cpp.lsp              clangd                                                                                │
+ 48     int x = add(│ languages.cpp.patterns         ["*.cpp","*.cc","*.cxx","*.hpp","*.hh"]                                               │
+ 49›    add         │ languages.css.lsp              vscode-css-language-server --stdio                                                    │
+ 50»    printf("%d\n│ languages.css.patterns         ["*.css"]                                                                             │
+ 51     return x;   │ languages.dockerfile.lsp       docker-langserver --stdio                                                             │
+ 52 }               │ Wait after Esc for a key to read as Alt+key. Default: 25                                                             │
+ 53                 │ Enter edit  Ctrl+d reset                                                                                             │
+ ≡ proj/main.c ●  50└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘ clangd  ⇥ Spaces:1
+
+-- style
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbddeeeeeeeddffffffffdffffffffffffffddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdggffffffffffffffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhdddddddddddddddddddddddddddhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbcccccccccccccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaajjjcccccjjjccccjdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccccccccccccccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaajjjccccccjjjjcccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccjjjcccccccccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+akkkcccclllcccccccccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+ammmccccnnnnnncooooodgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccppppppccccccdgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccccccccccccccddffffffffffffffffffffffffffffffffffffffffffffffffffffffffddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccccccccccccccdfffffffffffffqqqqqqffffffddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#cc8c3c bg=#181818
+c fg=#f4f4ff bg=#181818
+d fg=#f4f4ff bg=#2b2b2b
+e fg=#ffdd33 bg=#2b2b2b bold
+f fg=#686868 bg=#2b2b2b
+g fg=#ffdd33 bg=#2b2b2b
+h fg=#f4f4ff bg=#2b2b2b bold
+i fg=#f4f4ff bg=#4a4a4a
+j fg=#96a6c8 bg=#181818
+k fg=#ffdd33 bg=#1b1b1b
+l fg=#96a6c8 bg=#181818 underline
+m fg=#f43841 bg=#1b1b1b
+n fg=#f4f4ff bg=#181818 underline
+o fg=#73c936 bg=#181818
+p fg=#ffdd33 bg=#181818
+q fg=#868686 bg=#2b2b2b

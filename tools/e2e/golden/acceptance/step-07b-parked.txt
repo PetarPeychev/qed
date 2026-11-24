@@ -1,0 +1,111 @@
+qed-e2e snapshot 160x45 cursor hidden
+-- text
+ 11  * Doc line 8: the helper combines its two operands.
+ 12  * Doc line 9: t┌─ Message Log ────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ 13  * Doc line 10: │Time     Source      Message                                                                                          │
+ 14  * Doc line 11: │HH:MM:SS             Saved                                                                                           ┃│
+ 15  * Doc line 12: │HH:MM:SS             Line wrap: on                                                                                   ┃│
+ 16  * Doc line 13: │HH:MM:SS             Working directory: /tmp/qed-e2e-XXXXXX/root/proj                                                ┃│
+ 17  * Doc line 14: │HH:MM:SS Burst       burst 01                                                                                        ┃│
+ 18  * Doc line 15: │HH:MM:SS Burst       burst 02                                                                                        ┃│
+ 19  * Doc line 16: │HH:MM:SS Burst       burst 03                                                                                        ┃│
+ 20  * Doc line 17: │HH:MM:SS Burst       burst 04                                                                                        ┃│
+ 21  * Doc line 18: │HH:MM:SS Burst       burst 05                                                                                        ┃│
+ 22  * Doc line 19: │HH:MM:SS Burst       burst 06                                                                                        ┃│
+ 23  * Doc line 20: │HH:MM:SS Burst       burst 07                                                                                        ┃│
+ 24  * Doc line 21: │HH:MM:SS Burst       burst 08                                                                                        ┃│
+ 25  * Doc line 22: │HH:MM:SS Burst       burst 09                                                                                        ┃│
+ 26  * Doc line 23: │HH:MM:SS Burst       burst 10                                                                                        ┃│
+ 27  * Doc line 24: │HH:MM:SS Burst       burst 11                                                                                        ┃│
+ 28  * Doc line 25: │HH:MM:SS Burst       burst 12                                                                                        ┃│
+ 29  * Doc line 26: │HH:MM:SS Burst       burst 13                                                                                        ┃│
+ 30  * Doc line 27: │HH:MM:SS Burst       burst 14                                                                                        ┃│
+ 31  * Doc line 28: │HH:MM:SS Burst       burst 15                                                                                        ┃│
+ 32  * Doc line 29: │HH:MM:SS Burst       burst 16                                                                                         │
+ 33  * Doc line 30: │HH:MM:SS Burst       burst 17                                                                                         │
+ 34  * Doc line 31: │HH:MM:SS Burst       burst 18                                                                                         │
+ 35  * Doc line 32: │HH:MM:SS Burst       burst 19                                                                                         │
+ 36  * Doc line 33: │HH:MM:SS Burst       burst 20                                                                                         │
+ 37  * Doc line 34: │HH:MM:SS Burst       burst 21                                                                                         │
+ 38  * Doc line 35: │HH:MM:SS Burst       burst 22                                                                                         │
+ 39  * Doc line 36: │HH:MM:SS Burst       burst 23                                                                                         │
+ 40  * Doc line 37: │HH:MM:SS Burst       burst 24                                                                                         │
+ 41  * Doc line 38: │HH:MM:SS Burst       burst 25                                                                                         │
+ 42  * Doc line 39: │HH:MM:SS Burst       burst 26                                                                                         │
+ 43  * Doc line 40: │HH:MM:SS Burst       burst 27                                                                                         │
+ 44  */             │HH:MM:SS Burst       burst 28                                                                                         │
+ 45 int add(int a, i│HH:MM:SS Burst       burst 29                                                                                         │
+ 46                 │HH:MM:SS Burst       burst 30                                                                                         │
+ 47 int main(void) {│HH:MM:SS Burst       burst 31                                                                                         │
+ 48     int x = add(│HH:MM:SS Burst       burst 32                                                                                         │
+ 49›    add         │HH:MM:SS Burst       burst 33                                                                                         │
+ 50»    printf("%d\n│HH:MM:SS Burst       burst 34                                                                                         │
+ 51     return x;   │HH:MM:SS Burst       burst 35                                                                                         │
+ 52 }               │HH:MM:SS Burst       burst 36                                                                                         │
+ 53                 │ ↑↓ select  Shift+↑↓ extend  Enter full text  Ctrl+c copy                     d debug i info w warn e error h history │
+ ≡ proj/main.c ●  50└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘ clangd  ⇥ Spaces:1
+
+-- style
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdeeeedddddeeeeeeddddddeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaabbbcccccccccccccdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaiiiccccciiiccccidhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccccccccccccccdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaiiicccccciiiicccdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaacccciiicccccccccdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+ajjjcccckkkcccccccccdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+alllccccmmmmmmcnnnnndhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccooooooccccccdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccccccccccccccdhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
+aaaaccccccccccccccccdhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhdddddddddddddddddddddpdhhhhhdpdqqqqdpdqqqqdpdqqqqqdpdhhhhhhhddcccccccccccccccccccc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#cc8c3c bg=#181818
+c fg=#f4f4ff bg=#181818
+d fg=#f4f4ff bg=#2b2b2b
+e fg=#f4f4ff bg=#2b2b2b bold
+f fg=#686868 bg=#4a4a4a
+g fg=#f4f4ff bg=#4a4a4a
+h fg=#686868 bg=#2b2b2b
+i fg=#96a6c8 bg=#181818
+j fg=#ffdd33 bg=#1b1b1b
+k fg=#96a6c8 bg=#181818 underline
+l fg=#f43841 bg=#1b1b1b
+m fg=#f4f4ff bg=#181818 underline
+n fg=#73c936 bg=#181818
+o fg=#ffdd33 bg=#181818
+p fg=#868686 bg=#2b2b2b
+q fg=#ffdd33 bg=#2b2b2b bold
