@@ -181,9 +181,8 @@ e2e_round7_rename_prompt_keys_need_its_focus :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	buffer := ui_internal_create(&e.ed, "")
 	e.ed.rename = {handle = 0, buffer = buffer}
-	box := new(UiNode)
-	box.kind, box.id = .Text, "rename"
-	append(&box.spans, UiSpan{text = strings.clone("Rename to: ")})
+	// the mount owns its nodes' strings: build them with the core constructors, which clone
+	box := ui_core_text("Rename to: ", "rename")
 	box.float, box.anchor = .Screen, .Top
 	box.width, box.height = {form = .Cells, value = 20}, {form = .Cells, value = 1}
 	e.ed.rename.handle = ui_mount_add(&e.ed, "", "alert", box)

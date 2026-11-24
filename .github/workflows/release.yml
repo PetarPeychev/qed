@@ -34,7 +34,7 @@ jobs:
           QED_REQUIRE_RG: '1'
         run: |
           rg --version
-          odin test src -collection:lib=lib
+          odin test src -collection:lib=lib -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true
 
   build:
     needs: test

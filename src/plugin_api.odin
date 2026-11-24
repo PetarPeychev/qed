@@ -1107,7 +1107,9 @@ qed_plugins :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
 	p := &entry.editor.plugins
-	lua.createtable(L, c.int(len(p.list)), 0)
+	lua.createtable(L, c.int(len(p.list)), 1)
+	lua.pushnumber(L, lua.Number(p.init_ms))
+	lua.setfield(L, -2, "init_ms")
 	for pl, i in p.list {
 		lua.createtable(L, 0, 6)
 		lua.pushodinstring(L, pl.name)

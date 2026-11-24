@@ -71,7 +71,7 @@ than 3 tags in one `git push` — GitHub silently skips the workflows.
 ```sh
 ./build.sh            # builds the vendored termbox2 static lib, then `qed`
 ./qed [PATH]          # PATH may be a file or a directory (see DESIGN.md)
-odin test src -collection:lib=lib   # unit tests
+odin test src -collection:lib=lib -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true   # unit tests
 tools/test.sh         # same suite, sharded across processes (~3x faster)
 ```
 

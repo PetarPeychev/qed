@@ -13,7 +13,8 @@ shards=${QED_TEST_SHARDS:-$((cores / 2))}
 out=$(mktemp -d "${TMPDIR:-/tmp}/qed-test.XXXXXX")
 trap 'rm -rf "$out"' EXIT INT TERM
 
-odin build src -collection:lib=lib -build-mode:test -out:"$out/qed-test" "$@"
+# a leak or a bad free fails its test instead of only warning
+odin build src -collection:lib=lib -build-mode:test -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"$out/qed-test" "$@"
 
 want=$(cat src/*.odin | grep -c '@(test')
 cat src/*.odin | grep -A1 '^@(test)$' | sed -n 's/^\([a-z_0-9]*\) :: proc.*/\1/p' | sort > "$out/names"

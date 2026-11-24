@@ -68,11 +68,11 @@ local function plugin_row(record)
 				return true
 			end,
 		},
-		ui.text{width = view.widths.display + 1, " ", record.display},
-		ui.text{grow = 1, " ", record.description},
-		ui.text{width = view.widths.source + 1, " ", record.source},
-		ui.text{width = view.widths.status + 1, " ", record.status},
-		ui.text{width = view.widths.load + 2, align = "right", record.load, " "},
+		ui.text{width = view.widths.display + 3, " ", record.display},
+		ui.text{grow = 1, margin = {right = 2}, record.description},
+		ui.text{width = view.widths.source + 2, record.source},
+		ui.text{width = view.widths.status + 2, record.status},
+		ui.text{width = view.widths.load + 1, record.load},
 	}
 end
 
@@ -98,13 +98,13 @@ local function build()
 	local selected = highlighted()
 	local failed = selected and selected.error ~= "" and selected.error:gsub("\n", " ")
 	return ui.dismissable{on_dismiss = close,
-		ui.pane{place = "full", max_width = qed.opt("pane_max_width"), title = "Plugins",
+		ui.pane{place = "full", max_width = qed.opt("pane_max_width"), title = ("Plugins  ·  Lua init %.2f ms"):format(view.init_ms or 0),
 			ui.row{bold = true,
-				ui.text{width = view.widths.display + 1, " Name"},
-				ui.text{grow = 1, " Description"},
-				ui.text{width = view.widths.source + 1, " Source"},
-				ui.text{width = view.widths.status + 1, " Status"},
-				ui.text{width = view.widths.load + 2, align = "right", "Load "}},
+				ui.text{width = view.widths.display + 3, " Name"},
+				ui.text{grow = 1, margin = {right = 2}, "Description"},
+				ui.text{width = view.widths.source + 2, "Source"},
+				ui.text{width = view.widths.status + 2, "Status"},
+				ui.text{width = view.widths.load + 1, "Load"}},
 			ui.scroll{id = "plugin_scroll", grow = 1,
 				ui.virtual_column{id = "plugin_rows", scope = {"plugins", "list"}, data = view.records, item = plugin_row,
 					on = {state = function() view.handle:update(view.build()) end},
@@ -121,7 +121,9 @@ local function refresh()
 	end
 	local keep = highlighted()
 	view.records:clear()
-	for _, plugin in ipairs(qed.plugins()) do
+	local plugins = qed.plugins()
+	view.init_ms = plugins.init_ms
+	for _, plugin in ipairs(plugins) do
 		view.records:append(record_of(plugin))
 	end
 	view.widths = {display = width_of("display", "Name"), source = width_of("source", "Source"),

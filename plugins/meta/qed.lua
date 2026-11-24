@@ -142,8 +142,11 @@ function qed.commands() end
 ---@field main string its main file: a path for a user plugin, `<id>/init.lua` for a bundled one
 ---@field fork string the path a copy would take to override a bundled one
 
----Every plugin, bundled then user, in load order.
----@return qed.PluginInfo[]
+---@class qed.PluginList: qed.PluginInfo[]
+---@field init_ms number how long the Lua state took to start
+
+---Every plugin, bundled then user, in load order; `init_ms` on the list.
+---@return qed.PluginList
 function qed.plugins() end
 
 ---Enables or disables another plugin at the next flush and persists `plugins.<id>.enabled` (removed when it matches the default).

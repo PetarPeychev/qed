@@ -24,6 +24,7 @@ plugin_test_editor :: proc(bundled: []PluginFile, user_dir := "", cfg_user: json
 
 plugin_test_destroy :: proc(ed: ^Editor) {
 	term_destroy(ed)
+	ui_destroy(ed)
 	plugins_shutdown(&ed.plugins)
 	for &b in ed.buffers {
 		buffer_destroy(&b)
@@ -414,6 +415,22 @@ plugin_options_info :: proc(t: ^testing.T) {
 	command_run(ed, cmd)
 	testing.expect_value(t, sched_var(ed, "probe"), "enabled 1 v The a knob y")
 	testing.expect_value(t, sched_var(ed, "probe_unknown"), "errored nil")
+}
+
+@(test)
+plugin_list_reports_lua_init :: proc(t: ^testing.T) {
+	ed := plugin_test_editor({
+		{"probe.lua", `return {setup = function()
+			qed.command{name = "Probe", run = function()
+				local plugins = qed.plugins()
+				probe = math.type(plugins.init_ms) == "float" and plugins.init_ms >= 0 and #plugins == 1 and "ok" or tostring(plugins.init_ms)
+			end}
+		end}`},
+	})
+	defer plugin_test_destroy(ed)
+	cmd, _ := plugin_test_command(ed, "Probe: Probe")
+	command_run(ed, cmd)
+	testing.expect_value(t, sched_var(ed, "probe"), "ok")
 }
 
 @(test)
