@@ -77,16 +77,14 @@ end
 
 local function build(matches, query, empty)
 	return ui.dismissable{on_dismiss = close_palette,
-		ui.box{id = "palette", float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
-			margin = {top = 3, right = 2, bottom = 2, left = 2},
-			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
+		ui.pane{id = "palette", place = "center", scope = "list",
+			ui.row{
+				ui.text{fg = "pane_prompt_foreground", " > "},
+				ui.editor{id = "palette_query", buffer = query, height = 1, grow = 1, margin = {right = 1},
+					scope = {"palette", "editor"}},
+			},
 			ui.column{
-				ui.row{
-					ui.text{fg = "pane_prompt_foreground", "> "},
-					ui.editor{id = "palette_query", buffer = query, height = 1, grow = 1,
-						scope = {"palette", "editor"}, placeholder = "Type a command"},
-				},
-				empty and ui.text{fg = "pane_dim_foreground", " No matching commands"} or false,
+				empty and ui.text{fg = "pane_shortcut_foreground", " No matching commands"} or false,
 				ui.scroll{height = {"fit", max = qed.opt("picker_max_rows")},
 					ui.virtual_column{id = "palette_results", data = matches, item = command_row,
 						highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},

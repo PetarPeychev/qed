@@ -17,6 +17,10 @@ local PICK = {items = true, prompt = true, selected = true, on = true}
 local PROMPT = {prompt = true, text = true}
 local CONFIRM = {question = true, choices = true}
 
+local PANE_MARGIN_X, PANE_MARGIN_Y = 8, 3
+-- the layout plugin's status bar and message line
+local PANE_STATUS_ROWS = 2
+
 local NODE_TYPES = {"column", "row", "box", "scroll", "text", "editor", "virtual_column", "outlet", "image", "terminal", "status"}
 
 local node_metas = {markdown = {__node = "markdown"}}
@@ -197,7 +201,96 @@ return function(qed)
 			end
 			catcher[index] = pane
 		end
+		-- dim: the screen fades behind the panes, all but the status bar and message line
+		if props.dim then
+			local status = #qed.buf.list() > 0 and PANE_STATUS_ROWS or 0
+			catcher[#catcher + 1] = qed.ui.column{dim = true, grow = 1, margin = {bottom = status}}
+		end
 		return qed.ui.column(catcher)
+	end
+
+	-- a bordered pane over the editor area, its sections (a title first) split by rules: "center" sized to fit and
+	-- centred, "full" inset by PANE_MARGIN from the screen; the status bar and message line stay visible below either
+	function qed.ui.pane(props)
+		local box = {float = "screen", anchor = "center", border = true, bg = "pane_background"}
+		local sections = {separator = true, fg = "pane_foreground"}
+		local first = props.title and 1 or 0
+		if props.title then
+			sections[1] = qed.ui.text{fg = "pane_prompt_foreground", " ", props.title}
+		end
+		for key, value in pairs(props) do
+			if type(key) == "number" then
+				sections[key + first] = value
+			elseif key ~= "place" and key ~= "max_width" and key ~= "title" then
+				box[key] = value
+			end
+		end
+		local status = #qed.buf.list() > 0 and PANE_STATUS_ROWS or 0
+		if props.place == "center" then
+			box.width = box.width or qed.opt("picker_width")
+			box.height = box.height or "fit"
+			box.margin = {bottom = status}
+		elseif props.place == "full" then
+			box.width = box.width or (props.max_width and {"100%", max = props.max_width} or "100%")
+			box.height = box.height or "100%"
+			box.margin = {left = PANE_MARGIN_X, right = PANE_MARGIN_X, top = PANE_MARGIN_Y, bottom = PANE_MARGIN_Y + status}
+		else
+			error("qed.ui.pane: place must be \"center\" or \"full\"", 2)
+		end
+		box[1] = qed.ui.column(sections)
+		return qed.ui.box(box)
+	end
+
+	-- a list column beside its preview: the preview grows twice as fast up to its max, the list takes the rest;
+	-- narrower than both minimums the preview hides and the list fills the pane
+	function qed.ui.split(props)
+		local kind, list, preview = props.kind, props[1], props[2]
+		if (kind ~= "tree" and kind ~= "code") or type(list) ~= "table" then
+			error("qed.ui.split expects {kind = \"tree\" or \"code\", list, preview?}", 2)
+		end
+		list.grow = 1
+		list.width = {min = qed.opt("split_" .. kind .. "_min_width")}
+		if preview then
+			preview.grow, preview.drop = 2, 1
+			preview.width = {min = qed.opt("split_preview_min_width"), max = qed.opt("split_preview_max_width")}
+		end
+		return qed.ui.row{separator = true, grow = 1, list, preview or false}
+	end
+
+	-- the widest pane a split fills: both columns at their max, the rule and the borders
+	function qed.ui.split_width(kind)
+		return qed.opt("split_" .. kind .. "_max_width") + qed.opt("split_preview_max_width") + 3
+	end
+
+	-- a pane's hint row: hints on the left (when narrow the last ones go first, never cut mid-word), toggle chips on
+	-- the right; an entry with a cmd shows that command's key
+	function qed.ui.footer(props)
+		local keys
+		local function text_of(entry)
+			if not entry.cmd then
+				return entry.label
+			end
+			if not keys then
+				keys = {}
+				for _, command in ipairs(qed.commands()) do
+					keys[command.name] = command.shortcut
+				end
+			end
+			local key = keys[entry.cmd]
+			return key and key ~= "" and (key .. " " .. entry.label) or entry.label
+		end
+		local cells = {height = 1}
+		for index, hint in ipairs(props.hints or {}) do
+			cells[#cells + 1] = qed.ui.text{fg = "pane_shortcut_foreground", drop = index > 1 and index or nil,
+				(index == 1 and " " or "  ") .. text_of(hint)}
+		end
+		cells[#cells + 1] = qed.ui.text{grow = 1, ""}
+		for _, chip in ipairs(props.chips or {}) do
+			cells[#cells + 1] = qed.ui.text{fg = chip.on and "pane_prompt_foreground" or "pane_shortcut_foreground",
+				on = chip.on_click and {click = chip.on_click} or nil, "  " .. text_of(chip)}
+		end
+		cells[#cells + 1] = qed.ui.text{" "}
+		return qed.ui.row(cells)
 	end
 
 	buffer_objects(qed)

@@ -9,7 +9,7 @@ wait Saved
 key alt+l
 wait Message Log
 type d
-wait loaded layout
+wait plugin(s) loaded
 key up shift+up
 key enter
 wait Message Log

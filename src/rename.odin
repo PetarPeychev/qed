@@ -29,22 +29,19 @@ rename_open :: proc(editor: ^Editor) {
 	buffer.cursor = {0, len(word)}
 	buffer.selection = Cursor{0, 0}
 
-	box := ui_core_node(.Box, "rename")
-	box.float, box.anchor, box.border = .Screen, .Top, true
-	box.width = {form = .Cells, value = SAFETY_WIDTH}
-	box.height = {form = .Fit}
-	box.margin = {3, 2, 2, 2}
-	box.style = ui_core_pane_style()
+	box := ui_core_pane(editor, "rename", {form = .Cells, value = PICKER_WIDTH})
 	// the prompt keeps every key that reaches it, as a dialog does
 	box.core_event = proc(editor: ^Editor, ev: tb2.Event) -> bool {return ev.type == .Key}
 	row := ui_core_node(.Row)
+	row.style = ui_core_pane_style()
 	ui_core_add(box, row)
-	prompt := ui_core_text("Rename to: ", fg = "pane_prompt_foreground")
+	prompt := ui_core_text(" Rename to: ", fg = "pane_prompt_foreground")
 	ui_core_add(row, prompt)
 	field := ui_core_node(.Editor, "rename_field")
 	field.buffer = buffer.id
 	field.height = {form = .Cells, value = 1}
 	field.grow, field.grow_set = 1, true
+	field.margin = {0, 1, 0, 0}
 	field.scope = make([]string, 1)
 	field.scope[0] = strings.clone("editor")
 	ui_core_add(row, field)

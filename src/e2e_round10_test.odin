@@ -21,7 +21,7 @@ e2e_round10_wheeling_back_to_the_end_follows_again :: proc(t: ^testing.T) {
 	for _ in 0 ..< 3 {
 		e2e_key(&e, .Arrow_Up)
 	}
-	y := e2e_ui_find_row(&e, "entry 0190")
+	y := e2e_ui_find_row(&e, "entry 0196")
 	for i := 0; i < 20 && e2e_ui_find_row(&e, "entry 0199") < 0; i += 1 {
 		e2e_mouse(&e, 20, y, .Mouse_Wheel_Down)
 		e2e_ui_settle(&e)

@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 39,2
 -- text
  1 def greet(name):
  2     return "hello " + nam┌────────────────────────────────────────────────┐
- 3 print(greet("linus")) # (│Find greet                    .* Aa         3/3 │
+ 3 print(greet("linus")) # (│Find greet                        .* Aa 3/3     │
  4                          └────────────────────────────────────────────────┘
  5 print(greet("ada"))
  6
@@ -27,9 +27,9 @@ qed-e2e snapshot 80x24 cursor 39,2
 -- style
 aaabbbcdddddcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaccccbbbbbbceeeeeeeeccccccffffffffffffffffffffffffffffffffffffffffffffffffffcc
-aaabbbbbcdddddceeeeeeecccgggfhhhhhfffffffffffffffffffffffffiifiifffffffffiiiifcc
+aaabbbbbcdddddceeeeeeecccgggfhhhhhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffiffiiiiiiiiifcc
 aaacccccccccccccccccccccccccffffffffffffffffffffffffffffffffffffffffffffffffffcc
-ajjbbbbbckkkkkceeeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ajjkkkkklmmmmmlnnnnnllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll
 aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,7 +47,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -55,9 +55,12 @@ b fg=#ffdd33 bg=#181818
 c fg=#f4f4ff bg=#181818
 d fg=#f4f4ff bg=#453b1a
 e fg=#73c936 bg=#181818
-f fg=#f4f4ff bg=#2b2b2b
+f fg=#868686 bg=#2b2b2b
 g fg=#cc8c3c bg=#181818
 h fg=#ffdd33 bg=#2b2b2b
-i fg=#686868 bg=#2b2b2b
+i fg=#f4f4ff bg=#2b2b2b
 j fg=#d8d8d8 bg=#1b1b1b
-k fg=#181818 bg=#f4f4ff
+k fg=#ffdd33 bg=#262626
+l fg=#f4f4ff bg=#262626
+m fg=#181818 bg=#f4f4ff
+n fg=#73c936 bg=#262626

@@ -15,7 +15,7 @@ end
 run story.txt
 wait Once upon
 key ctrl+g
-wait Go to Line
+wait text, a line number
 snap open
 type fox
 snap fuzzy

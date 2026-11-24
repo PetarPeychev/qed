@@ -47,7 +47,8 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 ## 3. Layout
 
 Size forms for `width`/`height`: `n` cells, `"N%"` of the available area, `"fit"` (natural size),
-`{form, min =, max =}` (`{"fit", max = 12}`). The area always wins over `min`.
+`{form, min =, max =}` (`{"fit", max = 12}`; without a form the default sizing, so a grower grows from `min` to
+`max`). The area always wins over `min`.
 
 | Prop | Meaning |
 |---|---|
@@ -56,7 +57,7 @@ Size forms for `width`/`height`: `n` cells, `"N%"` of the available area, `"fit"
 | `margin` | outside the node: number, `{x =, y =}` or named sides `{top =, right =, bottom =, left =}` |
 | `float` | `"parent"` or `"screen"`; absent = laid out by the parent |
 | `anchor` | `top_left`, `top`, `top_right`, `left`, `center`, `right`, `bottom_left`, `bottom`, `bottom_right`, `cursor` (float under an editor: below the caret, flips above) |
-| `gap`, `separator` | cells between children; a `pane_border` rule taking one extra cell |
+| `gap`, `separator` | cells between children; a `pane_border` rule taking one extra cell, joining the borders and rules of its mount it meets (`├ ┤ ┬ ┴ ┼`) |
 | `align` | cross placement: column `left/center/right`, row `top/center/bottom`, text lines `left/center/right` |
 
 - Cross axis stretches unless the child is sized, then `align` places it (default start).
@@ -64,7 +65,10 @@ Size forms for `width`/`height`: `n` cells, `"N%"` of the available area, `"fit"
   keep their size and the odd cell goes after the node.
 - Defaults: text and containers fit; an editor grows on an axis with no size; natural size of an editor is its line
   count x 0; of a virtual list its record count.
-- `scroll` reserves its right column for the bar (header too) and lays its child out at `max(natural, view)`.
+- `scroll` draws its bar on its box's right border when flush with it, else reserves its right column (header too);
+  it lays its child out at `max(natural, view)`.
+- Grow leftover a capped grower cannot take goes to the last grower without a max; a `"N%"` held at its max keeps its
+  size (no centering snap).
 
 ## 4. Nodes
 
@@ -77,7 +81,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `box` | exactly one laid out | `border`, `title` |
 | `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (opens at the end and stays there; a user highlight off the list's last row parks it, until the user reaches the end again by any means or the parked row leaves the data) |
 | `text` | strings and spans `{fg =, bold =, "text", ...}` | `wrap` (by cluster), `align`; overflow clips with `…` |
-| `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly` |
+| `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly`, `highlight_style` (its cursor row while unfocused) |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
 | `outlet` | none | `id` |
 | `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |
@@ -99,6 +103,14 @@ Positional values are children, named values are props. Common props: `id`, `key
   (`anchor = "cursor"`) that core mounts in its `caret` outlet (a reserved name) and attaches under the focused
   editor showing the current buffer. The wheel scrolls the hover; over the completion menu or the diagnostic box it
   closes them (the diagnostic box until the caret moves); any other click or key dismisses them.
+- Prelude panes (master's look): `qed.ui.pane{place = "center" | "full", title?, max_width?, section, ...}` is a
+  bordered float over the editor area (center: `picker_width` wide or `width`, fit height, centred; full: inset 8 x 3)
+  whose sections are split by rules; `qed.ui.split{kind = "tree" | "code", list, preview}` puts a list beside its
+  preview (`split_*` widths, the preview hides when too narrow) and `qed.ui.split_width(kind)` caps the pane;
+  `qed.ui.footer{hints, chips}` is the hint row (hints drop whole from the end, a `cmd` shows its key).
+- `column{dim = true}` fades what is drawn under it (tint `pane_backdrop`); `dismissable{dim = true}` puts it behind the
+  panes, all but the status bar. An editor inside a pane draws its gutter on the pane; an unfocused editor with a
+  `highlight_style` marks its cursor row in that background (a preview's target).
 - `qed.ui.dismissable{on_dismiss = fn, pane, ...}` (prelude): a full-screen catcher column holding the panes; a
   click outside them calls `on_dismiss`, a click inside stays with the pane after its own `on.click`.
 - `virtual_column`: `item` runs in a batched step between layout passes, only for records coming into view, cached
@@ -180,16 +192,14 @@ end
 
 local function build(matches, query, empty)
 	return ui.dismissable{on_dismiss = close_palette,
-		ui.box{id = "palette", float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
-			margin = {top = 3, right = 2, bottom = 2, left = 2},
-			border = true, title = "Command Palette", bg = "pane_background", fg = "pane_foreground",
+		ui.pane{id = "palette", place = "center", scope = "list",
+			ui.row{
+				ui.text{fg = "pane_prompt_foreground", " > "},
+				ui.editor{id = "palette_query", buffer = query, height = 1, grow = 1, margin = {right = 1},
+					scope = {"palette", "editor"}},
+			},
 			ui.column{
-				ui.row{
-					ui.text{fg = "pane_prompt_foreground", "> "},
-					ui.editor{id = "palette_query", buffer = query, height = 1, grow = 1,
-						scope = {"palette", "editor"}, placeholder = "Type a command"},
-				},
-				empty and ui.text{fg = "pane_dim_foreground", " No matching commands"} or false,
+				empty and ui.text{fg = "pane_shortcut_foreground", " No matching commands"} or false,
 				ui.scroll{height = {"fit", max = qed.opt("picker_max_rows")},
 					ui.virtual_column{id = "palette_results", data = matches, item = command_row,
 						highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
@@ -228,7 +238,7 @@ qed.command{name = "Close", scope = "palette", key = "Esc", run = close_palette}
 ```
 
 The field lists `palette` before `editor`, so Enter/Esc reach the palette's commands before the editor's; Up/Down
-bubble to the box's `list` scope.
+bubble to the pane's `list` scope; the query and the list are the pane's two sections, so a rule splits them.
 `dismissable` closes the palette on an outside click; a click inside the box stays with it.
 
 ## Open
@@ -239,8 +249,7 @@ bubble to the box's `list` scope.
 - Per-view editor state (cursor, wrap) instead of the buffer's.
 - The fuzzy span builder, once a second picker needs it.
 - `qed.commands()`, `qed.fs.walk`, `qed.buffers()` returning `qed.List`; the palette listing the scope chain.
-- Removed with the old panes (no move target): `split_preview_min_width`/`split_preview_max_width`, icon
-  `preview_more`, tint `pane_backdrop`.
+- Removed with the old panes (no move target): icon `preview_more`.
 - The inline ghost is still drawn by hand (`inline_render`, the last user of `editor.caret_view`). Completion, hover
   and the caret diagnostic are core-built floats; the `caret` outlet name is core's (see Round 9 decisions for the
   generic alternative).

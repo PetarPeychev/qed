@@ -263,14 +263,7 @@ local function info_of(row)
 	return ("%s. Default: %s. Scope: %s"):format(row.name, default, row.scope)
 end
 
-local function shortcut(name)
-	for _, command in ipairs(qed.commands()) do
-		if command.name == "Settings: " .. name then
-			return command.shortcut
-		end
-	end
-	return ""
-end
+local HINTS = {{label = "Enter edit"}, {label = "reset", cmd = "Settings: Reset"}}
 
 local function highlighted()
 	local state = ui.node("settings_rows"):state()
@@ -281,20 +274,22 @@ local function setting_row(record)
 	return ui.row{
 		ui.text{width = 1, fg = "git_modified", record.user and "▎" or " "},
 		ui.text{width = view.name_width, record.name},
-		ui.text{grow = 1, " ", record.value},
+		ui.text{grow = 1, "  ", record.value},
 	}
 end
 
 local function tab_row()
-	local chips = {}
+	local cells = {ui.text{" "}}
 	for index, title in ipairs(TABS) do
 		local on = index == tab
-		chips[#chips + 1] = ui.text{
+		if index > 1 then
+			cells[#cells + 1] = ui.text{fg = "pane_shortcut_foreground", " │ "}
+		end
+		cells[#cells + 1] = ui.text{
 			on = {click = function() menu.switch_tab(index) return true end},
-			" ", {fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, title}, " "}
+			{fg = on and "pane_prompt_foreground" or "pane_shortcut_foreground", title}}
 	end
-	chips[#chips + 1] = ui.text{grow = 1, fg = "pane_dim_foreground", "  ", shortcut("Next Tab"), " switches"}
-	return ui.row{height = 1, table.unpack(chips)}
+	return ui.row{height = 1, table.unpack(cells)}
 end
 
 local function footer()
@@ -311,29 +306,26 @@ local function footer()
 				return true
 			end}}
 	end
-	return ui.text{height = 1, fg = "pane_dim_foreground", " Enter edit  ", {fg = "pane_shortcut_foreground", shortcut("Reset")}, " reset"}
+	return ui.footer{hints = HINTS}
 end
 
 local function build()
 	local columns = COLUMNS[tab]
 	return ui.dismissable{on_dismiss = function() menu.dismiss() end,
-		ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%", scope = "list",
-		margin = {x = 2, y = 1}, border = true, title = "Settings", bg = "pane_background", fg = "pane_foreground",
-		ui.column{
+		ui.pane{place = "full", max_width = qed.opt("pane_max_width"), scope = "list",
 			tab_row(),
 			ui.row{height = 1,
-				ui.text{fg = "pane_prompt_foreground", "> "},
-				ui.editor{id = "settings_query", buffer = view.query, height = 1, grow = 1,
+				ui.text{fg = "pane_prompt_foreground", " > "},
+				ui.editor{id = "settings_query", buffer = view.query, height = 1, grow = 1, margin = {right = 1},
 					scope = {"settings", "editor"}, placeholder = "type to filter"},
 			},
+			ui.row{bold = true, ui.text{width = 1, " "}, ui.text{width = view.name_width, columns[1]}, ui.text{grow = 1, "  ", columns[2]}},
 			ui.scroll{id = "settings_scroll", grow = 1,
-				header = ui.row{bold = true, ui.text{width = 1, " "}, ui.text{width = view.name_width, columns[1]}, ui.text{grow = 1, " ", columns[2]}},
 				ui.virtual_column{id = "settings_rows", data = view.matches, item = setting_row, on = {state = function() menu.rebuild() end},
 					highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
-			ui.row{ui.text{width = 1, " "}, ui.text{grow = 1, wrap = true, fg = "pane_dim_foreground", info_of(rows[highlighted() or ""])}},
+			ui.text{wrap = true, margin = {left = 1, right = 1}, info_of(rows[highlighted() or ""])},
 			footer(),
-		},
-	}}
+		}}
 end
 
 function menu.rebuild()

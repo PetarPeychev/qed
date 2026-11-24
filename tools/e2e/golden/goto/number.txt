@@ -1,58 +1,60 @@
-qed-e2e snapshot 80x24 cursor 6,2
+qed-e2e snapshot 80x24 cursor 13,4
 -- text
   1 Once upon a time
-  ┌─ Go to Line ─────────────────────────────────────────────────────────────┐
-  │> 8                                                 1 Once upon a time    │
-  │  8 One day the river was dry.                      2 there was a small fo│
-  │                                                    3 who lived by the riv│
-  │                                                    4 Every morning the fo│
-  │                                                    5 walked to the old br│
-  │                                                    6 looked at the water,│
-  │                                                    7 and counted the fish│
- 1│                                                    8 One day the river wa│
- 1│                                                    9 The fox walked furth│
- 1│                                                   10 than ever before    │
-  │                                                   11 and found the sea.  │
-  │                                                   12                     │
-  │                                                                          │
-  │                                                                          │
-  │                                                                          │
-  │                                                                          │
-  │                                                                          │
-  │                                                                          │
-  │                                                                          │
-  │                                                                          │
- ≡└──────────────────────────────────────────────────────────────────────────┘4
+  2 there was a small fox
+  3 who lived by the river.
+  4 Ever┌──────────────────────────────────────────────────────────────┐
+  5 walk│ > 8                                                          │
+  6 look├──────────────────────────────────────────────────────────────┤
+  7 and │  8  One day the river was dry.                               │
+  8 One │                                                              │
+  9 The │                                                              │
+ 10 than│                                                              │
+ 11 and │                                                              │
+ 12     │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        └──────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/story.txt  1/12                                      ◆ text  ⇥ Spaces:4
 
 -- style
 abbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-aaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-aadeeddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-aadfffffffffffffffffffffffffffffffffffffffffffffffffdaaaadddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddabbbdddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-aadddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-ccdddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-ccdddddddddddddddddddddddddddddddddddddddddddddddddddaaaadddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
+aaaadddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaadddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaaddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+aaaaddddefffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+aaaaddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+aaaaddddehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhedddddddd
+aaaaddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+aaaaddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+aaaaddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+aaaaddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+aaaaddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#d8d8d8 bg=#1b1b1b
-c fg=#f4f4ff bg=#181818
-d fg=#f4f4ff bg=#2b2b2b
-e fg=#ffdd33 bg=#2b2b2b
-f fg=#f4f4ff bg=#4a4a4a
+c fg=#f4f4ff bg=#262626
+d fg=#f4f4ff bg=#181818
+e fg=#868686 bg=#2b2b2b
+f fg=#ffdd33 bg=#2b2b2b
+g fg=#f4f4ff bg=#2b2b2b
+h fg=#f4f4ff bg=#4a4a4a

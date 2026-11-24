@@ -51,27 +51,27 @@ local function line_row(record)
 				return true
 			end,
 		},
-		ui.text{fg = "gutter_foreground", width = view.digits + 1, align = "right", tostring(record.row)},
-		ui.text{grow = 1, " ", record.label},
+		ui.text{width = view.digits + 1, align = "right", tostring(record.row)},
+		ui.text{grow = 1, "  ", record.label},
 	}
 end
 
 local function build()
 	return ui.dismissable{on_dismiss = close,
-		ui.box{id = "goto", float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1}, scope = "list",
-			border = true, title = "Go to Line", bg = "pane_background", fg = "pane_foreground",
-			ui.row{
-				ui.column{width = {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")},
+		ui.pane{id = "goto", place = "full", max_width = ui.split_width("code"), scope = "list",
+			ui.split{kind = "code",
+				ui.column{separator = true,
 					ui.row{height = 1,
-						ui.text{fg = "pane_prompt_foreground", "> "},
-						ui.editor{id = "goto_query", buffer = view.query, height = 1, grow = 1, scope = {"goto", "editor"},
-							placeholder = "text, a line number, or :line:column"},
+						ui.text{fg = "pane_prompt_foreground", " > "},
+						ui.editor{id = "goto_query", buffer = view.query, height = 1, grow = 1, margin = {right = 1},
+							scope = {"goto", "editor"}, placeholder = "text, a line number, or :line:column"},
 					},
 					ui.scroll{grow = 1,
 						ui.virtual_column{id = "goto_rows", data = view.lines, item = line_row, highlight_style = SELECTED,
 							on = {state = preview_follow}}},
 				},
-				ui.editor{id = "goto_preview", buffer = view.preview, grow = 1, readonly = true, syntax = true, line_numbers = true},
+				ui.editor{id = "goto_preview", buffer = view.preview, readonly = true, syntax = true, line_numbers = true,
+					highlight_style = {bg = "pane_selection_background"}},
 			},
 		},
 	}

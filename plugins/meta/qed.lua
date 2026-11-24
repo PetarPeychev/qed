@@ -437,7 +437,7 @@ function qed.ui.mount(outlet, tree) end
 ---@return qed.NodeRef
 function qed.ui.node(id) end
 
----Children stacked vertically. Props: `gap`, `align`, `separator`, `highlight_style`, plus common props (`id`, `key`, `width`, `height`, `grow`, `drop`, `margin`, `float`, `anchor`, `scope`, `on`, style fields).
+---Children stacked vertically. Props: `gap`, `align`, `separator`, `highlight_style`, `dim` (fade what is drawn under it), plus common props (`id`, `key`, `width`, `height`, `grow`, `drop`, `margin`, `float`, `anchor`, `scope`, `on`, style fields).
 ---@param props table
 ---@return qed.Node
 function qed.ui.column(props) end
@@ -497,10 +497,30 @@ qed.markdown = {}
 function qed.markdown.parse(text, opts) end
 
 
----A full-screen float holding panes: a click outside them calls `on_dismiss`, a click on one stays with it. Props: `on_dismiss`, `id`, and the panes as children.
+---A full-screen float holding panes: a click outside them calls `on_dismiss`, a click on one stays with it. Props: `on_dismiss`, `id`, `dim` (fade the screen behind the panes, all but the status bar), and the panes as children.
 ---@param props table
 ---@return qed.Node
 function qed.ui.dismissable(props) end
+
+---A bordered pane over the editor area; its children are sections split by rules. `place = "center"` (sized to fit, `picker_width` wide unless `width`) or `"full"` (inset 8 x 3, capped at `max_width`); `title` adds a title section; other props go to the box.
+---@param props table
+---@return qed.Node
+function qed.ui.pane(props) end
+
+---A list column beside its preview: `{kind = "tree" | "code", list, preview?}`. Both grow between their `split_*` widths (the preview twice as fast); narrower than both minimums, the preview hides.
+---@param props table
+---@return qed.Node
+function qed.ui.split(props) end
+
+---The widest pane a split of `kind` fills: both columns at their max, the rule and the borders.
+---@param kind "tree"|"code"
+---@return integer
+function qed.ui.split_width(kind) end
+
+---A pane's hint row: `{hints = {{label, cmd?}, ...}, chips = {{label, cmd?, on, on_click?}, ...}}`. A `cmd` shows that command's key; hints drop from the end when narrow, chips sit on the right.
+---@param props table
+---@return qed.Node
+function qed.ui.footer(props) end
 
 ---The scopes of the focused node and its ancestors, innermost first (what a palette lists over a pane).
 ---@return string[]

@@ -1,60 +1,61 @@
-qed-e2e snapshot 80x24 cursor 3,2
+qed-e2e snapshot 80x24 cursor 9,6
 -- text
  1 x
- 2┌─ plugins/dialog/init.lua  ·  bundled, read-only ─────────────────────────┐
-  │local ui = qed.ui                                                         │
-  │                                                                          │
-  │local PREVIEW_DEBOUNCE_MS = 60                                            │
-  │                                                                          │
-  │local dialog                                                              │
-  │                                                                          │
-  │local function label_of(item)                                             │
-  │    if type(item) == "table" then                                         │
-  │        return item.label or item.path or ""                              │
-  │    end                                                                   │
-  │    return tostring(item)                                                 │
-  │end                                                                       │
-  │                                                                          │
-  │local function highlighted_key()                                          │
-  │    local state = ui.node("dialog_rows"):state()                          │
-  │    return state and state.highlighted or nil                             │
-  │end                                                                       │
-  │                                                                          │
-  │local function notify()                                                   │
-  │ Esc back  ·  fork: copy to ~/.config/qed/plugins/dialog                  │
- ≡└──────────────────────────────────────────────────────────────────────────┘4
+ 2
+
+        ┌──────────────────────────────────────────────────────────────┐
+        │ plugins/dialog/init.lua  ·  bundled, read-only               │
+        ├──────────────────────────────────────────────────────────────┤
+        │local ui = qed.ui                                             │
+        │                                                              │
+        │local PREVIEW_DEBOUNCE_MS = 60                                │
+        │                                                              │
+        │local dialog                                                  │
+        │                                                              │
+        │local function label_of(item)                                 │
+        │    if type(item) == "table" then                             │
+        │        return item.label or item.path or ""                  │
+        │    end                                                       │
+        ├──────────────────────────────────────────────────────────────┤
+        │ Esc back  ·  fork: copy to ~/.config/qed/plugins/dialog      │
+        └──────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/a.txt  1/2                                           ◆ text  ⇥ Spaces:4
 
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-aaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeedddddddddddddddddddddddffdddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdddddeedeeeeddddddddddgggggggdeeeeddddddddddddddddddddddddddddddddddddddddddcc
-ccdddddddddeeeeeeddddddddddddeedddddddddddeedggdddddddddddddddddddddddddddddddcc
-ccdddddeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdddddeeeeeedeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdddddeeeeedddddddddddddddddgggggggggggggddddddddddddddddddddddddddddddddddddcc
-ccdddddeeeeeedddddddeeedddddddddddddddddddeedfffddddddddddddddddddddddddddddddcc
-ccdeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdeeeeedeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcc
-ccdhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhdddddddddddddddddddcc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddefffffffffffffffffffffffffffffffffffffffffffffffgggggggggggggggedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddefffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddefffffggggggggggggggggggggggghhggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddefffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddefffffgffffffffggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeggggffgffffggggggggggiiiiiiigffffgggggggggggggggggggggggggggggedddddddd
+ddddddddeggggggggffffffggggggggggggffgggggggggggffgiiggggggggggggggggggedddddddd
+ddddddddeggggfffgggggggggggggggggggggggggggggggggggggggggggggggggggggggedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeggggggedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#d8d8d8 bg=#1b1b1b
-c fg=#f4f4ff bg=#181818
-d fg=#f4f4ff bg=#2b2b2b
-e fg=#ffdd33 bg=#2b2b2b
-f fg=#95a99f bg=#2b2b2b
-g fg=#73c936 bg=#2b2b2b
-h fg=#686868 bg=#2b2b2b
+c fg=#f4f4ff bg=#262626
+d fg=#f4f4ff bg=#181818
+e fg=#868686 bg=#2b2b2b
+f fg=#ffdd33 bg=#2b2b2b
+g fg=#f4f4ff bg=#2b2b2b
+h fg=#95a99f bg=#2b2b2b
+i fg=#73c936 bg=#2b2b2b

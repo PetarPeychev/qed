@@ -2,12 +2,15 @@ local ui = qed.ui
 
 local LEVEL_COLORS = {debug = "pane_shortcut_foreground", info = "pane_foreground", warn = "warn_foreground", error = "error_foreground"}
 local CHIPS = {
-	{key = "debug", label = "debug", command = "Toggle Debug"},
-	{key = "info", label = "info", command = "Toggle Info"},
-	{key = "warn", label = "warn", command = "Toggle Warn"},
-	{key = "error", label = "error", command = "Toggle Error"},
-	{key = "history", label = "history", command = "Toggle History"},
+	{key = "debug", label = "debug", cmd = "Message Log: Toggle Debug"},
+	{key = "info", label = "info", cmd = "Message Log: Toggle Info"},
+	{key = "warn", label = "warn", cmd = "Message Log: Toggle Warn"},
+	{key = "error", label = "error", cmd = "Message Log: Toggle Error"},
+	{key = "history", label = "history", cmd = "Message Log: Toggle History"},
 }
+local HINTS = {{label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "Enter full text"}, {label = "copy", cmd = "Message Log: Copy"}}
+local DETAIL_HINTS = {{label = "↑↓ scroll"}, {label = "Esc back"}}
+local TIME_WIDTH, SOURCE_WIDTH = 11, 12
 
 local filters = {debug = false, info = true, warn = true, error = true, history = false}
 local view
@@ -20,51 +23,36 @@ end
 local function message_row(record)
 	local style = {fg = LEVEL_COLORS[record.level]}
 	return ui.row{
-		ui.text{width = 9, fg = "pane_dim_foreground", record.time},
-		ui.text{width = 12, fg = style.fg, record.source},
+		ui.text{width = TIME_WIDTH, " ", record.time},
+		ui.text{width = SOURCE_WIDTH, fg = style.fg, record.source},
 		ui.text{grow = 1, fg = style.fg, first_line(record.text)},
 	}
 end
 
-local function shortcut(name)
-	for _, command in ipairs(qed.commands()) do
-		if command.name == "Message Log: " .. name then
-			return command.shortcut
-		end
-	end
-	return ""
-end
-
 local function chip_row()
-	local chips = {ui.text{grow = 1, fg = "pane_dim_foreground", " ↑↓ select  Shift+↑↓ extend  Enter full text  ", shortcut("Copy"), " copy"}}
-	for _, chip in ipairs(CHIPS) do
-		local on = filters[chip.key]
-		chips[#chips + 1] = ui.text{
-			on = {click = function() toggle(chip.key) return true end},
-			" ", {fg = "pane_shortcut_foreground", shortcut(chip.command)}, " ",
-			{fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, chip.label}}
+	local chips = {}
+	for index, chip in ipairs(CHIPS) do
+		chips[index] = {label = chip.label, cmd = chip.cmd, on = filters[chip.key],
+			on_click = function() toggle(chip.key) return true end}
 	end
-	chips[#chips + 1] = ui.text{" "}
-	return ui.row{height = 1, table.unpack(chips)}
+	return ui.footer{hints = HINTS, chips = chips}
 end
 
 local function build()
 	local title = view.source and ("Message Log  ·  " .. view.source) or "Message Log"
 	return ui.dismissable{on_dismiss = function() close_all() end,
-		ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%",
-			margin = {x = 2, y = 1}, border = true, title = title, bg = "pane_background", fg = "pane_foreground",
-			ui.column{
-				ui.scroll{id = "log_scroll", grow = 1, follow = true,
-					header = ui.row{bold = true, ui.text{width = 9, "Time"}, ui.text{width = 12, "Source"}, ui.text{grow = 1, "Message"}},
-					ui.virtual_column{id = "log_rows", scope = {"log", "list", "list_range"}, data = view.messages, item = message_row,
-						highlight_style = {bg = "pane_selection_background"}}},
-				chip_row(),
-			},
+		ui.pane{place = "full", max_width = qed.opt("pane_max_width"), title = title,
+			ui.row{bold = true, ui.text{width = TIME_WIDTH, " Time"}, ui.text{width = SOURCE_WIDTH, "Source"}, ui.text{grow = 1, "Message"}},
+			ui.scroll{id = "log_scroll", grow = 1, follow = true,
+				ui.virtual_column{id = "log_rows", scope = {"log", "list", "list_range"}, data = view.messages, item = message_row,
+					highlight_style = {bg = "pane_selection_background"}}},
+			chip_row(),
 		},
-		view.detail and ui.box{id = "log_detail", float = "screen", anchor = "center",
-			width = {"100%", max = qed.opt("pane_max_width")}, height = "100%", margin = {x = 2, y = 1}, border = true,
-			title = "Message Log", bg = "pane_background", fg = "pane_foreground", scope = "log_detail",
-			ui.scroll{id = "log_detail_scroll", ui.text{wrap = true, table.unpack(view.detail)}}} or false,
+		view.detail and ui.pane{id = "log_detail", place = "full", max_width = qed.opt("pane_max_width"), scope = "log_detail",
+			title = "Message Log",
+			ui.scroll{id = "log_detail_scroll", grow = 1, ui.text{wrap = true, margin = {left = 1, right = 1}, table.unpack(view.detail)}},
+			ui.footer{hints = DETAIL_HINTS},
+		} or false,
 	}
 end
 

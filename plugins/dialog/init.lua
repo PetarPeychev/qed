@@ -104,7 +104,7 @@ local function item_row(record)
 				return true
 			end,
 		},
-		ui.text{grow = 1, " ", record.label},
+		ui.text{grow = 1, " ", record.label, " "},
 		detail and ui.text{fg = "pane_dim_foreground", detail, " "} or false,
 	}
 end
@@ -114,13 +114,9 @@ local function keep_keys()
 	return {key = function() return true end, paste = function() return true end}
 end
 
-local function frame(id, children)
-	return ui.dismissable{id = id, on_dismiss = function() finish(nil) end,
-		ui.box{float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
-			margin = {top = 3, right = 2, bottom = 2, left = 2}, on = keep_keys(),
-			border = true, bg = "pane_background", fg = "pane_foreground",
-			ui.column(children)},
-	}
+local function frame(id, children, width)
+	children.place, children.scope, children.on, children.width = "center", "list", keep_keys(), width
+	return ui.dismissable{id = id, on_dismiss = function() finish(nil) end, ui.pane(children)}
 end
 
 local function rows(scope)
@@ -131,8 +127,8 @@ end
 
 local function query_row(prompt, scope)
 	return ui.row{
-		ui.text{fg = "pane_prompt_foreground", prompt and (prompt .. " ") or "> "},
-		ui.editor{id = "dialog_query", buffer = dialog.query, height = 1, grow = 1, scope = scope},
+		ui.text{fg = "pane_prompt_foreground", " ", prompt and (prompt .. " ") or "> "},
+		ui.editor{id = "dialog_query", buffer = dialog.query, height = 1, grow = 1, margin = {right = 1}, scope = scope},
 	}
 end
 
@@ -168,19 +164,18 @@ end
 local function split_frame(prompt, item)
 	local preview = preview_of(item)
 	return ui.dismissable{id = "dialog_pick", on_dismiss = function() finish(nil) end,
-		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1}, scope = "list",
-			border = true, bg = "pane_background", fg = "pane_foreground", on = keep_keys(),
-			ui.row{
-				ui.column{width = {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")},
+		ui.pane{place = "full", max_width = ui.split_width("code"), scope = "list", on = keep_keys(),
+			ui.split{kind = "code",
+				ui.column{separator = true,
 					query_row(prompt, {"dialog", "editor"}),
 					ui.scroll{grow = 1,
 						ui.virtual_column{id = "dialog_rows", data = dialog.matches, item = item_row, on = {state = notify},
 							highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
 				},
-				preview and preview.buffer and ui.editor{id = "dialog_preview", buffer = preview.buffer, grow = 1,
+				preview and preview.buffer and ui.editor{id = "dialog_preview", buffer = preview.buffer, highlight_style = {bg = "pane_selection_background"},
 					readonly = true, syntax = true, line_numbers = true}
-				or preview and ui.image{id = "dialog_preview", path = preview.path, grow = 1}
-				or ui.text{grow = 1, ""},
+				or preview and ui.image{id = "dialog_preview", path = preview.path}
+				or ui.text{""},
 			},
 		},
 	}
@@ -290,9 +285,9 @@ local function confirm(spec)
 	dialog.records = records_of(spec.choices)
 	dialog.matches = qed.fuzzy.list(dialog.records, {field = "label"})
 	local handle, err = ui.mount("alert", frame("dialog_confirm", {
-		ui.text{id = "dialog_question", wrap = true, " ", spec.question},
+		ui.text{id = "dialog_question", wrap = true, " ", spec.question, " "},
 		rows({"dialog"}),
-	}))
+	}, "fit"))
 	if not handle then
 		dialog = nil
 		return nil, err

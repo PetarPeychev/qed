@@ -980,6 +980,8 @@ snap_step :: proc(run: ^Run, sc: ^Scenario, step: Step, s: ^Session) -> bool {
 		// the recording's time at each snap, so a frame per step can be cut from the cast
 		fmt.sbprintf(&s.snap_times, "%.3f %s\n", s.clock, name)
 		s.clock += 1.5
+		os.make_directory_all(out_dir)
+		_ = os.write_entire_file(fmt.tprintf("%s/%s.txt", out_dir, name), actual)
 	case .Matrix:
 		os.make_directory_all(out_dir)
 		_ = os.write_entire_file(fmt.tprintf("%s/%s.txt", out_dir, name), actual)

@@ -17,6 +17,8 @@
   "split_tree_max_width": {"description": "Max list width of file tree split panes", "min": 1},
   "split_code_min_width": {"description": "Min list width of search and line jump panes", "min": 1},
   "split_code_max_width": {"description": "Max list width of search and line jump panes", "min": 1},
+  "split_preview_min_width": {"description": "Min preview width of split panes; narrower hides the preview", "min": 1},
+  "split_preview_max_width": {"description": "Max preview width of split panes", "min": 1},
   "plugin_memory_mb": {"description": "Memory cap shared by all Lua plugins", "min": 1},
   "plugin_hook_timeout_ms": {"description": "How long a save or quit waits for plugin hooks", "min": 1},
   "plugin_slice_max_ms": {"description": "Time an event handler or timer may run before it is stopped", "min": 1},

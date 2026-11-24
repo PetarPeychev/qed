@@ -48,45 +48,25 @@ local function sync_back()
 	buffer:set_screen_row(src, rect.y + index - 1)
 end
 
-local function shortcut(name)
-	for _, command in ipairs(qed.commands()) do
-		if command.name == name then
-			return command.shortcut
-		end
-	end
-	return ""
-end
-
-local function footer()
-	local parts = {"↑↓ PgUp PgDn scroll  click a link to open it"}
-	for _, hint in ipairs({{"Markdown: Back", "back"}, {"Markdown: Forward", "forward"}, {"Markdown: Close", "close"}}) do
-		local keys = shortcut(hint[1])
-		if keys ~= "" then
-			parts[#parts + 1] = keys .. " " .. hint[2]
-		end
-	end
-	return table.concat(parts, "  ")
-end
+local HINTS = {{label = "↑↓ PgUp PgDn scroll"}, {label = "click a link to open it"}, {label = "back", cmd = "Markdown: Back"},
+	{label = "forward", cmd = "Markdown: Forward"}, {label = "close", cmd = "Markdown: Close"}}
 
 local function build()
 	local path = view.path
-	return ui.dismissable{on_dismiss = function()
+	return ui.dismissable{dim = true, on_dismiss = function()
 			sync_back()
 			close()
 		end,
-		ui.box{id = "markdown", float = "screen", anchor = "center", width = {"100%", max = math.max(qed.opt("pane_max_width"), MIN_WIDTH)}, height = "100%",
-			margin = {x = 2, y = 1}, border = true, title = path ~= "" and qed.path.base(path) or "untitled",
-			bg = "pane_background", fg = "pane_foreground",
-			ui.column{separator = true,
-				ui.scroll{id = "markdown_scroll", grow = 1, scope = {"markdown"},
-					qed.markdown.parse(view.buffer:text(), {id = "markdown_body", margin = {left = 1, right = 1},
-						dir = path ~= "" and qed.path.dir(path) or nil,
-						on = {link = function(event)
-							follow(event.target)
-							return true
-						end}})},
-				ui.text{fg = "pane_dim_foreground", height = 1, " ", footer()},
-			},
+		ui.pane{id = "markdown", place = "full", max_width = math.max(qed.opt("pane_max_width"), MIN_WIDTH),
+			title = path ~= "" and qed.path.base(path) or "untitled",
+			ui.scroll{id = "markdown_scroll", grow = 1, scope = {"markdown"},
+				qed.markdown.parse(view.buffer:text(), {id = "markdown_body", margin = {left = 1, right = 1},
+					dir = path ~= "" and qed.path.dir(path) or nil,
+					on = {link = function(event)
+						follow(event.target)
+						return true
+					end}})},
+			ui.footer{hints = HINTS},
 		},
 	}
 end

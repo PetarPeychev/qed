@@ -88,11 +88,12 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `picker_width` / `picker_max_rows` | `64` / `8` | Size of the command palette, pickers and the workspace switcher. |
+| `picker_width` / `picker_max_rows` | `62` / `8` | Size of the command palette, pickers and the workspace switcher. |
 | `pane_max_width` | `120` | Widest the message log, settings, plugins and markdown panes get, borders included. |
 | `preview_diff_context` | `3` | Context lines around each hunk in the file-tree Git tab's diff preview. |
-| `split_tree_min_width` / `split_tree_max_width` | `30` / `60` | List column of a `split:tree` pane (the file tree). |
-| `split_code_min_width` / `split_code_max_width` | `50` / `100` | List column of a `split:code` pane (the default split: line find, search). |
+| `split_tree_min_width` / `split_tree_max_width` | `30` / `60` | List column of the file tree split. |
+| `split_code_min_width` / `split_code_max_width` | `50` / `100` | List column of a code split (go to line, search, path picks). |
+| `split_preview_min_width` / `split_preview_max_width` | `70` / `130` | Preview beside a split's list; narrower than list min + preview min, the preview hides. |
 
 ## Search & navigation
 

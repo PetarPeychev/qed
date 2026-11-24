@@ -2,7 +2,7 @@ qed-e2e snapshot 80x24 cursor 37,2
 -- text
  1 cat dog cat
  2 the cat sat              ┌────────────────────────────────────────────────┐
- 3 catalog                  │Find cat                      .* Aa         3/4 │
+ 3 catalog                  │Find cat                          .* Aa 3/4     │
  4                          └────────────────────────────────────────────────┘
 
 
@@ -26,9 +26,9 @@ qed-e2e snapshot 80x24 cursor 37,2
 
 -- style
 aaabbbcccccbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-addcccceeeccccccccccccccccccffffffffffffffffffffffffffffffffffffffffffffffffffcc
-aaabbbccccccccccccccccccccccfgggggfffffffffffffffffffffffffhhfhhfffffffffhhhhfcc
-aaacccccccccccccccccccccccccffffffffffffffffffffffffffffffffffffffffffffffffffcc
+addeeeefffeeeeeeeeeeeeeeeeeeggggggggggggggggggggggggggggggggggggggggggggggggggee
+aaabbbccccccccccccccccccccccghhhhhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiggiggiiiiiiiiigcc
+aaacccccccccccccccccccccccccggggggggggggggggggggggggggggggggggggggggggggggggggcc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -47,14 +47,15 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#f4f4ff bg=#453b1a
 c fg=#f4f4ff bg=#181818
 d fg=#d8d8d8 bg=#1b1b1b
-e fg=#181818 bg=#f4f4ff
-f fg=#f4f4ff bg=#2b2b2b
-g fg=#ffdd33 bg=#2b2b2b
-h fg=#686868 bg=#2b2b2b
+e fg=#f4f4ff bg=#262626
+f fg=#181818 bg=#f4f4ff
+g fg=#868686 bg=#2b2b2b
+h fg=#ffdd33 bg=#2b2b2b
+i fg=#f4f4ff bg=#2b2b2b

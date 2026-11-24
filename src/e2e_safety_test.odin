@@ -1,5 +1,6 @@
 package main
 
+import "core:strings"
 import "core:testing"
 
 @(test)
@@ -14,9 +15,10 @@ e2e_safety_dialog_core_nodes :: proc(t: ^testing.T) {
 	testing.expect(t, row >= 0, "its choices draw")
 	e2e_type(&e, "x")
 	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "abc")
-	e2e_mouse(&e, 10, row)
+	column := visual_width(transmute([]u8)e2e_row_text(&e, row)[:max(strings.index(e2e_row_text(&e, row), "Discard All"), 0)])
+	e2e_mouse(&e, column, row)
 	testing.expect_value(t, e.ed.safety.selected, 2)
 	testing.expect(t, !e.ed.quit, "one click selects")
-	e2e_mouse(&e, 10, row)
+	e2e_mouse(&e, column, row)
 	testing.expect(t, e.ed.quit, "a second click on it chooses")
 }

@@ -18,7 +18,7 @@ end
 run main.c
 wait include
 key alt+F
-wait Search
+wait text to find
 type helper
 wait util.h:1
 snap results

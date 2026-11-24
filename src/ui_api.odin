@@ -24,12 +24,12 @@ lua_refs_equal :: proc(L: ^lua.State, first, second: i32) -> bool {
 UI_COMMON_PROPS :: [?]string{"id", "key", "width", "height", "grow", "drop", "margin", "float", "anchor", "scope", "on", "fg", "bg", "bold", "italic", "underline"}
 
 ui_kind_props := [UiKind][]string {
-	.Column         = {"gap", "align", "separator", "highlight_style"},
+	.Column         = {"gap", "align", "separator", "highlight_style", "dim"},
 	.Row            = {"gap", "align", "separator", "highlight_style"},
 	.Box            = {"border", "title"},
 	.Scroll         = {"header", "follow"},
 	.Text           = {"wrap", "align"},
-	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly"},
+	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly", "highlight_style"},
 	.Virtual_Column = {"data", "item", "highlight_style"},
 	.Outlet         = {},
 	.Image          = {"path"},
@@ -122,9 +122,6 @@ ui_marshal_size :: proc(marshal: ^UiMarshal, idx: c.int, what: string) -> UiSize
 				}
 			}
 			lua.pop(L, 1)
-		}
-		if size.form == .Auto {
-			size.form = .Fit
 		}
 		return size
 	case:
@@ -511,6 +508,8 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 			}
 		case "separator":
 			node.separator = bool(lua.toboolean(L, value_index))
+		case "dim":
+			node.dim = bool(lua.toboolean(L, value_index))
 		case "follow":
 			node.follow = bool(lua.toboolean(L, value_index))
 		case "border":

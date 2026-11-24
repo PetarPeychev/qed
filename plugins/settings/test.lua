@@ -190,14 +190,14 @@ local function screen_has(test, text)
 end
 
 local function settings_open(test)
-	return screen_has(test, "─ Settings ─")
+	return screen_has(test, "Options │ Keybinds")
 end
 
 local function first_is(test, name)
 	for screen_row = 0, 22 do
 		local line = test.screen(screen_row)
 		if line:find("│ Key ", 1, true) or line:find("│ Command ", 1, true) then
-			local row = test.screen(screen_row + 1)
+			local row = test.screen(screen_row + 2)
 			return (row:find("│ " .. name .. " ", 1, true) or row:find("│▎" .. name .. " ", 1, true)) ~= nil
 		end
 	end
@@ -230,7 +230,7 @@ end
 local function open_menu(test, tab)
 	qed.run("Settings: Open")
 	test.wait(function() return settings_open(test) end)
-	test.ok(screen_has(test, "Settings"), "the settings pane opens")
+	test.ok(screen_has(test, "Options"), "the settings pane opens")
 	if tab == 2 then
 		test.key("Tab")
 		test.wait(function() return screen_has(test, "Command") and screen_has(test, "Scope: ") end)
@@ -261,7 +261,7 @@ function tests.menu_lists_core_and_plugin_options(test)
 	select(test, "search.enabled")
 	test.eq(value(test), "true")
 	select(test, "format.commands.python")
-	test.ok(screen_has(test, "Formatter per language: a stdin to stdout command, {file} is the path."))
+	test.ok(screen_has(test, "Formatter per language: a stdin to stdout command,"))
 	test.type("ZZZ")
 	test.ok(not first_is(test, "ZZZ") and not screen_has(test, "line_wrap"), "nothing matches")
 	test.key("Esc")

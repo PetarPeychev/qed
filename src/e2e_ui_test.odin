@@ -13,6 +13,11 @@ e2e_ui_find_row :: proc(e: ^E2E, text: string) -> int {
 	return -1
 }
 
+e2e_ui_palette_row :: proc(e: ^E2E) -> int {
+	node := ui_find(&e.ed.ui, "#palette/palette")
+	return node.rect.y if node != nil && !node.hidden else -1
+}
+
 e2e_ui_settle :: proc(e: ^E2E) {
 	plugin_flush(&e.ed)
 	plugin_pump(&e.ed)
@@ -42,7 +47,7 @@ e2e_ui_palette_filters_and_runs :: proc(t: ^testing.T) {
 	e2e_new_ui(&e)
 	e2e_key(&e, .Ctrl_P, tb2.Mod.Ctrl)
 	e2e_ui_settle(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "the palette opens")
+	testing.expect(t, e2e_ui_palette_row(&e) >= 0, "the palette opens")
 	e2e_type(&e, "w")
 	e2e_ui_settle(&e)
 	e2e_key(&e, .Backspace2)
@@ -54,7 +59,7 @@ e2e_ui_palette_filters_and_runs :: proc(t: ^testing.T) {
 	wrap_before := editor_buffer(&e.ed).wrap
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") < 0, "Enter closes the palette")
+	testing.expect(t, e2e_ui_palette_row(&e) < 0, "Enter closes the palette")
 	testing.expect_value(t, editor_buffer(&e.ed).wrap, !wrap_before)
 	testing.expect_value(t, e2e_row_text(&e, 0), " 1 alpha")
 }
@@ -272,20 +277,20 @@ e2e_ui_palette_outside_click_and_esc :: proc(t: ^testing.T) {
 	e2e_new_ui(&e)
 	e2e_key(&e, .Ctrl_P, tb2.Mod.Ctrl)
 	e2e_ui_settle(&e)
-	box := e2e_ui_find_row(&e, "Command Palette")
+	box := e2e_ui_palette_row(&e)
 	testing.expect(t, box >= 0, "the palette opens")
 	e2e_mouse(&e, 40, box + 1)
 	e2e_ui_settle(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "a click inside keeps it")
+	testing.expect(t, e2e_ui_palette_row(&e) >= 0, "a click inside keeps it")
 	e2e_mouse(&e, 1, E2E_H - 3)
 	e2e_ui_settle(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") < 0, "a click outside closes it")
+	testing.expect(t, e2e_ui_palette_row(&e) < 0, "a click outside closes it")
 	e2e_key(&e, .Ctrl_P, tb2.Mod.Ctrl)
 	e2e_ui_settle(&e)
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Esc)
 	e2e_ui_settle(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") < 0, "Esc closes it")
+	testing.expect(t, e2e_ui_palette_row(&e) < 0, "Esc closes it")
 	testing.expect_value(t, editor_buffer(&e.ed).cursor, Cursor{0, 0})
 	e2e_key(&e, .Arrow_Down)
 	testing.expect_value(t, editor_buffer(&e.ed).cursor.row, 1)
@@ -316,7 +321,7 @@ e2e_ui_editor_scope_undo_targets_the_field :: proc(t: ^testing.T) {
 	e2e_type(&e, "ab")
 	e2e_key(&e, .Ctrl_Z, tb2.Mod.Ctrl)
 	e2e_ui_settle(&e)
-	testing.expect(t, strings.contains(e2e_row_text(&e, e2e_ui_find_row(&e, "Command Palette") + 1), "Type a command"), "undo empties the query")
+	testing.expect(t, !strings.contains(e2e_row_text(&e, e2e_ui_palette_row(&e) + 1), "> a"), "undo empties the query")
 	testing.expect_value(t, string(editor_buffer(&e.ed).lines[0].text[:]), "xalpha")
 }
 
@@ -347,7 +352,7 @@ e2e_ui_palette_row_clicks :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	e2e_type(&e, "linewrap")
 	e2e_ui_settle(&e)
-	box := e2e_ui_find_row(&e, "Command Palette")
+	box := e2e_ui_palette_row(&e)
 	e2e_mouse(&e, 30, box)
 	e2e_ui_settle(&e)
 	e2e_type(&e, "x")
@@ -360,6 +365,6 @@ e2e_ui_palette_row_clicks :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	e2e_mouse(&e, 20, row)
 	e2e_ui_settle(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") < 0, "a double click runs the row")
+	testing.expect(t, e2e_ui_palette_row(&e) < 0, "a double click runs the row")
 	testing.expect_value(t, editor_buffer(&e.ed).wrap, !wrap_before)
 }

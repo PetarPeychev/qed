@@ -97,11 +97,11 @@ e2e_cwd_open_prefill :: proc(t: ^testing.T) {
 	testing.expect_value(t, state.highlight, "Beta")
 
 	box := node_rect(&e.ed, "workspace")
-	testing.expect_value(t, box.w, 64)
+	testing.expect_value(t, box.w, PICKER_WIDTH)
 	top := e2e_row(&e, box.y)
 	testing.expectf(t, strings.contains(top, "┌──────────") && !strings.contains(top, filepath.base(root)), "no title on the border: %q", top)
 	testing.expect(t, strings.contains(e2e_row(&e, box.y + 1), fmt.tprintf("%s/", filepath.base(root))), "prompt row")
-	testing.expect(t, strings.contains(e2e_row(&e, box.y + 2), "Beta"), "first row under the prompt")
+	testing.expect(t, strings.contains(e2e_row(&e, box.y + 3), "Beta"), "first row under the prompt and its rule")
 
 	e2e_key(&e, .Arrow_Down)
 	e2e_key(&e, .Arrow_Down)

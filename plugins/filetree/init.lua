@@ -5,6 +5,7 @@ local TABS = {
 	{label = "Open", cmd = "File Tree: Open"},
 	{label = "Unsaved", cmd = "File Tree: Unsaved"},
 }
+local HINTS = {{label = "←→ tabs"}, {label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "commands", cmd = "Command Palette"}}
 -- core's old walk preview debounce: a held arrow asks a previewing tab's plugin once
 local PREVIEW_DEBOUNCE_MS = 80
 
@@ -254,7 +255,7 @@ local function tree_row(row)
 	end
 	local buffer = not row.dir and view.buffers[row.path]
 	local icon = row.dir and (row.expanded and qed.theme.icon("tree_expanded") or qed.theme.icon("tree_collapsed")) or " "
-	local label = row.name
+	local label = row.dir and (row.name .. "/") or row.name
 	if mark and mark.suffix and not row.dir then
 		label = label .. "  " .. mark.suffix
 	end
@@ -282,14 +283,14 @@ local function tab_row()
 	for index, tab in ipairs(row) do
 		local on = index == at
 		if index > 1 then
-			cells[#cells + 1] = ui.text{fg = "pane_dim_foreground", " │ "}
+			cells[#cells + 1] = ui.text{fg = "pane_shortcut_foreground", " │ "}
 		end
 		cells[#cells + 1] = ui.text{
 			on = {click = function()
 				view.switch(tab.label)
 				return true
 			end},
-			{fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, tab.label}}
+			{fg = on and "pane_prompt_foreground" or "pane_shortcut_foreground", tab.label}}
 	end
 	return ui.row{height = 1, table.unpack(cells)}
 end
@@ -301,11 +302,7 @@ local function footer()
 			ui.editor{id = "filetree_input", buffer = view.input.buffer, height = 1, grow = 1, scope = {"filetree_input", "editor"}},
 		}
 	end
-	local cells = {ui.text{grow = 1, fg = "pane_dim_foreground", " ←→ tabs  ↑↓ select  Shift+↑↓ extend  Enter open  Ctrl+P commands"}}
-	for _, chip in ipairs(chips()) do
-		cells[#cells + 1] = ui.text{fg = chip.on and "pane_prompt_foreground" or "pane_dim_foreground", bold = chip.on, " ", chip.label, " "}
-	end
-	return ui.row{height = 1, table.unpack(cells)}
+	return ui.footer{hints = HINTS, chips = chips()}
 end
 
 build = function()
@@ -313,32 +310,31 @@ build = function()
 	local tree = view.tree
 	local count = tree:count()
 	local empty = count == 0 and tab and tab.empty or nil
+	local filtering = view.query:text() ~= ""
 	return ui.dismissable{on_dismiss = function() view.close() end,
-		ui.box{id = "filetree", float = "screen", anchor = "center", width = "100%", height = "100%", scope = {"list", "list_range"},
-			margin = {x = 2, y = 1}, border = true, title = "File Tree", bg = "pane_background", fg = "pane_foreground",
-			ui.column{
-				tab_row(),
-				ui.row{height = 1,
-					ui.text{fg = "pane_prompt_foreground", "> "},
-					ui.editor{id = "filetree_query", buffer = view.query, height = 1, grow = 1,
-						scope = {"filetree", "editor"}, placeholder = "type to filter"},
-					ui.text{fg = "pane_dim_foreground", tree:loading() and "… " or (count .. (tree:more() and "+" or "") .. " ")},
-				},
-				ui.row{grow = 1, separator = view.preview ~= nil,
-					ui.column{grow = view.preview and 0 or 1,
-						width = view.preview and {"40%", min = qed.opt("split_tree_min_width"), max = qed.opt("split_tree_max_width")} or nil,
-						empty and ui.text{id = "filetree_hint", fg = "pane_dim_foreground", " ", empty} or false,
+		ui.pane{id = "filetree", place = "full", max_width = ui.split_width("tree"), scope = {"list", "list_range"},
+			tab_row(),
+			ui.split{kind = "tree",
+				ui.column{separator = true,
+					ui.row{height = 1,
+						ui.text{fg = "pane_prompt_foreground", " > "},
+						ui.editor{id = "filetree_query", buffer = view.query, height = 1, grow = 1, margin = {right = 1},
+							scope = {"filetree", "editor"}, placeholder = "type to filter"},
+						ui.text{fg = "pane_shortcut_foreground", tree:loading() and "…" or filtering and (count .. (tree:more() and "+" or "")) or ""},
+					},
+					ui.column{grow = 1,
+						empty and ui.text{id = "filetree_hint", fg = "pane_shortcut_foreground", " ", empty} or false,
 						ui.scroll{id = "filetree_scroll", grow = 1,
 							ui.virtual_column{id = "filetree_rows", data = tree, item = tree_row, on = {state = function() view.changed() end},
 								highlight_style = {bg = "pane_selection_background"}}},
 					},
-					view.preview and view.preview.buffer and ui.editor{id = "filetree_preview", buffer = view.preview.buffer,
-						grow = 1, readonly = true, syntax = true, line_numbers = true}
-					or view.preview and ui.image{id = "filetree_preview", path = view.preview.path, grow = 1}
-					or false,
 				},
-				footer(),
+				view.preview and view.preview.buffer and ui.editor{id = "filetree_preview", buffer = view.preview.buffer,
+					readonly = true, syntax = true, line_numbers = true}
+				or view.preview and ui.image{id = "filetree_preview", path = view.preview.path}
+				or ui.text{""},
 			},
+			footer(),
 		},
 	}
 end

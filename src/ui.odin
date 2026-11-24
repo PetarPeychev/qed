@@ -154,6 +154,8 @@ UiNode :: struct {
 	style:           UiStyle,
 	gap:             int,
 	separator:       bool,
+	// fades what is drawn under the node's rect (a backdrop behind a pane)
+	dim:             bool,
 	follow:          bool,
 	align:           UiAlign,
 	highlight_style: UiStyle,
@@ -257,7 +259,23 @@ Ui :: struct {
 	chords:        map[string]string,
 	markdowns:     map[string]^UiMarkdown,
 	editor_clicks: UiClicks,
+	lines:         map[[2]int]UiLine,
 }
+
+// a border or separator cell drawn this frame: separators of the same mount join it (├ ┬ ┼ ...)
+UiLine :: struct {
+	dirs:  u8,
+	mount: u64,
+	char:  rune,
+}
+
+LINE_UP :: u8(1)
+LINE_DOWN :: u8(2)
+LINE_LEFT :: u8(4)
+LINE_RIGHT :: u8(8)
+
+// indexed by up | down << 1 | left << 2 | right << 3
+LINE_CHARS := [16]rune{' ', '│', '│', '│', '─', '┘', '┐', '┤', '─', '└', '┌', '├', '─', '┴', '┬', '┼'}
 
 UiClicks :: struct {
 	count: int,
@@ -315,6 +333,7 @@ ui_destroy :: proc(editor: ^Editor) {
 		delete(chord)
 	}
 	delete(ui.chords)
+	delete(ui.lines)
 }
 
 // core-built trees (safety dialogs, rename prompt, caret popups) need no Lua
@@ -343,6 +362,17 @@ ui_core_add :: proc(parent, child: ^UiNode) {
 
 ui_core_pane_style :: proc() -> UiStyle {
 	return {set = {.Fg, .Bg}, fg = strings.clone("pane_foreground"), bg = strings.clone("pane_background")}
+}
+
+// qed.ui.pane{place = "center"} built in core: centred over the editor area, sized to fit or to width
+ui_core_pane :: proc(editor: ^Editor, id: string, width: UiSize) -> ^UiNode {
+	box := ui_core_node(.Box, id)
+	box.float, box.anchor, box.border = .Screen, .Center, true
+	box.width = width
+	box.height = {form = .Fit}
+	box.margin = {0, 0, 0 if editor.welcome else STATUS_ROWS, 0}
+	box.style = {set = {.Bg}, bg = strings.clone("pane_background")}
+	return box
 }
 
 ui_node_free :: proc(editor: ^Editor, node: ^UiNode) {
@@ -971,7 +1001,8 @@ ui_size_resolve :: proc(size: UiSize, avail, natural: int) -> int {
 }
 
 ui_snap :: proc(size: UiSize, value, avail: int) -> int {
-	if size.form != .Percent || (avail - value) % 2 == 0 || value - 1 < size.min || value <= 0 {
+	// a percentage held at its max is a fixed size: the odd cell goes after it
+	if size.form != .Percent || (avail - value) % 2 == 0 || value - 1 < size.min || value <= 0 || (size.max > 0 && value >= size.max) {
 		return value
 	}
 	return value - 1
@@ -1183,7 +1214,9 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 			}
 		}
 	case .Scroll:
-		content.w = max(content.w - 1, 0)
+		if !ui_scroll_bar_on_border(node) {
+			content.w = max(content.w - 1, 0)
+		}
 		if node.header != nil {
 			_, hh := ui_measure_slot(editor, node.header, content.w, content.h)
 			hh = min(hh, content.h)
@@ -1342,9 +1375,12 @@ ui_layout_flow :: proc(editor: ^Editor, node: ^UiNode, content: Rect) {
 			}
 			sizes[i] += share
 			given += share
-			last = i
+			if form.max == 0 {
+				last = i
+			}
 		}
-		if last >= 0 && ui_axis_size(laid_out[last], axis).max == 0 {
+		// what a capped grower could not take goes to the last grower without a max
+		if last >= 0 {
 			sizes[last] += leftover - given
 		}
 	}
@@ -1643,9 +1679,25 @@ ui_enclosing_scroll :: proc(node: ^UiNode) -> ^UiNode {
 	return nil
 }
 
+// a scroll flush with its box's right border draws its bar on that border instead of reserving a column
+ui_scroll_bar_on_border :: proc(scroll: ^UiNode) -> bool {
+	right := scroll.rect.x + scroll.rect.w
+	for ancestor := scroll.parent; ancestor != nil; ancestor = ancestor.parent {
+		if ancestor.kind == .Box && ancestor.border {
+			return ancestor.rect.x + ancestor.rect.w - 1 == right
+		}
+		if ancestor.float != .None {
+			return false
+		}
+	}
+	return false
+}
+
 ui_scroll_content :: proc(editor: ^Editor, scroll: ^UiNode) -> Rect {
 	content := scroll.rect
-	content.w = max(content.w - 1, 0)
+	if !ui_scroll_bar_on_border(scroll) {
+		content.w = max(content.w - 1, 0)
+	}
 	if scroll.header != nil {
 		content.y += scroll.header.rect.h
 		content.h -= scroll.header.rect.h
@@ -1914,6 +1966,46 @@ ui_cell :: proc(paint: ^UiPaint, cell_x, cell_y: int, character: rune, fg, bg: t
 	}
 }
 
+ui_line_at :: proc(editor: ^Editor, mount: u64, cell_x, cell_y: int) -> u8 {
+	line, ok := editor.ui.lines[{cell_x, cell_y}]
+	if !ok || line.mount != mount {
+		return 0
+	}
+	// something drawn over the line since (a later float) breaks the join
+	cell: ^tb2.Cell_Raw
+	if tb2.get_cell(i32(cell_x), i32(cell_y), 1, &cell) != .Ok || cell == nil || rune(cell.ch) != line.char {
+		return 0
+	}
+	return line.dirs
+}
+
+ui_line :: proc(editor: ^Editor, paint: ^UiPaint, mount: u64, cell_x, cell_y: int, dirs: u8, fg: tb2.Color) {
+	if !ui_rect_has(paint.clip, cell_x, cell_y) {
+		return
+	}
+	char := LINE_CHARS[dirs & 15]
+	tb2.set_cell(i32(cell_x), i32(cell_y), char, fg, paint.bg)
+	editor.ui.lines[{cell_x, cell_y}] = {dirs, mount, char}
+}
+
+ui_line_join :: proc(editor: ^Editor, paint: ^UiPaint, mount: u64, cell_x, cell_y: int, need, add: u8, fg: tb2.Color) {
+	dirs := ui_line_at(editor, mount, cell_x, cell_y)
+	if dirs & need != 0 {
+		ui_line(editor, paint, mount, cell_x, cell_y, dirs | add, fg)
+	}
+}
+
+ui_dim :: proc(area: Rect) {
+	for cell_y in area.y ..< area.y + area.h {
+		for cell_x in area.x ..< area.x + area.w {
+			cell: ^tb2.Cell_Raw
+			if tb2.get_cell(i32(cell_x), i32(cell_y), 1, &cell) == .Ok && cell != nil {
+				cell.fg = tb2.Color(u64(color_over(cell.fg, cell.bg, PANE_BACKDROP_TINT)) | color_attrs(cell.fg))
+			}
+		}
+	}
+}
+
 ui_fill :: proc(paint: ^UiPaint, rect: Rect, bg: tb2.Color) {
 	area := ui_rect_intersect(rect, paint.clip)
 	for cell_y in area.y ..< area.y + area.h {
@@ -1927,6 +2019,7 @@ ui_fill :: proc(paint: ^UiPaint, rect: Rect, bg: tb2.Color) {
 ui_render :: proc(editor: ^Editor) {
 	ui := &editor.ui
 	clear(&ui.hits)
+	clear(&ui.lines)
 	ui.caret_shown = false
 	for layer in UI_LAYERS {
 		if layer == "alert" {
@@ -2031,13 +2124,16 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		paint.bg = bg
 		ui_fill(&paint, node.rect, bg)
 	}
+	if node.dim {
+		ui_dim(ui_rect_intersect(node.rect, paint.clip))
+	}
 	state := ui_node_state_peek(&editor.ui, node)
 	switch node.kind {
 	case .Text:
 		ui_render_text(&paint, node)
 	case .Box:
 		if node.border {
-			ui_render_border(&paint, node)
+			ui_render_border(editor, &paint, node)
 		}
 	case .Scroll:
 		content := ui_scroll_content(editor, node)
@@ -2111,7 +2207,7 @@ ui_render_node :: proc(editor: ^Editor, node: ^UiNode, parent: ^UiPaint, floats:
 		ui_render_node(editor, expanded_child, &child, floats)
 	}
 	if node.separator && (node.kind == .Column || node.kind == .Row) {
-		ui_render_separators(&paint, node)
+		ui_render_separators(editor, &paint, node)
 	}
 }
 
@@ -2133,33 +2229,32 @@ ui_render_image :: proc(paint: ^UiPaint, node: ^UiNode) {
 	}
 }
 
-ui_render_border :: proc(paint: ^UiPaint, node: ^UiNode) {
+ui_render_border :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	rect := node.rect
-	fg, _ := ui_style_colors(ui_style_over(paint.inherit, paint.override), COLOR_PANE_BORDER, paint.bg)
-	if .Fg not_in node.style.set {
-		fg = COLOR_PANE_BORDER
-	}
+	fg := COLOR_PANE_BORDER
 	x1, y1 := rect.x + rect.w - 1, rect.y + rect.h - 1
 	for cell_x in rect.x + 1 ..< x1 {
-		ui_cell(paint, cell_x, rect.y, '─', fg, paint.bg)
-		ui_cell(paint, cell_x, y1, '─', fg, paint.bg)
+		ui_line(editor, paint, node.mount, cell_x, rect.y, LINE_LEFT | LINE_RIGHT, fg)
+		ui_line(editor, paint, node.mount, cell_x, y1, LINE_LEFT | LINE_RIGHT, fg)
 	}
 	for cell_y in rect.y + 1 ..< y1 {
-		ui_cell(paint, rect.x, cell_y, '│', fg, paint.bg)
-		ui_cell(paint, x1, cell_y, '│', fg, paint.bg)
+		ui_line(editor, paint, node.mount, rect.x, cell_y, LINE_UP | LINE_DOWN, fg)
+		ui_line(editor, paint, node.mount, x1, cell_y, LINE_UP | LINE_DOWN, fg)
 	}
-	ui_cell(paint, rect.x, rect.y, '┌', fg, paint.bg)
-	ui_cell(paint, x1, rect.y, '┐', fg, paint.bg)
-	ui_cell(paint, rect.x, y1, '└', fg, paint.bg)
-	ui_cell(paint, x1, y1, '┘', fg, paint.bg)
+	ui_line(editor, paint, node.mount, rect.x, rect.y, LINE_RIGHT | LINE_DOWN, fg)
+	ui_line(editor, paint, node.mount, x1, rect.y, LINE_LEFT | LINE_DOWN, fg)
+	ui_line(editor, paint, node.mount, rect.x, y1, LINE_RIGHT | LINE_UP, fg)
+	ui_line(editor, paint, node.mount, x1, y1, LINE_LEFT | LINE_UP, fg)
 	if node.title != "" && rect.w > 4 {
 		title_fg, _ := ui_style_colors(ui_style_over(paint.inherit, paint.override), COLOR_PANE_FG, paint.bg)
 		ui_draw_text(paint, rect.x + 2, rect.y, rect.w - 4, fmt.tprintf(" %s ", node.title), title_fg, paint.bg)
 	}
 }
 
-ui_render_separators :: proc(paint: ^UiPaint, node: ^UiNode) {
+ui_render_separators :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	prev: ^UiNode
+	fg := COLOR_PANE_BORDER
+	mount := node.mount
 	for child in node.expanded {
 		if child.float != .None || child.hidden {
 			continue
@@ -2167,14 +2262,26 @@ ui_render_separators :: proc(paint: ^UiPaint, node: ^UiNode) {
 		if prev != nil {
 			if node.kind == .Column {
 				cell_y := child.rect.y - child.margin[0] - 1
-				for cell_x in node.rect.x ..< node.rect.x + node.rect.w {
-					ui_cell(paint, cell_x, cell_y, '─', COLOR_PANE_BORDER, paint.bg)
+				x0, x1 := node.rect.x, node.rect.x + node.rect.w - 1
+				for cell_x in x0 ..= x1 {
+					dirs := LINE_LEFT | LINE_RIGHT
+					if ui_line_at(editor, mount, cell_x, cell_y - 1) & LINE_DOWN != 0 {dirs |= LINE_UP}
+					if ui_line_at(editor, mount, cell_x, cell_y + 1) & LINE_UP != 0 {dirs |= LINE_DOWN}
+					ui_line(editor, paint, mount, cell_x, cell_y, dirs, fg)
 				}
+				ui_line_join(editor, paint, mount, x0 - 1, cell_y, LINE_UP | LINE_DOWN, LINE_RIGHT, fg)
+				ui_line_join(editor, paint, mount, x1 + 1, cell_y, LINE_UP | LINE_DOWN, LINE_LEFT, fg)
 			} else {
 				cell_x := child.rect.x - child.margin[3] - 1
-				for cell_y in node.rect.y ..< node.rect.y + node.rect.h {
-					ui_cell(paint, cell_x, cell_y, '│', COLOR_PANE_BORDER, paint.bg)
+				y0, y1 := node.rect.y, node.rect.y + node.rect.h - 1
+				for cell_y in y0 ..= y1 {
+					dirs := LINE_UP | LINE_DOWN
+					if ui_line_at(editor, mount, cell_x - 1, cell_y) & LINE_RIGHT != 0 {dirs |= LINE_LEFT}
+					if ui_line_at(editor, mount, cell_x + 1, cell_y) & LINE_LEFT != 0 {dirs |= LINE_RIGHT}
+					ui_line(editor, paint, mount, cell_x, cell_y, dirs, fg)
 				}
+				ui_line_join(editor, paint, mount, cell_x, y0 - 1, LINE_LEFT | LINE_RIGHT, LINE_DOWN, fg)
+				ui_line_join(editor, paint, mount, cell_x, y1 + 1, LINE_LEFT | LINE_RIGHT, LINE_UP, fg)
 			}
 		}
 		prev = child
@@ -2299,11 +2406,17 @@ ui_render_editor :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 		scroll_col   = state.scroll_col,
 		bg           = background,
 		fg           = foreground,
+		// an editor inside a pane draws its gutter on the pane
+		gutter_bg    = paint.bg if paint.bg != COLOR_BG else COLOR_GUTTER_BG,
 		fg_set       = .Fg in base.set,
 		syntax       = node.syntax && !buffer.big,
-		current_line = node.line_numbers && focused,
+		current_line = node.line_numbers && (focused || shows_current),
+
 		find         = find_shows(editor, buffer),
 		inline       = shows_current && focused,
+	}
+	if .Bg in node.highlight_style.set && !focused {
+		_, view.target_bg = ui_style_colors(node.highlight_style, COLOR_FG, background)
 	}
 	if shows_current && focused {
 		editor.caret_view = view

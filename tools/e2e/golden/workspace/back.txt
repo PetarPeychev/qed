@@ -1,19 +1,19 @@
-qed-e2e snapshot 80x24 cursor 36,4
+qed-e2e snapshot 80x24 cursor 38,8
 -- text
  1 root notes
  2
 
-        ┌──────────────────────────────────────────────────────────────┐
-        │> /tmp/qed-e2e-XXXXXX/root/                                   │
-        │ alpha                                                        │
-        │ apple                                                        │
-        │ beta                                                         │
-        └──────────────────────────────────────────────────────────────┘
 
 
 
 
-
+         ┌────────────────────────────────────────────────────────────┐
+         │ > /tmp/qed-e2e-XXXXXX/root/                                │
+         ├────────────────────────────────────────────────────────────┤
+         │ alpha                                                      │
+         │ apple                                                      │
+         │ beta                                                       │
+         └────────────────────────────────────────────────────────────┘
 
 
 
@@ -26,33 +26,35 @@ qed-e2e snapshot 80x24 cursor 36,4
 
 -- style
 abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-aaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccc
-ccccccccdeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccc
-ccccccccdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccc
-ccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddefffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggeddddddddd
+dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheddddddddd
+dddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggeddddddddd
+dddddddddeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggeddddddddd
+dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#d8d8d8 bg=#1b1b1b
-c fg=#f4f4ff bg=#181818
-d fg=#f4f4ff bg=#2b2b2b
-e fg=#ffdd33 bg=#2b2b2b
-f fg=#f4f4ff bg=#4a4a4a
+c fg=#f4f4ff bg=#262626
+d fg=#f4f4ff bg=#181818
+e fg=#868686 bg=#2b2b2b
+f fg=#ffdd33 bg=#2b2b2b
+g fg=#f4f4ff bg=#2b2b2b
+h fg=#f4f4ff bg=#4a4a4a

@@ -28,8 +28,7 @@ local function build(session)
 		on = {key = function() hide() return true end}
 	end
 	return ui.dismissable{on_dismiss = hide,
-		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 8, y = 3},
-			border = true, title = title_of(session), bg = "pane_background", fg = "pane_foreground",
+		ui.pane{place = "full", title = title_of(session),
 			ui.terminal{id = "terminal", session = session, grow = 1, scope = "terminal", on = on},
 		},
 	}

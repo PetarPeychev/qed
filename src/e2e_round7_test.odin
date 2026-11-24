@@ -233,7 +233,7 @@ e2e_round7_core_list_navigation :: proc(t: ^testing.T) {
 	e2e_key(&e, .Home)
 	e2e_render(&e)
 	box := node_rect(&e.ed, "palette")
-	e2e_mouse(&e, box.x + 4, box.y + 4)
+	e2e_mouse(&e, box.x + 4, box.y + 5)
 	labels := strings.split(palette_labels(&e), "|", context.temp_allocator)
 	testing.expect_value(t, palette_selected(&e), labels[3])
 	for ch in "line wrap" {

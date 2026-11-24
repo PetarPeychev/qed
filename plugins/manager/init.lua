@@ -54,6 +54,9 @@ local function shortcut(name)
 	return ""
 end
 
+local HINTS = {{label = "↑↓ select"}, {label = "Enter open"}, {label = "enable/disable", cmd = "Plugin Manager: Enable/Disable"},
+	{label = "reload", cmd = "Plugin Manager: Reload"}, {label = "log", cmd = "Plugin Manager: Show Log"}, {label = "Esc close"}}
+
 local open_source
 
 local function plugin_row(record)
@@ -83,38 +86,30 @@ end
 
 local function source_box()
 	local record = view.source
-	return ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%",
-		margin = {x = 2, y = 1}, border = true, title = "plugins/" .. record.main .. "  ·  bundled, read-only",
-		bg = "pane_background", fg = "pane_foreground",
-		ui.column{
-			ui.editor{id = "plugin_source", buffer = view.source_buffer, grow = 1, readonly = true, syntax = true,
-				scope = {"plugin_source", "editor"}},
-			ui.text{height = 1, fg = "pane_dim_foreground", " Esc back  ·  fork: copy to " .. home_short(record.fork)},
-		},
+	return ui.pane{place = "full", max_width = qed.opt("pane_max_width"),
+		title = "plugins/" .. record.main .. "  ·  bundled, read-only",
+		ui.editor{id = "plugin_source", buffer = view.source_buffer, grow = 1, readonly = true, syntax = true,
+			scope = {"plugin_source", "editor"}},
+		ui.text{height = 1, fg = "pane_shortcut_foreground", " Esc back  ·  fork: copy to " .. home_short(record.fork)},
 	}
 end
 
 local function build()
 	local selected = highlighted()
-	local footer = selected and selected.error ~= "" and selected.error:gsub("\n", " ") or
-		(" ↑↓ select  Enter open  " .. shortcut("Enable/Disable") .. " enable/disable  " .. shortcut("Reload") ..
-		" reload  " .. shortcut("Show Log") .. " log  Esc close")
+	local failed = selected and selected.error ~= "" and selected.error:gsub("\n", " ")
 	return ui.dismissable{on_dismiss = close,
-		ui.box{float = "screen", anchor = "center", width = {"100%", max = qed.opt("pane_max_width")}, height = "100%",
-			margin = {x = 2, y = 1}, border = true, title = "Plugins", bg = "pane_background", fg = "pane_foreground",
-			ui.column{
-				ui.scroll{id = "plugin_scroll", grow = 1,
-					header = ui.row{bold = true,
-						ui.text{width = view.widths.display + 1, " Name"},
-						ui.text{grow = 1, " Description"},
-						ui.text{width = view.widths.source + 1, " Source"},
-						ui.text{width = view.widths.status + 1, " Status"},
-						ui.text{width = view.widths.load + 2, align = "right", "Load "}},
-					ui.virtual_column{id = "plugin_rows", scope = {"plugins", "list"}, data = view.records, item = plugin_row,
-						on = {state = function() view.handle:update(view.build()) end},
-						highlight_style = {bg = "pane_selection_background"}}},
-				ui.text{height = 1, fg = selected and selected.error ~= "" and "error_foreground" or "pane_dim_foreground", footer},
-			},
+		ui.pane{place = "full", max_width = qed.opt("pane_max_width"), title = "Plugins",
+			ui.row{bold = true,
+				ui.text{width = view.widths.display + 1, " Name"},
+				ui.text{grow = 1, " Description"},
+				ui.text{width = view.widths.source + 1, " Source"},
+				ui.text{width = view.widths.status + 1, " Status"},
+				ui.text{width = view.widths.load + 2, align = "right", "Load "}},
+			ui.scroll{id = "plugin_scroll", grow = 1,
+				ui.virtual_column{id = "plugin_rows", scope = {"plugins", "list"}, data = view.records, item = plugin_row,
+					on = {state = function() view.handle:update(view.build()) end},
+					highlight_style = {bg = "pane_selection_background"}}},
+			failed and ui.text{height = 1, fg = "error_foreground", " ", failed} or ui.footer{hints = HINTS},
 		},
 		view.source and source_box() or false,
 	}

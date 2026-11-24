@@ -10,8 +10,6 @@ quit_actions := [?]string{"Cancel", "Save All", "Discard All"}
 close_actions := [?]string{"Cancel", "Save", "Discard"}
 conflict_actions := [?]string{"Cancel", "Overwrite (keep my version)", "Reload (discard my changes)"}
 
-SAFETY_WIDTH :: 64
-
 SafetyKind :: enum u8 {
 	None,
 	Quit,
@@ -35,22 +33,19 @@ safety_open :: proc(editor: ^Editor) -> bool {
 
 @(private = "file")
 safety_mount :: proc(editor: ^Editor, kind: SafetyKind, buf: u64, question: string, choices: []string, selected: int) {
-	box := ui_core_node(.Box, "safety")
-	box.float, box.anchor, box.border = .Screen, .Top, true
-	box.width = {form = .Cells, value = SAFETY_WIDTH}
-	box.height = {form = .Fit}
-	box.margin = {3, 2, 2, 2}
-	box.style = ui_core_pane_style()
+	box := ui_core_pane(editor, "safety", {form = .Fit})
 	column := ui_core_node(.Column)
+	column.separator = true
+	column.style = ui_core_pane_style()
 	ui_core_add(box, column)
-	asked := ui_core_text(fmt.tprintf(" %s", question))
+	asked := ui_core_text(fmt.tprintf(" %s ", question))
 	asked.wrap, asked.wrap_set = true, true
 	ui_core_add(column, asked)
 	rows := ui_core_node(.Column, "safety_choices")
 	rows.highlight_style = {set = {.Fg, .Bg}, fg = strings.clone("pane_selection_foreground"), bg = strings.clone("pane_selection_background")}
 	ui_core_add(column, rows)
 	for choice, i in choices {
-		row := ui_core_text(fmt.tprintf(" %s", choice), fmt.tprintf("safety_choice_%d", i))
+		row := ui_core_text(fmt.tprintf(" %s ", choice), fmt.tprintf("safety_choice_%d", i))
 		row.key = strings.clone(fmt.tprintf("%d", i))
 		ui_core_add(rows, row)
 	}

@@ -45,9 +45,10 @@ local function welcome_tree()
 	for _, command in ipairs(qed.commands()) do
 		shortcuts[command.name] = command.shortcut
 	end
-	local art = {}
+	-- each art line centred on its own, the hints as one block
+	local middle = {grow = 1, align = "center", ui.text{grow = 1, ""}}
 	for _, line in ipairs(WELCOME_ART) do
-		art[#art + 1] = ui.text{line}
+		middle[#middle + 1] = ui.text{align = "center", line}
 	end
 	local hints = {}
 	for _, hint in ipairs(WELCOME_HINTS) do
@@ -55,15 +56,12 @@ local function welcome_tree()
 			hints[#hints + 1] = ui.text{("%-9s %s"):format(shortcuts[hint.command], hint.label)}
 		end
 	end
+	middle[#middle + 1] = ui.text{""}
+	middle[#middle + 1] = ui.column{width = "fit", table.unpack(hints)}
+	middle[#middle + 1] = ui.text{grow = 1, ""}
 	local root = qed.path.rel(qed.root(), qed.path.dir(qed.root())) or qed.root()
 	return ui.column{
-		ui.column{grow = 1, align = "center",
-			ui.text{grow = 1, ""},
-			ui.column{width = "fit", table.unpack(art)},
-			ui.text{""},
-			ui.column{width = "fit", table.unpack(hints)},
-			ui.text{grow = 1, ""},
-		},
+		ui.column(middle),
 		ui.status{height = 1, bg = "pane_background"},
 		ui.text{id = "welcome_message", height = 1, fg = MESSAGE_COLORS[message_level] or "foreground", message_text},
 	}

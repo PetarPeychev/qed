@@ -127,6 +127,7 @@
     "conflict_marker": 0.32,
     "conflict_word": 0.34,
     "decoration": 0.12,
-    "markdown_code": 0.35
+    "markdown_code": 0.35,
+    "pane_backdrop": 0.6
   }
 }

@@ -318,18 +318,19 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 
 	count := strings.count(palette_labels(&e), "|") - 1
 	box := node_rect(&e.ed, "palette")
-	bar_x := box.x + box.w - 2
+	// the bar sits on the right border; the list starts under the query and its rule
+	bar_x, list_y := box.x + box.w - 1, box.y + 3
 	testing.expect(t, count > PICKER_MAX_ROWS, "the command list should overflow the palette")
 	testing.expect_value(t, box.w, PICKER_WIDTH)
-	testing.expect_value(t, box.h, 2 + 1 + PICKER_MAX_ROWS)
+	testing.expect_value(t, box.h, 2 + 1 + 1 + PICKER_MAX_ROWS)
 	e2e_render(&e)
-	testing.expect_value(t, e2e_cell(&e, bar_x, box.y + 2), '┃')
+	testing.expect_value(t, e2e_cell(&e, bar_x, list_y), '┃')
 	testing.expect(t, e2e_grid_has(&e, "Ctrl+q"), "the shortcut column shows live binds")
 
 	e2e_type(&e, "line wrap")
 	testing.expect_value(t, palette_selected(&e), "Toggle Line Wrap")
 	e2e_render(&e)
-	testing.expect(t, e2e_cell(&e, bar_x, box.y + 2) != '┃', "a short list has no scrollbar")
+	testing.expect(t, e2e_cell(&e, bar_x, list_y) != '┃', "a short list has no scrollbar")
 
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)
@@ -1151,7 +1152,7 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(labels, "|Save|"), "editor commands are not")
 	testing.expect(t, filetree_active(&e.ed), "the palette sits over the tree")
 	e2e_render(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "the palette draws over the tree")
+	testing.expect(t, e2e_ui_palette_row(&e) >= 0, "the palette draws over the tree")
 	tree_box := node_rect(&e.ed, "filetree")
 	box := node_rect(&e.ed, "palette")
 	testing.expect(t, tree_box.x < box.x && box.x + box.w < tree_box.x + tree_box.w, "the tree box is wider than the palette")
@@ -1160,7 +1161,7 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	e2e_type(&e, "copy")
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") < 0, "running a command closes the palette")
+	testing.expect(t, e2e_ui_palette_row(&e) < 0, "running a command closes the palette")
 	testing.expect(t, filetree_active(&e.ed), "the tree stays open")
 	testing.expect_value(t, e.ed.message, "Copied a.txt")
 

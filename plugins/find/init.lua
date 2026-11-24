@@ -2,6 +2,8 @@ local ui = qed.ui
 
 local finder
 local options
+-- the flags and the match count after the query
+local STATUS_WIDTH = 15
 
 local function selection_query(ctx)
 	local text = ctx.selection_text
@@ -11,7 +13,7 @@ local function selection_query(ctx)
 end
 
 local function flag_text(label, on)
-	return {fg = on and "pane_prompt_foreground" or "pane_dim_foreground", bold = on, label}
+	return {fg = on and "pane_prompt_foreground" or "pane_shortcut_foreground", label}
 end
 
 local function status_text()
@@ -19,7 +21,7 @@ local function status_text()
 		return "invalid"
 	end
 	if finder.count == 0 then
-		return finder.query:text() == "" and "" or "no matches"
+		return finder.query:text() == "" and "" or "no match"
 	end
 	return ("%d/%d%s"):format(finder.index, finder.count, finder.capped and "+" or "")
 end
@@ -29,15 +31,14 @@ local function build()
 		ui.row{
 			ui.text{fg = "pane_prompt_foreground", "Find "},
 			ui.editor{id = "find_query", buffer = finder.query, height = 1, grow = 1, scope = {"find", "editor"}},
-			ui.text{" ", flag_text(".*", finder.regex), " ", flag_text("Aa", finder.case_sensitive), " "},
-			ui.text{fg = "pane_dim_foreground", width = 12, align = "right", status_text(), " "},
+			ui.text{width = STATUS_WIDTH, " ", flag_text(".*", finder.regex), " ", flag_text("Aa", finder.case_sensitive), " ", status_text()},
 		},
 	}
 	if finder.replacing then
 		rows[2] = ui.row{
 			ui.text{fg = "pane_prompt_foreground", "Repl "},
 			ui.editor{id = "find_replacement", buffer = finder.replacement, height = 1, grow = 1,
-				scope = {"find_replace", "find", "editor"}},
+				margin = {right = STATUS_WIDTH}, scope = {"find_replace", "find", "editor"}},
 		}
 	end
 	return ui.box{float = "screen", anchor = "top_right", width = options.width, height = "fit",

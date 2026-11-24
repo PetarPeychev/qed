@@ -6,7 +6,7 @@ end
 run long.txt
 wait short line
 key ctrl+p
-wait Command Palette
+wait Ctrl+w
 snap open
 type tog
 snap filtered
@@ -20,6 +20,6 @@ snap wrap
 key enter
 snap unwrapped
 key ctrl+p
-wait Command Palette
+wait Ctrl+w
 click 2 20
 snap outside

@@ -1050,7 +1050,7 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, view: ^EditorView,
 			seg_start := segs[s]
 			seg_end := segs[s + 1] if s + 1 < len(segs) else len(ct)
 			if gutter > 0 {
-				editor_render_gutter(view.x, sy, gutter, row + 1, true, 0, mark, !first_row)
+				editor_render_gutter(view.x, sy, gutter, row + 1, true, 0, mark, !first_row, view.gutter_bg)
 			}
 			editor_render_text_row(view.x + gutter, sy, w, ct, ccol[:], x_origin, line_bg, -1, -1, nil, seg_start, seg_end)
 			x_origin = visual_col_from(ct, seg_start, x_origin, seg_end)
@@ -1111,8 +1111,11 @@ EditorView :: struct {
 	scroll_row, scroll_sub, scroll_col: int,
 	bg:                                 tb2.Color,
 	fg:                                 tb2.Color,
+	gutter_bg:                          tb2.Color,
 	fg_set:                             bool,
 	syntax, current_line:               bool,
+	// an unfocused editor with a highlight_style marks its cursor row (a preview's target) in that background
+	target_bg:                          Maybe(tb2.Color),
 	find, inline:                       bool,
 }
 
@@ -1188,6 +1191,9 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 		}
 		drow := drows[row - view.scroll_row] if row - view.scroll_row < len(drows) else DecoRow{}
 		line_bg := editor_line_bg(current && view.current_line, mark, diff_view_on(), drow.tints[:], view.bg)
+		if target, marked := view.target_bg.?; current && marked {
+			line_bg = target
+		}
 
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
@@ -1233,7 +1239,7 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 					seg_end := segs[s + 1] if s + 1 < len(segs) else len(text)
 					x_end := visual_col_from(text[:], seg_start, x_origin, seg_end)
 					if gutter > 0 {
-						editor_render_gutter(view.x, screen_y, gutter, row + 1, current, severity, mark, s > 0, drow.glyph, drow.glyph_fg)
+						editor_render_gutter(view.x, screen_y, gutter, row + 1, current, severity, mark, s > 0, view.gutter_bg, drow.glyph, drow.glyph_fg)
 					}
 					editor_render_text_row(text_x, screen_y, w, text[:], colors, x_origin, line_bg, row_sel_from, row_sel_to, underlines[:], seg_start, seg_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
 					if s == len(segs) - 1 && len(drow.eols) > 0 {
@@ -1246,7 +1252,7 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 		} else {
 			text_end := b.cursor.col if ghost_row else len(text)
 			if gutter > 0 {
-				editor_render_gutter(view.x, screen_y, gutter, row + 1, current, severity, mark, false, drow.glyph, drow.glyph_fg)
+				editor_render_gutter(view.x, screen_y, gutter, row + 1, current, severity, mark, false, view.gutter_bg, drow.glyph, drow.glyph_fg)
 			}
 			editor_render_text_row(text_x, screen_y, w, text[:], colors, view.scroll_col, line_bg, row_sel_from, row_sel_to, underlines[:], 0, text_end, diff_from, diff_to, diff_bg, match_spans, COLOR_FIND_MATCH_BG, drow.spans[:])
 			if !ghost_row && len(drow.eols) > 0 {
@@ -1471,10 +1477,10 @@ status_render :: proc(editor: ^Editor, rect: Rect, bg: tb2.Color) {
 	}
 }
 
-editor_render_gutter :: proc(left, y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
+editor_render_gutter :: proc(left, y, width, number: int, current: bool, severity: int, mark: DiffMark, continuation: bool, bg: tb2.Color, glyph: rune = 0, glyph_fg := tb2.Color(0)) {
 	if continuation {
 		for x in 0 ..< width {
-			tb2.set_cell(i32(left + x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
+			tb2.set_cell(i32(left + x), i32(y), ' ', COLOR_GUTTER_FG, bg)
 		}
 		return
 	}
@@ -1482,7 +1488,7 @@ editor_render_gutter :: proc(left, y, width, number: int, current: bool, severit
 	if mark == .None && glyph != 0 {
 		mark_ch, mark_fg = glyph, glyph_fg
 	}
-	tb2.set_cell(i32(left), i32(y), mark_ch, mark_fg, COLOR_GUTTER_BG)
+	tb2.set_cell(i32(left), i32(y), mark_ch, mark_fg, bg)
 
 	label := fmt.tprintf("%d", number)
 	sb := strings.builder_make(context.temp_allocator)
@@ -1500,7 +1506,7 @@ editor_render_gutter :: proc(left, y, width, number: int, current: bool, severit
 		fg = diagnostic_color(severity)
 	}
 	cstr := strings.clone_to_cstring(strings.to_string(sb), context.temp_allocator)
-	tb2.print(i32(left + 1), i32(y), fg, COLOR_GUTTER_BG, cstr)
+	tb2.print(i32(left + 1), i32(y), fg, bg, cstr)
 }
 
 color_over :: proc(base, tint: tb2.Color, alpha: f32) -> tb2.Color {

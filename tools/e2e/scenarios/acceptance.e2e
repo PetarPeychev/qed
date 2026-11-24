@@ -3127,7 +3127,7 @@ key shift+down shift+down
 # step 2: palette, a pasted multi-line string becomes one line, arrows, Enter runs
 key ctrl+c
 key ctrl+p
-wait Command Palette
+wait Ctrl+w
 key ctrl+v
 snap step-02a-pasted-one-line
 key ctrl+a
@@ -3160,7 +3160,7 @@ snap step-04a-filter-preview
 key backspace*5
 key down shift+down shift+down
 snap step-04b-range
-drag 6 4 6 6
+drag 12 8 12 10
 snap step-04c-drag
 key esc
 

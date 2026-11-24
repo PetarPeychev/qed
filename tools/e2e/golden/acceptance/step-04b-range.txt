@@ -1,104 +1,105 @@
-qed-e2e snapshot 160x45 cursor 5,3
+qed-e2e snapshot 160x45 cursor 12,6
 -- text
  1 alpha beta gamma
- 2┌─ File Tree ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
- 3│ All │ Open │ Git │ Unsaved                                                                                                                               │
- 4│> type to filter                                                                                                                                        4 │
- 5│ ▸ proj                                                     │ 1 alpha beta gamma                                                                          │
- 6│ ▸ src                                                      │ 2 second line here                                                                          │
- 7│   big.txt                                                  │ 3                                                                                           │
- 8│   notes.txt ●                                              │ 4 third para start                                                                          │
-  │                                                            │ 5 more PARA text                                                                            │
-  │                                                            │ 6                                                                                           │
-  │                                                            │ 7 last para                                                                                 │
-  │                                                            │ 8                                                                                           │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │                                                            │                                                                                             │
-  │ ←→ tabs  ↑↓ select  Shift+↑↓ extend  Enter open  Ctrl+P commands                                                                       ignored  dotfiles │
- ≡└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘4
+ 2 second line here
+ 3
+ 4 third┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ 5 more │ All │ Open │ Git │ Unsaved                                                                                                                   │
+ 6      ├────────────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────┤
+ 7 last │ > type to filter                           │ 1 alpha beta gamma                                                                              │
+ 8      ├────────────────────────────────────────────┤ 2 second line here                                                                              │
+        │ ▸ proj/                                    │ 3                                                                                               │
+        │ ▸ src/                                     │ 4 third para start                                                                              │
+        │   big.txt                                  │ 5 more PARA text                                                                                │
+        │   notes.txt ●                              │ 6                                                                                               │
+        │                                            │ 7 last para                                                                                     │
+        │                                            │ 8                                                                                               │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        │                                            │                                                                                                 │
+        ├────────────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────┤
+        │ ←→ tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+p commands                                                           Alt+i ignored  Alt+. dotfiles │
+        └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/notes.txt ●  5/8                                                                                                                     ◆ text  ⇥ Spaces:4
 
 -- style
 aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-aaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-aaccdddeeeeeeeeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-aacffeeeeeeeeeeeeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceecbb
-agccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchaggcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-aaciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiichaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-aaciiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiichaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-aacijjjjjjjjjjjjjiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiichaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccchccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbb
-bbceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceeeeeeeeeeeeeeeeeeecbb
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaabbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbbbbbbb
+addeeeeecfgggcccccccccccccccccccccccfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffceeeeeeee
+aaabbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbbbbbbb
+aaabbbbbcggghhhhhhhhhhhhhhfffffffffffffffffffffffffffcciiffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+aaabbbbbcccccccccccccccccccccccccccccccccccccccccccccccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcjkkkkkkkkkkkkkjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
+bbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbbbbbbb
+bbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccfffffffffffffffffffffffffffffffffffffffffffffffffffffffffcccccccccccccccccccccccccccccccfcbbbbbbbb
+bbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#f4f4ff bg=#181818
-c fg=#f4f4ff bg=#2b2b2b
-d fg=#ffdd33 bg=#2b2b2b bold
-e fg=#686868 bg=#2b2b2b
-f fg=#ffdd33 bg=#2b2b2b
-g fg=#d8d8d8 bg=#1b1b1b
-h fg=#868686 bg=#2b2b2b
-i fg=#f4f4ff bg=#4a4a4a
-j fg=#ffdd33 bg=#4a4a4a
+c fg=#868686 bg=#2b2b2b
+d fg=#d8d8d8 bg=#1b1b1b
+e fg=#f4f4ff bg=#262626
+f fg=#f4f4ff bg=#2b2b2b
+g fg=#ffdd33 bg=#2b2b2b
+h fg=#686868 bg=#2b2b2b
+i fg=#d8d8d8 bg=#2b2b2b
+j fg=#f4f4ff bg=#4a4a4a
+k fg=#ffdd33 bg=#4a4a4a

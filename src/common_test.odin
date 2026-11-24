@@ -263,6 +263,10 @@ ft_layout :: proc(ed: ^Editor) -> FtLayout {
 	query := rect_of(ed, "filetree_query")
 	preview := rect_of(ed, "filetree_preview")
 	scroll := rect_of(ed, "filetree_scroll")
+	content := scroll
+	if node := ui_find(&ed.ui, "#filetree/filetree_scroll"); node != nil {
+		content = ui_scroll_content(ed, node)
+	}
 	inner := Rect{box.x + 1, box.y + 1, box.w - 2, box.h - 2}
 	return {
 		box = box,
@@ -275,7 +279,7 @@ ft_layout :: proc(ed: ^Editor) -> FtLayout {
 		tab_y = inner.y,
 		title_sep_y = box.y,
 		div_x = scroll.x + scroll.w,
-		bar_x = scroll.x + scroll.w - 1,
+		bar_x = content.x + content.w,
 		left_w = scroll.w,
 		right_x = preview.x,
 		right_w = preview.w,

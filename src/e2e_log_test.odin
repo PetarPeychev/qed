@@ -23,7 +23,8 @@ e2e_log_opens_filters_and_closes :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_ui_find_row(&e, "branch main") >= 0, "info shows")
 	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") < 0, "debug is off by default")
 	error_row := e2e_ui_find_row(&e, "boom")
-	testing.expect(t, error_row >= 0 && e2e_rgb(e2e_cell_fg(&e, 25, error_row)) == e2e_rgb(COLOR_ERROR_FG), "errors are colored")
+	boom_x := visual_width(transmute([]u8)e2e_row_text(&e, error_row)[:max(strings.index(e2e_row_text(&e, error_row), "boom"), 0)]) if error_row >= 0 else 0
+	testing.expect(t, error_row >= 0 && e2e_rgb(e2e_cell_fg(&e, boom_x, error_row)) == e2e_rgb(COLOR_ERROR_FG), "errors are colored")
 	e2e_type(&e, "d")
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") >= 0, "d toggles debug")

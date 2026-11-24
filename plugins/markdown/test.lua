@@ -215,7 +215,7 @@ end
 
 function tests.max_width(test)
 	test.open("w.md", "# W\n\ntext")
-	test.eq(open(test).width, 80 - 2 * 2, "the default cap is wider than the screen")
+	test.eq(open(test).width, 80 - 2 * 8, "the default cap is wider than the screen")
 	test.key("Esc")
 end
 
@@ -343,8 +343,8 @@ function tests.back_forward_scoped(test)
 	local ui = open(test)
 	test.eq(ui.kind, "pane")
 	test.key("Ctrl+p")
-	test.ok(on_screen(test, "Command Palette"), "Ctrl+P opens the scoped palette over the preview")
 	test.type("markdown: back")
+	test.ok(on_screen(test, "Markdown: Back"), "Ctrl+P opens the scoped palette over the preview")
 	test.key("Enter")
 	test.ok(current(test) ~= nil, "running Back from it returns to the preview")
 	test.key("Esc")

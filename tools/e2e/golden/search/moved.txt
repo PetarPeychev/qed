@@ -1,64 +1,64 @@
-qed-e2e snapshot 80x24 cursor 11,2
+qed-e2e snapshot 80x24 cursor 18,4
 -- text
  1 #include "util.h"
- 2┌─ Search ─────────────────────────────────────────────────────────────────┐
- 3│> helper                                        3 │ 1 int helper(int x) { │
- 4│ main.c:4  return helper(2);                      │ 2     return x * 2;   │
- 5│ util.c:1  int helper(int x) {                    │ 3 }                   │
- 6│ util.h:1  int helper(int x);                     │ 4                     │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
-  │                                                  │                       │
- ≡└──────────────────────────────────────────────────────────────────────────┘4
+ 2
+ 3 int main(void) {
+ 4     r┌──────────────────────────────────────────────────────────────┐
+ 5 }    │ > helper                                                    3│
+ 6      ├──────────────────────────────────────────────────────────────┤
+        │ main.c:4  return helper(2);                                  │
+        │ util.c:1  int helper(int x) {                                │
+        │ util.h:1  int helper(int x);                                 │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        └──────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/main.c  1/6                                             ◆ c  ⇥ Spaces:4
 
 -- style
 abbccccccccdeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-aaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdd
-aafggfffffffffffffffffffffffffffffffffffffffffffffhhhiabbjjjffffffffjjjfffffffdd
-aafffffffffffffffffffffffffffffffffffffffffffffffffffiaaaffffggggggfffffkfffffdd
-aaflllllllllllllllllllllllllllllllllllllllllllllllllfiaaafffffffffffffffffffffdd
-aafffffffffffffffffffffffffffffffffffffffffffffffffffiaaafffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
-ddfffffffffffffffffffffffffffffffffffffffffffffffffffiffffffffffffffffffffffffdd
+aaafffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaagggffffffggggffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaffffhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffffffff
+aaafffffijjjkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiiffffffff
+aaafffffiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffilllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllliffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkiffffffff
+ffffffffiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffffffff
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- legend
 a fg=#868686 bg=#1b1b1b
 b fg=#d8d8d8 bg=#1b1b1b
-c fg=#ffdd33 bg=#181818
-d fg=#f4f4ff bg=#181818
-e fg=#73c936 bg=#181818
-f fg=#f4f4ff bg=#2b2b2b
-g fg=#ffdd33 bg=#2b2b2b
-h fg=#686868 bg=#2b2b2b
+c fg=#ffdd33 bg=#262626
+d fg=#f4f4ff bg=#262626
+e fg=#73c936 bg=#262626
+f fg=#f4f4ff bg=#181818
+g fg=#96a6c8 bg=#181818
+h fg=#ffdd33 bg=#181818
 i fg=#868686 bg=#2b2b2b
-j fg=#96a6c8 bg=#2b2b2b
-k fg=#95a99f bg=#2b2b2b
+j fg=#ffdd33 bg=#2b2b2b
+k fg=#f4f4ff bg=#2b2b2b
 l fg=#f4f4ff bg=#4a4a4a

@@ -16,7 +16,7 @@ e2e_ui_hits_cleared_after_last_mount :: proc(t: ^testing.T) {
 	e := e2e_start("alpha\nbeta")
 	defer e2e_stop(&e)
 	ut_run_owner(&e, "palette", "Open")
-	testing.expect(t, e2e_ui_find_row(&e, "Command Palette") >= 0, "the palette opens over the old editor")
+	testing.expect(t, e2e_ui_palette_row(&e) >= 0, "the palette opens over the old editor")
 	e2e_key(&e, .Esc)
 	e2e_ui_settle(&e)
 	e2e_render(&e)
