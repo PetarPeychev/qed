@@ -184,6 +184,8 @@ UiNode :: struct {
 	is_item:         bool,
 	// core-built caret popups only: start at a buffer position on the caret's row, prefer above, a code language
 	cursor_from:     Maybe(Cursor),
+	// core-built trees (safety dialogs) handle keys and clicks without Lua, at the point a plugin's on.key/on.click runs
+	core_event:      proc(editor: ^Editor, ev: tb2.Event) -> bool,
 	cursor_above:    bool,
 	md_lang:         Language,
 }
@@ -421,7 +423,13 @@ ui_mount_index :: proc(ui: ^Ui, handle: u64) -> int {
 ui_mount_add :: proc(editor: ^Editor, owner, outlet: string, root: ^UiNode) -> u64 {
 	ui := &editor.ui
 	ui.seq += 1
-	append(&ui.mounts, UiMount{handle = ui.seq, owner = owner, outlet = strings.clone(outlet), root = root})
+	mount := UiMount{handle = ui.seq, owner = owner, outlet = strings.clone(outlet), root = root}
+	// core mounted its safety dialog last in alert: a later mount there goes below it, so it stays on top
+	if safety := ui_mount_index(ui, editor.safety.handle); outlet == "alert" && editor.safety.handle != 0 && safety >= 0 {
+		inject_at(&ui.mounts, safety, mount)
+	} else {
+		append(&ui.mounts, mount)
+	}
 	ui_tree_identify(root, ui.seq)
 	ui.dirty = true
 	ui.gen += 1
@@ -730,6 +738,18 @@ ui_focused :: proc(editor: ^Editor) -> ^UiNode {
 		}
 	}
 	return nil
+}
+
+ui_focus_after :: proc(editor: ^Editor, identity: string) {
+	ui := &editor.ui
+	for entry, i in ui.focus_history {
+		if entry == identity {
+			delete(entry)
+			ordered_remove(&ui.focus_history, i)
+			break
+		}
+	}
+	append(&ui.focus_history, strings.clone(identity))
 }
 
 ui_focus_set :: proc(editor: ^Editor, identity: string) {

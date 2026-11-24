@@ -109,10 +109,15 @@ local function item_row(record)
 	}
 end
 
+-- a dialog keeps every key that reaches it: nothing global runs under it
+local function keep_keys()
+	return {key = function() return true end, paste = function() return true end}
+end
+
 local function frame(id, children)
 	return ui.dismissable{id = id, on_dismiss = function() finish(nil) end,
 		ui.box{float = "screen", anchor = "top", width = qed.opt("picker_width"), height = "fit", scope = "list",
-			margin = {top = 3, right = 2, bottom = 2, left = 2},
+			margin = {top = 3, right = 2, bottom = 2, left = 2}, on = keep_keys(),
 			border = true, bg = "pane_background", fg = "pane_foreground",
 			ui.column(children)},
 	}
@@ -164,7 +169,7 @@ local function split_frame(prompt, item)
 	local preview = preview_of(item)
 	return ui.dismissable{id = "dialog_pick", on_dismiss = function() finish(nil) end,
 		ui.box{float = "screen", anchor = "center", width = "100%", height = "100%", margin = {x = 2, y = 1}, scope = "list",
-			border = true, bg = "pane_background", fg = "pane_foreground",
+			border = true, bg = "pane_background", fg = "pane_foreground", on = keep_keys(),
 			ui.row{
 				ui.column{width = {"40%", min = qed.opt("split_code_min_width"), max = qed.opt("split_code_max_width")},
 					query_row(prompt, {"dialog", "editor"}),

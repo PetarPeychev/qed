@@ -13,10 +13,14 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 - **Ownership.** A plugin owns its trees. Others extend them only through `ui.outlet{id}` slots the owner declares;
   outlet ids are global, a mount waits until its outlet exists, the first outlet in resolve order takes it.
   Mounts, internal buffers and lists unmount/close when their plugin unloads.
-- **Draw order** per layer: laid-out content of every mount, then floats in tree order. While focus is in the
-  `alert` layer no global bind runs; a mount into `alert` fails with `busy` while a core safety dialog is open.
+- **Draw order** per layer: laid-out content of every mount, then floats in tree order. The `alert` layer has no
+  rules of its own: a dialog keeps keys under the normal bubbling (an `on.key` that returns true). Core mounts a
+  safety dialog last in `alert`, on top with focus; a later plugin mount there goes below it, and a plugin's focus
+  request while it shows becomes where focus returns when it closes.
 - **Dialogs.** `qed.pick/prompt/confirm` are the bundled `dialog` plugin's exports (alert layer, one at a time,
-  `nil, "busy"` for a second; path items get a list + readonly `editor` split over an internal copy; the asker's unload closes it).
+  `nil, "busy"` for a second; path items get a list + readonly `editor` split over an internal copy; the asker's
+  unload closes it; the dialog box's `on.key` keeps every key that reaches it, so Ctrl+Q inside a dialog does not
+  quit).
 
 ## 2. Mounts, references, identity, state
 

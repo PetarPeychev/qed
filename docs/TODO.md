@@ -53,7 +53,7 @@ daily-drives it for programming.** Every item here blocks that.
 - [ ] Coalesce feedback-only work off the per-keystroke path (`buffer_recompute_modified` → undo-state watermark, git gutter → debounce) — see [notes/refactors.md](notes/refactors.md) + [notes/perf.md](notes/perf.md).
 - [ ] Cheaper cold `git_gutter_update` + `buffer_open` per-line-allocation floor before first paint — see [notes/perf.md](notes/perf.md).
 - [ ] config.json writer that preserves comments and key order (UI persistence strips them today).
-- [ ] Pane footer hints are cut mid-word under the right-hand chips (file tree at 80x24); drop whole hints instead (`pane_chips_layout` / `pane_render_footer`).
+- [ ] Footer hints are cut mid-word under the right-hand chips (file tree at 80x24); drop whole hints instead.
 - [ ] Color fallback: qed always emits truecolor, even with `COLORTERM` unset or `TERM=linux`; degrade to 256/16 colors.
 
 ## Post-1.0 — deferred
@@ -109,11 +109,11 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### Performance
 
-- [ ] File tree plugin slice on tree open / Git tab runs 30-67 ms (budget 50), mostly `show_source` -> `view:set`; cut it below budget with margin.
+- [ ] File tree plugin slice on Expand All and the Git tab runs ~56 ms (budget 50); cut it below budget with margin.
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Git tab nested-repo discovery outside a repo spawns one `sh` per directory (`plugins/git/tree.lua` `repos`): ~13 s in /tmp, minutes in $HOME. Replace with one walk that stops at each repo (core or a single `find`).
 
 ### Refactors
 
-- [ ] Message Log (`Alt+l`): a fuzzy filter/search field (the last piece of unifying it with the file tree on the pane model).
+- [ ] Message Log (`Alt+l`): a fuzzy filter/search field.
 - [ ] `buffer_intel_reset` choke point for the language-change / repath / reload teardown dance.

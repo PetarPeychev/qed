@@ -180,7 +180,7 @@ Panes, lists and fields are `qed.ui` node trees: see [ui.md](ui.md).
 | `qed.clipboard.get()`, `.set(text)` | |
 | `qed.theme.set(name, {persist?})`, `.list()`, `.current()`, `.icon(name)` | `icon` is a theme icon such as `status_branch`. |
 
-- `qed.pick`/`prompt`/`confirm` mount in the `alert` layer and take keys first; one is open at a time (a second returns `nil, "busy"`), as while a core safety dialog (quit, close, conflict) shows. Unloading the asker closes it.
+- `qed.pick`/`prompt`/`confirm` mount in the `alert` layer and keep every key that reaches them (Ctrl+Q inside one does not quit); one is open at a time (a second returns `nil, "busy"`). Opened while a core safety dialog shows, one waits below it and gets focus when it closes. Unloading the asker closes it.
 
 ### Terminals (`qed.term`)
 Core owns PTY and vterm. Each session has a name.

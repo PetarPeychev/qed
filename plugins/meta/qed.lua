@@ -648,21 +648,21 @@ function qed.fuzzy.list(source, spec) end
 ---@field on? {change?: fun(_: nil, item: string|qed.PickItem)} the highlighted item changed (live preview); the first argument is always nil
 
 ---Waits for a fuzzy pick (the bundled `dialog` plugin, on qed.ui). Returns the chosen item (the value passed in), or `nil` on Esc. Items with a `path` get a list + read-only file preview (centered on `pos.row`). `on.change(nil, item)` runs on every move.
----The opening command's chord closes it like Esc. Stacks on an open pane or overlay (outside a user's command only on the plugin's own pane, or from a view's `activate` on that view and its children); otherwise `nil, "busy"` only while a quit, close or conflict dialog shows.
+---The opening command's chord closes it like Esc. Stacks on an open pane or overlay (outside a user's command only on the plugin's own pane, or from a view's `activate` on that view and its children); otherwise `nil, "busy"` while another pick, prompt or confirm is open. Opened under a quit, close or conflict dialog, it waits below it.
 ---@param spec qed.PickSpec
 ---@return string|qed.PickItem|nil
 ---@return "busy"|nil err
 function qed.pick(spec) end
 
 ---Waits for a line of text. `nil` on Esc. Opens over an open pane (Esc returns to it; closing that pane closes this one with `nil`).
----Returns `nil, "busy"` only while a quit, close or conflict dialog shows. While it is open, other exclusive panes are refused as busy.
+---Returns `nil, "busy"` while another pick, prompt or confirm is open.
 ---@param spec {prompt: string, text?: string}
 ---@return string|nil
 ---@return "busy"|nil err
 function qed.prompt(spec) end
 
 ---Waits for a choice. Returns its 1-based index, `nil` on Esc. Opens over an open pane (Esc returns to it; closing that pane closes this one with `nil`).
----Returns `nil, "busy"` only while a quit, close or conflict dialog shows. While it is open, other exclusive panes are refused as busy.
+---Returns `nil, "busy"` while another pick, prompt or confirm is open.
 ---@param spec {question: string, choices?: string[]} `choices` defaults to `{"Yes", "No"}`
 ---@return integer|nil
 ---@return "busy"|nil err

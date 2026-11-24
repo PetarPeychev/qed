@@ -92,6 +92,9 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 		if node.handlers[.Key] != 0 && ui_handler_call(editor, node.owner, node.handlers[.Key], {chord = chord, text = text}) {
 			return
 		}
+		if node.core_event != nil && node.core_event(editor, ev) {
+			return
+		}
 		if ui.gen != gen {
 			return
 		}
@@ -104,10 +107,7 @@ ui_dispatch_key :: proc(editor: ^Editor, focus: ^UiNode, ev: tb2.Event) {
 			return
 		}
 	}
-	// a dialog keeps every key: nothing global runs under it
-	if !ui_focus_in_layer(editor, "alert") {
-		ui_global_binds(editor, ev)
-	}
+	ui_global_binds(editor, ev)
 }
 
 ui_scope_run :: proc(editor: ^Editor, scope, chord: string) -> bool {
@@ -380,6 +380,9 @@ ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, cell_x, cell_y: int, eve
 			visited[node] = true
 			args := UiHandlerArgs{mouse = true, x = cell_x - node.rect.x + 1, y = cell_y - node.rect.y + 1, button = ui_mouse_button(ev.key)}
 			if node.handlers[event] != 0 && ui_handler_call(editor, node.owner, node.handlers[event], args) {
+				return true
+			}
+			if native && node.core_event != nil && node.core_event(editor, ev) {
 				return true
 			}
 			if ui.gen != gen {

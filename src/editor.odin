@@ -339,10 +339,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 			return
 		}
 	}
-	if safety_open(editor) && (ev.type == .Key || ev.type == .Mouse) {
-		safety_dispatch(editor, ev)
-		return
-	}
 	if rename_prompt_open(editor) {
 		// a click outside the prompt cancels it; its Enter and Esc act only while it has focus
 		if ev.type == .Mouse && ev.key == .Mouse_Left {
@@ -353,11 +349,6 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		if ev.type == .Key && editor.ui.focus == "#/rename_field" && rename_key(editor, ev) {
 			return
 		}
-	}
-	// a dialog in the alert layer takes every key and click
-	if ui_layer_used(&editor.ui, "alert") && (ev.type == .Mouse || ui_focus_in_layer(editor, "alert")) {
-		ui_dispatch(editor, ev)
-		return
 	}
 	if ui_dispatch(editor, ev) {
 		return
@@ -385,7 +376,7 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 }
 
 editor_paste_route :: proc(editor: ^Editor, text: string) {
-	if len(text) == 0 || safety_open(editor) || (ui_focus_in_layer(editor, "alert") && ui_paste(editor, text)) {
+	if len(text) == 0 || safety_open(editor) {
 		return
 	}
 	if ui_paste(editor, text) {

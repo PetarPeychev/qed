@@ -336,9 +336,11 @@ plugins build every pane: palette, file tree, goto, search, workspace, dialogs (
 plugin manager, settings, terminal, markdown preview, welcome screen (`layout`).
 
 Core-built nodes (no Lua, so they work with plugins broken or off): the safety dialogs (quit with unsaved
-buffers, close unsaved, disk conflict; `confirm.odin`) and the LSP rename prompt (`rename.odin`), mounted last in
-`alert` with focus. While a safety dialog shows, every key, click and paste goes to it and a plugin mount into
-`alert` gets `nil, "busy"`.
+buffers, close unsaved, disk conflict; `confirm.odin`), the LSP rename prompt (`rename.odin`), the caret popups
+(`caret_popup.odin`) and the status leaf. A core-built node handles keys and clicks with `UiNode.core_event`, at
+the point a plugin's `on.key`/`on.click` runs. A safety dialog is a full-screen catcher mounted last in `alert`
+with focus: it keeps every key that bubbles to it and every click, and paste is ignored while it shows; a later
+plugin mount into `alert` goes below it and a plugin focus request waits for it to close.
 
 ## Modules
 

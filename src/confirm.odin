@@ -21,11 +21,12 @@ SafetyKind :: enum u8 {
 
 // a core dialog in the alert layer, built without Lua so it works with plugins broken or off; mounted last, it wins
 Safety :: struct {
-	kind:     SafetyKind,
-	buf:      u64,
-	choices:  []string,
-	selected: int,
-	handle:   u64,
+	kind:       SafetyKind,
+	buf:        u64,
+	choices:    []string,
+	selected:   int,
+	handle:     u64,
+	clicked_at: Maybe(time.Tick),
 }
 
 safety_open :: proc(editor: ^Editor) -> bool {
@@ -53,8 +54,15 @@ safety_mount :: proc(editor: ^Editor, kind: SafetyKind, buf: u64, question: stri
 		row.key = strings.clone(fmt.tprintf("%d", i))
 		ui_core_add(rows, row)
 	}
+	// a full-screen catcher under the box: every key that bubbles up and every click lands on the dialog
+	catcher := ui_core_node(.Column, "safety_catcher")
+	catcher.float = .Screen
+	catcher.width = {form = .Percent, value = 100}
+	catcher.height = {form = .Percent, value = 100}
+	catcher.core_event = safety_event
+	ui_core_add(catcher, box)
 	editor.safety = {kind = kind, buf = buf, choices = choices, selected = selected}
-	editor.safety.handle = ui_mount_add(editor, "", "alert", box)
+	editor.safety.handle = ui_mount_add(editor, "", "alert", catcher)
 	ui_resolve(editor)
 	ui_focus_set(editor, rows.identity)
 	safety_highlight(editor)
@@ -98,8 +106,8 @@ safety_move :: proc(editor: ^Editor, step: int) {
 	safety_highlight(editor)
 }
 
-// every key and click goes here while a safety dialog shows; nothing reaches below it
-safety_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
+@(private = "file")
+safety_event :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	#partial switch ev.type {
 	case .Key:
 		#partial switch ev.key {
@@ -114,24 +122,25 @@ safety_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 		}
 	case .Mouse:
 		if ev.key != .Mouse_Left {
-			return
+			return true
 		}
 		for _, i in editor.safety.choices {
 			node := ui_find(&editor.ui, fmt.tprintf("#/safety_choice_%d", i))
 			if node == nil || !ui_rect_has(node.rect, int(ev.x), int(ev.y)) {
 				continue
 			}
-			again := editor.safety.selected == i && editor.click_count > 0 && ms_since(editor.last_click_tick) < f64(DOUBLE_CLICK_MS)
+			clicked_at, clicked := editor.safety.clicked_at.?
+			again := editor.safety.selected == i && clicked && ms_since(clicked_at) < f64(DOUBLE_CLICK_MS)
 			editor.safety.selected = i
 			safety_highlight(editor)
-			editor.click_count = 1
-			editor.last_click_tick = time.tick_now()
+			editor.safety.clicked_at = time.tick_now()
 			if again {
 				safety_choose(editor)
 			}
-			return
+			break
 		}
 	}
+	return true
 }
 
 quit_dialog_open :: proc(editor: ^Editor) {

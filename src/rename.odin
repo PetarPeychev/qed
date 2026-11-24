@@ -35,6 +35,8 @@ rename_open :: proc(editor: ^Editor) {
 	box.height = {form = .Fit}
 	box.margin = {3, 2, 2, 2}
 	box.style = ui_core_pane_style()
+	// the prompt keeps every key that reaches it, as a dialog does
+	box.core_event = proc(editor: ^Editor, ev: tb2.Event) -> bool {return ev.type == .Key}
 	row := ui_core_node(.Row)
 	ui_core_add(box, row)
 	prompt := ui_core_text("Rename to: ", fg = "pane_prompt_foreground")

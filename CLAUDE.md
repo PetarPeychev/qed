@@ -148,7 +148,7 @@ repetition only once it exists in front of you.
 | Modules        | None: the module system is gone. LSP is a plain `lsp` config section gated on `lsp.enabled`; `git` and `ai` are plugins (`plugins.<id>`); new optional features are plugins. |
 | Plugins        | Lua 5.4, vendored and static. Global only: bundled `plugins/` (embedded) + `~/.config/qed/plugins/`, config and keybinds under `plugins.<id>`; commands show as `<display name>: <name>`. One `lua_State`, per-plugin `_ENV`. Lua may handle UI events, keystrokes included (handlers stay light); it never runs on the render path. See [docs/notes/plugins.md](docs/notes/plugins.md). |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
-| UI             | One declarative node tree (`qed.ui`): positioned panes holding containers and leaves; core owns the engine (layout, render, diff, focus) and heavy leaves (editor, terminal, list, tree, markdown, preview); bundled plugins compose the default UI. Anything core's UI does, a plugin can do. |
+| UI             | One declarative node tree (`qed.ui`, six layers): mounts of containers and leaves; core owns the engine (layout, render, diff, focus, key and mouse routing) and the heavy leaves (editor, terminal, image, virtual_column over core lists, the markdown node, status); bundled plugins compose the default UI. Core builds only what must work with plugins broken: safety dialogs, the rename prompt, the caret popups. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |
 | Startup arg    | File → open it; directory → set working root + welcome screen. |
 

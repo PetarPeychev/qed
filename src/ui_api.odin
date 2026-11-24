@@ -673,9 +673,6 @@ qed_ui_mount :: proc "c" (L: ^lua.State) -> c.int {
 	editor := entry.editor
 	outlet := api_string(L, 1)
 	plugin := api_loaded(L, editor)
-	if outlet == "alert" && safety_open(editor) {
-		return api_fail(L, "busy")
-	}
 	root, err := ui_marshal_tree(L, editor, plugin_name_intern(&editor.plugins, plugin.name), 2, 0)
 	if root == nil {
 		return plugin_raise(L, err)
@@ -833,7 +830,12 @@ qed_ui_ref_focus :: proc "c" (L: ^lua.State) -> c.int {
 	if ui_find(&editor.ui, identity) == nil {
 		return api_fail(L, "no such node")
 	}
-	ui_focus_set(editor, identity)
+	// a safety dialog keeps the focus it took; the request becomes where focus goes when it closes
+	if safety_open(editor) {
+		ui_focus_after(editor, identity)
+	} else {
+		ui_focus_set(editor, identity)
+	}
 	lua.pushboolean(L, true)
 	return 1
 }

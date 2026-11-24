@@ -1082,7 +1082,8 @@ demo_render :: proc(run: ^Run, name: string) {
 		return
 	}
 	gif := fmt.tprintf("%s/%s.gif", run.out, name)
-	cmd := fmt.tprintf("command -v agg >/dev/null && agg --quiet --idle-time-limit 2 --font-size 16 --font-family 'DejaVu Sans Mono,Noto Sans Mono,Noto Sans Symbols 2' %s %s", arg_quote(cast_path), arg_quote(gif))
+	// agg 1.4 has no --quiet: its progress output goes to /dev/null instead
+	cmd := fmt.tprintf("command -v agg >/dev/null && agg --idle-time-limit 2 --font-size 16 --font-family 'DejaVu Sans Mono,Noto Sans Mono,Noto Sans Symbols 2' %s %s >/dev/null 2>&1", arg_quote(cast_path), arg_quote(gif))
 	if libc.system(strings.clone_to_cstring(cmd, context.temp_allocator)) == 0 {
 		fmt.printfln("  gif %s", gif)
 	}
