@@ -53,6 +53,8 @@ pt_api := [?]lua.L_Reg {
 	{"screen", pt_screen},
 	{"caret_row", pt_caret_row},
 	{"click", pt_click},
+	{"wheel", pt_wheel},
+	{"resize", pt_resize},
 	{"sh", pt_sh},
 	{"marks", pt_marks},
 	{"deco", pt_deco},
@@ -412,6 +414,12 @@ pt_editor :: proc "c" (L: ^lua.State) -> c.int {
 @(private = "file")
 pt_click :: proc "c" (L: ^lua.State) -> c.int {
 	context = api_enter(L).ctx
+	if lua.type(L, 1) == .NUMBER {
+		e2e_render(g_pt)
+		e2e_mouse(g_pt, api_int(L, 1, "column expected"), api_int(L, 2, "row expected"))
+		plugin_flush(&g_pt.ed)
+		return 0
+	}
 	needle := utf8.string_to_runes(api_string(L, 1), context.temp_allocator)
 	e2e_render(g_pt)
 	for y in 0 ..< int(tb2.height()) {
@@ -428,6 +436,26 @@ pt_click :: proc "c" (L: ^lua.State) -> c.int {
 		}
 	}
 	return plugin_raise(L, "t.click: text not on screen")
+}
+
+@(private = "file")
+pt_wheel :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	x := api_int(L, 1, "column expected")
+	y := api_int(L, 2, "row expected")
+	button := tb2.Key.Mouse_Wheel_Up if api_string(L, 3) == "up" else tb2.Key.Mouse_Wheel_Down
+	e2e_render(g_pt)
+	e2e_mouse(g_pt, x, y, button)
+	plugin_flush(&g_pt.ed)
+	return 0
+}
+
+@(private = "file")
+pt_resize :: proc "c" (L: ^lua.State) -> c.int {
+	context = api_enter(L).ctx
+	e2e_resize(g_pt, api_int(L, 1, "width expected"), api_int(L, 2, "height expected"))
+	plugin_flush(&g_pt.ed)
+	return 0
 }
 
 @(private = "file")
@@ -888,7 +916,7 @@ return {setup = function()
 			if type(records[name]) == "function" then out[#out + 1] = "List:" .. name end
 		end
 		local buffer = qed.buf.create{internal = true}
-		for _, name in ipairs{"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line", "find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor", "screen_row", "set_screen_row", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base", "base", "line_list", "on", "close", "find"} do
+		for _, name in ipairs{"valid", "path", "language", "modified", "big", "rev", "line_count", "lines", "line", "find_lines", "find_trailing", "text", "insert", "delete", "replace", "set_text", "cursor", "set_cursor", "screen_row", "set_screen_row", "top_row", "focus", "selection", "set_selection", "set_language", "set_indent", "indent", "set_base", "base", "line_list", "on", "close", "find"} do
 			if type(buffer[name]) == "function" then out[#out + 1] = "BufferObject:" .. name end
 		end
 		local search = qed.buf.current():find("x")

@@ -368,3 +368,258 @@ e2e_ui_palette_row_clicks :: proc(t: ^testing.T) {
 	testing.expect(t, e2e_ui_palette_row(&e) < 0, "a double click runs the row")
 	testing.expect_value(t, editor_buffer(&e.ed).wrap, !wrap_before)
 }
+
+@(test)
+e2e_ui_scroll_state_fires_on_user_scroll :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "uitest", `
+local ui = qed.ui
+return {setup = function()
+	qed.command{name = "Open", run = function()
+		local rows = {}
+		for i = 1, 50 do rows[i] = ui.text{"row " .. i} end
+		ui.mount("pane", ui.scroll{id = "scroller", float = "screen", anchor = "top_left", width = 30, height = 10,
+			scope = "list", on = {state = function(event) qed.message("offset " .. tostring(event.offset)) end},
+			ui.column(rows)})
+		ui.node("scroller"):focus()
+	end}
+	qed.command{name = "Set", run = function() ui.node("scroller"):set_state{offset = 20} end}
+end}`)
+	ut_run(&e, "Open")
+	e2e_mouse(&e, 3, 3, .Mouse_Wheel_Down)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "offset 3")
+	e2e_key(&e, .Arrow_Down)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "offset 4")
+	editor_clear_message(&e.ed)
+	ut_run(&e, "Set")
+	testing.expect_value(t, e.ed.message, "")
+	e2e_mouse(&e, 3, 3, .Mouse_Wheel_Up)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "offset 17")
+	editor_clear_message(&e.ed)
+	ut_run(&e, "Set")
+	e2e_ui_settle(&e)
+	for _ in 0 ..< 30 {
+		e2e_mouse(&e, 3, 3, .Mouse_Wheel_Down)
+	}
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "offset 40")
+	editor_clear_message(&e.ed)
+	e2e_mouse(&e, 3, 3, .Mouse_Wheel_Down)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "")
+}
+
+@(test)
+e2e_ui_view_scrolled_event :: proc(t: ^testing.T) {
+	text := strings.builder_make(context.temp_allocator)
+	for i in 1 ..= 100 {
+		strings.write_string(&text, "line\n")
+	}
+	e := e2e_start(strings.to_string(text))
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	e2e_plugin(&e, "uitest", `
+local count = 0
+return {setup = function()
+	qed:on("view_scrolled", function(buffer)
+		count = count + 1
+		qed.message(("scrolled %d %s"):format(count, tostring(buffer == qed.buf.current())))
+	end)
+	qed.command{name = "Place", run = function(ctx) ctx.buf:set_screen_row(50, 1) end}
+	qed.command{name = "Report", run = function(ctx) qed.message(("scrolled %d top %s"):format(count, tostring(ctx.buf:top_row()))) end}
+	qed.command{name = "Pane", run = function()
+		qed.ui.mount("pane", qed.ui.text{id = "grab", float = "screen", "pane"})
+		qed.ui.node("grab"):focus()
+	end}
+	qed.command{name = "Back", run = function(ctx)
+		local ok = ctx.buf:focus()
+		qed.message(("focus %s %s"):format(tostring(ok), table.concat(qed.ui.focus_scopes(), ",")))
+	end}
+end}`)
+	e2e_key(&e, .Arrow_Right)
+	e2e_ui_settle(&e)
+	ut_run(&e, "Report")
+	testing.expect_value(t, e.ed.message, "scrolled 0 top 1.0")
+	wheel := tb2.Event{type = .Mouse, key = .Mouse_Wheel_Down, x = 5, y = 5}
+	e2e_step(&e, wheel, wheel, wheel)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "scrolled 1 true")
+	ut_run(&e, "Report")
+	testing.expect_value(t, e.ed.message, "scrolled 1 top 10.0")
+	ut_run(&e, "Place")
+	e2e_ui_settle(&e)
+	ut_run(&e, "Report")
+	testing.expect_value(t, e.ed.message, "scrolled 1 top 50.0")
+	e2e_mouse(&e, 5, 5, .Mouse_Wheel_Up)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "scrolled 2 true")
+	ut_run(&e, "Pane")
+	ut_run(&e, "Back")
+	testing.expect_value(t, e.ed.message, "focus true editor")
+}
+
+@(test)
+e2e_ui_view_scrolled_after_rewrap :: proc(t: ^testing.T) {
+	text := strings.builder_make(context.temp_allocator)
+	for i in 1 ..= 40 {
+		strings.write_string(&text, "a long line of words that wraps over several rows when the editor gets narrow enough\n")
+	}
+	e := e2e_start(strings.to_string(text))
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	e2e_plugin(&e, "uitest", `
+local count = 0
+return {setup = function()
+	qed:on("view_scrolled", function() count = count + 1 end)
+	qed.command{name = "Report", run = function(ctx) qed.message(("scrolled %d"):format(count)) end}
+	qed.command{name = "Place", run = function(ctx) ctx.buf:set_screen_row(10.5, 1) end}
+end}`)
+	ut_run(&e, "Place")
+	e2e_ui_settle(&e)
+	e2e_apply_size(50, E2E_H)
+	e.resized = true
+	editor_dispatch(&e.ed, tb2.Event{type = .Resize, w = 50, h = i32(E2E_H)})
+	plugin_flush(&e.ed)
+	editor_render(&e.ed)
+	testing.expect(t, plugin_busy(&e.ed), "a re-wrap that moved the view top keeps the loop polling")
+	plugin_pump(&e.ed)
+	testing.expect(t, !plugin_busy(&e.ed), "the flush took the move")
+	ut_run(&e, "Report")
+	testing.expect_value(t, e.ed.message, "scrolled 1")
+}
+
+// the newest message the test plugin showed since log entry `from`
+ut_said :: proc(e: ^E2E, from: int) -> string {
+	for i := len(e.ed.log) - 1; i >= from; i -= 1 {
+		if e.ed.log[i].source == "Uitest" {
+			return e.ed.log[i].text
+		}
+	}
+	return ""
+}
+
+ut_start :: proc(e: ^E2E, bare: string) {
+	for command in e.ed.plugins.commands {
+		if command.bare == bare && command.owner == "uitest" {
+			plugin_command_run(&e.ed, command)
+		}
+	}
+}
+
+@(test)
+e2e_ui_settled_waits_for_resolve :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "uitest", `
+local ui = qed.ui
+local handle
+local doc = {"# Top", ""}
+for i = 1, 60 do doc[#doc + 1] = "filler " .. i .. "\n" end
+doc[#doc + 1] = "## Deep"
+doc = table.concat(doc, "\n")
+local function settle(slug)
+	ui.node("body"):set_state{heading = slug}
+	local state = ui.node("body"):settled()
+	qed.message(state and ("heading " .. tostring(state.heading)) or "gone")
+end
+return {setup = function()
+	qed.command{name = "Open", run = function()
+		handle = ui.mount("pane", ui.scroll{float = "screen", anchor = "top_left", width = 40, height = 10,
+			qed.markdown.parse(doc, {id = "body"})})
+	end}
+	qed.command{name = "Deep", run = function() settle("deep") end}
+	qed.command{name = "Missing", run = function() settle("nowhere") end}
+	qed.command{name = "Fresh", run = function()
+		handle:update(ui.scroll{float = "screen", anchor = "top_left", width = 40, height = 10,
+			qed.markdown.parse(doc .. "\n\nmore", {id = "body"})})
+		settle("deep")
+	end}
+	qed.command{name = "Close", run = function() handle:unmount() end}
+	qed.command{name = "Remount", run = function()
+		handle:unmount()
+		handle = ui.mount("pane", ui.scroll{float = "screen", anchor = "top_left", width = 40, height = 10,
+			qed.markdown.parse(doc, {id = "body"})})
+	end}
+	qed.command{name = "Loose", run = function()
+		ui.mount("pane", ui.column{float = "screen", anchor = "top_left", width = 20, height = 3,
+			ui.text{id = "plain", "plain"}, qed.markdown.parse("# Loose", {id = "loose"})})
+		ui.node("plain"):set_state{source = 5}
+		qed.message("plain " .. tostring(ui.node("plain"):settled() ~= nil))
+		ui.node("loose"):set_state{heading = "loose"}
+		qed.message("loose " .. tostring(ui.node("loose"):settled() ~= nil))
+	end}
+end}`)
+	ut_run(&e, "Open")
+	mark := len(e.ed.log)
+	ut_run(&e, "Deep")
+	testing.expect_value(t, ut_said(&e, mark), "heading 123")
+	ut_run(&e, "Missing")
+	testing.expect_value(t, ut_said(&e, mark), "heading nil")
+	mark = len(e.ed.log)
+	ut_start(&e, "Fresh")
+	testing.expect_value(t, ut_said(&e, mark), "")
+	e2e_ui_settle(&e)
+	testing.expect(t, plugin_busy(&e.ed), "a waiter whose node settled keeps the loop polling")
+	// as the main loop's next pass after the frame that resolved it
+	e2e_ui_settle(&e)
+	testing.expect_value(t, ut_said(&e, mark), "heading 123")
+	mark = len(e.ed.log)
+	ut_start(&e, "Fresh")
+	ut_start(&e, "Close")
+	e2e_ui_settle(&e)
+	testing.expect_value(t, ut_said(&e, mark), "gone")
+	ut_run(&e, "Open")
+	mark = len(e.ed.log)
+	ut_start(&e, "Fresh")
+	ut_start(&e, "Remount")
+	e2e_ui_settle(&e)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, ut_said(&e, mark), "gone")
+	mark = len(e.ed.log)
+	ut_start(&e, "Loose")
+	testing.expect_value(t, ut_said(&e, mark), "loose true")
+	ut_run(&e, "Close")
+	ut_run(&e, "Open")
+	mark = len(e.ed.log)
+	ut_start(&e, "Fresh")
+	plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "uitest"))
+	e2e_ui_settle(&e)
+	testing.expect_value(t, ut_said(&e, mark), "")
+	for task in e.ed.plugins.tasks {
+		testing.expect(t, task.wait.kind != .Settle, "the unloaded plugin's waiter is gone")
+	}
+}
+
+@(test)
+e2e_ui_view_top_after_deleting_under_it :: proc(t: ^testing.T) {
+	text := strings.builder_make(context.temp_allocator)
+	for i in 1 ..= 200 {
+		strings.write_string(&text, "line\n")
+	}
+	e := e2e_start(strings.to_string(text))
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	e2e_plugin(&e, "uitest", `
+local count = 0
+return {setup = function()
+	qed:on("view_scrolled", function() count = count + 1 end)
+	qed.command{name = "Chop", run = function(ctx)
+		ctx.buf:delete({row = 3, col = 1}, {row = 200, col = 1})
+	end}
+end}`)
+	for _ in 0 ..< 60 {
+		e2e_mouse(&e, 5, 5, .Mouse_Wheel_Down)
+	}
+	e2e_ui_settle(&e)
+	ut_start(&e, "Chop")
+	// the top row now lies past the end until the next layout reveals: both readers must cope
+	plugin_busy(&e.ed)
+	plugin_flush(&e.ed)
+	e2e_ui_settle(&e)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, len(editor_buffer(&e.ed).lines), 4)
+}

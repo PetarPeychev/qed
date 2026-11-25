@@ -44,6 +44,7 @@ Buffer :: struct {
 	plugin_seen:   bool,
 	plugin_rev:    u64,
 	plugin_cursor: Cursor,
+	plugin_scroll: f64,
 	plugin_dirty:  bool,
 	plugin_lo:     int,
 	plugin_hi:     int,

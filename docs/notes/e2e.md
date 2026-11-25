@@ -47,7 +47,7 @@ anything under `src`/`plugins`/`config`/`lib` is newer.
 Scenario lines (`#` comments): `size WxH`, `requires TOOL`, `timeout MS`, `file PATH` / `config` /
 `expect-file PATH` (body up to a line `end`, each line newline-terminated), `run [ARGS]`, `wait TEXT`,
 `key K...` (`ctrl+s alt+F shift+right down*3 esc enter tab pgdn`), `type TEXT`, `click X Y`,
-`dclick X Y`, `drag X1 Y1 X2 Y2`, `snap NAME`. Coordinates are 0-based cells.
+`dclick X Y`, `drag X1 Y1 X2 Y2`, `wheel X Y up|down [COUNT]`, `snap NAME`. Coordinates are 0-based cells.
 
 Snapshot file: header (size, cursor), `-- text` rows (right-trimmed), `-- style` rows (one symbol
 per cell, wide-char continuations skipped), `-- legend` (symbol to `fg= bg=` + attrs). Letters are

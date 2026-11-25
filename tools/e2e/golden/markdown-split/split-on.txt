@@ -1,0 +1,83 @@
+qed-e2e snapshot 120x32 cursor 4,0
+-- text
+  1 # Split preview                                        │ Split preview                                             ┃
+  2                                                        │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ┃
+  3 Jump to [the other doc](other.md) or [plain            │                                                           ┃
+    notes](notes.txt).                                     │ Jump to the other doc or plain notes.                     ┃
+  4                                                        │                                                           ┃
+  5 ## Section 1                                           │ Section 1                                                 ┃
+  6                                                        │ ───────────────────────────────────────────────────────── ┃
+  7 Paragraph 1 has **bold** and *italic* words.           │                                                           ┃
+  8                                                        │ Paragraph 1 has bold and italic words.                    ┃
+  9 - item 1a                                              │
+ 10 - item 1b                                              │ • item 1a
+ 11                                                        │ • item 1b
+ 12 ## Section 2                                           │
+ 13                                                        │ Section 2
+ 14 Paragraph 2 has **bold** and *italic* words.           │ ─────────────────────────────────────────────────────────
+ 15                                                        │
+ 16 - item 2a                                              │ Paragraph 2 has bold and italic words.
+ 17 - item 2b                                              │
+ 18                                                        │ • item 2a
+ 19 ## Section 3                                           │ • item 2b
+ 20                                                        │
+ 21 Paragraph 3 has **bold** and *italic* words.           │ Section 3
+ 22                                                        │ ─────────────────────────────────────────────────────────
+ 23 - item 3a                                              │
+ 24 - item 3b                                              │ Paragraph 3 has bold and italic words.
+ 25                                                        │
+ 26 ## Section 4                                           │ • item 3a
+ 27                                                        │ • item 3b
+ 28 Paragraph 4 has **bold** and *italic* words.           │
+ 29                                                        │ Section 4
+ ≡ root/doc.md  1/89                                                                             ◆ markdown  ⇥ Spaces:4
+
+-- style
+abbbcdeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddfghhhhhhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggggf
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiigf
+aaaagggggggggjjjjjjjjjjjjjggjjjjjjjjggggggjjjjjjgggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggf
+aaaajjjjjggjjjjjjjjjgggggggggggggggggggggggggggggggggggggggfgggggggggkkkkkkkkkkkkkggggkkkkkkkkkkkggggggggggggggggggggggf
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggf
+aaaaiighhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggfghhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggggggggf
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgfffffffffffffffffffffffffffffffffffffffffffffffffffffffffgf
+aaaaggggggggggggggggllllllllgggggmmmmmmmmggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggf
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggllllgggggnnnnnngggggggggggggggggggggggggggf
+aaaaiigggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaiigggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaiighhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfghhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaggggggggggggggggllllllllgggggmmmmmmmmggggggggggggggggggfgfffffffffffffffffffffffffffffffffffffffffffffffffffffffffgg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaiigggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggllllgggggnnnnnngggggggggggggggggggggggggggg
+aaaaiigggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaiighhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggfgiiggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaggggggggggggggggllllllllgggggmmmmmmmmggggggggggggggggggfghhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgfffffffffffffffffffffffffffffffffffffffffffffffffffffffffgg
+aaaaiigggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaiigggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggllllgggggnnnnnngggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaiighhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggfgiiggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaggggggggggggggggllllllllgggggmmmmmmmmggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfghhhhhhhhhgggggggggggggggggggggggggggggggggggggggggggggggggg
+oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#ffdd33 bg=#262626
+d fg=#f4f4ff bg=#262626
+e fg=#ffdd33 bg=#262626 bold
+f fg=#868686 bg=#181818
+g fg=#f4f4ff bg=#181818
+h fg=#ffdd33 bg=#181818 bold
+i fg=#ffdd33 bg=#181818
+j fg=#96a6c8 bg=#181818
+k fg=#96a6c8 bg=#181818 underline
+l fg=#f4f4ff bg=#181818 bold
+m fg=#cc8c3c bg=#181818 italic
+n fg=#f4f4ff bg=#181818 italic
+o fg=#f4f4ff bg=#2b2b2b

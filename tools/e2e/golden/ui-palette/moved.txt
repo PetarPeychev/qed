@@ -11,11 +11,11 @@ qed-e2e snapshot 80x24 cursor 16,6
          │ Toggle Comment                                      Ctrl+/ ┃
          │ Toggle Line Wrap                                           ┃
          │ AI: Toggle Inline Completion                               ┃
+         │ Markdown: Toggle Split                                     ┃
          │ Terminal: Toggle                                     Alt+t ┃
          │ Settings: Open Config                                      ┃
-         │ Git: Toggle Diff View                                      ┃
-         │ Format: Toggle on Save                                     ┃
-         │ Format: Toggle Trim Whitespace on Save                     │
+         │ Git: Toggle Diff View                                      │
+         │ Format: Toggle on Save                                     │
          └────────────────────────────────────────────────────────────┘
 
 
@@ -36,10 +36,10 @@ dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
 dddddddddeghhhgggggggggggggggggggggggggggggggggggggggggggggggggeeeeeeegddddddddd
 dddddddddeijjjiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiigddddddddd
 dddddddddeggggghhhgggggggggggggggggggggggggggggggggggggggggggggggggggegddddddddd
+dddddddddeggggggggggghhhgggggggggggggggggggggggggggggggggggggggggggggegddddddddd
 dddddddddeghgggggggggghhggggggggggggggggggggggggggggggggggggggggeeeeeegddddddddd
 dddddddddeggghggggggghggggggggghgggggggggggggggggggggggggggggggggggggegddddddddd
-dddddddddeggghggghhggggggggggggggggggggggggggggggggggggggggggggggggggegddddddddd
-dddddddddegggggghggghhgggggggggggggggggggggggggggggggggggggggggggggggegddddddddd
+dddddddddeggghggghhggggggggggggggggggggggggggggggggggggggggggggggggggeeddddddddd
 dddddddddegggggghggghhgggggggggggggggggggggggggggggggggggggggggggggggeeddddddddd
 dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

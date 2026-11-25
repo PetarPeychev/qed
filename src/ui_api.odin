@@ -743,12 +743,32 @@ ui_mount_result_push :: proc(L: ^lua.State, editor: ^Editor, handle: u64) -> c.i
 	return 1
 }
 
-ui_mount_waiters_resume :: proc(editor: ^Editor) {
+// a node with no pending set_state left, or gone from the tree
+// a node with no pending set_state left, gone from the tree, or now in another mount (an unmount and a remount)
+ui_settle_ready :: proc(editor: ^Editor, wait: PluginWait) -> bool {
+	if wait.kind != .Settle {
+		return false
+	}
+	ui_resolve(editor)
+	node := ui_find(&editor.ui, wait.node)
+	return node == nil || node.mount != wait.id || !ui_node_pending(editor, node)
+}
+
+// only a markdown node in a scroll resolves a heading or source; anything else never would
+ui_node_pending :: proc(editor: ^Editor, node: ^UiNode) -> bool {
+	if node.kind != .Markdown || node.parent == nil || node.parent.kind != .Scroll {
+		return false
+	}
+	state := ui_node_state_peek(&editor.ui, node)
+	return state.md_heading != "" || state.md_source > 0
+}
+
+ui_waiters_resume :: proc(editor: ^Editor) {
 	p := &editor.plugins
 	ui := &editor.ui
 	ready := make([dynamic]u64, context.temp_allocator)
 	for t in p.tasks {
-		if t.wait.kind == .Mount && ui_mount_index(ui, t.wait.id) < 0 {
+		if t.wait.kind == .Mount && ui_mount_index(ui, t.wait.id) < 0 || ui_settle_ready(editor, t.wait) {
 			append(&ready, t.id)
 		}
 	}
@@ -778,6 +798,7 @@ ui_node_ref_methods := [?]lua.L_Reg {
 	{"state", qed_ui_ref_state},
 	{"set_state", qed_ui_ref_set_state},
 	{"rect", qed_ui_ref_rect},
+	{"settled", qed_ui_ref_settled},
 }
 
 qed_ui_node :: proc "c" (L: ^lua.State) -> c.int {
@@ -857,8 +878,42 @@ ui_state_key_arg :: proc(L: ^lua.State, editor: ^Editor, identity: string, state
 qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 	entry := api_enter(L)
 	context = entry.ctx
+	return ui_ref_state_push(L, entry.editor, ui_ref_identity(L))
+}
+
+qed_ui_ref_settled :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
 	editor := entry.editor
 	identity := ui_ref_identity(L)
+	ui_resolve(editor)
+	node := ui_find(&editor.ui, identity)
+	if node == nil {
+		lua.pushnil(L)
+		return 1
+	}
+	if !ui_node_pending(editor, node) {
+		return ui_ref_state_push(L, editor, identity)
+	}
+	t := api_await(L, &editor.plugins, "settled")
+	t.wait = {kind = .Settle, id = node.mount, node = strings.clone(identity)}
+	return lua.yieldk(L, 0, lua.KContext(node.mount), qed_ui_ref_settled_k)
+}
+
+qed_ui_ref_settled_k :: proc "c" (L: ^lua.State, status: c.int, ctx: lua.KContext) -> c.int {
+	entry := plugin_entry(L)
+	context = entry.ctx
+	editor := entry.editor
+	identity := ui_ref_identity(L)
+	ui_resolve(editor)
+	if node := ui_find(&editor.ui, identity); node == nil || node.mount != u64(ctx) {
+		lua.pushnil(L)
+		return 1
+	}
+	return ui_ref_state_push(L, editor, identity)
+}
+
+ui_ref_state_push :: proc(L: ^lua.State, editor: ^Editor, identity: string) -> c.int {
 	ui_resolve(editor)
 	node := ui_find(&editor.ui, identity)
 	state: UiState
@@ -906,6 +961,10 @@ qed_ui_ref_state :: proc "c" (L: ^lua.State) -> c.int {
 				lua.rawseti(L, -2, lua.Integer(i + 1))
 			}
 			lua.setfield(L, -2, "sources")
+			if top, found := ui_markdown_top_source(editor, node); found {
+				lua.pushnumber(L, lua.Number(top + 1))
+				lua.setfield(L, -2, "source")
+			}
 		}
 		if state.md_found > 0 {
 			lua.pushinteger(L, lua.Integer(state.md_found))
@@ -969,7 +1028,10 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 			// as the wheel: an explicit position is the newer intent; layout reads at_end from it, parked or not
 			state.at_end, state.parked = false, false
 		case "source":
-			state.md_source = max(int(lua.tointeger(L, -1)), 1)
+			if lua.type(L, -1) != .NUMBER {
+				return plugin_raise(L, "set_state: source must be a number")
+			}
+			state.md_source = max(f64(lua.tonumberx(L, -1, nil)), 1)
 		case "at":
 			state.md_at = max(int(lua.tointeger(L, -1)), 0)
 		case "heading":
@@ -983,9 +1045,10 @@ qed_ui_ref_set_state :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pop(L, 1)
 	}
 	// a shown markdown resolves a heading or source row now, so a following state() sees it
+	// (a document replaced since the last layout waits for its own render instead)
 	if node := ui_find(&editor.ui, identity); node != nil && node.kind == .Markdown && node.clip.h > 0 {
-		if md, found := editor.ui.markdowns[identity]; found {
-			ui_markdown_resolve(md, state, ui_markdown_scroller(editor, node), node.clip)
+		if _, found := editor.ui.markdowns[identity]; found {
+			ui_markdown_resolve(ui_markdown_of(editor, node), state, ui_markdown_scroller(editor, node), node.clip)
 		}
 	}
 	return 0
@@ -1020,6 +1083,8 @@ UiHandlerArgs :: struct {
 	x, y:        int,
 	button:      string,
 	mouse:       bool,
+	scrolled:    bool,
+	offset:      int,
 }
 
 ui_handler_c :: proc "c" (L: ^lua.State) -> c.int {
@@ -1047,6 +1112,10 @@ ui_handler_c :: proc "c" (L: ^lua.State) -> c.int {
 		if args.target != "" {
 			lua.pushodinstring(L, args.target)
 			lua.setfield(L, -2, "target")
+		}
+		if args.scrolled {
+			lua.pushinteger(L, lua.Integer(args.offset))
+			lua.setfield(L, -2, "offset")
 		}
 		if args.state {
 			if args.highlighted != "" {

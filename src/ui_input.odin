@@ -432,11 +432,7 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		return true
 	case .Scroll:
 		if wheel {
-			state := ui_node_state(ui, node)
-			state.offset = max(state.offset + step, 0)
-			// layout recomputes it from the offset (left set, `follow` would snap back); the user scrolling is the newer
-			// intent than a parked highlight, so reaching the end by wheel follows again
-			state.at_end, state.parked = false, false
+			ui_scroll_by(editor, node, step, true)
 			return true
 		}
 	case .Editor:
@@ -824,9 +820,27 @@ ui_scroll_move :: proc(editor: ^Editor, step: int) {
 	if scroll == nil {
 		return
 	}
+	ui_scroll_by(editor, scroll, step)
+}
+
+ui_scroll_by :: proc(editor: ^Editor, scroll: ^UiNode, step: int, wheel := false) {
 	state := ui_node_state(&editor.ui, scroll)
-	state.offset = clamp(state.offset + step, 0, state.max_offset)
+	before := state.offset
+	// the wheel leaves the far end to layout (content may have grown since the last one); keys stop at the known end
+	state.offset = max(state.offset + step, 0) if wheel else clamp(state.offset + step, 0, state.max_offset)
+	// layout recomputes at_end from the offset (left set, `follow` would snap back); the user scrolling is the newer
+	// intent than a parked highlight, so reaching the end follows again
 	state.at_end, state.parked = false, false
+	if scroll.handlers[.State] == 0 {
+		return
+	}
+	// on.state reports the offset layout settles on
+	ui_resolve(editor)
+	ui_layout(editor)
+	state = ui_node_state(&editor.ui, scroll)
+	if state.offset != before {
+		ui_handler_call(editor, scroll.owner, scroll.handlers[.State], {scrolled = true, offset = state.offset})
+	}
 }
 
 ui_list_page :: proc(editor: ^Editor) -> int {

@@ -250,7 +250,7 @@ function qed.shell_quote(text) end
 ---@return {label: string, path: string, pos: qed.Pos}[]
 function qed.parse_locations(text, opts) end
 
----@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"|"plugin_loaded"|"plugin_unloaded"|"message"|string
+---@alias qed.Event "startup"|"buf_open"|"buf_close"|"buf_enter"|"buf_pre_save"|"buf_save"|"buf_reload"|"buf_changed"|"cursor_moved"|"view_scrolled"|"language_changed"|"root_changed"|"config_changed"|"theme_changed"|"term_open"|"term_exit"|"term_close"|"quit"|"plugin_loaded"|"plugin_unloaded"|"message"|string
 
 ---@class qed.Handle
 ---@field id integer
@@ -260,7 +260,7 @@ function Handle:remove() end
 
 ---Handlers run as coroutines in plugin load order. `buf_changed(b, rev, typed, lo, hi)` (`typed`: the latest change was the user typing a character, Enter, Backspace or Delete;
 ---`lo..hi`: the rows touched since the last delivery to any subscriber, in current rows; rows above `lo` are unchanged, rows below `hi` only shifted; a rev change with no recorded edit carries the whole buffer) and
----`cursor_moved(b)` fire at most once per main-loop iteration, and again within the same flush for changes a handler made. Save waits for
+---`cursor_moved(b)` and `view_scrolled(b)` (the top line of the view showing the current buffer, as `top_row` reports it, moved since the last flush: a wheel, a reveal read through `screen_row`/`top_row`, or a layout's reveal or re-wrap, which the main loop flushes right after; `buffer:set_screen_row` fires nothing) fire at most once per main-loop iteration, and again within the same flush for changes a handler made. Save waits for
 ---`buf_pre_save(b)` handlers and quit for `quit` handlers, up to `plugin_hook_timeout_ms`.
 ---`config_changed(changed)`: `changed` is a set of this plugin's top-level config keys whose merged value changed (`{}` when only core config did); apply just those to keep live toggles of the others.
 ---`root_changed(old, new)`, `term_open(name)`, `term_exit(name, code)`, `term_close(name)`, `buf_close(b, path)`; other buffer events get `b`.
@@ -429,6 +429,10 @@ function NodeRef:set_state(patch) end
 ---@return {x: integer, y: integer, width: integer, height: integer}|nil
 function NodeRef:rect() end
 
+---⏳ Waits until the node's pending `set_state` (a markdown `heading` or `source`) has resolved at a layout, then returns its state (`state().heading` is the row, or nil when the slug is not there); at once when nothing is pending (only a markdown node in a `scroll` ever is). nil when the node leaves the tree, its mount unmounts (a remount under the same id included), or it was never there. Only in a command, event handler or timer.
+---@return table|nil
+function NodeRef:settled() end
+
 ---Mounts `tree` into an outlet: a layer (`background`, `base`, `popup`, `pane`, `notification`, `alert`) or a plugin's `qed.ui.outlet` id. Unmounted when the plugin unloads.
 ---@param outlet string
 ---@param tree qed.Node
@@ -455,7 +459,7 @@ function qed.ui.row(props) end
 ---@return qed.Node
 function qed.ui.box(props) end
 
----Exactly one laid-out child, scrolled; slot `header` pinned above it. Takes the wheel; under a `"list"` scope with no `virtual_column` the `List:` commands scroll it (Up/Down accelerate when held). `follow = true`: opens at the end and stays there while it is there; a user highlight off its list's last row parks it until the user reaches the end again (keys, click, wheel, `set_state`) or that row leaves the data.
+---Exactly one laid-out child, scrolled; slot `header` pinned above it. Takes the wheel; under a `"list"` scope with no `virtual_column` the `List:` commands scroll it (Up/Down accelerate when held). Either fires `on.state{offset}` when the offset moves (`set_state` does not). `follow = true`: opens at the end and stays there while it is there; a user highlight off its list's last row parks it until the user reaches the end again (keys, click, wheel, `set_state`) or that row leaves the data.
 ---@param props table
 ---@return qed.Node
 function qed.ui.scroll(props) end
@@ -493,7 +497,7 @@ function qed.ui.status(props) end
 
 qed.markdown = {}
 
----The rendered document as a node to place in a `ui.scroll` (which owns its offset, bar and wheel). One core-rendered node, laid out at the scroll's width. `opts` are node props: `id`, `dir` (relative links and images), `margin`, `on.link(event)` (`event.target`; an unhandled `#slug` scrolls the holding scroll to that heading). State: `rows`, `sources` (source rows of the visible lines), `heading` (source row of the last `heading` set); `set_state{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the document allows) or `{heading = slug}` moves the holding scroll.
+---The rendered document as a node to place in a `ui.scroll` (which owns its offset, bar and wheel). One core-rendered node, laid out at the scroll's width. `opts` are node props: `id`, `dir` (relative links and images), `margin`, `on.link(event)` (`event.target`; an unhandled `#slug` scrolls the holding scroll to that heading). State: `rows`, `sources` (source rows of the visible lines), `source` (the source line at the scroll's top, fractional: a row inside a block sits proportionally between its first line and the next block's), `heading` (source row of the last `heading` set); `set_state{source = row, at = terminal_row}` (that source line, fractional too, lands on the terminal row by the same interpolation, as near as the document allows; a re-wrap keeps the top source line) or `{heading = slug}` moves the holding scroll.
 ---@param text string
 ---@param opts? table
 ---@return qed.Node
@@ -1090,12 +1094,21 @@ function BufferObject:set_cursor(pos) end
 ---@return integer|nil
 function BufferObject:screen_row(row) end
 
----Scrolls the editor view showing `b` so buffer row `row` sits on its row `screen_row` (clamped to the view), clamped at the buffer ends. `nil, "not shown"` when no view shows `b`.
----@param row integer
+---Scrolls the editor view showing `b` so buffer row `row` sits on its row `screen_row` (clamped to the view), clamped at the buffer ends. A fraction of `row` picks its wrapped sub-row (`top_row`'s form). `nil, "not shown"` when no view shows `b`.
+---@param row number
 ---@param screen_row integer
 ---@return true|nil ok
 ---@return "not shown"|nil err
 function BufferObject:set_screen_row(row, screen_row) end
+
+---The top line of the editor view showing `b`: its row plus the fraction of its wrapped rows scrolled past (`12.5`: halfway into row 12), or nil when not shown. A caret moved since the last frame scrolls first.
+---@return number|nil
+function BufferObject:top_row() end
+
+---Focuses the editor view showing `b`; `nil, "not shown"` when none does or that view has no `id` (only id'd nodes take focus).
+---@return true|nil ok
+---@return "not shown"|nil err
+function BufferObject:focus() end
 
 ---Selection as `from, to` in document order, or nil when nothing is selected.
 ---@return qed.Pos|nil from

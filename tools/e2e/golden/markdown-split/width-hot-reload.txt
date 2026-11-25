@@ -1,0 +1,80 @@
+qed-e2e snapshot 120x32 cursor 14,15
+-- text
+ 22                                                                                      │
+ 23 - item 3a                                                                            │ • item 3a
+ 24 - item 3b                                                                            │ • item 3b
+ 25                                                                                      │
+ 26 ## Section 4                                                                         │ Section 4
+ 27                                                                                      │ ───────────────────────────
+ 28 Paragraph 4 has **bold** and *italic* words.                                         │
+ 29                                                                                      │ Paragraph 4 has bold and
+ 30 - item 4a                                                                            │ italic words.               ┃
+ 31 - item 4b                                                                            │                             ┃
+ 32                                                                                      │ • item 4a                   ┃
+ 33 ## Section 5                                                                         │ • item 4b                   ┃
+ 34                                                                                      │                             ┃
+ 35 Paragraph 5 has **bold** and *italic* words.                                         │ Section 5                   ┃
+ 36                                                                                      │ ─────────────────────────── ┃
+ 37 - item 5a!                                                                           │
+ 38 - item 5b                                                                            │ Paragraph 5 has bold and
+ 39                                                                                      │ italic words.
+ 40 ## Section 6                                                                         │
+ 41                                                                                      │ • item 5a!
+ 42 Paragraph 6 has **bold** and *italic* words.                                         │ • item 5b
+ 43                                                                                      │
+ 44 - item 6a                                                                            │ Section 6
+ 45 - item 6b                                                                            │ ───────────────────────────
+ 46                                                                                      │
+ 47 ## Section 7                                                                         │ Paragraph 6 has bold and
+ 48                                                                                      │ italic words.
+ 49 Paragraph 7 has **bold** and *italic* words.                                         │
+ 50                                                                                      │ • item 6a
+ 51 - item 7a                                                                            │ • item 6b
+ ≡ root/doc.md ●  37/89  [1/3]                                                                   ◆ markdown  ⇥ Spaces:4
+config.json reloaded
+-- style
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbeeeeeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbeeeeeeeeebbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbcccccccccccccccccccccccccccbb
+aaaabbbbbbbbbbbbbbbbffffffffbbbbbggggggggbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbffffbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbhhhhhhbbbbbbbbbbbbbbbbbbbbbbc
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbc
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbc
+aaaaddbeeeeeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbc
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbc
+aaaabbbbbbbbbbbbbbbbffffffffbbbbbggggggggbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbeeeeeeeeebbbbbbbbbbbbbbbbbbbc
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbcccccccccccccccccccccccccccbc
+aiiijjkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbffffbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbhhhhhhbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbeeeeeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbffffffffbbbbbggggggggbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbeeeeeeeeebbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbcccccccccccccccccccccccccccbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbeeeeeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbffffbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbhhhhhhbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbffffffffbbbbbggggggggbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#f4f4ff bg=#181818
+c fg=#868686 bg=#181818
+d fg=#ffdd33 bg=#181818
+e fg=#ffdd33 bg=#181818 bold
+f fg=#f4f4ff bg=#181818 bold
+g fg=#cc8c3c bg=#181818 italic
+h fg=#f4f4ff bg=#181818 italic
+i fg=#d8d8d8 bg=#1b1b1b
+j fg=#ffdd33 bg=#262626
+k fg=#f4f4ff bg=#262626
+l fg=#f4f4ff bg=#2b2b2b

@@ -1,5 +1,6 @@
 package main
 
+import "core:math"
 import vmem "core:mem/virtual"
 import "core:strings"
 import "core:time"
@@ -14,13 +15,15 @@ UiMarkdownJob :: struct {
 }
 
 UiMarkdown :: struct {
-	source: string,
-	dir:    string,
-	lang:   Language,
-	w:      int,
-	lines:  []MdLine,
-	arena:  vmem.Arena,
-	job:    ^UiMarkdownJob,
+	source:  string,
+	dir:     string,
+	lang:    Language,
+	w:       int,
+	lines:   []MdLine,
+	lines_w: int,
+	rows:    int,
+	arena:   vmem.Arena,
+	job:     ^UiMarkdownJob,
 }
 
 ui_markdown_of :: proc(editor: ^Editor, node: ^UiNode) -> ^UiMarkdown {
@@ -35,6 +38,7 @@ ui_markdown_of :: proc(editor: ^Editor, node: ^UiNode) -> ^UiMarkdown {
 		delete(md.source)
 		delete(md.dir)
 		md.source, md.dir, md.lang = strings.clone(node.source), strings.clone(node.path), node.md_lang
+		md.rows = strings.count(md.source, "\n") + 1
 		ui_markdown_reset(md)
 	}
 	return md
@@ -72,7 +76,7 @@ ui_markdown_step :: proc(md: ^UiMarkdown, ms: int) -> (done: bool) {
 	}
 	vmem.arena_destroy(&md.arena)
 	md.arena = job.arena
-	md.lines, md.w = lines, job.w
+	md.lines, md.w, md.lines_w = lines, job.w, job.w
 	free(job)
 	md.job = nil
 	return true
@@ -137,7 +141,8 @@ ui_markdown_scroller :: proc(editor: ^Editor, node: ^UiNode) -> ^UiState {
 
 // a pending source row or heading moves the holding scroll once lines for this width exist; view is its content rect
 ui_markdown_resolve :: proc(md: ^UiMarkdown, state, scroller: ^UiState, view: Rect) {
-	if md.w < 0 || scroller == nil {
+	// a render for another width is still running: resolve against its lines, not the old ones
+	if md.w < 0 || md.job != nil || scroller == nil {
 		return
 	}
 	if state.md_heading != "" {
@@ -152,19 +157,50 @@ ui_markdown_resolve :: proc(md: ^UiMarkdown, state, scroller: ^UiState, view: Re
 		state.md_heading = ""
 	}
 	if state.md_source > 0 {
-		index := len(md.lines)
-		for line, i in md.lines {
-			if line.src >= state.md_source - 1 {
-				index = i
-				break
-			}
-		}
+		index := int(math.floor(ui_markdown_line_of_source(md, state.md_source - 1) + 0.5))
 		// md_at is a terminal row: the line lands there, or as near as the document allows
 		scroller.offset = index - clamp(state.md_at - 1 - view.y, 0, max(view.h - 1, 0)) if state.md_at > 0 else index
 		state.md_source, state.md_at = 0, 0
 	}
 	scroller.offset = clamp(scroller.offset, 0, max(0, len(md.lines) - view.h))
 	scroller.at_end = scroller.offset >= max(0, len(md.lines) - view.h)
+}
+
+// a block is a run of lines sharing a source row (a separating blank belongs to the block above); a source row inside
+// one is placed proportionally between its first line and the next block's, so both directions interpolate alike
+ui_markdown_line_of_source :: proc(md: ^UiMarkdown, source: f64) -> f64 {
+	from_src, from_line := 0, 0
+	for line, i in md.lines {
+		if (i > 0 && line.src == md.lines[i - 1].src) || (i > 0 && line.src <= from_src) {
+			continue
+		}
+		if f64(line.src) > source {
+			return f64(from_line) + (source - f64(from_src)) / f64(line.src - from_src) * f64(i - from_line)
+		}
+		from_src, from_line = line.src, i
+	}
+	end_src := max(md.rows, from_src + 1)
+	return f64(from_line) + clamp((source - f64(from_src)) / f64(end_src - from_src), 0, 1) * f64(len(md.lines) - from_line)
+}
+
+ui_markdown_source_of_line :: proc(md: ^UiMarkdown, line_index: int) -> f64 {
+	// the top shows source row 0 even when the first rows render nothing (blanks, link references, comments)
+	if line_index <= 0 {
+		return 0
+	}
+	from_src, from_line := 0, 0
+	for line, i in md.lines {
+		if (i > 0 && line.src == md.lines[i - 1].src) || (i > 0 && line.src <= from_src) {
+			continue
+		}
+		if i > line_index {
+			return f64(from_src) + f64(line_index - from_line) / f64(i - from_line) * f64(line.src - from_src)
+		}
+		from_src, from_line = line.src, i
+	}
+	end_src := max(md.rows, from_src + 1)
+	span := max(len(md.lines) - from_line, 1)
+	return f64(from_src) + clamp(f64(line_index - from_line) / f64(span), 0, 1) * f64(end_src - from_src)
 }
 
 ui_render_markdown :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
@@ -204,6 +240,31 @@ ui_markdown_click :: proc(editor: ^Editor, node: ^UiNode, cell_x, cell_y: int) {
 		state.md_heading = strings.clone(target[1:])
 		ui_markdown_resolve(md, state, ui_markdown_scroller(editor, node), node.clip)
 	}
+}
+
+// a re-wrap keeps the source row at the holding scroll's top, not its row count
+ui_markdown_rewrap :: proc(editor: ^Editor, node: ^UiNode, md: ^UiMarkdown, w: int) {
+	scroller := ui_markdown_scroller(editor, node)
+	state := ui_node_state(&editor.ui, node)
+	// the lines on screen may be older than a pending render, which reset `w`
+	if md.lines_w == w || scroller == nil || state.md_source > 0 || len(md.lines) == 0 {
+		return
+	}
+	state.md_source = ui_markdown_source_of_line(md, clamp(scroller.offset, 0, len(md.lines) - 1)) + 1
+	state.md_at = 0
+}
+
+// the source row (0-based, fractional) at the holding scroll's top
+ui_markdown_top_source :: proc(editor: ^Editor, node: ^UiNode) -> (f64, bool) {
+	md, found := editor.ui.markdowns[node.identity]
+	if !found || md.w < 0 || len(md.lines) == 0 {
+		return 0, false
+	}
+	top := node.clip.y - node.rect.y
+	if node.parent != nil && node.parent.kind == .Scroll {
+		top = ui_node_state_peek(&editor.ui, node.parent).offset
+	}
+	return ui_markdown_source_of_line(md, clamp(top, 0, len(md.lines) - 1)), true
 }
 
 // the source rows (0-based) of the visible lines, nil before the first render

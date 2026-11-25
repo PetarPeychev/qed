@@ -209,7 +209,7 @@ UiState :: struct {
 	kept:        bool,
 	at_end:      bool,
 	buffer:      u64,
-	md_source:   int,
+	md_source:   f64,
 	md_at:       int,
 	md_heading:  string,
 	md_found:    int,
@@ -1171,7 +1171,9 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 	case .Status:
 		height = 1
 	case .Markdown:
-		height = len(ui_markdown_lines(ui_markdown_of(editor, node), avail_w))
+		md := ui_markdown_of(editor, node)
+		ui_markdown_rewrap(editor, node, md, avail_w)
+		height = len(ui_markdown_lines(md, avail_w))
 	case .Image:
 		if image := image_get(node.path); image != nil && image_enabled() {
 			width, height = image_cells(image.w, image.h, avail_w, avail_h, g_image_cell.x, g_image_cell.y)
@@ -1527,6 +1529,15 @@ ui_buffer_view :: proc(editor: ^Editor, buffer: ^Buffer) -> (^UiNode, ^UiState) 
 		}
 	}
 	return nil, nil
+}
+
+// the view's top line (0-based) plus the scrolled fraction of its wrapped rows; a top left past an edit or a re-wrap
+// clamps, since callers read it before the next layout reveals
+ui_view_top :: proc(buffer: ^Buffer, node: ^UiNode, state: ^UiState) -> f64 {
+	row := clamp(state.scroll_row, 0, len(buffer.lines) - 1)
+	rows := line_rows(buffer, ui_editor_text_width(node, buffer), row)
+	sub := clamp(state.scroll_sub, 0, rows - 1) if row == state.scroll_row else 0
+	return f64(row) + f64(sub) / f64(rows)
 }
 
 // reveal for the buffer the view is about to show (see ui_buffer_view)

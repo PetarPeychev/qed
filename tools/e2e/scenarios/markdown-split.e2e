@@ -1,0 +1,171 @@
+# Markdown preview in a split: Toggle Split, live typing, two-way scroll sync, focus, links and history, plain buffers,
+# width hot reload, the Alt+p overlay over the split.
+size 120x32
+file doc.md
+# Split preview
+
+Jump to [the other doc](other.md) or [plain notes](notes.txt).
+
+## Section 1
+
+Paragraph 1 has **bold** and *italic* words.
+
+- item 1a
+- item 1b
+
+## Section 2
+
+Paragraph 2 has **bold** and *italic* words.
+
+- item 2a
+- item 2b
+
+## Section 3
+
+Paragraph 3 has **bold** and *italic* words.
+
+- item 3a
+- item 3b
+
+## Section 4
+
+Paragraph 4 has **bold** and *italic* words.
+
+- item 4a
+- item 4b
+
+## Section 5
+
+Paragraph 5 has **bold** and *italic* words.
+
+- item 5a
+- item 5b
+
+## Section 6
+
+Paragraph 6 has **bold** and *italic* words.
+
+- item 6a
+- item 6b
+
+## Section 7
+
+Paragraph 7 has **bold** and *italic* words.
+
+- item 7a
+- item 7b
+
+## Section 8
+
+Paragraph 8 has **bold** and *italic* words.
+
+- item 8a
+- item 8b
+
+## Section 9
+
+Paragraph 9 has **bold** and *italic* words.
+
+- item 9a
+- item 9b
+
+## Section 10
+
+Paragraph 10 has **bold** and *italic* words.
+
+- item 10a
+- item 10b
+
+## Section 11
+
+Paragraph 11 has **bold** and *italic* words.
+
+- item 11a
+- item 11b
+
+## Section 12
+
+Paragraph 12 has **bold** and *italic* words.
+
+- item 12a
+- item 12b
+
+end
+file other.md
+# Other doc
+
+Linked from doc.md.
+end
+file notes.txt
+plain text notes
+end
+run doc.md
+wait # Split preview
+snap source
+key ctrl+p
+type toggle split
+wait Markdown: Toggle Split
+snap toggle-split-palette
+key enter
+wait Jump to the other doc
+snap split-on
+key down*7 alt+right
+type  Live.
+wait and italic words. Live.
+snap live
+key down*30
+wait 37/89
+snap cursor-sync
+wheel 20 10 down 3
+wait 49 Paragraph 7
+snap editor-wheel
+wheel 90 10 down 3
+wait 56 Paragraph 8
+snap preview-wheel
+click 90 20
+key down*4
+wait 61 ## Section 9
+snap preview-keys
+key esc
+type !
+wait • item 5a!
+snap esc-back-to-editor
+wheel 90 10 up 30
+wait the other doc
+click 70 3
+wait Linked from doc.md
+snap link
+key alt+,
+wait Jump to the other doc
+snap back
+click 88 3
+wait plain text notes
+snap plain-buffer
+key alt+,
+wait • item 3a
+snap markdown-again
+config
+{"plugins": {"markdown": {"split_width": 25}}}
+end
+wait-gone Paragraph 4 has bold and italic words.
+snap width-hot-reload
+key alt+p
+wait click a link to open it
+snap overlay-over-split
+key pgdn
+wait-gone Section 4
+snap overlay-scrolled
+key esc
+wait-gone click a link to open it
+snap overlay-closed-split-follows
+key alt+o
+type notes.txt
+wait notes.txt
+key enter
+wait plain text notes
+key ctrl+p
+type toggle split
+key enter
+key alt+,
+wait Paragraph
+snap toggled-off-from-plain

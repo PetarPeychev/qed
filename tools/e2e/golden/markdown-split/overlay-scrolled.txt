@@ -1,0 +1,85 @@
+qed-e2e snapshot 120x32 cursor hidden
+-- text
+ 22                                                                                      │
+ 23 - item 3a                                                                            │ • item 3a
+ 24 - item 3b                                                                            │ • item 3b
+ 25     ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ 26 ## S│ doc.md                                                                                               │
+ 27     ├──────────────────────────────────────────────────────────────────────────────────────────────────────┤──────
+ 28 Para│ • item 6a                                                                                            │
+ 29     │ • item 6b                                                                                            │and
+ 30 - it│                                                                                                      │       ┃
+ 31 - it│ Section 7                                                                                            │       ┃
+ 32     │ ──────────────────────────────────────────────────────────────────────────────────────────────────── │       ┃
+ 33 ## S│                                                                                                      │       ┃
+ 34     │ Paragraph 7 has bold and italic words.                                                               │       ┃
+ 35 Para│                                                                                                      │       ┃
+ 36     │ • item 7a                                                                                            │────── ┃
+ 37 - it│ • item 7b                                                                                            ┃
+ 38 - it│                                                                                                      ┃and
+ 39     │ Section 8                                                                                            ┃
+ 40 ## S│ ──────────────────────────────────────────────────────────────────────────────────────────────────── │
+ 41     │                                                                                                      │
+ 42 Para│ Paragraph 8 has bold and italic words.                                                               │
+ 43     │                                                                                                      │
+ 44 - it│ • item 8a                                                                                            │
+ 45 - it│ • item 8b                                                                                            │──────
+ 46     ├──────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ 47 ## S│ ↑↓ PgUp PgDn scroll  click a link to open it  Alt+, back  Alt+. forward  Esc close                   │and
+ 48     └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 49 Paragraph 7 has **bold** and *italic* words.                                         │
+ 50                                                                                      │ • item 6a
+ 51 - item 7a                                                                            │ • item 6b
+ ≡ root/doc.md ●  37/89  [1/3]                                                                   ◆ markdown  ⇥ Spaces:4
+
+-- style
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeebbbbbbbb
+aaaaddbfeggggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaabbbbeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeccccccbb
+aaaabbbbehgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaabbbbehgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaaddbbehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbc
+aaaaddbbehiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbc
+aaaabbbbeheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeehebbbbbbbc
+aaaaddbfehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbc
+aaaabbbbehhhhhhhhhhhhhhhhhjjjjhhhhhkkkkkkhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbc
+aaaabbbbehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbc
+aaaabbbbehgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheccccccbc
+alllmmnnehgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhbbbbbbbb
+aaaaddbbehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhbbbbbbbb
+aaaabbbbehiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhbbbbbbbb
+aaaaddbfeheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeehebbbbbbbb
+aaaabbbbehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaabbbbehhhhhhhhhhhhhhhhhjjjjhhhhhkkkkkkhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaabbbbehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaaddbbehgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaaddbbehgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheccccccbb
+aaaabbbbeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeebbbbbbbb
+aaaaddbfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeehhhhhhhhhhhhhhhhhhhebbbbbbbb
+aaaabbbbeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeebbbbbbbb
+aaaabbbbbbbbbbbbbbbboooooooobbbbbppppppppbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+aaaaddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbddbbbbbbbbbbbbbbbbbbbbbbbbbbb
+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
+qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+-- legend
+a fg=#464646 bg=#1b1b1b
+b fg=#707074 bg=#181818
+c fg=#444444 bg=#181818
+d fg=#746723 bg=#181818
+e fg=#868686 bg=#2b2b2b
+f fg=#746723 bg=#181818 bold
+g fg=#ffdd33 bg=#2b2b2b
+h fg=#f4f4ff bg=#2b2b2b
+i fg=#ffdd33 bg=#2b2b2b bold
+j fg=#f4f4ff bg=#2b2b2b bold
+k fg=#f4f4ff bg=#2b2b2b italic
+l fg=#676767 bg=#1b1b1b
+m fg=#7d6f2b bg=#262626
+n fg=#78787d bg=#262626
+o fg=#707074 bg=#181818 bold
+p fg=#604626 bg=#181818 italic
+q fg=#f4f4ff bg=#181818

@@ -34,7 +34,10 @@ end
 
 local function build(buffer)
 	return ui.column{
-		ui.editor{id = "main_editor", buffer = buffer, scope = "editor", line_numbers = true, syntax = true},
+		ui.row{grow = 1, separator = true,
+			ui.editor{id = "main_editor", buffer = buffer, grow = 1, scope = "editor", line_numbers = true, syntax = true},
+			ui.outlet{id = "editor_side"},
+		},
 		ui.status{id = "status", height = 1, bg = "pane_background"},
 		ui.text{id = "message", height = 1, fg = MESSAGE_COLORS[message_level] or "foreground", message_text},
 	}

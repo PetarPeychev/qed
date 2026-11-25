@@ -71,7 +71,8 @@ renderer draws a byte range `[col_start,col_end)` at an `x_origin`. The inline
 ghost (`qed.deco.inline`) on the cursor line renders through the same wrap layout
 (`editor_render_ghost_line`) so ghost + relocated suffix wrap too.
 
-Layout (the `layout` plugin's `base` mount), top to bottom: the main `editor` node with a left gutter, then a
+Layout (the `layout` plugin's `base` mount), top to bottom: a row of the main `editor` node with a left gutter and the
+`editor_side` outlet (empty, it takes no space; a side mount gets a `pane_border` rule), then a
 1-row **status bar**, the core `status` node (`ui.status{}`, `status_render`): one mechanism for core segments and
 every plugin's `qed.status.set` segment (pane chrome colors; icon-prefixed segments, `ICON_STATUS_*` in config: working-root-relative
 path + `●` modified flag + `line/total` + `early` plugin segments (the `git` plugin's branch, `↑ahead↓behind`, `±label`
@@ -226,8 +227,9 @@ member group is no longer on top).
   `ui_editor_reveal` scrolls when the cursor moved since the node last saw it: the minimum to keep `scroll_margin`
   rows, or centred after a jump (the view state's `center`, set by `editor_goto` on the view showing the buffer); a no-cursor command (save, toggles,
   wheel scroll) leaves the view put. With soft wrap, `scroll_col` is 0 and `scroll_sub` anchors the visual sub-row
-  of `scroll_row` at the top (all visibility math in visual rows, see `wrap.odin`). `buffer:screen_row` and
-  `set_screen_row` read and write the view showing the buffer (`ui_buffer_view`). When the caret is scrolled out of
+  of `scroll_row` at the top (all visibility math in visual rows, see `wrap.odin`). `buffer:screen_row`, `top_row`
+  (row plus the scrolled fraction of its wrapped rows), `set_screen_row` (a fractional row picks the sub-row, so
+  `set_screen_row(top_row())` is exact) and `focus` (an id'd view only) act on the view showing the buffer (`ui_buffer_view`). When the caret is scrolled out of
   the view it is hidden, not clamped to an edge.
 - Mouse: click positions, drag extends (auto-scrolls past the edge), wheel
   scrolls, double/triple-click selects word/line. `editor_step` coalesces a
@@ -406,7 +408,11 @@ started at the end of `editor_init`. Invariants the code can't show:
 - Events never run Lua inside core code: call sites `plugin_queue` (a no-op without
   subscribers) and `plugin_flush` drains after `editor_step` (skipped mid-paste) and
   in the pump. `buf_changed`/`cursor_moved` come from comparing `Buffer.plugin_rev`/
-  `plugin_cursor` at the top of every flush round (`plugin_buffers_check`, after `plugin_views_flush`), so
+  `plugin_cursor` at the top of every flush round (`plugin_buffers_check`, after `plugin_views_flush`), `view_scrolled`
+  from the current buffer's view top line (`ui_view_top`, with the wrapped fraction) against `plugin_scroll` (only with
+  subscribers). A wheel or a reveal forced by `screen_row`/`top_row` shows in that flush; one done by layout (a reveal,
+  a re-wrap on resize) makes `plugin_busy` true, so the loop flushes right after the frame; `set_screen_row` moves the
+  baseline, so a plugin's own scroll fires nothing. So
   an edit made by a handler or after an awaited dialog fires in the same flush. `buf_changed`'s `lo..hi`
   is the union of rows the primitives touched since the last delivery (`Buffer.plugin_lo/hi`, shifted by
   later edits: rows above are untouched, rows below only shifted); its `typed` is `Buffer.typed_rev == rev`, which
@@ -765,7 +771,7 @@ defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4).
 Bundled Lua plugins live in `plugins/` at the repo root (`layout/`: the default UI (main editor, status row, message
 line, welcome); `palette/`: the command palette; `dialog/`: `qed.pick`/`prompt`/`confirm`; `find/`: in-buffer
-find/replace bar; `log/`: the message log; `manager/`: the Plugins pane; `terminal/`: the terminal pane; `ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
+find/replace bar; `log/`: the message log; `manager/`: the Plugins pane; `terminal/`: the terminal pane; `ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* and *Toggle Split* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
 Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
 
 ## Testing
@@ -792,7 +798,7 @@ bytes recorded from real emulators). Each bundled `plugins/<name>/test.lua` retu
 table of test functions (`src/term_test.lua` does the same for `qed.term`); `e2e_plugins_test.odin` runs each in a fresh session with a
 `t` API (`key`, `type`, `step`, `wait`, `expect_line`, `expect_cell`, `eq`, `ok`,
 `fake_spawn`, `config`, `open`, `stub`, `message`, `log_has`, `editor`,
-`poll_disk`, `pump`, `tick` (fire the plugin's repeating timers now), `hook_timeout`, `lsp`, `bg` (rendered cell background), `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected and its cells and mark bar, hint, footer input, tab), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
+`poll_disk`, `pump`, `click` (text or `x, y`), `wheel`, `resize`, `tick` (fire the plugin's repeating timers now), `hook_timeout`, `lsp`, `bg` (rendered cell background), `ui` (focused plugin view: kind pick/prompt/confirm/pane, query, matches, labels, selected and its cells and mark bar, hint, footer input, tab), `config_path` (where `persist` writes)), with the root at the session's temp dir; the session theme and the clipboard register are restored afterwards; a Lua error or a plugin error fails the test with its traceback. Plugin bindings are unit-tested on a headless state in
 `plugin_test.odin` (loader) and `plugin_api_test.odin` (bindings). Coverage is one file per area:
 `e2e_edit/files/nav/lang/ai/mouse/lsp/narrow/pane/plugin_ui/ui_open/list/scope/workspace/walk_test.odin` (`ai`: the inline ghost and the LSP popup together); scope + assertion surfaces:
 [notes/e2e.md](notes/e2e.md).
@@ -995,7 +1001,15 @@ underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 rendered-markdown hover (`mdrender.odin`, see Markdown rendering; popup wheel-scrolls while
 hovered, `contentFormat` advertises markdown first), markdown preview (`markdown` plugin,
 *Markdown: Preview* `Alt+p` in markdown buffers: a `full` pane capped at
-`pane_max_width`, live on `buf_changed`, scroll kept, synced with the editor cursor on open and (after scrolling) on close, keys from the `list` scope (held arrows accelerate), *Markdown: Back*/*Forward* over anchor and file-link history),
+`pane_max_width`, live on `buf_changed`, scroll kept, synced with the editor cursor on open and (after scrolling) on close, keys from the `list` scope (held arrows accelerate), *Markdown: Back*/*Forward* over anchor and file-link history;
+*Markdown: Toggle Split* (unbound; launch state `plugins.markdown.split`, the toggle is session-only and a reload
+applies `split` only when it changed): a sticky side-by-side preview in the layout's `editor_side` outlet, its own
+nodes and history, `split_width` percent of the row, shown only while a markdown buffer is current, scroll-locked both ways on the top
+line (VS Code style: the editor's `top_row` goes to the body's interpolated `source`, the preview's `source` back
+through `set_screen_row`; `view_scrolled` and scrolling cursor moves one way, the scroll's `on.state{offset}` the
+other; a re-render keeps the preview's own top line; heading jumps wait on the body's `settled()`; the cursor never moves), focus stays in the editor until the preview is clicked (*Markdown: Focus Editor*, Esc,
+returns it), history also records editor switches to markdown buffers; Alt+p opens the overlay over it, dimmed, and
+closing the overlay syncs the editor, which the split follows),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),

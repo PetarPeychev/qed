@@ -49,7 +49,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | clipboard | | core | `qed.clipboard`. |
 | terminal | KS (pump) | core, generalized | One `Terminal` becomes N named sessions behind `qed.term`. Alt+t is the default session. |
 | lsp/completion/rename/hover/mdrender | KS | core | `qed.lsp.format(b)` (awaitable) for the formatter fallback. `mdrender` also backs the `markdown` view body. |
-| markdown preview | | **plugin** (`plugins/markdown`) | A qed.ui tree with the core `markdown` leaf (`text`, `dir`, `on.link`, state `scroll`/`rows`/`sources`/`heading`, `set_state{source, at}` or `{heading}`) + `buffer:screen_row`/`set_screen_row` (cursor sync), scoped Back/Forward over a `{path, buf, scroll}` history, `qed.open_url`, `buf_changed` subscribed only while open. |
+| markdown preview | | **plugin** (`plugins/markdown`) | A qed.ui tree with the core `markdown` leaf (`text`, `dir`, `on.link`, state `scroll`/`rows`/`sources`/`heading`, `set_state{source, at}` or `{heading}`, `ref:settled()` to wait for a heading) + `buffer:screen_row`/`set_screen_row` (cursor sync), scoped Back/Forward over a `{path, buf, scroll}` history, `qed.open_url`, `buf_changed` subscribed only while open. *Toggle Split*: a second view (own node ids and history) mounted in the layout's `editor_side` outlet, `buffer:top_row`/`set_screen_row` against the body's `source`, `cursor_moved`/`view_scrolled`/`buf_enter` while toggled on, the scroll's `on.state{offset}` for the reverse sync, `buffer:focus` for Esc. |
 | `format.odin` external formatter + save fixups | | **plugin** (port 1) | `spawn`, `buf_pre_save`, `buf.set_text` with rev guard, plugin config. |
 | langpick / themepick / indentpick | | **plugin** (port 2) | `pick{selected, on = {change}}`, `buf.set_language`, `theme.set`, `buf.set_indent`. Closes the "collapse centered pickers" TODO. |
 | basepick | | **plugin** (with git, done) | `pick`, `spawn`. |
@@ -106,7 +106,7 @@ The API is one global, `qed`.
 | `buffer:set_text(text, {rev?}) -> true \| nil, "stale"` | Minimal-diff whole replace. |
 | `qed.edit(b, fn, {rev?}) -> true \| nil, "stale"` | Everything inside `fn` is one undo group. `fn` must not yield. |
 | `buffer:cursor() -> pos`, `:set_cursor(pos)` | |
-| `buffer:screen_row(row?) -> n \| nil`, `:set_screen_row(row, screen_row) -> true \| nil, "not current"` | Terminal row (1-based) showing `row` (default the caret), nil off screen; put `row` on `screen_row`, clamped at the buffer ends. Current buffer only. |
+| `buffer:screen_row(row?) -> n \| nil`, `:set_screen_row(row, screen_row) -> true \| nil, "not shown"`, `:top_row() -> n \| nil`, `:focus() -> true \| nil, "not shown"` | Terminal row (1-based) showing `row` (default the caret), nil off screen; put `row` on `screen_row`, clamped at the buffer ends (a fractional `row` picks its wrapped sub-row); the view's top line as row plus the scrolled fraction of its wrapped rows; focus the view (`nil, "not shown"` also when that view has no `id`). All act on the view showing the buffer. |
 | `buffer:selection() -> from, to \| nil`, `:set_selection(anchor, cursor)` | |
 | `buffer:set_language(name) -> true \| nil, err` (unknown name), `:set_indent("tabs"\|"spaces"\|"auto", width?)`, `:indent() -> style, width`, `qed.languages()` | Existing core setters. |
 | `buffer:set_base(text \| nil, {label?}) -> true`, `buffer:base() -> id \| nil` | Diff base: gutter, ghost rows, change navigation, revert hunk. Each plugin owns one base per buffer. The plugin that set its first most recently wins; setting again keeps its place, `nil` clears it in place (a later set does not move it up), and `nil` or unload reveals the one beneath, so the `git` plugin's base comes back when another plugin's goes. `base` is the id of the plugin whose base is shown. `text` is raw bytes (need not be UTF-8). `""` is an empty base (every line added). `label` shows as the `±label` status segment: `±base` when omitted, nothing when `""`. Big files have no diff base. |
@@ -135,6 +135,7 @@ The API is one global, `qed`.
 | `buf_save`, `buf_reload` | `b` | |
 | `buf_changed` | `b`, `rev`, `typed`, `lo`, `hi` | coalesced. `lo..hi`: the rows touched since the last delivery to any subscriber (a coalesced union, current rows; the whole buffer for a rev change with no recorded edit); rows above `lo` are unchanged, rows below `hi` only shifted. `typed`: the latest change was the user typing a character, Enter, Backspace or Delete (no Ctrl/Alt), not a paste, undo, command or plugin edit. |
 | `cursor_moved` | `b` | coalesced |
+| `view_scrolled` | `b` | coalesced. The top line of the view showing the current buffer (`top_row`'s value) moved since the last flush: a wheel (one event per burst), a reveal forced by `screen_row`/`top_row`, or a layout's reveal or re-wrap (`plugin_busy` sees it, so the loop flushes right after); `buffer:set_screen_row` fires nothing. |
 | `language_changed` | `b` | |
 | `root_changed` | `old`, `new` | |
 | `config_changed` | `changed`: set of this plugin's top-level keys whose merged value changed (`{}` when only core config did); apply just those to keep live toggles of the others | |
@@ -298,6 +299,7 @@ It needs Lua: with Lua failed to start there is no list (it was core for that re
 - **Resume sources.**
   - UI waits resume from the plugin overlay's Enter/Esc in `editor_dispatch`.
   - spawn, sleep and LSP waits resume from `plugin_pump` in the fast-poll branch of the main loop.
+  - `handle:wait()` and `ref:settled()` resume at the start of a flush once their mount is gone or their node has no pending `set_state` (or left the tree); a ready one makes `plugin_busy()` true, so the pass after the frame that resolved it flushes.
   - `plugin_busy()` joins the fast-poll gate.
   - The `peek_event` timeout is clamped to the next timer deadline.
 - **Await safety.**

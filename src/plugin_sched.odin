@@ -58,6 +58,7 @@ PluginEvent :: enum {
 	Buf_Reload,
 	Buf_Changed,
 	Cursor_Moved,
+	View_Scrolled,
 	Language_Changed,
 	Root_Changed,
 	Config_Changed,
@@ -82,6 +83,7 @@ plugin_event_names := [PluginEvent]string {
 	.Buf_Reload       = "buf_reload",
 	.Buf_Changed      = "buf_changed",
 	.Cursor_Moved     = "cursor_moved",
+	.View_Scrolled    = "view_scrolled",
 	.Language_Changed = "language_changed",
 	.Root_Changed     = "root_changed",
 	.Config_Changed   = "config_changed",
@@ -104,12 +106,14 @@ PluginWaitKind :: enum {
 	Lsp,
 	Pane,
 	Mount,
+	Settle,
 }
 
 PluginWait :: struct {
 	kind:  PluginWaitKind,
 	until: time.Tick,
 	id:    u64,
+	node:  string,
 }
 
 PluginThread :: struct {
@@ -396,6 +400,7 @@ plugin_task_free :: proc(editor: ^Editor, i: int) {
 	if wait.kind == .Mount {
 		ui_mount_remove(editor, wait.id)
 	}
+	delete(wait.node)
 	for j := len(p.calls) - 1; j >= 0; j -= 1 {
 		if p.calls[j].co == th.co {
 			ordered_remove(&p.calls, j)
@@ -581,6 +586,7 @@ plugin_task_resume :: proc(editor: ^Editor, id: u64, nargs: c.int) {
 	t := &p.tasks[i]
 	co, kind, owner, ev, source := t.co, t.kind, t.owner, t.event, t.source
 	t.running = true
+	delete(t.wait.node)
 	t.wait = {}
 	p.resumes += 1
 	prev_slice := plugin_slice_begin(p, kind)
@@ -706,7 +712,7 @@ plugin_emit :: proc(editor: ^Editor, q: PluginQueued, pending: ^[dynamic]u64 = n
 			}
 		}
 	}
-	kind := PluginKind.Coalesced if q.event == .Buf_Changed || q.event == .Cursor_Moved else .Event
+	kind := PluginKind.Coalesced if q.event == .Buf_Changed || q.event == .Cursor_Moved || q.event == .View_Scrolled else .Event
 	for hid in ids {
 		owner: string
 		ref: i32
@@ -774,6 +780,25 @@ plugin_buffers_check :: proc(editor: ^Editor) {
 			plugin_queue(editor, {event = .Cursor_Moved, buf = b.id})
 		}
 	}
+	if top, moved := plugin_view_moved(editor); moved {
+		b := editor_buffer(editor)
+		b.plugin_scroll = top
+		plugin_queue(editor, {event = .View_Scrolled, buf = b.id})
+	}
+}
+
+// the current buffer's view top against its baseline, while anyone listens; a re-wrap moves it too
+plugin_view_moved :: proc(editor: ^Editor) -> (top: f64, moved: bool) {
+	if editor.plugins.subs[.View_Scrolled] == 0 || editor.welcome || len(editor.buffers) == 0 {
+		return
+	}
+	b := editor_buffer(editor)
+	node, state := ui_buffer_view(editor, b)
+	if node == nil {
+		return
+	}
+	top = ui_view_top(b, node, state)
+	return top, top != b.plugin_scroll
 }
 
 plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
@@ -782,7 +807,7 @@ plugin_flush :: proc(editor: ^Editor) -> (ran: bool) {
 		return false
 	}
 	plugin_requests_run(editor)
-	ui_mount_waiters_resume(editor)
+	ui_waiters_resume(editor)
 	ui_messages_feed(editor)
 	settled := false
 	for _ in 0 ..< PLUGIN_FLUSH_ROUNDS {
@@ -1007,6 +1032,15 @@ plugin_busy :: proc(editor: ^Editor) -> bool {
 	if p.startup_due || len(p.saves) > 0 || len(p.queue) > 0 || len(p.lsp_results) > 0 {
 		return true
 	}
+	// a layout (a resize, a reveal) moved the view since the last flush: flush again now, not at the next input
+	if _, moved := plugin_view_moved(editor); moved {
+		return true
+	}
+	for t in p.tasks {
+		if ui_settle_ready(editor, t.wait) {
+			return true
+		}
+	}
 	for pr in p.procs {
 		if !pr.done {
 			return true
@@ -1030,7 +1064,7 @@ plugin_timeout_ms :: proc(editor: ^Editor, cap: int) -> int {
 		if t.wait.kind == .Sleep || t.wait.kind == .Lsp {
 			consider(&best, now, t.wait.until)
 		}
-		if t.wait.kind == .Mount && ui_mount_index(&editor.ui, t.wait.id) < 0 {
+		if t.wait.kind == .Mount && ui_mount_index(&editor.ui, t.wait.id) < 0 || ui_settle_ready(editor, t.wait) {
 			best = 0
 		}
 	}
@@ -1146,7 +1180,7 @@ plugin_pump :: proc(editor: ^Editor) -> (ran: bool) {
 	for id in due {
 		plugin_task_resume(editor, id, 0)
 	}
-	ui_mount_waiters_resume(editor)
+	ui_waiters_resume(editor)
 
 	clear(&due)
 	for pr in p.procs {

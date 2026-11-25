@@ -1,0 +1,84 @@
+qed-e2e snapshot 120x32 cursor 45,13
+-- text
+  1 # Split preview
+  2
+  3 Jump to [the other doc](other.md) or [plain notes](notes.txt).
+  4
+  5 ## Section 1
+  6
+  7 Paragraph 1 has **bold** and *italic* words.
+  8
+  9 - item 1a
+ 10 - item 1b
+ 11
+ 12 ## Section 2
+ 13                          ┌────────────────────────────────────────────────────────────┐
+ 14 Paragraph 2 has **bold** │ > toggle split                                             │
+ 15                          ├────────────────────────────────────────────────────────────┤
+ 16 - item 2a                │ Markdown: Toggle Split                                     │
+ 17 - item 2b                └────────────────────────────────────────────────────────────┘
+ 18
+ 19 ## Section 3
+ 20
+ 21 Paragraph 3 has **bold** and *italic* words.
+ 22
+ 23 - item 3a
+ 24 - item 3b
+ 25
+ 26 ## Section 4
+ 27
+ 28 Paragraph 4 has **bold** and *italic* words.
+ 29
+ 30 - item 4a
+ ≡ root/doc.md  1/89                                                                             ◆ markdown  ⇥ Spaces:4
+
+-- style
+abbbcdeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaafffffffffgggggggggggggffggggggggffffffgggggggggggffgggggggggffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhfiiiiiiiiiffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffjjjjjjjjfffffkkkkkkkkfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhfiiiiiiiiiffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaafffffffffffffffffffffffffllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllfffffffffffffffffffffffffffff
+aaaaffffffffffffffffjjjjjjjjflmmmnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnlfffffffffffffffffffffffffffff
+aaaafffffffffffffffffffffffffllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllfffffffffffffffffffffffffffff
+aaaahhfffffffffffffffffffffffloooooooooooppppppppppppooooooooooooooooooooooooooooooooooooolfffffffffffffffffffffffffffff
+aaaahhfffffffffffffffffffffffllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllfffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhfiiiiiiiiiffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffjjjjjjjjfffffkkkkkkkkfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhfiiiiiiiiiffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffjjjjjjjjfffffkkkkkkkkfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaahhffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#ffdd33 bg=#262626
+d fg=#f4f4ff bg=#262626
+e fg=#ffdd33 bg=#262626 bold
+f fg=#f4f4ff bg=#181818
+g fg=#96a6c8 bg=#181818
+h fg=#ffdd33 bg=#181818
+i fg=#ffdd33 bg=#181818 bold
+j fg=#f4f4ff bg=#181818 bold
+k fg=#cc8c3c bg=#181818 italic
+l fg=#868686 bg=#2b2b2b
+m fg=#ffdd33 bg=#2b2b2b
+n fg=#f4f4ff bg=#2b2b2b
+o fg=#f4f4ff bg=#4a4a4a
+p fg=#f4f4ff bg=#4a4a4a bold

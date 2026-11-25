@@ -90,6 +90,8 @@ qed_buf_api := [?]lua.L_Reg {
 	{"set_cursor", qed_buf_set_cursor},
 	{"screen_row", qed_buf_screen_row},
 	{"set_screen_row", qed_buf_set_screen_row},
+	{"top_row", qed_buf_top_row},
+	{"focus", qed_buf_focus},
 	{"selection", qed_buf_selection},
 	{"set_selection", qed_buf_set_selection},
 	{"set_language", qed_buf_set_language},
@@ -867,22 +869,59 @@ qed_buf_set_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 	context = entry.ctx
 	editor := entry.editor
 	b, _ := api_buf(L, editor, 1)
-	row := clamp(api_int(L, 2, "row must be an integer") - 1, 0, len(b.lines) - 1)
+	if lua.type(L, 2) != .NUMBER {
+		lua.L_argerror(L, 2, "row must be a number")
+	}
+	position := clamp(f64(lua.tonumberx(L, 2, nil)) - 1, 0, f64(len(b.lines) - 1))
+	row := int(position)
 	at := api_int(L, 3, "screen row must be an integer")
 	node, state := ui_buffer_view(editor, b)
 	if node == nil {
 		return api_fail(L, "not shown")
 	}
 	w, h := ui_editor_text_width(node, b), node.rect.h
-	top_r, top_s := vpos_up(b, w, row, 0, clamp(at, 1, max(1, h)) - 1)
+	// a fraction of the row picks its wrapped sub-row; the epsilon keeps top_row's own thirds from flooring a row short
+	rows := line_rows(b, w, row)
+	sub := clamp(int(math.floor((position - f64(row)) * f64(rows) + 1e-6)), 0, rows - 1)
+	top_r, top_s := vpos_up(b, w, row, sub, clamp(at, 1, max(1, h)) - 1)
 	last := len(b.lines) - 1
 	max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
 	if vpos_cmp(top_r, top_s, max_r, max_s) > 0 {
 		top_r, top_s = max_r, max_s
 	}
 	state.scroll_row, state.scroll_sub = top_r, top_s
+	b.plugin_scroll = ui_view_top(b, node, state)
 	// the cursor set before this call must not scroll the view back on the next frame
 	state.cursor_seen, state.reveal, state.center = b.cursor, false, false
+	lua.pushboolean(L, true)
+	return 1
+}
+
+qed_buf_top_row :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	node, state := ui_buffer_view(editor, b)
+	if node == nil {
+		lua.pushnil(L)
+		return 1
+	}
+	ui_buffer_view_reveal(editor, node, b)
+	lua.pushnumber(L, lua.Number(ui_view_top(b, node, state) + 1))
+	return 1
+}
+
+qed_buf_focus :: proc "c" (L: ^lua.State) -> c.int {
+	entry := api_enter(L)
+	context = entry.ctx
+	editor := entry.editor
+	b, _ := api_buf(L, editor, 1)
+	node, _ := ui_buffer_view(editor, b)
+	if node == nil || node.id == "" {
+		return api_fail(L, "not shown")
+	}
+	ui_focus_set(editor, node.identity)
 	lua.pushboolean(L, true)
 	return 1
 }

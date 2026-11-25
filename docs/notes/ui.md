@@ -11,7 +11,9 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 - **Declarative.** A plugin hands core a node table; core marshals it into its own nodes. Lua never runs during
   layout or render. A failed `mount`/`update` raises and keeps the last good tree.
 - **Ownership.** A plugin owns its trees. Others extend them only through `ui.outlet{id}` slots the owner declares;
-  outlet ids are global, a mount waits until its outlet exists, the first outlet in resolve order takes it.
+  outlet ids are global, a mount waits until its outlet exists, the first outlet in resolve order takes it. An outlet
+  with nothing mounted takes no space. The `layout` plugin's `editor_side` sits right of the main editor (the split
+  markdown preview mounts there).
   Mounts, internal buffers and lists unmount/close when their plugin unloads.
 - **Draw order** per layer: laid-out content of every mount, then floats in tree order. The `alert` layer has no
   rules of its own: a dialog keeps keys under the normal bubbling (an `on.key` that returns true). Core mounts a
@@ -30,7 +32,7 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
 | `handle:update(tree)` | replace the tree; state survives for nodes with the same identity |
 | `handle:unmount(result?)` | remove; a no-op when gone; `result` goes to a waiter |
 | `handle:wait() -> result` | wait (in a task) until unmounted; a stopped waiter takes its mount along |
-| `ui.node(id) -> ref` | `ref:focus()`, `ref:state()`, `ref:set_state(patch)`, `ref:rect()` |
+| `ui.node(id) -> ref` | `ref:focus()`, `ref:state()`, `ref:set_state(patch)`, `ref:rect()`, `ref:settled()` (in a task: waits until a pending `set_state` resolved at a layout, returns `state()`; only a markdown node in a `scroll` can be pending; nil when the node or its mount goes, a remount included) |
 
 - Identity: `id` (per plugin: `ui.node` only sees the caller's nodes), else `key` among siblings, else type + raw
   positional index (a `false` or `nil` hole keeps later siblings' identity). Duplicate ids or sibling keys raise.
@@ -39,7 +41,7 @@ screen (`plugins/layout`, `plugins/palette`). Examples use `local ui = qed.ui`.
   `offset` (0-based: a scroll's rows past the top; an editor's top buffer line, per node and buffer). `set_state`
   changes only named fields, fires nothing, and a new `highlighted` scrolls into view. A key must match its list's
   kind (string or integer); a rejected key raises and leaves the state as it was. When core changes `highlighted` (list keys, a row click) the
-  node's `on.state{highlighted, extend_from}` fires. `state()` reports `highlighted` only while that key is in the
+  node's `on.state{highlighted, extend_from}` fires; a user scroll of a `scroll` fires its `on.state{offset}`. `state()` reports `highlighted` only while that key is in the
   data. States of id'd nodes live until their plugin unloads; others go with their node.
 - Replaced trees are freed at the next frame. A key handler that changes a mount stops the bubbling; a command's
   pre-command flush that replaced the tree hands the key on from the node with the same identity in the new tree.
@@ -79,7 +81,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 |---|---|---|
 | `column`, `row` | nodes | `gap`, `align`, `separator`, `highlight_style` (the child whose `key` is `highlighted`) |
 | `box` | exactly one laid out | `border`, `title` |
-| `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (opens at the end and stays there; a user highlight off the list's last row parks it, until the user reaches the end again by any means or the parked row leaves the data) |
+| `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (opens at the end and stays there; a user highlight off the list's last row parks it, until the user reaches the end again by any means or the parked row leaves the data); the wheel and the `list` keys fire `on.state{offset}` when the offset moves |
 | `text` | strings and spans `{fg =, bold =, "text", ...}` | `wrap` (by cluster), `align`; overflow clips with `…` |
 | `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly`, `highlight_style` (its cursor row while unfocused) |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
@@ -96,9 +98,14 @@ Positional values are children, named values are props. Common props: `id`, `key
   to spaces. Double and triple clicks select a word and a line; a drag past an edge scrolls.
 - `qed.markdown.parse`: rendered in slices, the last render stays up while a newer one runs; the holding scroll owns
   offset, bar and wheel. A link click fires `on.link{target}`; an unhandled `#slug` scrolls to the heading. State:
-  `rows`, `sources` (source rows of the visible lines), `heading` (source row of the last `heading` set).
-  `set_state{source = row, at = terminal_row}` (that row's first line lands on the terminal row, as near as the
-  document allows) or `{heading = slug}` moves the holding scroll, now when shown, else at the next layout.
+  `rows`, `sources` (source rows of the visible lines), `source` (the fractional source line at the scroll's top),
+  `heading` (source row of the last `heading` set). `set_state{source = row, at = terminal_row}` (that source line,
+  fractional too, lands on the terminal row, as near as the document allows) or `{heading = slug}` moves the holding
+  scroll, now when shown, else once the current document's render for this width exists; `ref:settled()` waits for
+  that (a slug not found settles with no `heading`). Source and rendered rows
+  map through blocks (a run of lines sharing a source row, its trailing blank included): a source line inside one sits
+  proportionally between its first line and the next block's, both ways; the top row is source row 1 even when the
+  first source rows render nothing. A re-wrap keeps the top source line.
 - Caret popups: the completion menu, the hover and the diagnostic under the caret are core-built floats
   (`anchor = "cursor"`) that core mounts in its `caret` outlet (a reserved name) and attaches under the focused
   editor showing the current buffer. The wheel scrolls the hover; over the completion menu or the diagnostic box it
