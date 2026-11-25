@@ -71,7 +71,7 @@ main :: proc() {
 				if walk_pump(&editor) {
 					redraw = true
 				}
-				if walk_trees_busy(&editor) {
+				if walk_trees_busy(&editor) || ui_markdowns_busy(&editor) {
 					redraw = true
 				}
 				if completion_due(&editor) {
