@@ -41,14 +41,14 @@ Closing a ticket has a fixed sequence:
 
 1. Run `./build.sh` so the `qed` binary is fresh — Petar should only ever need to
    run `./qed` to test, never rebuild himself. A user-visible feature or plugin
-   also gets an e2e scenario (`tools/e2e/scenarios/`) and its demo GIF
+   also gets an e2e scenario (`tools/e2e/scenarios/`) and its demo page
    (`tools/e2e.sh demo`), so he can see it before running it.
 2. The proof is an **acceptance recording**, not a manual checklist: one e2e
    scenario that walks every user-visible behaviour of the change in order, with
-   an assertion and a golden snap per step. Its GIF is what Petar watches. List
+   an assertion and a golden snap per step. Its demo page (`tools/e2e.sh demo`: an HTML player per scenario plus `index.html`, captions from the inputs, `snap NAME SENTENCE` for what to look for) is what Petar watches. List
    manual steps only for what the harness can't drive (the real Windows Terminal,
    the clipboard, images in his terminal), briefly, then prompt him to confirm.
-   The GIF goes to Petar as soon as the feature works, before tests, docs and
+   The demo page goes to Petar as soon as the feature works, before tests, docs and
    review are finished. While iterating, run only the tests for what changed plus
    the e2e scenarios; run the full suite (`tools/test.sh`) once, at handoff. A
    master-vs-branch visual comparison is only needed when pre-existing UI changes.

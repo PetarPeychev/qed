@@ -1,7 +1,6 @@
 package e2e
 
 import "core:c"
-import "core:c/libc"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -43,6 +42,7 @@ Step :: struct {
 
 Scenario :: struct {
 	name:     string,
+	title:    string,
 	w, h:     int,
 	requires: [dynamic]string,
 	steps:    [dynamic]Step,
@@ -60,7 +60,6 @@ Session :: struct {
 	stalled:        bool,
 	clock:          f64,
 	record:         strings.Builder,
-	snap_times:     strings.Builder,
 	utf8_tail:      [dynamic]u8,
 	truecolor_seen: bool,
 	tail:           [8]u8,
@@ -124,7 +123,6 @@ session_start :: proc(s: ^Session, qed: string, args: []string, env: []string, w
 	vterm.screen_reset(s.screen, 1)
 	s.cursor_visible = true
 	s.record = strings.builder_make()
-	s.snap_times = strings.builder_make()
 	fmt.sbprintf(&s.record, `{{"version": 2, "width": %d, "height": %d, "env": {{"TERM": "xterm-256color"}}}}`, w, h)
 	strings.write_byte(&s.record, '\n')
 	return true
@@ -140,7 +138,6 @@ session_stop :: proc(s: ^Session) {
 	posix.close(s.fd)
 	vterm.free(s.vt)
 	strings.builder_destroy(&s.record)
-	strings.builder_destroy(&s.snap_times)
 	delete(s.utf8_tail)
 }
 
@@ -165,20 +162,66 @@ session_cast_write :: proc(s: ^Session, data: []u8) {
 		return
 	}
 	fmt.sbprintf(&s.record, "[%.3f, \"o\", \"", s.clock)
-	for r in string(buf[:cut]) {
-		switch {
-		case r == '"':
-			strings.write_string(&s.record, `\"`)
-		case r == '\\':
-			strings.write_string(&s.record, `\\`)
-		case r < 0x20 || r == 0x7f:
-			fmt.sbprintf(&s.record, `\u%04x`, int(r))
-		case:
-			strings.write_rune(&s.record, r)
-		}
-	}
+	json_escape_write(&s.record, string(buf[:cut]))
 	strings.write_string(&s.record, "\"]\n")
 	remove_range(&s.utf8_tail, 0, cut)
+}
+
+session_cast_event :: proc(s: ^Session, code, text: string) {
+	if s.vt == nil {
+		return
+	}
+	fmt.sbprintf(&s.record, "[%.3f, \"%s\", \"", s.clock, code)
+	json_escape_write(&s.record, text)
+	strings.write_string(&s.record, "\"]\n")
+}
+
+key_caption :: proc(token: string) -> string {
+	name, _, count := strings.partition(token, "*")
+	parts := strings.split(name, "+", context.temp_allocator)
+	key := parts[len(parts) - 1]
+	mods := parts[:len(parts) - 1]
+	if key == "" && len(parts) > 1 {
+		key = "+"
+		mods = parts[:len(parts) - 2]
+	}
+	sb := strings.builder_make(context.temp_allocator)
+	for m in mods {
+		if m == "" {
+			continue
+		}
+		fmt.sbprintf(&sb, "%s%s+", strings.to_upper(m[:1], context.temp_allocator), m[1:])
+	}
+	switch {
+	case key == "pgup":
+		strings.write_string(&sb, "PgUp")
+	case key == "pgdn":
+		strings.write_string(&sb, "PgDn")
+	case len(key) > 1:
+		fmt.sbprintf(&sb, "%s%s", strings.to_upper(key[:1], context.temp_allocator), key[1:])
+	case:
+		strings.write_string(&sb, key)
+	}
+	if count != "" {
+		fmt.sbprintf(&sb, " ×%s", count)
+	}
+	return strings.to_string(sb)
+}
+
+json_escape_write :: proc(sb: ^strings.Builder, text: string) {
+	for r in text {
+		switch {
+		case r == '"':
+			strings.write_string(sb, `\"`)
+		case r == '\\':
+			strings.write_string(sb, `\\`)
+		// '<' too, so a cast inlines into the demo page's <script> as is
+		case r < 0x20 || r == 0x7f || r == '<':
+			fmt.sbprintf(sb, `\u%04x`, int(r))
+		case:
+			strings.write_rune(sb, r)
+		}
+	}
 }
 
 session_flush_output :: proc(s: ^Session) {
@@ -535,8 +578,13 @@ scenario_parse :: proc(path: string) -> (sc: Scenario, ok: bool) {
 	}
 	sc.name = strings.trim_suffix(filepath.base(path), ".e2e")
 	lines := strings.split_lines(string(data))
+	header := true
 	for i := 0; i < len(lines); i += 1 {
 		line := strings.trim_right(lines[i], " \t\r")
+		header = header && strings.has_prefix(line, "#")
+		if header {
+			sc.title = strings.trim_space(fmt.aprintf("%s %s", sc.title, strings.trim_space(line[1:])))
+		}
 		if line == "" || strings.has_prefix(line, "#") {
 			continue
 		}
@@ -705,11 +753,6 @@ env_build :: proc(run: ^Run) -> []string {
 	return env[:]
 }
 
-arg_quote :: proc(s: string) -> string {
-	q, _ := strings.replace_all(s, "'", `'\''`, context.temp_allocator)
-	return fmt.tprintf("'%s'", q)
-}
-
 sandbox_reset :: proc() -> bool {
 	clipboard := fmt.tprintf("%s/clipboard", sandbox)
 	os.remove(clipboard)
@@ -779,13 +822,16 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			path := fmt.tprintf("%s/%s", root_dir, step.rest)
 			os.make_directory_all(filepath.dir(path))
 			_ = os.write_entire_file(path, step.body)
+			session_cast_event(&s, "i", fmt.tprintf("edit %s", step.rest))
 		case "config":
 			_ = os.write_entire_file(fmt.tprintf("%s/.config/qed/config.json", home_dir), step.body)
+			session_cast_event(&s, "i", "edit config.json")
 		case "home-file":
 			// a file under the sandbox HOME (a user plugin, say); never the real home
 			path := fmt.tprintf("%s/%s", home_dir, step.rest)
 			os.make_directory_all(filepath.dir(path))
 			_ = os.write_entire_file(path, step.body)
+			session_cast_event(&s, "i", fmt.tprintf("edit ~/%s", step.rest))
 		case "wheel":
 			if len(step.args) < 3 {
 				scenario_fail(run, sc, step, &s, "wheel needs X Y up|down [count]")
@@ -795,8 +841,11 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			button := c.int(4 if step.args[2] == "up" else 5)
 			count := max(1, int_parse(step.args[3]) if len(step.args) > 3 else 1)
 			vterm.mouse_move(s.vt, c.int(y), c.int(x), vterm.MOD_NONE)
-			for _ in 0 ..< count {
+			for i in 0 ..< count {
 				s.clock += 0.1
+				if i == 0 {
+					session_cast_event(&s, "i", fmt.tprintf("wheel %s ×%d at %d,%d", step.args[2], count, x, y) if count > 1 else fmt.tprintf("wheel %s at %d,%d", step.args[2], x, y))
+				}
 				vterm.mouse_button(s.vt, button, true, vterm.MOD_NONE)
 				session_flush_output(&s)
 				session_pump(&s, 10, 100)
@@ -847,8 +896,11 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			for tok in step.args {
 				name, _, count := strings.partition(tok, "*")
 				n := max(1, int_parse(count))
-				for _ in 0 ..< n {
+				for i in 0 ..< n {
 					s.clock += 0.35
+					if i == 0 {
+						session_cast_event(&s, "i", key_caption(tok))
+					}
 					if !session_key(&s, name) {
 						scenario_fail(run, sc, step, &s, fmt.tprintf("bad key: %s", tok))
 						return false
@@ -857,8 +909,11 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 				}
 			}
 		case "type":
-			for r in step.rest {
+			for r, i in step.rest {
 				s.clock += 0.07
+				if i == 0 {
+					session_cast_event(&s, "i", fmt.tprintf("type `%s`", step.rest))
+				}
 				enc, w := utf8.encode_rune(r)
 				session_send(&s, enc[:w])
 				session_pump(&s, TYPE_QUIET_MS, 500)
@@ -871,6 +926,7 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			}
 			x, y := int_parse(step.args[0]), int_parse(step.args[1])
 			s.clock += 0.4
+			session_cast_event(&s, "i", fmt.tprintf("%s %d,%d", "double-click" if step.op == "dclick" else "click", x, y))
 			mouse_click(&s, x, y)
 			if step.op == "dclick" {
 				session_pump(&s, 10, 100)
@@ -885,6 +941,7 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			x1, y1 := int_parse(step.args[0]), int_parse(step.args[1])
 			x2, y2 := int_parse(step.args[2]), int_parse(step.args[3])
 			s.clock += 0.3
+			session_cast_event(&s, "i", fmt.tprintf("drag %d,%d to %d,%d", x1, y1, x2, y2))
 			vterm.mouse_move(s.vt, c.int(y1), c.int(x1), vterm.MOD_NONE)
 			vterm.mouse_button(s.vt, 1, true, vterm.MOD_NONE)
 			session_flush_output(&s)
@@ -918,9 +975,10 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 		free_all(context.temp_allocator)
 	}
 	if run.mode == .Demo && s.vt != nil {
+		// the player drops a marker at the recording's very end; this empty event keeps the last snap's marker
+		fmt.sbprintf(&s.record, "[%.3f, \"o\", \"\"]\n", s.clock)
 		path := fmt.tprintf("%s/%s.cast", run.out, sc.name)
 		_ = os.write_entire_file(path, strings.to_string(s.record))
-		_ = os.write_entire_file(fmt.tprintf("%s/%s.snaps", run.out, sc.name), strings.to_string(s.snap_times))
 		fmt.printfln("  cast %s", path)
 	}
 	if s.vt != nil && s.truecolor_seen && !run.colorterm {
@@ -931,7 +989,7 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 
 snap_step :: proc(run: ^Run, sc: ^Scenario, step: Step, s: ^Session) -> bool {
 	run.snaps += 1
-	name := step.rest
+	name := step.args[0] if len(step.args) > 0 else ""
 	session_settle(s, SNAP_QUIET_MS)
 	golden_path := fmt.tprintf("%s/%s/%s.txt", GOLDEN_DIR, sc.name, name)
 	actual := session_snapshot(s)
@@ -977,8 +1035,8 @@ snap_step :: proc(run: ^Run, sc: ^Scenario, step: Step, s: ^Session) -> bool {
 			return true
 		}
 	case .Demo:
-		// the recording's time at each snap, so a frame per step can be cut from the cast
-		fmt.sbprintf(&s.snap_times, "%.3f %s\n", s.clock, name)
+		sentence := strings.trim_space(strings.trim_prefix(strings.trim_space(step.rest), name))
+		session_cast_event(s, "m", fmt.tprintf("%s: %s", name, sentence) if sentence != "" else name)
 		s.clock += 1.5
 		os.make_directory_all(out_dir)
 		_ = os.write_entire_file(fmt.tprintf("%s/%s.txt", out_dir, name), actual)
@@ -1017,7 +1075,7 @@ usage :: proc() {
 	fmt.eprintln(`usage: qed-e2e verify|update|demo|matrix|show [flags] [scenario...]
   verify            run scenarios, compare snaps to tools/e2e/golden (exit 1 on any diff)
   update            run scenarios, rewrite goldens
-  demo --out DIR    (--size COLSxROWS, default 160x45) run scenarios, write DIR/<name>.cast (and .gif when agg is on PATH)
+  demo --out DIR    (--size COLSxROWS, default 160x45) run scenarios, write DIR/<name>.cast and .html
   matrix            run every scenario per --sizes x --terms, compare TERM variants
   show FILE         print a snapshot file in color
 flags: --qed PATH (./qed)  --term T (xterm-256color)  --no-colorterm
@@ -1122,8 +1180,11 @@ main :: proc() {
 			fmt.printfln("%s", sc.name)
 			scenario_run(&run, &sc)
 			if run.mode == .Demo {
-				demo_render(&run, sc.name)
+				demo_render(&run, &sc)
 			}
+		}
+		if run.mode == .Demo {
+			demo_index(&run, list[:])
 		}
 	}
 	fmt.printfln("%d scenarios, %d snaps (%d settled late), %d failures, %.1fs", len(list), run.snaps, run.retried, len(run.failures), tick_elapsed(start) / 1000)
@@ -1144,17 +1205,136 @@ main :: proc() {
 	}
 }
 
-demo_render :: proc(run: ^Run, name: string) {
-	cast_path := fmt.tprintf("%s/%s.cast", run.out, name)
-	if !os.exists(cast_path) {
+PLAYER_JS :: #load("../../lib/asciinema-player/asciinema-player.min.js", string)
+PLAYER_CSS :: #load("../../lib/asciinema-player/asciinema-player.css", string)
+
+DEMO_PAGE_STYLE :: `
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: #16181d; color: #c8ccd4; font: 14px system-ui, sans-serif; }
+body { display: flex; flex-direction: column; }
+header { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+h1 { font-size: 17px; margin: 0; font-family: monospace; }
+a { color: #61afef; }
+#desc, .desc { color: #9aa0aa; }
+#step { font-family: monospace; color: #e5c07b; }
+#keys { margin-left: auto; color: #8a909a; }
+kbd { font-family: monospace; border: 1px solid #4a505a; border-radius: 3px; padding: 0 4px; color: #c8ccd4; }
+select { background: #22252c; color: #c8ccd4; border: 1px solid #4a505a; }
+#player { flex: 1; min-height: 0; padding: 0 16px; }
+#caption { min-height: 3.2em; padding: 8px 16px 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 16px; }
+#caption kbd { font-size: 15px; padding: 1px 6px; background: #22252c; }
+#sentence { flex-basis: 100%; color: #e5e9f0; }
+ul { list-style: none; margin: 0; padding: 0 16px; }
+li { padding: 4px 0; }
+li a { font-family: monospace; font-size: 15px; margin-right: 12px; }
+`
+
+DEMO_PAGE_SCRIPT :: `
+const cast = document.getElementById("cast").textContent.trim();
+const events = cast.split("\n").slice(1).map(line => JSON.parse(line));
+const markers = events.filter(event => event[1] === "m").map(event => {
+	const [name, ...sentence] = event[2].split(": ");
+	return {time: event[0], name: name, sentence: sentence.join(": ")};
+});
+const inputs = events.filter(event => event[1] === "i");
+const container = document.getElementById("player");
+const step = document.getElementById("step");
+const caption = document.getElementById("caption");
+const speedSelect = document.getElementById("speed");
+const pauseBox = document.getElementById("pause");
+let player = null;
+let isPlaying = false;
+let shown = "";
+function showStep() {
+	const now = player.getCurrentTime() || 0;
+	let index = markers.findIndex(marker => marker.time >= now - 0.001);
+	if (index < 0) index = markers.length - 1;
+	const marker = markers[index];
+	const from = index > 0 ? markers[index - 1].time : -1;
+	const keys = inputs.filter(input => input[0] > from && input[0] <= now + 0.001).map(input => input[2]);
+	const state = JSON.stringify([index, keys]);
+	if (state === shown) return;
+	shown = state;
+	step.textContent = marker ? "step " + (index + 1) + "/" + markers.length + ": " + marker.name : "";
+	caption.replaceChildren();
+	for (const key of keys) {
+		const chip = document.createElement("kbd");
+		chip.textContent = key;
+		caption.append(chip);
+	}
+	if (marker && marker.sentence) {
+		const sentence = document.createElement("span");
+		sentence.id = "sentence";
+		sentence.textContent = marker.sentence;
+		caption.append(sentence);
+	}
+}
+function mount(time, playing) {
+	if (player) player.dispose();
+	player = AsciinemaPlayer.create({data: cast}, container, {
+		controls: true,
+		pauseOnMarkers: pauseBox.checked,
+		speed: Number(speedSelect.value),
+		fit: "both",
+		preload: true,
+		terminalFontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', 'Noto Sans Mono', monospace",
+	});
+	player.addEventListener("playing", () => { isPlaying = true; });
+	player.addEventListener("pause", () => { isPlaying = false; });
+	player.addEventListener("ended", () => { isPlaying = false; });
+	player.seek(time).then(() => { if (playing) player.play(); });
+	player.el.focus();
+}
+speedSelect.addEventListener("change", () => mount(player.getCurrentTime(), isPlaying));
+pauseBox.addEventListener("change", () => mount(player.getCurrentTime(), isPlaying));
+mount(0, false);
+setInterval(showStep, 100);
+`
+
+html_escape :: proc(text: string) -> string {
+	amp, _ := strings.replace_all(text, "&", "&amp;", context.temp_allocator)
+	lt, _ := strings.replace_all(amp, "<", "&lt;", context.temp_allocator)
+	return lt
+}
+
+demo_page_head :: proc(sb: ^strings.Builder, title, css: string) {
+	fmt.sbprintf(sb, "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>%s</title>\n", html_escape(title))
+	fmt.sbprintf(sb, "<style>%s</style>\n<style>%s</style>\n</head><body>\n", css, DEMO_PAGE_STYLE)
+}
+
+demo_render :: proc(run: ^Run, sc: ^Scenario) {
+	cast_path := fmt.tprintf("%s/%s.cast", run.out, sc.name)
+	recording, err := os.read_entire_file(cast_path, context.temp_allocator)
+	if err != nil {
 		return
 	}
-	gif := fmt.tprintf("%s/%s.gif", run.out, name)
-	// agg 1.4 has no --quiet: its progress output goes to /dev/null instead
-	cmd := fmt.tprintf("command -v agg >/dev/null && agg --idle-time-limit 2 --font-size 16 --font-family 'DejaVu Sans Mono,Noto Sans Mono,Noto Sans Symbols 2' %s %s >/dev/null 2>&1", arg_quote(cast_path), arg_quote(gif))
-	if libc.system(strings.clone_to_cstring(cmd, context.temp_allocator)) == 0 {
-		fmt.printfln("  gif %s", gif)
+	sb := strings.builder_make(context.temp_allocator)
+	demo_page_head(&sb, sc.name, PLAYER_CSS)
+	fmt.sbprintf(&sb, "<header><h1><a href=\"index.html\">e2e</a> / %s</h1><span id=\"desc\">%s</span><span id=\"step\"></span>\n", html_escape(sc.name), html_escape(sc.title))
+	strings.write_string(&sb, `<span id="keys"><kbd>Space</kbd> play/pause &nbsp; <kbd>[</kbd> <kbd>]</kbd> prev/next step &nbsp; <kbd>,</kbd> <kbd>.</kbd> frame back/forward &nbsp; <kbd>?</kbd> all keys &nbsp; `)
+	strings.write_string(&sb, `<label><input type="checkbox" id="pause"> pause at each step</label> &nbsp; `)
+	strings.write_string(&sb, `<label>speed <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></label></span></header>`)
+	fmt.sbprintf(&sb, "\n<div id=\"player\"></div>\n<div id=\"caption\"></div>\n<script type=\"application/x-asciicast\" id=\"cast\">\n%s</script>\n", string(recording))
+	fmt.sbprintf(&sb, "<script>%s</script>\n<script>%s</script>\n</body></html>\n", PLAYER_JS, DEMO_PAGE_SCRIPT)
+	html := fmt.tprintf("%s/%s.html", run.out, sc.name)
+	_ = os.write_entire_file(html, strings.to_string(sb))
+	fmt.printfln("  html %s", html)
+}
+
+demo_index :: proc(run: ^Run, list: []Scenario) {
+	sb := strings.builder_make(context.temp_allocator)
+	demo_page_head(&sb, "qed e2e demos", "")
+	strings.write_string(&sb, "<header><h1>qed e2e demos</h1></header>\n<ul>\n")
+	for sc in list {
+		if !os.exists(fmt.tprintf("%s/%s.html", run.out, sc.name)) {
+			continue
+		}
+		fmt.sbprintf(&sb, "<li><a href=\"%s.html\">%s</a><span class=\"desc\">%s</span></li>\n", html_escape(sc.name), html_escape(sc.name), html_escape(sc.title))
 	}
+	strings.write_string(&sb, "</ul>\n</body></html>\n")
+	path := fmt.tprintf("%s/index.html", run.out)
+	_ = os.write_entire_file(path, strings.to_string(sb))
+	fmt.printfln("index %s", path)
 }
 
 matrix_run :: proc(run: ^Run, list: []Scenario, sizes, terms: []string) {

@@ -101,63 +101,63 @@ plain text notes
 end
 run doc.md
 wait # Split preview
-snap source
+snap source A markdown file open in the editor, no preview yet.
 key ctrl+p
 type toggle split
 wait Markdown: Toggle Split
-snap toggle-split-palette
+snap toggle-split-palette The palette finds Markdown: Toggle Split.
 key enter
 wait Jump to the other doc
-snap split-on
+snap split-on The rendered preview opens in a split to the right of the source.
 key down*7 alt+right
 type  Live.
 wait and italic words. Live.
-snap live
+snap live Text typed in the source shows up in the preview right away.
 key down*30
 wait 37/89
-snap cursor-sync
+snap cursor-sync Moving the cursor down scrolls the preview to the same section.
 wheel 20 10 down 3
 wait 49 Paragraph 7
-snap editor-wheel
+snap editor-wheel Wheeling the editor scrolls the preview along with it.
 wheel 90 10 down 3
 wait 56 Paragraph 8
-snap preview-wheel
+snap preview-wheel Wheeling the preview scrolls the editor along with it.
 click 90 20
 key down*4
 wait 61 ## Section 9
-snap preview-keys
+snap preview-keys After a click in the preview, arrow keys scroll it and the editor follows.
 key esc
 type !
 wait • item 5a!
-snap esc-back-to-editor
+snap esc-back-to-editor Esc returns focus to the editor: the typed ! lands in the source and the preview.
 wheel 90 10 up 30
 wait the other doc
 click 70 3
 wait Linked from doc.md
-snap link
+snap link Clicking a link in the preview opens the linked markdown file.
 key alt+,
 wait Jump to the other doc
-snap back
+snap back Alt+, goes back to the previous document.
 click 88 3
 wait plain text notes
-snap plain-buffer
+snap plain-buffer A link to a plain text file opens it without a preview split.
 key alt+,
 wait • item 3a
-snap markdown-again
+snap markdown-again Going back to the markdown file brings the split back.
 config
 {"plugins": {"markdown": {"split_width": 25}}}
 end
 wait-gone Paragraph 4 has bold and italic words.
-snap width-hot-reload
+snap width-hot-reload Changing split_width in the config resizes the preview without a restart.
 key alt+p
 wait click a link to open it
-snap overlay-over-split
+snap overlay-over-split Alt+p opens the full preview overlay on top of the split.
 key pgdn
 wait-gone Section 4
-snap overlay-scrolled
+snap overlay-scrolled PgDn scrolls the overlay.
 key esc
 wait-gone click a link to open it
-snap overlay-closed-split-follows
+snap overlay-closed-split-follows Esc closes the overlay and the split is still there.
 key alt+o
 type notes.txt
 wait notes.txt
@@ -168,4 +168,4 @@ type toggle split
 key enter
 key alt+,
 wait Paragraph
-snap toggled-off-from-plain
+snap toggled-off-from-plain Toggle Split run from a plain buffer turns the split off for the markdown file too.

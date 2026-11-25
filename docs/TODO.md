@@ -114,8 +114,8 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 
 ### E2E harness
 
-- [ ] Speed up `tools/e2e.sh demo`: profile GIF generation and cut its wall time.
-- [ ] Better demo GIFs (design TBD: per-step captions with the key pressed and what to look for, playback speed).
+- [ ] Speed up `tools/e2e.sh demo`: profile it and cut its wall time.
+- [ ] `tools/e2e.sh demo SCENARIO --out DIR` rewrites `index.html` with only that run's scenarios; list every page in the dir.
 
 ### Refactors
 

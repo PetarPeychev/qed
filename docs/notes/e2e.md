@@ -34,7 +34,7 @@ pump-until-condition wait with a wall-clock deadline.
 `tools/e2e.sh` builds `tools/e2e/qed-e2e` and runs `./qed` in a PTY whose other end is the vendored
 libvterm, so input goes through termbox's real parser and the screen is libvterm's grid. Modes:
 `verify` (diff against `tools/e2e/golden/<scenario>/<snap>.txt`; on failure the actuals stay in the sandbox's `out/`),
-`update`, `demo --out DIR` (asciinema v2 `.cast` on a virtual clock, `.gif` when `agg` is on PATH),
+`update`, `demo --out DIR` (asciinema v2 `.cast` on a virtual clock, an `.html` player page),
 `matrix` (sizes x TERM values; every TERM is diffed against the first), `show FILE` (color preview).
 
 Determinism: a per-run sandbox `/tmp/qed-e2e-XXXXXX` (root, HOME, XDG dirs, reset per scenario) whose
@@ -47,9 +47,20 @@ anything under `src`/`plugins`/`config`/`lib` is newer.
 Scenario lines (`#` comments): `size WxH`, `requires TOOL`, `timeout MS`, `file PATH` / `config` /
 `expect-file PATH` (body up to a line `end`, each line newline-terminated), `run [ARGS]`, `wait TEXT`,
 `key K...` (`ctrl+s alt+F shift+right down*3 esc enter tab pgdn`), `type TEXT`, `click X Y`,
-`dclick X Y`, `drag X1 Y1 X2 Y2`, `wheel X Y up|down [COUNT]`, `snap NAME`. Coordinates are 0-based cells.
+`dclick X Y`, `drag X1 Y1 X2 Y2`, `wheel X Y up|down [COUNT]`, `snap NAME [SENTENCE]` (the optional sentence says what the step shows; demo pages only).
+Coordinates are 0-based cells.
 
 Snapshot file: header (size, cursor), `-- text` rows (right-trimmed), `-- style` rows (one symbol
 per cell, wide-char continuations skipped), `-- legend` (symbol to `fg= bg=` + attrs). Letters are
 assigned in order of appearance, so a diff compares decoded styles, not letters.
-Demos render at `--size COLSxROWS` (default 160x45, agg `--font-size 16`) unless a scenario sets `size`; verify/update default to 80x24; no scenario sets a size today.
+Demos render at `--size COLSxROWS` (default 160x45) unless a scenario sets `size`; verify/update default to 80x24; `acceptance` sets 160x45.
+
+Demo page: `<scenario>.html` next to the `.cast`, self-contained (the vendored `lib/asciinema-player` JS/CSS
+and the cast inlined, no network, opens from `file://`); `index.html` links every page. Each `snap` is a
+cast marker (`"m"` event, `NAME` or `NAME: SENTENCE`); each input (key token, typed text, click, drag,
+wheel, a mid-run `config`/`file` edit) is an `"i"` event carrying its caption (`Alt+p`, ``type `x` ``).
+Playback is continuous; a "pause at each step" checkbox turns on `pauseOnMarkers`. Header: scenario name,
+its leading `#` lines, the current step, a keys hint, the checkbox and a speed select (both re-create the
+player at the current time; it has no live setting). The caption bar under the terminal shows the current
+step's inputs so far plus its sentence. Keys: Space play/pause, `[` `]` previous/next step, `,` `.` frame
+back/forward.
