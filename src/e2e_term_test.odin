@@ -385,3 +385,35 @@ e2e_term_outside_click_closes_border_click_stays :: proc(t: ^testing.T) {
 	testing.expect(t, !e.ed.terminal.active, "an outside click closes the pane")
 	term_kill(&e.ed, program)
 }
+
+@(test)
+e2e_term_child_starts_at_the_session_size :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+
+	s, ok := term_create(&e.ed, {name = "size", cmd = "stty size; sleep 30"})
+	if !testing.expect(t, ok, "the session starts") {
+		return
+	}
+	want := fmt.tprintf("%d %d", s.rows, s.cols)
+	testing.expectf(t, e2e_term_until(&e, 4000, proc(t: ^Terminal) -> bool {return e2e_term_screen_has(t, fmt.tprintf("%d %d", t.rows, t.cols))}, s), "the child reads %s from its tty", want)
+}
+
+@(test)
+e2e_term_spawn_queues_no_resize :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+
+	for _ in 0 ..< 3 {
+		s, ok := term_create(&e.ed, {name = "quiet", cmd = "true"})
+		if !testing.expect(t, ok, "the session starts") {
+			return
+		}
+		testing.expect(t, e2e_term_until(&e, 4000, e2e_term_exited, s), "the child exits")
+	}
+	time.sleep(100 * time.Millisecond)
+	ev: tb2.Event
+	for tb2.peek_event(&ev, 50) == .Ok {
+		testing.expect(t, ev.type != .Resize, "a spawned child must not signal the parent's resize pipe")
+	}
+}

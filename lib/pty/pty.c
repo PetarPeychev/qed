@@ -33,6 +33,8 @@ int qed_pty_spawn(int rows, int cols, char *const argv[], char **envp, const cha
         close(master);
         return -1;
     }
+    /* set before fork: a TIOCSWINSZ in the child signals itself, and its inherited SIGWINCH handler writes the parent's resize pipe */
+    ioctl(master, TIOCSWINSZ, &ws);
     pid_t pid = fork();
     if (pid < 0) {
         close(master);
@@ -46,7 +48,6 @@ int qed_pty_spawn(int rows, int cols, char *const argv[], char **envp, const cha
             _exit(127);
         }
         ioctl(slave, TIOCSCTTY, 0);
-        ioctl(slave, TIOCSWINSZ, &ws);
         dup2(slave, 0);
         dup2(slave, 1);
         dup2(slave, 2);
