@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:strings"
 import "core:testing"
 import "lib:tb2"
@@ -98,4 +99,56 @@ end}`)
 			testing.expect(t, mount.root.parent == nil, "the orphaned mount has no parent")
 		}
 	}
+}
+
+@(test)
+e2e_review2_markdown_arrows_accelerate :: proc(t: ^testing.T) {
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, "# Doc\n\n")
+	for i in 0 ..< 200 {
+		strings.write_string(&sb, fmt.tprintf("para %d\n\n", i))
+	}
+	e := e2e_start(strings.to_string(sb))
+	defer e2e_stop(&e)
+	e2e_new_ui(&e)
+	ut_run_owner(&e, "markdown", "Preview")
+	offset := proc(e: ^E2E) -> int {
+		e2e_ui_settle(e)
+		node := ui_find(&e.ed.ui, "#markdown/markdown_scroll")
+		return ui_node_state(&e.ed.ui, node).offset if node != nil else -1
+	}
+	testing.expect(t, e2e_pump_while(&e, proc(e: ^E2E) -> bool {
+		e2e_render(e)
+		node := ui_find(&e.ed.ui, "#markdown/markdown_body")
+		if node == nil {
+			return true
+		}
+		md, found := e.ed.ui.markdowns[node.identity]
+		return !found || md.job != nil || len(md.lines) == 0
+	}), "the preview renders")
+	e2e_key(&e, .Home)
+	testing.expect_value(t, offset(&e), 0)
+	for _ in 0 ..< 10 {
+		e.ed.accel_tick = {}
+		e2e_key(&e, .Arrow_Down)
+	}
+	testing.expect_value(t, offset(&e), 10)
+	for _ in 0 ..< 10 {
+		e.ed.accel_tick = {}
+		e2e_key(&e, .Arrow_Up)
+	}
+	testing.expect_value(t, offset(&e), 0)
+	e.ed.accel_tick = {}
+	for _ in 0 ..< 30 {
+		e2e_key(&e, .Arrow_Down)
+	}
+	testing.expect(t, offset(&e) > 30, "held arrows accelerate like the buffer")
+	e2e_key(&e, .Home)
+	page := ui_find(&e.ed.ui, "#markdown/markdown_scroll").rect.h - 1
+	e2e_key(&e, .Pgdn)
+	e2e_key(&e, .Pgdn)
+	testing.expect_value(t, offset(&e), 2 * page)
+	e2e_key(&e, .End)
+	testing.expect_value(t, offset(&e), ui_node_state(&e.ed.ui, ui_find(&e.ed.ui, "#markdown/markdown_scroll")).max_offset)
+	e2e_key(&e, .Esc)
 }

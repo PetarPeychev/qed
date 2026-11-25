@@ -31,5 +31,7 @@ snap source
 key alt+p
 wait Features
 snap preview
+key down*3
+snap preview-down
 key esc
 snap closed

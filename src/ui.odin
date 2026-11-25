@@ -197,6 +197,7 @@ UiState :: struct {
 	extend_from: string,
 	key_kind:    UiKeyKind,
 	offset:      int,
+	max_offset:  int,
 	center:      bool,
 	// a follow scroll whose list the user moved off its last row stops following until they come back
 	parked:      bool,
@@ -1243,6 +1244,7 @@ ui_layout_children :: proc(editor: ^Editor, node: ^UiNode) {
 				state.offset = max_offset
 			}
 			state.offset = clamp(state.offset, 0, max_offset)
+			state.max_offset = max_offset
 			state.at_end = state.offset >= max_offset
 			slot := Rect{content.x, content.y - state.offset, content.w, total}
 			ui_layout_node(editor, child, ui_rect_shrink(slot, child.margin), ui_rect_intersect(content, node.clip))

@@ -740,14 +740,18 @@ ui_command_dedent :: proc(editor: ^Editor) {
 }
 
 ui_list_target :: proc(node: ^UiNode) -> ^UiNode {
+	return ui_first_of_kind(node, .Virtual_Column)
+}
+
+ui_first_of_kind :: proc(node: ^UiNode, kind: UiKind) -> ^UiNode {
 	if node == nil {
 		return nil
 	}
-	if node.kind == .Virtual_Column {
+	if node.kind == kind {
 		return node
 	}
 	for child in node.expanded {
-		if found := ui_list_target(child); found != nil {
+		if found := ui_first_of_kind(child, kind); found != nil {
 			return found
 		}
 	}
@@ -797,6 +801,7 @@ ui_follow_park :: proc(editor: ^Editor, node: ^UiNode, key: string) {
 ui_list_move :: proc(editor: ^Editor, step: int, extend := false) {
 	node := ui_list_target(editor.ui.target)
 	if node == nil {
+		ui_scroll_move(editor, step)
 		return
 	}
 	list := ui_list_find(&editor.ui, node.list)
@@ -814,9 +819,24 @@ ui_list_move :: proc(editor: ^Editor, step: int, extend := false) {
 	ui_list_highlight(editor, node, strings.clone(ui_list_key(list, target), context.temp_allocator), extend)
 }
 
+ui_scroll_move :: proc(editor: ^Editor, step: int) {
+	scroll := ui_first_of_kind(editor.ui.target, .Scroll)
+	if scroll == nil {
+		return
+	}
+	state := ui_node_state(&editor.ui, scroll)
+	state.offset = clamp(state.offset + step, 0, state.max_offset)
+	state.at_end, state.parked = false, false
+}
+
 ui_list_page :: proc(editor: ^Editor) -> int {
-	node := ui_list_target(editor.ui.target)
-	return max((node.clip.h if node != nil else 1) - 1, 1)
+	if node := ui_list_target(editor.ui.target); node != nil {
+		return max(node.clip.h - 1, 1)
+	}
+	if scroll := ui_first_of_kind(editor.ui.target, .Scroll); scroll != nil {
+		return max(scroll.rect.h - (scroll.header.rect.h if scroll.header != nil else 0) - 1, 1)
+	}
+	return 1
 }
 
 ui_command_list_next :: proc(editor: ^Editor) {ui_list_move(editor, editor_accel_step(editor, .Arrow_Down))}

@@ -1,0 +1,71 @@
+qed-e2e snapshot 80x24 cursor hidden
+-- text
+  1 # Release notes
+  2
+  3 Some **bold** text, some *italic* text and `inline code`.
+  4     ┌──────────────────────────────────────────────────────────────┐
+  5 ## F│ notes.md                                                     │
+  6     ├──────────────────────────────────────────────────────────────┤
+  7 - so│ Some bold text, some italic text and inline code.            │
+  8 - fi│                                                              ┃
+  9   - │ Features                                                     ┃
+ 10 1. f│ ──────────────────────────────────────────────────────────── ┃
+ 11 2. s│                                                              │
+ 12     │ • soft wrap                                                  │
+ 13 > a │ • file tree                                                  │ we see
+    it  │   ◦ nested item                                              │
+ 14     │                                                              │
+ 15 ```g│ 1. first                                                     │
+ 16 func├──────────────────────────────────────────────────────────────┤
+ 17 ``` │ ↑↓ PgUp PgDn scroll  click a link to open it  Alt+, back     │
+ 18     └──────────────────────────────────────────────────────────────┘
+ 19 | key | action |
+ 20 |-----|--------|
+ 21 | Alt+p | preview |
+ ≡ root/notes.md  1/25                                   ◆ markdown  ⇥ Spaces:2
+
+-- style
+abbbcdeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaafffffggggggggffffffffffffhhhhhhhhffffffffffiiiiiiiiiiiiiffffffffffffffffffff
+aaaaffffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
+aaaakkfljmmmmmmmmmnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjffffffff
+aaaaffffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
+aaaakkffjnnnnnnoooonnnnnnnnnnnnppppppnnnnnnnnnnqqqqqqqqqqqnnnnnnnnnnnnnjffffffff
+aaaakkffjnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnffffffff
+aaaakkkkjnrrrrrrrrnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnffffffff
+aaaakkkfjnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjnnffffffff
+aaaakkkfjnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjffffffff
+aaaaffffjnmmnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjffffffff
+aaaakkffjnmmnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjffffffff
+aaaaffffjnmmmmnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjffffffff
+aaaaffffjnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjffffffff
+aaaaiiiijnmmmnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjffffffff
+aaaakkkkjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
+aaaaiiifjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjnnnnnjffffffff
+aaaaffffjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
+-- legend
+a fg=#464646 bg=#1b1b1b
+b fg=#676767 bg=#1b1b1b
+c fg=#7d6f2b bg=#262626
+d fg=#78787d bg=#262626
+e fg=#7d6f2b bg=#262626 bold
+f fg=#707074 bg=#181818
+g fg=#707074 bg=#181818 bold
+h fg=#604626 bg=#181818 italic
+i fg=#4a524e bg=#181818
+j fg=#868686 bg=#2b2b2b
+k fg=#746723 bg=#181818
+l fg=#746723 bg=#181818 bold
+m fg=#ffdd33 bg=#2b2b2b
+n fg=#f4f4ff bg=#2b2b2b
+o fg=#f4f4ff bg=#2b2b2b bold
+p fg=#f4f4ff bg=#2b2b2b italic
+q fg=#95a99f bg=#363636
+r fg=#ffdd33 bg=#2b2b2b bold
+s fg=#f4f4ff bg=#181818

@@ -455,7 +455,7 @@ function qed.ui.row(props) end
 ---@return qed.Node
 function qed.ui.box(props) end
 
----Exactly one laid-out child, scrolled; slot `header` pinned above it. Takes the wheel. `follow = true`: opens at the end and stays there while it is there; a user highlight off its list's last row parks it until the user reaches the end again (keys, click, wheel, `set_state`) or that row leaves the data.
+---Exactly one laid-out child, scrolled; slot `header` pinned above it. Takes the wheel; under a `"list"` scope with no `virtual_column` the `List:` commands scroll it (Up/Down accelerate when held). `follow = true`: opens at the end and stays there while it is there; a user highlight off its list's last row parks it until the user reaches the end again (keys, click, wheel, `set_state`) or that row leaves the data.
 ---@param props table
 ---@return qed.Node
 function qed.ui.scroll(props) end

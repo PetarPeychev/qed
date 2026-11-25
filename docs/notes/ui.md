@@ -126,7 +126,8 @@ Positional values are children, named values are props. Common props: `id`, `key
   their chord), then `on.key`, then an editor's typing. Then plugin global binds, then core global binds (both by
   chord). A command of a scope acts on the node whose scope matched. Unknown scope names warn once.
 - The `list` scope: core's `List: Next/Previous` (held-key acceleration), `Page Down/Up` and `First/Last` move the
-  highlight of the first `virtual_column` under the node carrying the scope. A click on a row highlights it. An
+  highlight of the first `virtual_column` under the node carrying the scope; with none they scroll the first `scroll`
+  (the markdown preview). A click on a row highlights it. An
   editor one row high lets Up/Down bubble, so a query field above a list just works. The `list_range` scope opts a
   list into ranges: `List: Extend Down/Up` (Shift+Up/Down) and a drag across rows set `extend_from`.
 - Commands, core and plugin alike: a chord that has a command in a scope first runs the change events of the keys

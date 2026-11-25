@@ -59,7 +59,7 @@ local function build()
 		end,
 		ui.pane{id = "markdown", place = "full", max_width = math.max(qed.opt("pane_max_width"), MIN_WIDTH),
 			title = path ~= "" and qed.path.base(path) or "untitled",
-			ui.scroll{id = "markdown_scroll", grow = 1, scope = {"markdown"},
+			ui.scroll{id = "markdown_scroll", grow = 1, scope = {"markdown", "list"},
 				qed.markdown.parse(view.buffer:text(), {id = "markdown_body", margin = {left = 1, right = 1},
 					dir = path ~= "" and qed.path.dir(path) or nil,
 					on = {link = function(event)
@@ -119,17 +119,6 @@ local function scroll_to(offset)
 	local state, rect = body():state(), scroller():rect()
 	local rows, height = state and state.rows or 0, rect and rect.height or 0
 	scroller():set_state{offset = math.max(0, math.min(offset, rows - height))}
-end
-
-local function scroll_by(step)
-	if view then
-		scroll_to(scroll() + step)
-	end
-end
-
-local function page()
-	local rect = scroller():rect()
-	return math.max((rect and rect.height or 2) - 1, 1)
 end
 
 local function remember()
@@ -259,12 +248,6 @@ return {
 			when = function(ctx) return view ~= nil or ctx.language == "markdown" end,
 			run = toggle,
 		}
-		qed.command{name = "Line Up", scope = "markdown", key = "Up", run = function() scroll_by(-1) end}
-		qed.command{name = "Line Down", scope = "markdown", key = "Down", run = function() scroll_by(1) end}
-		qed.command{name = "Page Up", scope = "markdown", key = "PgUp", run = function() scroll_by(-page()) end}
-		qed.command{name = "Page Down", scope = "markdown", key = "PgDn", run = function() scroll_by(page()) end}
-		qed.command{name = "Top", scope = "markdown", key = "Home", run = function() scroll_to(0) end}
-		qed.command{name = "Bottom", scope = "markdown", key = "End", run = function() scroll_to(math.huge) end}
 		qed.command{name = "Back", scope = "markdown", bind_from = "Jump Back", run = function() step(-1) end}
 		qed.command{name = "Forward", scope = "markdown", bind_from = "Jump Forward", run = function() step(1) end}
 		qed.command{name = "Close", scope = "markdown", key = "Esc", run = function()

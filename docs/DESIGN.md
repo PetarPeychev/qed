@@ -995,7 +995,7 @@ underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 rendered-markdown hover (`mdrender.odin`, see Markdown rendering; popup wheel-scrolls while
 hovered, `contentFormat` advertises markdown first), markdown preview (`markdown` plugin,
 *Markdown: Preview* `Alt+p` in markdown buffers: a `full` pane capped at
-`pane_max_width`, live on `buf_changed`, scroll kept, synced with the editor cursor on open and (after scrolling) on close, *Markdown: Back*/*Forward* over anchor and file-link history),
+`pane_max_width`, live on `buf_changed`, scroll kept, synced with the editor cursor on open and (after scrolling) on close, keys from the `list` scope (held arrows accelerate), *Markdown: Back*/*Forward* over anchor and file-link history),
 workspace-wide rename (`Alt+r`, cross-file as modified buffers, single cross-buffer undo),
 auto-triggered completion dropdown (as-you-type + trigger chars, debounced, client-side
 incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
