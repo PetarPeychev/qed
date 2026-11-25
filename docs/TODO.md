@@ -112,6 +112,11 @@ Internal health; land opportunistically. Details: [notes/refactors.md](notes/ref
 - [ ] Cap `bracket_match` scan range — an unmatched bracket scans to EOF/BOF every frame.
 - [ ] Git tab nested-repo discovery outside a repo spawns one `sh` per directory (`plugins/git/tree.lua` `repos`): ~13 s in /tmp, minutes in $HOME. Replace with one walk that stops at each repo (core or a single `find`).
 
+### E2E harness
+
+- [ ] Speed up `tools/e2e.sh demo`: profile GIF generation and cut its wall time.
+- [ ] Better demo GIFs (design TBD: per-step captions with the key pressed and what to look for, playback speed).
+
 ### Refactors
 
 - [ ] Message Log (`Alt+l`): a fuzzy filter/search field.

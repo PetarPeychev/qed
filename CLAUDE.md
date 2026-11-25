@@ -48,6 +48,10 @@ Closing a ticket has a fixed sequence:
    an assertion and a golden snap per step. Its GIF is what Petar watches. List
    manual steps only for what the harness can't drive (the real Windows Terminal,
    the clipboard, images in his terminal), briefly, then prompt him to confirm.
+   The GIF goes to Petar as soon as the feature works, before tests, docs and
+   review are finished. While iterating, run only the tests for what changed plus
+   the e2e scenarios; run the full suite (`tools/test.sh`) once, at handoff. A
+   master-vs-branch visual comparison is only needed when pre-existing UI changes.
 3. **Only after Petar verifies it** — never self-check first — *you* remove the
    item from `docs/TODO.md`, update DESIGN.md (Shipped list / architecture) if it
    changed anything, then commit & push (direct to `master`), then tag the release
