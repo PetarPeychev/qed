@@ -1144,6 +1144,9 @@ main :: proc() {
 			append(&names, args[i])
 		}
 	}
+	if run.mode == .Demo && run.out == "" {
+		run.out = "tools/e2e/demo"
+	}
 	qed_path, _ := filepath.abs(run.qed, context.allocator)
 	run.qed = qed_path
 	if !os.exists(run.qed) {
@@ -1184,7 +1187,11 @@ main :: proc() {
 			}
 		}
 		if run.mode == .Demo {
-			demo_index(&run, list[:])
+			_ = os.write_entire_file(fmt.tprintf("%s/player.js", run.out), PLAYER_JS)
+			_ = os.write_entire_file(fmt.tprintf("%s/player.css", run.out), PLAYER_CSS)
+			_ = os.write_entire_file(fmt.tprintf("%s/player.LICENSE", run.out), PLAYER_LICENSE)
+			all := scenarios_load(nil)
+			demo_index(&run, all[:])
 		}
 	}
 	fmt.printfln("%d scenarios, %d snaps (%d settled late), %d failures, %.1fs", len(list), run.snaps, run.retried, len(run.failures), tick_elapsed(start) / 1000)
@@ -1207,6 +1214,7 @@ main :: proc() {
 
 PLAYER_JS :: #load("../../lib/asciinema-player/asciinema-player.min.js", string)
 PLAYER_CSS :: #load("../../lib/asciinema-player/asciinema-player.css", string)
+PLAYER_LICENSE :: #load("../../lib/asciinema-player/LICENSE", string)
 
 DEMO_PAGE_STYLE :: `
 :root { color-scheme: dark; }
@@ -1297,9 +1305,9 @@ html_escape :: proc(text: string) -> string {
 	return lt
 }
 
-demo_page_head :: proc(sb: ^strings.Builder, title, css: string) {
+demo_page_head :: proc(sb: ^strings.Builder, title, head: string) {
 	fmt.sbprintf(sb, "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>%s</title>\n", html_escape(title))
-	fmt.sbprintf(sb, "<style>%s</style>\n<style>%s</style>\n</head><body>\n", css, DEMO_PAGE_STYLE)
+	fmt.sbprintf(sb, "%s<style>%s</style>\n</head><body>\n", head, DEMO_PAGE_STYLE)
 }
 
 demo_render :: proc(run: ^Run, sc: ^Scenario) {
@@ -1309,13 +1317,13 @@ demo_render :: proc(run: ^Run, sc: ^Scenario) {
 		return
 	}
 	sb := strings.builder_make(context.temp_allocator)
-	demo_page_head(&sb, sc.name, PLAYER_CSS)
+	demo_page_head(&sb, sc.name, "<link rel=\"stylesheet\" href=\"player.css\">\n")
 	fmt.sbprintf(&sb, "<header><h1><a href=\"index.html\">e2e</a> / %s</h1><span id=\"desc\">%s</span><span id=\"step\"></span>\n", html_escape(sc.name), html_escape(sc.title))
 	strings.write_string(&sb, `<span id="keys"><kbd>Space</kbd> play/pause &nbsp; <kbd>[</kbd> <kbd>]</kbd> prev/next step &nbsp; <kbd>,</kbd> <kbd>.</kbd> frame back/forward &nbsp; <kbd>?</kbd> all keys &nbsp; `)
 	strings.write_string(&sb, `<label><input type="checkbox" id="pause"> pause at each step</label> &nbsp; `)
 	strings.write_string(&sb, `<label>speed <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></label></span></header>`)
 	fmt.sbprintf(&sb, "\n<div id=\"player\"></div>\n<div id=\"caption\"></div>\n<script type=\"application/x-asciicast\" id=\"cast\">\n%s</script>\n", string(recording))
-	fmt.sbprintf(&sb, "<script>%s</script>\n<script>%s</script>\n</body></html>\n", PLAYER_JS, DEMO_PAGE_SCRIPT)
+	fmt.sbprintf(&sb, "<script src=\"player.js\"></script>\n<script>%s</script>\n</body></html>\n", DEMO_PAGE_SCRIPT)
 	html := fmt.tprintf("%s/%s.html", run.out, sc.name)
 	_ = os.write_entire_file(html, strings.to_string(sb))
 	fmt.printfln("  html %s", html)

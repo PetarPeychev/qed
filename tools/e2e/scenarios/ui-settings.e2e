@@ -1,4 +1,7 @@
-# Settings menu on qed.ui: filter, toggle a bool, number prompt, keybinds tab with chord capture.
+# Settings menu on qed.ui: filter, toggle a bool, number prompt, Tab/Shift+Tab tabs, chord capture, the open chord toggles.
+config
+{"lsp": {"enabled": false}, "plugins": {"settings": {"keybinds": {"Open": "Alt+k"}}}}
+end
 file a.txt
 x
 end
@@ -22,6 +25,12 @@ snap prompt
 key esc
 key tab
 wait Chord
+snap keybinds Tab switches to the Keybinds tab
+key shift+tab
+wait Value
+snap options Shift+Tab switches back to Options
+key tab
+wait Chord
 key ctrl+a
 type toggle line wrap
 key enter
@@ -29,3 +38,9 @@ wait Press a chord
 snap chord
 key esc esc esc
 snap closed
+key alt+k
+wait type to filter
+snap reopened Alt+k opens the menu
+key alt+k
+wait Spaces
+snap toggled-closed Alt+k again closes it

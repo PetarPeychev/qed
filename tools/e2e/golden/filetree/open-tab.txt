@@ -1,0 +1,57 @@
+qed-e2e snapshot 80x24 cursor 12,6
+-- text
+
+
+
+        ┌──────────────────────────────────────────────────────────────┐
+        │ All │ Open │ Git │ Unsaved                                   │
+        ├──────────────────────────────────────────────────────────────┤
+        │ > type to filter                                             │
+        ├──────────────────────────────────────────────────────────────┤
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        ├──────────────────────────────────────────────────────────────┤
+        │ Tab tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+p commands        │
+        └──────────────────────────────────────────────────────────────┘
+
+ /tmp/qed-e2e-XXXXXX/root                                               qed dev
+
+-- style
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaabcbbbbbbddddbbbbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaabdddeeeeeeeeeeeeeecccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+-- legend
+a fg=#f4f4ff bg=#181818
+b fg=#868686 bg=#2b2b2b
+c fg=#f4f4ff bg=#2b2b2b
+d fg=#ffdd33 bg=#2b2b2b
+e fg=#686868 bg=#2b2b2b

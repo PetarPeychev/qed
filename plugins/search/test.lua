@@ -51,8 +51,8 @@ end
 local function changes_tab(test)
 	test.key("Alt+f")
 	test.settle()
-	test.key("Right")
-	test.key("Right")
+	test.key("Tab")
+	test.key("Tab")
 	test.settle()
 end
 

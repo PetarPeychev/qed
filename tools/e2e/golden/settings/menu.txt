@@ -17,7 +17,7 @@ qed-e2e snapshot 80x24 cursor 12,6
         ├──────────────────────────────────────────────────────────────┤
         │ Wait after Esc for a key to read as Alt+key. Default: 25     │
         ├──────────────────────────────────────────────────────────────┤
-        │ Enter edit  Ctrl+d reset                                     │
+        │ Tab tabs  Enter edit  Ctrl+d reset                           │
         └──────────────────────────────────────────────────────────────┘
 
 
@@ -42,7 +42,7 @@ ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
-ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

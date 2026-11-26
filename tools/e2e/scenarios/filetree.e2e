@@ -1,4 +1,4 @@
-# Welcome screen on a directory, the file tree, open a file from it.
+# Welcome screen on a directory, the file tree, Tab/Shift+Tab between its tabs, open a file from it.
 file src/app.py
 def main():
     print("hi")
@@ -18,6 +18,12 @@ snap welcome
 key alt+f
 wait README.md
 snap tree
+key tab
+wait Tab tabs
+snap open-tab Tab switches to the Open tab
+key shift+tab
+wait README.md
+snap all-tab Shift+Tab switches back to All
 key enter
 wait app.py
 snap expanded

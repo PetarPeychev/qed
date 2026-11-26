@@ -45,7 +45,7 @@ Closing a ticket has a fixed sequence:
    (`tools/e2e.sh demo`), so he can see it before running it.
 2. The proof is an **acceptance recording**, not a manual checklist: one e2e
    scenario that walks every user-visible behaviour of the change in order, with
-   an assertion and a golden snap per step. Its demo page (`tools/e2e.sh demo`: an HTML player per scenario plus `index.html`, captions from the inputs, `snap NAME SENTENCE` for what to look for) is what Petar watches. List
+   an assertion and a golden snap per step. Its demo page (`tools/e2e.sh demo`: an HTML player per scenario plus `index.html` in `tools/e2e/demo/`, committed with the change, captions from the inputs, `snap NAME SENTENCE` for what to look for) is what Petar watches. List
    manual steps only for what the harness can't drive (the real Windows Terminal,
    the clipboard, images in his terminal), briefly, then prompt him to confirm.
    The demo page goes to Petar as soon as the feature works, before tests, docs and

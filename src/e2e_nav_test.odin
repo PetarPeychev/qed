@@ -655,9 +655,9 @@ e2e_nav_filetree_scope_and_dotfiles :: proc(t: ^testing.T) {
 
 	// Scope tab bar: Right cycles All -> Open.
 	testing.expect_value(t, ft_scope(&e.ed), "All")
-	e2e_key(&e, .Arrow_Right)
+	e2e_key(&e, .Tab)
 	testing.expect_value(t, ft_scope(&e.ed), "Open")
-	e2e_key(&e, .Arrow_Left)
+	e2e_key(&e, .Back_Tab)
 	testing.expect_value(t, ft_scope(&e.ed), "All")
 	e2e_key(&e, .Esc)
 }
@@ -805,8 +805,8 @@ e2e_nav_filetree_git :: proc(t: ^testing.T) {
 	testing.expect(t, entry_named(&e.ed, "debug.log"), "ignored file now visible")
 
 	// the Git tab prunes to changed files; the untracked add shows up.
-	e2e_key(&e, .Arrow_Right)
-	e2e_key(&e, .Arrow_Right)
+	e2e_key(&e, .Tab)
+	e2e_key(&e, .Tab)
 	testing.expect_value(t, ft_scope(&e.ed), "Git")
 	testing.expect(t, entry_named(&e.ed, "new.txt"), "the Git tab lists the untracked add")
 	e2e_key(&e, .Esc)
@@ -891,8 +891,8 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	nav_alt(&e, 'f')
 	nav_scan(&e)
 
-	e2e_key(&e, .Arrow_Right)
-	e2e_key(&e, .Arrow_Right)
+	e2e_key(&e, .Tab)
+	e2e_key(&e, .Tab)
 	testing.expect_value(t, ft_scope(&e.ed), "Git")
 	for entry, i in ft_entries(&e.ed) {
 		if entry.name == "file.txt" {

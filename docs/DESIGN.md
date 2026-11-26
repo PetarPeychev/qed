@@ -690,7 +690,7 @@ menu, and a multi-line ghost floats the popup above the caret (`caret_popup`). S
 ## Settings menu
 
 `plugins/settings/menu.lua`, *Settings: Open*: a centered `qed.ui` box (`pane_max_width`) with
-Options (Key | Value) and Keybinds (Command | Chord) tabs over a filter field and a `virtual_column` of rows. Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
+Options (Key | Value) and Keybinds (Command | Chord) tabs (Tab/Shift+Tab; the open chord also closes it) over a filter field and a `virtual_column` of rows. Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
 nested keys; `lsp.enabled`, `languages.go.lsp`), then per plugin `<id>.enabled` and every `qed.options` leaf as
 `<id>.<key>` (an object option's user-added keys too). The info strip (rebuilt on the list's `on.state`) shows the selected
 option's description, from the embedded `config/schema.json` (`qed.config_schema`, completeness test-enforced) or the
@@ -768,7 +768,7 @@ defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict safety dialogs as core-built `qed.ui` nodes in the alert layer) · `rename` (the LSP rename prompt, core-built) · `draw` (box, text and cell drawing helpers, `Rect`) · `log` (message ring + disk log) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `preview` (preview read limits, binary check, hexdump rows) · `palette` · `walk` (walk service, `qed.fs` writes) · `walk_tree` (`walk:tree()` list kind) · `fuzzy` ·
 `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `caret_popup` (completion menu, hover and the caret diagnostic as core-built `qed.ui` floats at `anchor = "cursor"` under the focused editor: a core mount in the `caret` outlet, rebuilt only when its content changes) · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (walk handles, `qed.theme`, `qed.status`) · `ui`/`ui_api`/`ui_input`/`ui_list`/`ui_lines`/`ui_markdown` (the `qed.ui` engine, lists, line lists, the markdown node) · `prelude.lua` (node constructors, `qed.markdown.parse`, `qed.ui.dismissable`, the pane helpers `qed.ui.pane`/`split`/`footer`, `qed.pick`/`prompt`/`confirm` forwarding to the `dialog` plugin) · `perf_bench`.
-Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4); plus `asciinema-player` (JS, inlined into e2e demo pages).
+Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4); plus `asciinema-player` (JS, the e2e demo pages' shared `player.js`).
 Bundled Lua plugins live in `plugins/` at the repo root (`layout/`: the default UI (main editor, status row, message
 line, welcome); `palette/`: the command palette; `dialog/`: `qed.pick`/`prompt`/`confirm`; `find/`: in-buffer
 find/replace bar; `log/`: the message log; `manager/`: the Plugins pane; `terminal/`: the terminal pane; `ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* and *Toggle Split* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
@@ -954,7 +954,7 @@ copy + remove only on `EXDEV` (keeping mtimes; a failed remove drops the copy an
 scopes `filetree` and `list`): tab row, query field, a `virtual_column` over `walk:tree()` and a preview split
 (`split_tree_*`), over a `qed.fs.walk` handle made at each open and toggle; a jump closes it. Tabs are
 `within` handles (Open, Unsaved: buffer paths; an added tab: its `paths` plus `union` of its `virtual` ones); each
-tab's `cmd` is an editor command (*File Tree: All/Open/Unsaved*, *Git: Changes*), so a chord switches tabs and the
+tab's `cmd` is an editor command (*File Tree: All/Open/Unsaved*, *Git: Changes*), so a chord switches tabs (Tab/Shift+Tab cycle them) and the
 active tab's closes. Other plugins reach the tree only through its exports (`qed.plugin("filetree")`): `set_tab{label,
 paths, virtual?, cmd?, detail?, preview?, missing?}` adds or replaces the caller's tab (between Open and Unsaved; the
 same `paths`/`virtual` tables keep the cached narrowed handle), `remove_tab(label)`, `set_marks(marks)` (shown on every

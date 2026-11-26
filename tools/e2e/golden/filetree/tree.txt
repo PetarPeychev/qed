@@ -19,7 +19,7 @@ qed-e2e snapshot 80x24 cursor 12,6
         │                                                              │
         │                                                              │
         ├──────────────────────────────────────────────────────────────┤
-        │ ←→ tabs  ↑↓ select             Alt+i ignored  Alt+. dotfiles │
+        │ Tab tabs  ↑↓ select            Alt+i ignored  Alt+. dotfiles │
         └──────────────────────────────────────────────────────────────┘
 
  /tmp/qed-e2e-XXXXXX/root                                               qed dev
@@ -44,7 +44,7 @@ aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
 aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
 aaaaaaaabccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
 aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
-aaaaaaaabbbbbbbbbbbbbbbbbbbbcccccccccccbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbccccccccccbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbaaaaaaaa
 aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

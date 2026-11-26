@@ -5,7 +5,7 @@ local TABS = {
 	{label = "Open", cmd = "File Tree: Open"},
 	{label = "Unsaved", cmd = "File Tree: Unsaved"},
 }
-local HINTS = {{label = "←→ tabs"}, {label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "commands", cmd = "Command Palette"}}
+local HINTS = {{label = "tabs", cmd = "File Tree: Next Tab"}, {label = "↑↓ select"}, {label = "Shift+↑↓ extend"}, {label = "commands", cmd = "Command Palette"}}
 -- core's old walk preview debounce: a held arrow asks a previewing tab's plugin once
 local PREVIEW_DEBOUNCE_MS = 80
 
@@ -543,7 +543,9 @@ local function sync()
 	view.tree:set_query(view.applied)
 	view.buffers = buffers_by_path()
 	local first = view.tree:at(1)
-	if not highlighted_path() or not view.tree:get(highlighted_path()) then
+	local state = ui.node("filetree_rows"):state()
+	local path = state and state.highlighted
+	if not path or not view.tree:get(path) then
 		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false}
 	end
 	changed()
@@ -1220,8 +1222,8 @@ return {
 			spec.scope = "filetree"
 			qed.command(spec)
 		end
-		cmd{name = "Next Tab", key = "Right", run = function() switch_tab(1) end}
-		cmd{name = "Previous Tab", key = "Left", run = function() switch_tab(-1) end}
+		cmd{name = "Next Tab", key = "Tab", run = function() switch_tab(1) end}
+		cmd{name = "Previous Tab", key = "Shift+Tab", run = function() switch_tab(-1) end}
 		cmd{name = "Activate", key = "Enter", run = activate}
 		cmd{name = "Close", key = "Esc", run = escape}
 		cmd{name = "Copy", bind_from = "Copy", run = function() capture(false) end}

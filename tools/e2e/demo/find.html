@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>find</title>
+<link rel="stylesheet" href="player.css">
+<style>
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: #16181d; color: #c8ccd4; font: 14px system-ui, sans-serif; }
+body { display: flex; flex-direction: column; }
+header { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+h1 { font-size: 17px; margin: 0; font-family: monospace; }
+a { color: #61afef; }
+#desc, .desc { color: #9aa0aa; }
+#step { font-family: monospace; color: #e5c07b; }
+#keys { margin-left: auto; color: #8a909a; }
+kbd { font-family: monospace; border: 1px solid #4a505a; border-radius: 3px; padding: 0 4px; color: #c8ccd4; }
+select { background: #22252c; color: #c8ccd4; border: 1px solid #4a505a; }
+#player { flex: 1; min-height: 0; padding: 0 16px; }
+#caption { min-height: 3.2em; padding: 8px 16px 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 16px; }
+#caption kbd { font-size: 15px; padding: 1px 6px; background: #22252c; }
+#sentence { flex-basis: 100%; color: #e5e9f0; }
+ul { list-style: none; margin: 0; padding: 0 16px; }
+li { padding: 4px 0; }
+li a { font-family: monospace; font-size: 15px; margin-right: 12px; }
+</style>
+</head><body>
+<header><h1><a href="index.html">e2e</a> / find</h1><span id="desc">Syntax-highlighted Go file, incremental find, next match, close.</span><span id="step"></span>
+<span id="keys"><kbd>Space</kbd> play/pause &nbsp; <kbd>[</kbd> <kbd>]</kbd> prev/next step &nbsp; <kbd>,</kbd> <kbd>.</kbd> frame back/forward &nbsp; <kbd>?</kbd> all keys &nbsp; <label><input type="checkbox" id="pause"> pause at each step</label> &nbsp; <label>speed <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></label></span></header>
+<div id="player"></div>
+<div id="caption"></div>
+<script type="application/x-asciicast" id="cast">
+{"version": 2, "width": 160, "height": 45, "env": {"TERM": "xterm-256color"}}
+[0.000, "o", "\u001b[?1049h\u001b[22;0;0t\u001b[?1h\u001b=\u001b[?25l\u001b[?2004h\u001b(B\u001b[m\u001b[H\u001b[2J"]
+[0.000, "o", "\u001b[?1000h\u001b[?1002h\u001b[?1015h\u001b[?1006h"]
+[0.000, "o", "\u001b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\u001b\\\u001b[>0q\u001b[c\u001b[?12l\u001b[?25h\u001b[1;5H\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[1;1H \u001b(B\u001b[m\u001b[38;2;216;216;216;48;2;27;27;27m 1 \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;38;38;38mpackage\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m main                                                                                                                                                \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[2;1H  2 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m                                                                                                                                                            \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[3;1H  3 \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mimport\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m \u001b(B\u001b[m\u001b[38;2;115;201;54;48;2;24;24;24m\"fmt\"\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m                                                                                                                                                \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[4;1H  4 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m                                                                                                                                                            \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[5;1H  5 \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mfunc\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m greet(name \u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;24;24;24mstring\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m) \u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;24;24;24mstring\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m {                                                                                                                            \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[6;1H  6 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m    \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mreturn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m \u001b(B\u001b[m\u001b[38;2;115;201;54;48;2;24;24;24m\"hello, \"\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m + name                                                                                                                                 \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[7;1H  7 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m}                                                                                                                                                           \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[8;1H  8 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m                                                                                                                                                            \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[9;1H  9 \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mfunc\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m main() {                                                                                                                                               \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[10;1H 10 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m    \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mfor\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m _, name := \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mrange\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m []\u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;24;24;24mstring\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m{\u001b(B\u001b[m\u001b[38;2;115;201;54;48;2;24;24;24m\"ada\"\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m, \u001b(B\u001b[m\u001b[38;2;115;201;54;48;2;24;24;24m\"linus\"\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m} {                                                                                                         \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[11;1H 11 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m        fmt.Println(greet(name))                                                                                                                            \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[12;1H 12 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m    }                                                                                                                                                       \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[13;1H 13 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m}                                                 "]
+[0.000, "o", "                                                                                                          \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[14;1H 14 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m                                                                                                                                                            \u001b[15;1H                                                                                                                                                                \u001b[16;1H                                                                                                                                                                \u001b[17;1H                                                                                                                                                                \u001b[18;1H                                                                                                                                                                \u001b[19;1H                                                                                                                                                                \u001b[20;1H                                                                                                                                                                \u001b[21;1H                                                                                                                                                                \u001b[22;1H                                                                                                                                                                \u001b[23;1H                                                                                                                                                                \u001b[24;1H                                                                                                                                                                \u001b[25;1H                                                                                                                                                                \u001b[26;1H                                                                                                                                                                \u001b[27;1H                                                                                                                                                                \u001b[28;1H                                                                                                                                                                \u001b[29;1H                                                                                                                                                                \u001b[30;1H                                                                                                                                                                \u001b[31;1H                                                                                                                                                                \u001b[32;1H                                                                                                                                                                \u001b[33;1H                                                                                                                                                                \u001b[34;1H                                                                                                                                                                \u001b[35;1H                                                                                                                                                                \u001b[36;1H                                                                                                                                                                \u001b[37;1H                                                               "]
+[0.000, "o", "                                                                                                 \u001b[38;1H                                                                                                                                                                \u001b[39;1H                                                                                                                                                                \u001b[40;1H                                                                                                                                                                \u001b[41;1H                                                                                                                                                                \u001b[42;1H                                                                                                                                                                \u001b[43;1H                                                                                                                                                                \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[44;1H ≡ root/main.go  1/14                                                                                                                              ◆ go  ⇥ Tabs \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[45;1H                                                                                                                                                                \u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "o", "\u001b[1;5H\u001b[1;5H"]
+[0.000, "m", "open"]
+[1.850, "i", "Ctrl+f"]
+[1.850, "o", "\u001b[3;115H\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[2;109H┌────────────────────────────────────────────────┐\u001b[3;109H│\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;43;43;43mFind \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m                             \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m.*\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mAa\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m         \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m│\u001b[4;109H└────────────────────────────────────────────────┘\u001b[3;115H"]
+[1.920, "i", "type `name`"]
+[1.920, "o", "\u001b[3;116H\u001b(B\u001b[m\u001b[38;2;24;24;24;48;2;244;244;255m\u001b[1;16Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[3;115Hn\u001b[3;150H1/16\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;69;59;26m\u001b[5;7Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[5;16Hn\u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;69;59;26m\u001b[5;25Hn\u001b[5;33Hn\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;69;59;26m\u001b[6;14Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[6;28Hn\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;69;59;26m\u001b[9;7Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[9;13Hn\u001b[10;16Hn\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;69;59;26m\u001b[10;26Hn\u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;69;59;26m\u001b[10;36Hn\u001b(B\u001b[m\u001b[38;2;115;201;54;48;2;69;59;26m\u001b[10;49Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[11;20Hn\u001b[11;23Hn\u001b[11;31Hn\u001b[3;116H"]
+[1.990, "o", "\u001b[3;117H\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[1;2H 1 \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mpackage\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m main                                                                                                                                                \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[3;116Ha\u001b[3;152H4 \u001b(B\u001b[m\u001b[38;2;216;216;216;48;2;27;27;27m\u001b[5;2H 5 \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;38;38;38mfunc\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m greet(\u001b(B\u001b[m\u001b[38;2;24;24;24;48;2;244;244;255mna\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38mme \u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;38;38;38mstring\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m) \u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;38;38;38mstring\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m {                                                                                                                            \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24m\u001b[6;14Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[6;29Ha\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24m\u001b[9;7Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[9;13Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[10;17Ha\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24m\u001b[10;26Hn\u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;24;24;24m\u001b[10;36Hn\u001b(B\u001b[m\u001b[38;2;115;201;54;48;2;24;24;24m\u001b[10;49Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[11;20Hn\u001b[11;23Hn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[11;32Ha\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[44;18H5\u001b[3;117H"]
+[2.060, "o", "\u001b[3;118H\u001b[3;117Hm\u001b(B\u001b[m\u001b[38;2;24;24;24;48;2;244;244;255m\u001b[5;18Hm\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[6;30Hm\u001b[10;18Hm\u001b[11;33Hm\u001b[3;118H"]
+[2.130, "o", "\u001b[3;119H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[3;118He\u001b(B\u001b[m\u001b[38;2;24;24;24;48;2;244;244;255m\u001b[5;19He\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26m\u001b[6;31He\u001b[10;19He\u001b[11;34He\u001b[3;119H"]
+[2.130, "m", "query"]
+[3.980, "i", "Enter"]
+[3.980, "o", "\u001b[3;119H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[3;150H2\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[5;2H 5 \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;24;24;24mfunc\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m greet(\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;69;59;26mname\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m \u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;24;24;24mstring\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m) \u001b(B\u001b[m\u001b[38;2;150;166;200;48;2;24;24;24mstring\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m {                                                                                                                            \u001b(B\u001b[m\u001b[38;2;216;216;216;48;2;27;27;27m\u001b[6;2H 6 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m    \u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;38;38;38mreturn\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m \u001b(B\u001b[m\u001b[38;2;115;201;54;48;2;38;38;38m\"hello, \"\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m + \u001b(B\u001b[m\u001b[38;2;24;24;24;48;2;244;244;255mname\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m                                                                                                                                 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[44;18H6\u001b[3;119H"]
+[3.980, "m", "next"]
+[5.830, "i", "Esc"]
+[5.830, "o", "\u001b[6;32H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[2;109H                                                  \u001b[3;109H                                                  \u001b[4;109H                                                  \u001b[5;16Hname\u001b[10;16Hname\u001b[11;31Hname\u001b[6;32H"]
+[5.830, "m", "closed"]
+[7.330, "o", ""]
+</script>
+<script src="player.js"></script>
+<script>
+const cast = document.getElementById("cast").textContent.trim();
+const events = cast.split("\n").slice(1).map(line => JSON.parse(line));
+const markers = events.filter(event => event[1] === "m").map(event => {
+	const [name, ...sentence] = event[2].split(": ");
+	return {time: event[0], name: name, sentence: sentence.join(": ")};
+});
+const inputs = events.filter(event => event[1] === "i");
+const container = document.getElementById("player");
+const step = document.getElementById("step");
+const caption = document.getElementById("caption");
+const speedSelect = document.getElementById("speed");
+const pauseBox = document.getElementById("pause");
+let player = null;
+let isPlaying = false;
+let shown = "";
+function showStep() {
+	const now = player.getCurrentTime() || 0;
+	let index = markers.findIndex(marker => marker.time >= now - 0.001);
+	if (index < 0) index = markers.length - 1;
+	const marker = markers[index];
+	const from = index > 0 ? markers[index - 1].time : -1;
+	const keys = inputs.filter(input => input[0] > from && input[0] <= now + 0.001).map(input => input[2]);
+	const state = JSON.stringify([index, keys]);
+	if (state === shown) return;
+	shown = state;
+	step.textContent = marker ? "step " + (index + 1) + "/" + markers.length + ": " + marker.name : "";
+	caption.replaceChildren();
+	for (const key of keys) {
+		const chip = document.createElement("kbd");
+		chip.textContent = key;
+		caption.append(chip);
+	}
+	if (marker && marker.sentence) {
+		const sentence = document.createElement("span");
+		sentence.id = "sentence";
+		sentence.textContent = marker.sentence;
+		caption.append(sentence);
+	}
+}
+function mount(time, playing) {
+	if (player) player.dispose();
+	player = AsciinemaPlayer.create({data: cast}, container, {
+		controls: true,
+		pauseOnMarkers: pauseBox.checked,
+		speed: Number(speedSelect.value),
+		fit: "both",
+		preload: true,
+		terminalFontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', 'Noto Sans Mono', monospace",
+	});
+	player.addEventListener("playing", () => { isPlaying = true; });
+	player.addEventListener("pause", () => { isPlaying = false; });
+	player.addEventListener("ended", () => { isPlaying = false; });
+	player.seek(time).then(() => { if (playing) player.play(); });
+	player.el.focus();
+}
+speedSelect.addEventListener("change", () => mount(player.getCurrentTime(), isPlaying));
+pauseBox.addEventListener("change", () => mount(player.getCurrentTime(), isPlaying));
+mount(0, false);
+setInterval(showStep, 100);
+</script>
+</body></html>

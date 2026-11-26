@@ -77,6 +77,8 @@ pt_key :: proc "c" (L: ^lua.State) -> c.int {
 		ev.key = .Esc
 	case "Tab":
 		ev.key = .Tab
+	case "Shift+Tab":
+		ev.key = .Back_Tab
 	case "Backspace":
 		ev.key = .Backspace2
 	case "Up":

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qed e2e demos</title>
+<style>
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: #16181d; color: #c8ccd4; font: 14px system-ui, sans-serif; }
+body { display: flex; flex-direction: column; }
+header { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+h1 { font-size: 17px; margin: 0; font-family: monospace; }
+a { color: #61afef; }
+#desc, .desc { color: #9aa0aa; }
+#step { font-family: monospace; color: #e5c07b; }
+#keys { margin-left: auto; color: #8a909a; }
+kbd { font-family: monospace; border: 1px solid #4a505a; border-radius: 3px; padding: 0 4px; color: #c8ccd4; }
+select { background: #22252c; color: #c8ccd4; border: 1px solid #4a505a; }
+#player { flex: 1; min-height: 0; padding: 0 16px; }
+#caption { min-height: 3.2em; padding: 8px 16px 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 16px; }
+#caption kbd { font-size: 15px; padding: 1px 6px; background: #22252c; }
+#sentence { flex-basis: 100%; color: #e5e9f0; }
+ul { list-style: none; margin: 0; padding: 0 16px; }
+li { padding: 4px 0; }
+li a { font-family: monospace; font-size: 15px; margin-right: 12px; }
+</style>
+</head><body>
+<header><h1>qed e2e demos</h1></header>
+<ul>
+<li><a href="acceptance.html">acceptance</a><span class="desc">Acceptance: the whole manual checklist in one recording, an assertion and a golden snap after every step.</span></li>
+<li><a href="edit-save.html">edit-save</a><span class="desc">Open a file, edit it, save it, check the bytes on disk.</span></li>
+<li><a href="filetree.html">filetree</a><span class="desc">Welcome screen on a directory, the file tree, Tab/Shift+Tab between its tabs, open a file from it.</span></li>
+<li><a href="find.html">find</a><span class="desc">Syntax-highlighted Go file, incremental find, next match, close.</span></li>
+<li><a href="goto.html">goto</a><span class="desc">Go to Line (Ctrl+G): fuzzy text query, a line number, :line:column, the live preview, Enter jumps.</span></li>
+<li><a href="lsp.html">lsp</a><span class="desc">clangd diagnostics, hover and completion on a C file (core-built popups at the caret).</span></li>
+<li><a href="markdown-split.html">markdown-split</a><span class="desc">Markdown preview in a split: Toggle Split, live typing, two-way scroll sync, focus, links and history, plain buffers, width hot reload, the Alt+p overlay over the split.</span></li>
+<li><a href="markdown.html">markdown</a><span class="desc">Markdown preview pane.</span></li>
+<li><a href="mouse.html">mouse</a><span class="desc">Click to place, drag to select, double-click a word, type over it.</span></li>
+<li><a href="palette-wrap.html">palette-wrap</a><span class="desc">Soft wrap on a long line, then the command palette turns it off.</span></li>
+<li><a href="search.html">search</a><span class="desc">Project search (Alt+F): rg results streamed into the list, a live preview of the hit, Enter opens it there.</span></li>
+<li><a href="settings.html">settings</a><span class="desc">Settings menu from the palette.</span></li>
+<li><a href="terminal.html">terminal</a><span class="desc">Embedded terminal pane running /bin/sh.</span></li>
+<li><a href="ui-dialog.html">ui-dialog</a><span class="desc">Dialog plugin: qed.pick and qed.confirm on qed.ui (Settings: Indentation).</span></li>
+<li><a href="ui-editor.html">ui-editor</a><span class="desc">qed.ui editor node parity: auto-pairs, move lines, find highlights through the shared view renderer.</span></li>
+<li><a href="ui-find.html">ui-find</a><span class="desc">Find plugin on qed.ui: query, regex toggle, replace one and all.</span></li>
+<li><a href="ui-layout.html">ui-layout</a><span class="desc">qed.ui layout plugin: editor node, status row and message line.</span></li>
+<li><a href="ui-log.html">ui-log</a><span class="desc">Message log plugin on qed.ui: levels, selection, full text (timestamps vary, so only the closed state is a golden).</span></li>
+<li><a href="ui-palette.html">ui-palette</a><span class="desc">qed.ui command palette plugin: fuzzy list, scoped Next/Previous/Run, Esc, outside click.</span></li>
+<li><a href="ui-plugins.html">ui-plugins</a><span class="desc">Plugin manager plugin: list, footer error, bundled source view.</span></li>
+<li><a href="ui-settings.html">ui-settings</a><span class="desc">Settings menu on qed.ui: filter, toggle a bool, number prompt, Tab/Shift+Tab tabs, chord capture, the open chord toggles.</span></li>
+<li><a href="ui-welcome.html">ui-welcome</a><span class="desc">qed.ui welcome screen: the layout plugin mounts it in the background layer.</span></li>
+<li><a href="workspace.html">workspace</a><span class="desc">Open Directory (Ctrl+O): the path picker lists subdirectories, Tab and / drill, Backspace goes back, Enter switches.</span></li>
+</ul>
+</body></html>

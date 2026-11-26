@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>palette-wrap</title>
+<link rel="stylesheet" href="player.css">
+<style>
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: #16181d; color: #c8ccd4; font: 14px system-ui, sans-serif; }
+body { display: flex; flex-direction: column; }
+header { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+h1 { font-size: 17px; margin: 0; font-family: monospace; }
+a { color: #61afef; }
+#desc, .desc { color: #9aa0aa; }
+#step { font-family: monospace; color: #e5c07b; }
+#keys { margin-left: auto; color: #8a909a; }
+kbd { font-family: monospace; border: 1px solid #4a505a; border-radius: 3px; padding: 0 4px; color: #c8ccd4; }
+select { background: #22252c; color: #c8ccd4; border: 1px solid #4a505a; }
+#player { flex: 1; min-height: 0; padding: 0 16px; }
+#caption { min-height: 3.2em; padding: 8px 16px 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 16px; }
+#caption kbd { font-size: 15px; padding: 1px 6px; background: #22252c; }
+#sentence { flex-basis: 100%; color: #e5e9f0; }
+ul { list-style: none; margin: 0; padding: 0 16px; }
+li { padding: 4px 0; }
+li a { font-family: monospace; font-size: 15px; margin-right: 12px; }
+</style>
+</head><body>
+<header><h1><a href="index.html">e2e</a> / palette-wrap</h1><span id="desc">Soft wrap on a long line, then the command palette turns it off.</span><span id="step"></span>
+<span id="keys"><kbd>Space</kbd> play/pause &nbsp; <kbd>[</kbd> <kbd>]</kbd> prev/next step &nbsp; <kbd>,</kbd> <kbd>.</kbd> frame back/forward &nbsp; <kbd>?</kbd> all keys &nbsp; <label><input type="checkbox" id="pause"> pause at each step</label> &nbsp; <label>speed <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></label></span></header>
+<div id="player"></div>
+<div id="caption"></div>
+<script type="application/x-asciicast" id="cast">
+{"version": 2, "width": 160, "height": 45, "env": {"TERM": "xterm-256color"}}
+[0.000, "o", "\u001b[?1049h\u001b[22;0;0t\u001b[?1h\u001b=\u001b[?25l\u001b[?2004h\u001b(B\u001b[m\u001b[H\u001b[2J"]
+[0.000, "o", "\u001b[?1000h\u001b[?1002h\u001b[?1015h\u001b[?1006h"]
+[0.000, "o", "\u001b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\u001b\\\u001b[>0q\u001b[c\u001b[?12l\u001b[?25h\u001b[1;4H\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[1;1H \u001b(B\u001b[m\u001b[38;2;216;216;216;48;2;27;27;27m1 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38mshort line                                                                                                                                                   \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[2;1H 2 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24mThe quick brown fox jumps over the lazy dog, and then it keeps running across the field, past the barn, over the hill, and far beyond the river until the    \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[3;1H   \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24msun goes down.                                                                                                                                               \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[4;1H 3 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24manother short line                                                                                                                                           \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[5;1H 4 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m                                                                                                                                                             \u001b[6;1H                                                                                                                                                                \u001b[7;1H                                                                                                                                                                \u001b[8;1H                                                                                                                                                                \u001b[9;1H                                                                                                                                                                \u001b[10;1H                                                                                                                                                                \u001b[11;1H                                                                                                                                                                \u001b[12;1H                                                                                                                                                                \u001b[13;1H                                                                                                                                                                \u001b[14;1H                                                                                                                                                                \u001b[15;1H                                                                                                                                                                \u001b[16;1H                                                                                                                                                                \u001b[17;1H                                                                                                                                                                \u001b[18;1H                                                                                                                                                                \u001b[19;1H                                                                                                                                                                \u001b[20;1H                                                                                                                                                                \u001b[21;1H                                                                                                                                                                \u001b[22;1H                                                                                                    "]
+[0.000, "o", "                                                            \u001b[23;1H                                                                                                                                                                \u001b[24;1H                                                                                                                                                                \u001b[25;1H                                                                                                                                                                \u001b[26;1H                                                                                                                                                                \u001b[27;1H                                                                                                                                                                \u001b[28;1H                                                                                                                                                                \u001b[29;1H                                                                                                                                                                \u001b[30;1H                                                                                                                                                                \u001b[31;1H                                                                                                                                                                \u001b[32;1H                                                                                                                                                                \u001b[33;1H                                                                                                                                                                \u001b[34;1H                                                                                                                                                                \u001b[35;1H                                                                                                                                                                \u001b[36;1H                                                                                                                                                                \u001b[37;1H                                                                                                                                                                \u001b[38;1H                                                                                                                                                                \u001b[39;1H                                                                                                                                                                \u001b[40;1H                                                                                                                                                                \u001b[41;1H                                                                                                                                                                \u001b[42;1H                                                                                                                                                                \u001b[43;1H                                                                                                                                                                \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[44;1H ≡ root/long.txt  1/4                                                                                                                        ◆ text  ⇥ Spaces:4 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[45;1H                                                                                                                                                                \u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "o", "\u001b[1;4H\u001b[1;4H"]
+[0.000, "m", "wrapped"]
+[1.850, "i", "Ctrl+p"]
+[1.850, "o", "\u001b[17;54H\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[16;50H┌────────────────────────────────────────────────────────────┐\u001b[17;50H│\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;43;43;43m > \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m                                                         \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m│\u001b[18;50H├────────────────────────────────────────────────────────────┤\u001b[19;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;74;74;74m Go to: Start of File                                 Alt+{ \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m┃\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[20;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m Go to: End of File                                   \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mAlt+} │\u001b[21;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m Jump Back                                            \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mAlt+, │\u001b[22;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m Jump Forward                                         \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mAlt+. │\u001b[23;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m Close Buffer                                        \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mCtrl+w │\u001b[24;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m Save                                                \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mCtrl+s │\u001b[25;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m Quit                                                \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mCtrl+q │\u001b[26;50H│\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m Undo                                                \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mCtrl+z │\u001b[27;50H└────────────────────────────────────────────────────────────┘\u001b[17;54H"]
+[1.920, "i", "type `wrap`"]
+[1.920, "o", "\u001b[18;55H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[16;50H                                                              \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[17;50H┌────────────────────────────────────────────────────────────┐\u001b[18;50H│\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;43;43;43m > \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mw                                                        \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m│\u001b[19;50H├────────────────────────────────────────────────────────────┤\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;74;74;74m\u001b[20;51H Toggle Line \u001b(B\u001b[m\u001b[1m\u001b[38;2;244;244;255;48;2;74;74;74mW\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;74;74;74mrap                                           \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[21;52HFormat: Toggle\u001b[21;67HTrim\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43m\u001b[21;72HW\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mhitespace\u001b[21;83Hon\u001b[21;86HSave\u001b[21;105H     \u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43m\u001b[22;52HW\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43morkspace: Open\u001b[22;68HDirectory\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[22;104HCtrl\u001b[22;109Ho\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[23;52HJump For\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43mw\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mard\u001b[23;104H \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43mAlt\u001b[23;109H.\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[24;52HGit:\u001b[24;57HToggle\u001b[24;64HDiff\u001b[24;69HVie\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43mw\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[24;104H      \u001b[25;52HFormat:\u001b[25;60HToggle\u001b[25;67HFinal\u001b[25;73HNe\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43mw\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mline\u001b[25;81Hon\u001b[25;84HSave\u001b[25;104H      \u001b[26;52HMarkdo\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43mw\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mn:\u001b[26;62HToggle\u001b[26;69HSplit\u001b[26;104H      \u001b[18;55H"]
+[1.990, "o", "\u001b[20;56H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[17;50H                                                              \u001b[18;50H                                                              \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[19;50H┌\u001b[19;111H┐\u001b(B\u001b[m\u001b[38;2;255;221;51;48;2;43;43;43m\u001b[20;51H > \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mwr                                                       \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[21;50H├────────────────────────────────────────────────────────────┤\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;74;74;74m\u001b[22;51H Toggle Line \u001b(B\u001b[m\u001b[1m\u001b[38;2;244;244;255;48;2;74;74;74mWr\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;74;74;74map                                           \u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43m\u001b[23;52HW\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mo\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43mr\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43mkspace: Open\u001b[23;68HDirectory\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[23;104HCtrl\u001b[23;109Ho\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[24;52HJump\u001b[24;57HF\u001b[24;59Hr\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43mw\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43ma\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43mr\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43md    \u001b[24;69H    \u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[24;105HAlt+.\u001b[25;50H└────────────────────────────────────────────────────────────┘\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[26;50H                                                              \u001b[27;50H                                                              \u001b[20;56H"]
+[2.060, "o", "\u001b[20;57H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[20;56Ha\u001b(B\u001b[m\u001b[1m\u001b[38;2;244;244;255;48;2;74;74;74m\u001b[22;66Ha\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43m\u001b[23;58Ha\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;43;43;43m\u001b[24;50H└────────────────────────────────────────────────────────────┘\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[25;50H                                                              \u001b[20;57H"]
+[2.130, "o", "\u001b[20;58H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[20;57Hp\u001b(B\u001b[m\u001b[1m\u001b[38;2;244;244;255;48;2;74;74;74m\u001b[22;67Hp\u001b(B\u001b[m\u001b[1m\u001b[38;2;255;221;51;48;2;43;43;43m\u001b[23;64Hp\u001b[20;58H"]
+[2.130, "m", "palette"]
+[3.980, "i", "Enter"]
+[3.980, "o", "\u001b[1;4H\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[2;158Hsun\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[3;2H3\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[3;4Hanother sh\u001b[3;15Hrt line\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[4;2H4\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[4;4H       \u001b[4;12H     \u001b[4;18H    \u001b[5;1H   \u001b[19;50H                                                              \u001b[20;50H                                                              \u001b[21;50H                                                              \u001b[22;50H                                                              \u001b[23;50H                                                              \u001b[24;50H                                                              \u001b[45;1HLine\u001b[45;6Hwrap:\u001b[45;12Hoff\u001b[1;4H"]
+[3.980, "m", "unwrapped"]
+[5.830, "i", "Down"]
+[5.830, "o", "\u001b[2;4H\u001b(B\u001b[m\u001b[38;2;134;134;134;48;2;27;27;27m\u001b[1;2H1 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24mshort line                                                                                                                                                   \u001b(B\u001b[m\u001b[38;2;216;216;216;48;2;27;27;27m\u001b[2;2H2 \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38mThe quick brown fox jumps over the lazy dog, and then it keeps running across the field, past the barn, over the hill, and far beyond the river until the sun\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;43;43;43m\u001b[44;19H2\u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[45;1H    \u001b[45;6H     \u001b[45;12H   \u001b[2;4H"]
+[6.180, "i", "Alt+Right"]
+[6.180, "o", "\u001b[2;157H\u001b[1;4H     \u001b[1;10H    \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;38;38;38m\u001b[2;4H fox jumps over\u001b[2;20Hthe\u001b[2;24Hlazy d\u001b[2;31Hg, and then it keeps running acros\u001b[2;67Hthe field, pa\u001b[2;81Ht the barn\u001b[2;93Hover\u001b[2;102Hhill\u001b[2;108Hand far beyond\u001b[2;123Hthe\u001b[2;127Hriver until the sun goes down.\u001b[2;158H   \u001b(B\u001b[m\u001b[38;2;244;244;255;48;2;24;24;24m\u001b[3;4Hi\u001b[3;6He    \u001b[3;12H     \u001b[3;18H    \u001b[2;157H"]
+[6.180, "m", "scrolled"]
+[7.680, "o", ""]
+</script>
+<script src="player.js"></script>
+<script>
+const cast = document.getElementById("cast").textContent.trim();
+const events = cast.split("\n").slice(1).map(line => JSON.parse(line));
+const markers = events.filter(event => event[1] === "m").map(event => {
+	const [name, ...sentence] = event[2].split(": ");
+	return {time: event[0], name: name, sentence: sentence.join(": ")};
+});
+const inputs = events.filter(event => event[1] === "i");
+const container = document.getElementById("player");
+const step = document.getElementById("step");
+const caption = document.getElementById("caption");
+const speedSelect = document.getElementById("speed");
+const pauseBox = document.getElementById("pause");
+let player = null;
+let isPlaying = false;
+let shown = "";
+function showStep() {
+	const now = player.getCurrentTime() || 0;
+	let index = markers.findIndex(marker => marker.time >= now - 0.001);
+	if (index < 0) index = markers.length - 1;
+	const marker = markers[index];
+	const from = index > 0 ? markers[index - 1].time : -1;
+	const keys = inputs.filter(input => input[0] > from && input[0] <= now + 0.001).map(input => input[2]);
+	const state = JSON.stringify([index, keys]);
+	if (state === shown) return;
+	shown = state;
+	step.textContent = marker ? "step " + (index + 1) + "/" + markers.length + ": " + marker.name : "";
+	caption.replaceChildren();
+	for (const key of keys) {
+		const chip = document.createElement("kbd");
+		chip.textContent = key;
+		caption.append(chip);
+	}
+	if (marker && marker.sentence) {
+		const sentence = document.createElement("span");
+		sentence.id = "sentence";
+		sentence.textContent = marker.sentence;
+		caption.append(sentence);
+	}
+}
+function mount(time, playing) {
+	if (player) player.dispose();
+	player = AsciinemaPlayer.create({data: cast}, container, {
+		controls: true,
+		pauseOnMarkers: pauseBox.checked,
+		speed: Number(speedSelect.value),
+		fit: "both",
+		preload: true,
+		terminalFontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', 'Noto Sans Mono', monospace",
+	});
+	player.addEventListener("playing", () => { isPlaying = true; });
+	player.addEventListener("pause", () => { isPlaying = false; });
+	player.addEventListener("ended", () => { isPlaying = false; });
+	player.seek(time).then(() => { if (playing) player.play(); });
+	player.el.focus();
+}
+speedSelect.addEventListener("change", () => mount(player.getCurrentTime(), isPlaying));
+pauseBox.addEventListener("change", () => mount(player.getCurrentTime(), isPlaying));
+mount(0, false);
+setInterval(showStep, 100);
+</script>
+</body></html>

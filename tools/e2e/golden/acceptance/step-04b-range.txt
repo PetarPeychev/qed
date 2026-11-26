@@ -38,7 +38,7 @@ qed-e2e snapshot 160x45 cursor 12,6
         │                                            │                                                                                                 │
         │                                            │                                                                                                 │
         ├────────────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────┤
-        │ ←→ tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+p commands                                                           Alt+i ignored  Alt+. dotfiles │
+        │ Tab tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+p commands                                                          Alt+i ignored  Alt+. dotfiles │
         └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 
@@ -84,7 +84,7 @@ bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcffffffffffffffffffffffffff
 bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
 bbbbbbbbcffffffffffffffffffffffffffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcbbbbbbbb
 bbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbbbbbbb
-bbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccfffffffffffffffffffffffffffffffffffffffffffffffffffffffffcccccccccccccccccccccccccccccccfcbbbbbbbb
+bbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccffffffffffffffffffffffffffffffffffffffffffffffffffffffffcccccccccccccccccccccccccccccccfcbbbbbbbb
 bbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbbbbbbb
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

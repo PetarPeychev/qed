@@ -34,7 +34,7 @@ pump-until-condition wait with a wall-clock deadline.
 `tools/e2e.sh` builds `tools/e2e/qed-e2e` and runs `./qed` in a PTY whose other end is the vendored
 libvterm, so input goes through termbox's real parser and the screen is libvterm's grid. Modes:
 `verify` (diff against `tools/e2e/golden/<scenario>/<snap>.txt`; on failure the actuals stay in the sandbox's `out/`),
-`update`, `demo --out DIR` (asciinema v2 `.cast` on a virtual clock, an `.html` player page),
+`update`, `demo [--out DIR]` (asciinema v2 `.cast` on a virtual clock, an `.html` player page linking a shared `player.js`/`player.css`, an `index.html` of every page; default `tools/e2e/demo/`, whose pages are committed and published to GitHub Pages by `.github/workflows/pages.yml`),
 `matrix` (sizes x TERM values; every TERM is diffed against the first), `show FILE` (color preview).
 
 Determinism: a per-run sandbox `/tmp/qed-e2e-XXXXXX` (root, HOME, XDG dirs, reset per scenario) whose

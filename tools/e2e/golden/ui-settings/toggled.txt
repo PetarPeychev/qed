@@ -17,7 +17,7 @@ qed-e2e snapshot 80x24 cursor 21,6
         ├──────────────────────────────────────────────────────────────┤
         │ Soft wrap long lines in new buffers. Default: true           │
         ├──────────────────────────────────────────────────────────────┤
-        │ Enter edit  Ctrl+d reset                                     │
+        │ Tab tabs  Enter edit  Ctrl+d reset                           │
         └──────────────────────────────────────────────────────────────┘
 
 
@@ -42,7 +42,7 @@ ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
-ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

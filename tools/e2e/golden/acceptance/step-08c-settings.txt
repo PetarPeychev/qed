@@ -38,7 +38,7 @@ qed-e2e snapshot 160x45 cursor 24,6
  46                 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
  47 int main(void) {│ Wait after Esc for a key to read as Alt+key. Default: 25                                                             │
  48     int x = add(├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
- 49›    add         │ Enter edit  Ctrl+d reset                                                                                             │
+ 49›    add         │ Tab tabs  Enter edit  Ctrl+d reset                                                                                   │
  50»    printf("%d\n└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  51     return x;
  52 }
@@ -84,7 +84,7 @@ aaaajjjcccccjjjccccjdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 aaaaccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
 aaaajjjccccccjjjjcccdeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
 aaaaccccjjjcccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
-akkkcccclllcccccccccddddddddddddddddddddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
+akkkcccclllcccccccccddddddddddddddddddddddddddddddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
 ammmnnnnoooooonpppppddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddnnnnnnnnnnnnnnnnnnnn
 aaaaccccqqqqqqcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

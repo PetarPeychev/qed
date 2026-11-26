@@ -263,7 +263,7 @@ local function info_of(row)
 	return ("%s. Default: %s. Scope: %s"):format(row.name, default, row.scope)
 end
 
-local HINTS = {{label = "Enter edit"}, {label = "reset", cmd = "Settings: Reset"}}
+local HINTS = {{label = "tabs", cmd = "Settings: Next Tab"}, {label = "Enter edit"}, {label = "reset", cmd = "Settings: Reset"}}
 
 local function highlighted()
 	local state = ui.node("settings_rows"):state()
@@ -555,7 +555,7 @@ function menu.switch_tab(index)
 	if not view then
 		return
 	end
-	tab = index or (tab % #TABS + 1)
+	tab = index
 	cancel_input()
 	refresh(true)
 end
@@ -601,7 +601,7 @@ end
 
 function menu.open()
 	if view then
-		ui.node("settings_query"):focus()
+		menu.dismiss()
 		return
 	end
 	schema = schema or qed.json.decode(qed.config_schema())
@@ -637,7 +637,8 @@ function menu.setup()
 	qed.command{name = "Open", welcome = true, run = menu.open}
 	qed.command{name = "Reset", scope = "settings", key = "Ctrl+d", run = menu.reset}
 	qed.command{name = "Edit", scope = "settings", key = "Enter", run = activate}
-	qed.command{name = "Next Tab", scope = "settings", key = "Tab", run = function() menu.switch_tab() end}
+	qed.command{name = "Next Tab", scope = "settings", key = "Tab", run = function() menu.switch_tab(tab % #TABS + 1) end}
+	qed.command{name = "Previous Tab", scope = "settings", key = "Shift+Tab", run = function() menu.switch_tab((tab - 2) % #TABS + 1) end}
 	qed.command{name = "Close", scope = "settings", key = "Esc", run = close}
 	qed.command{name = "Submit", scope = "settings_input", key = "Enter", run = submit}
 	qed.command{name = "Cancel", scope = "settings_input", key = "Esc", run = cancel_input}

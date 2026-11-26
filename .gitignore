@@ -3,3 +3,5 @@
 qed
 *.bin
 tools/e2e/qed-e2e
+tools/e2e/demo/*.cast
+tools/e2e/demo/*/

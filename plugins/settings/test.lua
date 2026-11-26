@@ -270,6 +270,14 @@ function tests.menu_lists_core_and_plugin_options(test)
 	test.ok(not settings_open(test), "then closes")
 end
 
+function tests.menu_tab_and_shift_tab_switch_tabs(test)
+	open_menu(test, 2)
+	test.key("Shift+Tab")
+	test.wait(function() return screen_has(test, "Key") and screen_has(test, "Value") end)
+	test.key("Shift+Tab")
+	test.wait(function() return screen_has(test, "Command") and screen_has(test, "Chord") end)
+end
+
 function tests.menu_bool_toggle_writes_only_that_key(test)
 	qed.fs.write(test.config_path(), '{"tab_width": 2}')
 	open_menu(test)

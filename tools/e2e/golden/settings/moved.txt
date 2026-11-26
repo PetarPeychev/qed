@@ -17,7 +17,7 @@ qed-e2e snapshot 80x24 cursor 12,6
         ├──────────────────────────────────────────────────────────────┤
         │ Speed up held arrow keys. Default: true                      │
         ├──────────────────────────────────────────────────────────────┤
-        │ Enter edit  Ctrl+d reset                                     │
+        │ Tab tabs  Enter edit  Ctrl+d reset                           │
         └──────────────────────────────────────────────────────────────┘
 
 
@@ -42,7 +42,7 @@ ddddddddejjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
-ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
