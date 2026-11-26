@@ -651,9 +651,9 @@ lines.
 ## Images
 
 `image.odin`: kitty graphics with Unicode placeholders, so termbox's diff owns every cell and images scroll,
-clip and hide under overlays like text. A `markdown` body with `markdown_dir` shows a block of nothing but
-local PNG/JPEG images as placeholder rows (anything else stays `[image: alt]`); the file preview shows image
-files. Size comes from the file header at render time; decoding runs on one background thread (`image_pump`),
+clip and hide under overlays like text. A `markdown` body with `markdown_dir` shows local PNG/JPEG images in
+paragraphs and HTML blocks as placeholder rows, the text between them wrapped in source order (anything else
+stays `[image: alt]`); the file preview shows image files. Size comes from the file header at render time; decoding runs on one background thread (`image_pump`),
 only images drawn recently keep pixels or a terminal copy (`IMAGE_CACHE_MAX`, LRU outside the current frame). Detection (config
 `image_protocol`) and the protocol details are in [notes/images.md](notes/images.md).
 

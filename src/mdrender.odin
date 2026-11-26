@@ -15,6 +15,7 @@ MdSpan :: struct {
 	text:   string,
 	fg, bg: tb2.Color,
 	link:   string,
+	image:  string,
 }
 
 MdLine :: struct {
@@ -107,10 +108,6 @@ MdRender :: struct {
 	em, strong:  int,
 	src, block:  int,
 	dir:         string,
-}
-
-MdImage :: struct {
-	alt, dest: string,
 }
 
 MD_BULLETS := [?]string{"•", "◦", "▪"}
@@ -894,11 +891,12 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 	switch b.kind {
 	case .Paragraph:
 		md_gap(r, b.src)
-		if imgs, ok := md_images(r, b.text); ok {
-			md_emit_images(r, imgs)
+		spans := md_inline(r, b.text, r.style.fg)
+		if imgs, ok := md_images(r, spans); ok {
+			md_emit_images(r, spans, imgs)
 			return
 		}
-		md_emit_wrapped(r, md_inline(r, b.text, r.style.fg))
+		md_emit_wrapped(r, spans)
 	case .Heading:
 		md_gap(r, b.src)
 		spans := md_inline(r, b.text, r.style.heading)
@@ -933,12 +931,13 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 		md_gap(r, b.src)
 		md_emit_table(r, b)
 	case .Html:
-		if imgs, ok := md_images(r, b.text); ok {
+		spans := md_inline(r, b.text, r.style.fg)
+		if imgs, ok := md_images(r, spans); ok {
 			md_gap(r, b.src)
-			md_emit_images(r, imgs)
+			md_emit_images(r, spans, imgs)
 			return
 		}
-		rows := md_wrap(md_inline(r, b.text, r.style.fg), md_avail(r))
+		rows := md_wrap(spans, md_avail(r))
 		if len(rows) == 0 {
 			return
 		}
@@ -951,72 +950,43 @@ md_block :: proc(r: ^MdRender, b: ^MdBlock) {
 	}
 }
 
-md_images :: proc(r: ^MdRender, text: string) -> (imgs: []MdImage, ok: bool) {
+md_images :: proc(r: ^MdRender, spans: []MdSpan) -> (imgs: []ImageRef, ok: bool) {
 	if r.dir == "" || !image_enabled() {
 		return nil, false
 	}
-	out := make([dynamic]MdImage, context.temp_allocator)
-	i := 0
-	for i < len(text) {
-		c := text[i]
-		switch {
-		case md_is_space(c):
-			i += 1
-		case c == '!' && i + 1 < len(text) && text[i + 1] == '[':
-			label_end, dest, end, found := md_link_at(r, text, i + 1)
-			if !found {
-				return nil, false
-			}
-			append(&out, MdImage{md_plain(text[i + 2:label_end]), dest})
-			i = end
-		case c == '[' && strings.has_prefix(text[i:], "[!["):
-			label_end, _, end, found := md_link_at(r, text, i)
-			if !found {
-				return nil, false
-			}
-			inner, inner_ok := md_images(r, text[i + 1:label_end])
-			if !inner_ok {
-				return nil, false
-			}
-			append(&out, ..inner)
-			i = end
-		case c == '<':
-			e := strings.index_byte(text[i:min(len(text), i + MD_SCAN_MAX)], '>')
-			if e < 0 {
-				return nil, false
-			}
-			tag := text[i + 1:i + e]
-			name := tag[1:] if strings.has_prefix(tag, "/") else tag
-			if sp := strings.index_any(name, " \t\n/"); sp >= 0 {
-				name = name[:sp]
-			}
-			name = strings.to_lower(name, context.temp_allocator)
-			if name == "img" {
-				append(&out, MdImage{md_html_attr(tag, "alt"), md_html_attr(tag, "src")})
-			} else if !md_html_known(name) {
-				return nil, false
-			}
-			i += e + 1
-		case:
-			return nil, false
-		}
-	}
-	return out[:], len(out) > 0
-}
-
-md_emit_images :: proc(r: ^MdRender, imgs: []MdImage) {
-	for im in imgs {
-		path := image_resolve(r.dir, im.dest)
+	imgs = make([]ImageRef, len(spans), context.temp_allocator)
+	for s, i in spans {
+		path := image_resolve(r.dir, s.image) if s.image != "" else ""
 		img := image_get(path) if path != "" else nil
 		if img == nil {
-			md_emit(r, {MdSpan{text = fmt.tprintf("[image: %s]", im.alt) if im.alt != "" else "[image]", fg = r.style.dim}})
 			continue
 		}
 		cols, rows := image_cells(img.w, img.h, md_avail(r), IMAGE_MAX_ROWS, g_image_cell.x, g_image_cell.y)
-		for row in 0 ..< rows {
-			md_emit(r, {MdSpan{text = image_placeholder_row(row, cols), fg = image_color(img.id)}})
-			r.out[len(r.out) - 1].image = ImageRef{img.id, i32(cols), i32(rows)}
+		imgs[i] = ImageRef{img.id, i32(cols), i32(rows)}
+		ok = true
+	}
+	return
+}
+
+md_emit_images :: proc(r: ^MdRender, spans: []MdSpan, imgs: []ImageRef) {
+	start := 0
+	for i in 0 ..= len(spans) {
+		if i < len(spans) && imgs[i].id == 0 {
+			continue
 		}
+		for row in md_wrap(spans[start:i], md_avail(r)) {
+			if len(row) > 0 {
+				md_emit(r, row)
+			}
+		}
+		if i == len(spans) {
+			break
+		}
+		for row in 0 ..< int(imgs[i].rows) {
+			md_emit(r, {MdSpan{text = image_placeholder_row(row, int(imgs[i].cols)), fg = image_color(imgs[i].id)}})
+			r.out[len(r.out) - 1].image = imgs[i]
+		}
+		start = i + 1
 	}
 }
 
@@ -1350,10 +1320,10 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 			continue
 		case '!':
 			if i + 1 < len(text) && text[i + 1] == '[' {
-				if label_end, _, end, ok := md_link_at(r, text, i + 1); ok {
+				if label_end, dest, end, ok := md_link_at(r, text, i + 1); ok {
 					md_inline_flush(r, spans, &sb, fg)
 					alt := md_plain(text[i + 2:label_end])
-					append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, link = r.link})
+					append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, link = r.link, image = dest})
 					i = end
 					continue
 				}
@@ -1671,7 +1641,7 @@ md_html_tag :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, sb: ^strings.Builder,
 		return
 	}
 	e := strings.index_byte(text[j:min(len(text), j + MD_SCAN_MAX)], '>')
-	if e < 0 || strings.index_byte(text[j:j + e], '\n') >= 0 || strings.index_byte(text[j:j + e], '<') >= 0 {
+	if e < 0 || strings.index_byte(text[j:j + e], '<') >= 0 {
 		return
 	}
 	attrs := text[j:j + e]
@@ -1686,7 +1656,7 @@ md_html_tag :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, sb: ^strings.Builder,
 	case "img":
 		md_inline_flush(r, spans, sb, fg)
 		alt := md_html_attr(attrs, "alt")
-		append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim})
+		append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, image = md_html_attr(attrs, "src")})
 	case "em", "i":
 		md_inline_flush(r, spans, sb, fg)
 		r.em = max(0, r.em + (-1 if closing else 1))
@@ -1709,7 +1679,7 @@ md_html_attr :: proc(attrs, name: string) -> string {
 		}
 		return ""
 	}
-	if sp := strings.index_any(v, " />"); sp >= 0 {
+	if sp := strings.index_any(v, " \t\n/>"); sp >= 0 {
 		return v[:sp]
 	}
 	return v
@@ -1984,7 +1954,7 @@ md_cells_to_spans :: proc(spans: []MdSpan, cells: []MdCell) -> []MdSpan {
 			}
 			text = string(buf)
 		}
-		out[at] = MdSpan{text, sp.fg, sp.bg, sp.link}
+		out[at] = MdSpan{text = text, fg = sp.fg, bg = sp.bg, link = sp.link}
 		at += 1
 		k = end
 	}

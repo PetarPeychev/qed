@@ -1,0 +1,71 @@
+# Markdown preview: images mixed with text render in source order, each caption under its image.
+size 120x40
+config
+{"lsp": {"enabled": false}, "image_protocol": "kitty"}
+end
+copy tools/e2e/assets/shot-a.png shots/a.png
+copy tools/e2e/assets/shot-b.png shots/b.png
+file notes.md
+# Gallery
+
+Intro ![logo](shots/a.png) then text.
+end
+run notes.md
+wait Gallery
+key ctrl+p
+type toggle split
+wait Markdown: Toggle Split
+key enter
+wait ━━━━
+snap inline An image inside a paragraph splits it: the text before, the image rows (a kitty terminal draws the picture there), the text after.
+file notes.md
+# Gallery
+
+Intro ![logo](shots/a.png) then text.
+
+<table>
+<tr>
+<td><img src="shots/a.png" alt="First"><br><em>First: a caption.</em></td>
+<td><img src="shots/b.png" alt="Second"><br><em>Second: another one.</em></td>
+</tr>
+</table>
+end
+wait 1/11
+snap table A screenshot table comes out as one column: each image with its italic caption right under it.
+file notes.md
+# Gallery
+
+Intro ![logo](shots/a.png) then text.
+
+<table>
+<tr>
+<td><img src="shots/a.png" alt="First"><br><em>First: a caption.</em></td>
+<td><img src="shots/b.png" alt="Second"><br><em>Second: another one.</em></td>
+</tr>
+</table>
+
+<p><img src="shots/gone.png" alt="Missing"> keeps its alt text inline.</p>
+end
+wait [image: Missing]
+snap missing A missing image file stays [image: Missing] inside its text.
+file notes.md
+# Gallery
+
+Intro ![logo](shots/a.png) then text.
+
+<table>
+<tr>
+<td><img src="shots/a.png" alt="First"><br><em>First: a caption.</em></td>
+<td><img src="shots/b.png" alt="Second"><br><em>Second: another one.</em></td>
+</tr>
+</table>
+
+<p><img src="shots/gone.png" alt="Missing"> keeps its alt text inline.</p>
+
+<p align="center">
+  <img src="shots/b.png"
+       width="200">
+</p>
+end
+wait 1/18
+snap multiline An <img> tag split over several lines still renders as an image.

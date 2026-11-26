@@ -349,6 +349,12 @@ test_md_html :: proc(t: ^testing.T) {
 	defer sync.unlock(&e2e_lock)
 	src := "<p align=\"center\">\n  <img src=\"x.png\" alt=\"a shot\" width=\"9\">\n</p>\n\n<!-- hidden -->\n\n<table><tr><td><img alt=\"w\"><br><em>caption</em></td></tr></table>\n\nafter"
 	md_expect_texts(t, md_texts(md_render(src, 40, .Plain)), {"[image: a shot]", "", "[image: w]", "caption", "", "after"})
+
+	multi := "<div>\n<img src=\"y.png\"\n     alt=\"multi\">\n<em\n  class=\"c\">styled</em> Vec<T>\n</div>"
+	lines := md_render(multi, 40, .Plain)
+	md_expect_texts(t, md_texts(lines), {"[image: multi] styled Vec<T>"})
+	fg, _ := md_span_fg(lines, "styled")
+	testing.expect(t, u64(fg) & u64(tb2.Color.Italic) != 0, "a tag split over lines still styles")
 }
 
 @(test)

@@ -369,6 +369,7 @@ color_format :: proc(s: ^Session, col: vterm.Color, default_flag: u8) -> string 
 session_snapshot :: proc(s: ^Session) -> string {
 	text := session_text(s)
 	styles: [dynamic]string
+	image_fgs := make([dynamic]string, context.temp_allocator)
 	style_rows := make([]string, s.h, context.temp_allocator)
 	for y in 0 ..< s.h {
 		sb := strings.builder_make(context.temp_allocator)
@@ -379,7 +380,17 @@ session_snapshot :: proc(s: ^Session) -> string {
 				continue
 			}
 			ds := strings.builder_make(context.temp_allocator)
-			fmt.sbprintf(&ds, "fg=%s bg=%s", color_format(s, cell.fg, vterm.COLOR_DEFAULT_FG), color_format(s, cell.bg, vterm.COLOR_DEFAULT_BG))
+			fg := color_format(s, cell.fg, vterm.COLOR_DEFAULT_FG)
+			// a kitty placeholder's fg is its image id, seeded from qed's pid
+			if cell.chars[0] == 0x10EEEE {
+				id, seen := slice.linear_search(image_fgs[:], fg)
+				if !seen {
+					id = len(image_fgs)
+					append(&image_fgs, fg)
+				}
+				fg = fmt.tprintf("image%d", id + 1)
+			}
+			fmt.sbprintf(&ds, "fg=%s bg=%s", fg, color_format(s, cell.bg, vterm.COLOR_DEFAULT_BG))
 			if cell.attrs & vterm.ATTR_BOLD != 0 {strings.write_string(&ds, " bold")}
 			if cell.attrs & vterm.ATTR_UNDERLINE != 0 {strings.write_string(&ds, " underline")}
 			if cell.attrs & vterm.ATTR_ITALIC != 0 {strings.write_string(&ds, " italic")}
@@ -823,6 +834,15 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			os.make_directory_all(filepath.dir(path))
 			_ = os.write_entire_file(path, step.body)
 			session_cast_event(&s, "i", fmt.tprintf("edit %s", step.rest))
+		case "copy":
+			data, err := os.read_entire_file(step.args[0] if len(step.args) == 2 else "", context.temp_allocator)
+			if err != nil {
+				scenario_fail(run, sc, step, &s, fmt.tprintf("copy: cannot read %s", step.rest))
+				return false
+			}
+			path := fmt.tprintf("%s/%s", root_dir, step.args[1])
+			os.make_directory_all(filepath.dir(path))
+			_ = os.write_entire_file(path, data)
 		case "config":
 			_ = os.write_entire_file(fmt.tprintf("%s/.config/qed/config.json", home_dir), step.body)
 			session_cast_event(&s, "i", "edit config.json")

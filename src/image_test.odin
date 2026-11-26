@@ -223,7 +223,6 @@ image_markdown_blocks :: proc(t: ^testing.T) {
 	IMAGE_PROTOCOL = .Kitty
 	lines = md_render(src, 40, .Plain, dir)
 	text := md_all_text(lines)
-	testing.expect(t, strings.contains(text, "Inline [image: pic] here."), "an image inside text stays alt text")
 	testing.expect(t, strings.contains(text, "[image: gone]"), "a missing file stays alt text")
 	ids: [dynamic]u32
 	defer delete(ids)
@@ -259,6 +258,49 @@ image_markdown_blocks :: proc(t: ^testing.T) {
 	for l in hover {
 		testing.expect(t, l.image.id == 0, "a render without a base dir shows no images")
 	}
+}
+
+@(private = "file")
+image_md_shape :: proc(lines: []MdLine) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for l in lines {
+		if l.image.id != 0 {
+			fmt.sbprintf(&sb, "<img %dx%d>|", l.image.cols, l.image.rows)
+			continue
+		}
+		strings.write_string(&sb, md_line_text(l))
+		for s in l.spans {
+			if s.fg & tb2.Color.Italic != {} {
+				strings.write_string(&sb, "/i")
+				break
+			}
+		}
+		strings.write_byte(&sb, '|')
+	}
+	return strings.to_string(sb)
+}
+
+@(test)
+image_markdown_mixed_blocks :: proc(t: ^testing.T) {
+	sync.lock(&e2e_lock)
+	defer sync.unlock(&e2e_lock)
+	saved, saved_cell := IMAGE_PROTOCOL, g_image_cell
+	defer {
+		IMAGE_PROTOCOL, g_image_cell = saved, saved_cell
+		image_shutdown()
+	}
+	dir := image_fixture_dir("mixed")
+	defer image_fixture_drop(dir)
+	g_image_cell = {1, 1}
+	src := "Before ![pic](pic.png) after `![x](pic.png)` end\n\n<table><tr>\n<td><img src=\"pic.png\"><br><em>One</em></td>\n<td><img src=\"gray.png\"><br><em>Two</em></td>\n</tr></table>\n\n<p><img src=\"missing.png\" alt=\"gone\"> lost <img src=\"pic.png\"></p>\n\n<p align=\"center\">\n  <img src=\"gray.png\"\n       width=\"200\">\n</p>"
+
+	IMAGE_PROTOCOL = .Kitty
+	lines := md_render(src, 40, .Plain, dir)
+	testing.expect_value(t, image_md_shape(lines), "Before|<img 2x2>|<img 2x2>|after ![x](pic.png) end||<img 2x2>|<img 2x2>|One/i|<img 3x1>|Two/i||[image: gone] lost|<img 2x2>|<img 2x2>||<img 3x1>|")
+
+	IMAGE_PROTOCOL = .None
+	off := md_render(src, 40, .Plain, dir)
+	testing.expect_value(t, image_md_shape(off), "Before [image: pic] after ![x](pic.png)|end||[image]|One/i|[image]|Two/i||[image: gone] lost [image]||[image]|")
 }
 
 @(private = "file")

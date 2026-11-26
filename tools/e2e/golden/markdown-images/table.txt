@@ -1,0 +1,99 @@
+qed-e2e snapshot 120x40 cursor 4,0
+-- text
+  1 # Gallery                                              │ Gallery
+  2                                                        │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3 Intro ![logo](shots/a.png) then text.                  │
+  4                                                        │ Intro
+  5 <table>                                                │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
+  6 <tr>                                                   │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
+  7 <td><img src="shots/a.png" alt="First"><br><em>First:  │ then text.
+    a caption.</em></td>                                   │
+  8 <td><img src="shots/b.png"                             │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
+    alt="Second"><br><em>Second: another one.</em></td>    │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
+  9 </tr>                                                  │ First: a caption.
+ 10 </table>                                               │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
+ 11                                                        │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
+                                                           │ Second: another one.
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+ ≡ root/notes.md  1/11                                                                           ◆ markdown  ⇥ Spaces:4
+Reloaded from disk
+-- style
+abbbcdeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddfghhhhhhhgggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiigg
+aaaaggggggggjjjjggjjjjjjjjjjjggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagiiiiigggggggggggggggggggggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagiiggggggggggggggggggggggggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagiiggiiigiiigglllllllllllggiiigglllllgggiiggiigggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaggggggggggggiigggiiggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagiiggiiigiiigglllllllllllggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaiiiggllllllgggiiggiigggggggggggggggggggggggiigggiigggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaggiigggggggggggggggggggggggggggggggggggggggggggggggggggfgmmmmmmmmmmmmmmmmmgggggggggggggggggggggggggggggggggggggggggg
+aaaaggiiiiiggggggggggggggggggggggggggggggggggggggggggggggggfgnnnnnnggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgnnnnnnggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgmmmmmmmmmmmmmmmmmmmmggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#ffdd33 bg=#262626
+d fg=#f4f4ff bg=#262626
+e fg=#ffdd33 bg=#262626 bold
+f fg=#868686 bg=#181818
+g fg=#f4f4ff bg=#181818
+h fg=#ffdd33 bg=#181818 bold
+i fg=#ffdd33 bg=#181818
+j fg=#96a6c8 bg=#181818
+k fg=image1 bg=#181818
+l fg=#73c936 bg=#181818
+m fg=#f4f4ff bg=#181818 italic
+n fg=image2 bg=#181818
+o fg=#f4f4ff bg=#2b2b2b

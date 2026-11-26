@@ -45,14 +45,15 @@ environment (`TZ=UTC`, `LANG=C.UTF-8`, `PS1`, `PATH` limited to the sandbox bin 
 anything under `src`/`plugins`/`config`/`lib` is newer.
 
 Scenario lines (`#` comments): `size WxH`, `requires TOOL`, `timeout MS`, `file PATH` / `config` /
-`expect-file PATH` (body up to a line `end`, each line newline-terminated), `run [ARGS]`, `wait TEXT`,
+`expect-file PATH` (body up to a line `end`, each line newline-terminated), `copy SRC DEST` (a repo file into the root), `run [ARGS]`, `wait TEXT`,
 `key K...` (`ctrl+s alt+F shift+right down*3 esc enter tab pgdn`), `type TEXT`, `click X Y`,
 `dclick X Y`, `drag X1 Y1 X2 Y2`, `wheel X Y up|down [COUNT]`, `snap NAME [SENTENCE]` (the optional sentence says what the step shows; demo pages only).
 Coordinates are 0-based cells.
 
 Snapshot file: header (size, cursor), `-- text` rows (right-trimmed), `-- style` rows (one symbol
 per cell, wide-char continuations skipped), `-- legend` (symbol to `fg= bg=` + attrs). Letters are
-assigned in order of appearance, so a diff compares decoded styles, not letters.
+assigned in order of appearance, so a diff compares decoded styles, not letters. A kitty placeholder's fg (its
+image id, pid-seeded) reads `imageN`, numbered by first appearance in the snap.
 Demos render at `--size COLSxROWS` (default 160x45) unless a scenario sets `size`; verify/update default to 80x24; `acceptance` sets 160x45.
 
 Demo page: `<scenario>.html` next to the `.cast`, self-contained (the vendored `lib/asciinema-player` JS/CSS

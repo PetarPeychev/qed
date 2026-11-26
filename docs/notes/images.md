@@ -6,8 +6,10 @@ Reference for `src/image.odin`; DESIGN.md has the summary.
 
 - A placeholder cell is `U+10EEEE` + a row and a column diacritic (kitty's `rowcolumn-diacritics.txt`,
   `IMAGE_DIACRITICS`), fg = the image id as truecolor (24-bit, never 0). termbox measures it as width 1.
-- `md_images` takes a paragraph or HTML block made only of images (`![](x)`, `[![](x)](url)`, `<img src>` in
-  layout tags). Remote URLs, missing files, a render without a dir (hover) or no protocol: `[image: alt]`.
+- `md_inline` tags image spans (`![](x)`, `<img src>`, inside links too) with their dest; in a paragraph or HTML
+  block with a resolvable one, `md_emit_images` emits in source order: image rows, and the text between images
+  wrapped with its empty rows dropped (a `<td>` grid becomes one column). Remote URLs, missing files, a render
+  without a dir (hover) or no protocol: the `[image: alt]` span stays in the text.
 - `image_cells`: cols from pixel width / cell width, never upscaled, capped by the available width and
   `image_max_rows`; rows keep the aspect. Cell pixels come from `TIOCGWINSZ` on termbox's tty (8x16 when 0).
 
