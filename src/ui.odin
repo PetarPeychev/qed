@@ -1173,7 +1173,7 @@ ui_measure :: proc(editor: ^Editor, node: ^UiNode, avail_w, avail_h: int) -> (wi
 	case .Markdown:
 		md := ui_markdown_of(editor, node)
 		ui_markdown_rewrap(editor, node, md, avail_w)
-		height = len(ui_markdown_lines(md, avail_w))
+		height = ui_markdown_rows(md, avail_w)
 	case .Image:
 		if image := image_get(node.path); image != nil && image_enabled() {
 			width, height = image_cells(image.w, image.h, avail_w, avail_h, g_image_cell.x, g_image_cell.y)
@@ -1753,9 +1753,7 @@ ui_prepare :: proc(editor: ^Editor) {
 	}
 	walk_trees_settle(editor)
 	ui_markdowns_sweep(editor)
-	for _, md in ui.markdowns {
-		ui_markdown_step(md, md_slice_ms)
-	}
+	ui_markdowns_adopt(editor)
 	for node in ui.virtuals {
 		if list := ui_list_find(ui, node.list); list != nil {
 			ui_list_settle_all(editor, list)

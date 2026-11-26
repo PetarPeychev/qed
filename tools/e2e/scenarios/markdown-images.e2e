@@ -1,4 +1,4 @@
-# Markdown preview: images mixed with text render in source order, each caption under its image.
+# Markdown preview: images sit in the flow like a browser lays them out: inline in text, in table cells, centered.
 size 120x40
 config
 {"lsp": {"enabled": false}, "image_protocol": "kitty"}
@@ -17,7 +17,7 @@ type toggle split
 wait Markdown: Toggle Split
 key enter
 wait ━━━━
-snap inline An image inside a paragraph splits it: the text before, the image rows (a kitty terminal draws the picture there), the text after.
+snap inline An image inside a paragraph sits inline on the text baseline (a kitty terminal draws the picture in those cells).
 file notes.md
 # Gallery
 
@@ -31,7 +31,7 @@ Intro ![logo](shots/a.png) then text.
 </table>
 end
 wait 1/11
-snap table A screenshot table comes out as one column: each image with its italic caption right under it.
+snap table A screenshot table keeps its columns: each image fills its cell with the italic caption under it.
 file notes.md
 # Gallery
 
@@ -68,4 +68,4 @@ Intro ![logo](shots/a.png) then text.
 </p>
 end
 wait 1/18
-snap multiline An <img> tag split over several lines still renders as an image.
+snap multiline An <img> tag split over several lines renders, its width attribute honoured and centered by its paragraph.

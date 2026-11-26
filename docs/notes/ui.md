@@ -96,8 +96,9 @@ Positional values are children, named values are props. Common props: `id`, `key
   Cut, Paste, Select All borrowing the global binds). `scope = "editor"` on another node type raises. An editor one
   row high is a field: no indent, auto-pairs or newlines, and every paste (bracketed or Ctrl+V) flattens newlines
   to spaces. Double and triple clicks select a word and a line; a drag past an edge scrolls.
-- `qed.markdown.parse`: rendered in slices, the last render stays up while a newer one runs; the holding scroll owns
-  offset, bar and wheel. A link click fires `on.link{target}`; an unhandled `#slug` scrolls to the heading. State:
+- `qed.markdown.parse`: rendered on a thread, the last render stays up while a newer one runs; the holding scroll owns
+  offset, bar and wheel. A link click fires `on.link{target}`; an unhandled `#id` scrolls to that element (headings get
+  GitHub ids); a click on a `<summary>` toggles its `<details>`. State:
   `rows`, `sources` (source rows of the visible lines), `source` (the fractional source line at the scroll's top),
   `heading` (source row of the last `heading` set). `set_state{source = row, at = terminal_row}` (that source line,
   fractional too, lands on the terminal row, as near as the document allows) or `{heading = slug}` moves the holding

@@ -295,70 +295,25 @@ image_markdown_blocks :: proc(t: ^testing.T) {
 	src := "# T\n\n![pic](pic.png)\n\nInline ![pic](pic.png) here.\n\n![gone](missing.png)\n\n<p align=\"center\"><img src=\"photo.jpg\" alt=\"p\"></p>\n\n> [![pic](pic.png)](https://x.y)"
 
 	IMAGE_PROTOCOL = .None
-	lines := md_render(src, 40, .Plain, dir)
-	testing.expect(t, strings.contains(md_all_text(lines), "[image: pic]"), "no protocol: alt text")
-	for l in lines {
-		testing.expect(t, l.image.id == 0, "no protocol: no image lines")
-	}
+	doc := md_render(src, 40, .Plain, dir)
+	testing.expect(t, strings.contains(md_doc_text(doc), "[image: pic]"), "no protocol: alt text")
+	testing.expect_value(t, len(doc.images), 0)
 
 	IMAGE_PROTOCOL = .Kitty
-	lines = md_render(src, 40, .Plain, dir)
-	text := md_all_text(lines)
-	testing.expect(t, strings.contains(text, "[image: gone]"), "a missing file stays alt text")
-	ids: [dynamic]u32
-	defer delete(ids)
-	for l in lines {
-		if l.image.id != 0 && (len(ids) == 0 || ids[len(ids) - 1] != l.image.id) {
-			append(&ids, l.image.id)
-		}
+	doc = md_render(src, 40, .Plain, dir)
+	testing.expect(t, strings.contains(md_doc_text(doc), "[image: gone]"), "a missing file stays alt text")
+	testing.expect_value(t, len(doc.images), 4)
+	if len(doc.images) == 4 {
+		testing.expect(t, doc.images[0].ref.id == doc.images[1].ref.id && doc.images[0].ref.id != doc.images[2].ref.id, "the same file shares one image")
+		first := doc.images[0]
+		testing.expect_value(t, first.ref.cols, 2)
+		testing.expect_value(t, first.ref.rows, 2)
+		testing.expect_value(t, first.x, 0)
+		testing.expect(t, doc.images[3].x >= 2 && strings.has_prefix(md_row_text(doc, doc.images[3].y), "│"), "a quoted image keeps the quote bar")
 	}
-	testing.expect_value(t, len(ids), 3)
-	if len(ids) == 3 {
-		testing.expect(t, ids[0] == ids[2] && ids[0] != ids[1], "the same file shares one image")
-	}
-	first := -1
-	for l, i in lines {
-		if l.image.id != 0 {
-			first = i
-			break
-		}
-	}
-	if first >= 0 {
-		l := lines[first]
-		testing.expect_value(t, l.image.cols, 2)
-		testing.expect_value(t, l.image.rows, 2)
-		testing.expect_value(t, len(l.spans), 1)
-		testing.expect_value(t, l.spans[0].fg, image_color(l.image.id))
-		testing.expect_value(t, l.spans[0].text, image_placeholder_row(0, 2))
-		testing.expect_value(t, lines[first + 1].spans[0].text, image_placeholder_row(1, 2))
-	}
-	quoted := lines[len(lines) - 1]
-	testing.expect(t, quoted.image.id != 0 && len(quoted.spans) == 2 && quoted.spans[0].text == "│ ", "a quoted image keeps the quote bar")
 
 	hover := md_render(src, 40, .Plain)
-	for l in hover {
-		testing.expect(t, l.image.id == 0, "a render without a base dir shows no images")
-	}
-}
-
-@(private = "file")
-image_md_shape :: proc(lines: []MdLine) -> string {
-	sb := strings.builder_make(context.temp_allocator)
-	for l in lines {
-		if l.image.id != 0 {
-			fmt.sbprintf(&sb, "<img %dx%d>|", l.image.cols, l.image.rows)
-			continue
-		}
-		strings.write_string(&sb, md_line_text(l))
-		for s in l.spans {
-			if s.fg & tb2.Color.Italic != {} {
-				strings.write_string(&sb, "/i")
-				break
-			}
-		}
-		strings.write_byte(&sb, '|')
-	}
-	return strings.to_string(sb)
+	testing.expect_value(t, len(hover.images), 0)
 }
 
 @(test)
@@ -376,12 +331,22 @@ image_markdown_mixed_blocks :: proc(t: ^testing.T) {
 	src := "Before ![pic](pic.png) after `![x](pic.png)` end\n\n<table><tr>\n<td><img src=\"pic.png\"><br><em>One</em></td>\n<td><img src=\"gray.png\"><br><em>Two</em></td>\n</tr></table>\n\n<p><img src=\"missing.png\" alt=\"gone\"> lost <img src=\"pic.png\"></p>\n\n<p align=\"center\">\n  <img src=\"gray.png\"\n       width=\"200\">\n</p>"
 
 	IMAGE_PROTOCOL = .Kitty
-	lines := md_render(src, 40, .Plain, dir)
-	testing.expect_value(t, image_md_shape(lines), "Before|<img 2x2>|<img 2x2>|after ![x](pic.png) end||<img 2x2>|<img 2x2>|One/i|<img 3x1>|Two/i||[image: gone] lost|<img 2x2>|<img 2x2>||<img 3x1>|")
+	doc := md_render(src, 40, .Plain, dir)
+	text := md_doc_text(doc)
+	testing.expect_value(t, len(doc.images), 5)
+	testing.expect(t, strings.contains(text, "after ![x](pic.png) end"), "an image in code stays text")
+	testing.expect(t, strings.contains(text, "[image: gone] lost"), "a missing image keeps its alt text in the paragraph")
+	testing.expect(t, strings.contains(text, "One") && strings.contains(text, "Two"), "captions under table images")
+	if len(doc.images) == 5 {
+		testing.expectf(t, doc.images[4].ref.cols == 25, "an <img width> is honoured as CSS pixels, 8 per column: %d", doc.images[4].ref.cols)
+	}
 
 	IMAGE_PROTOCOL = .None
 	off := md_render(src, 40, .Plain, dir)
-	testing.expect_value(t, image_md_shape(off), "Before [image: pic] after ![x](pic.png)|end||[image]|One/i|[image]|Two/i||[image: gone] lost [image]||[image]|")
+	off_text := md_doc_text(off)
+	testing.expect_value(t, len(off.images), 0)
+	testing.expect(t, strings.contains(off_text, "Before [image: pic] after"), "no protocol: alt text inline")
+	testing.expect_value(t, strings.count(off_text, "[image]"), 4)
 }
 
 @(private = "file")
@@ -452,7 +417,7 @@ image_md_pending :: proc(e: ^E2E) -> bool {
 		return true
 	}
 	md, found := e.ed.ui.markdowns[node.identity]
-	return !found || md.job != nil || len(md.lines) == 0
+	return !found || md.job != nil || md.doc == nil || len(md.doc.rows) == 0
 }
 
 @(test)
@@ -597,12 +562,10 @@ e2e_image_doc_many_images :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
-image_md_refs :: proc(lines: []MdLine) -> []ImageRef {
+image_md_refs :: proc(doc: ^MdDoc) -> []ImageRef {
 	out := make([dynamic]ImageRef, context.temp_allocator)
-	for l in lines {
-		if l.image.id != 0 && (len(out) == 0 || out[len(out) - 1].id != l.image.id) {
-			append(&out, l.image)
-		}
+	for img in doc.images {
+		append(&out, img.ref)
 	}
 	return out[:]
 }
@@ -799,4 +762,38 @@ e2e_image_stale_entry_rerenders :: proc(t: ^testing.T) {
 	e2e_render(&e)
 	testing.expect(t, image_find_row(&e, "⋯ Shot") < 0, "an entry reprobed to a failure leaves no box")
 	testing.expect(t, image_find_row(&e, "[image: Shot]") >= 0, "its alt text shows")
+}
+
+@(test)
+e2e_image_truncated_shows_alt_once :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+	saved, saved_cell, saved_tmux := IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux
+	defer {
+		IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = saved, saved_cell, saved_tmux
+		image_shutdown()
+	}
+	IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = .Kitty, {4, 8}, false
+	dir := image_fixture_dir("truncated")
+	defer image_fixture_drop(dir)
+	_ = os.write_entire_file(fmt.tprintf("%s/cut.png", dir), TEST_SHOT[:len(TEST_SHOT) - 20])
+	md := fmt.tprintf("%s/README.md", dir)
+	_ = os.write_entire_file(md, transmute([]u8)string("# Pics\n\n![Cut shot](cut.png)\n\nafter\n"))
+	testing.expect(t, editor_open_path(&e.ed, md), "opens the doc")
+	e2e_key(&e, tb2.Key(0), .Alt, 'p')
+	testing.expect(t, e2e_pump_while(&e, image_md_pending), "the preview renders")
+	e2e_render(&e)
+	image_pump_idle(&e.ed)
+	for _ in 0 ..< 5 {
+		e2e_render(&e)
+		image_pump_idle(&e.ed)
+	}
+	testing.expect(t, image_find_row(&e, "[image: Cut shot]") >= 0, "a file the header check passes but the decode fails shows its alt text")
+	body := ui_find(&e.ed.ui, "#markdown/markdown_body")
+	preview := e.ed.ui.markdowns[body.identity] if body != nil else nil
+	gen := preview.gen if preview != nil else 0
+	for _ in 0 ..< 5 {
+		e2e_render(&e)
+	}
+	testing.expect(t, preview != nil && preview.gen == gen && preview.job == nil, "and renders no more")
 }

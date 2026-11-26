@@ -3,10 +3,10 @@ qed-e2e snapshot 120x40 cursor 3,0
  1 # Gallery                                               │ Gallery
  2                                                         │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  3 Intro ![logo](shots/a.png) then text.                   │
- 4                                                         │ Intro
-                                                           │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
-                                                           │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
-                                                           │ then text.
+ 4                                                         │       􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
+                                                           │ Intro 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽ then text.
+                                                           │
+                                                           │
                                                            │
                                                            │
                                                            │
@@ -44,9 +44,9 @@ qed-e2e snapshot 120x40 cursor 3,0
 abbcdeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddfghhhhhhhgggggggggggggggggggggggggggggggggggggggggggggggggggg
 aaaggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiigg
 aaaggggggggjjjjggjjjjjjjjjjjgggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggkkkkkkggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggkkkkkkggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg

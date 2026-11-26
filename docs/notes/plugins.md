@@ -48,7 +48,7 @@ In the KS column, KS means the code runs per keystroke or per render today.
 | log | | core | `qed.log`, `qed.message`. |
 | clipboard | | core | `qed.clipboard`. |
 | terminal | KS (pump) | core, generalized | One `Terminal` becomes N named sessions behind `qed.term`. Alt+t is the default session. |
-| lsp/completion/rename/hover/mdrender | KS | core | `qed.lsp.format(b)` (awaitable) for the formatter fallback. `mdrender` also backs the `markdown` view body. |
+| lsp/completion/rename/hover/markdown | KS | core | `qed.lsp.format(b)` (awaitable) for the formatter fallback. `markdown.odin` also backs the `markdown` view body. |
 | markdown preview | | **plugin** (`plugins/markdown`) | A qed.ui tree with the core `markdown` leaf (`text`, `dir`, `on.link`, state `scroll`/`rows`/`sources`/`heading`, `set_state{source, at}` or `{heading}`, `ref:settled()` to wait for a heading) + `buffer:screen_row`/`set_screen_row` (cursor sync), scoped Back/Forward over a `{path, buf, scroll}` history, `qed.open_url`, `buf_changed` subscribed only while open. *Toggle Split*: a second view (own node ids and history) mounted in the layout's `editor_side` outlet, `buffer:top_row`/`set_screen_row` against the body's `source`, `cursor_moved`/`view_scrolled`/`buf_enter` while toggled on, the scroll's `on.state{offset}` for the reverse sync, `buffer:focus` for Esc. |
 | `format.odin` external formatter + save fixups | | **plugin** (port 1) | `spawn`, `buf_pre_save`, `buf.set_text` with rev guard, plugin config. |
 | langpick / themepick / indentpick | | **plugin** (port 2) | `pick{selected, on = {change}}`, `buf.set_language`, `theme.set`, `buf.set_indent`. Closes the "collapse centered pickers" TODO. |

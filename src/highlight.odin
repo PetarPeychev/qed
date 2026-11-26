@@ -629,11 +629,40 @@ highlight_paint_rows :: proc(rows: [][dynamic]tb2.Color, r0, c0, r1, c1: int, co
 	}
 }
 
-// One-shot synchronous highlight of a small standalone snippet (preview panes).
-// Fills `out` with one color row per input line, sized to the line's byte length,
-// defaulting to COLOR_FG. Parses the whole snippet fresh — no retained tree, no
-// injection — so it is only appropriate for a handful of lines.
-highlight_lines :: proc(language: Language, lines: []string, out: ^[dynamic][dynamic]tb2.Color) {
+HighlightQuery :: struct {
+	parser:   ^ts.Parser,
+	cursor:   ^ts.QueryCursor,
+	query:    ^ts.Query,
+	preds:    []PatternPreds,
+	paint:    []bool,
+	colors:   []tb2.Color,
+	fallback: tb2.Color,
+}
+
+// a fresh parser and cursor over the shared immutable query, and a copied palette, so another thread can run it
+highlight_query_clone :: proc(language: Language, allocator := context.allocator) -> (query: HighlightQuery, ok: bool) {
+	if !syntax_ensure(language) {
+		return
+	}
+	syntax := &g_syntaxes[language]
+	query.parser = ts.parser_new()
+	ts.parser_set_language(query.parser, ts.parser_language(syntax.parser))
+	query.cursor = ts.query_cursor_new()
+	query.query, query.preds = syntax.query, syntax.preds[:]
+	query.paint = slice.clone(syntax.paint[:], allocator)
+	query.colors = slice.clone(syntax.colors[:], allocator)
+	query.fallback = COLOR_FG
+	return query, true
+}
+
+highlight_query_free :: proc(query: HighlightQuery) {
+	if query.parser != nil {
+		ts.parser_delete(query.parser)
+		ts.query_cursor_delete(query.cursor)
+	}
+}
+
+highlight_query_lines :: proc(query: HighlightQuery, lines: []string, out: ^[dynamic][dynamic]tb2.Color) {
 	for &row in out {
 		delete(row)
 	}
@@ -642,15 +671,13 @@ highlight_lines :: proc(language: Language, lines: []string, out: ^[dynamic][dyn
 		row := make([dynamic]tb2.Color)
 		resize(&row, len(line))
 		for i in 0 ..< len(line) {
-			row[i] = COLOR_FG
+			row[i] = query.fallback
 		}
 		append(out, row)
 	}
-	if !syntax_ensure(language) {
+	if query.parser == nil {
 		return
 	}
-	s := &g_syntaxes[language]
-
 	sb := strings.builder_make(context.temp_allocator)
 	for line, i in lines {
 		if i > 0 {
@@ -659,28 +686,28 @@ highlight_lines :: proc(language: Language, lines: []string, out: ^[dynamic][dyn
 		strings.write_string(&sb, line)
 	}
 	src := strings.to_string(sb)
-	tree := ts.parser_parse_string(s.parser, nil, raw_data(src), u32(len(src)))
+	tree := ts.parser_parse_string(query.parser, nil, raw_data(src), u32(len(src)))
 	if tree == nil {
 		return
 	}
 	defer ts.tree_delete(tree)
 
 	nt := NodeText{src = src}
-	ts.query_cursor_set_point_range(s.cursor, {0, 0}, {max(u32), 0})
-	ts.query_cursor_exec(s.cursor, s.query, ts.tree_root_node(tree))
+	ts.query_cursor_set_point_range(query.cursor, {0, 0}, {max(u32), 0})
+	ts.query_cursor_exec(query.cursor, query.query, ts.tree_root_node(tree))
 	match: ts.QueryMatch
-	for ts.query_cursor_next_match(s.cursor, &match) {
-		if int(match.pattern_index) < len(s.preds) && !predicate_pass(s.preds[match.pattern_index], &match, nt) {
+	for ts.query_cursor_next_match(query.cursor, &match) {
+		if int(match.pattern_index) < len(query.preds) && !predicate_pass(query.preds[match.pattern_index], &match, nt) {
 			continue
 		}
 		for i in 0 ..< int(match.capture_count) {
 			cap := match.captures[i]
-			if int(cap.index) >= len(s.paint) || !s.paint[cap.index] {
+			if int(cap.index) >= len(query.paint) || !query.paint[cap.index] {
 				continue
 			}
 			sp := ts.node_start_point(cap.node)
 			ep := ts.node_end_point(cap.node)
-			highlight_paint_rows(out[:], int(sp.row), int(sp.column), int(ep.row), int(ep.column), s.colors[cap.index])
+			highlight_paint_rows(out[:], int(sp.row), int(sp.column), int(ep.row), int(ep.column), query.colors[cap.index])
 		}
 	}
 }

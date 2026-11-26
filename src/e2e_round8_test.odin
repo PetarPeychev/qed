@@ -97,6 +97,9 @@ e2e_round8_hover_is_a_node_under_the_editor :: proc(t: ^testing.T) {
 	testing.expect_value(t, popup.rect.y, caret_y + 1)
 	testing.expect_value(t, popup.rect.x, caret_x)
 	testing.expect(t, e2e_grid_has(&e, "hover line 1"), "the hover text shows")
+	body := ui_find_in(popup, "caret_hover_body")
+	md := e.ed.ui.markdowns[body.identity]
+	testing.expect(t, md != nil && body.rect.w == md.doc_w && md.doc_gen == md.gen && md.job == nil, "the body shows the measuring render: no second render at another width")
 	scroll := ui_find_in(popup, "caret_hover_scroll")
 	e2e_mouse(&e, popup.rect.x + 2, popup.rect.y + 2, .Mouse_Wheel_Down)
 	testing.expect(t, e.ed.hover_active, "the wheel over the hover keeps it open")

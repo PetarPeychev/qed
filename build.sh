@@ -90,5 +90,38 @@ if [ ! -f "$LUA/liblua.a" ] || [ -n "$(find "$LUA/src" -newer "$LUA/liblua.a" -n
    ar rcs "$LUA/liblua.a" "$LUA"/src/*.o
 fi
 
+# Build the vendored cmark-gfm (markdown -> HTML) and litehtml (HTML layout) static libs
+JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
+# Odin targets macOS 11 by default: the C/C++ objects must not ask for anything newer
+MIN=""
+if [ "$(uname)" = Darwin ]; then MIN="-mmacosx-version-min=11.0"; fi
+CM=lib/cmark_gfm
+if [ ! -f "$CM/libcmarkgfm.a" ] || [ -n "$(find "$CM" -newer "$CM/libcmarkgfm.a" -name '*.[ch]')" ]; then
+   ls "$CM"/*.c | xargs -P "$JOBS" -I{} sh -c 'f={}; cc -c -w -O2 '"$MIN"' -I '"$CM"' "$f" -o "${f%.c}.o"'
+   rm -f "$CM/libcmarkgfm.a"
+   ar rcs "$CM/libcmarkgfm.a" "$CM"/*.o
+fi
+LH=lib/litehtml
+if [ ! -f "$LH/liblitehtml.a" ] || [ -n "$(find "$LH" -newer "$LH/liblitehtml.a" \( -name '*.[ch]' -o -name '*.cpp' \))" ]; then
+   { ls "$LH"/src/gumbo/src/*.c; ls "$LH"/src/*.cpp "$LH"/qlh.cpp; } | xargs -P "$JOBS" -I{} sh -c 'f={}; case "$f" in
+      *.c) cc -c -w -O2 '"$MIN"' -I '"$LH"'/src/gumbo/src "$f" -o "${f%.c}.o" ;;
+      *) c++ -c -w -O2 '"$MIN"' -std=c++17 -I '"$LH"'/include -I '"$LH"'/include/litehtml -I '"$LH"'/src/gumbo/src "$f" -o "${f%.cpp}.o" ;;
+   esac'
+   rm -f "$LH/liblitehtml.a"
+   ar rcs "$LH/liblitehtml.a" "$LH"/src/gumbo/src/*.o "$LH"/src/*.o "$LH"/qlh.o
+fi
+
+# Link the C++ runtime statically where the toolchain ships it, so the binary needs no libstdc++ at run time
+STATIC_CXX=""
+if [ "$(uname)" != Darwin ]; then
+   CXXLIB="$(c++ -print-file-name=libstdc++.a)"
+   if [ -f "$CXXLIB" ]; then
+      cmp -s "$CXXLIB" "$LH/libstdcxx.a" || cp "$CXXLIB" "$LH/libstdcxx.a"
+      STATIC_CXX="-define:QED_STATIC_CXX=true"
+   else
+      echo "build.sh: no static libstdc++ (install libstdc++-dev); linking it dynamically" >&2
+   fi
+fi
+
 # Build the editor, exposing vendor/ as a collection
-odin build src -collection:lib=lib -o:speed -define:QED_VERSION="${QED_VERSION:-dev}" -out:qed
+odin build src -collection:lib=lib -o:speed $STATIC_CXX -define:QED_VERSION="${QED_VERSION:-dev}" -out:qed

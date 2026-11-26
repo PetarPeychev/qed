@@ -5,6 +5,7 @@ import "core:encoding/json"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:time"
 import "lib:tb2"
 
 @(private = "file")
@@ -185,12 +186,12 @@ e2e_round9_drag_selects_rows_only_in_range_lists :: proc(t: ^testing.T) {
 }
 
 @(test)
-e2e_round9_markdown_renders_in_steps :: proc(t: ^testing.T) {
+e2e_round9_markdown_renders_off_the_main_thread :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
-	saved := md_slice_ms
-	md_slice_ms = 0
-	defer md_slice_ms = saved
+	saved := md_wait_ms
+	md_wait_ms = 0
+	defer md_wait_ms = saved
 	ft_lua(&e.ed, `
 		local parts = {}
 		for i = 1, 400 do parts[#parts + 1] = ("## Part %d\n\nsome *text* for part %d with a [link](#part-1)\n"):format(i, i) end
@@ -198,18 +199,16 @@ e2e_round9_markdown_renders_in_steps :: proc(t: ^testing.T) {
 		qed.ui.mount("pane", qed.ui.box{float = "screen", width = 60, height = 20,
 			qed.ui.scroll{id = "r9_md_scroll", qed.markdown.parse(r9_md, {id = "r9_md"})}})
 		return 0`)
-	e2e_render(&e)
+	plugin_flush(&e.ed)
+	editor_render(&e.ed)
 	md := e.ed.ui.markdowns["#fthelper/r9_md"]
-	testing.expect(t, md != nil && md.job != nil, "a render past its slice keeps going in steps")
-	testing.expect(t, !e2e_grid_has(&e, "Part 1"), "nothing shows before the first render lands")
-	for i := 0; i < 5000 && md.job != nil; i += 1 {
-		e2e_render(&e)
-	}
+	testing.expect(t, md != nil && md.job != nil, "the frame returns while the render runs on its thread")
+	e2e_render(&e)
 	testing.expect(t, md.job == nil, "the render finishes")
 	e2e_render(&e)
 	testing.expect(t, e2e_grid_has(&e, "Part 1"), "the document shows once rendered")
-	whole := md_render(md.source, md.w, .Plain)
-	testing.expect_value(t, len(md.lines), len(whole))
+	whole := md_render(md.source, md.doc_w, .Plain)
+	testing.expect_value(t, len(md.doc.rows), len(whole.rows))
 }
 
 @(test)

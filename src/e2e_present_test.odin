@@ -148,8 +148,7 @@ test_present_keeps_a_disagreeing_terminal_in_sync :: proc(t: ^testing.T) {
 	append(&rows, strings.concatenate({x79, "\u200b"}, context.temp_allocator))
 	tb2.clear()
 	for s, y in rows {
-		spans := []MdSpan{{text = s, fg = COLOR_FG, bg = COLOR_BG}}
-		md_draw_line(0, y, E2E_W, MdLine{spans = spans}, COLOR_BG)
+		draw_row(y, s)
 	}
 	vt_present_check(t, &v, "frame A", false)
 
@@ -179,8 +178,15 @@ vterm_row_text :: proc(screen: ^vterm.Screen, y: int) -> string {
 
 @(private = "file")
 draw_row :: proc(y: int, s: string) {
-	spans := []MdSpan{{text = s, fg = COLOR_FG, bg = COLOR_BG}}
-	md_draw_line(0, y, E2E_W, MdLine{spans = spans}, COLOR_BG)
+	col := 0
+	for cl in md_clusters(s) {
+		cw := cluster_width(transmute([]u8)cl)
+		if col + cw > E2E_W {
+			return
+		}
+		cell_put_cluster(col, y, transmute([]u8)cl, COLOR_FG, COLOR_BG)
+		col += cw
+	}
 }
 
 // clusters sharing their first codepoint: only the tail differs

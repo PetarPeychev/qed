@@ -3,30 +3,30 @@ qed-e2e snapshot 120x40 cursor 4,0
   1 # Gallery                                              │ Gallery
   2                                                        │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   3 Intro ![logo](shots/a.png) then text.                  │
-  4                                                        │ Intro
-  5 <table>                                                │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
-  6 <tr>                                                   │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
-  7 <td><img src="shots/a.png" alt="First"><br><em>First:  │ then text.
-    a caption.</em></td>                                   │
-  8 <td><img src="shots/b.png"                             │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
-    alt="Second"><br><em>Second: another one.</em></td>    │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
-  9 </tr>                                                  │ First: a caption.
- 10 </table>                                               │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
- 11                                                        │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
- 12 <p><img src="shots/gone.png" alt="Missing"> keeps its  │ Second: another one.
-    alt text inline.</p>                                   │
- 13                                                        │ [image: Missing] keeps its alt text inline.
+  4                                                        │       􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
+  5 <table>                                                │ Intro 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽ then text.
+  6 <tr>                                                   │
+  7 <td><img src="shots/a.png" alt="First"><br><em>First:  │ ┌───────────────────┬──────────────────────┐
+    a caption.</em></td>                                   │ │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽􎻮̅̾􎻮̅̿􎻮̅͆􎻮̅͊􎻮̅͋􎻮̅͌􎻮̅͐􎻮̅͑􎻮̅͒􎻮̅͗􎻮̅͛ │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽􎻮̅̾􎻮̅̿􎻮̅͆􎻮̅͊􎻮̅͋􎻮̅͌􎻮̅͐􎻮̅͑􎻮̅͒􎻮̅͗􎻮̅͛􎻮̅ͣ􎻮̅ͤ􎻮̅ͥ │
+  8 <td><img src="shots/b.png"                             │ │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽􎻮̍̾􎻮̍̿􎻮̍͆􎻮̍͊􎻮̍͋􎻮̍͌􎻮̍͐􎻮̍͑􎻮̍͒􎻮̍͗􎻮̍͛ │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽􎻮̍̾􎻮̍̿􎻮̍͆􎻮̍͊􎻮̍͋􎻮̍͌􎻮̍͐􎻮̍͑􎻮̍͒􎻮̍͗􎻮̍͛􎻮̍ͣ􎻮̍ͤ􎻮̍ͥ │
+    alt="Second"><br><em>Second: another one.</em></td>    │ │ 􎻮̎̅􎻮̎̍􎻮̎̎􎻮̎̐􎻮̎̒􎻮̎̽􎻮̎̾􎻮̎̿􎻮̎͆􎻮̎͊􎻮̎͋􎻮̎͌􎻮̎͐􎻮̎͑􎻮̎͒􎻮̎͗􎻮̎͛ │ 􎻮̎̅􎻮̎̍􎻮̎̎􎻮̎̐􎻮̎̒􎻮̎̽􎻮̎̾􎻮̎̿􎻮̎͆􎻮̎͊􎻮̎͋􎻮̎͌􎻮̎͐􎻮̎͑􎻮̎͒􎻮̎͗􎻮̎͛􎻮̎ͣ􎻮̎ͤ􎻮̎ͥ │
+  9 </tr>                                                  │ │ 􎻮̐̅􎻮̐̍􎻮̐̎􎻮̐̐􎻮̐̒􎻮̐̽􎻮̐̾􎻮̐̿􎻮̐͆􎻮̐͊􎻮̐͋􎻮̐͌􎻮̐͐􎻮̐͑􎻮̐͒􎻮̐͗􎻮̐͛ │ 􎻮̐̅􎻮̐̍􎻮̐̎􎻮̐̐􎻮̐̒􎻮̐̽􎻮̐̾􎻮̐̿􎻮̐͆􎻮̐͊􎻮̐͋􎻮̐͌􎻮̐͐􎻮̐͑􎻮̐͒􎻮̐͗􎻮̐͛􎻮̐ͣ􎻮̐ͤ􎻮̐ͥ │
+ 10 </table>                                               │ │ 􎻮̒̅􎻮̒̍􎻮̒̎􎻮̒̐􎻮̒̒􎻮̒̽􎻮̒̾􎻮̒̿􎻮̒͆􎻮̒͊􎻮̒͋􎻮̒͌􎻮̒͐􎻮̒͑􎻮̒͒􎻮̒͗􎻮̒͛ │ 􎻮̒̅􎻮̒̍􎻮̒̎􎻮̒̐􎻮̒̒􎻮̒̽􎻮̒̾􎻮̒̿􎻮̒͆􎻮̒͊􎻮̒͋􎻮̒͌􎻮̒͐􎻮̒͑􎻮̒͒􎻮̒͗􎻮̒͛􎻮̒ͣ􎻮̒ͤ􎻮̒ͥ │
+ 11                                                        │ │                   │ 􎻮̽̅􎻮̽̍􎻮̽̎􎻮̽̐􎻮̽̒􎻮̽̽􎻮̽̾􎻮̽̿􎻮̽͆􎻮̽͊􎻮̽͋􎻮̽͌􎻮̽͐􎻮̽͑􎻮̽͒􎻮̽͗􎻮̽͛􎻮̽ͣ􎻮̽ͤ􎻮̽ͥ │
+ 12 <p><img src="shots/gone.png" alt="Missing"> keeps its  │ │ First: a caption. │                      │
+    alt text inline.</p>                                   │ │                   │ Second: another one. │
+ 13                                                        │ └───────────────────┴──────────────────────┘
  14 <p align="center">                                     │
- 15   <img src="shots/b.png"                               │ 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽
- 16        width="200">                                    │ 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽
- 17 </p>                                                   │
- 18                                                        │
-                                                           │
-                                                           │
-                                                           │
-                                                           │
-                                                           │
-                                                           │
+ 15   <img src="shots/b.png"                               │ [image: Missing] keeps its alt text inline.
+ 16        width="200">                                    │
+ 17 </p>                                                   │                 􎻮̅̅􎻮̅̍􎻮̅̎􎻮̅̐􎻮̅̒􎻮̅̽􎻮̅̾􎻮̅̿􎻮̅͆􎻮̅͊􎻮̅͋􎻮̅͌􎻮̅͐􎻮̅͑􎻮̅͒􎻮̅͗􎻮̅͛􎻮̅ͣ􎻮̅ͤ􎻮̅ͥ􎻮̅ͦ􎻮̅ͧ􎻮̅ͨ􎻮̅ͩ􎻮̅ͪ
+ 18                                                        │                 􎻮̍̅􎻮̍̍􎻮̍̎􎻮̍̐􎻮̍̒􎻮̍̽􎻮̍̾􎻮̍̿􎻮̍͆􎻮̍͊􎻮̍͋􎻮̍͌􎻮̍͐􎻮̍͑􎻮̍͒􎻮̍͗􎻮̍͛􎻮̍ͣ􎻮̍ͤ􎻮̍ͥ􎻮̍ͦ􎻮̍ͧ􎻮̍ͨ􎻮̍ͩ􎻮̍ͪ
+                                                           │                 􎻮̎̅􎻮̎̍􎻮̎̎􎻮̎̐􎻮̎̒􎻮̎̽􎻮̎̾􎻮̎̿􎻮̎͆􎻮̎͊􎻮̎͋􎻮̎͌􎻮̎͐􎻮̎͑􎻮̎͒􎻮̎͗􎻮̎͛􎻮̎ͣ􎻮̎ͤ􎻮̎ͥ􎻮̎ͦ􎻮̎ͧ􎻮̎ͨ􎻮̎ͩ􎻮̎ͪ
+                                                           │                 􎻮̐̅􎻮̐̍􎻮̐̎􎻮̐̐􎻮̐̒􎻮̐̽􎻮̐̾􎻮̐̿􎻮̐͆􎻮̐͊􎻮̐͋􎻮̐͌􎻮̐͐􎻮̐͑􎻮̐͒􎻮̐͗􎻮̐͛􎻮̐ͣ􎻮̐ͤ􎻮̐ͥ􎻮̐ͦ􎻮̐ͧ􎻮̐ͨ􎻮̐ͩ􎻮̐ͪ
+                                                           │                 􎻮̒̅􎻮̒̍􎻮̒̎􎻮̒̐􎻮̒̒􎻮̒̽􎻮̒̾􎻮̒̿􎻮̒͆􎻮̒͊􎻮̒͋􎻮̒͌􎻮̒͐􎻮̒͑􎻮̒͒􎻮̒͗􎻮̒͛􎻮̒ͣ􎻮̒ͤ􎻮̒ͥ􎻮̒ͦ􎻮̒ͧ􎻮̒ͨ􎻮̒ͩ􎻮̒ͪ
+                                                           │                 􎻮̽̅􎻮̽̍􎻮̽̎􎻮̽̐􎻮̽̒􎻮̽̽􎻮̽̾􎻮̽̿􎻮̽͆􎻮̽͊􎻮̽͋􎻮̽͌􎻮̽͐􎻮̽͑􎻮̽͒􎻮̽͗􎻮̽͛􎻮̽ͣ􎻮̽ͤ􎻮̽ͥ􎻮̽ͦ􎻮̽ͧ􎻮̽ͨ􎻮̽ͩ􎻮̽ͪ
+                                                           │                 􎻮̾̅􎻮̾̍􎻮̾̎􎻮̾̐􎻮̾̒􎻮̾̽􎻮̾̾􎻮̾̿􎻮̾͆􎻮̾͊􎻮̾͋􎻮̾͌􎻮̾͐􎻮̾͑􎻮̾͒􎻮̾͗􎻮̾͛􎻮̾ͣ􎻮̾ͤ􎻮̾ͥ􎻮̾ͦ􎻮̾ͧ􎻮̾ͨ􎻮̾ͩ􎻮̾ͪ
+                                                           │                 􎻮̿̅􎻮̿̍􎻮̿̎􎻮̿̐􎻮̿̒􎻮̿̽􎻮̿̾􎻮̿̿􎻮̿͆􎻮̿͊􎻮̿͋􎻮̿͌􎻮̿͐􎻮̿͑􎻮̿͒􎻮̿͗􎻮̿͛􎻮̿ͣ􎻮̿ͤ􎻮̿ͥ􎻮̿ͦ􎻮̿ͧ􎻮̿ͨ􎻮̿ͩ􎻮̿ͪ
                                                            │
                                                            │
                                                            │
@@ -44,24 +44,30 @@ Reloaded from disk
 abbbcdeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddfghhhhhhhgggggggggggggggggggggggggggggggggggggggggggggggggggg
 aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiigg
 aaaaggggggggjjjjggjjjjjjjjjjjggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagiiiiigggggggggggggggggggggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagiiggggggggggggggggggggggggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagiiggiiigiiigglllllllllllggiiigglllllgggiiggiigggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaaggggggggggggiigggiiggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagiiggiiigiiigglllllllllllggggggggggggggggggggggggggggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaaiiiggllllllgggiiggiigggggggggggggggggggggggiigggiigggggfgkkkkkkggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaaggiigggggggggggggggggggggggggggggggggggggggggggggggggggfgmmmmmmmmmmmmmmmmmgggggggggggggggggggggggggggggggggggggggggg
-aaaaggiiiiiggggggggggggggggggggggggggggggggggggggggggggggggfgnnnnnnggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgnnnnnnggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagiggiiigiiiggllllllllllllllggiiigglllllllggggggggggggggfgmmmmmmmmmmmmmmmmmmmmggggggggggggggggggggggggggggggggggggggg
-aaaaggggggggggggggggggiggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgffffffffffffffffggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggkkkkkkggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagiiiiigggggggggggggggggggggggggggggggggggggggggggggggggfgggggggkkkkkkggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagiiggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagiiggiiigiiigglllllllllllggiiigglllllgggiiggiigggggggggfgffffffffffffffffffffffffffffffffffffffffffffggggggggggggggg
+aaaaggggggggggggiigggiiggggggggggggggggggggggggggggggggggggfgfmkkkkkkkkkkkkkkkkkmfmnnnnnnnnnnnnnnnnnnnnmfggggggggggggggg
+aaaagiiggiiigiiigglllllllllllggggggggggggggggggggggggggggggfgfmkkkkkkkkkkkkkkkkkmfmnnnnnnnnnnnnnnnnnnnnmfggggggggggggggg
+aaaaiiiggllllllgggiiggiigggggggggggggggggggggggiigggiigggggfgfmkkkkkkkkkkkkkkkkkmfmnnnnnnnnnnnnnnnnnnnnmfggggggggggggggg
+aaaaggiigggggggggggggggggggggggggggggggggggggggggggggggggggfgfmkkkkkkkkkkkkkkkkkmfmnnnnnnnnnnnnnnnnnnnnmfggggggggggggggg
+aaaaggiiiiiggggggggggggggggggggggggggggggggggggggggggggggggfgfmkkkkkkkkkkkkkkkkkmfmnnnnnnnnnnnnnnnnnnnnmfggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgfmmmmmmmmmmmmmmmmmmmfmnnnnnnnnnnnnnnnnnnnnmfggggggggggggggg
+aaaagiggiiigiiiggllllllllllllllggiiigglllllllggggggggggggggfgfmooooooooooooooooomfmmmmmmmmmmmmmmmmmmmmmmfggggggggggggggg
+aaaaggggggggggggggggggiggggggggggggggggggggggggggggggggggggfgfmmmmmmmmmmmmmmmmmmmfmoooooooooooooooooooomfggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgffffffffffffffffffffffffffffffffffffffffffffggggggggggggggg
 aaaagigiiiiiggllllllgggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagggiiigiiigglllllllllllggggggggggggggggggggggggggggggggfgnnnnnnggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagggggggiiiiigglllggggggggggggggggggggggggggggggggggggggfgnnnnnnggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaaggiggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaagggiiigiiigglllllllllllggggggggggggggggggggggggggggggggfgffffffffffffffffggggggggggggggggggggggggggggggggggggggggggg
+aaaagggggggiiiiigglllggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+aaaaggiggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
+aaaagggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggnnnnnnnnnnnnnnnnnnnnnnnnngggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
@@ -73,13 +79,7 @@ gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggfgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 -- legend
 a fg=#868686 bg=#1b1b1b
@@ -94,6 +94,7 @@ i fg=#ffdd33 bg=#181818
 j fg=#96a6c8 bg=#181818
 k fg=image1 bg=#181818
 l fg=#73c936 bg=#181818
-m fg=#f4f4ff bg=#181818 italic
+m fg=- bg=#181818
 n fg=image2 bg=#181818
-o fg=#f4f4ff bg=#2b2b2b
+o fg=#f4f4ff bg=#181818 italic
+p fg=#f4f4ff bg=#2b2b2b

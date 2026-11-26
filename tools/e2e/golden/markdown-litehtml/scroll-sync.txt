@@ -1,0 +1,111 @@
+qed-e2e snapshot 140x45 cursor 5,42
+-- text
+  20 - [Configuration](#configuration)                               │ • Configuration
+  21                                                                 │
+  22 ## Features                                                     │ Features
+  23                                                                 │ ─────────────────────────────────────────────────────────────────── ┃
+  24 - **Editing:** Unicode/grapheme-aware cursor, soft wrap,        │                                                                     ┃
+     multiple buffers,                                               │ • Editing: Unicode/grapheme-aware cursor, soft wrap, multiple       ┃
+  25   grouped undo/redo, auto-indent, auto-close pairs, block       │   buffers, grouped undo/redo, auto-indent, auto-close pairs, block  ┃
+     indent, comment toggle,                                         │   indent, comment toggle, word/paragraph motion with held-key       ┃
+  26   word/paragraph motion with held-key acceleration.             │   acceleration.                                                     ┃
+  27 - **Syntax highlighting:** tree-sitter for 20 languages,        │ • Syntax highlighting: tree-sitter for 20 languages, theme-driven,  ┃
+     theme-driven, with                                              │   with injection (code blocks in Markdown, <script>/<style> in      ┃
+  28   injection (code blocks in Markdown, `<script>`/`<style>` in   │   HTML).
+     HTML).                                                          │ • Language servers: diagnostics, go-to-definition, hover,
+  29 - **Language servers:** diagnostics, go-to-definition, hover,   │   workspace-wide rename, as-you-type completion, document
+     workspace-wide                                                  │   formatting.
+  30   rename, as-you-type completion, document formatting.          │ • Git: diff gutter, inline diff view, per-file diff preview, branch
+  31 - **Git:** diff gutter, inline diff view, per-file diff         │   and ahead/behind in the status bar, merge-conflict highlighting
+     preview, branch and                                             │   and resolve.
+  32   ahead/behind in the status bar, merge-conflict highlighting   │ • Navigation: file tree (open/copy/rename/delete/search), fuzzy
+     and resolve.                                                    │   line jump, project search (ripgrep), find/replace (regex,
+  33 - **Navigation:** file tree (open/copy/rename/delete/search),   │   smart-case), command palette (Ctrl+P).
+     fuzzy line jump,                                                │ • Embedded terminal: persistent full-TUI shell in a floating pane (
+  34   project search (ripgrep), find/replace (regex, smart-case),   │   Alt+t), with mouse, scrollback, and copy/paste.
+     command palette                                                 │ • AI (optional): selection-and-prompt edits via a chat command (
+  35   (`Ctrl+P`).                                                   │   Ctrl+K), inline FIM ghost-text completion.
+  36 - **Embedded terminal:** persistent full-TUI shell in a         │ • Markdown preview: rendered preview (Alt+p) that follows links and
+     floating pane (`Alt+t`),                                        │   anchors, with Back/Forward.
+  37   with mouse, scrollback, and copy/paste.                       │ • Lua plugins: bundled features (file tree, git, search, format,
+  38 - **AI (optional):** selection-and-prompt edits via a chat      │   AI) are plugins; add your own commands, panes and hooks in
+     command (`Ctrl+K`),                                             │   ~/.config/qed/plugins/.
+  39   inline FIM ghost-text completion.                             │ • Configuration: JSON knobs, keybinds, and colors, hot-reloaded
+  40 - **Markdown preview:** rendered preview (`Alt+p`) that follows │   from ~/.config/qed/.
+     links and                                                       │
+  41   anchors, with Back/Forward.                                   │ Screenshots
+  42 - **Lua plugins:** bundled features (file tree, git, search,    │ ───────────────────────────────────────────────────────────────────
+     format, AI) are                                                 │
+  43   plugins; add your own commands, panes and hooks in            │ ┌────────────────────────────────┬────────────────────────────────┐
+     `~/.config/qed/plugins/`.                                       │ │ [image: Welcome screen]        │ [image: Find and replace]      │
+  44 - **Configuration:** JSON knobs, keybinds, and colors,          │ │ Welcome screen: working root,  │ Find & replace: regex,         │
+     hot-reloaded from                                               │ │ git branch, startup keys.      │ smart-case, live match count,  │
+  45   `~/.config/qed/`.                                             │ │                                │ all hits highlighted.          │
+  46                                                                 │ ├────────────────────────────────┼────────────────────────────────┤
+  47 ## Screenshots                                                  │ │ [image: LSP diagnostics]       │ [image: Hover documentation]   │
+ ≡ root/README.md  47/184  [2/2]                                                                                     ◆ markdown  ⇥ Spaces:2
+
+-- style
+aaaaabbcdddddddddddddccddddddddddddddccccccccccccccccccccccccccccccccecbfgggggggggggggcccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbchhhhhhhhcccccccccccccccccccccccccccccccccccccccccccccccccccccechhhhhhhhccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeece
+aaaaabbiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccccceccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccce
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccccccccccccce
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccce
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccce
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccce
+aaaaabbiiiiiiiiiiiiiiiiiiiiiiiiccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccce
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffcccccccccccccccccccccccccccccccccccccccccjjjjjjjjcjjjjjjjccccccccce
+aaaaabbcccccccccccccccccccccccccccccccccccckkkkkkkkkkckkkkkkkkkccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbiiiiiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbiiiiiiiiccccccccccccccccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccjjjjjjccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiiiiiiiiiccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecffjjjjjcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiiiiiccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbckkkkkkkkcccccccccccccccccccccccccccccccccccccccccccccccccccccecffjjjjjjccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbiiiiiiiiiiiiiiiiiiiiiiccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiiiiiiiicccccccccccccccccccjjjjjcccccccccccccccccccccccccc
+aaaaaccccccccccccccckkkkkkkccccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiiiccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbiiiiiiiiiiiiiiiiiiccccccccccccccccccccccccccccccccccccccccccccecffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccckkkkkkkkcccccccccccccccccccccccccccccccccccccccccccccccecffjjjjjjjjjjjjjjjjjjjjjjccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecbfiiiiiiiiiiiiiiccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbiiiiiiiiiiiiiiiiiiiiiccccccccccccccccccckkkkkkkcccccccccccccccecffcccccjjjjjjjjjjjjjjcccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccechhhhhhhhhhhcccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccceceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecc
+aaaaaccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaabbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecc
+aaaaakkkkkkkkkkkkkkkkkkkkkkkkccccccccccccccccccccccccccccccccccccccccecefeeeeeeeeeeeeeeeeeeeeeeeffffffffefeeeeeeeeeeeeeeeeeeeeeeeeeffffffecc
+aaaaabbiiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccceceflllllllllllllllllllllllllllllffefllllllllllllllllllllllfffffffffecc
+aaaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceceflllllllllllllllllllllllllffffffeflllllllllllllllllllllllllllllffecc
+aaaaabbkkkkkkkkkkkkkkkkcccccccccccccccccccccccccccccccccccccccccccccceceffffffffffffffffffffffffffffffffeflllllllllllllllllllllffffffffffecc
+aaaaacccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecc
+ammmmnnopppppppppppooooooooooooooooooooooooooooooooooooooooooooooooooecefeeeeeeeeeeeeeeeeeeeeeeeefffffffefeeeeeeeeeeeeeeeeeeeeeeeeeeeefffecc
+qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#ffdd33 bg=#181818
+c fg=#f4f4ff bg=#181818
+d fg=#96a6c8 bg=#181818
+e fg=#868686 bg=#181818
+f fg=- bg=#181818
+g fg=#96a6c8 bg=#181818 underline
+h fg=#ffdd33 bg=#181818 bold
+i fg=#f4f4ff bg=#181818 bold
+j fg=#95a99f bg=#363636
+k fg=#95a99f bg=#181818
+l fg=#f4f4ff bg=#181818 italic
+m fg=#d8d8d8 bg=#1b1b1b
+n fg=#ffdd33 bg=#262626
+o fg=#f4f4ff bg=#262626
+p fg=#ffdd33 bg=#262626 bold
+q fg=#f4f4ff bg=#2b2b2b

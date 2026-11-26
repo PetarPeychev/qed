@@ -6,12 +6,13 @@ Reference for `src/image.odin`; DESIGN.md has the summary.
 
 - A placeholder cell is `U+10EEEE` + a row and a column diacritic (kitty's `rowcolumn-diacritics.txt`,
   `IMAGE_DIACRITICS`), fg = the image id as truecolor (24-bit, never 0). termbox measures it as width 1.
-- `md_inline` tags image spans (`![](x)`, `<img src>`, inside links too) with their dest; in a paragraph or HTML
-  block with a resolvable one, `md_emit_images` emits in source order: image rows, and the text between images
-  wrapped with its empty rows dropped (a `<td>` grid becomes one column). Remote URLs, missing files, a render
-  without a dir (hover) or no protocol: the `[image: alt]` span stays in the text.
-- `image_cells`: cols from pixel width / cell width, never upscaled, capped by the available width and
-  `image_max_rows`; rows keep the aspect. Cell pixels come from `TIOCGWINSZ` on termbox's tty (8x16 when 0).
+- Markdown: the render (any thread) sizes each `<img>` from its file header (`md_image_info`, no cache) and litehtml
+  places it; `draw_image` gives its cell box, recorded as an `MdImage` with its path. Assembly on the main thread
+  gives it the cache's id (`image_get`); a drawn image whose id is gone or failed lays the pieces out afresh
+  (`UiMarkdown.flush`). Remote URLs, missing files, a render without a dir (hover) or no protocol: `[image: alt]`.
+- `image_cells`: cols from pixel width / cell width, never upscaled, capped by `image_max_rows`; rows keep the aspect.
+  In markdown that is the image's natural CSS size (8 px a column, 16 a row); `max-width: 100%`, an `<img width>`
+  and `width: 100%` in table cells resize it like a browser. Cell pixels come from `TIOCGWINSZ` on termbox's tty (8x16 when 0).
 
 ## Data
 
@@ -30,8 +31,8 @@ Reference for `src/image.odin`; DESIGN.md has the summary.
   placement `a=p,U=1,i,p=1,c,r` per size. The fixed `p=1` makes a new size replace the old placement (kitty:
   same image and placement id replaces); without it kitty keeps several virtual placements and picks any.
 - Until `image_show` has sent the image, its reserved rows draw `image_box_row`: a dim `┌─┐│└─┘` box (3+ rows,
-  else plain rows) with `⋯ alt` centered on the middle row, cut with `…`. Markdown bakes it per line
-  (`MdLine.loading`, `pane_shortcut_foreground` like its `[image: alt]`); the image node uses `pane_dim_foreground` and the file name.
+  else plain rows) with `⋯ alt` centered on the middle row, cut with `…`. Markdown draws it over the image's box
+  (`pane_shortcut_foreground` like its `[image: alt]`); the image node uses `pane_dim_foreground` and the file name.
   A drawn markdown line whose id is gone (dropped past `IMAGE_ENTRIES_MAX`) or reprobed to `Failed` re-renders the
   pane, which re-resolves the path (a new entry, or the alt text).
 - Entries are keyed by path and keep their id, so lines already rendered never point at a dead id; a changed
@@ -58,7 +59,9 @@ Reference for `src/image.odin`; DESIGN.md has the summary.
 
 - A `dim` backdrop recolors placeholder fg, so the image disappears under it.
 - The same image at two sizes at once (preview + markdown) re-places every frame.
-- No remote fetch, no SVG/GIF, `<img width>` ignored, images are not resent if the terminal drops them.
+- No remote fetch, no SVG/GIF, images are not resent if the terminal drops them.
+- The e2e harness's libvterm misplaces placeholders past the 38th column diacritic, so wide images leave stray
+  cells in snapshots (scenarios with wide images run with `image_protocol` none).
 
 ## Terminals
 

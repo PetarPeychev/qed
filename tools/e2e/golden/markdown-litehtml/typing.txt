@@ -1,0 +1,112 @@
+qed-e2e snapshot 140x45 cursor 12,0
+-- text
+    1 Typing# qed — Architecture                                     │ Typing# qed — Architecture                                          ┃
+    2                                                                │
+    3 Living reference for how the pieces fit. Terse by policy: only │ Living reference for how the pieces fit. Terse by policy: only what
+      what the code                                                  │ the code can't tell you (non-obvious invariants, external-quirk
+    4 can't tell you (non-obvious invariants, external-quirk         │ workarounds) lives here. Read CLAUDE.md first for philosophy and
+      workarounds) lives here.                                       │ conventions. Tasks are in TODO.md; subsystem deep-dives are in
+    5 Read CLAUDE.md first for philosophy and conventions. Tasks are │ notes/.
+      in                                                             │
+    6 [TODO.md](TODO.md); subsystem deep-dives are in                │ Data model
+      [notes/](notes/).                                              │ ───────────────────────────────────────────────────────────────────
+    7                                                                │
+    8 ## Data model                                                  │  Buffer :: struct {
+    9                                                                │      id:          u64                    // stable handle
+   10 ```odin                                                        │  (plugins); never reused
+   11 Buffer :: struct {                                             │      path:        string
+   12     id:          u64                    // stable handle       │      lines:       [dynamic]Line          // never empty
+      (plugins); never reused                                        │      cursor:      Cursor
+   13     path:        string                                        │      selection:   Maybe(Cursor)          // anchor; cursor is the
+   14     lines:       [dynamic]Line          // never empty         │  moving end
+   15     cursor:      Cursor                                        │      goal_col:    int                    // remembered x for
+   16     selection:   Maybe(Cursor)          // anchor; cursor is   │  vertical moves
+      the moving end                                                 │      line_ending: LineEnding             // .LF | .CRLF, detected
+   17     goal_col:    int                    // remembered x for    │  on open
+      vertical moves                                                 │      modified, big: bool
+   18     line_ending: LineEnding             // .LF | .CRLF,        │      undo, redo:  [dynamic]EditGroup     // inverse-op log; `open`
+      detected on open                                               │  group coalesces
+   19     modified, big: bool                                        │      hl: Highlight, base: DiffBase       // highlight tree + diff
+   20     undo, redo:  [dynamic]EditGroup     // inverse-op log;     │  base (git or plugin) marks
+      `open` group coalesces                                         │      deco: DecoStore                     // plugin decorations,
+   21     hl: Highlight, base: DiffBase       // highlight tree +    │  row-anchored
+      diff base (git or plugin) marks                                │      language: Language                  // detected at open;
+   22     deco: DecoStore                     // plugin decorations, │  Settings: Language overrides
+      row-anchored                                                   │      // ... lsp/diag/rev bookkeeping
+   23     language: Language                  // detected at open;   │  }
+      Settings: Language overrides                                   │  Line   :: struct { text: [dynamic]u8 }   // bytes, no line
+   24     // ... lsp/diag/rev bookkeeping                            │  terminator stored
+   25 }                                                              │  Cursor :: struct { row, col: int }       // col = BYTE offset
+   26 Line   :: struct { text: [dynamic]u8 }   // bytes, no line     │  into lines[row]
+      terminator stored                                              │
+   27 Cursor :: struct { row, col: int }       // col = BYTE offset  │ Invariants:
+      into lines[row]                                                │
+   28 ```                                                            │ • lines is never empty; an empty buffer is one empty line.
+   29                                                                │ • Line.text holds no \n/\r\n; line breaks are the array boundary.
+ ≡ root/DESIGN.md ●  1/1105  [3/3]                                                                                   ◆ markdown  ⇥ Spaces:2
+
+-- style
+abbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeed
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeffffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaegggggggeegggggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedehhhhhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeggggggeeggggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeededddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaiiehhhhhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejkkkkkkllllmmmmmmlljjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllllllllllllllllllllllllllllllllllllllnnnnnnnnnnnnnnnnnjjjjjjjjjee
+aaaaaaoooooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejnnnnnnnnnnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaggggggooooiiiiiiooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllllllllllllllllllllljjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaoooooooooooooooooooooooooooooooooooooooopppppppppppppppppeeeeeedejllllllllllllllllllmmmmmmmlkkkkllllllllllnnnnnnnnnnnnnnjjjjjjjjjjjjee
+aaaaaapppppppppppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejlllllllllllllllllkkkkkkjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaoooooooooooooooooooooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejlllllllllllllllllkkkkklkkkkkklllllllllllnnnnnnnnnnnnnnnnnnnnnnnnnjee
+aaaaaaooooooooooooooooooiiiiiiioggggooooooooooppppppppppppppeeeeeeeeedejnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaoooooooooooooooooggggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllllllllllllllllllllllllllllllllllllllnnnnnnnnnnnnnnnnnnnnjjjjjjee
+aaaaaaooooooooooooooooogggggoggggggooooooooooopppppppppppppppppppppeedejnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaappppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejlllllllllllllllllkkkkkkkkkklllllllllllllnnnnnnnnnnnnnnnnnnnnnnnnnjee
+aaaaaaooooooooooooooooooooooooooooooooooooooooppppppppppppppppppppeeedejnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaappppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllkkkkkkkklllllllkkkkjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaoooooooooooooooooggggggggggoooooooooooooppppppppppppppppeeeeeeedejllllllllllllllllllmmmmmmmlkkkkkkkkklllllnnnnnnnnnnnnnnnnnnnnnnnnnjee
+aaaaaappppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejnnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaooooggggggggoooooooggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllllllkkkkkkkkkllllllllkkkkkkkklllllllnnnnnnnnnnnnnnnnnnnnnnnnnjee
+aaaaaaooooooooooooooooooiiiiiiiogggggggggooooopppppppppppppppppppeeeedejnnnnnnnnnnnnnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaappppppppppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllllllllkkkkkkkkklllllllllllllllllllllnnnnnnnnnnnnnnnnnnnnnnnjjjee
+aaaaaaoooooooogggggggggooooooooggggggggoooooooppppppppppppppppppppeeedejnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaapppppppppppppppppppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllllllllllllkkkkkkkkllllllllllllllllllnnnnnnnnnnnnnnnnnnnnnjjjjjee
+aaaaaaoooooooooogggggggggooooooooooooooooooooopppppppppppppppppppppppdejnnnnnnnnnnnnnnnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaappppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejllllnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaooooooooooooooggggggggoooooooooooooooooopppppppppppppppppppppeedejljjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaappppppppppppppppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejkkkkllllllmmmmmmllllllllllmmmmmmmlkklllllnnnnnnnnnnnnnnnnnnjjjjjjjee
+aaaaaaoooopppppppppppppppppppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeedejnnnnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaaoeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedejkkkkkkllllmmmmmmlllllllllllllkkklllllllllnnnnnnnnnnnnnnnnnnnnnjjjjee
+aaaaaaggggooooooiiiiiiooooooooooiiiiiiioggoooooppppppppppppppppppeeeedejnnnnnnnnnnnnnnnjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjee
+aaaaaapppppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaggggggooooiiiiiiooooooooooooogggooooooooopppppppppppppppppppppedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaapppppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaoooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeiqllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaaaeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedeiqllllllllleeeeeeeeeellelllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#f4f4ff bg=#262626
+d fg=#868686 bg=#181818
+e fg=#f4f4ff bg=#181818
+f fg=#96a6c8 bg=#181818 underline
+g fg=#96a6c8 bg=#181818
+h fg=#ffdd33 bg=#181818 bold
+i fg=#ffdd33 bg=#181818
+j fg=- bg=#363636
+k fg=#96a6c8 bg=#363636
+l fg=#95a99f bg=#363636
+m fg=#ffdd33 bg=#363636
+n fg=#cc8c3c bg=#363636
+o fg=#95a99f bg=#181818
+p fg=#cc8c3c bg=#181818
+q fg=- bg=#181818
+r fg=#f4f4ff bg=#2b2b2b

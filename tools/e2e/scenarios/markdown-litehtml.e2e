@@ -1,0 +1,113 @@
+# Markdown preview laid out like GitHub: cmark-gfm HTML on a terminal cell grid, rendered off the main thread.
+size 140x45
+config
+{"lsp": {"enabled": false}, "image_protocol": "none"}
+end
+copy README.md README.md
+copy docs/screenshots/file-pane.png docs/screenshots/file-pane.png
+copy docs/screenshots/welcome.png docs/screenshots/welcome.png
+copy docs/screenshots/find-replace.png docs/screenshots/find-replace.png
+copy docs/screenshots/lsp-errors.png docs/screenshots/lsp-errors.png
+copy docs/screenshots/lsp-hover.png docs/screenshots/lsp-hover.png
+copy docs/screenshots/diff.png docs/screenshots/diff.png
+copy docs/screenshots/terminal.png docs/screenshots/terminal.png
+copy docs/DESIGN.md DESIGN.md
+file tour.md
+# Tour
+
+Jump to [the alert](#an-alert), or open the [README](README.md).
+
+## Details
+
+<details>
+<summary>Click to expand</summary>
+
+Hidden until the summary is clicked.
+
+</details>
+
+## A table
+
+| Key | Action | Notes |
+|:-------|:-------:|-------:|
+| Alt+p | preview | the full overlay |
+| Ctrl+s | save | atomic, mode kept |
+
+## Nested
+
+1. First item
+   - a bullet
+     - a deeper bullet
+2. Second item
+   > a quote inside the list
+   > > and a quote inside that
+
+## An alert
+
+> [!TIP]
+> Alerts render like GitHub: a colored title and bar.
+
+## Filler
+
+Paragraph one keeps the page long enough to scroll.
+
+Paragraph two keeps the page long enough to scroll.
+
+Paragraph three keeps the page long enough to scroll.
+
+Paragraph four keeps the page long enough to scroll.
+
+Paragraph five keeps the page long enough to scroll.
+
+Paragraph six keeps the page long enough to scroll.
+
+Paragraph seven keeps the page long enough to scroll.
+
+Paragraph eight keeps the page long enough to scroll.
+
+Paragraph nine keeps the page long enough to scroll.
+
+Paragraph ten keeps the page long enough to scroll.
+end
+run tour.md
+wait # Tour
+key alt+p
+wait A table
+snap table A pipe table: GitHub-style borders with a rule between rows, bold header, columns aligned left, center and right.
+snap nested Nested lists and quotes: bullets change with depth, a quote inside a list item keeps its indent, a nested quote gets a second bar.
+snap details-closed A closed details block shows only its summary.
+click 16 14
+wait Hidden until the summary
+snap details-open Clicking the summary opens it in place; the scroll position stays.
+click 20 9
+wait Alerts render like
+snap anchor Clicking an anchor link scrolls the heading it names to the top: the alert, with its colored title and bar.
+key alt+,
+wait Jump to the alert, or
+snap back Alt+, goes back to where the link was clicked.
+click 45 9
+wait written in Odin, inspired by micro
+snap readme A link to another markdown file opens it in the preview.
+key pgdn down*10
+wait Welcome screen: working root
+snap readme-grid The README screenshot table keeps its two columns, each cell an image (its alt text here, without kitty graphics) with the caption under it.
+key esc
+wait-gone click a link to open it
+key ctrl+p
+type toggle split
+wait Markdown: Toggle Split
+key enter
+wait-gone Toggle
+wheel 20 20 up 30
+wait written in Odin, inspired by micro
+wheel 20 20 down 8
+wait-gone written in Odin, inspired by micro
+snap scroll-sync In the split, wheeling the editor scrolls the preview to the same source line.
+key alt+f
+type DESIGN.md
+wait DESIGN.md  
+key enter
+wait Data model
+type Typing
+wait Typing# qed
+snap typing Typing into the 1000-line DESIGN.md: the text lands at once and the preview catches up a moment later, rendered on its own thread.

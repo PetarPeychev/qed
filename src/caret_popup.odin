@@ -179,16 +179,15 @@ caret_hover_build :: proc(editor: ^Editor) -> ^UiNode {
 		return nil
 	}
 	source := string(editor.hover[:])
-	lines := md_render(source, text_w, editor.hover_lang)
-	if len(lines) == 0 {
+	// the body keeps this render: the box takes its widest row, and narrower than that nothing would wrap differently
+	md := ui_markdown_get(editor, "#/caret_hover_body", source, "", editor.hover_lang)
+	doc := ui_markdown_render_now(md, text_w)
+	if doc == nil || len(doc.rows) == 0 {
 		return nil
 	}
-	content_w := 0
-	for line in lines {
-		content_w = max(content_w, md_line_width(line))
-	}
-	content_w = clamp(content_w, 1, text_w)
-	box := caret_box("caret_hover", content_w + 3, min(len(lines), HOVER_PANE_MAX_LINES) + 2)
+	content_w := clamp(doc.width, 1, text_w)
+	md.doc_w = content_w
+	box := caret_box("caret_hover", content_w + 3, min(len(doc.rows), HOVER_PANE_MAX_LINES) + 2)
 	scroll := ui_core_node(.Scroll, "caret_hover_scroll")
 	ui_core_add(box, scroll)
 	body := ui_core_node(.Markdown, "caret_hover_body")

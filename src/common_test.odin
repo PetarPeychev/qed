@@ -546,33 +546,6 @@ bind_format :: proc(ev: tb2.Event, allocator := context.temp_allocator) -> (stri
 	return "", false
 }
 
-// rendered lines run in source order: find the block holding src, then its first line from the closest row at or above src
-md_line_of_src :: proc(lines: []MdLine, src: int) -> int {
-	block := -1
-	for line in lines {
-		if line.block > src {
-			break
-		}
-		block = line.block
-	}
-	first, at, best := -1, 0, -1
-	for line, i in lines {
-		if line.block > block {
-			break
-		}
-		if line.block != block {
-			continue
-		}
-		if first < 0 {
-			first = i
-		}
-		if line.src <= src && line.src > best {
-			at, best = i, line.src
-		}
-	}
-	return at if best >= 0 else max(first, 0)
-}
-
 command_run :: proc(editor: ^Editor, cmd: Command) {
 	if cmd.owner != "" {
 		plugin_command_run(editor, cmd)

@@ -409,6 +409,11 @@ gate_plugins :: proc() {
 		start := time.tick_now()
 		gate_frame(&e, char('p', .Alt))
 		gate_record(300, one(ms_since(start)), "markdown preview open (100k lines)", .Gate)
+		for ui_markdowns_busy(&e.ed) && ms_since(start) < 120_000 {
+			editor_render(&e.ed)
+			free_all(context.temp_allocator)
+			time.sleep(5 * time.Millisecond)
+		}
 		gate_settle(&e)
 		gate_record(300, one(ms_since(start)), "markdown preview rendered (100k lines)", .Info)
 		gate_place(&e, 50_000, 0)

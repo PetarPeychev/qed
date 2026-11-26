@@ -626,40 +626,44 @@ re-opens LSP).
 
 ## Markdown rendering
 
-`md_render(src, width, lang) -> []MdLine` (`mdrender.odin`) backs LSP hover and the `markdown`
-pane body. Hand-rolled, not tree-sitter: the grammar splits block and inline trees, and inline
-content inside quotes and lists is discontiguous (included-range reparses per paragraph), while a
-line-based container parser handles nesting directly. `md_parse` builds blocks (paragraph with
-soft/hard breaks, ATX/setext heading, fenced/indented code, rule, quote, list with loose/task
-items, GFM table, HTML block, link reference definitions), recursing into quote and item bodies
-with their prefix stripped; a parallel row array keeps each block's first source row (`MdBlock.src`)
-and, for code and tables, each line's (`line_src`). Every emitted line carries its block's row
-(`MdLine.block`) and its source row (`MdLine.src`: exact for code and table rows, the block's first row
-for reflowed text; a separating blank belongs to the block above). `md_blocks` emits through a prefix stack (quote bar, bullet or number
-then hanging indent), so text wraps at the remaining width. Every marker is hidden. Colors come
-from the markdown `captures` (`text.title`, `text.literal`, `text.reference`,
-`punctuation.special`), so the preview matches the editor; strong/emphasis/strike are attributes
-on the run color (`text.strong` is `foreground bold`, so bold never reads as a heading). H1 gets a
-`━` rule in the heading color, H2 a `─` rule. Code (blocks and inline) sits on a band: tint
-`markdown_code` of the pane selection color over the pane background, filled to the right edge
-via `MdLine.fill`; blocks are highlighted by `highlight_lines` and char-wrapped. Links show their
-text underlined (spans carry the target for click-to-follow). Images and `<img>` show `[image: alt]` (but see Images); other HTML tags drop (`br` and block closers
-break lines; only real tag names count, so `Vec<T>` stays text). Plaintext hovers go through
-`md_escape_plain` (punctuation escaped, hard breaks, indent as no-break spaces); a MarkedString
-`{language, value}` becomes a fenced block. Front matter renders as a yaml code block. Containers
-nest at most `MD_MAX_NEST` deep (deeper markers are text), inline scans stop after `MD_SCAN_MAX`
-bytes, prefixes beyond half the width are hidden and every line is cut to the width, so hostile
-input stays linear and in bounds. Inline code falls back to the pane foreground when the theme's
-code color has under 3:1 contrast on the band. Tables fit columns to content, keep whole words when every column's longest word
-fits, share the rest evenly and wrap cells; below 3 columns per cell, rows become `header: value`
-lines.
+`markdown.odin` backs the `markdown` node (the preview) and the LSP hover: cmark-gfm turns the source into HTML
+(GFM tables, strikethrough, autolinks, task lists, footnotes, raw HTML, `data-sourcepos`), and litehtml lays it out on
+the cell grid through a `document_container` whose pixels are cells (1 col = 8 px, 1 row = 16 px, the font one row
+tall), painting into `MdCell`s. Both are vendored C/C++ under `lib/` (`qmd.c`, `qlh.cpp` wrappers). Container,
+stylesheet and HTML rewrites: [notes/markdown.md](notes/markdown.md).
+
+The HTML is rewritten before layout: GitHub heading ids (`md_slug`, `-1` dedupe when stacked), alerts (`> [!NOTE]` etc. become a
+titled, colored quote), task boxes, `<details>` open state (the node's toggles), images resolved or turned into
+`[image: alt]` (also drawn for a file that sized but failed to decode). Code blocks are highlighted by the language's tree-sitter query (`highlight_query_clone`: its own
+parser and cursor, a copied palette) and emitted as colored spans, one per source line. The stylesheet comes from
+theme keys (markdown `captures`, pane colors, `markdown_code` tint); a retheme re-renders.
+
+A render reads only an `MdInput` gathered on the main thread (`md_input_make`: source, stylesheet, fence languages
+and their queries, image settings), so the preview renders on a thread per node (`ui_markdown.odin`): the last render
+stays up until the new one is adopted; a newer edit or width cancels a stale render; a first open waits once up to
+`md_wait_ms` (60), then the pane stays empty until the first piece lands. litehtml grows faster than linearly, so the
+HTML is cut into pieces at top-level block boundaries qmd.c marks (only after a block whose bottom margin is one row,
+which the stacking puts back); a cut goes after one block in 8 whose source hashes to it, so an edit moves no cut
+but its own. Source rows, `<details>` indices and heading ids inside a piece are relative (made absolute when the
+pieces are stacked), so a piece whose HTML, width and stylesheet match one on screen is reused even when lines were
+added above it; highlighted code is cached by content. A first render shows its pieces as they finish; closing a
+preview cancels its render at the next piece. The hover renders once, synchronously (about 2 ms), at the measuring
+width, and keeps that render at the box's width (rules don't count). A piece is capped at 20k rows (a hostile
+`height`). cmark-gfm's extension characters are a process-wide table; a patch sets them once
+(`lib/cmark_gfm/PATCHES.md`) so parses on two threads don't race.
+
+Each row carries the source row of the last block starting at or above it (`data-sourcepos`; code rows are exact),
+which drives scroll sync both ways (`ui_markdown_line_of_source`/`source_of_line` interpolate inside a block). Links
+are walked boxes (`MdCell.link`), anchors every element `id` (headings, footnotes), `<summary>` boxes toggle their
+`<details>` on click (`UiMarkdown.open`, re-rendered keeping the scroll). Known differences from GitHub: litehtml may
+break a line between an inline code span and adjacent punctuation; table images use `width: 100%` (litehtml ignores
+`max-width` in cells), so small screenshots in tables upscale to their column.
 
 ## Images
 
 `image.odin`: kitty graphics with Unicode placeholders, so termbox's diff owns every cell and images scroll,
-clip and hide under overlays like text. A `markdown` body with `markdown_dir` shows local PNG/JPEG images in
-paragraphs and HTML blocks as placeholder rows, the text between them wrapped in source order (anything else
-stays `[image: alt]`); the file preview shows image files. Size comes from the file header at render time, so layout
+clip and hide under overlays like text. A `markdown` body with a dir shows local PNG/JPEG images where litehtml boxes
+them (inline, in table cells, `width` honoured; anything else stays `[image: alt]`); the file preview shows image files. Size comes from the file header at render time, so layout
 reserves the rows at once; until the terminal has the image they draw a dim box with the alt text. Only drawn rows
 load; one background thread (`image_pump`) prepares the transmit bytes (a PNG within the largest box it can show at as its own
 file, else decoded, scaled down to fit that box and deflated), so the render path only writes them. qed links the
@@ -812,9 +816,9 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 + undo) · `cursor` · `settings` (user-config globals seeded before main from the declarations, load + write-back) · `options` (typed option
 declarations: parse, merge/validate, core's declaration pass) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict safety dialogs as core-built `qed.ui` nodes in the alert layer) · `rename` (the LSP rename prompt, core-built) · `draw` (box, text and cell drawing helpers, `Rect`) · `log` (message ring + disk log) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `preview` (preview read limits, binary check, hexdump rows) · `palette` · `walk` (walk service, `qed.fs` writes) · `walk_tree` (`walk:tree()` list kind) · `fuzzy` ·
-`find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `caret_popup` (completion menu, hover and the caret diagnostic as core-built `qed.ui` floats at `anchor = "cursor"` under the focused editor: a core mount in the `caret` outlet, rebuilt only when its content changes) · `rename` ·
+`find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `markdown` (cmark-gfm + litehtml on the cell grid: preview and hover) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `caret_popup` (completion menu, hover and the caret diagnostic as core-built `qed.ui` floats at `anchor = "cursor"` under the focused editor: a core mount in the `caret` outlet, rebuilt only when its content changes) · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (walk handles, `qed.theme`, `qed.status`) · `ui`/`ui_api`/`ui_input`/`ui_list`/`ui_lines`/`ui_markdown` (the `qed.ui` engine, lists, line lists, the markdown node) · `prelude.lua` (node constructors, `qed.markdown.parse`, `qed.ui.dismissable`, the pane helpers `qed.ui.pane`/`split`/`footer`, `qed.pick`/`prompt`/`confirm` forwarding to the `dialog` plugin) · `perf_bench`.
-Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4); plus `asciinema-player` (JS, the e2e demo pages' shared `player.js`).
+Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4), `cmark_gfm` (markdown to HTML), `litehtml` (C++ HTML/CSS layout, gumbo inside; libstdc++ linked statically where the toolchain has it); plus `asciinema-player` (JS, the e2e demo pages' shared `player.js`).
 Bundled Lua plugins live in `plugins/` at the repo root (`layout/`: the default UI (main editor, status row, message
 line, welcome); `palette/`: the command palette; `dialog/`: `qed.pick`/`prompt`/`confirm`; `find/`: in-buffer
 find/replace bar; `log/`: the message log; `manager/`: the Plugins pane; `terminal/`: the terminal pane; `ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open Config UI* / *Open Keybinds UI* (the settings menu, `menu.lua`), *Open Config JSON*, *Open Keybinds JSON*, *Theme*, *Language*, *Indentation*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* and *Toggle Split* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
@@ -1047,8 +1051,9 @@ yaml-language-server, docker-langserver,
 bash-language-server, lua-language-server) — live syntax + on-save semantic, range
 underline, gutter severity, diagnostics pane, next/prev-diagnostic navigation
 (`Alt+<`/`Alt+>`), go-to-definition (`Alt+d`, jump-list aware), hover popup (`Alt+s`),
-rendered-markdown hover (`mdrender.odin`, see Markdown rendering; popup wheel-scrolls while
-hovered, `contentFormat` advertises markdown first), markdown preview (`markdown` plugin,
+rendered-markdown hover (`markdown.odin`, see Markdown rendering; popup wheel-scrolls while
+hovered, `contentFormat` advertises markdown first), markdown preview (`markdown` plugin, laid out like GitHub by cmark-gfm + litehtml off the main thread: tables with row
+rules, alerts, clickable `<details>`, footnotes, heading ids;
 *Markdown: Preview* `Alt+p` in markdown buffers: a `full` pane capped at
 `pane_max_width`, live on `buf_changed`, scroll kept, synced with the editor cursor on open and (after scrolling) on close, keys from the `list` scope (held arrows accelerate), *Markdown: Back*/*Forward* over anchor and file-link history;
 *Markdown: Toggle Split* (unbound; launch state `plugins.markdown.split`, the toggle is session-only and a reload

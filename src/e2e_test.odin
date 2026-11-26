@@ -383,9 +383,16 @@ e2e_type :: proc(e: ^E2E, s: string) {
 }
 
 // as the main loop: queued plugin events run before a frame
+// markdown renders run on their threads as in the editor: a frame here waits until they land
 e2e_render :: proc(e: ^E2E) {
 	plugin_flush(&e.ed)
 	editor_render(&e.ed)
+	start := time.tick_now()
+	for ui_markdowns_busy(&e.ed) && ms_since(start) < 10_000 {
+		time.sleep(time.Millisecond)
+		plugin_flush(&e.ed)
+		editor_render(&e.ed)
+	}
 }
 
 e2e_cell_raw :: proc(e: ^E2E, x, y: int) -> tb2.Cell_Raw {

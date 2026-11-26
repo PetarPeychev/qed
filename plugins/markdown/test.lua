@@ -41,6 +41,28 @@ function tests.toggle_renders(test)
 	test.wait(function() return current(test) == nil end)
 end
 
+function tests.details_toggle_keeps_scroll(test)
+	local parts = {}
+	for i = 1, 30 do
+		parts[#parts + 1] = ("filler %d"):format(i)
+		parts[#parts + 1] = ""
+	end
+	parts[#parts + 1] = "<details>\n<summary>More detail</summary>\n\nhidden body\n\n</details>\n\ntail"
+	test.open("details.md", table.concat(parts, "\n"))
+	open(test)
+	test.key("End")
+	local offset = current(test).offset
+	test.ok(offset > 0 and on_screen(test, "▶ More detail"), "scrolled to the closed details")
+	test.ok(not on_screen(test, "hidden body"), "its body is hidden")
+	test.click("More detail")
+	test.wait(function() return on_screen(test, "hidden body") end)
+	test.ok(on_screen(test, "▼ More detail"), "the summary shows it open")
+	test.eq(current(test).offset, offset, "the scroll stays")
+	test.click("More detail")
+	test.wait(function() return not on_screen(test, "hidden body") end)
+	test.key("Esc")
+end
+
 function tests.not_for_other_languages(test)
 	test.open("notes.txt", "# not markdown")
 	test.key("Alt+p")

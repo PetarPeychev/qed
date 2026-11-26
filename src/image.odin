@@ -224,6 +224,7 @@ image_reply :: proc(editor: ^Editor) {
 
 image_panes_reset :: proc(editor: ^Editor) {
 	for _, md in editor.ui.markdowns {
+		md.flush = true
 		ui_markdown_reset(md)
 	}
 }

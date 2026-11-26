@@ -66,6 +66,7 @@ foreign ts {
 	parser_new :: proc() -> ^Parser ---
 	parser_delete :: proc(self: ^Parser) ---
 	parser_set_language :: proc(self: ^Parser, language: Language) -> bool ---
+	parser_language :: proc(self: ^Parser) -> Language ---
 	parser_parse_string :: proc(self: ^Parser, old_tree: ^Tree, str: [^]u8, length: u32) -> ^Tree ---
 
 	tree_root_node :: proc(self: ^Tree) -> Node ---

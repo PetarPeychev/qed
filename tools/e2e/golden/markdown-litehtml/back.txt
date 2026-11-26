@@ -1,0 +1,111 @@
+qed-e2e snapshot 140x45 cursor hidden
+-- text
+  1 # Tour
+  2
+  3 Jump to [the alert](#an-alert), or open the [README](README.md).
+  4       ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  5 ## Det│ tour.md                                                                                                              │
+  6       ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  7 <detai│ Tour                                                                                                                 ┃
+  8 <summa│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ┃
+  9       │                                                                                                                      ┃
+ 10 Hidden│ Jump to the alert, or open the README.                                                                               ┃
+ 11       │                                                                                                                      ┃
+ 12 </deta│ Details                                                                                                              ┃
+ 13       │ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ┃
+ 14 ## A t│                                                                                                                      ┃
+ 15       │ ▼ Click to expand                                                                                                    ┃
+ 16 | Key │                                                                                                                      ┃
+ 17 |:----│ Hidden until the summary is clicked.                                                                                 ┃
+ 18 | Alt+│                                                                                                                      ┃
+ 19 | Ctrl│ A table                                                                                                              ┃
+ 20       │ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ┃
+ 21 ## Nes│                                                                                                                      ┃
+ 22       │ ┌────────┬─────────┬───────────────────┐                                                                             │
+ 23 1. Fir│ │ Key    │  Action │             Notes │                                                                             │
+ 24    - a│ ├────────┼─────────┼───────────────────┤                                                                             │
+ 25      -│ │ Alt+p  │ preview │  the full overlay │                                                                             │
+ 26 2. Sec│ ├────────┼─────────┼───────────────────┤                                                                             │
+ 27    > a│ │ Ctrl+s │   save  │ atomic, mode kept │                                                                             │
+ 28    > >│ └────────┴─────────┴───────────────────┘                                                                             │
+ 29       │                                                                                                                      │
+ 30 ## An │ Nested                                                                                                               │
+ 31       │ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+ 32 > [!TI│                                                                                                                      │
+ 33 > Aler│ 1. First item                                                                                                        │
+ 34       │    • a bullet                                                                                                        │
+ 35 ## Fil│      ◦ a deeper bullet                                                                                               │
+ 36       │ 2. Second item                                                                                                       │
+ 37 Paragr│    │ a quote inside the list                                                                                         │
+ 38       ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+ 39 Paragr│ ↑↓ PgUp PgDn scroll  click a link to open it  Alt+, back  Alt+. forward  Esc close                                   │
+ 40       └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 41 Paragraph three keeps the page long enough to scroll.
+ 42
+ 43 Paragraph four keeps the page long enough to scroll.
+ ≡ root/tour.md  1/56                                                                                                ◆ markdown  ⇥ Spaces:3
+
+-- style
+abbbcdeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaafffffffffgggggggggffgggggggggffffffffffffffffggggggffgggggggggffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhffffffffff
+aaaaiifjjjhkkkkkkkkllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhffffffffff
+aaaafiiiiihlmmmmllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaafiiiiihlkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkllffffffffff
+aaaaffffffhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlllllllllnnnnnnnnnllllllllllllllnnnnnnlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlmmmmmmmlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhllffffffffff
+aaaaiifjjjhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlooooooooooooooooolllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlmmmmmmmlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhllffffffffff
+aaaaiifjjjhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllffffffffff
+aaaaffffffhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiiifffhlhpooopppphppoooooophpppppppppppppooooophlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiiiiifhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiiiiiihlhplllllpphplllllllphppllllllllllllllllphlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiiifffhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiiiiifhlhpllllllphpppllllpphplllllllllllllllllphlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiiiiiihlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiifjjjhlmmmmmmlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhlhffffffffff
+aaaaiifggghllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiiffffhlllpllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhlpppkpllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaiifjjjhlpppppkpllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhlllpllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhlppphphhhhhhhhhhhhhhhhhhhhhhhlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhffffffffff
+aaaaffffffhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhlllllllllllllllllllllllllllllllllllhffffffffff
+aaaaffffffhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+aaaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll
+qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+-- legend
+a fg=#464646 bg=#1b1b1b
+b fg=#676767 bg=#1b1b1b
+c fg=#7d6f2b bg=#262626
+d fg=#78787d bg=#262626
+e fg=#7d6f2b bg=#262626 bold
+f fg=#707074 bg=#181818
+g fg=#4a515e bg=#181818
+h fg=#868686 bg=#2b2b2b
+i fg=#746723 bg=#181818
+j fg=#746723 bg=#181818 bold
+k fg=#ffdd33 bg=#2b2b2b
+l fg=#f4f4ff bg=#2b2b2b
+m fg=#ffdd33 bg=#2b2b2b bold
+n fg=#96a6c8 bg=#2b2b2b underline
+o fg=#f4f4ff bg=#2b2b2b bold
+p fg=- bg=#2b2b2b
+q fg=#f4f4ff bg=#181818

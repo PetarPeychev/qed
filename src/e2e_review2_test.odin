@@ -124,7 +124,7 @@ e2e_review2_markdown_arrows_accelerate :: proc(t: ^testing.T) {
 			return true
 		}
 		md, found := e.ed.ui.markdowns[node.identity]
-		return !found || md.job != nil || len(md.lines) == 0
+		return !found || md.job != nil || md.doc == nil || len(md.doc.rows) == 0
 	}), "the preview renders")
 	e2e_key(&e, .Home)
 	testing.expect_value(t, offset(&e), 0)
