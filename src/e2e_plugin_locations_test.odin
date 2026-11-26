@@ -44,7 +44,7 @@ local function dump(items)
 	return table.concat(parts, ";")
 end
 local function grep(name, text, scope)
-	qed.command{name = name, scope = scope, run = function()
+	qed.command{id = name:lower():gsub("%W+", "_"), name = name, scope = scope, run = function()
 		local items = qed.parse_locations(text)
 		local it = qed.pick{items = items, prompt = "Grep >"}
 		if it then qed.jump(it.path, it.pos) end
@@ -53,14 +53,14 @@ local function grep(name, text, scope)
 end
 return {setup = function()
 	local parsed = dump(qed.parse_locations("a.txt:2:needle here\r\nb.txt:3:needle\nmissing.txt:3: gone\n"))
-	qed.command{name = "Setup", run = function() qed.message(parsed) end}
-	qed.command{name = "Parse", run = function()
+	qed.command{id = "setup", name = "Setup", run = function() qed.message(parsed) end}
+	qed.command{id = "parse", name = "Parse", run = function()
 		qed.message(dump(qed.parse_locations("x.txt:1\n" .. qed.path.join(qed.root(), "a.txt") .. ":1:2: abs\n12:30 meeting\n", {cwd = "sub"})))
 	end}
-	qed.command{name = "Empty", run = function()
+	qed.command{id = "empty", name = "Empty", run = function()
 		qed.message(#qed.parse_locations("") .. " " .. #qed.parse_locations("nope.txt:1: gone\n12:30 meeting\n"))
 	end}
-	qed.command{name = "Bad", run = function()
+	qed.command{id = "bad", name = "Bad", run = function()
 		local ok, err = qed.jump("sub", {row = 1, col = 1})
 		qed.message(tostring(ok) .. " " .. tostring(err))
 	end}

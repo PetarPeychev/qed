@@ -53,33 +53,33 @@ plugin_sched_yield_resume :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"co.lua", `
 			return {setup = function()
-				qed.command{name = "Sleep", run = function()
+				qed.command{id = "sleep", name = "Sleep", run = function()
 					steps = "a"
 					qed.sleep(5)
 					steps = steps .. "b"
 					qed.sleep(0)
 					steps = steps .. "c"
 				end}
-				qed.command{name = "Outer", run = function()
+				qed.command{id = "outer", name = "Outer", run = function()
 					order = "outer1"
 					qed.run("Co: Inner")
 					order = order .. " outer2"
 				end}
-				qed.command{name = "Inner", run = function()
+				qed.command{id = "inner", name = "Inner", run = function()
 					order = order .. " inner1"
 					qed.sleep(1)
 					order = order .. " inner2"
 				end}
-				qed.command{name = "Pcall", run = function()
+				qed.command{id = "pcall", name = "Pcall", run = function()
 					local ok = pcall(qed.sleep, 1)
 					yielded = tostring(ok)
 				end}
-				qed.command{name = "Raw", run = function() coroutine.yield() end}
-				qed.command{name = "InEdit", run = function()
+				qed.command{id = "raw", name = "Raw", run = function() coroutine.yield() end}
+				qed.command{id = "inedit", name = "InEdit", run = function()
 					local ok, err = pcall(qed.edit, qed.buf.current(), function() qed.sleep(1) end)
 					inedit = err:find("cannot wait inside qed.edit") and "refused" or err
 				end}
-				qed.command{name = "Late", run = function() qed.sleep(1); error("late boom") end}
+				qed.command{id = "late", name = "Late", run = function() qed.sleep(1); error("late boom") end}
 			end}`},
 		{"early.lua", `return {setup = function() qed.sleep(1) end}`},
 	})
@@ -127,7 +127,7 @@ plugin_sched_event_error_logs :: proc(t: ^testing.T) {
 		{"ev.lua", `
 			local n = 0
 			return {setup = function()
-				qed.command{name = "Cmd", run = function() end}
+				qed.command{id = "cmd", name = "Cmd", run = function() end}
 				qed:on("startup", function()
 					qed.every(1, function() error("tick boom") end)
 					qed.every(1, function() n = n + 1; error("tock " .. (n % 2)) end)
@@ -168,34 +168,34 @@ plugin_sched_spawn :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"sp.lua", `
 			return {setup = function()
-				qed.command{name = "Run", run = function()
+				qed.command{id = "run", name = "Run", run = function()
 					local r = qed.spawn{cmd = "echo out; echo err 1>&2; exit 3"}
 					result = r.code .. "|" .. r.stdout .. "|" .. r.stderr
 				end}
-				qed.command{name = "Lines", run = function()
+				qed.command{id = "lines", name = "Lines", run = function()
 					local got = {}
 					local r = qed.spawn{argv = {"printf", "a\nb\r\nc"}, on_line = function(l) got[#got + 1] = l end}
 					lines = table.concat(got, ",") .. "|" .. r.code
 				end}
-				qed.command{name = "Env", run = function()
+				qed.command{id = "env", name = "Env", run = function()
 					local r = qed.spawn{cmd = "pwd; echo $QED_T", cwd = "/", env = {QED_T = "bar"}, stdin = "ignored"}
 					env = r.stdout
 				end}
-				qed.command{name = "Stdin", run = function()
+				qed.command{id = "stdin", name = "Stdin", run = function()
 					stdin = qed.spawn{cmd = "tr a-z A-Z", stdin = "shout"}.stdout
 				end}
-				qed.command{name = "Bad", run = function()
+				qed.command{id = "bad", name = "Bad", run = function()
 					local ok, err = pcall(qed.spawn, {cmd = "x", argv = {"y"}})
 					bad = ok and "accepted" or "rejected"
 				end}
-				qed.command{name = "Bg", run = function()
+				qed.command{id = "bg", name = "Bg", run = function()
 					local p = qed.spawn_bg{cmd = "exec sleep 30"}
 					bgpid = tostring(p.pid)
 					p:kill()
 					local r = p:wait()
 					bg = "killed " .. tostring(r.code ~= 0)
 				end}
-				qed.command{name = "Orphan", run = function()
+				qed.command{id = "orphan", name = "Orphan", run = function()
 					orphan = tostring(qed.spawn_bg{cmd = "exec sleep 30"}.pid)
 				end}
 			end}`},
@@ -274,12 +274,12 @@ plugin_sched_budgets :: proc(t: ^testing.T) {
 			end}`},
 		{"cmd.lua", `
 			return {setup = function()
-				qed.command{name = "Slow", run = function()
+				qed.command{id = "slow", name = "Slow", run = function()
 					local t = os.clock()
 					while os.clock() - t < 0.1 do end
 					slow = "done"
 				end}
-				qed.command{name = "Forever", run = function() while true do end end}
+				qed.command{id = "forever", name = "Forever", run = function() while true do end end}
 			end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -390,7 +390,7 @@ plugin_sched_nested_budget :: proc(t: ^testing.T) {
 @(test)
 plugin_sched_coalesce :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
-		{"quiet.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},
+		{"quiet.lua", `return {setup = function() qed.command{id = "cmd", name = "Cmd", run = function() end} end}`},
 	})
 	defer plugin_test_destroy(ed)
 	plugin_pump(ed)
@@ -411,7 +411,7 @@ plugin_sched_coalesce :: proc(t: ^testing.T) {
 				last = b.id .. ":" .. rev
 			end)
 			qed:on("cursor_moved", function(b) moved = moved + 1 end)
-			qed.command{name = "Off", run = function() h:remove() end}
+			qed.command{id = "off", name = "Off", run = function() h:remove() end}
 		end}`}}
 	plugin_load(ed, pl)
 	testing.expect_value(t, pl.last_error, "")
@@ -465,7 +465,7 @@ plugin_sched_pre_save :: proc(t: ^testing.T) {
 					qed.edit(b, function() b:insert({row = 1, col = 1}, "[fmt]") end, {rev = rev})
 				end)
 				qed:on("buf_save", function(b) saved = (saved or 0) + 1 end)
-				qed.command{name = "Do Save", run = function(ctx)
+				qed.command{id = "do_save", name = "Do Save", run = function(ctx)
 					local ok = qed.save(ctx.buf)
 					after = tostring(ok) .. " " .. tostring(ctx.buf:modified())
 				end}
@@ -588,11 +588,11 @@ plugin_sched_spawn_output_cap :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"fl.lua", `
 			return {setup = function()
-				qed.command{name = "Out", run = function()
+				qed.command{id = "out", name = "Out", run = function()
 					local r, err = qed.spawn{cmd = "yes"}
 					out = tostring(r) .. " " .. tostring(err)
 				end}
-				qed.command{name = "Err", run = function()
+				qed.command{id = "err", name = "Err", run = function()
 					local r, err = qed.spawn{cmd = "yes >&2", on_line = function() end}
 					errout = tostring(r) .. " " .. tostring(err)
 				end}
@@ -625,18 +625,18 @@ plugin_sched_bg_streaming :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"st.lua", `
 			return {setup = function()
-				qed.command{name = "Stream", run = function()
+				qed.command{id = "stream", name = "Stream", run = function()
 					lines = 0
 					local p = qed.spawn_bg{cmd = "yes line | head -n 200000", on_line = function() lines = lines + 1 end}
 					local r = p:wait()
 					streamed = lines .. " " .. r.code .. " " .. #r.stdout
 				end}
-				qed.command{name = "Orphan", run = function()
+				qed.command{id = "orphan", name = "Orphan", run = function()
 					qed.spawn_bg{cmd = "true"}
 					collectgarbage()
 					collectgarbage()
 				end}
-				qed.command{name = "Kill", run = function()
+				qed.command{id = "kill", name = "Kill", run = function()
 					got = 0
 					local p
 					p = qed.spawn_bg{cmd = "printf 'a\nb\nc\nd\n'", on_line = function()
@@ -684,7 +684,7 @@ plugin_sched_kill_in_on_line_closes_once :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"kl.lua", `
 			return {setup = function()
-				qed.command{name = "Kill", run = function()
+				qed.command{id = "kill", name = "Kill", run = function()
 					local p
 					p = qed.spawn_bg{cmd = "printf 'a\nb\n'", on_line = function()
 						if f then return end
@@ -695,7 +695,7 @@ plugin_sched_kill_in_on_line_closes_once :: proc(t: ^testing.T) {
 						end
 					end}
 				end}
-				qed.command{name = "Read", run = function()
+				qed.command{id = "read", name = "Read", run = function()
 					got = ""
 					for _, h in ipairs(f) do
 						got = got .. tostring(h:read("a"))
@@ -724,20 +724,20 @@ plugin_sched_resume_guard :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"a.lua", `
 			return {setup = function()
-				qed.command{name = "Leak", run = function() _G.leaked_co = coroutine.running() end}
-				qed.command{name = "Wait", run = function()
+				qed.command{id = "leak", name = "Leak", run = function() _G.leaked_co = coroutine.running() end}
+				qed.command{id = "wait", name = "Wait", run = function()
 					waiter = coroutine.running()
 					qed.sleep(30)
 					woke = "yes"
 				end}
-				qed.command{name = "Poke", run = function()
+				qed.command{id = "poke", name = "Poke", run = function()
 					local ok = coroutine.resume(waiter)
 					poked = tostring(ok) .. " " .. tostring(woke) .. " " .. coroutine.status(waiter)
 				end}
 			end}`},
 		{"b.lua", `
 			return {setup = function()
-				qed.command{name = "Check", run = function()
+				qed.command{id = "check", name = "Check", run = function()
 					same = tostring(coroutine.running() == _G.leaked_co)
 					qed.sleep(1)
 				end}
@@ -767,11 +767,11 @@ plugin_sched_paste_and_nesting :: proc(t: ^testing.T) {
 					changed = changed + 1
 					qed.run("P: Slow")
 				end)
-				qed.command{name = "Slow", run = function()
+				qed.command{id = "slow", name = "Slow", run = function()
 					local t = os.clock()
 					while os.clock() - t < 0.05 do end
 				end}
-				qed.command{name = "Bg", run = function() qed.spawn_bg{cmd = "exec sleep 5"} end}
+				qed.command{id = "bg", name = "Bg", run = function() qed.spawn_bg{cmd = "exec sleep 5"} end}
 			end}`},
 		{"edit.lua", `
 			return {setup = function()

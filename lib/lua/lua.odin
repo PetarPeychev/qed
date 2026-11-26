@@ -107,6 +107,7 @@ foreign lib {
 	toboolean :: proc(L: ^State, idx: c.int) -> b32 ---
 	tolstring :: proc(L: ^State, idx: c.int, len: ^c.size_t) -> cstring ---
 	touserdata :: proc(L: ^State, idx: c.int) -> rawptr ---
+	tocfunction :: proc(L: ^State, idx: c.int) -> CFunction ---
 	tothread :: proc(L: ^State, idx: c.int) -> ^State ---
 	@(link_name = "lua_tointegerx")
 	tointeger :: proc(L: ^State, idx: c.int, isnum: ^b32 = nil) -> Integer ---

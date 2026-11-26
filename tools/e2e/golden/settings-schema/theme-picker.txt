@@ -1,0 +1,85 @@
+qed-e2e snapshot 90x36 cursor 24,12
+-- text
+ 1 x
+ 2
+
+        ┌────────────────────────────────────────────────────────────────────────┐
+        │ Options │ Keybinds                                                     │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ > theme                                                                │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Key                               Value                                │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ theme                             default                              │
+        │     ┌────────────────────────────────────────────────────────────┐     │
+        │     │ theme >                                                    │     │
+        │     ├────────────────────────────────────────────────────────────┤     │
+        │     │ atom-one-dark                                              ┃     │
+        │     │ catppuccin-latte                                           ┃     │
+        │     │ catppuccin-mocha                                           ┃     │
+        │     │ default                                                    ┃     │
+        │     │ dracula                                                    ┃     │
+        │     │ gruvbox-dark                                               ┃     │
+        │     │ nord                                                       ┃     │
+        │     │ solarized-light                                            │     │
+        │     └────────────────────────────────────────────────────────────┘     │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Color theme (bundled or ~/.config/qed/themes). Default: default        │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Tab tabs  Enter edit  Ctrl+d reset                                     │
+        └────────────────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/a.txt  1/2                                                     ◆ text  ⇥ Spaces:4
+
+-- style
+abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddefgggggggeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddegggfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddehhhhfffffffffffffffffffffffffffffhhhhhhhffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiedddddddd
+ddddddddefffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffedddddddd
+ddddddddefffffegggggggggfffffffffffffffffffffffffffffffffffffffffffffffffffefffffedddddddd
+ddddddddefffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefffffeiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffedddddddd
+ddddddddefffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#f4f4ff bg=#262626
+d fg=#f4f4ff bg=#181818
+e fg=#868686 bg=#2b2b2b
+f fg=#f4f4ff bg=#2b2b2b
+g fg=#ffdd33 bg=#2b2b2b
+h fg=#f4f4ff bg=#2b2b2b bold
+i fg=#f4f4ff bg=#4a4a4a

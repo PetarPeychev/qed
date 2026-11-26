@@ -289,12 +289,14 @@ Copy/cut/paste shell out via `clipboard.odin`: `wl-copy`/`wl-paste` or `xclip`
 Explicit `switch` on `(key, mod, ch)` → action procs. Rebindable commands live in
 two tables (`palette.odin`): the global `commands` and `pane_commands`, each row with the
 `scope` of the pane it runs in (`log`, `plugins`). A pane command that mirrors a global operation borrows its
-bind via `Command.bind_from` (the global command's name) — no config key of its own,
+bind via `Command.bind_from` (the global command's id; code refers to core commands by id, `command_shortcut`/`command_matches` included) — no config key of its own,
 key/alt/shortcut resolved live from the referenced global command
 (`command_effective_bind`), so one config entry drives both dispatch paths (log *Copy* follows
-global *Copy*); the others keep their own `Message Log: …`/`Plugins: …` config key (`config_name`
-vs the short display `name`). Plugin commands bind under `plugins.<id>.keybinds` (see Plugins). Every
-core command's default bind is a `keybinds` entry in the embedded config — including *Command
+global *Copy*); every other command has an explicit snake_case `Command.id` (scoped core ones prefixed:
+`editor_word_left`, `list_next`). User binds live in `keybinds.json` (embedded `config/keybinds.json` holds the core
+defaults, `~/.config/qed/keybinds.json` the sparse user diff, loaded and hot-reloaded with config.json by
+`keybinds_load`), nested by group: `{"core": {id: chord}, "<plugin id>": {id: chord}}`. Every
+core command's default bind is an entry under `core` there, including *Command
 Palette* (default `Ctrl+P`), whose single bind opens whichever palette is contextual (editor or a
 scoped pane's). Only primitive editing/movement stays fixed. Dispatch resolves through the
 configured bind (`command_for_key`/`command_for_alt`, or `pane_command_for_event(scope)`
@@ -372,8 +374,9 @@ started at the end of `editor_init`. Invariants the code can't show:
 - `#load_directory` doesn't recurse: a bundled dir plugin needs its own embed.
 - User config is read through `editor_config_user` only (never cached); plugin
   `plugins.<name>` changes refresh `qed.config()` and fire `config_changed` on hot reload.
-- A plugin declares its config keys and defaults with `qed.options` in `setup`; core
-  knows only `enabled` before that, so unknown-key warnings cover loaded plugins only.
+- A plugin declares its options with one `qed.options` call in `setup` (see Config), kept as
+  `Plugin.schema` and the normalized table `Plugin.options` until it unloads. A disabled or errored plugin has none, so
+  the menu shows only its `enabled` and its config keys are not checked.
 - Bindings live in `plugin_api.odin`. Lua sees 1-based rows and byte cols,
   half-open ranges; only `api_pos`/`api_pos_push` convert. Positions are validated
   (range, UTF-8 boundary) before any primitive runs, and a binding raises only
@@ -484,17 +487,20 @@ started at the end of `editor_init`. Invariants the code can't show:
 - A plugin's id (`Plugin.name`) is its file/dir name: config key, keybind namespace and
   owner everywhere in code. `Plugin.display` (id title-cased, or `qed.meta`) labels its
   messages, log lines and Plugins pane row; `plugin_label(owner)` maps an owner to it.
-  It survives unload and resets when the next load starts. A plugin `Command` keeps `bare` (the registered name), `name` =
-  `<display>: <bare>` (palette, `qed.run`) and `config_name` (the `plugins.<id>.keybinds`
-  key: `keybind` or `bare`). `qed.meta` must precede `qed.command`.
+  It survives unload and resets when the next load starts. A plugin `Command` keeps `bare` (the registered `name`), `name` =
+  `<display>: <bare>` (palette, `qed.run`; built, never parsed back) and `id` (its snake_case key under the plugin's
+  group in keybinds.json, unique per plugin and scope). `qed.meta` must precede `qed.command`.
 - Plugin command visible names are unique per scope (a tree and an editor command may share
   one). `qed.command` returns a handle whose `remove()` unregisters it; removing or
   unloading commands closes the palette, whose rows index `Plugins.commands`.
-- Plugin binds come only from `key=` and `plugins.<id>.keybinds`. A keyed command rebinds
-  its key-less siblings sharing `config_name` (they may have registered first);
-  `plugins_rebind` clears every plugin shortcut, then binds in order. Unknown keybind names
-  are checked by `plugins_keybinds_check` at the end of a flush for plugins with `keys_due`
-  (set on load and config apply), so `startup` handlers can register first.
+- Plugin binds come only from `key=` and keybinds.json. A keyed command rebinds
+  its key-less siblings sharing `id` (they may have registered first);
+  `plugins_rebind` clears every plugin shortcut, then binds in order. An unknown core id warns at load
+  (`keybinds_load`); unknown groups and unknown ids of loaded plugins wait for `keybinds_plugin_warn` at the end of a
+  flush after a load or config apply (`keys_due`, `keybinds_due`), so `startup` handlers can register first, and it
+  warns only when the file or the plugin set changed (`keybinds_sig`); a disabled or errored plugin's group is skipped.
+  A bind left in config.json (`keybinds`, `plugins.<id>.keybinds`) is not applied; it warns where it would go
+  (`keybind_legacy_dest`: a CONFIG_MOVED rename, else the snake_cased name in its group).
 - `ctx.selection_text`, `file` and `files` (the focused list's selection)
   are computed on first read through `__index` and cached on the ctx, so `when` stays
   cheap. A command's snapshot ctx keeps `selection_text` lazy too (buffer id, rev and range at invocation; nil
@@ -531,13 +537,13 @@ started at the end of `editor_init`. Invariants the code can't show:
 ## Language detection
 
 Each `Buffer` carries a `language: Language`, set once at open (`language_of`).
-File→language is **not hardcoded**: the config `languages` section is keyed by
-language name, each entry an object with `patterns` (glob list) and `lsp` (server
-command), both user-overridable, per-key merged back like every other knob (formatter
+File→language is **not hardcoded**: the `languages` option is a map from a language
+(`choices = qed.languages`) to a record of `patterns` (glob list) and `lsp` (server
+command), merged per entry and field like every other option (formatter
 commands live in `plugins.format.commands`). `LANGUAGE_DEFAULTS` (`language.odin`) is compiled-in
 wiring only (comment token, lsp id, grammar); default patterns/`lsp`
-come from the embedded config's `languages` section. `LANGUAGES` is the working
-copy each load resets then overlays. Patterns are `*`-globs matched against the basename, most-specific-first (exact
+come from its declaration in `config/options.lua`. `LANGUAGES` is the working
+copy each load resets, then `languages_from_config` overlays the merged map (an unknown language name warns). Patterns are `*`-globs matched against the basename, most-specific-first (exact
 before glob, longer before shorter); built-in defaults cover extensions plus common
 dotfiles (`.bashrc` → shell, …). `lsp_id` and the comment token stay compiled-in.
 Everything — highlight, LSP, status bar, comment token — reads `b.language`. The
@@ -549,8 +555,8 @@ re-opens LSP).
 - **Syntax** (`highlight.odin`, `language.odin`): per-language `[Language]Syntax`;
   adding one = vendor `parser.c` (+`scanner.c`) + `highlights.scm` under
   `lib/tree_sitter/<lang>/`, add the FFI decl + `build.sh` line, fill the
-  `LANGUAGE_DEFAULTS` row (grammar/comment/lsp id) + patterns/lsp in
-  `config/config.json` (+ an optional formatter in `plugins/format`'s `qed.options`). Queries are vendored **upstream-verbatim**: a predicate
+  `LANGUAGE_DEFAULTS` row (grammar/comment/lsp id) + a `languages` default entry in
+  `config/options.lua` (+ an optional formatter in `plugins/format`'s `qed.options`). Queries are vendored **upstream-verbatim**: a predicate
   evaluator (`predicate.odin`) enforces `#eq?`/`#match?`/`#lua-match?`/`#any-of?`/
   ancestry predicates per match (parsed + regex-compiled once at query build,
   cached per pattern; unknown predicates are skipped, never reject a pattern —
@@ -691,27 +697,63 @@ The ghost and the LSP completion popup coexist: `Tab` takes the ghost (and close
 menu, and a multi-line ghost floats the popup above the caret (`caret_popup`). See
 [notes/ai.md](notes/ai.md).
 
+## Config
+
+Every option is one typed declaration: core's in `config/options.lua` (embedded like the prelude), each plugin's in a
+`qed.options{name = decl}` call in `setup`. A decl is `{type, default?, description?}` plus `min`/`max` (int), `choices`
+(choice: a static list, or a function, e.g. `qed.theme.list`, `qed.languages`), `of` (list), `key` (map: string or
+choice) and `value` (map), `fields` (record); compounds nest and a bare type name is `{type = name}`. `string` is one
+line, `text` any string. A missing default is the type's zero (a record's comes from its fields); a function choice
+outside a map key needs a default. `options.odin` parses a decl table into an `Option` tree (`options_declare`,
+arena-owned per plugin) and pushes a normalized Lua copy (types expanded, defaults filled; choice functions kept), which
+`qed.config_schema()` (core) and `qed.plugins()[i].options` hand to the menu. Core's tree is parsed before main in a
+throwaway Lua state (`options_core_declare`) and gives `g_config_defaults`, which seeds the typed globals of
+`settings.odin`; the plugin state parses the same file again for the live table.
+
+Validation is one function, `option_merge`: user JSON over the defaults, a record per field, a map per entry (`null`
+drops an entry), a list or scalar replaced. An undeclared key, a wrong type, a newline in a `string`, a choice outside
+its list or an int out of bounds is reported (`"path" (expected ...)` or `unknown "path"`, through `config_unknown_msg`,
+so CONFIG_MOVED applies) and the default kept; a bad map entry is skipped, a list with a bad item keeps the default.
+Function choices are resolved into heap-owned lists on the `Option` (`option_resolve`): core's sources (themes,
+languages) in Odin before each core merge (`option_choices_native`, matched by C function, so the throwaway state's
+stand-ins and a plugin's `qed.languages` agree; options.lua may use no other function); a plugin's own function from its
+registry ref when the plugin declares and on each config refresh, in that plugin's context and budget, with a warning
+when it fails or returns no list (its values then go unchecked). `qed.config_values` reuses the lists. Core runs the merge in `config_merge`, plugins in
+`plugin_config_resolve` (enabled ones), and `qed.config_values()` hands the menu the merged values plus every slash path
+the file names. `qed.config_set` shapes an empty table by the declared type at its path (`option_shape`) and writes
+`qed.json.null` as `null`.
+
 ## Settings menu
 
-`plugins/settings/menu.lua`, *Settings: Open*: a centered `qed.ui` box (`pane_max_width`) with
-Options (Key | Value) and Keybinds (Command | Chord) tabs (Tab/Shift+Tab; the open chord also closes it) over a filter field and a `virtual_column` of rows. Options lists every leaf of the embedded config by its dotted key (keybinds aside; scalars before
-nested keys; `lsp.enabled`, `languages.go.lsp`), then per plugin `<id>.enabled` and every `qed.options` leaf as
-`<id>.<key>` (an object option's user-added keys too). The info strip (rebuilt on the list's `on.state`) shows the selected
-option's description, from the embedded `config/schema.json` (`qed.config_schema`, completeness test-enforced) or the
-plugin's `qed.options` info, and its default; on Keybinds the command name, default chord and scope. Core keybinds show
-their config name. Values are
-the user config.json read from disk over the defaults; a row whose key the file sets gets a `git_modified` bar.
-Enter edits by the default's type: a bool toggles, choices (schema, info, the theme list) open a `qed.pick`, numbers,
-strings and lists (as JSON) edit in an input row prefilled with the value and validated (whole number, `min`,
-list of strings; bad input writes nothing); a multi-line string is refused. Keybinds lists every command with a bind
-key (`qed.commands`), one row per shared key; Enter captures a chord (an input row), a single key is refused
-in the editor and tree scopes, and a chord another command holds in the same scope asks Cancel / Replace (Replace
-writes `""` for the other, or unsets it when its default is empty). Every edit writes one key with `qed.config_set`,
-or `config_unset` when it equals the default; *Settings: Reset* (`Ctrl+d`, scoped) unsets the selected row. The view
-refreshes after each write and on `config_changed`, `theme_changed`, `plugin_loaded` and `plugin_unloaded`, updating
-changed rows in place (`list:set`) so the selection and scroll stay. `qed.config_set` marks the write as the
-editor's own and zeroes the disk-poll clock (the idle wait is the time to the next poll), so the hot reload applies
-it on the next loop without a "reloaded" message.
+`plugins/settings/menu.lua`: one centered `qed.ui` box (`pane_max_width`) with Options (Key | Value) and Keybinds
+(Command | Chord) tabs (Tab/Shift+Tab) over a filter field and a `virtual_column` of rows. *Settings: Open Config UI*
+opens it on Options and *Open Keybinds UI* on Keybinds (the same command again closes it, the other switches tab);
+*Open Config JSON* and *Open Keybinds JSON* open the user files (created as `{}`). Options walks core's declarations,
+then per plugin an implicit `<id>.enabled` and its declarations (a disabled or errored plugin has none), by dotted
+name (`lsp.enabled`, `languages.go.lsp`, `format.commands.python`; scalars before compounds). A scalar is one row; a
+list is a header (`N items`), one row per item (`name[i]`) and a `+ add item` row; a map a header (`N entries`), one row
+per entry, a `(removed)` row per default entry the file drops with `null`, and a `+ add entry` row; a record's fields are
+rows of their own, under a header only when the record is an item or entry. Values come from `qed.config_values()` (no
+second validator); a row whose path the file names (or whose list it does) gets a `git_modified` bar. The info strip
+shows the description and the default (a compound's as a count, a long one clipped); on Keybinds the command name,
+default chord and scope.
+
+Enter edits by type: a bool toggles, a choice opens a `qed.pick` over its choices, an int or string edits in an input
+row (whole number, `min`/`max`, one line; bad input writes nothing), a text in a box of editor rows (wrapped; Enter is a
+newline, *Settings: Save Text* `Ctrl+s` writes, Esc cancels). A list header or add row asks for a new item with the item
+type's widget; a map header or add row asks for the key (a picker of the free choices for a choice key, an input for a
+string key), then the value (a compound value starts from its default). Every write is one key with `qed.config_set`,
+or `config_unset` when it equals the default at that path; an item, or anything inside one, is written as its whole
+list. *Settings: Reset* (`Ctrl+d`, scoped) removes a list item or a user-added map entry, resets an overridden default
+entry, drops an untouched default entry (`qed.json.null`), restores a dropped one, and resets anything else (a header
+the whole list or map). Keybinds lists every command with an id (`qed.commands`: `owner` is its group, `id` its key),
+one row per name; Enter captures a chord (an input row), a single key is refused in the editor and tree scopes, and a
+chord another command holds in the same scope asks Cancel / Replace (Replace writes `""` for the other, or unsets it
+when its default is empty); writes go through `qed.keybind_set`/`keybind_unset`. The view refreshes after each write and
+on `config_changed`, `theme_changed`, `plugin_loaded` and `plugin_unloaded`, updating changed rows in place (`list:set`)
+so the selection and scroll stay, or rebuilding when rows come or go (an added item or entry is selected).
+`qed.config_set` and `qed.keybind_set` mark the write as the editor's own and zero the disk-poll clock, so the hot
+reload applies it on the next loop without a "reloaded" message.
 
 ## Terminal pane
 
@@ -767,16 +809,17 @@ Deep-dive: [notes/terminal.md](notes/terminal.md).
 ## File layout
 
 `main` (entry/loop) · `editor` (dispatch + render) · `buffer` · `edit` (primitives
-+ undo) · `cursor` · `settings` (user-config globals; embedded `config/` JSON
-defaults seeded before main, load + write-back) · `clipboard` · `shell` ·
++ undo) · `cursor` · `settings` (user-config globals seeded before main from the declarations, load + write-back) · `options` (typed option
+declarations: parse, merge/validate, core's declaration pass) · `clipboard` · `shell` ·
 `confirm` (quit/close/conflict safety dialogs as core-built `qed.ui` nodes in the alert layer) · `rename` (the LSP rename prompt, core-built) · `draw` (box, text and cell drawing helpers, `Rect`) · `log` (message ring + disk log) · `subprocess` (shared async one-shot subprocess: spawn-with-stdin-body / non-blocking drain / cancel) · `wrap` (soft-wrap layout) · `preview` (preview read limits, binary check, hexdump rows) · `palette` · `walk` (walk service, `qed.fs` writes) · `walk_tree` (`walk:tree()` list kind) · `fuzzy` ·
 `find` (in-buffer find/replace) · `jump` · `highlight` · `predicate` (query predicate evaluator) · `inspect` (*Debug: Inspect Tokens* pane) · `language` · `lsp` · `mdrender` (markdown → styled terminal lines, hover popup) · `image` (kitty graphics: detection, decode, placeholders) · `completion` · `caret_popup` (completion menu, hover and the caret diagnostic as core-built `qed.ui` floats at `anchor = "cursor"` under the focused editor: a core mount in the `caret` outlet, rebuilt only when its content changes) · `rename` ·
 `diffbase` (diff engine, ghost rows, revert) · `deco` (plugin decorations, marks, the inline ghost) · `terminal` · `plugin` (Lua state, loader, hot reload) · `plugin_api` (`qed` bindings, type stub) · `plugin_sched` (coroutines, events, timers, processes, budgets) · `plugin_ui` (walk handles, `qed.theme`, `qed.status`) · `ui`/`ui_api`/`ui_input`/`ui_list`/`ui_lines`/`ui_markdown` (the `qed.ui` engine, lists, line lists, the markdown node) · `prelude.lua` (node constructors, `qed.markdown.parse`, `qed.ui.dismissable`, the pane helpers `qed.ui.pane`/`split`/`footer`, `qed.pick`/`prompt`/`confirm` forwarding to the `dialog` plugin) · `perf_bench`.
 Vendored C under `lib/`: `tb2` (termbox2), `tree_sitter`, `vterm` (libvterm), `pty` (forkpty shim), `lua` (Lua 5.4); plus `asciinema-player` (JS, the e2e demo pages' shared `player.js`).
 Bundled Lua plugins live in `plugins/` at the repo root (`layout/`: the default UI (main editor, status row, message
 line, welcome); `palette/`: the command palette; `dialog/`: `qed.pick`/`prompt`/`confirm`; `find/`: in-buffer
-find/replace bar; `log/`: the message log; `manager/`: the Plugins pane; `terminal/`: the terminal pane; `ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open* (the settings menu, `menu.lua`), *Theme*, *Language*, *Indentation*, *Open Config*, *Open Defaults*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* and *Toggle Split* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
-Default config + bundled themes are JSON under `config/` at the repo root, embedded via `#load`.
+find/replace bar; `log/`: the message log; `manager/`: the Plugins pane; `terminal/`: the terminal pane; `ai/`: *Edit Selection*, *Cancel Edits*, inline completion; `filetree/`: the file tree; `format/`: save fixups + formatting; `settings/`: *Settings: Open Config UI* / *Open Keybinds UI* (the settings menu, `menu.lua`), *Open Config JSON*, *Open Keybinds JSON*, *Theme*, *Language*, *Indentation*; `search/`: *In Files* in the editor and the tree; `workspace/`: *Open Directory* and the tree's *Open Selected Directory*; `goto/`: *Line*; `git/`: diff base fetch, stat poll, file tree status provider, *Git: Set Diff Base*, *Git: Restore File*; `markdown/`: *Markdown: Preview* and *Toggle Split* with scoped *Back*/*Forward*; `conflict/`: merge-conflict highlight, *Conflict: Resolve*).
+Core option declarations (`config/options.lua`), core keybinds (`config/keybinds.json`) and bundled themes live under
+`config/` at the repo root, embedded via `#load`.
 
 ## Testing
 
@@ -880,19 +923,21 @@ vendored libvterm + PTY, full-TUI capable, qed-palette colors, mouse forwarded t
 guest + wheel scrollback, drag-select auto-copy + host bracketed-paste, `Esc` closes at
 the shell prompt), runtime working-root change (`workspace` plugin: `Ctrl+o` path picker + file-tree
 `Ctrl+o` on a dir), jump list
-(back/forward), runtime config (**sparse overlays**: embedded `config/config.json`
-is every default, none in Odin source, completeness test-enforced; user
-`~/.config/qed/config.json` is a per-key diff, never materialized; only the theme
+(back/forward), runtime config (**typed sparse overlays**: every option is a typed declaration, core's in `config/options.lua`, a
+plugin's in its `qed.options`, none in Odin source, completeness test-enforced; user
+`~/.config/qed/config.json` is a per-key diff, never materialized, validated closed against the declarations, binds in
+`keybinds.json` by group and command id; only the theme
 picker's Enter (`theme`), the Plugins pane's `e` (`plugins.<id>.enabled`,
-removed when it returns to the default) and `qed.config_set`/`config_unset` (the settings menu) write it, one key each; unknown keys get a
+removed when it returns to the default) and `qed.config_set`/`config_unset` (the settings menu; `qed.keybind_set`/`keybind_unset` for keybinds.json) write it, one key each; unknown keys get a
 one-shot warning, malformed JSON falls back to defaults without crashing; both config + active theme hot-reload via the disk poll —
 colors/keybinds/knobs apply live, runtime toggles
 survive, terminal palette re-pushed; existing buffers keep their language, running LSPs
 their command), `lsp.enabled` (live toggle-off tears servers down; git is
 `plugins.git`, auto-off when the binary is absent; AI is `plugins.ai`), JSON themes (sparse overlay chain over the embedded `default.json`
 base, see Rendering; *Settings: Theme* fuzzy picker with instant preview,
-Enter persists / Esc reverts), settings menu (*Settings: Open*: every core and plugin option
-with its description and every keybind, edited in place by type, chord capture with a conflict
+Enter persists / Esc reverts), settings menu (*Settings: Open Config UI* / *Open Keybinds UI*: every core and loaded plugin option
+with its description and every keybind, edited in place by per-type widgets (list items, map entries through a key
+picker, records as nested rows), chord capture with a conflict
 confirm, overrides marked, `Ctrl+d` resets; see Settings menu), selection pre-fill (a single-line selection
 pre-populates Find / Replace / Project Search / Line Jump, fully selected so
 typing replaces; multi-line/whitespace selections do not pre-fill). Every floating pane is
@@ -1045,7 +1090,7 @@ Lua plugins (bundled + `~/.config/qed/plugins/`): decorations (`qed.deco` gutter
 rows, spans, end-of-line text, range marks, the inline ghost), status segments (`qed.status`, multi-color chunks), diff base (`qed.buf.set_base`), plugin exports (`qed.export`/`qed.plugin`/`qed.caller`), namespaced custom events (`qed:emit`) and `plugin_loaded`/`plugin_unloaded` (the `git` plugin adds the file tree's Git tab through them); hot reload on file add/remove/edit
 and `enabled` flips; *Plugin Manager: Open* (the `manager` plugin) with enable/disable (persisted), reload,
 per-plugin log, and source view (bundled read-only); `qed.meta` display names prefixing
-commands and labeling messages; per-plugin keybinds (`plugins.<id>.keybinds`); Lua
+commands and labeling messages; plugin keybinds in keybinds.json by plugin id and command id; Lua
 completion settings when the root is under the config dir.
 
 Performance: incremental + async tree-sitter parse, viewport-scoped highlight

@@ -17,7 +17,7 @@ local function show(v)
 	end
 	qed.message(tostring(v))
 end
-local function cmd(name, run) qed.command{name = name, run = run} end
+local function cmd(name, run) qed.command{id = name:lower():gsub("%W+", "_"), name = name, run = run} end
 return {setup = function()
 	qed.meta{display_name = "UI"}
 	cmd("Strings", function()
@@ -55,7 +55,7 @@ return {setup = function()
 		local ok, err = qed.theme.set(qed.opt("theme"), {persist = true})
 		show(tostring(ok) .. " " .. tostring(err))
 	end)
-	qed.command{name = "Tree Confirm", scope = "filetree", run = function()
+	qed.command{id = "tree_confirm", name = "Tree Confirm", scope = "filetree", run = function()
 		show(qed.confirm{question = "Tree?", choices = {"One", "Two"}})
 	end}
 end}`
@@ -351,8 +351,8 @@ e2e_plugin_ui_busy_under_safety :: proc(t: ^testing.T) {
 	e, _ := ui_start(t)
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "asker", `return {setup = function()
-		qed.command{name = "Confirm", run = function() local r, err = qed.confirm{question = "Q?"}; qed.message(tostring(r) .. " " .. tostring(err)) end}
-		qed.command{name = "Prompt", run = function() local r, err = qed.prompt{prompt = "P:"}; qed.message(tostring(r) .. " " .. tostring(err)) end}
+		qed.command{id = "confirm", name = "Confirm", run = function() local r, err = qed.confirm{question = "Q?"}; qed.message(tostring(r) .. " " .. tostring(err)) end}
+		qed.command{id = "prompt", name = "Prompt", run = function() local r, err = qed.prompt{prompt = "P:"}; qed.message(tostring(r) .. " " .. tostring(err)) end}
 	end}`)
 	e2e_type(&e, "x")
 	editor_request_quit(&e.ed)
@@ -408,10 +408,10 @@ local function type_in(cmd)
 	qed.term.send("shell", "\x15" .. cmd .. "\r")
 end
 return {{setup = function()
-	qed.command{{name = "Term: Run", run = function() type_in("echo qed_run_$((40+2))") end}}
-	qed.command{{name = "Term: Cwd", run = function() type_in("cd %s && basename \"$PWD\"") end}}
-	qed.command{{name = "Term: Sleep", run = function() type_in("sleep 3") end}}
-	qed.command{{name = "Term: Again", run = function() type_in("echo again") end}}
+	qed.command{{id = "term_run", name = "Term: Run", run = function() type_in("echo qed_run_$((40+2))") end}}
+	qed.command{{id = "term_cwd", name = "Term: Cwd", run = function() type_in("cd %s && basename \"$PWD\"") end}}
+	qed.command{{id = "term_sleep", name = "Term: Sleep", run = function() type_in("sleep 3") end}}
+	qed.command{{id = "term_again", name = "Term: Again", run = function() type_in("echo again") end}}
 end}}`, dir))
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 	ui_run(t, &e, "Term: Run")

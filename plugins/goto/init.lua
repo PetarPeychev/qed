@@ -157,9 +157,9 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Go to", description = "Fuzzy jump to a line"}
-		qed.command{name = "Line", key = "Ctrl+g", run = find_line}
-		qed.command{name = "Jump", scope = "goto", key = "Enter", run = activate}
-		qed.command{name = "Close", scope = "goto", key = "Esc", run = close}
+		qed.command{id = "line", name = "Line", key = "Ctrl+g", run = find_line}
+		qed.command{id = "jump", name = "Jump", scope = "goto", key = "Enter", run = activate}
+		qed.command{id = "close", name = "Close", scope = "goto", key = "Esc", run = close}
 		qed.export{state = state}
 	end,
 }

@@ -1,0 +1,87 @@
+qed-e2e snapshot 90x36 cursor 16,28
+-- text
+ 1 x
+ 2
+
+        ┌────────────────────────────────────────────────────────────────────────┐
+        │ Options │ Keybinds                                                     │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ > ai.edit_prompt                                                       │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Key                               Value                                │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ ai.edit_prompt                    You are editing the file {path}. Its…│
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        ├────────────────────────────────────────────────────────────────────────┤
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ ai.edit_prompt:                                                        │
+        │                                                                        │
+        │ Instruction: {instruction}                                             │
+        │                                                                        │
+        │ {file}                                                                 │
+        │ Ctrl+s save  Esc cancel                                                │
+        └────────────────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/a.txt  1/2                                                     ◆ text  ⇥ Spaces:4
+
+-- style
+abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddefgggggggeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddegggfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddehhhhfffffffffffffffffffffffffffffhhhhhhhffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeiiiiiiiiiiiiiiijjjjjjjjjjjjjjjjjjiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddegggggggggggggggggfffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefkffffkfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+-- legend
+a fg=#4c566a bg=#2e3440
+b fg=#eceff4 bg=#2e3440
+c fg=#d8dee9 bg=#383d49
+d fg=#d8dee9 bg=#2e3440
+e fg=#4c566a bg=#272c36
+f fg=#d8dee9 bg=#272c36
+g fg=#ebcb8b bg=#272c36
+h fg=#d8dee9 bg=#272c36 bold
+i fg=#eceff4 bg=#434c5e
+j fg=#d8dee9 bg=#434c5e
+k fg=#d8dee9 bg=#272c36 underline

@@ -8,12 +8,12 @@ qed-e2e snapshot 80x24 cursor 12,6
         ├──────────────────────────────────────────────────────────────┤
         │ > type to filter                                             │
         ├──────────────────────────────────────────────────────────────┤
-        │ Key                             Value                        │
+        │ Key                               Value                      │
         ├──────────────────────────────────────────────────────────────┤
-        │ alt_esc_timeout_ms              25                           ┃
-        │ auto_close_pairs                true                         │
-        │ big_file_bytes                  2097152                      │
-        │ cursor_accel                    true                         │
+        │ alt_esc_timeout_ms                25                         ┃
+        │ auto_close_pairs                  true                       │
+        │ big_file_bytes                    2097152                    │
+        │ cursor_accel                      true                       │
         ├──────────────────────────────────────────────────────────────┤
         │ Speed up held arrow keys. Default: true                      │
         ├──────────────────────────────────────────────────────────────┤
@@ -33,7 +33,7 @@ ddddddddefgggggggeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddeggghhhhhhhhhhhhhhfffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
-ddddddddeiiiifffffffffffffffffffffffffffiiiiiiiffffffffffffffffffffffffedddddddd
+ddddddddeiiiifffffffffffffffffffffffffffffiiiiiiiffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddegffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdddddddd
 ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd

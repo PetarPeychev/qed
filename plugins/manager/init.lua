@@ -220,13 +220,13 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Plugin Manager", description = "Lists plugins: enable, disable, reload, source and log"}
-		qed.command{name = "Open", welcome = true, run = open}
-		qed.command{name = "Enable/Disable", scope = "plugins", key = "e", run = toggle_enabled}
-		qed.command{name = "Reload", scope = "plugins", key = "r", run = reload}
-		qed.command{name = "Show Log", scope = "plugins", key = "l", run = show_log}
-		qed.command{name = "Source", scope = "plugins", key = "Enter", run = open_source}
-		qed.command{name = "Close", scope = "plugins", key = "Esc", run = close}
-		qed.command{name = "Back", scope = "plugin_source", key = "Esc", run = back}
+		qed.command{id = "open", name = "Open", welcome = true, run = open}
+		qed.command{id = "enable_disable", name = "Enable/Disable", scope = "plugins", key = "e", run = toggle_enabled}
+		qed.command{id = "reload", name = "Reload", scope = "plugins", key = "r", run = reload}
+		qed.command{id = "show_log", name = "Show Log", scope = "plugins", key = "l", run = show_log}
+		qed.command{id = "source", name = "Source", scope = "plugins", key = "Enter", run = open_source}
+		qed.command{id = "close", name = "Close", scope = "plugins", key = "Esc", run = close}
+		qed.command{id = "back", name = "Back", scope = "plugin_source", key = "Esc", run = back}
 		for _, event in ipairs({"plugin_loaded", "plugin_unloaded", "config_changed"}) do
 			qed:on(event, refresh)
 		end

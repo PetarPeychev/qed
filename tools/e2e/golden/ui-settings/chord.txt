@@ -13,9 +13,9 @@ qed-e2e snapshot 80x24 cursor hidden
         │ Toggle Line Wrap                                             │
         │                                                              │
         │                                                              │
-        │                                                              │
         ├──────────────────────────────────────────────────────────────┤
-        │ Toggle Line Wrap. Default: none. Scope: global               │
+        │ Toggle Line Wrap. Default: none. Scope: global. Id: core/tog │
+        │ gle_line_wrap                                                │
         ├──────────────────────────────────────────────────────────────┤
         │ Press a chord for Toggle Line Wrap (Esc cancels)             │
         └──────────────────────────────────────────────────────────────┘
@@ -38,8 +38,8 @@ ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddeiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiedddddddd
 ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
-ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddegggggggggggggggggggggggggggggggggggggggggggggggggfffffffffffffedddddddd

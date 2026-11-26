@@ -1208,13 +1208,14 @@ local exports = {
 return {
 	setup = function()
 		qed.meta{display_name = "File Tree", description = "File browser with git status and file operations"}
-		apply(qed.options({show_dotfiles = false, show_ignored = false, diff_only = true}, {
-			show_dotfiles = "Show dotfiles when the tree opens",
-			show_ignored = "Show ignored files when the tree opens",
-			diff_only = "Diff previews show only the changed hunks",
-		}))
+		qed.options{
+			show_dotfiles = {type = "bool", default = false, description = "Show dotfiles when the tree opens"},
+			show_ignored = {type = "bool", default = false, description = "Show ignored files when the tree opens"},
+			diff_only = {type = "bool", default = true, description = "Diff previews show only the changed hunks"},
+		}
+		apply(qed.config())
 		for _, tab in ipairs({{"All", "Alt+f"}, {"Open", "Alt+o"}, {"Unsaved", "Alt+u"}}) do
-			qed.command{name = tab[1], key = tab[2], welcome = true, run = function()
+			qed.command{id = tab[1]:lower(), name = tab[1], key = tab[2], welcome = true, run = function()
 				open(tab[1])
 			end}
 		end
@@ -1222,27 +1223,27 @@ return {
 			spec.scope = "filetree"
 			qed.command(spec)
 		end
-		cmd{name = "Next Tab", key = "Tab", run = function() switch_tab(1) end}
-		cmd{name = "Previous Tab", key = "Shift+Tab", run = function() switch_tab(-1) end}
-		cmd{name = "Activate", key = "Enter", run = activate}
-		cmd{name = "Close", key = "Esc", run = escape}
-		cmd{name = "Copy", bind_from = "Copy", run = function() capture(false) end}
-		cmd{name = "Cut", bind_from = "Cut", run = function() capture(true) end}
-		cmd{name = "Paste", bind_from = "Paste", run = paste}
-		cmd{name = "Close Buffers", bind_from = "Close Buffer", run = close_buffers}
-		cmd{name = "Select All", bind_from = "Select All", run = function()
+		cmd{id = "next_tab", name = "Next Tab", key = "Tab", run = function() switch_tab(1) end}
+		cmd{id = "previous_tab", name = "Previous Tab", key = "Shift+Tab", run = function() switch_tab(-1) end}
+		cmd{id = "activate", name = "Activate", key = "Enter", run = activate}
+		cmd{id = "close", name = "Close", key = "Esc", run = escape}
+		cmd{id = "copy", name = "Copy", bind_from = "copy", run = function() capture(false) end}
+		cmd{id = "cut", name = "Cut", bind_from = "cut", run = function() capture(true) end}
+		cmd{id = "paste", name = "Paste", bind_from = "paste", run = paste}
+		cmd{id = "close_buffers", name = "Close Buffers", bind_from = "close_buffer", run = close_buffers}
+		cmd{id = "select_all", name = "Select All", bind_from = "select_all", run = function()
 			if view and view.tree:count() > 0 then
 				ui.node("filetree_rows"):set_state{extend_from = view.tree:at(1).path, highlighted = view.tree:at(view.tree:count()).path}
 				changed()
 			end
 		end}
-		cmd{name = "Delete", key = "Ctrl+d", run = delete}
-		cmd{name = "Rename", key = "Ctrl+r", run = function() prompt("rename") end}
-		cmd{name = "New", key = "Ctrl+n", run = function() prompt("new") end}
-		cmd{name = "Toggle Dotfiles", key = "Alt+.", run = function() toggle("dotfiles") end}
-		cmd{name = "Toggle Ignored", key = "Alt+i", run = function() toggle("ignored") end}
-		cmd{name = "Toggle Diff", key = "Alt+d", run = toggle_diff, when = has_preview}
-		cmd{name = "Expand/Collapse All", key = "Alt+e", run = function()
+		cmd{id = "delete", name = "Delete", key = "Ctrl+d", run = delete}
+		cmd{id = "rename", name = "Rename", key = "Ctrl+r", run = function() prompt("rename") end}
+		cmd{id = "new", name = "New", key = "Ctrl+n", run = function() prompt("new") end}
+		cmd{id = "toggle_dotfiles", name = "Toggle Dotfiles", key = "Alt+.", run = function() toggle("dotfiles") end}
+		cmd{id = "toggle_ignored", name = "Toggle Ignored", key = "Alt+i", run = function() toggle("ignored") end}
+		cmd{id = "toggle_diff", name = "Toggle Diff", key = "Alt+d", run = toggle_diff, when = has_preview}
+		cmd{id = "expand_collapse_all", name = "Expand/Collapse All", key = "Alt+e", run = function()
 			if not view then
 				return
 			end
@@ -1251,8 +1252,8 @@ return {
 			end
 			rebuild()
 		end}
-		qed.command{name = "Submit", scope = "filetree_input", key = "Enter", run = submit}
-		qed.command{name = "Cancel", scope = "filetree_input", key = "Esc", run = input_close}
+		qed.command{id = "submit", name = "Submit", scope = "filetree_input", key = "Enter", run = submit}
+		qed.command{id = "cancel", name = "Cancel", scope = "filetree_input", key = "Esc", run = input_close}
 		qed.export(exports)
 		qed:on("plugin_unloaded", drop)
 		qed:on("config_changed", function(changed_keys) apply(qed.config(), changed_keys) end)

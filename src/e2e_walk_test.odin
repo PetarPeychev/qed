@@ -95,7 +95,7 @@ test_walk_within_union_ignored :: proc(t: ^testing.T) {
 WALK_PLUGIN :: `
 local hw, hd
 local function note(s) qed.log(s) end
-local function cmd(name, run) qed.command{name = name, run = run} end
+local function cmd(name, run) qed.command{id = name:lower():gsub("%W+", "_"), name = name, run = run} end
 local function res(ok, err) return tostring(ok) .. ":" .. tostring(err) end
 return {setup = function()
 	qed.meta{display_name = "W"}
@@ -345,12 +345,12 @@ e2e_walk_raise_keeps_no_ref :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	src := e2e_plugin(&e, "src", `return {setup = function()
-		qed.command{name = "Give", run = function() qed:emit("src:give", {walk = qed.fs.walk, list = qed.list.new}) end}
+		qed.command{id = "give", name = "Give", run = function() qed:emit("src:give", {walk = qed.fs.walk, list = qed.list.new}) end}
 	end}`)
 	e2e_plugin(&e, "dst", `local got
 	return {setup = function()
 		qed:on("src:give", function(d) got = d end)
-		qed.command{name = "Call", run = function()
+		qed.command{id = "call", name = "Call", run = function()
 			local a = select(2, pcall(got.walk, {root = "/tmp"}))
 			local b = select(2, pcall(got.list, {key = "k"}))
 			qed.log(tostring(a) .. "|" .. tostring(b))

@@ -240,9 +240,9 @@ local function open_palette()
 	highlight_first(matches)
 end
 
-qed.command{name = "Open", bind_from = "Command Palette", run = open_palette}
-qed.command{name = "Run", scope = "palette", key = "Enter", run = run_highlighted}
-qed.command{name = "Close", scope = "palette", key = "Esc", run = close_palette}
+qed.command{id = "open", name = "Open", bind_from = "command_palette", run = open_palette}
+qed.command{id = "run", name = "Run", scope = "palette", key = "Enter", run = run_highlighted}
+qed.command{id = "close", name = "Close", scope = "palette", key = "Esc", run = close_palette}
 ```
 
 The field lists `palette` before `editor`, so Enter/Esc reach the palette's commands before the editor's; Up/Down

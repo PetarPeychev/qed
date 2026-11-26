@@ -52,8 +52,7 @@ local function change_indent(ctx)
 	qed.message("Indentation set to " .. (style == "tabs" and "Tabs" or ("Spaces:" .. width)))
 end
 
-local function open_config()
-	local path = qed.config_path()
+local function open_json(path)
 	if path == "" then
 		qed.message("No config directory", "error")
 		return
@@ -71,18 +70,14 @@ local function open_config()
 	end
 end
 
-local function open_defaults()
-	qed.new_buf{text = qed.config_defaults(), language = "json"}
-end
-
 return {
 	setup = function()
 		qed.meta{description = "Settings menu, theme, language, indentation and config files"}
 		menu.setup()
-		qed.command{name = "Theme", welcome = true, run = set_theme}
-		qed.command{name = "Open Config", welcome = true, run = open_config}
-		qed.command{name = "Open Defaults", welcome = true, run = open_defaults}
-		qed.command{name = "Language", when = has_buf, run = set_language}
-		qed.command{name = "Indentation", when = has_buf, run = change_indent}
+		qed.command{id = "theme", name = "Theme", welcome = true, run = set_theme}
+		qed.command{id = "open_config_json", name = "Open Config JSON", welcome = true, run = function() open_json(qed.config_path()) end}
+		qed.command{id = "open_keybinds_json", name = "Open Keybinds JSON", welcome = true, run = function() open_json(qed.keybinds_path()) end}
+		qed.command{id = "language", name = "Language", when = has_buf, run = set_language}
+		qed.command{id = "indentation", name = "Indentation", when = has_buf, run = change_indent}
 	end,
 }

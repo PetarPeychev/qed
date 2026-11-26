@@ -11,9 +11,9 @@ scope_bare :: proc(e: ^E2E, ch: rune) {
 }
 
 @(private = "file")
-scope_log_cmd :: proc(config_name: string) -> ^Command {
+scope_log_cmd :: proc(id: string) -> ^Command {
 	for &cmd in scoped_commands {
-		if cmd.scope == "log" && cmd.config_name == config_name {
+		if cmd.scope == "log" && cmd.id == id {
 			return &cmd
 		}
 	}

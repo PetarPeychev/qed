@@ -464,35 +464,26 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "AI", description = "Selection edits and inline completion from an LLM"}
-		configure(qed.options({
-			edit_command = "claude -p",
-			edit_prompt = "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region, and nothing else, inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}",
-			completion_enabled = false,
-			completion_endpoint = "https://codestral.mistral.ai/v1/fim/completions",
-			completion_model = "codestral-latest",
-			completion_api_key_env = "CODESTRAL_API_KEY",
-			completion_max_tokens = 256,
-			completion_debounce_ms = 350,
-			completion_context_lines = 200,
-		}, {
-			edit_command = "Command that answers an edit request on stdin",
-			edit_prompt = "Edit request template: {path}, {instruction}, {file}",
-			completion_enabled = "Inline completion while typing",
-			completion_endpoint = "FIM endpoint for inline completion",
-			completion_model = "Model sent to the FIM endpoint",
-			completion_api_key_env = "Environment variable holding the FIM API key",
-			completion_max_tokens = "Max tokens per completion",
-			completion_debounce_ms = "Typing pause before a completion is requested",
-			completion_context_lines = "Lines of context before and after the cursor",
-		}))
+		qed.options{
+			edit_command = {type = "string", default = "claude -p", description = "Command that answers an edit request on stdin"},
+			edit_prompt = {type = "text", default = "You are editing the file {path}. Its full current content is below, with the region to rewrite marked between <<<SELECT and SELECT>>>. You may read other project files for context and reason briefly first if you need to. Then give the replacement for the marked region, and nothing else, inside a single markdown fenced code block (```). Do not repeat the surrounding code or the markers, and write nothing after the closing fence.\n\nInstruction: {instruction}\n\n{file}", description = "Edit request template: {path}, {instruction}, {file}"},
+			completion_enabled = {type = "bool", default = false, description = "Inline completion while typing"},
+			completion_endpoint = {type = "string", default = "https://codestral.mistral.ai/v1/fim/completions", description = "FIM endpoint for inline completion"},
+			completion_model = {type = "string", default = "codestral-latest", description = "Model sent to the FIM endpoint"},
+			completion_api_key_env = {type = "string", default = "CODESTRAL_API_KEY", description = "Environment variable holding the FIM API key"},
+			completion_max_tokens = {type = "int", default = 256, min = 1, description = "Max tokens per completion"},
+			completion_debounce_ms = {type = "int", default = 350, min = 0, description = "Typing pause before a completion is requested"},
+			completion_context_lines = {type = "int", default = 200, min = 0, description = "Lines of context before and after the cursor"},
+		}
+		configure(qed.config())
 		qed.command{
-			name = "Edit Selection",
+			id = "edit_selection", name = "Edit Selection",
 			key = "Ctrl+k",
 			when = function(ctx) return ctx.buf ~= nil end,
 			run = edit_selection,
 		}
-		qed.command{name = "Cancel Edits", run = cancel_all}
-		qed.command{name = "Toggle Inline Completion", run = function()
+		qed.command{id = "cancel_edits", name = "Cancel Edits", run = cancel_all}
+		qed.command{id = "toggle_inline_completion", name = "Toggle Inline Completion", run = function()
 			fim.enabled = not fim.enabled
 			fim.warned = false
 			if not fim.enabled then

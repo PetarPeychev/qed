@@ -25,7 +25,7 @@ e2e_ui_hits_cleared_after_last_mount :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, e.ed.ui.caret_shown && ui_focused(&e.ed) != nil && ui_focused(&e.ed).owner == "layout", "the caret is the main editor's again")
 	e2e_plugin(&e, "uitest", `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		qed.ui.mount("notification", qed.ui.text{float = "screen", anchor = "bottom_right", width = 5, height = 1, "toast"})
 	end}
 end}`)
@@ -39,7 +39,7 @@ e2e_ui_unload_keeps_hits_valid_until_next_frame :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "uitest", `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		qed.ui.mount("pane", qed.ui.text{float = "screen", anchor = "top_left", width = 10, height = 2,
 			on = {click = function() return true end}, "clickable"})
 	end}
@@ -58,7 +58,7 @@ e2e_ui_list_append_is_linear :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	start := time.tick_now()
 	message := ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local records = qed.list.new{key = "id"}
 		local matches = qed.fuzzy.list(records, {field = "path"})
 		for i = 1, 100000 do records:append{id = i, path = "src/file_" .. i .. ".odin"} end
@@ -83,7 +83,7 @@ local function raises(fn, needle)
 	check(tostring(err):find(needle, 1, true), "error '" .. tostring(err) .. "' lacks '" .. needle .. "'")
 end
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local field = qed.buf.create{internal = true}
 		raises(function() qed.jump(field, {row = 1, col = 1}) end, "internal buffer")
 		raises(function() ui.mount("pane", ui.text{on = {function() end}, "x"}) end, "handlers are named")
@@ -119,13 +119,13 @@ return {setup = function() qed.export{records = function() return records end} e
 local ui = qed.ui
 local matches
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		matches = qed.fuzzy.list(qed.plugin("source").records(), {field = "label"})
 		ui.mount("pane", ui.scroll{float = "screen", anchor = "top_left", width = 20, height = 5,
 			ui.virtual_column{id = "rows", data = matches, item = function(record) return ui.text{record.label} end}})
 		qed.message(tostring(matches:count()))
 	end}
-	qed.command{name = "Count", run = function() qed.message("count " .. matches:count()) end}
+	qed.command{id = "count", name = "Count", run = function() qed.message("count " .. matches:count()) end}
 end}`)
 	testing.expect_value(t, message, "50")
 	plugin_unload(&e.ed, plugin_find(&e.ed.plugins, "source"))
@@ -141,7 +141,7 @@ e2e_ui_modified_named_key_global_bind :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_new_ui(&e)
 	e2e_plugin(&e, "uitest", `return {setup = function()
-	qed.command{name = "Hit", key = "Shift+F5", run = function() qed.message("hit") end}
+	qed.command{id = "hit", name = "Hit", key = "Shift+F5", run = function() qed.message("hit") end}
 end}`)
 	for command in e.ed.plugins.commands {
 		if command.owner == "uitest" {
@@ -169,7 +169,7 @@ e2e_ui_editor_scroll_per_buffer :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_row_text(&e, 0) != "  1 line", "the wheel scrolled the first buffer")
 	message := ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function() qed.new_buf{text = "other\n"} end}
+	qed.command{id = "run", name = "Run", run = function() qed.new_buf{text = "other\n"} end}
 end}`)
 	_ = message
 	e2e_ui_settle(&e)
@@ -185,11 +185,11 @@ local ui = qed.ui
 local records = qed.list.new{key = "id"}
 for i = 1, 2000 do records:append{id = i} end
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		ui.mount("pane", ui.scroll{id = "vs", float = "screen", anchor = "top_left", width = 20, height = 10,
 			ui.virtual_column{data = records, item = function(record) return ui.text{"item " .. record.id} end}})
 	end}
-	qed.command{name = "Down", run = function()
+	qed.command{id = "down", name = "Down", run = function()
 		local offset = ui.node("vs"):state().offset
 		ui.node("vs"):set_state{offset = offset + 10}
 	end}
@@ -212,7 +212,7 @@ local ui = qed.ui
 local records = qed.list.new{key = "id"}
 for i = 1, 20 do records:append{id = i} end
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		ui.mount("pane", ui.scroll{float = "screen", anchor = "top_left", width = 20, height = 10,
 			ui.virtual_column{data = records, item = function(record)
 				if record.id == 2 then records:clear() end
@@ -230,13 +230,13 @@ e2e_ui_duplicate_outlet_places_once :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "other", `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		qed.ui.mount("pane", qed.ui.column{float = "screen", anchor = "top_left", width = 20, height = 1, qed.ui.outlet{id = "slot"}})
 	end}
 end}`)
 	ut_run_owner(&e, "other", "Run")
 	e2e_plugin(&e, "uitest", `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		qed.ui.mount("pane", qed.ui.column{float = "screen", anchor = "top_left", width = 20, height = 2, margin = {top = 1},
 			qed.ui.outlet{id = "slot"}})
 		qed.ui.mount("slot", qed.ui.text{"segment"})
@@ -254,11 +254,11 @@ e2e_ui_editor_without_scope_is_a_view :: proc(t: ^testing.T) {
 	message := ut_plugin_run(&e, `
 local view = qed.buf.create{internal = true}
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		qed.ui.mount("pane", qed.ui.editor{id = "view", float = "screen", anchor = "top_left", width = 20, height = 2, buffer = view})
 		qed.ui.node("view"):focus()
 	end}
-	qed.command{name = "Read", run = function() qed.message("[" .. view:text() .. "]") end}
+	qed.command{id = "read", name = "Read", run = function() qed.message("[" .. view:text() .. "]") end}
 end}`)
 	_ = message
 	e2e_type(&e, "abc")
@@ -319,7 +319,7 @@ local records = qed.list.new{key = "id"}
 for i = 1, 9 do records:append{id = "k" .. i} end
 local matches = qed.fuzzy.list(records, {field = "id"})
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		ui.mount("pane", ui.scroll{float = "screen", anchor = "top_left", width = 20, height = 9,
 			ui.virtual_column{data = matches, item = function(record)
 				if record.id == "k2" then records:remove("k5") records:remove("k2") end
@@ -342,7 +342,7 @@ local ui = qed.ui
 local view = qed.buf.create{internal = true}
 view:set_text("L0\nL1\nL2\nL3\nL4\nL5\nL6\nL7")
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		ui.mount("pane", ui.scroll{id = "clip", float = "screen", anchor = "top_left", width = 20, height = 4,
 			ui.column{ui.text{"a"}, ui.text{"b"}, ui.editor{height = 8, buffer = view}}})
 		ui.node("clip"):set_state{offset = 4}
@@ -380,7 +380,7 @@ e2e_ui_buffer_hooks_drop_on_user_close :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local other = qed.new_buf{text = "y"}
 		other:on("change", function() end)
 	end}
@@ -404,8 +404,8 @@ e2e_ui_select_all_empty_then_type :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "uitest", `return {setup = function()
 	local query = qed.buf.create{internal = true}
-	qed.command{name = "Show", run = function() qed.message("text " .. query:text()) end}
-	qed.command{name = "Run", run = function()
+	qed.command{id = "show", name = "Show", run = function() qed.message("text " .. query:text()) end}
+	qed.command{id = "run", name = "Run", run = function()
 		qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 5, border = true,
 			qed.ui.editor{id = "q", buffer = query, height = 1, scope = {"uit", "editor"}}})
 		qed.ui.node("q"):focus()
@@ -428,12 +428,12 @@ e2e_scoped_command_pick_keeps_its_chord :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "uitest", `return {setup = function()
 	local query = qed.buf.create{internal = true}
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 5, border = true,
 			qed.ui.editor{id = "q", buffer = query, height = 1, scope = {"uit", "editor"}}})
 		qed.ui.node("q"):focus()
 	end}
-	qed.command{name = "Pick", scope = "uit", key = "Enter", run = function()
+	qed.command{id = "pick", name = "Pick", scope = "uit", key = "Enter", run = function()
 		local choice, err = qed.pick{items = {"none", "dim", "blank"}}
 		qed.message("picked " .. tostring(choice) .. " " .. tostring(err))
 	end}

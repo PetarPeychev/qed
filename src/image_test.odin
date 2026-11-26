@@ -620,7 +620,7 @@ e2e_ui_image_node :: proc(t: ^testing.T) {
 	defer image_fixture_drop(dir)
 	IMAGE_PROTOCOL = .None
 	e2e_plugin(&e, "uitest", fmt.tprintf(`return {{setup = function()
-	qed.command{{name = "Run", run = function()
+	qed.command{{id = "run", name = "Run", run = function()
 		qed.ui.mount("pane", qed.ui.image{{float = "screen", anchor = "top_left", width = 20, height = 6, path = %q}})
 	end}}
 end}}`, fmt.tprintf("%s/pic.png", dir)))

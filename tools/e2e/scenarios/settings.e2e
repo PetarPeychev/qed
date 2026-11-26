@@ -5,7 +5,7 @@ end
 run a.txt
 wait x
 key ctrl+p
-type settings open
+type settings open config ui
 snap palette
 key enter
 wait auto_close_pairs

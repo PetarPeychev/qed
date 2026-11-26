@@ -4,11 +4,11 @@ import "core:testing"
 
 @(private = "file")
 R12_ASKER :: `return {setup = function()
-	qed.command{name = "R12 Pick", run = function()
+	qed.command{id = "r12_pick", name = "R12 Pick", run = function()
 		local choice, err = qed.pick{items = {"one", "two"}}
 		qed.message("pick " .. tostring(choice) .. " " .. tostring(err))
 	end}
-	qed.command{name = "R12 Mount", run = function()
+	qed.command{id = "r12_mount", name = "R12 Mount", run = function()
 		local _, err = qed.ui.mount("alert", qed.ui.box{float = "screen", width = 20, height = 3,
 			qed.ui.text{id = "r12_note", "plugin alert"}})
 		qed.ui.node("r12_note"):focus()

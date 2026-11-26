@@ -881,7 +881,7 @@ e2e_plugin_stub_methods :: proc(t: ^testing.T) {
 	e2e_spawn_fake(&e, "stub-probe", "")
 	e2e_plugin(&e, "probe", `local handle
 return {setup = function()
-	handle = qed.command{name = "Probe", run = function()
+	handle = qed.command{id = "probe", name = "Probe", run = function()
 		local out = {}
 		local function add(cls, obj)
 			for k, v in pairs(obj) do
@@ -959,15 +959,12 @@ end}`)
 }
 
 @(private = "file")
-mk_core_bind :: proc(name: string) -> bool {
-	for cmd in commands {
-		if command_config_name(cmd) == name {
-			return true
-		}
-	}
-	for cmd in scoped_commands {
-		if cmd.bind_from == "" && command_config_name(cmd) == name {
-			return true
+mk_core_bind :: proc(id: string) -> bool {
+	for table in ([?][]Command{commands[:], scoped_commands[:]}) {
+		for cmd in table {
+			if cmd.bind_from == "" && cmd.id == id {
+				return true
+			}
 		}
 	}
 	return false
@@ -992,8 +989,19 @@ mk_default :: proc(root: json.Object, path: string) -> bool {
 @(private = "file")
 mk_exists :: proc(e: ^E2E, root: json.Object, path: string) -> bool {
 	segs := strings.split(path, "/", context.temp_allocator)
-	if segs[0] == "keybinds" && len(segs) >= 2 {
-		return mk_core_bind(strings.join(segs[1:], "/", context.temp_allocator))
+	if segs[0] == "keybinds.json" && len(segs) == 3 {
+		if segs[1] == "core" {
+			return mk_core_bind(segs[2])
+		}
+		for cmd in e.ed.plugins.commands {
+			if cmd.owner == segs[1] && cmd.id == segs[2] {
+				return true
+			}
+		}
+		return false
+	}
+	if segs[0] == "keybinds" {
+		return false
 	}
 	if segs[0] != "plugins" || len(segs) < 2 {
 		return mk_default(root, path)
@@ -1005,13 +1013,7 @@ mk_exists :: proc(e: ^E2E, root: json.Object, path: string) -> bool {
 	if segs[2] == "enabled" {
 		return len(segs) == 3
 	}
-	if segs[2] == "keybinds" && len(segs) >= 4 {
-		name := strings.join(segs[3:], "/", context.temp_allocator)
-		for cmd in e.ed.plugins.commands {
-			if cmd.owner == pl.name && cmd.config_name == name {
-				return true
-			}
-		}
+	if segs[2] == "keybinds" {
 		return false
 	}
 	L := e.ed.plugins.L
@@ -1034,9 +1036,7 @@ mk_exists :: proc(e: ^E2E, root: json.Object, path: string) -> bool {
 e2e_config_master_keys_moved :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
-	v, err := json.parse(embedded_config_data, parse_integers = true, allocator = context.temp_allocator)
-	testing.expect(t, err == nil, "the embedded config parses")
-	root := v.(json.Object)
+	root := g_config_defaults
 	paths: for path in MASTER_CONFIG_PATHS {
 		if mk_exists(&e, root, path) {
 			continue
@@ -1047,6 +1047,11 @@ e2e_config_master_keys_moved :: proc(t: ^testing.T) {
 			}
 		}
 		dest, moved := config_moved(path)
+		if segs := strings.split(path, "/", context.temp_allocator); len(segs) >= 4 && segs[0] == "plugins" && segs[2] == "keybinds" {
+			dest, moved = keybind_legacy_dest(segs[1], strings.join(segs[3:], "/", context.temp_allocator)), true
+		} else if len(segs) >= 2 && segs[0] == "keybinds" {
+			dest, moved = keybind_legacy_dest("core", strings.join(segs[1:], "/", context.temp_allocator)), true
+		}
 		if !testing.expectf(t, moved, "%q existed on master: it must still exist or have a CONFIG_MOVED entry", path) {
 			continue
 		}

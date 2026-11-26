@@ -1,0 +1,85 @@
+qed-e2e snapshot 90x36 cursor 34,12
+-- text
+ 1 x
+ 2
+
+        ┌────────────────────────────────────────────────────────────────────────┐
+        │ Options │ Keybinds                                                     │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ > format.commands                                                      │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Key                               Value                                │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ format.commands                   6 entries                            │
+        │ form┌────────────────────────────────────────────────────────────┐     │
+        │ form│ format.commands >                                          │ilep…│
+        │ form├────────────────────────────────────────────────────────────┤le} -│
+        │ form│ text                                                       ┃     │
+        │ form│ odin                                                       ┃     │
+        │ form│ c                                                          ┃} -  │
+        │ form│ cpp                                                        ┃     │
+        │     │ javascript                                                 │     │
+        │     │ jsx                                                        │     │
+        │     │ typescript                                                 │     │
+        │     │ tsx                                                        │     │
+        │     └────────────────────────────────────────────────────────────┘     │
+        │                                                                        │
+        │                                                                        │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Formatter per language: a stdin to stdout command, {file} is the path. │
+        │  Default: 6 entries                                                    │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Tab tabs  Enter edit  Ctrl+d reset                                     │
+        └────────────────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/a.txt  1/2                                                     ◆ text  ⇥ Spaces:4
+
+-- style
+abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddefgggggggeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddegggfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddehhhhfffffffffffffffffffffffffffffhhhhhhhffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiedddddddd
+ddddddddegffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffedddddddd
+ddddddddegffffegggggggggggggggggggfffffffffffffffffffffffffffffffffffffffffefffffedddddddd
+ddddddddegffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffedddddddd
+ddddddddegffffeiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffffffedddddddd
+ddddddddegffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffedddddddd
+ddddddddefffffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffedddddddd
+ddddddddefffffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#f4f4ff bg=#262626
+d fg=#f4f4ff bg=#181818
+e fg=#868686 bg=#2b2b2b
+f fg=#f4f4ff bg=#2b2b2b
+g fg=#ffdd33 bg=#2b2b2b
+h fg=#f4f4ff bg=#2b2b2b bold
+i fg=#f4f4ff bg=#4a4a4a

@@ -151,18 +151,21 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Find", description = "Find and replace in the current buffer"}
-		options = qed.options({width = 50}, {width = "Width of the find box in cells"})
-		qed.command{name = "In Buffer", key = "Ctrl+f", run = function(ctx) open_finder(ctx, false) end}
-		qed.command{name = "Replace", key = "Ctrl+h", run = function(ctx) open_finder(ctx, true) end}
-		qed.command{name = "Next", scope = "find", key = "Enter", run = function() step(1) end}
-		qed.command{name = "Next Match", scope = "find", key = "Down", run = function() step(1) end}
-		qed.command{name = "Previous Match", scope = "find", key = "Up", run = function() step(-1) end}
-		qed.command{name = "Close", scope = "find", key = "Esc", run = close_finder}
-		qed.command{name = "Toggle Regex", scope = "find", key = "Alt+r", run = function() toggle("regex") end}
-		qed.command{name = "Toggle Case", scope = "find", key = "Alt+c", run = function() toggle("case_sensitive") end}
-		qed.command{name = "Replace All", scope = "find", key = "Alt+a", run = function() replace(true) end}
-		qed.command{name = "Replace Match", scope = "find_replace", key = "Enter", run = function() replace(false) end}
-		qed.command{name = "Switch Field", scope = "find", key = "Tab", run = switch_field}
+		qed.options{
+			width = {type = "int", default = 50, min = 20, description = "Width of the find box in cells"},
+		}
+		options = qed.config()
+		qed.command{id = "in_buffer", name = "In Buffer", key = "Ctrl+f", run = function(ctx) open_finder(ctx, false) end}
+		qed.command{id = "replace", name = "Replace", key = "Ctrl+h", run = function(ctx) open_finder(ctx, true) end}
+		qed.command{id = "next", name = "Next", scope = "find", key = "Enter", run = function() step(1) end}
+		qed.command{id = "next_match", name = "Next Match", scope = "find", key = "Down", run = function() step(1) end}
+		qed.command{id = "previous_match", name = "Previous Match", scope = "find", key = "Up", run = function() step(-1) end}
+		qed.command{id = "close", name = "Close", scope = "find", key = "Esc", run = close_finder}
+		qed.command{id = "toggle_regex", name = "Toggle Regex", scope = "find", key = "Alt+r", run = function() toggle("regex") end}
+		qed.command{id = "toggle_case", name = "Toggle Case", scope = "find", key = "Alt+c", run = function() toggle("case_sensitive") end}
+		qed.command{id = "replace_all", name = "Replace All", scope = "find", key = "Alt+a", run = function() replace(true) end}
+		qed.command{id = "replace_match", name = "Replace Match", scope = "find_replace", key = "Enter", run = function() replace(false) end}
+		qed.command{id = "switch_field", name = "Switch Field", scope = "find", key = "Tab", run = switch_field}
 		qed:on("buf_close", function(buffer)
 			if finder and finder.target == buffer then
 				close_finder()

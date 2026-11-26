@@ -65,7 +65,7 @@ local function build()
 			ui.scroll{grow = 1, ui.virtual_column{id = "r10_rows", data = rows, item = function(record) return ui.text{record.name} end}}}}
 end
 return {setup = function()
-	qed.command{name = "R10 Open", run = function(ctx)
+	qed.command{id = "r10_open", name = "R10 Open", run = function(ctx)
 		view = {query = qed.buf.create{internal = true}, unmount = false}
 		view.handle = ui.mount("pane", build())
 		view.query:on("change", function()
@@ -78,8 +78,8 @@ return {setup = function()
 		ui.node("r10_query"):focus()
 		ui.node("r10_rows"):set_state{highlighted = "old 24"}
 	end}
-	qed.command{name = "R10 Unmounting", run = function() view.unmount = true end}
-	qed.command{name = "Mark", scope = "r10", key = "F8", run = function() qed.message("marked") end}
+	qed.command{id = "r10_unmounting", name = "R10 Unmounting", run = function() view.unmount = true end}
+	qed.command{id = "mark", name = "Mark", scope = "r10", key = "F8", run = function() qed.message("marked") end}
 end}`
 
 @(test)

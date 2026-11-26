@@ -8,7 +8,7 @@ end
 home-file .config/qed/plugins/burst/init.lua
 local count = 0
 return {setup = function()
-	qed.command{name = "Burst", key = "F5", run = function()
+	qed.command{id = "burst", name = "Burst", key = "F5", run = function()
 		for _ = 1, 40 do
 			count = count + 1
 			qed.log(("burst %02d"):format(count))
@@ -3246,7 +3246,7 @@ snap step-08a-terminal
 click 0 0
 snap step-08b-terminal-closed
 key ctrl+p
-type settings open
+type settings open config ui
 key enter
 wait Options
 snap step-08c-settings

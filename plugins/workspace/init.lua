@@ -284,13 +284,13 @@ end
 return {
 	setup = function()
 		qed.meta{description = "Switches the working root directory"}
-		qed.command{name = "Open Directory", key = "Ctrl+o", welcome = true, run = open_directory}
-		qed.command{name = "Open Selected Directory", keybind = "Open Directory", scope = "filetree", run = open_selected}
-		qed.command{name = "Drill", scope = "workspace", key = "Tab", run = drill}
-		qed.command{name = "Slash", scope = "workspace", key = "/", run = slash}
-		qed.command{name = "Back", scope = "workspace", key = "Backspace", run = backspace}
-		qed.command{name = "Switch", scope = "workspace", key = "Enter", run = commit}
-		qed.command{name = "Close", scope = "workspace", key = "Esc", run = close}
+		qed.command{id = "open_directory", name = "Open Directory", key = "Ctrl+o", welcome = true, run = open_directory}
+		qed.command{id = "open_directory", name = "Open Selected Directory", scope = "filetree", run = open_selected}
+		qed.command{id = "drill", name = "Drill", scope = "workspace", key = "Tab", run = drill}
+		qed.command{id = "slash", name = "Slash", scope = "workspace", key = "/", run = slash}
+		qed.command{id = "back", name = "Back", scope = "workspace", key = "Backspace", run = backspace}
+		qed.command{id = "switch", name = "Switch", scope = "workspace", key = "Enter", run = commit}
+		qed.command{id = "close", name = "Close", scope = "workspace", key = "Esc", run = close}
 		qed.export{state = state, set_query = function(text) if view then set_query(text) end end}
 	end,
 }

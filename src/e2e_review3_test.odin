@@ -35,7 +35,7 @@ e2e_find_follows_current_buffer_and_toggles_replace :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	first := editor_buffer(&e.ed).id
 	ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function() qed.new_buf{text = "beta one one"} end}
+	qed.command{id = "run", name = "Run", run = function() qed.new_buf{text = "beta one one"} end}
 end}`)
 	e2e_ui_settle(&e)
 	testing.expect(t, editor_buffer(&e.ed).id != first, "switched")
@@ -91,7 +91,7 @@ e2e_search_handles_owned_and_closed_on_unload :: proc(t: ^testing.T) {
 	e := e2e_start("one two one")
 	defer e2e_stop(&e)
 	message := ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local buffer = qed.buf.current()
 		local first = buffer:find("one")
 		local second = buffer:find("two")
@@ -119,7 +119,7 @@ return {setup = function()
 	end}
 end}`)
 	message := ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local foreign = qed.plugin("maker").make()
 		local current = qed.buf.current()
 		local again = qed.buf.list()[1]
@@ -154,12 +154,12 @@ e2e_buffer_on_change_args_are_objects :: proc(t: ^testing.T) {
 	ut_plugin_run(&e, `
 seen = ""
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local field = qed.buf.create{internal = true}
 		field:on("change", function(buffer) seen = tostring(buffer == field) .. " " .. type(buffer) end)
 		field:set_text("y")
 	end}
-	qed.command{name = "Read", run = function() qed.message(seen) end}
+	qed.command{id = "read", name = "Read", run = function() qed.message(seen) end}
 end}`)
 	plugin_flush(&e.ed)
 	ut_run(&e, "Read")
@@ -189,7 +189,7 @@ return {setup = function()
 	qed.export{bare = bare}
 end}`)
 	message := ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local buffer = qed.buf.current()
 		qed.plugin("own").bare(buffer)
 		local wrapped = coroutine.wrap(function() return buffer:find("x") end)()
@@ -210,7 +210,7 @@ e2e_searches_refresh_together_and_close_with_the_buffer :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	message := ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local buffer = qed.buf.create{internal = true}
 		buffer:set_text("a b a")
 		local first = buffer:find("a")

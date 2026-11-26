@@ -105,7 +105,7 @@ e2e_log_history_and_source :: proc(t: ^testing.T) {
 	editor_log(&e.ed, .Info, "Alpha", "from alpha", show = false)
 	editor_log(&e.ed, .Info, "Beta", "from beta", show = false)
 	message := ut_plugin_run(&e, `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local only = qed.messages{source = "Alpha"}
 		local all = qed.messages{levels = {info = true}}
 		qed.message(("%d %s"):format(only:count(), tostring(all:count() >= 2)))
@@ -153,7 +153,7 @@ e2e_log_chips_click_persist_and_follow_binds :: proc(t: ^testing.T) {
 	log_open_now(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "spawned ols") >= 0, "filters persist across reopening")
 	e2e_key(&e, .Esc)
-	e2e_plugin_config(&e, "log", `{"keybinds": {"Toggle Debug": "F7"}}`)
+	e2e_keybinds(&e, `{"log": {"toggle_debug": "F7"}}`)
 	log_open_now(&e)
 	testing.expect(t, e2e_ui_find_row(&e, "F7 debug") >= 0, "the chip shows the rebound key")
 }

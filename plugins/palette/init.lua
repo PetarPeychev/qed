@@ -108,7 +108,7 @@ local function open_palette()
 	-- a pane's scope holds plugin commands; core's own scopes (editor, list, ...) hold only core ones
 	local plugin_scopes = {}
 	for _, command in ipairs(all) do
-		if command.owner then
+		if command.owner ~= "core" then
 			plugin_scopes[command.scope] = true
 		end
 	end
@@ -149,8 +149,8 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Palette", description = "Command palette on qed.ui"}
-		qed.command{name = "Open", bind_from = "Command Palette", run = open_palette}
-		qed.command{name = "Run", scope = "palette", key = "Enter", run = run_highlighted}
-		qed.command{name = "Close", scope = "palette", key = "Esc", run = close_palette}
+		qed.command{id = "open", name = "Open", bind_from = "command_palette", run = open_palette}
+		qed.command{id = "run", name = "Run", scope = "palette", key = "Enter", run = run_highlighted}
+		qed.command{id = "close", name = "Close", scope = "palette", key = "Esc", run = close_palette}
 	end,
 }

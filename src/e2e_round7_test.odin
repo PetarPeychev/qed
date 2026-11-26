@@ -126,7 +126,7 @@ e2e_round7_status_bar_shows_core_and_plugin_segments :: proc(t: ^testing.T) {
 	e := e2e_start("a\nb")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "uitest", `return {setup = function()
-		qed.command{name = "Seg", run = function() qed.status.set("branch", {text = "main*"}) end}
+		qed.command{id = "seg", name = "Seg", run = function() qed.status.set("branch", {text = "main*"}) end}
 	end}`)
 	ut_run(&e, "Seg")
 	e2e_render(&e)
@@ -142,7 +142,7 @@ e2e_round7_same_file_far_hit_previews_its_row :: proc(t: ^testing.T) {
 	path := fmt.tprintf("%s/far.txt", e.ed.working_root)
 	nav_write(path, r7_lines(12000))
 	e2e_plugin(&e, "uitest", strings.concatenate({`return {setup = function()
-		qed.command{name = "Pick", run = function() qed.pick{items = {{label = "a", path = `, lua_quote(path), `, pos = {row = 5}}, {label = "b", path = `, lua_quote(path), `, pos = {row = 11000}}}} end}
+		qed.command{id = "pick", name = "Pick", run = function() qed.pick{items = {{label = "a", path = `, lua_quote(path), `, pos = {row = 5}}, {label = "b", path = `, lua_quote(path), `, pos = {row = 11000}}}} end}
 	end}`}, context.temp_allocator))
 	ut_run(&e, "Pick")
 	e2e_key(&e, .Arrow_Down)

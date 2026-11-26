@@ -29,7 +29,7 @@ r6_preview :: proc(e: ^E2E, identity: string) -> (node: ^UiNode, buffer: ^Buffer
 @(private = "file")
 r6_pick_plugin :: proc(e: ^E2E, items: string) {
 	e2e_plugin(e, "uitest", strings.concatenate({`return {setup = function()
-		qed.command{name = "Pick", run = function() qed.pick{items = `, items, `} end}
+		qed.command{id = "pick", name = "Pick", run = function() qed.pick{items = `, items, `} end}
 	end}`}, context.temp_allocator))
 	ut_run(e, "Pick")
 }
@@ -158,10 +158,10 @@ e2e_review6_run_takes_an_explicit_scope :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "uitest", `return {setup = function()
-		qed.command{name = "Same", run = function() qed.message("global") end}
-		qed.command{name = "Same", scope = "filetree", run = function() qed.message("scoped") end}
-		qed.command{name = "Go", run = function() qed.run("Uitest: Same", {scope = "filetree"}) end}
-		qed.command{name = "Plain", run = function() qed.run("Uitest: Same") end}
+		qed.command{id = "same", name = "Same", run = function() qed.message("global") end}
+		qed.command{id = "same", name = "Same", scope = "filetree", run = function() qed.message("scoped") end}
+		qed.command{id = "go", name = "Go", run = function() qed.run("Uitest: Same", {scope = "filetree"}) end}
+		qed.command{id = "plain", name = "Plain", run = function() qed.run("Uitest: Same") end}
 	end}`)
 	ut_run(&e, "Go")
 	testing.expect_value(t, e.ed.message, "scoped")

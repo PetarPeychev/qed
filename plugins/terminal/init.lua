@@ -70,7 +70,10 @@ end
 return {
 	setup = function()
 		qed.meta{description = "Terminal pane for qed.term sessions"}
-		options = qed.options({escape_closes = true}, {escape_closes = "Esc at a shell prompt closes the terminal pane (a full-screen program always gets Esc)"})
+		qed.options{
+			escape_closes = {type = "bool", default = true, description = "Esc at a shell prompt closes the terminal pane (a full-screen program always gets Esc)"},
+		}
+		options = qed.config()
 		local close_command
 		local function bind_close()
 			if close_command then
@@ -79,7 +82,7 @@ return {
 			end
 			-- with escape_closes off, Esc stays with the shell
 			if options.escape_closes then
-				close_command = qed.command{name = "Close", scope = "terminal", key = "Esc", run = hide}
+				close_command = qed.command{id = "close", name = "Close", scope = "terminal", key = "Esc", run = hide}
 			end
 		end
 		bind_close()
@@ -87,8 +90,8 @@ return {
 			options = qed.config()
 			bind_close()
 		end)
-		qed.command{name = "Toggle", key = "Alt+t", welcome = true, run = toggle}
-		qed.command{name = "Hide", scope = "terminal", keybind = "Toggle", run = hide}
+		qed.command{id = "toggle", name = "Toggle", key = "Alt+t", welcome = true, run = toggle}
+		qed.command{id = "toggle", name = "Hide", scope = "terminal", run = hide}
 		qed.export{show = show_session, hide = hide}
 		qed:on("term_exit", function(session)
 			if view and view.session == session then

@@ -256,12 +256,12 @@ return {
 	setup = function()
 		qed.meta{description = "Diff base, gutter marks and status for git repos"}
 		show()
-		qed.command{name = "Set Diff Base", run = set_base, when = when}
-		qed.command{name = "Restore File", scope = "filetree", run = function()
+		qed.command{id = "set_diff_base", name = "Set Diff Base", run = set_base, when = when}
+		qed.command{id = "restore_file", name = "Restore File", scope = "filetree", run = function()
 			local selection = ft and ft.selection()
 			restore_path(selection and selection.item and selection.item.path)
 		end, when = when}
-		qed.command{name = "Changes", key = "Alt+g", welcome = true, when = function() return ready and ft ~= nil end, run = function()
+		qed.command{id = "changes", name = "Changes", key = "Alt+g", welcome = true, when = function() return ready and ft ~= nil end, run = function()
 			ft.open("Git")
 		end}
 		qed:on("startup", function()

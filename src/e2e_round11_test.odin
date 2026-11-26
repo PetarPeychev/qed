@@ -10,16 +10,16 @@ local rows = qed.list.new{key = "name"}
 local function add(from, to) for i = from, to do rows:append{name = ("row %03d"):format(i)} end end
 add(1, 200)
 return {setup = function()
-	qed.command{name = "F Open", run = function()
+	qed.command{id = "f_open", name = "F Open", run = function()
 		ui.mount("pane", ui.box{float = "screen", width = 30, height = 12, scope = "list",
 			ui.scroll{id = "f_scroll", follow = true,
 				ui.virtual_column{id = "f_rows", data = rows, item = function(record) return ui.text{record.name} end}}})
 		ui.node("f_rows"):focus()
 	end}
-	qed.command{name = "F Top", run = function() ui.node("f_scroll"):set_state{offset = 0} end}
-	qed.command{name = "F Far", run = function() ui.node("f_scroll"):set_state{offset = 100000} end}
-	qed.command{name = "F More", run = function() add(201, 230) end}
-	qed.command{name = "F Offset", run = function() qed.message(tostring(ui.node("f_scroll"):state().offset)) end}
+	qed.command{id = "f_top", name = "F Top", run = function() ui.node("f_scroll"):set_state{offset = 0} end}
+	qed.command{id = "f_far", name = "F Far", run = function() ui.node("f_scroll"):set_state{offset = 100000} end}
+	qed.command{id = "f_more", name = "F More", run = function() add(201, 230) end}
+	qed.command{id = "f_offset", name = "F Offset", run = function() qed.message(tostring(ui.node("f_scroll"):state().offset)) end}
 end}`
 
 @(test)
@@ -63,14 +63,14 @@ local function build(swapped)
 	return ui.box{id = "rp_root", float = "screen", width = 30, height = 6, inner}
 end
 return {setup = function()
-	qed.command{name = "RP Open", run = function()
+	qed.command{id = "rp_open", name = "RP Open", run = function()
 		view = {query = qed.buf.create{internal = true}, count = 0}
 		view.handle = ui.mount("pane", build(false))
 		view.query:on("change", function() view.handle:update(build(true)) end)
 		ui.node("rp_field"):focus()
 	end}
-	qed.command{name = "Never", scope = "rp_zz", key = "F8", when = function() return false end, run = function() end}
-	qed.command{name = "RP Count", run = function() qed.message(tostring(view.count)) end}
+	qed.command{id = "never", name = "Never", scope = "rp_zz", key = "F8", when = function() return false end, run = function() end}
+	qed.command{id = "rp_count", name = "RP Count", run = function() qed.message(tostring(view.count)) end}
 end}`
 
 @(test)
@@ -95,14 +95,14 @@ local function build(name)
 		ui.terminal{id = "ts_term", session = name, scope = "ts_zz"}}
 end
 return {setup = function()
-	qed.command{name = "TS Open", run = function()
+	qed.command{id = "ts_open", name = "TS Open", run = function()
 		qed.term.create{name = "ts_a", cmd = "cat"}
 		qed.term.create{name = "ts_b", cmd = "cat"}
 		handle = ui.mount("pane", build("ts_a"))
 		ui.node("ts_term"):focus()
 	end}
-	qed.command{name = "TS Arm", run = function() handle:update(build("ts_b")) end}
-	qed.command{name = "Never", scope = "ts_zz", key = "q", when = function() return false end, run = function() end}
+	qed.command{id = "ts_arm", name = "TS Arm", run = function() handle:update(build("ts_b")) end}
+	qed.command{id = "never", name = "Never", scope = "ts_zz", key = "q", when = function() return false end, run = function() end}
 end}`
 
 @(test)

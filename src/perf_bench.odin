@@ -610,9 +610,9 @@ bench_plugin_startup :: proc(t: ^testing.T) {
 		f.data = fmt.tprintf(`
 			return {{
 				setup = function()
-					qed.options{{a = 1, nested = {{b = 2}}}}
+					qed.options{{a = {{type = "int", default = 1}}, nested = {{type = "record", fields = {{b = {{type = "int", default = 2}}}}}}}}
 					for k = 1, 5 do
-						qed.command{{name = "Bench %02d: " .. k, key = "", run = function() qed.message("x") end}}
+						qed.command{{id = "bench_" .. k, name = "Bench %02d: " .. k, key = "", run = function() qed.message("x") end}}
 					end
 				end,
 			}}`, i)
@@ -685,7 +685,7 @@ bench_plugin_keystroke :: proc(t: ^testing.T) {
 	}
 	fmt.eprintln("=== plugin per-keystroke bench ===")
 	run("no plugins", {})
-	run("plugin, no subscribers", {{"q.lua", `return {setup = function() qed.command{name = "Q: Cmd", run = function() end} end}`}})
+	run("plugin, no subscribers", {{"q.lua", `return {setup = function() qed.command{id = "q_cmd", name = "Q: Cmd", run = function() end} end}`}})
 	run("one buf_changed subscriber", {{"s.lua", `
 		n = 0
 		return {setup = function() qed:on("buf_changed", function(b, rev) n = n + 1 end) end}`}})

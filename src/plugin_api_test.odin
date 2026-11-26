@@ -16,8 +16,11 @@ api_test_editor :: proc(code: string, lines: ..string, cfg_user: json.Object = n
 	append(&ed.buffers, test_buffer(..lines))
 	src := strings.concatenate({`return {
 		setup = function()
-			qed.options{opt = 1, nested = {x = "y"}}
-			qed.command{name = "Run", run = function(ctx)
+			qed.options{
+				opt = {type = "int", default = 1},
+				nested = {type = "record", fields = {x = {type = "string", default = "y"}}},
+			}
+			qed.command{id = "run", name = "Run", run = function(ctx)
 `, code, `
 			end}
 		end,
@@ -677,9 +680,9 @@ plugin_api_run_respects_when :: proc(t: ^testing.T) {
 	ed.working_root = strings.clone("/tmp")
 	append(&ed.buffers, test_buffer("x"))
 	editor_plugins_start(ed, {{"t.lua", `return {setup = function()
-	qed.command{name = "Gated", when = function() return false end, run = function() qed.message("gated ran") end}
-	qed.command{name = "Open", when = function() return true end, run = function() end}
-	qed.command{name = "Run", run = function()
+	qed.command{id = "gated", name = "Gated", when = function() return false end, run = function() qed.message("gated ran") end}
+	qed.command{id = "open", name = "Open", when = function() return true end, run = function() end}
+	qed.command{id = "run", name = "Run", run = function()
 		local ok, err = qed.run("Gated")
 		assert(ok == nil and err == "unavailable", "a false when refuses: " .. tostring(ok) .. " " .. tostring(err))
 		assert(qed.run("Open") == true, "a true when runs")

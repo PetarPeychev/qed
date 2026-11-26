@@ -11,10 +11,10 @@ e2e_plugin_command_palette :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "greet", `
 		return {
 			setup = function()
-				qed.command{name = "Hello", key = "Alt+j", run = function(ctx)
+				qed.command{id = "hello", name = "Hello", key = "Alt+j", run = function(ctx)
 					qed.message("hello from lua")
 				end}
-				qed.command{name = "Hidden", when = function() return false end, run = function() end}
+				qed.command{id = "hidden", name = "Hidden", when = function() return false end, run = function() end}
 			end,
 		}`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
@@ -45,8 +45,8 @@ e2e_plugin_palette_rows_and_focus :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "pal", `
 		local h
 		return {setup = function()
-			h = qed.command{name = "Gone", key = "Alt+j", run = function() qed.message("ran") end}
-			qed.command{name = "Drop", run = function() h:remove() end}
+			h = qed.command{id = "gone", name = "Gone", key = "Alt+j", run = function() qed.message("ran") end}
+			qed.command{id = "drop", name = "Drop", run = function() h:remove() end}
 		end}`)
 	testing.expect_value(t, pl.state, PluginState.Enabled)
 
@@ -110,7 +110,7 @@ e2e_plugin_edit_undo :: proc(t: ^testing.T) {
 	pl := e2e_plugin(&e, "wrap", `
 		return {
 			setup = function()
-				qed.command{name = "Lines", key = "Alt+j", run = function(ctx)
+				qed.command{id = "lines", name = "Lines", key = "Alt+j", run = function(ctx)
 					local b = ctx.buf
 					qed.edit(b, function()
 						for row = 1, b:line_count() do

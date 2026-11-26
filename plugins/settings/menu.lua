@@ -5,36 +5,18 @@ local ui = qed.ui
 local TABS = {"Options", "Keybinds"}
 local COLUMNS = {{"Key", "Value"}, {"Command", "Chord"}}
 local NAME_MAX = {48, 60}
+local TEXT_ROWS = 4
+local INFO_DEFAULT_MAX = 60
+local ENABLED = {type = "bool", default = true, description = "Load the plugin"}
+-- core's scoped commands are named for their pane in the palette there; the Keybinds tab lists them all, so it says which
+local CORE_SCOPES = {editor = "Editor", list = "List", list_range = "List"}
 
-local schema
 local view
 local tab = 1
 local rows = {}
 
-local function split(dotted_name)
-	local out = {}
-	for part in dotted_name:gmatch("[^.]+") do
-		out[#out + 1] = part
-	end
-	return out
-end
-
-local function lookup(node, path)
-	for _, segment in ipairs(path) do
-		if type(node) ~= "table" then
-			return nil
-		end
-		node = node[segment]
-	end
-	return node
-end
-
-local function is_object(setting)
-	return type(setting) == "table" and next(setting) ~= nil and #setting == 0
-end
-
-local function user_config()
-	local path = qed.config_path()
+local function keybinds_config()
+	local path = qed.keybinds_path()
 	if path == "" or not qed.fs.exists(path) then
 		return {}
 	end
@@ -44,39 +26,6 @@ local function user_config()
 	end
 	local cfg = qed.json.decode(text)
 	return type(cfg) == "table" and cfg or {}
-end
-
-local function schema_entry(dotted)
-	if schema[dotted] then
-		return schema[dotted]
-	end
-	local parts = split(dotted)
-	for pattern, entry in pairs(schema) do
-		local ps = split(pattern)
-		local ok = #ps == #parts
-		for i = 1, ok and #ps or 0 do
-			ok = ok and (ps[i] == "*" or ps[i] == parts[i])
-		end
-		if ok then
-			return entry
-		end
-	end
-	return {}
-end
-
-local function kind_of(setting, choices)
-	if choices then
-		return "choice"
-	elseif type(setting) == "boolean" then
-		return "bool"
-	elseif math.type(setting) == "integer" then
-		return "int"
-	elseif type(setting) == "number" then
-		return "number"
-	elseif type(setting) == "table" then
-		return "list"
-	end
-	return "string"
 end
 
 local function show(setting)
@@ -90,6 +39,22 @@ local function show(setting)
 	return (tostring(setting):gsub("\n", "\\n"))
 end
 
+local function clip(text, max)
+	if (utf8.len(text) or 0) > max then
+		return text:sub(1, utf8.offset(text, max) - 1) .. "…"
+	end
+	return text
+end
+
+-- a message line holds one line: a multi-line value shows its first, clipped
+local function brief(setting)
+	if type(setting) == "string" and setting:find("\n") then
+		local first = clip(setting:match("^[^\n]*"), INFO_DEFAULT_MAX)
+		return first:sub(-3) == "…" and first or first .. "…"
+	end
+	return clip(show(setting), INFO_DEFAULT_MAX)
+end
+
 local function same(left, right)
 	if type(left) == "table" and type(right) == "table" then
 		return qed.json.encode(left) == qed.json.encode(right)
@@ -97,98 +62,139 @@ local function same(left, right)
 	return left == right
 end
 
-local function option_row(out, user, source, name, path, default, info)
-	local row = {
-		key = "opt\t" .. table.concat(path, "\t"),
-		source = source,
-		name = source == "core" and name or source .. "." .. name,
-		path = path,
-		default = default,
-		description = info.description or "",
-		choices = info.choices,
-		min = info.min,
-	}
-	local set = lookup(user, path)
-	row.user = set ~= nil
-	row.value = set
-	if set == nil then
-		row.value = default
+local function copy(source)
+	local out = {}
+	for key, item in pairs(source or {}) do
+		out[key] = item
 	end
-	local basis = default
-	if basis == nil then
-		basis = row.value
-	end
-	row.kind = kind_of(basis, row.choices)
-	out[#out + 1] = row
+	return out
 end
 
-local function option_leaves(out, user, source, prefix, path, def, maps, info_of)
-	local keys = {}
-	for segment in pairs(def) do
-		keys[#keys + 1] = segment
+local function choices_of(decl)
+	if type(decl.choices) == "function" then
+		local ok, list = pcall(decl.choices)
+		return ok and type(list) == "table" and list or {}
 	end
-	local usr = lookup(user, path)
-	if not is_object(usr) then
-		usr = {}
-	elseif maps and prefix ~= "" then
-		for segment in pairs(usr) do
-			if def[segment] == nil then
-				keys[#keys + 1] = segment
-			end
-		end
+	return decl.choices or {}
+end
+
+local function is_compound(decl)
+	return decl.type == "list" or decl.type == "map" or decl.type == "record"
+end
+
+local function sorted_fields(fields)
+	local names = {}
+	for name in pairs(fields) do
+		names[#names + 1] = name
 	end
-	local function nested(segment)
-		return is_object(def[segment]) or is_object(usr[segment])
-	end
-	table.sort(keys, function(left, right)
-		if nested(left) ~= nested(right) then
-			return nested(right)
+	table.sort(names, function(left, right)
+		if is_compound(fields[left]) ~= is_compound(fields[right]) then
+			return is_compound(fields[right])
 		end
 		return left < right
 	end)
-	for _, segment in ipairs(keys) do
-		local child_path = {table.unpack(path)}
-		child_path[#child_path + 1] = segment
-		local name = prefix == "" and segment or prefix .. "." .. segment
-		local setting = def[segment]
-		if is_object(setting) or (setting == nil and is_object(usr[segment])) then
-			option_leaves(out, user, source, name, child_path, setting or {}, maps, info_of)
-		else
-			option_row(out, user, source, name, child_path, setting, info_of(name))
+	return names
+end
+
+local function summary(row)
+	if row.kind == "removed" then
+		return "(removed)"
+	elseif row.kind == "add" then
+		return row.parent.decl.type == "list" and "+ add item" or "+ add entry"
+	elseif row.kind == "list" then
+		local count = #(row.value or {})
+		return count == 1 and "1 item" or count .. " items"
+	elseif row.kind == "map" then
+		local count = 0
+		for _ in pairs(row.value or {}) do
+			count = count + 1
 		end
+		return count == 1 and "1 entry" or count .. " entries"
+	elseif row.kind == "record" then
+		return ""
+	end
+	return show(row.value)
+end
+
+-- a record that is neither an item nor an entry has no row of its own
+local function add_node(out, set, node)
+	local decl = node.decl
+	node.kind = decl.type
+	node.key = "opt\t" .. table.concat(node.path, "\t")
+	node.description = decl.description ~= "" and decl.description or (node.parent and node.parent.description) or ""
+	node.via_parent = node.parent ~= nil and (node.parent.kind == "list" or node.parent.via_parent)
+	if node.via_parent then
+		node.user = node.parent.user
+	else
+		node.user = set[table.concat(node.path, "/")] == true
+	end
+	local item = node.parent and (node.parent.kind == "list" or node.parent.kind == "map")
+	if decl.type ~= "record" or item then
+		out[#out + 1] = node
+	end
+	local function child(name, slot, child_decl, setting, default)
+		local path = {table.unpack(node.path)}
+		path[#path + 1] = slot
+		add_node(out, set, {source = node.source, name = name, path = path, decl = child_decl, value = setting,
+			default = default, parent = node, slot = slot})
+	end
+	if decl.type == "record" then
+		for _, field in ipairs(sorted_fields(decl.fields)) do
+			local name = node.name == "" and field or node.name .. "." .. field
+			child(name, field, decl.fields[field], (node.value or {})[field], node.default and node.default[field])
+		end
+	elseif decl.type == "list" then
+		for index, setting in ipairs(node.value or {}) do
+			child(("%s[%d]"):format(node.name, index), index, decl.of, setting, node.default and node.default[index])
+		end
+	elseif decl.type == "map" then
+		local keys = {}
+		for key in pairs(node.value or {}) do
+			keys[#keys + 1] = key
+		end
+		table.sort(keys)
+		for _, key in ipairs(keys) do
+			child(node.name .. "." .. key, key, decl.value, node.value[key], node.default and node.default[key])
+		end
+		local dropped = {}
+		for key in pairs(node.default or {}) do
+			if (node.value or {})[key] == nil and set[table.concat(node.path, "/") .. "/" .. key] then
+				dropped[#dropped + 1] = key
+			end
+		end
+		table.sort(dropped)
+		for _, key in ipairs(dropped) do
+			local path = {table.unpack(node.path)}
+			path[#path + 1] = key
+			out[#out + 1] = {source = node.source, name = node.name .. "." .. key, path = path, decl = decl.value, kind = "removed",
+				key = "opt\t" .. table.concat(path, "\t"), parent = node, slot = key, user = true, default = node.default[key],
+				description = node.description}
+		end
+	end
+	if decl.type == "list" or decl.type == "map" then
+		out[#out + 1] = {source = node.source, name = node.name, path = node.path, decl = decl, kind = "add",
+			key = node.key .. "\t+", parent = node, user = node.user, description = node.description}
 	end
 end
 
-local function option_rows(user)
+local function option_rows()
 	local out = {}
-	local defaults = qed.json.decode(qed.config_defaults())
-	local core = {}
-	for segment, setting in pairs(defaults) do
-		if segment ~= "keybinds" and segment ~= "plugins" and segment ~= "lsp" then
-			core[segment] = setting
-		end
+	local values = qed.config_values()
+	local core = {type = "record", description = "", fields = qed.config_schema()}
+	local defaults = {}
+	for name, field in pairs(core.fields) do
+		defaults[name] = field.default
 	end
-	option_leaves(out, user, "core", "", {}, core, false, function(name)
-		local entry = schema_entry(name)
-		if name == "theme" then
-			entry = {description = entry.description, choices = qed.theme.list()}
-		end
-		return entry
-	end)
-	option_leaves(out, user, "lsp", "", {"lsp"}, defaults.lsp, false, function(name)
-		return schema_entry("lsp." .. name)
-	end)
+	add_node(out, values.set, {source = "core", name = "", path = {}, decl = core, value = values.core, default = defaults})
 	for _, plugin in ipairs(qed.plugins()) do
-		local on = lookup(defaults, {"plugins", plugin.id, "enabled"})
-		if on == nil then
-			on = true
+		local fields = copy(plugin.options)
+		fields.enabled = ENABLED
+		local plugin_defaults = {}
+		for name, field in pairs(fields) do
+			plugin_defaults[name] = field.default
 		end
-		option_row(out, user, plugin.id, "enabled", {"plugins", plugin.id, "enabled"}, on, schema_entry("plugins.*.enabled"))
-		local info = plugin.info or {}
-		option_leaves(out, user, plugin.id, "", {"plugins", plugin.id}, plugin.options or {}, true, function(name)
-			local i = info[name:match("^[^.]+")]
-			return type(i) == "string" and {description = i} or i or {}
-		end)
+		add_node(out, values.set, {source = plugin.id, name = plugin.id, path = {"plugins", plugin.id},
+			decl = {type = "record", description = "", fields = fields}, value = values.plugins[plugin.id], default = plugin_defaults})
 	end
 	return out
 end
@@ -196,19 +202,23 @@ end
 local function keybind_rows(user)
 	local out, groups = {}, {}
 	for _, cmd in ipairs(qed.commands()) do
-		if cmd.keybind then
-			local source = cmd.owner or "core"
-			local id = source .. "\t" .. cmd.keybind
+		if cmd.id then
+			local source = cmd.owner
+			local id = source .. "/" .. cmd.id
 			local row = groups[id]
 			if not row then
-				local path = cmd.owner and {"plugins", cmd.owner, "keybinds", cmd.keybind} or {"keybinds", cmd.keybind}
-				local set = lookup(user, path)
+				local set = type(user[source]) == "table" and user[source][cmd.id] or nil
+				local label = cmd.name
+				if source == "core" and CORE_SCOPES[cmd.scope] then
+					label = CORE_SCOPES[cmd.scope] .. ": " .. cmd.name
+				end
 				row = {
 					key = "kb\t" .. id,
 					source = source,
-					name = cmd.owner and cmd.name or cmd.keybind,
+					name = label,
+					keybind = cmd.id,
 					scope = cmd.scope,
-					path = path,
+					path = {source, cmd.id},
 					default = cmd.key,
 					user = set ~= nil,
 					value = set == nil and cmd.key or set,
@@ -237,14 +247,14 @@ local function label_of(row)
 		return row.name
 	end
 	local chord = type(row.value) == "string" and row.value or show(row.value)
-	return chord == "" and row.name or row.name .. " " .. chord
+	return table.concat({row.name, chord, row.source .. "/" .. row.keybind}, " ")
 end
 
 local function value_text(row)
-	if tab == 2 and type(row.value) == "string" then
-		return row.value
+	if tab == 2 then
+		return type(row.value) == "string" and row.value or show(row.value)
 	end
-	return show(row.value)
+	return summary(row)
 end
 
 local function record_of(row)
@@ -257,13 +267,27 @@ local function info_of(row)
 	end
 	if tab == 1 then
 		local text = row.description ~= "" and row.description .. ". " or ""
-		return text .. "Default: " .. (row.default == nil and "none" or show(row.default))
+		if row.kind == "add" then
+			return text .. "Enter adds " .. (row.parent.kind == "list" and "an item" or "an entry")
+		end
+		if row.default == nil then
+			return text .. "Default: none"
+		elseif row.kind == "list" or row.kind == "map" then
+			return text .. "Default: " .. summary({kind = row.kind, value = row.default})
+		end
+		return text .. "Default: " .. clip(show(row.default), INFO_DEFAULT_MAX)
 	end
 	local default = row.default ~= "" and row.default or "none"
-	return ("%s. Default: %s. Scope: %s"):format(row.name, default, row.scope)
+	local scopes = {}
+	for scope in pairs(row.scopes) do
+		scopes[#scopes + 1] = scope
+	end
+	table.sort(scopes)
+	return ("%s. Default: %s. Scope: %s. Id: %s/%s"):format(row.name, default, table.concat(scopes, ", "), row.source, row.keybind)
 end
 
 local HINTS = {{label = "tabs", cmd = "Settings: Next Tab"}, {label = "Enter edit"}, {label = "reset", cmd = "Settings: Reset"}}
+local TEXT_HINTS = {{label = "save", cmd = "Settings: Save Text"}, {label = "cancel", cmd = "Settings: Cancel Text"}}
 
 local function highlighted()
 	local state = ui.node("settings_rows"):state()
@@ -299,6 +323,13 @@ local function footer()
 			ui.text{fg = "pane_prompt_foreground", " ", footer_state.prompt},
 			ui.editor{id = "settings_input", buffer = footer_state.buffer, height = 1, grow = 1, scope = {"settings_input", "editor"}},
 		}
+	elseif footer_state and footer_state.kind == "text" then
+		return ui.column{height = TEXT_ROWS + 2,
+			ui.text{height = 1, fg = "pane_prompt_foreground", " ", footer_state.prompt},
+			ui.editor{id = "settings_text", buffer = footer_state.buffer, height = TEXT_ROWS, wrap = true, margin = {left = 1, right = 1},
+				scope = {"settings_text", "editor"}},
+			ui.footer{hints = TEXT_HINTS},
+		}
 	elseif footer_state then
 		return ui.text{id = "settings_chord", height = 1, fg = "pane_prompt_foreground", " ", footer_state.prompt,
 			on = {key = function(args)
@@ -323,7 +354,8 @@ local function build()
 			ui.scroll{id = "settings_scroll", grow = 1,
 				ui.virtual_column{id = "settings_rows", data = view.matches, item = setting_row, on = {state = function() menu.rebuild() end},
 					highlight_style = {bg = "pane_selection_background", fg = "pane_selection_foreground"}}},
-			ui.text{wrap = true, margin = {left = 1, right = 1}, info_of(rows[highlighted() or ""])},
+			ui.text{wrap = true, margin = {left = 1, right = 1}, height = view.footer and view.footer.kind == "text" and 0 or nil,
+				info_of(rows[highlighted() or ""])},
 			footer(),
 		}}
 end
@@ -343,8 +375,7 @@ local function highlight(key)
 end
 
 local function load_rows()
-	local user = user_config()
-	local list = tab == 1 and option_rows(user) or keybind_rows(user)
+	local list = tab == 1 and option_rows() or keybind_rows(keybinds_config())
 	local by_key, width = {}, #COLUMNS[tab][1]
 	for _, row in ipairs(list) do
 		by_key[row.key] = row
@@ -353,7 +384,7 @@ local function load_rows()
 	return list, by_key, math.min(width, NAME_MAX[tab])
 end
 
-local function refresh(reorder)
+local function refresh(reorder, select)
 	if not view then
 		return
 	end
@@ -365,7 +396,7 @@ local function refresh(reorder)
 			break
 		end
 	end
-	local keep = highlighted()
+	local keep = select or highlighted()
 	if same_rows then
 		for _, row in ipairs(list) do
 			local old = rows[row.key]
@@ -391,54 +422,183 @@ local function focus_query()
 	ui.node("settings_query"):focus()
 end
 
-local function prompt_input(row, text)
+local function prompt_input(prompt, text, submit, kind)
 	local buffer = qed.buf.create{internal = true}
 	buffer:set_text(text)
-	buffer:set_cursor({row = 1, col = #text + 1})
-	view.footer = {kind = "input", row = row, buffer = buffer, prompt = row.name .. ": "}
+	if kind == "text" then
+		buffer:set_cursor({row = buffer:line_count(), col = #buffer:line(buffer:line_count()) + 1})
+	else
+		buffer:set_cursor({row = 1, col = #text + 1})
+	end
+	view.footer = {kind = kind or "input", buffer = buffer, prompt = prompt .. ": ", submit = submit}
 	menu.rebuild()
-	ui.node("settings_input"):focus()
+	ui.node(kind == "text" and "settings_text" or "settings_input"):focus()
 end
 
-local function write(row, value)
+local function write(row, setting)
 	local ok, err
-	if same(value, row.default) then
+	if row.keybind then
+		if same(setting, row.default) then
+			ok, err = qed.keybind_unset(row.source, row.keybind)
+		else
+			ok, err = qed.keybind_set(row.source, row.keybind, setting)
+		end
+	elseif row.default ~= nil and same(setting, row.default) then
 		ok, err = qed.config_unset(row.path)
 	else
-		ok, err = qed.config_set(row.path, value)
+		ok, err = qed.config_set(row.path, setting)
 	end
 	if not ok then
 		qed.message(err, "error")
-		return false
 	end
-	qed.message(row.name .. " set to " .. show(value))
-	refresh()
-	return true
+	return ok
 end
 
-local function parse(row, text)
-	if row.kind == "string" then
+-- an item, or anything inside one, is written as the whole list it belongs to
+local function commit(row, setting)
+	if row.via_parent then
+		local container = copy(row.parent.value)
+		container[row.slot] = setting
+		return commit(row.parent, container)
+	end
+	return write(row, setting)
+end
+
+local function parse(decl, name, text)
+	if decl.type == "text" then
 		return text
-	elseif row.kind == "list" then
-		local setting = qed.json.decode(text)
-		if type(setting) ~= "table" or is_object(setting) then
-			return nil, row.name .. " needs a JSON list"
+	elseif decl.type == "string" then
+		if text:find("\n") then
+			return nil, name .. " is a single line"
 		end
-		for _, entry in ipairs(setting) do
-			if type(entry) ~= "string" then
-				return nil, row.name .. " needs a JSON list of strings"
-			end
-		end
-		return setting
+		return text
 	end
 	local number = tonumber(text)
-	if not number or (row.kind == "int" and math.type(number) ~= "integer") then
-		return nil, row.name .. (row.kind == "int" and " needs a whole number" or " needs a number")
+	if not number or math.type(number) ~= "integer" then
+		return nil, name .. " needs a whole number"
 	end
-	if row.min and number < row.min then
-		return nil, ("%s must be at least %d"):format(row.name, row.min)
+	if decl.min and number < decl.min then
+		return nil, ("%s must be at least %d"):format(name, decl.min)
+	end
+	if decl.max and number > decl.max then
+		return nil, ("%s must be at most %d"):format(name, decl.max)
 	end
 	return number
+end
+
+local function set_row(row, setting, select)
+	if commit(row, setting) then
+		qed.message(row.name .. " set to " .. brief(setting))
+		refresh(false, select)
+	end
+end
+
+local function ask(decl, name, current, done)
+	if decl.type == "bool" then
+		if current == nil then
+			done(decl.default)
+		else
+			done(not current)
+		end
+	elseif decl.type == "choice" then
+		local choice = qed.pick{items = choices_of(decl), prompt = name .. " >", selected = type(current) == "string" and current or nil}
+		if choice then
+			done(choice)
+		end
+	elseif decl.type == "int" or decl.type == "string" or decl.type == "text" then
+		prompt_input(name, current == nil and "" or tostring(current), function(input)
+			local setting, err = parse(decl, name, input)
+			if err then
+				qed.message(err, "error")
+			else
+				done(setting)
+			end
+		end, decl.type == "text" and "text" or nil)
+	else
+		done(copy(decl.default))
+	end
+end
+
+local function add_item(container)
+	local decl = container.decl
+	if decl.type == "list" then
+		local index = #(container.value or {}) + 1
+		ask(decl.of, ("%s[%d]"):format(container.name, index), nil, function(setting)
+			local items = copy(container.value)
+			items[index] = setting
+			if commit(container, items) then
+				qed.message(("%s[%d] added"):format(container.name, index))
+				refresh(false, container.key .. "\t" .. index)
+			end
+		end)
+		return
+	end
+	local taken = container.value or {}
+	local function with_key(key)
+		if key == nil or key == "" then
+			return
+		elseif taken[key] ~= nil then
+			qed.message(container.name .. "." .. key .. " already exists", "error")
+			return
+		end
+		ask(decl.value, container.name .. "." .. key, nil, function(setting)
+			local path = {table.unpack(container.path)}
+			path[#path + 1] = key
+			local entry = {path = path, default = container.default and container.default[key], via_parent = container.via_parent,
+				parent = container, slot = key}
+			if commit(entry, setting) then
+				qed.message(container.name .. "." .. key .. " added")
+				refresh(false, container.key .. "\t" .. key)
+			end
+		end)
+	end
+	if decl.key.type == "choice" then
+		local free = {}
+		for _, choice in ipairs(choices_of(decl.key)) do
+			if taken[choice] == nil then
+				free[#free + 1] = choice
+			end
+		end
+		if #free == 0 then
+			qed.message(container.name .. " has an entry for every choice")
+			return
+		end
+		with_key(qed.pick{items = free, prompt = container.name .. " >"})
+	else
+		prompt_input(container.name .. " key", "", with_key)
+	end
+end
+
+local function edit_option(row)
+	if row.kind == "add" then
+		add_item(row.parent)
+	elseif row.kind == "list" or row.kind == "map" then
+		add_item(row)
+	elseif row.kind == "record" then
+		qed.message(row.name .. ": edit its fields")
+	elseif row.kind == "removed" then
+		qed.message(row.name .. " is removed: Ctrl+d restores it")
+	else
+		ask(row.decl, row.name, row.value, function(setting)
+			if not same(setting, row.value) then
+				set_row(row, setting)
+			end
+		end)
+	end
+end
+
+local function activate()
+	local row = view and rows[highlighted() or ""]
+	if not row then
+		return
+	end
+	if tab == 1 then
+		edit_option(row)
+	else
+		view.footer = {kind = "chord", row = row, prompt = "Press a chord for " .. row.name .. " (Esc cancels)"}
+		menu.rebuild()
+		ui.node("settings_chord"):focus()
+	end
 end
 
 local function normalize(chord)
@@ -448,7 +608,7 @@ end
 local function conflict(row, chord)
 	local want = normalize(chord)
 	for _, cmd in ipairs(qed.commands()) do
-		local mine = cmd.keybind and (cmd.owner or "core") == row.source and cmd.keybind == row.path[#row.path]
+		local mine = cmd.owner == row.source and cmd.id == row.keybind
 		if not mine and row.scopes[cmd.scope] and cmd.shortcut ~= "" and normalize(cmd.shortcut) == want then
 			return cmd
 		end
@@ -470,47 +630,22 @@ local function bind(row, chord)
 		if choice ~= 2 then
 			return
 		end
-		local path = other.owner and {"plugins", other.owner, "keybinds", other.keybind} or {"keybinds", other.keybind}
 		local ok, err
-		if other.keybind then
-			ok, err = (other.key == "" and qed.config_unset or qed.config_set)(path, "")
+		if other.id then
+			if other.key == "" then
+				ok, err = qed.keybind_unset(other.owner, other.id)
+			else
+				ok, err = qed.keybind_set(other.owner, other.id, "")
+			end
 		end
 		if not ok then
 			qed.message(err or (other.name .. " borrows its bind and cannot be unbound here"), "error")
 			return
 		end
 	end
-	if write(row, chord) and other then
-		qed.message(("%s set to %s, %s unbound"):format(row.name, chord, other.name))
-	end
-end
-
-local function edit_option(row)
-	if row.kind == "bool" then
-		write(row, not row.value)
-	elseif row.kind == "choice" then
-		local choice = qed.pick{items = row.choices, selected = type(row.value) == "string" and row.value or nil}
-		if choice and choice ~= row.value then
-			write(row, choice)
-		end
-	elseif type(row.value) == "string" and row.value:find("\n") then
-		qed.message(row.name .. " spans lines: edit it in config.json", "error")
-	else
-		prompt_input(row, type(row.value) == "table" and qed.json.encode(row.value) or tostring(row.value))
-	end
-end
-
-local function activate()
-	local row = view and rows[highlighted() or ""]
-	if not row then
-		return
-	end
-	if tab == 1 then
-		edit_option(row)
-	else
-		view.footer = {kind = "chord", row = row, prompt = "Press a chord for " .. row.name .. " (Esc cancels)"}
-		menu.rebuild()
-		ui.node("settings_chord"):focus()
+	if write(row, chord) then
+		qed.message(other and ("%s set to %s, %s unbound"):format(row.name, chord, other.name) or row.name .. " set to " .. chord)
+		refresh()
 	end
 end
 
@@ -525,19 +660,12 @@ end
 
 local function submit()
 	local footer_state = view and view.footer
-	if not footer_state or footer_state.kind ~= "input" then
+	if not footer_state or not footer_state.submit then
 		return
 	end
-	local row, text = footer_state.row, footer_state.buffer:text()
+	local text = footer_state.buffer:text()
 	cancel_input()
-	local value, err = parse(row, text)
-	if err then
-		qed.message(err, "error")
-		return
-	end
-	if not same(value, row.value) then
-		write(row, value)
-	end
+	footer_state.submit(text)
 end
 
 function menu.capture(chord)
@@ -566,6 +694,9 @@ function menu.dismiss()
 	end
 	local closing = view
 	view = nil
+	if closing.footer and closing.footer.buffer then
+		closing.footer.buffer:close()
+	end
 	closing.handle:unmount()
 	closing.query:close()
 end
@@ -581,30 +712,115 @@ local function close()
 	menu.dismiss()
 end
 
+local function next_key(row)
+	local found = false
+	for index = 1, view.matches:count() do
+		local record = view.matches:at(index)
+		if found then
+			return record.key
+		end
+		found = record.key == row.key
+	end
+end
+
+local function remove_entry(row)
+	local container = row.parent
+	if container.kind == "list" then
+		local items = {}
+		for index, item in ipairs(container.value) do
+			if index ~= row.slot then
+				items[#items + 1] = item
+			end
+		end
+		if commit(container, items) then
+			qed.message(row.name .. " removed")
+			refresh(false, row.slot <= #items and row.key or container.key .. "\t+")
+		end
+		return
+	end
+	if container.via_parent then
+		local entries = copy(container.value)
+		entries[row.slot] = nil
+		if commit(container, entries) then
+			qed.message(row.name .. " removed")
+			refresh(false, next_key(row))
+		end
+	elseif row.kind == "removed" then
+		if qed.config_unset(row.path) then
+			qed.message(row.name .. " restored")
+			refresh(false, row.key)
+		end
+	elseif row.default ~= nil and not row.user then
+		if qed.config_set(row.path, qed.json.null) then
+			qed.message(row.name .. " removed")
+			refresh(false, row.key)
+		end
+	elseif row.default ~= nil then
+		if qed.config_unset(row.path) then
+			qed.message(row.name .. " reset to the default")
+			refresh()
+		end
+	elseif qed.config_unset(row.path) then
+		qed.message(row.name .. " removed")
+		refresh(false, next_key(row))
+	end
+end
+
 function menu.reset()
 	local row = view and rows[highlighted() or ""]
 	if not row then
+		return
+	end
+	if tab == 1 and row.parent and (row.parent.kind == "list" or row.parent.kind == "map") and row.kind ~= "add" then
+		remove_entry(row)
+		return
+	end
+	if row.kind == "add" then
+		row = row.parent
+	end
+	if row.via_parent then
+		local default = row.decl.default
+		if type(default) == "table" then
+			default = copy(default)
+		end
+		if same(default, row.value) then
+			qed.message(row.name .. " is already the default")
+		else
+			set_row(row, default)
+		end
 		return
 	end
 	if not row.user then
 		qed.message(row.name .. " is already the default")
 		return
 	end
-	local ok, err = qed.config_unset(row.path)
+	local ok, err
+	if row.keybind then
+		ok, err = qed.keybind_unset(row.source, row.keybind)
+	else
+		ok, err = qed.config_unset(row.path)
+	end
 	if not ok then
 		qed.message(err, "error")
 		return
 	end
-	qed.message(row.name .. " reset to " .. show(row.default))
+	local default = brief(row.default)
+	if row.kind == "list" or row.kind == "map" then
+		default = summary({kind = row.kind, value = row.default})
+	end
+	qed.message(row.name .. " reset to " .. default)
 	refresh()
 end
 
-function menu.open()
-	if view then
+function menu.open(index)
+	if view and tab == index then
 		menu.dismiss()
 		return
+	elseif view then
+		menu.switch_tab(index)
+		return
 	end
-	schema = schema or qed.json.decode(qed.config_schema())
+	tab = index
 	local list, by_key, width = load_rows()
 	rows = by_key
 	local records = qed.list.new{key = "key"}
@@ -634,14 +850,17 @@ function menu.setup()
 			refresh()
 		end)
 	end
-	qed.command{name = "Open", welcome = true, run = menu.open}
-	qed.command{name = "Reset", scope = "settings", key = "Ctrl+d", run = menu.reset}
-	qed.command{name = "Edit", scope = "settings", key = "Enter", run = activate}
-	qed.command{name = "Next Tab", scope = "settings", key = "Tab", run = function() menu.switch_tab(tab % #TABS + 1) end}
-	qed.command{name = "Previous Tab", scope = "settings", key = "Shift+Tab", run = function() menu.switch_tab((tab - 2) % #TABS + 1) end}
-	qed.command{name = "Close", scope = "settings", key = "Esc", run = close}
-	qed.command{name = "Submit", scope = "settings_input", key = "Enter", run = submit}
-	qed.command{name = "Cancel", scope = "settings_input", key = "Esc", run = cancel_input}
+	qed.command{id = "open_config_ui", name = "Open Config UI", welcome = true, run = function() menu.open(1) end}
+	qed.command{id = "open_keybinds_ui", name = "Open Keybinds UI", welcome = true, run = function() menu.open(2) end}
+	qed.command{id = "reset", name = "Reset", scope = "settings", key = "Ctrl+d", run = menu.reset}
+	qed.command{id = "edit", name = "Edit", scope = "settings", key = "Enter", run = activate}
+	qed.command{id = "next_tab", name = "Next Tab", scope = "settings", key = "Tab", run = function() menu.switch_tab(tab % #TABS + 1) end}
+	qed.command{id = "previous_tab", name = "Previous Tab", scope = "settings", key = "Shift+Tab", run = function() menu.switch_tab((tab - 2) % #TABS + 1) end}
+	qed.command{id = "close", name = "Close", scope = "settings", key = "Esc", run = close}
+	qed.command{id = "submit", name = "Submit", scope = "settings_input", key = "Enter", run = submit}
+	qed.command{id = "cancel", name = "Cancel", scope = "settings_input", key = "Esc", run = cancel_input}
+	qed.command{id = "save_text", name = "Save Text", scope = "settings_text", key = "Ctrl+s", run = submit}
+	qed.command{id = "cancel_text", name = "Cancel Text", scope = "settings_text", key = "Esc", run = cancel_input}
 end
 
 return menu

@@ -1,6 +1,9 @@
 # Settings menu on qed.ui: filter, toggle a bool, number prompt, Tab/Shift+Tab tabs, chord capture, the open chord toggles.
 config
-{"lsp": {"enabled": false}, "plugins": {"settings": {"keybinds": {"Open": "Alt+k"}}}}
+{"lsp": {"enabled": false}}
+end
+home-file .config/qed/keybinds.json
+{"settings": {"open_config_ui": "Alt+k"}}
 end
 file a.txt
 x
@@ -8,7 +11,7 @@ end
 run a.txt
 wait x
 key ctrl+p
-type settings open
+type settings open config ui
 key enter
 wait auto_close_pairs
 type line_wrap

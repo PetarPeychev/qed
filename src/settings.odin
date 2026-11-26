@@ -358,32 +358,36 @@ bind_bare_ok :: proc(scope: string) -> bool {
 	return scope != ""
 }
 
-embedded_config_data := #load("../config/config.json")
-embedded_schema_data := #load("../config/schema.json")
+embedded_keybinds_data := #load("../config/keybinds.json")
 
 g_config_defaults: json.Object
+g_keybind_defaults: json.Object
 g_theme_defaults: json.Object
 g_config_user: json.Object
+g_keybinds_user: json.Object
 g_config_user_broken: bool
 
-// Runs before main (and before tests): the valueless globals in config.odin get
-// their defaults from the embedded config/ JSON; soundness is enforced by tests.
+// Runs before main (and before tests): the valueless globals get their defaults from the
+// declarations in config/options.lua and the binds in config/keybinds.json.
 @(init)
 config_seed_defaults :: proc "contextless" () {
 	context = runtime.default_context()
-	root_val, err := json.parse(embedded_config_data, parse_integers = true, allocator = os.heap_allocator())
-	assert(err == nil, "embedded config/config.json failed to parse")
-	g_config_defaults = root_val.(json.Object)
+	context.allocator = os.heap_allocator()
+	core := options_core_declare()
+	g_config_defaults = json.clone_value(core.default).(json.Object)
+	kb_val, err := json.parse(embedded_keybinds_data, parse_integers = true)
+	assert(err == nil, "embedded config/keybinds.json failed to parse")
+	g_keybind_defaults = kb_val.(json.Object)
 	name := string(g_config_defaults["theme"].(json.String))
 	for bt in bundled_themes {
 		if bt.name != name {
 			continue
 		}
-		theme_val, terr := json.parse(bt.data, parse_integers = true, allocator = os.heap_allocator())
+		theme_val, terr := json.parse(bt.data, parse_integers = true)
 		assert(terr == nil, "embedded default theme failed to parse")
 		g_theme_defaults = theme_val.(json.Object)
 	}
-	assert(g_theme_defaults != nil, "config/config.json theme must name a bundled theme")
+	assert(g_theme_defaults != nil, "config/options.lua theme must name a bundled theme")
 	config_defaults_apply()
 	theme_reset_defaults()
 }
@@ -407,6 +411,7 @@ settings_destroy :: proc "contextless" () {
 		delete(it.ptr^, os.heap_allocator())
 	}
 	config_user_set(nil)
+	keybinds_user_set(nil)
 }
 
 config_user_set :: proc(root: json.Object) {
@@ -417,10 +422,29 @@ config_user_set :: proc(root: json.Object) {
 	}
 }
 
+keybinds_user_set :: proc(root: json.Object) {
+	json.destroy_value(g_keybinds_user, os.heap_allocator())
+	g_keybinds_user = nil
+	if root != nil {
+		g_keybinds_user = json.clone_value(root, os.heap_allocator()).(json.Object)
+	}
+}
+
+keybinds_path :: proc(cfg_path: string, allocator := context.temp_allocator) -> string {
+	dir := config_dir(cfg_path)
+	if dir == "" {
+		return ""
+	}
+	return fmt.aprintf("%s/keybinds.json", dir, allocator = allocator)
+}
+
 config_defaults_apply :: proc() {
 	languages_reset_defaults()
 	scratch := make([dynamic]string, context.temp_allocator)
 	config_apply(g_config_defaults, &scratch)
+	core := g_keybind_defaults["core"].(json.Object) or_else nil
+	config_apply_keybinds(core, commands[:], &scratch)
+	config_apply_keybinds(core, scoped_commands[:], &scratch)
 }
 
 config_load :: proc() -> (message: string, is_error: bool) {
@@ -428,12 +452,15 @@ config_load :: proc() -> (message: string, is_error: bool) {
 	if path == "" {
 		config_defaults_apply()
 		config_user_set(nil)
+		keybinds_user_set(nil)
 		return theme_load(path)
 	}
 	return config_load_from(path)
 }
 
 config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
+	g_options_config_path = path
+	defer g_options_config_path = ""
 	config_defaults_apply()
 	config_user_set(nil)
 	g_config_user_broken = false
@@ -453,8 +480,7 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 			is_error = true
 			g_config_user_broken = true
 		} else {
-			config_apply(root, &problems)
-			config_collect_unknown(root, &problems)
+			config_apply(config_merge(root, &problems), &problems)
 			config_user_set(root)
 			if len(problems) > 0 {
 				slice.sort(problems[:])
@@ -465,10 +491,76 @@ config_load_from :: proc(path: string) -> (message: string, is_error: bool) {
 		}
 	}
 
+	keybinds_message := keybinds_load(keybinds_path(path))
 	theme_message, theme_error := theme_load(path)
-	message = theme_msg_join(message, theme_message)
-	is_error = is_error || theme_error
+	message = theme_msg_join(theme_msg_join(message, keybinds_message), theme_message)
+	is_error = is_error || theme_error || keybinds_message != ""
 	return
+}
+
+// a name with a "Prefix: " may be a plugin command, checked once plugins registered theirs (keybinds_plugin_warn)
+keybinds_load :: proc(path: string) -> string {
+	keybinds_user_set(nil)
+	data, read_err := os.read_entire_file(path, context.temp_allocator)
+	if path == "" || read_err != nil {
+		return ""
+	}
+	root_val, perr := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
+	root, is_obj := root_val.(json.Object)
+	if perr != nil || !is_obj {
+		return fmt.tprintf("keybinds.json: %s is not a JSON object, using the default binds", path)
+	}
+	problems := make([dynamic]string, context.temp_allocator)
+	for group, v in root {
+		if _, ok := v.(json.Object); !ok {
+			append(&problems, fmt.tprintf("%q (expected an object of id to chord)", fmt.tprintf("keybinds.json/%s", group)))
+		}
+	}
+	core, _ := root["core"].(json.Object)
+	config_apply_keybinds(core, commands[:], &problems)
+	config_apply_keybinds(core, scoped_commands[:], &problems)
+	ids: for id in core {
+		for table in ([?][]Command{commands[:], scoped_commands[:]}) {
+			for cmd in table {
+				if cmd.bind_from == "" && cmd.id == id {
+					continue ids
+				}
+			}
+		}
+		append(&problems, config_unknown_msg(fmt.tprintf("keybinds.json/core/%s", id)))
+	}
+	keybinds_user_set(root)
+	if len(problems) == 0 {
+		return ""
+	}
+	slice.sort(problems[:])
+	return fmt.tprintf("keybinds.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator))
+}
+
+keybind_snake :: proc(name: string) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	gap := false
+	for r in strings.to_lower(name, context.temp_allocator) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			if gap && strings.builder_len(sb) > 0 {
+				strings.write_byte(&sb, '_')
+			}
+			strings.write_rune(&sb, r)
+			gap = false
+		} else {
+			gap = true
+		}
+	}
+	return strings.to_string(sb)
+}
+
+// where a bind left in config.json (an old name) would live in keybinds.json, for the warning
+keybind_legacy_dest :: proc(group, name: string) -> string {
+	old := fmt.tprintf("keybinds/%s", name) if group == "core" else fmt.tprintf("plugins/%s/keybinds/%s", group, name)
+	if dest, moved := config_moved(old); moved {
+		return dest
+	}
+	return fmt.tprintf("keybinds.json/%s/%s", group, keybind_snake(name))
 }
 
 config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[dynamic]string) {
@@ -477,17 +569,14 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 		if cmd.bind_from != "" {
 			continue
 		}
-		name := cmd.name
-		if cmd.config_name != "" {
-			name = cmd.config_name
-		}
+		name := cmd.id
 		v, has := kb_obj[name]
 		if !has {
 			continue
 		}
 		s, is_str := v.(json.String)
 		if !is_str {
-			append(invalid, fmt.tprintf("keybinds/%s", name))
+			append(invalid, fmt.tprintf("\"keybinds.json/core/%s\"", name))
 			continue
 		}
 		if s == "" {
@@ -500,7 +589,7 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 		}
 		key, alt_ch, ch, pok := parse_bind(string(s))
 		if !pok || (ch != 0 && !bind_bare_ok(cmd.scope)) {
-			append(invalid, fmt.tprintf("keybinds/%s", name))
+			append(invalid, fmt.tprintf("\"keybinds.json/core/%s\"", name))
 			continue
 		}
 		cmd.key = key
@@ -523,7 +612,7 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 			if sc == "" || ui_chord_normalize(sc) != ui_chord_normalize(cmd.shortcut) {
 				continue
 			}
-			append(invalid, fmt.tprintf("keybinds/%s (%s is %q)", command_config_name(cmd), cmd.shortcut, other.name))
+			append(invalid, fmt.tprintf("\"keybinds.json/core/%s\" (%s is %q)", cmd.id, cmd.shortcut, other.name))
 			delete(cmd.shortcut, os.heap_allocator())
 			cmd.key, cmd.alt_ch, cmd.ch, cmd.shortcut = {}, 0, 0, ""
 			break
@@ -531,153 +620,130 @@ config_apply_keybinds :: proc(kb_obj: json.Object, table: []Command, invalid: ^[
 	}
 }
 
-config_key_label :: proc(prefix, key: string) -> string {
-	return key if prefix == "" else fmt.tprintf("%s/%s", prefix, key)
-}
-
-config_apply_ints :: proc(obj: json.Object, tbl: []Config_Int, prefix: string, invalid: ^[dynamic]string) {
+config_apply_ints :: proc(obj: json.Object, tbl: []Config_Int) {
 	for it in tbl {
-		v, present := obj[it.key]
-		if !present {
-			continue
-		}
-		#partial switch n in v {
+		#partial switch n in obj[it.key] {
 		case json.Integer:
 			it.ptr^ = int(n)
 		case json.Float:
 			it.ptr^ = int(n)
-		case:
-			append(invalid, config_key_label(prefix, it.key))
 		}
 	}
 }
 
-config_apply_bools :: proc(obj: json.Object, tbl: []Config_Bool, prefix: string, invalid: ^[dynamic]string) {
+config_apply_bools :: proc(obj: json.Object, tbl: []Config_Bool) {
 	for it in tbl {
-		v, present := obj[it.key]
-		if !present {
+		if b, ok := obj[it.key].(json.Boolean); ok {
+			it.ptr^ = bool(b)
+		}
+	}
+}
+
+// keybinds, plugins and modules have their own checks
+config_merge :: proc(root: json.Object, problems: ^[dynamic]string) -> json.Object {
+	user := make(json.Object, context.temp_allocator)
+	for k, v in root {
+		switch k {
+		case "keybinds", "plugins", "modules":
 			continue
 		}
-		if b, ok := v.(json.Boolean); ok {
-			it.ptr^ = bool(b)
-		} else {
-			append(invalid, config_key_label(prefix, it.key))
+		user[k] = v
+	}
+	option_resolve(nil, g_core_options, "", problems)
+	merged := option_merge(g_core_options, g_core_options.default, user, "", problems).(json.Object)
+	if kb, has := root["keybinds"]; has {
+		kb_obj, is_obj := kb.(json.Object)
+		if !is_obj {
+			append(problems, "\"keybinds\" (expected an object, and binds live in keybinds.json)")
+		}
+		for name in kb_obj {
+			append(problems, fmt.tprintf("%q moved to %q", fmt.tprintf("keybinds/%s", name), keybind_legacy_dest("core", name)))
 		}
 	}
-}
-
-config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
-	config_apply_ints(root, config_ints[:], "", invalid)
-	config_apply_bools(root, config_bools[:], "", invalid)
-	if v, present := root["image_protocol"]; present {
-		str, _ := v.(json.String)
-		if s, ok := image_setting_parse(string(str)); ok {
-			IMAGE_PROTOCOL = s
-		} else {
-			append(invalid, "image_protocol")
-		}
-	}
-
-	if theme_val, present := root["theme"]; present {
-		if s, is_str := theme_val.(json.String); is_str {
-			delete(THEME, os.heap_allocator())
-			THEME = strings.clone(string(s), os.heap_allocator())
-		} else {
-			append(invalid, "theme")
-		}
-	}
-
-	if kb_val, present := root["keybinds"]; present {
-		if kb_obj, kb_is_obj := kb_val.(json.Object); kb_is_obj {
-			config_apply_keybinds(kb_obj, commands[:], invalid)
-			config_apply_keybinds(kb_obj, scoped_commands[:], invalid)
-		} else {
-			append(invalid, "keybinds")
-		}
-	}
-
-	if lang_val, present := root["languages"]; present {
-		if lang_obj, is_obj := lang_val.(json.Object); is_obj {
-			languages_from_config(lang_obj, invalid)
-		} else {
-			append(invalid, "languages")
-		}
-	}
-
-	if lsp_val, present := root["lsp"]; present {
-		if lsp_obj, is_obj := lsp_val.(json.Object); is_obj {
-			config_apply_ints(lsp_obj, config_lsp.ints, "lsp", invalid)
-			config_apply_bools(lsp_obj, config_lsp.bools, "lsp", invalid)
-		} else {
-			append(invalid, "lsp")
-		}
-	}
-
 	if plugins_val, present := root["plugins"]; present {
 		if plugins_obj, is_obj := plugins_val.(json.Object); is_obj {
 			for name, v in plugins_obj {
 				if _, ok := v.(json.Object); !ok {
-					append(invalid, fmt.tprintf("plugins/%s", name))
+					append(problems, fmt.tprintf("plugins/%s", name))
 				}
 			}
 		} else {
-			append(invalid, "plugins")
+			append(problems, "plugins")
 		}
 	}
-}
-
-config_collect_unknown :: proc(root: json.Object, warnings: ^[dynamic]string) {
-	for key in root {
-		switch key {
-		case "theme", "keybinds", "languages", "lsp", "modules", "plugins", "image_protocol":
-			continue
-		}
-		known := false
-		for it in config_ints {
-			known ||= it.key == key
-		}
-		for it in config_bools {
-			known ||= it.key == key
-		}
-		if !known {
-			append(warnings, config_unknown_msg(key))
-		}
-	}
-
-	if lsp_obj, ok := root["lsp"].(json.Object); ok {
-		for key in lsp_obj {
-			known := false
-			for it in config_lsp.ints {
-				known ||= it.key == key
-			}
-			for it in config_lsp.bools {
-				known ||= it.key == key
-			}
-			if !known {
-				append(warnings, config_unknown_msg(fmt.tprintf("lsp/%s", key)))
-			}
-		}
-	}
-
 	if mods_obj, ok := root["modules"].(json.Object); ok {
 		for mod_key, mod_val in mods_obj {
 			sub, is_obj := mod_val.(json.Object)
 			if !is_obj {
-				append(warnings, config_unknown_msg(fmt.tprintf("modules/%s", mod_key)))
+				append(problems, config_unknown_msg(fmt.tprintf("modules/%s", mod_key)))
 				continue
 			}
 			for key in sub {
-				append(warnings, config_unknown_msg(fmt.tprintf("modules/%s/%s", mod_key, key)))
+				append(problems, config_unknown_msg(fmt.tprintf("modules/%s/%s", mod_key, key)))
 			}
 		}
+	} else if _, has := root["modules"]; has {
+		append(problems, config_unknown_msg("modules"))
+	}
+	return merged
+}
+
+// root is complete and checked: the defaults, or config_merge's result
+config_apply :: proc(root: json.Object, invalid: ^[dynamic]string) {
+	config_apply_ints(root, config_ints[:])
+	config_apply_bools(root, config_bools[:])
+	if s, ok := image_setting_parse(string(root["image_protocol"].(json.String) or_else "")); ok {
+		IMAGE_PROTOCOL = s
+	}
+	if s, ok := root["theme"].(json.String); ok {
+		delete(THEME, os.heap_allocator())
+		THEME = strings.clone(string(s), os.heap_allocator())
+	}
+	if lang_obj, ok := root["languages"].(json.Object); ok {
+		languages_from_config(lang_obj)
+	}
+
+	if lsp_obj, ok := root["lsp"].(json.Object); ok {
+		config_apply_ints(lsp_obj, config_lsp.ints)
+		config_apply_bools(lsp_obj, config_lsp.bools)
 	}
 }
 
 CONFIG_MOVED :: [?][2]string {
-	{"plugins/*/keybinds/Next", "keybinds/List: Next"},
-	{"plugins/*/keybinds/Previous", "keybinds/List: Previous"},
-	{"plugins/*/keybinds/Extend Down", "keybinds/List: Extend Down"},
-	{"plugins/*/keybinds/Extend Up", "keybinds/List: Extend Up"},
+	{"keybinds/Go to: Line", "keybinds.json/goto/line"},
+	{"keybinds/Diff: Next Change", "keybinds.json/core/git_next_change"},
+	{"keybinds/Diff: Previous Change", "keybinds.json/core/git_previous_change"},
+	{"keybinds/Diff: Revert Hunk", "keybinds.json/core/git_revert_hunk"},
+	{"keybinds/Diff: Toggle Diff View", "keybinds.json/core/git_toggle_diff_view"},
+	{"keybinds/Diff: Toggle View", "keybinds.json/core/git_toggle_diff_view"},
+	{"keybinds/File Tree: Changes", "keybinds.json/git/changes"},
+	{"keybinds/Restore File", "keybinds.json/git/restore_file"},
+	{"keybinds/Terminal: Toggle", "keybinds.json/terminal/toggle"},
+	{"keybinds/Message Log: Open", "keybinds.json/log/open"},
+	{"keybinds/Message Log: Toggle Debug", "keybinds.json/log/toggle_debug"},
+	{"keybinds/Message Log: Toggle Info", "keybinds.json/log/toggle_info"},
+	{"keybinds/Message Log: Toggle Warn", "keybinds.json/log/toggle_warn"},
+	{"keybinds/Message Log: Toggle Error", "keybinds.json/log/toggle_error"},
+	{"keybinds/Message Log: Toggle History", "keybinds.json/log/toggle_history"},
+	{"keybinds/Git: Set Diff Base", "keybinds.json/git/set_diff_base"},
+	{"keybinds/AI: Cancel Edits", "keybinds.json/ai/cancel_edits"},
+	{"keybinds/AI: Edit Selection", "keybinds.json/ai/edit_selection"},
+	{"keybinds/AI: Toggle Inline Completion", "keybinds.json/ai/toggle_inline_completion"},
+	{"keybinds/File Tree: Delete", "keybinds.json/filetree/delete"},
+	{"keybinds/File Tree: Expand/Collapse All", "keybinds.json/filetree/expand_collapse_all"},
+	{"keybinds/File Tree: New", "keybinds.json/filetree/new"},
+	{"keybinds/File Tree: Open", "keybinds.json/filetree/open"},
+	{"keybinds/File Tree: Rename", "keybinds.json/filetree/rename"},
+	{"keybinds/File Tree: Toggle Diff", "keybinds.json/filetree/toggle_diff"},
+	{"keybinds/File Tree: Toggle Dotfiles", "keybinds.json/filetree/toggle_dotfiles"},
+	{"keybinds/File Tree: Toggle Ignored", "keybinds.json/filetree/toggle_ignored"},
+	{"keybinds/File Tree: Unsaved", "keybinds.json/filetree/unsaved"},
+	{"plugins/settings/keybinds/Open", "keybinds.json/settings/open_config_ui"},
+	{"plugins/settings/keybinds/Open Config", "keybinds.json/settings/open_config_json"},
+	{"plugins/*/keybinds/Next", "keybinds.json/core/list_next"},
+	{"plugins/*/keybinds/Previous", "keybinds.json/core/list_previous"},
+	{"plugins/*/keybinds/Extend Down", "keybinds.json/core/list_extend_down"},
+	{"plugins/*/keybinds/Extend Up", "keybinds.json/core/list_extend_up"},
 	{"plugins_pane_max_width", "pane_max_width"},
 	{"palette_max_rows", "picker_max_rows"},
 	{"plugins/palette/width", "picker_width"},
@@ -685,21 +751,14 @@ CONFIG_MOVED :: [?][2]string {
 	{"plugins/log/max_width", "pane_max_width"},
 	{"plugins/settings/max_width", "pane_max_width"},
 	{"plugins/markdown/max_width", "pane_max_width"},
-	{"keybinds/Plugins: Open", "plugins/manager/keybinds/Open"},
-	{"keybinds/Plugins: Enable/Disable", "plugins/manager/keybinds/Enable/Disable"},
-	{"keybinds/Plugins: Reload", "plugins/manager/keybinds/Reload"},
-	{"keybinds/Plugins: Show Log", "plugins/manager/keybinds/Show Log"},
+	{"keybinds/Plugins: Open", "keybinds.json/manager/open"},
+	{"keybinds/Plugins: Enable/Disable", "keybinds.json/manager/enable_disable"},
+	{"keybinds/Plugins: Reload", "keybinds.json/manager/reload"},
+	{"keybinds/Plugins: Show Log", "keybinds.json/manager/show_log"},
 	{"terminal_escape_closes", "plugins/terminal/escape_closes"},
-	{"keybinds/Terminal: Toggle", "plugins/terminal/keybinds/Toggle"},
-	{"keybinds/Message Log: Open", "plugins/log/keybinds/Open"},
-	{"keybinds/Message Log: Toggle Debug", "plugins/log/keybinds/Toggle Debug"},
-	{"keybinds/Message Log: Toggle Info", "plugins/log/keybinds/Toggle Info"},
-	{"keybinds/Message Log: Toggle Warn", "plugins/log/keybinds/Toggle Warn"},
-	{"keybinds/Message Log: Toggle Error", "plugins/log/keybinds/Toggle Error"},
-	{"keybinds/Message Log: Toggle History", "plugins/log/keybinds/Toggle History"},
 	{"message_log_max_width", "pane_max_width"},
-	{"keybinds/Find", "plugins/find/keybinds/In Buffer"},
-	{"keybinds/Replace", "plugins/find/keybinds/Replace"},
+	{"keybinds/Find", "keybinds.json/find/in_buffer"},
+	{"keybinds/Replace", "keybinds.json/find/replace"},
 	{"format_on_save", "plugins/format/on_save"},
 	{"trim_trailing_whitespace_on_save", "plugins/format/trim_whitespace_on_save"},
 	{"ensure_final_newline_on_save", "plugins/format/final_newline_on_save"},
@@ -726,38 +785,25 @@ CONFIG_MOVED :: [?][2]string {
 	{"plugins/format/ensure_final_newline_on_save", "plugins/format/final_newline_on_save"},
 	{"projsearch_min_query", "plugins/search/min_query"},
 	{"plugins/pickers", "plugins/settings"},
-	{"keybinds/Go to Start of File", "keybinds/Go to: Start of File"},
-	{"keybinds/Go to End of File", "keybinds/Go to: End of File"},
-	{"keybinds/File Tree: Git", "plugins/git/keybinds/Changes"},
-	{"keybinds/Debug: Message Log", "plugins/log/keybinds/Open"},
-	{"keybinds/Debug: Plugins", "plugins/manager/keybinds/Open"},
-	{"keybinds/Find in Files", "plugins/search/keybinds/In Files"},
-	{"keybinds/Set Theme", "plugins/settings/keybinds/Theme"},
-	{"keybinds/Set Language", "plugins/settings/keybinds/Language"},
-	{"keybinds/Change Indentation", "plugins/settings/keybinds/Indentation"},
-	{"keybinds/Format Document", "plugins/format/keybinds/Document"},
-	{"keybinds/Toggle Format on Save", "plugins/format/keybinds/Toggle on Save"},
-	{"keybinds/Toggle Trim Whitespace on Save", "plugins/format/keybinds/Toggle Trim Whitespace on Save"},
-	{"keybinds/Toggle Final Newline on Save", "plugins/format/keybinds/Toggle Final Newline on Save"},
-	{"keybinds/Git: Set Diff Base", "plugins/git/keybinds/Set Diff Base"},
-	{"keybinds/Git: Resolve Conflict", "plugins/conflict/keybinds/Resolve"},
-	{"keybinds/File Tree: Restore File", "plugins/git/keybinds/Restore File"},
-	{"keybinds/Change Working Directory", "plugins/workspace/keybinds/Open Directory"},
-	{"keybinds/Find Line", "plugins/goto/keybinds/Line"},
-	{"keybinds/File Tree", "plugins/filetree/keybinds/All"},
-	{"keybinds/File Tree: Open", "plugins/filetree/keybinds/Open"},
-	{"keybinds/File Tree: Changed", "plugins/git/keybinds/Changes"},
-	{"keybinds/File Tree: Unsaved", "plugins/filetree/keybinds/Unsaved"},
-	{"keybinds/File Tree: Delete", "plugins/filetree/keybinds/Delete"},
-	{"keybinds/File Tree: Rename", "plugins/filetree/keybinds/Rename"},
-	{"keybinds/File Tree: New", "plugins/filetree/keybinds/New"},
-	{"keybinds/File Tree: Toggle Dotfiles", "plugins/filetree/keybinds/Toggle Dotfiles"},
-	{"keybinds/File Tree: Toggle Ignored", "plugins/filetree/keybinds/Toggle Ignored"},
-	{"keybinds/File Tree: Toggle Diff", "plugins/filetree/keybinds/Toggle Diff"},
-	{"keybinds/File Tree: Expand/Collapse All", "plugins/filetree/keybinds/Expand/Collapse All"},
-	{"keybinds/AI: Edit Selection", "plugins/ai/keybinds/Edit Selection"},
-	{"keybinds/AI: Cancel Edits", "plugins/ai/keybinds/Cancel Edits"},
-	{"keybinds/AI: Toggle Inline Completion", "plugins/ai/keybinds/Toggle Inline Completion"},
+	{"keybinds/Go to Start of File", "keybinds.json/core/go_to_start_of_file"},
+	{"keybinds/Go to End of File", "keybinds.json/core/go_to_end_of_file"},
+	{"keybinds/File Tree: Git", "keybinds.json/git/changes"},
+	{"keybinds/Debug: Message Log", "keybinds.json/log/open"},
+	{"keybinds/Debug: Plugins", "keybinds.json/manager/open"},
+	{"keybinds/Find in Files", "keybinds.json/search/in_files"},
+	{"keybinds/Set Theme", "keybinds.json/settings/theme"},
+	{"keybinds/Set Language", "keybinds.json/settings/language"},
+	{"keybinds/Change Indentation", "keybinds.json/settings/indentation"},
+	{"keybinds/Format Document", "keybinds.json/format/document"},
+	{"keybinds/Toggle Format on Save", "keybinds.json/format/toggle_on_save"},
+	{"keybinds/Toggle Trim Whitespace on Save", "keybinds.json/format/toggle_trim_whitespace_on_save"},
+	{"keybinds/Toggle Final Newline on Save", "keybinds.json/format/toggle_final_newline_on_save"},
+	{"keybinds/Git: Resolve Conflict", "keybinds.json/conflict/resolve"},
+	{"keybinds/File Tree: Restore File", "keybinds.json/git/restore_file"},
+	{"keybinds/Change Working Directory", "keybinds.json/workspace/open_directory"},
+	{"keybinds/Find Line", "keybinds.json/goto/line"},
+	{"keybinds/File Tree", "keybinds.json/filetree/all"},
+	{"keybinds/File Tree: Changed", "keybinds.json/git/changes"},
 }
 
 THEME_MOVED :: [?][2]string {
@@ -792,43 +838,6 @@ config_unknown_msg :: proc(path: string) -> string {
 		return fmt.tprintf("%q moved to %q", path, dest)
 	}
 	return fmt.tprintf("unknown %q", path)
-}
-
-config_keybinds_unknown :: proc(root: json.Object, plugin_commands: []Command) -> [dynamic]string {
-	warnings := make([dynamic]string, context.temp_allocator)
-	if kb_obj, ok := root["keybinds"].(json.Object); ok {
-		for key in kb_obj {
-			found := false
-			for cmd in commands {
-				if command_config_name(cmd) == key {
-					found = true
-					break
-				}
-			}
-			if !found {
-				for cmd in scoped_commands {
-					if cmd.bind_from == "" && command_config_name(cmd) == key {
-						found = true
-						break
-					}
-				}
-			}
-			if found {
-				continue
-			}
-			path := fmt.tprintf("keybinds/%s", key)
-			msg := config_unknown_msg(path)
-			if _, moved := config_moved(path); !moved {
-				for cmd in plugin_commands {
-					if cmd.name == key || cmd.bare == key {
-						msg = fmt.tprintf("%q moved to %q", path, fmt.tprintf("plugins/%s/keybinds/%s", cmd.owner, cmd.config_name))
-					}
-				}
-			}
-			append(&warnings, msg)
-		}
-	}
-	return warnings
 }
 
 THEME: string
@@ -1348,65 +1357,22 @@ theme_color_key_ok :: proc(v: string) -> bool {
 	return ok
 }
 
-languages_from_config :: proc(obj: json.Object, invalid: ^[dynamic]string) {
+languages_from_config :: proc(obj: json.Object) {
 	rules := make([dynamic]LangRule, context.temp_allocator)
-	for lang in default_pattern_languages() {
-		name := LANGUAGES[lang].name
-		sub_val, has := obj[name]
-		if !has {
-			append_default_patterns(&rules, lang)
+	for info, lang in LANGUAGES {
+		entry, has := obj[info.name]
+		if !has || lang == .MarkdownInline {
 			continue
 		}
-		sub, is_obj := sub_val.(json.Object)
-		if !is_obj {
-			append(invalid, fmt.tprintf("languages/%s", name))
-			append_default_patterns(&rules, lang)
-			continue
+		sub := entry.(json.Object) or_else nil
+		for e in sub["patterns"].(json.Array) or_else nil {
+			append(&rules, LangRule{strings.clone(string(e.(json.String) or_else ""), os.heap_allocator()), lang})
 		}
-		if pv, phas := sub["patterns"]; phas {
-			if !languages_patterns_apply(pv, lang, &rules) {
-				append(invalid, fmt.tprintf("languages/%s/patterns", name))
-				append_default_patterns(&rules, lang)
-			}
-		} else {
-			append_default_patterns(&rules, lang)
-		}
-		if lv, lhas := sub["lsp"]; lhas {
-			if s, is := lv.(json.String); is {
-				LANGUAGES[lang].lsp_server = strings.clone(string(s), os.heap_allocator())
-			} else {
-				append(invalid, fmt.tprintf("languages/%s/lsp", name))
-			}
-		}
-		for key in sub {
-			if key != "patterns" && key != "lsp" {
-				append(invalid, config_unknown_msg(fmt.tprintf("languages/%s/%s", name, key)))
-			}
-		}
-	}
-	for key in obj {
-		if _, ok := language_from_name(key); !ok {
-			append(invalid, fmt.tprintf("languages/%s", key))
+		if s, is := sub["lsp"].(json.String); is {
+			LANGUAGES[lang].lsp_server = strings.clone(string(s), os.heap_allocator())
 		}
 	}
 	language_rules_set(rules[:])
-}
-
-languages_patterns_apply :: proc(v: json.Value, lang: Language, rules: ^[dynamic]LangRule) -> bool {
-	arr, is_arr := v.(json.Array)
-	if !is_arr {
-		return false
-	}
-	for e in arr {
-		if _, is := e.(json.String); !is {
-			return false
-		}
-	}
-	for e in arr {
-		s := e.(json.String)
-		append(rules, LangRule{strings.clone(string(s), os.heap_allocator()), lang})
-	}
-	return true
 }
 
 config_persist_key_to :: proc(path: string, key: string, value: json.Value) -> bool {

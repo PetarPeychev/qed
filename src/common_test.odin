@@ -45,7 +45,7 @@ test_gc_steps, test_gc_cycles, test_gc_shrinks: int
 test_alloc_frees, test_gc_step_frees_max, test_alloc_refusals, test_gc_debt_steps_max: int
 
 FT_HELPER :: `return {setup = function()
-	qed.command{name = "Eval", run = function(code)
+	qed.command{id = "eval", name = "Eval", run = function(code)
 		local chunk = assert(load(code, "ft", "t", _ENV))
 		local ok, result = pcall(chunk)
 		qed.message(ok and tostring(result) or ("error: " .. tostring(result)))
@@ -67,7 +67,7 @@ ft_lua :: proc(ed: ^Editor, code: string) -> string {
 	saved_level := ed.message_level
 	for command in ed.plugins.commands {
 		if command.owner == "fthelper" {
-			plugin_task_start(ed, command.owner, .Command, {ref = command.ref, args = .Line, line = code, command = command.id, user = true})
+			plugin_task_start(ed, command.owner, .Command, {ref = command.ref, args = .Line, line = code, command = command.serial, user = true})
 		}
 	}
 	plugin_flush(ed)

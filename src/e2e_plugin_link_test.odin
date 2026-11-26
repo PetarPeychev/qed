@@ -41,7 +41,7 @@ return {setup = function()
 	qed:on("plugin_unloaded", function(id)
 		regs[id] = nil
 	end)
-	qed.command{name = "Late Export", run = function()
+	qed.command{id = "late_export", name = "Late Export", run = function()
 		local ok, err = pcall(qed.export, {})
 		qed.message(err)
 	end}
@@ -59,14 +59,14 @@ local function say(...)
 end
 return {setup = function()
 	qed:on("startup", function() own = qed.plugin("own") end)
-	qed.command{name = "Add", run = function() say(own.add("abc")) end}
-	qed.command{name = "List", run = function() say(own.list()) end}
-	qed.command{name = "Slow", run = function() say("slow", own.slow()) end}
-	qed.command{name = "Fail", run = function() say(pcall(own.fail)) end}
-	qed.command{name = "Echo", run = function() say(own.echo()) end}
-	qed.command{name = "Stale", run = function() say(pcall(own.add, "x")) end}
-	qed.command{name = "Fetch", run = function() own = qed.plugin("own"); say(own ~= nil) end}
-	qed.command{name = "Missing", run = function() say(tostring(qed.plugin("nope")), tostring(qed.caller())) end}
+	qed.command{id = "add", name = "Add", run = function() say(own.add("abc")) end}
+	qed.command{id = "list", name = "List", run = function() say(own.list()) end}
+	qed.command{id = "slow", name = "Slow", run = function() say("slow", own.slow()) end}
+	qed.command{id = "fail", name = "Fail", run = function() say(pcall(own.fail)) end}
+	qed.command{id = "echo", name = "Echo", run = function() say(own.echo()) end}
+	qed.command{id = "stale", name = "Stale", run = function() say(pcall(own.add, "x")) end}
+	qed.command{id = "fetch", name = "Fetch", run = function() own = qed.plugin("own"); say(own ~= nil) end}
+	qed.command{id = "missing", name = "Missing", run = function() say(tostring(qed.plugin("nope")), tostring(qed.caller())) end}
 end}`
 
 @(private = "file")
@@ -148,11 +148,11 @@ e2e_plugin_export_misuse :: proc(t: ^testing.T) {
 		assert(not pcall(qed.export, {x = 1}), "only functions")
 		assert(not pcall(qed.export, {[1] = print}), "only names")
 		assert(not pcall(qed.export, "x"), "a table")
-		qed.command{name = "Emit", run = function()
+		qed.command{id = "emit", name = "Emit", run = function()
 			local ok, err = pcall(qed.emit, qed, "other:x")
 			qed.message(err)
 		end}
-		qed.command{name = "Bad Event", run = function()
+		qed.command{id = "bad_event", name = "Bad Event", run = function()
 			local ok, err = pcall(qed.on, qed, "nope", print)
 			qed.message(tostring(ok))
 		end}
@@ -168,8 +168,8 @@ e2e_plugin_custom_events :: proc(t: ^testing.T) {
 	e := e2e_root_start("x")
 	defer e2e_stop(&e)
 	link_plugin(&e, "src", `return {setup = function()
-		qed.command{name = "Ping", run = function() qed:emit("src:ping", {n = 7}) end}
-		qed.command{name = "Pong", run = function() qed:emit("src:pong") end}
+		qed.command{id = "ping", name = "Ping", run = function() qed:emit("src:ping", {n = 7}) end}
+		qed.command{id = "pong", name = "Pong", run = function() qed:emit("src:pong") end}
 	end}`)
 	dst := link_plugin(&e, "dst", `return {setup = function()
 		qed:on("src:ping", function(d) qed.log("ping " .. d.n) end)
@@ -294,10 +294,10 @@ PARK_USER :: `
 local own, stale
 return {setup = function()
 	qed:on("startup", function() own = qed.plugin("own") end)
-	qed.command{name = "Park", run = function() own.park() end}
-	qed.command{name = "Stash", run = function() stale = own.stash() end}
-	qed.command{name = "Stale", run = function() qed.message(tostring(stale())) end}
-	qed.command{name = "Raw", run = function()
+	qed.command{id = "park", name = "Park", run = function() own.park() end}
+	qed.command{id = "stash", name = "Stash", run = function() stale = own.stash() end}
+	qed.command{id = "stale", name = "Stale", run = function() qed.message(tostring(stale())) end}
+	qed.command{id = "raw", name = "Raw", run = function()
 		local co = coroutine.create(function() return qed.plugin("own").stash() end)
 		local ok, err = coroutine.resume(co)
 		qed.message(tostring(ok) .. " " .. tostring(err))
@@ -336,7 +336,7 @@ e2e_plugin_export_unload_mid_open :: proc(t: ^testing.T) {
 		qed.export{wait = function() qed.sleep(60000) end}
 	end}`)
 	link_plugin(&e, "big", `return {setup = function()
-		qed.command{name = "Open", run = function()
+		qed.command{id = "open", name = "Open", run = function()
 			qed.plugin("slow").wait()
 			qed.log("opened")
 		end}

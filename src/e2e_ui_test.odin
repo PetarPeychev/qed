@@ -89,12 +89,12 @@ local function build(extra)
 		ui.scroll{height = 2, ui.column{ui.text{"a"}, ui.text{"b"}, ui.text{"c"}}}}
 end
 return {setup = function()
-	qed.command{name = "Open", run = function()
+	qed.command{id = "open", name = "Open", run = function()
 		handle = ui.mount("pane", build(false))
 		ui.node("rows"):set_state{highlighted = "r20"}
 	end}
-	qed.command{name = "Update", run = function() handle:update(build(true)) end}
-	qed.command{name = "Check", run = function()
+	qed.command{id = "update", name = "Update", run = function() handle:update(build(true)) end}
+	qed.command{id = "check", name = "Check", run = function()
 		qed.message(("%s %d"):format(ui.node("rows"):state().highlighted, ui.node("list_scroll"):state().offset))
 	end}
 end}`)
@@ -125,17 +125,17 @@ local function on_key(name, takes)
 	end
 end
 return {setup = function()
-	qed.command{name = "Hit", scope = "outer", key = "Ctrl+e", run = function() log[#log + 1] = "scope:outer" end}
-	qed.command{name = "Inner", scope = "inner", key = "Down", run = function() log[#log + 1] = "scope:inner" end}
-	qed.command{name = "Open", run = function()
+	qed.command{id = "hit", name = "Hit", scope = "outer", key = "Ctrl+e", run = function() log[#log + 1] = "scope:outer" end}
+	qed.command{id = "inner", name = "Inner", scope = "inner", key = "Down", run = function() log[#log + 1] = "scope:inner" end}
+	qed.command{id = "open", name = "Open", run = function()
 		handle = ui.mount("pane", ui.box{id = "outer", float = "screen", width = 30, height = 5, scope = "outer",
 			on = {key = on_key("outer", "Ctrl+r")},
 			ui.column{id = "middle", on = {key = on_key("middle", "Ctrl+u")},
 				ui.editor{id = "field", buffer = field, height = 1, scope = {"inner", "editor"}}}})
 		ui.node("field"):focus()
 	end}
-	qed.command{name = "Close", run = function() handle:unmount() end}
-	qed.command{name = "Log", run = function() qed.message(table.concat(log, " ") .. " |" .. field:text()) log = {} end}
+	qed.command{id = "close", name = "Close", run = function() handle:unmount() end}
+	qed.command{id = "log", name = "Log", run = function() qed.message(table.concat(log, " ") .. " |" .. field:text()) log = {} end}
 end}`)
 	ut_run(&e, "Open")
 	e2e_key(&e, .Ctrl_U, tb2.Mod.Ctrl)
@@ -161,7 +161,7 @@ e2e_ui_list_and_fuzzy :: proc(t: ^testing.T) {
 	e2e_plugin(&e, "uitest", `
 local function check(cond, what) if not cond then error(what, 2) end end
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local files = qed.list.new{key = "path"}
 		files:append{path = "src/main.odin", size = 3}
 		files:append{path = "README.md", size = 1}
@@ -212,10 +212,10 @@ local function build()
 		ui.virtual_column{id = "vlist", data = records, item = row, highlight_style = {bg = "pane_selection_background"}}}
 end
 return {setup = function()
-	qed.command{name = "Open", run = function() handle = ui.mount("pane", build()) end}
-	qed.command{name = "Rebuild", run = function() handle:update(build()) end}
-	qed.command{name = "Change", run = function() records:set(3, {label = "changed"}) end}
-	qed.command{name = "Jump", run = function() ui.node("vlist"):set_state{highlighted = 500} end}
+	qed.command{id = "open", name = "Open", run = function() handle = ui.mount("pane", build()) end}
+	qed.command{id = "rebuild", name = "Rebuild", run = function() handle:update(build()) end}
+	qed.command{id = "change", name = "Change", run = function() records:set(3, {label = "changed"}) end}
+	qed.command{id = "jump", name = "Jump", run = function() ui.node("vlist"):set_state{highlighted = 500} end}
 end}`)
 	ut_run(&e, "Open")
 	testing.expect_value(t, e.ed.ui.builds, 10)
@@ -239,12 +239,12 @@ e2e_ui_outlet_mount_and_unload :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "segment", `
 return {setup = function()
-	qed.command{name = "Add", run = function() qed.ui.mount("bar_slot", qed.ui.text{fg = "warn_foreground", "[seg]"}) end}
+	qed.command{id = "add", name = "Add", run = function() qed.ui.mount("bar_slot", qed.ui.text{fg = "warn_foreground", "[seg]"}) end}
 end}`)
 	ut_run_owner(&e, "segment", "Add")
 	e2e_plugin(&e, "uitest", `
 return {setup = function()
-	qed.command{name = "Open", run = function()
+	qed.command{id = "open", name = "Open", run = function()
 		qed.ui.mount("pane", qed.ui.row{float = "screen", anchor = "top_left", width = 40, height = 1,
 			qed.ui.text{"left"}, qed.ui.outlet{id = "bar_slot"}, qed.ui.text{"right"}})
 	end}
@@ -332,7 +332,7 @@ e2e_ui_mouse_falls_through_unhandled :: proc(t: ^testing.T) {
 	e2e_new_ui(&e)
 	e2e_plugin(&e, "uitest", `
 return {setup = function()
-	qed.command{name = "Open", run = function()
+	qed.command{id = "open", name = "Open", run = function()
 		qed.ui.mount("popup", qed.ui.text{float = "screen", anchor = "top_left", width = 10, height = 3, "overlay"})
 	end}
 end}`)
@@ -376,7 +376,7 @@ e2e_ui_scroll_state_fires_on_user_scroll :: proc(t: ^testing.T) {
 	e2e_plugin(&e, "uitest", `
 local ui = qed.ui
 return {setup = function()
-	qed.command{name = "Open", run = function()
+	qed.command{id = "open", name = "Open", run = function()
 		local rows = {}
 		for i = 1, 50 do rows[i] = ui.text{"row " .. i} end
 		ui.mount("pane", ui.scroll{id = "scroller", float = "screen", anchor = "top_left", width = 30, height = 10,
@@ -384,7 +384,7 @@ return {setup = function()
 			ui.column(rows)})
 		ui.node("scroller"):focus()
 	end}
-	qed.command{name = "Set", run = function() ui.node("scroller"):set_state{offset = 20} end}
+	qed.command{id = "set", name = "Set", run = function() ui.node("scroller"):set_state{offset = 20} end}
 end}`)
 	ut_run(&e, "Open")
 	e2e_mouse(&e, 3, 3, .Mouse_Wheel_Down)
@@ -429,13 +429,13 @@ return {setup = function()
 		count = count + 1
 		qed.message(("scrolled %d %s"):format(count, tostring(buffer == qed.buf.current())))
 	end)
-	qed.command{name = "Place", run = function(ctx) ctx.buf:set_screen_row(50, 1) end}
-	qed.command{name = "Report", run = function(ctx) qed.message(("scrolled %d top %s"):format(count, tostring(ctx.buf:top_row()))) end}
-	qed.command{name = "Pane", run = function()
+	qed.command{id = "place", name = "Place", run = function(ctx) ctx.buf:set_screen_row(50, 1) end}
+	qed.command{id = "report", name = "Report", run = function(ctx) qed.message(("scrolled %d top %s"):format(count, tostring(ctx.buf:top_row()))) end}
+	qed.command{id = "pane", name = "Pane", run = function()
 		qed.ui.mount("pane", qed.ui.text{id = "grab", float = "screen", "pane"})
 		qed.ui.node("grab"):focus()
 	end}
-	qed.command{name = "Back", run = function(ctx)
+	qed.command{id = "back", name = "Back", run = function(ctx)
 		local ok = ctx.buf:focus()
 		qed.message(("focus %s %s"):format(tostring(ok), table.concat(qed.ui.focus_scopes(), ",")))
 	end}
@@ -475,8 +475,8 @@ e2e_ui_view_scrolled_after_rewrap :: proc(t: ^testing.T) {
 local count = 0
 return {setup = function()
 	qed:on("view_scrolled", function() count = count + 1 end)
-	qed.command{name = "Report", run = function(ctx) qed.message(("scrolled %d"):format(count)) end}
-	qed.command{name = "Place", run = function(ctx) ctx.buf:set_screen_row(10.5, 1) end}
+	qed.command{id = "report", name = "Report", run = function(ctx) qed.message(("scrolled %d"):format(count)) end}
+	qed.command{id = "place", name = "Place", run = function(ctx) ctx.buf:set_screen_row(10.5, 1) end}
 end}`)
 	ut_run(&e, "Place")
 	e2e_ui_settle(&e)
@@ -527,24 +527,24 @@ local function settle(slug)
 	qed.message(state and ("heading " .. tostring(state.heading)) or "gone")
 end
 return {setup = function()
-	qed.command{name = "Open", run = function()
+	qed.command{id = "open", name = "Open", run = function()
 		handle = ui.mount("pane", ui.scroll{float = "screen", anchor = "top_left", width = 40, height = 10,
 			qed.markdown.parse(doc, {id = "body"})})
 	end}
-	qed.command{name = "Deep", run = function() settle("deep") end}
-	qed.command{name = "Missing", run = function() settle("nowhere") end}
-	qed.command{name = "Fresh", run = function()
+	qed.command{id = "deep", name = "Deep", run = function() settle("deep") end}
+	qed.command{id = "missing", name = "Missing", run = function() settle("nowhere") end}
+	qed.command{id = "fresh", name = "Fresh", run = function()
 		handle:update(ui.scroll{float = "screen", anchor = "top_left", width = 40, height = 10,
 			qed.markdown.parse(doc .. "\n\nmore", {id = "body"})})
 		settle("deep")
 	end}
-	qed.command{name = "Close", run = function() handle:unmount() end}
-	qed.command{name = "Remount", run = function()
+	qed.command{id = "close", name = "Close", run = function() handle:unmount() end}
+	qed.command{id = "remount", name = "Remount", run = function()
 		handle:unmount()
 		handle = ui.mount("pane", ui.scroll{float = "screen", anchor = "top_left", width = 40, height = 10,
 			qed.markdown.parse(doc, {id = "body"})})
 	end}
-	qed.command{name = "Loose", run = function()
+	qed.command{id = "loose", name = "Loose", run = function()
 		ui.mount("pane", ui.column{float = "screen", anchor = "top_left", width = 20, height = 3,
 			ui.text{id = "plain", "plain"}, qed.markdown.parse("# Loose", {id = "loose"})})
 		ui.node("plain"):set_state{source = 5}
@@ -607,7 +607,7 @@ e2e_ui_view_top_after_deleting_under_it :: proc(t: ^testing.T) {
 local count = 0
 return {setup = function()
 	qed:on("view_scrolled", function() count = count + 1 end)
-	qed.command{name = "Chop", run = function(ctx)
+	qed.command{id = "chop", name = "Chop", run = function(ctx)
 		ctx.buf:delete({row = 3, col = 1}, {row = 200, col = 1})
 	end}
 end}`)

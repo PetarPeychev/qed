@@ -1,21 +1,24 @@
 # Configuration reference
 
-Every qed tunable, in one place. Defaults are compiled into the binary from two
+Every qed tunable, in one place. Defaults are compiled into the binary from these
 files, which are the canonical, always-current reference:
 
-- [`config/config.json`](../config/config.json): knobs, keybinds,
-  per-language LSP wiring, and which bundled plugins are enabled.
-- Each plugin's `qed.options{...}` call in its `setup` (bundled ones in
-  [`plugins/`](../plugins/)): that plugin's keys and defaults.
+- [`config/options.lua`](../config/options.lua): every core option, one typed
+  declaration each (type, default, description, bounds or choices), knobs and
+  per-language LSP wiring included.
+- [`config/keybinds.json`](../config/keybinds.json): core keybinds (plugin commands default to their `key=`).
+- Each plugin's `qed.options{...}` call in `setup` (bundled ones in
+  [`plugins/`](../plugins/)): that plugin's options, declared the same way.
 - [`config/themes/default.json`](../config/themes/default.json): the complete
   color, icon, and tint palette every theme overlays.
 
-*Settings: Open Config* opens (creating `{}` if missing) your `config.json`; *Settings: Open Defaults*
-opens the embedded defaults in an unnamed JSON buffer to browse every key.
+*Settings: Open Config UI* and *Settings: Open Keybinds UI* open the settings menu on its Options or Keybinds tab, where
+every option and bind is edited and its default shown; *Settings: Open Config JSON* and *Settings: Open Keybinds JSON*
+open (creating `{}` if missing) your `config.json` and `keybinds.json`.
 
 ## How config works
 
-You never copy either file. `~/.config/qed/config.json` is a sparse per-key
+You never copy the defaults. `~/.config/qed/config.json` is a sparse per-key
 diff: put in only the keys you want to change; everything else keeps its
 compiled-in default. qed writes only two keys there: *Settings: Theme* persists
 `theme` when you press Enter on it (via `qed.theme.set`), and `e` in the Plugins
@@ -24,10 +27,11 @@ on by default).
 
 - **Hot-reloaded.** Save the file and the change applies live: colors, keybinds,
   and knobs take effect without a restart.
-- **Forgiving.** An unknown key warns once and is ignored (a moved or renamed key names its new home); malformed JSON falls
-  back to defaults without crashing.
-- **Nested keys merge per-key**, so overriding one language's `lsp` leaves
-  its `patterns` intact.
+- **Typed and forgiving.** An undeclared key, a value of the wrong type, a choice outside its list (a function's list
+  is resolved when the config loads), an int out of bounds or a newline in a single-line `string` warns once and keeps
+  the default (a moved or renamed key names its new home), for plugins too; malformed JSON falls back to defaults without crashing.
+- **Records merge per field and maps per entry**, so overriding one language's `lsp` leaves its `patterns` intact; a
+  list replaces. `null` drops a map entry (`"plugins": {"format": {"commands": {"go": null}}}`).
 
 A minimal override looks like:
 
@@ -35,8 +39,17 @@ A minimal override looks like:
 {
   "line_wrap": false,
   "plugins": { "format": { "on_save": true } },
-  "theme": "gruvbox-dark",
-  "keybinds": { "Find": "Ctrl+e" }
+  "theme": "gruvbox-dark"
+}
+```
+
+and `keybinds.json` (grouped by `"core"` or the plugin id, keyed by each command's id):
+
+```json
+{
+  "core": { "copy": "Ctrl+c", "editor_word_left": "Ctrl+Left" },
+  "find": { "in_buffer": "Ctrl+e" },
+  "git": { "set_diff_base": "Alt+b" }
 }
 ```
 
@@ -116,13 +129,15 @@ still goes ahead, unformatted). A save waits for formatting up to
 
 ## Keybinds
 
-`keybinds` maps a core command name to a key string. Only these commands are
-rebindable; primitive editing/movement is fixed. Plugin commands bind under
-[`plugins.<id>.keybinds`](#plugins). An empty string (`""`) leaves a
+`~/.config/qed/keybinds.json` maps a group (`"core"`, or a plugin id as in `plugins.<id>`) to an object of command id
+to key string (`{"settings": {"open_config_ui": "Alt+k"}}`): a sparse diff over the defaults, hot-reloaded, written one
+key at a time by the settings menu (*Settings: Open Keybinds UI* shows each command with its id in the info line).
+Primitive editing/movement is fixed. A plugin command defaults to its `key=`. An unknown group or id warns once (a
+disabled plugin's group is not checked); a bind left in `config.json` (`keybinds` or `plugins.<id>.keybinds`) is no
+longer applied and warns where it would go. An empty string (`""`) leaves a
 command unbound but still reachable from the palette. Key strings are
 case-sensitive combinations of `Ctrl+`, `Alt+`, and a key (`Ctrl+f`, `Alt+F`,
-`Alt+{`). The `keybinds` block in
-[`config/config.json`](../config/config.json) has the full list of command names
+`Alt+{`). [`config/keybinds.json`](../config/keybinds.json) has the full list of core command ids
 and their defaults; every command is also listed with its current binding in the
 command palette (`Ctrl+p`).
 
@@ -142,7 +157,7 @@ The log's *Copy* follows the global `Copy` bind.
 
 ## Languages
 
-The `languages` section keys each language by name. Every entry has two
+The `languages` map keys each language by name (one of the built-in languages). Every entry is a record of two
 user-overridable fields:
 
 - **`patterns`**: glob list matched against the filename basename
@@ -182,8 +197,7 @@ and last error: `e` enables/disables, `r` reloads, `l` shows the plugin's log
 | `plugin_command_max_ms` | `5000` | The same limit for a plugin command. |
 | `plugin_hook_timeout_ms` | `2000` | How long a save waits for `buf_pre_save` handlers, and quit for `quit` handlers. On timeout the save (or quit) goes ahead and the slow plugin is named in a warning. |
 | `plugins.<id>.enabled` | `true` | Off unloads that plugin (live) and drops its commands and binds. `e` in *Plugin Manager: Open* writes this key. |
-| `plugins.<id>.keybinds` | each command's `key` | Binds for that plugin's commands, keyed by the bare command name (`"Set Diff Base"`, not `"Git: Set Diff Base"`). `""` unbinds. A name no command of the loaded plugin has warns; a disabled plugin's binds are not checked. |
-| `plugins.<id>.<key>` | plugin's `qed.options` | Per-key override of the plugin's own config; objects merge per key, arrays replace. Unknown keys warn once the plugin has loaded; a disabled plugin's keys are not checked. |
+| `plugins.<id>.<key>` | plugin's `qed.options` | Override of the plugin's own option, checked against its declaration (records per field, maps per entry, lists replace). An undeclared key or a wrong type warns; a disabled or errored plugin's keys are not checked (its options are unknown until it loads). |
 
 The id is the plugin's file or dir name. Its display name (the id title-cased, or
 what the plugin sets with `qed.meta`) prefixes its commands in the palette
@@ -192,15 +206,12 @@ ignored with a warning. Keybinds and `plugin_memory_mb` hot-reload. Changes unde
 `plugins.<id>` reach the plugin through its `config_changed` handler (`format`,
 `filetree`, `search` apply them live, keeping runtime state); a plugin without one
 is reloaded. Adding, removing or editing a file under `plugins/` reloads just that
-plugin. *Settings: Theme*, *Settings: Language*, *Settings: Indentation*, *Settings: Open Config* and *Settings: Open Defaults*
+plugin. *Settings: Theme*, *Settings: Language*, *Settings: Indentation* and the *Settings: Open ...* commands
 come from the bundled `settings` plugin (no config of its own;
 `plugins.settings.enabled = false` removes them).
 
 ```json
-{ "plugins": {
-  "mytool": { "enabled": false },
-  "git": { "keybinds": { "Set Diff Base": "Alt+b" } }
-} }
+{ "plugins": { "mytool": { "enabled": false } } }
 ```
 
 ### File tree
@@ -212,10 +223,8 @@ closes it. Its commands run while it has focus and are listed in its `Ctrl+p`: *
 *Cut*, *Paste*, *Close Buffers* and *Select All* (default: the keys of the core *Copy*, *Cut*, *Paste*,
 *Close Buffer* and *Select All*, followed across a config reload), *Delete* (`Ctrl+d`), *Rename*
 (`Ctrl+r`), *New* (`Ctrl+n`), *Toggle Dotfiles* (`Alt+.`), *Toggle Ignored* (`Alt+i`), *Toggle Diff*
-(`Alt+d`) and *Expand/Collapse All* (`Alt+e`). Rebind them with `plugins.filetree.keybinds.<name>`
-(`"All"`, `"Delete"`, ...); the Git tab's chord is `plugins.git.keybinds.Changes` (the old
-`plugins.filetree.keybinds.Changed` is gone). The old top-level `keybinds."File Tree"` and `keybinds."File Tree: ..."`
-warn where they moved. The list width comes from `split_tree_min_width`/`split_tree_max_width`.
+(`Alt+d`) and *Expand/Collapse All* (`Alt+e`). Rebind them in `keybinds.json` under `"filetree"`
+(`all`, `delete`, ...); the Git tab's chord is `git.changes`. The list width comes from `split_tree_min_width`/`split_tree_max_width`.
 Without Lua (or with the plugin disabled) there is no file tree.
 
 | Key | Default | Meaning |
@@ -234,8 +243,7 @@ knob survives it.
 *Workspace: Open Selected Directory* (same chord, the selected dir or a file's parent) come from the
 bundled `workspace` plugin. The picker lists dotfiles while the file tree shows them (`plugins.filetree.show_dotfiles` or
 *File Tree: Toggle Dotfiles*); without the `filetree` plugin it hides them. Rebind both
-with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
-`keybinds."Change Working Directory"` warns where it moved.
+with `workspace.open_directory` in `keybinds.json`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -245,8 +253,7 @@ with `plugins.workspace.keybinds["Open Directory"]`; the old top-level
 
 *Go to: Line* (`Ctrl+g`) comes from the bundled `goto` plugin: a filter over the
 buffer's lines in file order with a preview, `:N` or `:N:M` jumps to a line (and column), and a bare number lists that line first.
-Rebind with `plugins.goto.keybinds["Line"]`; the old top-level `keybinds."Find Line"`
-warns where it moved, and a `plugins.lines` section warns that it was renamed.
+Rebind with `goto.line` in `keybinds.json`; a `plugins.lines` section warns that it was renamed.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -256,7 +263,7 @@ warns where it moved, and a `plugins.lines` section warns that it was renamed.
 
 *Search: In Files* (`Alt+F`) and the file tree's *Search: In Files* (same
 chord, scoped to the selection) come from the bundled `search` plugin; both need `rg`
-on `PATH`. Rebind both with `plugins.search.keybinds["In Files"]`.
+on `PATH`. Rebind both with `search.in_files` in `keybinds.json`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -278,7 +285,7 @@ another markdown file switches the preview to it (and the editor underneath, at 
 it; a URL opens in the platform browser (macOS `open`; WSL `wslview`, else `explorer.exe`; Linux
 `xdg-open`). Anchor jumps and markdown file links are remembered: *Markdown: Back* and *Forward* step
 through them while the preview has focus (default: the keys of *Jump Back* / *Jump Forward*, followed across a config reload;
-rebind with `plugins.markdown.keybinds.Back` / `Forward`); file switches land in the
+rebind with `markdown.back` / `markdown.forward`); file switches land in the
 jump list too. LSP hover uses the same renderer (plaintext hovers render verbatim).
 
 | Key | Default | Meaning |
@@ -305,8 +312,7 @@ The bundled `conflict` plugin highlights `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>`
 `conflict_ours`/`conflict_theirs`/`conflict_base`, tints `conflict`/`conflict_marker`/`conflict_word`)
 with or without git. *Conflict: Resolve* (`Alt+m`) asks Keep Ours / Theirs / Both inside a block and
 jumps to the next block outside one. Edits rehighlight live in a buffer that had conflicts when opened,
-reloaded or saved; a conflict typed or pasted into another buffer highlights on its next save. Rebind with `plugins.conflict.keybinds.Resolve`; the old top-level
-`keybinds."Git: Resolve Conflict"` warns where it moved.
+reloaded or saved; a conflict typed or pasted into another buffer highlights on its next save. Rebind with `conflict.resolve` in `keybinds.json`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -314,11 +320,11 @@ reloaded or saved; a conflict typed or pasted into another buffer highlights on 
 
 ### AI
 
-The bundled `ai` plugin: *AI: Edit Selection* (`Ctrl+k`, `plugins.ai.keybinds."Edit Selection"`) sends the
+The bundled `ai` plugin: *AI: Edit Selection* (`Ctrl+k`) sends the
 selection plus an instruction to a chat command, *AI: Cancel Edits* kills the running ones, and inline
 completion shows FIM ghost-text while you type (`Tab` accepts, `Ctrl+Right` one word). See
 [notes/ai.md](notes/ai.md). The old `modules.ai` keys warn and are ignored; each moved here under the same
-name (`chat_command` is now `edit_command`), and the old `keybinds` entries (`AI: Edit Selection`, ...) moved to `plugins.ai.keybinds`.
+name (`chat_command` is now `edit_command`).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -338,9 +344,12 @@ name (`chat_command` is now `edit_command`), and the old `keybinds` entries (`AI
 A command is a `qed.command` call in a user plugin. `qed.spawn` runs a tool,
 `qed.parse_locations` turns `file:line:col: msg` output into `qed.pick` items (list
 with file preview), and `qed.jump` opens the file there. Panes with live data (a
-query field, streamed results) are `qed.ui` node trees; `plugins/search` is the example. A plugin's own config keys
-come from `local cfg = qed.options{key = default}` in `setup`, overridden under
-`plugins.<id>`. The API reference with types is `plugins/meta/qed.lua`.
+query field, streamed results) are `qed.ui` node trees; `plugins/search` is the example. A plugin's own options
+are declared by a `qed.options{name = {type = "bool", default = false, description = "..."}}` call in its
+`setup` (types: `bool`, `int` with `min`/`max`, `string` (one line), `text` (any string, edited in a box), `choice`
+with a list or a function such as `qed.languages` (then a `default` is required, unless inside a list or map), and `list`/`map`/`record`, which nest; a bare type name stands for `{type = name}`), overridden under
+`plugins.<id>` and read with `qed.config()`. Each `qed.command` needs an `id` (snake_case, unique in the plugin) and
+a `name` (the label after the plugin's display name in the palette). The API reference with types is `plugins/meta/qed.lua`.
 
 Completion for `qed.*`: when the working root is `~/.config/qed` or below
 (`qed ~/.config/qed/plugins`), qed tells lua-language-server about the type stub
@@ -349,7 +358,7 @@ and Lua 5.4. No file is written.
 ```lua
 -- ~/.config/qed/plugins/my.lua
 return {setup = function()
-  qed.command{name = "Grep Word", key = "Alt+8", run = function(ctx) -- palette: "My: Grep Word"
+  qed.command{id = "grep_word", name = "Grep Word", key = "Alt+8", run = function(ctx) -- palette: "My: Grep Word"
     local word = ctx.selection_text or qed.prompt{prompt = "Grep:"}
     if not word or word == "" then return end
     local r, err = qed.spawn{argv = {"grep", "-rn", "--", word, "."}}

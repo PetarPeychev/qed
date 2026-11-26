@@ -134,8 +134,8 @@ local function apply(cfg, changed)
 	commands = cfg.commands or {}
 end
 
-local function toggle(name, knob, label)
-	qed.command{name = name, run = function()
+local function toggle(id, name, knob, label)
+	qed.command{id = id, name = name, run = function()
 		on[knob] = not on[knob]
 		qed.message(("%s: %s"):format(label, on[knob] and "on" or "off"))
 	end}
@@ -144,32 +144,34 @@ end
 return {
 	setup = function()
 		qed.meta{description = "Formats on save and trims whitespace"}
-		apply(qed.options({
-			on_save = false,
-			trim_whitespace_on_save = false,
-			final_newline_on_save = false,
+		qed.options{
+			on_save = {type = "bool", default = false, description = "Format on save"},
+			trim_whitespace_on_save = {type = "bool", default = false, description = "Trim trailing whitespace on save"},
+			final_newline_on_save = {type = "bool", default = false, description = "End the file with a newline on save"},
 			commands = {
-				python = "ruff format --stdin-filename {file} -",
-				go = "gofmt",
-				rust = "rustfmt --edition 2021",
-				sql = "sql-formatter",
-				toml = "taplo fmt --stdin-filepath {file} -",
-				json = "prettier --parser json --stdin-filepath {file}",
+				type = "map",
+				key = {type = "choice", choices = qed.languages},
+				value = "string",
+				default = {
+					python = "ruff format --stdin-filename {file} -",
+					go = "gofmt",
+					rust = "rustfmt --edition 2021",
+					sql = "sql-formatter",
+					toml = "taplo fmt --stdin-filepath {file} -",
+					json = "prettier --parser json --stdin-filepath {file}",
+				},
+				description = "Formatter per language: a stdin to stdout command, {file} is the path",
 			},
-		}, {
-			on_save = "Format on save",
-			trim_whitespace_on_save = "Trim trailing whitespace on save",
-			final_newline_on_save = "End the file with a newline on save",
-			commands = "Formatter per language: a stdin to stdout command, {file} is the path",
-		}))
+		}
+		apply(qed.config())
 		qed.command{
-			name = "Document",
+			id = "document", name = "Document",
 			when = function(ctx) return ctx.buf ~= nil end,
 			run = function(ctx) format(ctx.buf, false) end,
 		}
-		toggle("Toggle on Save", "format", "On save")
-		toggle("Toggle Trim Whitespace on Save", "trim", "Trim whitespace on save")
-		toggle("Toggle Final Newline on Save", "newline", "Final newline on save")
+		toggle("toggle_on_save", "Toggle on Save", "format", "On save")
+		toggle("toggle_trim_whitespace_on_save", "Toggle Trim Whitespace on Save", "trim", "Trim whitespace on save")
+		toggle("toggle_final_newline_on_save", "Toggle Final Newline on Save", "newline", "Final newline on save")
 		qed:on("config_changed", function(changed) apply(qed.config(), changed) end)
 		qed:on("buf_pre_save", function(buffer)
 			fixups(buffer)

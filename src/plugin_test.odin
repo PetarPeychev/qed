@@ -11,12 +11,15 @@ import "lib:tb2"
 
 PLUGIN_TEST_MEM :: 16 * 1024 * 1024
 
-plugin_test_editor :: proc(bundled: []PluginFile, user_dir := "", cfg_user: json.Object = nil, mem_cap := PLUGIN_TEST_MEM) -> ^Editor {
+plugin_test_editor :: proc(bundled: []PluginFile, user_dir := "", cfg_user: json.Object = nil, mem_cap := PLUGIN_TEST_MEM, keybinds: json.Object = nil) -> ^Editor {
 	ed := new(Editor)
 	ed.headless = true
 	append(&ed.buffers, test_buffer("hello world"))
 	if cfg_user != nil {
 		ed.plugins.config_override = cfg_user
+	}
+	if keybinds != nil {
+		ed.plugins.keybinds_override = keybinds
 	}
 	editor_plugins_start(ed, bundled, user_dir, mem_cap)
 	return ed
@@ -80,7 +83,7 @@ plugin_load_ok :: proc(t: ^testing.T) {
 		{"hello.lua", `
 			return {
 				setup = function()
-					qed.command{name = "Greet", run = function(ctx)
+					qed.command{id = "greet", name = "Greet", run = function(ctx)
 						qed.message("hi " .. ctx.path .. " " .. ctx.language .. " " .. ctx.root)
 					end}
 				end,
@@ -115,12 +118,12 @@ plugin_load_error_disables :: proc(t: ^testing.T) {
 		{"halfway.lua", `
 			return {
 				setup = function()
-					qed.command{name = "Cmd", run = function() end}
+					qed.command{id = "cmd", name = "Cmd", run = function() end}
 					local t = nil
 					return t.field
 				end,
 			}`},
-		{"fine.lua", `return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},
+		{"fine.lua", `return {setup = function() qed.command{id = "cmd", name = "Cmd", run = function() end} end}`},
 	})
 	defer plugin_test_destroy(ed)
 
@@ -211,13 +214,13 @@ plugin_user_dir_load :: proc(t: ^testing.T) {
 	os.make_directory(dir)
 	os.make_directory(fmt.tprintf("%s/dirp", dir))
 	defer e2e_run(fmt.tprintf("rm -rf %s", shell_quote(dir)))
-	_ = os.write_entire_file(fmt.tprintf("%s/dirp/init.lua", dir), transmute([]u8)string(`return {setup = function() qed.command{name = require("names").cmd, run = function() end} end}`))
+	_ = os.write_entire_file(fmt.tprintf("%s/dirp/init.lua", dir), transmute([]u8)string(`return {setup = function() qed.command{id = "from_require", name = require("names").cmd, run = function() end} end}`))
 	_ = os.write_entire_file(fmt.tprintf("%s/dirp/names.lua", dir), transmute([]u8)string(`return {cmd = "Dir: Cmd"}`))
-	_ = os.write_entire_file(fmt.tprintf("%s/shadow.lua", dir), transmute([]u8)string(`return {setup = function() qed.command{name = "User", run = function() end} end}`))
+	_ = os.write_entire_file(fmt.tprintf("%s/shadow.lua", dir), transmute([]u8)string(`return {setup = function() qed.command{id = "user", name = "User", run = function() end} end}`))
 	_ = os.write_entire_file(fmt.tprintf("%s/readme.md", dir), transmute([]u8)string("ignored"))
 
 	ed := plugin_test_editor({
-		{"shadow.lua", `return {setup = function() qed.command{name = "Bundled", run = function() end} end}`},
+		{"shadow.lua", `return {setup = function() qed.command{id = "bundled", name = "Bundled", run = function() end} end}`},
 		{"zeta.lua", `return {}`},
 	}, dir)
 	defer plugin_test_destroy(ed)
@@ -241,7 +244,7 @@ plugin_memory_cap :: proc(t: ^testing.T) {
 			local t = {}
 			for i = 1, 1e7 do t[i] = string.rep("x", 64) .. i end
 			return {}`},
-		{"small.lua", `return {setup = function() qed.command{name = "Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
+		{"small.lua", `return {setup = function() qed.command{id = "cmd", name = "Cmd", run = function() qed.message(string.rep("y", 3)) end} end}`},
 		{"evhog.lua", `return {setup = function()
 			qed:on("buf_changed", function() local t = {} for i = 1, 1e7 do t[i] = string.rep("z", 64) .. i end end)
 		end}`},
@@ -271,8 +274,8 @@ plugin_memory_victim_stays :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"hog.lua", `return {setup = function() hold = {} for i = 1, 36 do hold[i] = string.rep(string.char(64 + i % 26), 100 * 1024) end end}`},
 		{"small.lua", `return {setup = function()
-			qed.command{name = "Big", run = function() local s = string.rep("y", 512 * 1024) qed.message(#s) end}
-			qed.command{name = "Cmd", run = function() qed.message("ok") end}
+			qed.command{id = "big", name = "Big", run = function() local s = string.rep("y", 512 * 1024) qed.message(#s) end}
+			qed.command{id = "cmd", name = "Cmd", run = function() qed.message("ok") end}
 		end}`},
 	}, mem_cap = 4 * 1024 * 1024)
 	defer plugin_test_destroy(ed)
@@ -294,9 +297,9 @@ plugin_memory_victim_stays :: proc(t: ^testing.T) {
 @(test)
 plugin_config_merge :: proc(t: ^testing.T) {
 	cfg := plugin_test_cfg(`{"plugins": {
-		"merge": {"nested": {"b": 20, "c": "x"}, "list": [9], "bogus": 1, "enabled": true, "a": "1", "s": null},
+		"merge": {"nested": {"b": 20, "c": "x"}, "list": [9], "bogus": 1, "enabled": true, "a": "1", "s": {"x": null}},
 		"bare": {"stray": 1},
-		"off": {"enabled": false, "typo": 1},
+		"off": {"enabled": false, "typo": 1, "a": 2},
 		"broken": {"typo": 1},
 		"ghost": {},
 		"lines": {},
@@ -304,27 +307,31 @@ plugin_config_merge :: proc(t: ^testing.T) {
 	}}`)
 	ed := plugin_test_editor({
 		{"merge.lua", `
-			local defaults = {a = 1, nested = {b = 2, c = 3}, list = {1, 2}, s = "x"}
 			return {
 				setup = function(...)
 					assert(select("#", ...) == 0, "setup gets no arguments")
 					assert(next(qed.config()) == nil, "no keys before qed.options")
-					local cfg = qed.options(defaults)
-					assert(cfg.a == 1, "default kept, also over a value of the wrong type")
-					assert(cfg.s == nil, "null drops a default")
-					assert(cfg.nested.b == 20 and cfg.nested.c == 3, "nested objects merge per key")
-					assert(#cfg.list == 1 and cfg.list[1] == 9, "arrays replace wholesale")
+					qed.options{
+						a = {type = "int", default = 1},
+						nested = {type = "record", fields = {b = {type = "int", default = 2}, c = {type = "int", default = 3}}},
+						list = {type = "list", of = "int", default = {1, 2}},
+						s = {type = "map", key = "string", value = "string", default = {x = "y"}},
+					}
+					local cfg = qed.config()
+					assert(cfg.a == 1, "default kept over a value of the wrong type")
+					assert(cfg.s.x == nil, "null drops a map entry")
+					assert(cfg.nested.b == 20 and cfg.nested.c == 3, "records merge per field")
+					assert(#cfg.list == 1 and cfg.list[1] == 9, "lists replace wholesale")
 					assert(cfg.bogus == nil, "unknown keys are ignored")
 					assert(cfg.enabled == nil, "enabled is not part of the plugin config")
-					assert(defaults.nested.b == 2, "defaults are not mutated")
 					cfg.a = 99
 					assert(qed.config().a == 1 and qed.config().nested.b == 20, "qed.config matches and the result is a copy")
 				end,
 			}`},
 		{"bare.lua", `return {setup = function() assert(next(qed.config()) == nil) end}`},
-		{"off.lua", `return {setup = function() qed.options{a = 1} end}`},
+		{"off.lua", `return {setup = function() qed.options{a = {type = "int", default = 1}} end}`},
 		{"broken.lua", `return {setup = function() qed.options{} error("setup failed") end}`},
-		{"ai.lua", `return {setup = function() assert(qed.options{edit_command = "y"}.edit_command == "y") end}`},
+		{"ai.lua", `return {setup = function() qed.options{edit_command = {type = "string", default = "y"}} assert(qed.config().edit_command == "y") end}`},
 	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
@@ -337,8 +344,8 @@ plugin_config_merge :: proc(t: ^testing.T) {
 	testing.expect_value(t, off.last_error, "")
 	testing.expect_value(t, plugin_find(&ed.plugins, "broken").state, PluginState.Errored)
 	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `"plugins/merge/bogus"`), 1)
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/merge/a" (expected a number)`), "a value of the wrong type warns")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/merge/nested/c" (expected a number)`), "a nested value of the wrong type warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/merge/a" (expected a whole number)`), "a value of the wrong type warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/merge/nested/c" (expected a whole number)`), "a nested value of the wrong type warns")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/bare/stray"`), "a plugin without qed.options has no keys")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/off/`), "a disabled plugin's keys are not checked")
 	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/broken/`), "an errored plugin's keys are not checked")
@@ -346,7 +353,7 @@ plugin_config_merge :: proc(t: ^testing.T) {
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/lines" moved to "plugins/goto"`), "a renamed plugin says where")
 	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/ai/chat_command" moved to "plugins/ai/edit_command"`), "a moved plugin key says where")
 
-	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1, "s": null}, "off": {"typo": 1}}}`)
+	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"merge": {"nested": {"b": 20}, "list": [9], "bogus": 1, "s": {"x": null}}, "off": {"typo": 1}}}`)
 	plugins_config_apply(ed, false)
 	testing.expect_value(t, off.state, PluginState.Enabled)
 	testing.expect_value(t, merge.state, PluginState.Enabled)
@@ -357,71 +364,85 @@ plugin_config_merge :: proc(t: ^testing.T) {
 @(test)
 plugin_options_misuse :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
-		{"top.lua", `
-			local ok, err = pcall(qed.options, {a = 1})
-			top_err = tostring(err)
-			return {setup = function()
-				qed.command{name = "Late", run = function() qed.options{a = 1} end}
-			end}`},
-		{"twice.lua", `return {setup = function() qed.options{a = 1} qed.options{a = 2} end}`},
+		{"top.lua", `qed.options{a = "bool"} return {}`},
+		{"late.lua", `return {setup = function()
+			qed.command{id = "late", name = "Late", run = function() qed.options{a = "bool"} end}
+		end}`},
+		{"twice.lua", `return {setup = function() qed.options{a = "bool"} qed.options{a = "bool"} end}`},
 		{"notable.lua", `return {setup = function() qed.options(1) end}`},
-		{"reserved.lua", `return {setup = function() qed.options{keybinds = {}} end}`},
-		{"reserved2.lua", `return {setup = function() qed.options{enabled = true} end}`},
+		{"reserved.lua", `return {setup = function() qed.options{keybinds = "bool"} end}`},
+		{"reserved2.lua", `return {setup = function() qed.options{enabled = "bool"} end}`},
+		{"baddecl.lua", `return {setup = function() qed.options{a = {type = "int", default = "x"}} end}`},
 	})
 	defer plugin_test_destroy(ed)
 
-	testing.expect(t, strings.contains(sched_var(ed, "top_err"), "only callable during setup"), "the main chunk cannot call qed.options")
-	cmd, _ := plugin_test_command(ed, "Top: Late")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "top").last_error, "only callable during setup"), "the main chunk cannot call qed.options")
+	cmd, _ := plugin_test_command(ed, "Late: Late")
 	command_run(ed, cmd)
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "top").last_error, "only callable during setup"), "a command cannot call qed.options")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "late").last_error, "only callable during setup"), "a command cannot call qed.options")
 	twice := plugin_find(&ed.plugins, "twice")
 	testing.expect_value(t, twice.state, PluginState.Errored)
 	testing.expect(t, strings.contains(twice.last_error, "once per load"), "a second call raises")
 	testing.expect_value(t, plugin_find(&ed.plugins, "notable").state, PluginState.Errored)
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "reserved").last_error, "'keybinds' is reserved"), "keybinds is reserved")
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "reserved2").last_error, "'enabled' is reserved"), "enabled is reserved")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "baddecl").last_error, "qed.options: a/default: expected a whole number"), "a bad declaration raises")
 }
 
 @(test)
-plugin_options_info :: proc(t: ^testing.T) {
+plugin_options_declarations :: proc(t: ^testing.T) {
+	cfg := plugin_test_cfg(`{"plugins": {"off": {"enabled": false}}}`)
 	ed := plugin_test_editor({
-		{"good.lua", `return {setup = function()
-			qed.options({a = 1, mode = "x", nested = {k = "v"}}, {a = "The a knob", mode = {description = "Mode", choices = {"x", "y"}}})
+		{"good.lua", `return {setup = function() qed.options{
+			a = {type = "int", default = 1, description = "The a knob"},
+			mode = {type = "choice", choices = {"x", "y"}, default = "x"},
+			lang = {type = "choice", choices = qed.languages, default = "lua"},
+			nested = {type = "record", fields = {k = {type = "string", default = "v"}}},
+			names = {type = "list", of = "string"},
+		} end}`},
+		{"off.lua", `return {setup = function()
+			qed.options{b = {type = "bool", default = true, description = "Off's knob"}}
+			qed.command{id = "setup", name = "Setup", run = function() end}
 		end}`},
-		{"unknown.lua", `return {setup = function() qed.options({a = 1}, {b = "nope"}) end}`},
-		{"field.lua", `return {setup = function() qed.options({a = 1}, {a = {desc = "typo"}}) end}`},
-		{"choice.lua", `return {setup = function() qed.options({mode = "z"}, {mode = {choices = {"x", "y"}}}) end}`},
-		{"empty.lua", `return {setup = function() qed.options({mode = "x"}, {mode = {choices = {}}}) end}`},
+		{"failing.lua", `return {setup = function() qed.options{c = {type = "string", default = "z"}} error("boom") end}`},
+		{"badchoice.lua", `return {setup = function() qed.options{m = {type = "choice", choices = function() error("no list") end, default = "z"}} end}`},
 		{"probe.lua", `return {setup = function()
-			qed.command{name = "Probe", run = function()
+			qed.command{id = "probe", name = "Probe", run = function()
 				for _, p in ipairs(qed.plugins()) do
+					local o = p.options
 					if p.id == "good" then
-						probe = p.state .. " " .. p.options.a .. " " .. p.options.nested.k .. " " .. p.info.a .. " " .. p.info.mode.choices[2]
-					elseif p.id == "unknown" then
-						probe_unknown = p.state .. " " .. tostring(p.options)
+						probe = table.concat({p.state, o.a.type, o.a.default, o.a.description, o.mode.choices[2], o.nested.type, o.nested.fields.k.default, o.nested.default.k, o.names.of.type, #o.names.default, type(o.lang.choices), o.lang.choices()[1] ~= nil and "called" or "empty"}, " ")
+					elseif p.id == "off" then
+						probe_off = p.state .. " " .. tostring(o)
+					elseif p.id == "failing" then
+						probe_failing = p.state .. " " .. tostring(o)
 					end
 				end
+				local core = qed.config_schema()
+				probe_core = core.tab_width.type .. " " .. core.tab_width.min .. " " .. type(core.theme.choices) .. " " .. core.languages.value.fields.lsp.type .. " " .. core.lsp.fields.enabled.description
 			end}
 		end}`},
-	})
+	}, cfg_user = cfg)
 	defer plugin_test_destroy(ed)
 
 	testing.expect_value(t, plugin_find(&ed.plugins, "good").state, PluginState.Enabled)
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "unknown").last_error, "info for unknown option 'b'"), "info must name a declared option")
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "field").last_error, "unknown field 'desc'"), "info fields are checked")
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "choice").last_error, "default must be one of the choices"), "the default is one of the choices")
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "empty").last_error, "non-empty list of strings"), "choices must not be empty")
+	_, setup := plugin_test_command(ed, "Off: Setup")
+	testing.expect(t, !setup, "a disabled plugin runs nothing")
 	cmd, _ := plugin_test_command(ed, "Probe: Probe")
 	command_run(ed, cmd)
-	testing.expect_value(t, sched_var(ed, "probe"), "enabled 1 v The a knob y")
-	testing.expect_value(t, sched_var(ed, "probe_unknown"), "errored nil")
+	testing.expect_value(t, sched_var(ed, "probe"), "enabled int 1 The a knob y record v v string 0 function called")
+	testing.expect_value(t, sched_var(ed, "probe_off"), "disabled nil")
+	testing.expect_value(t, sched_var(ed, "probe_failing"), "errored nil")
+	testing.expect_value(t, plugin_find(&ed.plugins, "badchoice").state, PluginState.Enabled)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "Badchoice", `"plugins/badchoice/m": its choices function failed`), "a failing choices function warns under its plugin")
+	testing.expect_value(t, sched_var(ed, "probe_core"), "int 1 function string Start language servers")
 }
 
 @(test)
 plugin_list_reports_lua_init :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"probe.lua", `return {setup = function()
-			qed.command{name = "Probe", run = function()
+			qed.command{id = "probe", name = "Probe", run = function()
 				local plugins = qed.plugins()
 				probe = math.type(plugins.init_ms) == "float" and plugins.init_ms >= 0 and #plugins == 1 and "ok" or tostring(plugins.init_ms)
 			end}
@@ -435,41 +456,43 @@ plugin_list_reports_lua_init :: proc(t: ^testing.T) {
 
 @(test)
 plugin_commands_dispatch :: proc(t: ^testing.T) {
-	cfg := plugin_test_cfg(`{"plugins": {"cmd": {"keybinds": {"A": "Alt+k", "Unbound": ""}}}}`)
+	kb := plugin_test_cfg(`{"cmd": {"a": "Alt+k", "unbound": ""}}`)
 	ed := plugin_test_editor({
 		{"cmd.lua", `
 			return {
 				setup = function()
-					qed.command{name = "A", key = "Alt+j", run = function() qed.run("B") end}
-					qed.command{name = "B", key = "Alt+q", run = function() runs = (runs or 0) + 1; qed.message("B " .. runs) end}
-					qed.command{name = "Unbound", key = "Alt+w", run = function() end}
-					qed.command{name = "Gated", key = "Alt+y", when = function(ctx) return ctx.selection_text ~= nil end, run = function(ctx) qed.message("sel " .. ctx.selection_text) end}
-					qed.command{name = "Fail", run = function() error("cmd failed") end}
-					qed.command{name = "Unknown", run = function() qed.run("No Such Command") end}
-					qed.command{name = "Tree", key = "Alt+j", scope = "filetree", run = function() qed.message("tree") end}
+					qed.command{id = "a", name = "A", key = "Alt+j", run = function() qed.run("B") end}
+					qed.command{id = "b", name = "B", key = "Alt+q", run = function() runs = (runs or 0) + 1; qed.message("B " .. runs) end}
+					qed.command{id = "unbound", name = "Unbound", key = "Alt+w", run = function() end}
+					qed.command{id = "gated", name = "Gated", key = "Alt+y", when = function(ctx) return ctx.selection_text ~= nil end, run = function(ctx) qed.message("sel " .. ctx.selection_text) end}
+					qed.command{id = "fail", name = "Fail", run = function() error("cmd failed") end}
+					qed.command{id = "unknown", name = "Unknown", run = function() qed.run("No Such Command") end}
+					qed.command{id = "tree", name = "Tree", key = "Alt+j", scope = "filetree", run = function() qed.message("tree") end}
 				end,
 			}`},
-		{"dupe.lua", `return {setup = function() qed.command{name = "A", run = function() end} qed.command{name = "A", run = function() end} end}`},
-		{"debug.lua", `return {setup = function() qed.command{name = "Inspect Tokens", run = function() end} end}`},
-		{"core.lua", `return {setup = function() qed.command{name = "Save", run = function() end} end}`},
-		{"badkey.lua", `return {setup = function() qed.command{name = "Bad: Key", key = "Hyper+x", run = function() end} end}`},
-		{"badscope.lua", `return {setup = function() qed.command{name = "Bad: Scope", scope = "", run = function() end} end}`},
-		{"norun.lua", `return {setup = function() qed.command{name = "No: Run"} end}`},
+		{"dupe.lua", `return {setup = function() qed.command{id = "a", name = "A", run = function() end} qed.command{id = "a", name = "A", run = function() end} end}`},
+		{"debug.lua", `return {setup = function() qed.command{id = "inspect_tokens", name = "Inspect Tokens", run = function() end} end}`},
+		{"coreish.lua", `return {setup = function() qed.command{id = "save", name = "Save", run = function() end} end}`},
+		{"core.lua", `return {setup = function() end}`},
+		{"badkey.lua", `return {setup = function() qed.command{id = "bad_key", name = "Bad: Key", key = "Hyper+x", run = function() end} end}`},
+		{"badscope.lua", `return {setup = function() qed.command{id = "bad_scope", name = "Bad: Scope", scope = "", run = function() end} end}`},
+		{"norun.lua", `return {setup = function() qed.command{id = "no_run", name = "No: Run"} end}`},
 		{"treeview.lua", `return {setup = function()
-			qed.command{name = "Open", run = function()
+			qed.command{id = "open", name = "Open", run = function()
 				qed.ui.mount("pane", qed.ui.text{id = "tv", float = "screen", width = 4, height = 1, scope = "filetree", "tree"})
 				qed.ui.node("tv"):focus()
 			end}
 		end}`},
-	}, cfg_user = cfg)
+	}, keybinds = kb)
 	defer plugin_test_destroy(ed)
 
-	for name in ([?]string{"dupe", "debug", "core", "badkey", "badscope", "norun"}) {
+	for name in ([?]string{"dupe", "debug", "coreish", "badkey", "badscope", "norun"}) {
 		testing.expectf(t, plugin_find(&ed.plugins, name).state == .Errored, "%s: invalid registration errors the plugin", name)
 	}
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "dupe").last_error, "'Dupe: A' already exists"), "duplicate name rejected")
 	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "debug").last_error, "'Debug: Inspect Tokens' already exists"), "a visible name equal to a builtin is rejected")
-	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "core").last_error, "'Save' is a core command"), "a bare name equal to a core command is rejected")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "coreish").last_error, "'Save' is a core command"), "a bare name equal to a core command is rejected")
+	testing.expect(t, plugin_find(&ed.plugins, "core") == nil && plugin_test_logged(ed, .Error, "Plugins", "the plugin id 'core' is reserved"), "a plugin named core is not loaded")
 
 	alt :: proc(ch: rune) -> tb2.Event {return tb2.Event{type = .Key, ch = ch, mod = .Alt}}
 	press :: proc(ed: ^Editor, ev: tb2.Event) {
@@ -512,7 +535,7 @@ plugin_commands_dispatch :: proc(t: ^testing.T) {
 	command_run(ed, unknown)
 	testing.expect(t, strings.contains(pl.last_error, "unknown command 'No Such Command'"), "qed.run rejects unknown names")
 
-	ed.plugins.config_override = nil
+	ed.plugins.keybinds_override = nil
 	plugins_rebind(ed)
 	a2, _ := plugin_test_command(ed, "Cmd: A")
 	testing.expect_value(t, a2.shortcut, "Alt+j")
@@ -523,13 +546,13 @@ plugin_unload_cleans :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"keep.lua", `
 			sentinel = setmetatable({}, {__gc = function() qed.log("keep finalized") end})
-			return {setup = function() qed.command{name = "Cmd", run = function() end} end}`},
+			return {setup = function() qed.command{id = "cmd", name = "Cmd", run = function() end} end}`},
 		{"drop.lua", `
 			big = string.rep("z", 1024 * 1024)
 			sentinel = setmetatable({}, {__gc = function() qed.log("drop finalized") end})
 			return {setup = function()
-				qed.command{name = "One", run = function() qed.message(big) end}
-				qed.command{name = "Two", when = function() return #big > 0 end, run = function() qed.message(big) end}
+				qed.command{id = "one", name = "One", run = function() qed.message(big) end}
+				qed.command{id = "two", name = "Two", when = function() return #big > 0 end, run = function() qed.message(big) end}
 			end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -562,27 +585,52 @@ plugin_run_refused_while_loading :: proc(t: ^testing.T) {
 
 @(test)
 plugin_keybind_warnings :: proc(t: ^testing.T) {
-	cfg := plugin_test_cfg(`{"keybinds": {"No Such Command": "Alt+x"}, "plugins": {"clash": {"keybinds": {"User": "Ctrl+s", "Bad": "Hyper+q"}}}}`)
+	kb := plugin_test_cfg(`{"clash": {"user": "Ctrl+s", "bad": "Hyper+q", "nope": "Alt+x"}, "gone": {"thing": "Alt+g", "nope": "Alt+n"}, "ghost": {"x": "Alt+x"}, "core": {"save": "Ctrl+s"}}`)
 	ed := plugin_test_editor({
 		{"clash.lua", `
 			return {setup = function()
-				qed.command{name = "Default", key = "Ctrl+q", run = function() end}
-				qed.command{name = "User", run = function() end}
-				qed.command{name = "Bad", key = "Alt+j", run = function() end}
+				qed.command{id = "default", name = "Default", key = "Ctrl+q", run = function() end}
+				qed.command{id = "user", name = "User", run = function() end}
+				qed.command{id = "bad", name = "Bad", key = "Alt+j", run = function() end}
 			end}`},
-	}, cfg_user = cfg)
+		{"gone.lua", `return {setup = function() qed.command{id = "thing", name = "Thing", run = function() end} end}`},
+		{"badid.lua", `return {setup = function() qed.command{id = "Bad Id", name = "X", run = function() end} end}`},
+		{"dupid.lua", `return {setup = function()
+			qed.command{id = "same", name = "One", run = function() end}
+			qed.command{id = "same", name = "Two", run = function() end}
+		end}`},
+	}, keybinds = kb, cfg_user = plugin_test_cfg(`{"plugins": {"gone": {"enabled": false}, "clash": {"keybinds": {"User": "Alt+u"}}}}`))
 	defer plugin_test_destroy(ed)
 
 	plugins_rebind(ed)
+	plugin_pump(ed)
 	for name in ([?]string{"Clash: Default", "Clash: User", "Clash: Bad"}) {
 		cmd, _ := plugin_test_command(ed, name)
 		testing.expectf(t, cmd.shortcut == "", "%s stays unbound", name)
 	}
-	testing.expect(t, plugin_test_logged(ed, .Warn, "Clash", `plugins/clash/keybinds/Default (Ctrl+q is "Quit")`), "a plugin key taken by a builtin warns under the plugin")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `plugins/clash/keybinds/User (Ctrl+s is "Save")`), "a user bind taken by a builtin warns as config")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", "plugins/clash/keybinds/Bad"), "an invalid user bind warns")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "keybinds/No Such Command"`), "an unknown keybind name warns")
-	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"User"`), "plugin command names are known plugin keybinds")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "Clash", `"keybinds.json/clash/default" (Ctrl+q is "Quit")`), "a plugin key taken by a builtin warns under the plugin")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds.json/clash/user" (Ctrl+s is "Save")`), "a user bind taken by a builtin warns as keybinds.json")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds.json/clash/bad"`), "an invalid user bind warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "keybinds.json/clash/nope"`), "an unknown id of a loaded plugin warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "keybinds.json/ghost"`), "an unknown group warns")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `unknown "keybinds.json/clash/user"`), "a plugin's ids are known")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "gone/"), "a disabled plugin's group is not checked")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"plugins/clash/keybinds/User" moved to "keybinds.json/clash/user"`), "a bind left in config.json says where it moved")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "badid").last_error, "id must be a snake_case string"), "an id must be snake_case")
+	testing.expect(t, strings.contains(plugin_find(&ed.plugins, "dupid").last_error, "command id 'same' already exists"), "an id is unique per plugin and scope")
+	before := reload_logged_count(ed, .Warn, "", `"keybinds.json/clash/nope"`)
+	plugin_reload(ed, plugin_find(&ed.plugins, "gone"))
+	plugin_pump(ed)
+	testing.expect_value(t, reload_logged_count(ed, .Warn, "", `"keybinds.json/clash/nope"`), before)
+	for cmd, i in ed.plugins.commands {
+		if cmd.owner == "clash" && cmd.id == "user" {
+			plugin_command_remove(ed, i)
+			break
+		}
+	}
+	ed.plugins.keybinds_due = true
+	plugin_pump(ed)
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "keybinds.json/clash/user"`), "a removed command's bind warns once the command set changed")
 }
 
 @(test)
@@ -590,12 +638,12 @@ plugin_meta_display :: proc(t: ^testing.T) {
 	cfg := plugin_test_cfg(`{"plugins": {"off_one": {"enabled": false}}}`)
 	ed := plugin_test_editor({
 		{"my_tools.lua", `return {setup = function()
-			qed.command{name = "Run", run = function() qed.message("ran") end}
+			qed.command{id = "run", name = "Run", run = function() qed.message("ran") end}
 		end}`},
 		{"renamed.lua", `return {setup = function()
 			qed.meta{display_name = "Gitty"}
-			qed.command{name = "Base", run = function() qed.message("based") end}
-			qed.command{name = "After", run = function() end}
+			qed.command{id = "base", name = "Base", run = function() qed.message("based") end}
+			qed.command{id = "after", name = "After", run = function() end}
 		end}`},
 		{"off_one.lua", `return {setup = function() qed.meta{display_name = "Never"} end}`},
 	}, cfg_user = cfg)
@@ -606,7 +654,7 @@ plugin_meta_display :: proc(t: ^testing.T) {
 	testing.expect_value(t, plugin_title_case("a_b2_c", context.temp_allocator), "A B2 C")
 	testing.expect_value(t, plugin_find(&ed.plugins, "my_tools").display, "My Tools")
 	run, ok := plugin_test_command(ed, "My Tools: Run")
-	testing.expect(t, ok && run.bare == "Run" && run.config_name == "Run", "the visible name is prefixed with the title-cased id")
+	testing.expect(t, ok && run.bare == "Run" && run.id == "run", "the visible name is prefixed with the title-cased id")
 	command_run(ed, run)
 	testing.expect_value(t, ed.message_source, "My Tools")
 
@@ -638,17 +686,17 @@ plugin_meta_misuse :: proc(t: ^testing.T) {
 			local ok, err = pcall(qed.meta, {display_name = "X"})
 			top_err = tostring(err)
 			return {setup = function()
-				qed.command{name = "Late", run = function() qed.meta{display_name = "Y"} end}
+				qed.command{id = "late", name = "Late", run = function() qed.meta{display_name = "Y"} end}
 			end}`},
 		{"twice.lua", `return {setup = function() qed.meta{display_name = "A"} qed.meta{display_name = "B"} end}`},
 		{"unknown.lua", `return {setup = function() qed.meta{display_name = "A", version = 2} end}`},
 		{"badtype.lua", `return {setup = function() qed.meta{display_name = 3} end}`},
 		{"empty.lua", `return {setup = function() qed.meta{display_name = ""} end}`},
 		{"baddesc.lua", `return {setup = function() qed.meta{description = 3} end}`},
-		{"x_first.lua", `return {setup = function() qed.command{name = "Go", run = function() end} end}`},
+		{"x_first.lua", `return {setup = function() qed.command{id = "go", name = "Go", run = function() end} end}`},
 		{"y_clash.lua", `return {setup = function() qed.meta{display_name = "x first"} end}`},
 		{"z_late.lua", `return {setup = function()
-			qed.command{name = "Go", run = function() end}
+			qed.command{id = "go", name = "Go", run = function() end}
 			qed.meta{display_name = "Late"}
 		end}`},
 		{"z_core.lua", `return {setup = function() qed.meta{display_name = "LSP"} end}`},
@@ -675,14 +723,14 @@ plugin_meta_misuse :: proc(t: ^testing.T) {
 plugin_palette_prefix_and_run :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"alpha.lua", `return {setup = function()
-			qed.command{name = "Hello", run = function() qed.message("alpha hello") end}
-			qed.command{name = "Bare", run = function() qed.run("Hello") end}
-			qed.command{name = "Full", run = function() qed.run("Beta: Hello") end}
-			qed.command{name = "Other", run = function() qed.run("Only") end}
+			qed.command{id = "hello", name = "Hello", run = function() qed.message("alpha hello") end}
+			qed.command{id = "bare", name = "Bare", run = function() qed.run("Hello") end}
+			qed.command{id = "full", name = "Full", run = function() qed.run("Beta: Hello") end}
+			qed.command{id = "other", name = "Other", run = function() qed.run("Only") end}
 		end}`},
 		{"beta.lua", `return {setup = function()
-			qed.command{name = "Hello", run = function() qed.message("beta hello") end}
-			qed.command{name = "Only", run = function() end}
+			qed.command{id = "hello", name = "Hello", run = function() qed.message("beta hello") end}
+			qed.command{id = "only", name = "Only", run = function() end}
 		end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -710,43 +758,27 @@ plugin_palette_prefix_and_run :: proc(t: ^testing.T) {
 
 @(test)
 plugin_keybinds_namespaced :: proc(t: ^testing.T) {
-	cfg := plugin_test_cfg(`{
-		"keybinds": {"Run": "Alt+u", "File Tree: Restore File": "Alt+o"},
-		"plugins": {
-			"a": {"keybinds": {"Run": "Alt+k", "Nope": "Alt+x", "Search": "Alt+n"}},
-			"b": {"keybinds": {}},
-			"c": {"enabled": false, "keybinds": {"Whatever": "Alt+w"}}
-		}
-	}`)
+	kb := plugin_test_cfg(`{"a": {"run": "Alt+k", "nope": "Alt+x", "search": "Alt+n"}, "c": {"whatever": "Alt+w"}}`)
 	ed := plugin_test_editor({
 		{"a.lua", `return {setup = function()
-			qed.command{name = "Run", key = "Alt+1", run = function() end}
-			qed.command{name = "Search", key = "Alt+j", run = function() end}
-			qed.command{name = "Search Tree", keybind = "Search", scope = "filetree", run = function() end}
+			qed.command{id = "run", name = "Run", key = "Alt+1", run = function() end}
+			qed.command{id = "search", name = "Search", key = "Alt+j", run = function() end}
+			qed.command{id = "search", name = "Search Tree", scope = "filetree", run = function() end}
 		end}`},
-		{"b.lua", `return {setup = function() qed.command{name = "Run", key = "Alt+2", run = function() end} end}`},
-		{"c.lua", `return {setup = function() qed.command{name = "Whatever", run = function() end} end}`},
+		{"b.lua", `return {setup = function() qed.command{id = "run", name = "Run", key = "Alt+2", run = function() end} end}`},
+		{"c.lua", `return {setup = function() qed.command{id = "whatever", name = "Whatever", run = function() end} end}`},
 		{"d.lua", `return {setup = function()
-			qed.command{name = "Clash", key = "Alt+2", run = function() end}
-			qed:on("startup", function() qed.command{name = "Later", run = function() end} end)
+			qed.command{id = "clash", name = "Clash", key = "Alt+2", run = function() end}
+			qed:on("startup", function() qed.command{id = "later", name = "Later", run = function() end} end)
 		end}`},
-	}, cfg_user = cfg)
+	}, cfg_user = plugin_test_cfg(`{"plugins": {"c": {"enabled": false}}}`), keybinds = kb)
 	defer plugin_test_destroy(ed)
-	ed.plugins.config_override = plugin_test_cfg(`{
-		"keybinds": {"Run": "Alt+u", "File Tree: Restore File": "Alt+o"},
-		"plugins": {
-			"a": {"keybinds": {"Run": "Alt+k", "Nope": "Alt+x", "Search": "Alt+n"}},
-			"b": {"keybinds": {}},
-			"c": {"enabled": false, "keybinds": {"Whatever": "Alt+w"}},
-			"d": {"keybinds": {"Later": "Alt+3"}}
-		}
-	}`)
+	ed.plugins.keybinds_override = plugin_test_cfg(`{"a": {"run": "Alt+k", "nope": "Alt+x", "search": "Alt+n"}, "c": {"whatever": "Alt+w"}, "d": {"later": "Alt+3"}}`)
 	plugins_rebind(ed)
-	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"Nope"`), "unknown plugin keybinds wait for the startup flush")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"keybinds.json/a/nope"`), "unknown ids wait for the startup flush")
 	plugin_pump(ed)
-	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"Later"`), "a command registered by a startup handler is known")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "D", `plugins/d/keybinds/Clash (Alt+2 is "B: Run")`), "a key taken by another plugin's command warns")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds/File Tree: Restore File" moved to "plugins/git/keybinds/Restore File"`), "old bundled bind names say where they moved")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"keybinds.json/d/later"`), "a command registered by a startup handler is known")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "D", `"keybinds.json/d/clash" (Alt+2 is "B: Run")`), "a key taken by another plugin's command warns")
 
 	shortcut :: proc(ed: ^Editor, name: string) -> string {
 		cmd, _ := plugin_test_command(ed, name)
@@ -756,18 +788,17 @@ plugin_keybinds_namespaced :: proc(t: ^testing.T) {
 	testing.expect_value(t, shortcut(ed, "B: Run"), "Alt+2")
 	testing.expect_value(t, shortcut(ed, "A: Search Tree"), "Alt+n")
 	testing.expect_value(t, shortcut(ed, "A: Search"), "Alt+n")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "plugins/a/keybinds/Nope"`), "an unknown command in a loaded plugin's keybinds warns")
-	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `plugins/a/keybinds/"Run"`), "known commands do not warn")
-	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "Whatever"), "a disabled plugin's keybinds do not warn")
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds/Run" moved to "plugins/`), "a plugin command in the top-level keybinds warns where it moved")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `unknown "keybinds.json/a/nope"`), "an unknown command of a loaded plugin warns")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", `"keybinds.json/a/run"`), "known commands do not warn")
+	testing.expect(t, !plugin_test_logged(ed, .Warn, "", "Whatever"), "a disabled plugin's binds do not warn")
 
 	plugin_enabled_set(ed, plugin_find(&ed.plugins, "b"), false)
 	_, b_listed := plugin_test_command(ed, "B: Run")
 	testing.expect(t, !b_listed, "disabling a plugin drops its commands and binds")
 
-	ed.plugins.config_override = plugin_test_cfg(`{"plugins": {"a": {"keybinds": {"Run": 5}}}}`)
+	ed.plugins.keybinds_override = plugin_test_cfg(`{"a": {"run": 5}}`)
 	plugins_config_apply(ed, false)
-	testing.expect(t, plugin_test_logged(ed, .Warn, "", "plugins/a/keybinds/Run"), "an invalid plugin bind warns")
+	testing.expect(t, plugin_test_logged(ed, .Warn, "", `"keybinds.json/a/run"`), "an invalid plugin bind warns")
 	testing.expect_value(t, shortcut(ed, "A: Search Tree"), "Alt+j")
 	testing.expect_value(t, shortcut(ed, "A: Run"), "")
 }
@@ -783,9 +814,9 @@ plugin_ctx_selection_lazy :: proc(t: ^testing.T) {
 	ed.headless = true
 	append(&ed.buffers, test_buffer(..lines))
 	editor_plugins_start(ed, {{"lazy.lua", `return {setup = function()
-		qed.command{name = "Skip", run = function() qed.message("ran") end}
-		qed.command{name = "Read", run = function(ctx) qed.message(tostring(#ctx.selection_text)) end}
-		qed.command{name = "Late", run = function(ctx)
+		qed.command{id = "skip", name = "Skip", run = function() qed.message("ran") end}
+		qed.command{id = "read", name = "Read", run = function(ctx) qed.message(tostring(#ctx.selection_text)) end}
+		qed.command{id = "late", name = "Late", run = function(ctx)
 			qed.edit(ctx.buf, function() ctx.buf:insert({row = 1, col = 1}, "x") end)
 			qed.message(tostring(ctx.selection_text))
 		end}
@@ -811,7 +842,7 @@ plugin_ctx_selection_lazy :: proc(t: ^testing.T) {
 plugin_gc_runs_between_slices :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"junk.lua", `return {setup = function()
-			qed.command{name = "Junk", run = function() local t = {} for i = 1, 100000 do t[i] = {i} end end}
+			qed.command{id = "junk", name = "Junk", run = function() local t = {} for i = 1, 100000 do t[i] = {i} end end}
 		end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -843,12 +874,12 @@ plugin_gc_paces_near_the_cap :: proc(t: ^testing.T) {
 			for i = 1, 105 do hold[i] = string.rep(string.char(65 + i % 26), 100 * 1024) end
 			fins = 0
 			return {setup = function()
-				qed.command{name = "Drop", run = function() hold = nil end}
-				qed.command{name = "Junk", run = function()
+				qed.command{id = "drop", name = "Drop", run = function() hold = nil end}
+				qed.command{id = "junk", name = "Junk", run = function()
 					local s = string.rep("j", 1024 * 1024)
 					setmetatable({}, {__gc = function() fins = fins + 1 end})
 				end}
-				qed.command{name = "Count", run = function() qed.message(fins >= 280 and "most" or tostring(fins)) end}
+				qed.command{id = "count", name = "Count", run = function() qed.message(fins >= 280 and "most" or tostring(fins)) end}
 			end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -875,7 +906,7 @@ plugin_gc_steps_while_typing :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"hog.lua", `return {setup = function()
 			qed:on("buf_changed", function() n = (n or 0) + 1 local s = string.rep("h", 1536 * 1024) end)
-			qed.command{name = "N", run = function() qed.message(tostring(n)) end}
+			qed.command{id = "n", name = "N", run = function() qed.message(tostring(n)) end}
 		end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -949,7 +980,7 @@ plugin_gc_step_frees_bounded :: proc(t: ^testing.T) {
 			hold = {}
 			for i = 1, 20000 do hold[i] = {i} end
 			return {setup = function()
-				qed.command{name = "Junk", run = function() local t = {} for i = 1, 50000 do t[i] = {i} end end}
+				qed.command{id = "junk", name = "Junk", run = function() local t = {} for i = 1, 50000 do t[i] = {i} end end}
 			end}`},
 	})
 	defer plugin_test_destroy(ed)
@@ -976,7 +1007,7 @@ plugin_gc_step_frees_bounded :: proc(t: ^testing.T) {
 plugin_gc_collectgarbage_options :: proc(t: ^testing.T) {
 	ed := plugin_test_editor({
 		{"gc.lua", `return {setup = function()
-			qed.command{name = "Try", run = function()
+			qed.command{id = "try", name = "Try", run = function()
 				local out = {}
 				for _, opt in ipairs({"generational", "incremental", "restart", "stop", "isrunning", "setpause"}) do
 					out[#out + 1] = opt .. "=" .. tostring((pcall(collectgarbage, opt)))

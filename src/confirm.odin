@@ -167,7 +167,7 @@ quit_dialog_execute :: proc(editor: ^Editor, choice: int) {
 			}
 		}
 		if conflict {
-			editor_log(editor, .Warn, "", fmt.tprintf("File changed on disk — save it with %s to resolve", command_shortcut("Save")))
+			editor_log(editor, .Warn, "", fmt.tprintf("File changed on disk — save it with %s to resolve", command_shortcut("save")))
 		} else if len(editor.plugins.saves) > 0 {
 			editor_save_intent_set(editor, .Quit, "")
 		} else if editor_any_modified(editor) {

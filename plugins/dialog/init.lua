@@ -301,8 +301,8 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Dialog", description = "Pick, prompt and confirm dialogs on qed.ui"}
-		qed.command{name = "Choose", scope = "dialog", key = "Enter", run = choose}
-		qed.command{name = "Cancel", scope = "dialog", key = "Esc", run = function() finish(nil) end}
+		qed.command{id = "choose", name = "Choose", scope = "dialog", key = "Enter", run = choose}
+		qed.command{id = "cancel", name = "Cancel", scope = "dialog", key = "Esc", run = function() finish(nil) end}
 		qed.export{pick = pick, prompt = prompt, confirm = confirm}
 		qed:on("plugin_unloaded", function(id)
 			if dialog and dialog.asker == id then

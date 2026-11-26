@@ -1,0 +1,103 @@
+# Typed options in the settings menu: a disabled plugin, list items, map entries added through the language picker and removed with Ctrl+d (a default one through null), the theme picker, int bounds, a multi-line text option; then the Keybinds UI and a rebind in keybinds.json.
+size 90x36
+config
+{"lsp": {"enabled": false}, "plugins": {"markdown": {"enabled": false}}}
+end
+file a.txt
+x
+end
+run a.txt
+wait x
+key ctrl+p
+type settings open config ui
+key enter
+wait auto_close_pairs
+type markdown.
+wait markdown.enabled
+snap disabled The markdown plugin is disabled: only its enabled row is listed
+key ctrl+a
+type languages.python.patterns
+wait + add item
+snap list A list shows one row per item, a header counting them and an add row
+key ctrl+a
+type languages.python.patterns[2]
+wait *.pyw
+key enter
+wait languages.python.patterns[2]: *.pyw
+key ctrl+a
+type *.pyi
+key enter
+wait set to *.pyi
+snap item-edited Enter edits the item in place; the whole list is written, marked as overridden
+key ctrl+a
+type format.commands
+wait + add entry
+key enter
+wait format.commands >
+snap language-picker Enter on a map asks for the new key with a picker of the languages
+type lua
+key enter
+wait format.commands.lua:
+type stylua -
+key enter
+wait format.commands.lua added
+snap entry-added Then for the value; the new entry is written under its key and selected
+key ctrl+d
+wait format.commands.lua removed
+snap entry-removed Ctrl+d removes the entry again
+key ctrl+a
+type format.commands.go
+wait gofmt
+key ctrl+d
+wait format.commands.go removed
+snap default-removed Ctrl+d on a default entry writes null; the entry stays listed as removed (Ctrl+d again restores it)
+key ctrl+a
+type theme
+wait Color theme
+key enter
+wait theme >
+snap theme-picker A choice opens a picker over its live choices (qed.theme.list)
+type nord
+key enter
+wait theme set to nord
+snap theme-set The picked theme is written and applied
+key ctrl+a
+type tab_width
+wait Display width
+key enter
+wait tab_width: 4
+key ctrl+a
+type 0
+key enter
+wait at least 1
+snap int-refused An int below its min is refused and nothing is written
+key ctrl+a
+type ai.edit_prompt
+wait Edit request template
+key enter
+wait Ctrl+s save
+snap text-box A text option opens a few-row editor box in the menu (wrapped, undo and selection like the buffer)
+key enter
+type Keep the answer short.
+snap text-edited Enter inserts a newline; nothing is written yet
+key ctrl+s
+wait ai.edit_prompt set to
+snap text-saved Ctrl+s writes the text; the row shows it with its newlines as \n
+key esc esc
+key ctrl+p
+type settings open keybinds ui
+key enter
+wait Chord
+snap keybinds-ui Settings: Open Keybinds UI opens the menu on the Keybinds tab
+type toggle line wrap
+wait Toggle Line Wrap
+key enter
+wait Press a chord
+key alt+w
+wait set to Alt+w
+key esc esc
+key ctrl+p
+type settings open keybinds json
+key enter
+wait "toggle_line_wrap": "Alt+w"
+snap rebind-file The bind is written to keybinds.json under its group ("core", or a plugin id) and the command's id

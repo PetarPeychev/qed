@@ -17,7 +17,7 @@ e2e_walk_tree_expands_filters_and_reveals :: proc(t: ^testing.T) {
 	nav_write(fmt.tprintf("%s/alpha/inner/deep.txt", root), "2")
 	nav_write(fmt.tprintf("%s/beta.txt", root), "3")
 	e2e_plugin(&e, "uitest", `return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		local tree = qed.fs.walk():tree()
 		local function names()
 			local out = {}
@@ -78,14 +78,14 @@ e2e_walk_tree_feeds_a_virtual_column :: proc(t: ^testing.T) {
 	nav_write(fmt.tprintf("%s/alpha/one.txt", root), "1")
 	e2e_plugin(&e, "uitest", `local tree
 return {setup = function()
-	qed.command{name = "Run", run = function()
+	qed.command{id = "run", name = "Run", run = function()
 		tree = qed.fs.walk():tree()
 		qed.ui.mount("pane", qed.ui.box{float = "screen", width = 40, height = 8, border = true,
 			qed.ui.virtual_column{id = "rows", data = tree, item = function(row)
 				return qed.ui.text{string.rep("  ", row.depth), row.name, row.dir and "/" or ""}
 			end}})
 	end}
-	qed.command{name = "Open", run = function() tree:expand("alpha") end}
+	qed.command{id = "open", name = "Open", run = function() tree:expand("alpha") end}
 end}`)
 	ut_run(&e, "Run")
 	testing.expect(t, e2e_ui_find_row(&e, "alpha/") >= 0, "the tree rows render")

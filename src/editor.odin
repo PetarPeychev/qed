@@ -38,6 +38,8 @@ Editor :: struct {
 	disk_poll:       time.Tick,
 	config_stamp:    DiskStamp,
 	config_written:  DiskStamp,
+	keybinds_stamp:  DiskStamp,
+	keybinds_written: DiskStamp,
 	theme_stamp:     DiskStamp,
 	theme_shown:     string,
 	quit:            bool,
@@ -118,6 +120,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		editor_log(&editor, .Warn, "", fmt.tprintf("TERM=%s is unknown here; running as xterm-256color", term_fallback))
 	}
 	editor.config_stamp = buffer_disk_stamp(config_path())
+	editor.keybinds_stamp = buffer_disk_stamp(keybinds_path(config_path()))
 	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
 	b := buffer_new()
 	if path != "" && !os.is_dir(path) {
@@ -203,6 +206,7 @@ editor_shutdown :: proc(editor: ^Editor) {
 	// every editor); real main tears them down once at exit. A headless test reuses
 	// them across many sessions, so freeing them here would dangle the next one.
 	if !editor.headless {
+		language_rules_set(nil)
 		delete(g_language_rules)
 		syntax_shutdown()
 		clipboard_shutdown()
@@ -355,11 +359,11 @@ editor_dispatch :: proc(editor: ^Editor, ev: tb2.Event) {
 	}
 	if editor.welcome {
 		if ev.type == .Key {
-			if command_matches(ev, "Quit") {
+			if command_matches(ev, "quit") {
 				editor_request_quit(editor)
 				return
 			}
-			if command_matches(ev, "Command Palette") {
+			if command_matches(ev, "command_palette") {
 				palette_open(editor)
 				return
 			}
@@ -788,6 +792,7 @@ editor_theme_set :: proc(editor: ^Editor, name: string, persist: bool) -> (ok: b
 	written := theme_persist(path, name)
 	plugin_queue(editor, {event = .Theme_Changed})
 	editor.config_stamp = buffer_disk_stamp(config_path())
+	editor.keybinds_stamp = buffer_disk_stamp(keybinds_path(config_path()))
 	editor.theme_stamp = buffer_disk_stamp(theme_path(config_path(), THEME))
 	if !written {
 		return false, "cannot write the theme to config.json"
@@ -811,11 +816,15 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		return false
 	}
 	now := buffer_disk_stamp(path)
+	know := buffer_disk_stamp(keybinds_path(path))
 	tnow := buffer_disk_stamp(theme_path(path, THEME))
 	cfg_changed := now.ok && (now.mtime != editor.config_stamp.mtime || now.size != editor.config_stamp.size)
-	own_write := cfg_changed && now.mtime == editor.config_written.mtime && now.size == editor.config_written.size
+	kb_changed := know.ok != editor.keybinds_stamp.ok || know.mtime != editor.keybinds_stamp.mtime || know.size != editor.keybinds_stamp.size
+	cfg_own := cfg_changed && now.mtime == editor.config_written.mtime && now.size == editor.config_written.size
+	kb_own := kb_changed && know.mtime == editor.keybinds_written.mtime && know.size == editor.keybinds_written.size
+	own_write := (cfg_changed || kb_changed) && (!cfg_changed || cfg_own) && (!kb_changed || kb_own)
 	theme_changed := tnow.ok && (tnow.mtime != editor.theme_stamp.mtime || tnow.size != editor.theme_stamp.size)
-	if !cfg_changed && !theme_changed {
+	if !cfg_changed && !kb_changed && !theme_changed {
 		return false
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
@@ -828,6 +837,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		theme_preview(path, THEME)
 	}
 	editor.config_stamp = buffer_disk_stamp(path)
+	editor.keybinds_stamp = know
 	editor.theme_stamp = buffer_disk_stamp(theme_path(path, THEME))
 	editor_retheme(editor)
 	lsp_enabled_sync(editor)
@@ -839,7 +849,7 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		return true
 	}
 	if message == "" {
-		message = "config.json reloaded"
+		message = "config.json reloaded" if cfg_changed || !kb_changed else "keybinds.json reloaded"
 	}
 	editor_log(editor, .Warn if is_error else .Info, "", message)
 	return true

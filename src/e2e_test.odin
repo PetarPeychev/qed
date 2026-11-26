@@ -43,6 +43,7 @@ E2E :: struct {
 	dir:     string, // scratch dir (git fixture); removed recursively on stop
 	resized: bool,   // restore the shared 80×24 backend on stop
 	cfg:     json.Value,
+	keybinds: json.Value,
 }
 
 // the shell session runs $SHELL -i; the developer's rc files must not run (they touch real state, e.g. pyenv's shim lock)
@@ -148,6 +149,7 @@ e2e_start :: proc(content := "") -> E2E {
 e2e_stop :: proc(e: ^E2E) {
 	editor_shutdown(&e.ed)
 	json.destroy_value(e.cfg)
+	json.destroy_value(e.keybinds)
 	if e.resized {
 		e2e_apply_size(E2E_W, E2E_H)
 	}
@@ -324,6 +326,15 @@ e2e_new_ui :: proc(e: ^E2E) {
 	plugin_flush(&e.ed)
 	plugin_pump(&e.ed)
 	e2e_render(e)
+}
+
+e2e_keybinds :: proc(e: ^E2E, src: string) {
+	v, err := json.parse_string(src, parse_integers = true)
+	assert(err == nil, "test keybinds parse")
+	json.destroy_value(e.keybinds)
+	e.keybinds = v
+	e.ed.plugins.keybinds_override = v.(json.Object)
+	plugins_config_apply(&e.ed, false)
 }
 
 e2e_plugin_config :: proc(e: ^E2E, name, cfg: string, hot := false) {

@@ -4,9 +4,9 @@
 micro/nano but with GUI-style keybinds. It targets a single author (Petar) — so
 there are **no backwards-compatibility obligations**, and plugins are global Lua
 written by him (no package manager, no sandbox). Tunable
-knobs (colors, sizes, timeouts, keybinds) default from the JSON files in
-`config/` (embedded into the binary at build); `~/.config/qed/` overrides them,
-hot-reloaded. Exactly one place per knob.
+knobs default from `config/` (embedded into the binary at build): typed option
+declarations in `options.lua`, keybinds in `keybinds.json`, colors in `themes/`;
+`~/.config/qed/` overrides them, hot-reloaded. Exactly one place per knob.
 
 ## The docs
 
@@ -94,9 +94,10 @@ repetition only once it exists in front of you.
 - **No premature data-structure optimization.** The buffer is a dynamic array of
   lines, each a dynamic array of bytes. No gap buffer / rope / piece table until
   profiling on real usage proves we need one.
-- **Hardcode, but in one place.** Every user-facing tunable is a key in the
-  embedded `config/` JSON, bound to a typed global in `src/settings.odin`; other
-  constants live with their subsystem. Hardcoding is fine; scattered magic
+- **Hardcode, but in one place.** Every user-facing tunable is one typed
+  declaration (core's in `config/options.lua`, a plugin's in its `qed.options`),
+  core ones bound to a typed global in `src/settings.odin`; other constants live
+  with their subsystem. Hardcoding is fine; scattered magic
   numbers are not.
 
 ## Code conventions
@@ -150,10 +151,10 @@ repetition only once it exists in front of you.
 | Rendering      | Full redraw per event; termbox diffs internally. Truecolor output. |
 | Colors         | Themes are JSON (`colors`/`captures`/`icons`/`tints`); embedded `default.json` is the complete base every theme overlays per-key — bundled themes are diffs (colors kept complete by policy), user `themes/<name>.json` overlays the same-name bundled theme. `captures` maps tree-sitter captures → color keys (prefix fallback, per-language overrides). qed never writes theme files. |
 | Gutter         | Left line-number gutter; current line emphasized; git-diff mark column. |
-| Commands       | Direct CTRL keybinds (rebindable by name); floating command palette. |
-| Config         | Embedded `config/config.json` holds every core default (knobs, keybinds, language patterns/lsp) plus each bundled plugin's `enabled`, none in Odin source. Plugin defaults live in the plugin's `qed.options` call and its commands' `key=`. User `~/.config/qed/config.json` is a **sparse per-key diff** qed never writes (no materialization; UI persistence like the theme picker writes only its own key); unknown keys warn once, malformed JSON falls back to defaults; hot-reloaded on change. The repo files are the reference for all keys. |
+| Commands       | Direct CTRL keybinds, rebindable in `keybinds.json` by explicit snake_case command id (`{"core": {"copy": ...}, "<plugin id>": {...}}`); floating command palette. |
+| Config         | Every option is one typed declaration (bool, int, string, text, choice, list, map, record; type, default, description, bounds or choices): core's in embedded `config/options.lua`, a plugin's in its `qed.options` call in `setup`; none in Odin source. Core keybinds default from `config/keybinds.json`, plugin commands from `key=`. User `~/.config/qed/config.json` (options) and `keybinds.json` (grouped by `core` or plugin id, keyed by command id) are **sparse per-key diffs**, never materialized, written one key at a time by the settings menu (*Settings: Open Config UI* / *Open Keybinds UI*; *Open Config JSON* / *Open Keybinds JSON* open the files). Validation is closed: an undeclared key, wrong type or value outside its choices warns once; malformed JSON falls back to defaults; hot-reloaded on change. |
 | Modules        | None: the module system is gone. LSP is a plain `lsp` config section gated on `lsp.enabled`; `git` and `ai` are plugins (`plugins.<id>`); new optional features are plugins. |
-| Plugins        | Lua 5.4, vendored and static. Global only: bundled `plugins/` (embedded) + `~/.config/qed/plugins/`, config and keybinds under `plugins.<id>`; commands show as `<display name>: <name>`. One `lua_State`, per-plugin `_ENV`. Lua may handle UI events, keystrokes included (handlers stay light); it never runs on the render path. See [docs/notes/plugins.md](docs/notes/plugins.md). |
+| Plugins        | Lua 5.4, vendored and static. Global only: bundled `plugins/` (embedded) + `~/.config/qed/plugins/`, options under `plugins.<id>` (declared by `qed.options` in `setup`), binds under `keybinds.json` `"<id>"`; each command has an `id` and a `name`, shown as `<display name>: <name>`. One `lua_State`, per-plugin `_ENV`. Lua may handle UI events, keystrokes included (handlers stay light); it never runs on the render path. See [docs/notes/plugins.md](docs/notes/plugins.md). |
 | Status bar     | Filename + modified flag, plus a message line for errors / prompts / status. |
 | UI             | One declarative node tree (`qed.ui`, six layers): mounts of containers and leaves; core owns the engine (layout, render, diff, focus, key and mouse routing) and the heavy leaves (editor, terminal, image, virtual_column over core lists, the markdown node, status); bundled plugins compose the default UI. Core builds only what must work with plugins broken: safety dialogs, the rename prompt, the caret popups. |
 | Tests          | `core:testing` unit tests (buffer/edit/cursor/undo/…). |

@@ -39,19 +39,19 @@ local function marks()
 	}
 end
 return {setup = function()
-	qed.command{name = "Attach", run = function()
+	qed.command{id = "attach", name = "Attach", run = function()
 		ft = qed.plugin("filetree")
 		tab()
 		marks()
 		ft.set_ignored{qed.root() .. "/junk"}
 	end}
-	qed.command{name = "Hold", run = function()
+	qed.command{id = "hold", name = "Hold", run = function()
 		ft = qed.plugin("filetree")
 		ft.set_ignored(false)
 	end}
-	qed.command{name = "Show", run = function() ft.open("Prov") end}
-	qed.command{name = "Remove", run = function() ft.remove_tab("Prov") end}
-	qed.command{name = "Bad", run = function()
+	qed.command{id = "show", name = "Show", run = function() ft.open("Prov") end}
+	qed.command{id = "remove", name = "Remove", run = function() ft.remove_tab("Prov") end}
+	qed.command{id = "bad", name = "Bad", run = function()
 		local ok, err = pcall(ft.set_tab, {label = "All", paths = {}})
 		qed.message(err)
 	end}
@@ -59,11 +59,11 @@ end}`
 
 @(private = "file")
 OTHER :: `return {setup = function()
-	qed.command{name = "Steal", run = function()
+	qed.command{id = "steal", name = "Steal", run = function()
 		local ok, err = pcall(qed.plugin("filetree").set_tab, {label = "Prov", paths = {}})
 		qed.message(err)
 	end}
-	qed.command{name = "Direct", run = function()
+	qed.command{id = "direct", name = "Direct", run = function()
 		local ok, err = pcall(qed.plugin("filetree").open, "Nope")
 		qed.message(err)
 	end}

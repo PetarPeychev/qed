@@ -8,33 +8,33 @@ qed-e2e snapshot 160x45 cursor 24,6
  16  * Doc line 13: ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
  17  * Doc line 14: │ > type to filter                                                                                                     │
  18  * Doc line 15: ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
- 19  * Doc line 16: │ Key                             Value                                                                                │
+ 19  * Doc line 16: │ Key                               Value                                                                              │
  20  * Doc line 17: ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
- 21  * Doc line 18: │ alt_esc_timeout_ms              25                                                                                   ┃
- 22  * Doc line 19: │ auto_close_pairs                true                                                                                 ┃
- 23  * Doc line 20: │ big_file_bytes                  2097152                                                                              ┃
- 24  * Doc line 21: │ cursor_accel                    true                                                                                 ┃
- 25  * Doc line 22: │ cursor_accel_interval_ms        55                                                                                   ┃
- 26  * Doc line 23: │ cursor_accel_max_step           6                                                                                    │
- 27  * Doc line 24: │ cursor_accel_ramp_presses       20                                                                                   │
- 28  * Doc line 25: │ diff_view                       false                                                                                │
- 29  * Doc line 26: │ double_click_ms                 400                                                                                  │
- 30  * Doc line 27: │ image_max_rows                  24                                                                                   │
- 31  * Doc line 28: │ image_protocol                  auto                                                                                 │
- 32  * Doc line 29: │ jump_threshold                  10                                                                                   │
- 33  * Doc line 30: │▎line_wrap                       false                                                                                │
- 34  * Doc line 31: │ pane_max_width                  120                                                                                  │
- 35  * Doc line 32: │ picker_max_rows                 8                                                                                    │
- 36  * Doc line 33: │ picker_width                    62                                                                                   │
- 37  * Doc line 34: │ plugin_command_max_ms           5000                                                                                 │
- 38  * Doc line 35: │ plugin_hook_timeout_ms          2000                                                                                 │
- 39  * Doc line 36: │ plugin_memory_mb                256                                                                                  │
- 40  * Doc line 37: │ plugin_slice_max_ms             1000                                                                                 │
- 41  * Doc line 38: │ preview_diff_context            3                                                                                    │
- 42  * Doc line 39: │ scroll_margin                   3                                                                                    │
- 43  * Doc line 40: │ split_code_max_width            100                                                                                  │
- 44  */             │ split_code_min_width            50                                                                                   │
- 45 int add(int a, i│ split_preview_max_width         130                                                                                  │
+ 21  * Doc line 18: │ alt_esc_timeout_ms                25                                                                                 ┃
+ 22  * Doc line 19: │ auto_close_pairs                  true                                                                               ┃
+ 23  * Doc line 20: │ big_file_bytes                    2097152                                                                            │
+ 24  * Doc line 21: │ cursor_accel                      true                                                                               │
+ 25  * Doc line 22: │ cursor_accel_interval_ms          55                                                                                 │
+ 26  * Doc line 23: │ cursor_accel_max_step             6                                                                                  │
+ 27  * Doc line 24: │ cursor_accel_ramp_presses         20                                                                                 │
+ 28  * Doc line 25: │ diff_view                         false                                                                              │
+ 29  * Doc line 26: │ double_click_ms                   400                                                                                │
+ 30  * Doc line 27: │ image_max_rows                    24                                                                                 │
+ 31  * Doc line 28: │ image_protocol                    auto                                                                               │
+ 32  * Doc line 29: │ jump_threshold                    10                                                                                 │
+ 33  * Doc line 30: │▎line_wrap                         false                                                                              │
+ 34  * Doc line 31: │ pane_max_width                    120                                                                                │
+ 35  * Doc line 32: │ picker_max_rows                   8                                                                                  │
+ 36  * Doc line 33: │ picker_width                      62                                                                                 │
+ 37  * Doc line 34: │ plugin_command_max_ms             5000                                                                               │
+ 38  * Doc line 35: │ plugin_hook_timeout_ms            2000                                                                               │
+ 39  * Doc line 36: │ plugin_memory_mb                  256                                                                                │
+ 40  * Doc line 37: │ plugin_slice_max_ms               1000                                                                               │
+ 41  * Doc line 38: │ preview_diff_context              3                                                                                  │
+ 42  * Doc line 39: │ scroll_margin                     3                                                                                  │
+ 43  * Doc line 40: │ split_code_max_width              100                                                                                │
+ 44  */             │ split_code_min_width              50                                                                                 │
+ 45 int add(int a, i│ split_preview_max_width           130                                                                                │
  46                 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
  47 int main(void) {│ Wait after Esc for a key to read as Alt+key. Default: 25                                                             │
  48     int x = add(├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -54,13 +54,13 @@ aaaabbbbbbbbbbbbbbbbdefffffffdddddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 aaaabbbbbbbbbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbdfffggggggggggggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
-aaaabbbbbbbbbbbbbbbbdhhhheeeeeeeeeeeeeeeeeeeeeeeeeeehhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdhhhheeeeeeeeeeeeeeeeeeeeeeeeeeeeehhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbdiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiecccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecccccccccccccccccccc
-aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecccccccccccccccccccc
-aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecccccccccccccccccccc
-aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeecccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
+aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc
 aaaabbbbbbbbbbbbbbbbdfeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedcccccccccccccccccccc

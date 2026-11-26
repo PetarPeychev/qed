@@ -16,14 +16,14 @@
 ---@field selection_text string|nil the selected text, read on first access; nil once the buffer changed since the command was invoked
 
 ---@class qed.CommandSpec
----@field name string bare name; the palette shows `<display name>: <name>`
+---@field id string snake_case, unique per plugin and scope: the command's key in keybinds.json (`{"<plugin id>": {"<id>": chord}}`); commands of one plugin sharing an id in different scopes share the bind and the first `key` among them
+---@field name string display label; the palette shows `<display name>: <name>`
 ---@field run fun(ctx: qed.Ctx)
 ---@field when? fun(ctx: qed.Ctx): boolean
----@field key? string default chord, overridden by config `plugins.<id>.keybinds[keybind]`; a bare key (`"x"`) is allowed outside the editor scope and fires only in a pane without fields
----@field bind_from? string without `key`: take the bind of this core command (e.g. `"Copy"`), re-read at every rebind so it follows that command's config
+---@field key? string default chord, overridden by keybinds.json `["<plugin id>"]["<id>"]`; a bare key (`"x"`) is allowed outside the editor scope and fires only in a pane without fields
+---@field bind_from? string without `key`: take the bind of the core command with this id (e.g. `"copy"`), re-read at every rebind so it follows that command's config
 ---@field scope? string `"global"` (default), or a `qed.ui` node scope (`"log"`, `"filetree"`, ...): the command runs on its chord while focus is inside a node or pane of that scope
 ---@field welcome? boolean also offered on the welcome screen (no buffer)
----@field keybind? string the key in `plugins.<id>.keybinds`, default `name`; commands sharing it share the bind and the first `key` among them
 
 ---@class qed.Meta
 ---@field display_name? string shown wherever the plugin is named (palette prefix, message and log labels, Plugins pane); default the id title-cased (`my_tools` is "My Tools")
@@ -95,15 +95,34 @@ function qed.new_buf(opts) end
 ---@return string
 function qed.config_path() end
 
----The embedded default `config/config.json` text.
----@return string
-function qed.config_defaults() end
-
----The embedded `config/schema.json` text: per core key (dotted, `*` matches one segment) `{description, choices?, min?}`.
----@return string
+---Core's option declarations, normalized (see `qed.Option`), by option name.
+---@return table<string, qed.Option>
 function qed.config_schema() end
 
----Writes one key into the user config.json (a sparse diff; nothing else is touched, defaults never materialize); the config hot reload applies it. `keys` is a top-level key or a path (`{"plugins", "ai", "enabled"}`). An empty table is written as a list.
+---The user keybinds.json path (`""` without a home).
+---@return string
+function qed.keybinds_path() end
+
+---Writes one bind into the user keybinds.json at `[owner][id]` (`owner` is `"core"` or a plugin id); `""` unbinds. The config hot reload applies it.
+---@param owner string
+---@param id string
+---@param chord string
+---@return true|nil ok
+---@return string|nil err
+function qed.keybind_set(owner, id, chord) end
+
+---Removes one bind from the user keybinds.json, back to the command's default.
+---@param owner string
+---@param id string
+---@return true|nil ok
+---@return string|nil err
+function qed.keybind_unset(owner, id) end
+
+---The effective config, merged by the same rules as at load from the user config.json on disk: `core` (core options), `plugins[id]` (each plugin's options plus `enabled`) and `set`, every slash path the file names (`"languages/python/lsp"`, a `null` entry included).
+---@return {core: table, plugins: table<string, table>, set: table<string, true>}
+function qed.config_values() end
+
+---Writes one key into the user config.json (a sparse diff; nothing else is touched, defaults never materialize); the config hot reload applies it. `keys` is a top-level key or a path (`{"plugins", "ai", "enabled"}`). An empty table takes the declared type at that path (a list when undeclared).
 ---@param keys string|string[]
 ---@param value any
 ---@return true|nil ok
@@ -121,9 +140,9 @@ function qed.config_unset(keys) end
 ---@field shortcut string the live bind, `""` when unbound
 ---@field available boolean runnable now (a `when` that passes, a command offered on the welcome screen there, a core command that applies)
 ---@field scope string `"global"`, `"editor"` (editor nodes), `"filetree"`, `"log"`, `"plugins"` or a pane's or node's scope
----@field owner? string plugin id; nil for core commands
----@field keybind? string its key in `keybinds` (core) or `plugins.<owner>.keybinds`; nil for a core command borrowing another's bind
----@field key? string the default bind (with `keybind`)
+---@field owner string `"core"` or the plugin id: the command's group in keybinds.json
+---@field id? string its id in that group (`"copy"`, `"set_diff_base"`); nil for a core command borrowing another's bind
+---@field key? string the default bind (with `id`)
 
 ---Every core and plugin command.
 ---@return qed.CommandInfo[]
@@ -135,8 +154,7 @@ function qed.commands() end
 ---@field description string
 ---@field state "enabled"|"disabled"|"errored"
 ---@field bundled boolean
----@field options? table its `qed.options` defaults (a copy), once loaded
----@field info? table<string, string|qed.OptionInfo> its `qed.options` info (a copy)
+---@field options? table<string, qed.Option> its `qed.options` declarations, normalized, while it is loaded
 ---@field error string the last load or task error, "" when none
 ---@field load_ms number how long its setup took
 ---@field main string its main file: a path for a user plugin, `<id>/init.lua` for a bundled one
@@ -212,18 +230,25 @@ function qed.open_url(url) end
 ---@return qed.Unsaved|nil info with `"unsaved"`
 function qed.set_root(path, opts) end
 
----@class qed.OptionInfo
----@field description? string one line for the settings menu
----@field choices? string[] the allowed values of a string option (the default must be one)
+---@alias qed.OptionType "bool"|"int"|"string"|"text"|"choice"|"list"|"map"|"record" `string` is one line, `text` any string
 
----Declares this plugin's config keys and defaults; returns the merged config (`plugins.<id>` over `defaults`; `enabled` and `keybinds` are reserved). Setup only, once per load.
----Objects merge per key, lists and other values replace; a user value whose type differs from the default's warns and keeps the default, and `null` drops a default.
----`info` maps option keys to a description or `{description?, choices?}` (the settings menu shows them); a key not in `defaults` raises.
----@generic T: table
----@param defaults T
----@param info? table<string, string|qed.OptionInfo>
----@return T
-function qed.options(defaults, info) end
+---One option's declaration. A bare type name (`"string"`) stands for `{type = "string"}`.
+---@class qed.Option
+---@field type qed.OptionType
+---@field description? string one line for the settings menu
+---@field default? any the zero value of the type when omitted (false, 0 or `min`, "", the first choice, {}); a record's comes from its fields
+---@field min? integer int only
+---@field max? integer int only
+---@field choices? string[]|fun(): string[] choice only: a list, or a function called when the values are needed and at load and config apply (`qed.languages`, `qed.theme.list`; a choice outside a list or map then needs a default)
+---@field of? qed.Option|qed.OptionType list only: the item type
+---@field key? qed.Option|qed.OptionType map only: a `string` or `choice`
+---@field value? qed.Option|qed.OptionType map only: the entry type
+---@field fields? table<string, qed.Option|qed.OptionType> record only
+
+---Declares this plugin's options, one declaration per name (`enabled` and `keybinds` are reserved); `qed.config()` reads the merged config (`plugins.<id>` over the defaults). Setup only, once per load.
+---A record merges per field and a map per entry (`null` drops an entry); a list or scalar replaces. A user value of the wrong type, a choice outside its list or an int out of bounds warns and keeps the default; an undeclared key warns. A bad declaration raises.
+---@param declarations table<string, qed.Option>
+function qed.options(declarations) end
 
 ---Sets plugin metadata. Setup only, once per load, before any `qed.command`. Unknown fields, a display name another loaded plugin uses, and core log labels ("LSP", "Plugins", ...) raise.
 ---@param meta qed.Meta
@@ -1244,6 +1269,10 @@ function qed.json.decode(text) end
 ---@param value any
 ---@return string
 function qed.json.encode(value) end
+
+---Encodes as JSON `null` (`qed.config_set(keys, qed.json.null)` drops a default map entry).
+---@type lightuserdata
+qed.json.null = nil
 
 qed.path = {}
 

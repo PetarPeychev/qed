@@ -1,6 +1,5 @@
 package main
 
-import "core:encoding/json"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -82,9 +81,12 @@ language_rules_set :: proc(rules: []LangRule) {
 	if g_language_rules == nil {
 		g_language_rules = make([dynamic]LangRule, 0, len(rules), os.heap_allocator())
 	}
+	for rule in g_language_rules {
+		delete(rule.pattern, os.heap_allocator())
+	}
 	clear(&g_language_rules)
 	append(&g_language_rules, ..rules)
-	slice.sort_by(g_language_rules[:], proc(a, b: LangRule) -> bool {
+	slice.stable_sort_by(g_language_rules[:], proc(a, b: LangRule) -> bool {
 		aw := strings.contains_rune(a.pattern, '*')
 		bw := strings.contains_rune(b.pattern, '*')
 		if aw != bw {
@@ -99,31 +101,6 @@ language_rules_set :: proc(rules: []LangRule) {
 
 languages_reset_defaults :: proc() {
 	LANGUAGES = LANGUAGE_DEFAULTS
-}
-
-// Languages named in the embedded config's `languages` section, in enum order.
-// This is the set materialized into the config `languages` section.
-default_pattern_languages :: proc(allocator := context.temp_allocator) -> []Language {
-	langs, _ := g_config_defaults["languages"].(json.Object)
-	out := make([dynamic]Language, allocator)
-	for info, lang in LANGUAGES {
-		if info.name in langs {
-			append(&out, lang)
-		}
-	}
-	return out[:]
-}
-
-// Pattern strings point into g_config_defaults, which lives for the whole run.
-append_default_patterns :: proc(rules: ^[dynamic]LangRule, lang: Language) {
-	langs, _ := g_config_defaults["languages"].(json.Object)
-	sub, _ := langs[LANGUAGES[lang].name].(json.Object)
-	arr, _ := sub["patterns"].(json.Array)
-	for e in arr {
-		if s, is := e.(json.String); is {
-			append(rules, LangRule{string(s), lang})
-		}
-	}
 }
 
 language_from_name :: proc(name: string) -> (Language, bool) {

@@ -1,0 +1,86 @@
+qed-e2e snapshot 90x36 cursor 12,6
+-- text
+ 1 x
+ 2
+
+        ┌────────────────────────────────────────────────────────────────────────┐
+        │ Options │ Keybinds                                                     │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ > type to filter                                                       │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Command                                 Chord                          │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Close Buffer                            Ctrl+w                         ┃
+        │ Command Palette                         Ctrl+p                         │
+        │ Copy                                    Ctrl+c                         │
+        │ Cut                                     Ctrl+x                         │
+        │ Debug: Inspect Tokens                                                  │
+        │ Editor: Backspace                       Backspace                      │
+        │ Editor: Close Inspect                   Esc                            │
+        │ Editor: Dedent                          Shift+Tab                      │
+        │ Editor: Delete                          Delete                         │
+        │ Editor: Down                            Down                           │
+        │ Editor: Field Backspace                                                │
+        │ Editor: Indent                          Tab                            │
+        │ Editor: Left                            Left                           │
+        │ Editor: Line End                        Alt+Right                      │
+        │ Editor: Line Start                      Alt+Left                       │
+        │ Editor: Move Line Down                  Alt+Down                       │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Close Buffer. Default: Ctrl+w. Scope: global. Id: core/close_buffer    │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Tab tabs  Enter edit  Ctrl+d reset                                     │
+        └────────────────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/a.txt  1/2                                                     ◆ text  ⇥ Spaces:4
+
+-- style
+abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddefeeeeeeeeeeggggggggfffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddegggeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddehhhhhhhhfffffffffffffffffffffffffffffffhhhhhhhffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeiiiiiiiiiiiiijjjjjjjjjjjjjjjjjjjjjjjjjjiiiiiiiijjjjjjjjjjjjjjjjjjjjjjjjjfdddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+-- legend
+a fg=#4c566a bg=#2e3440
+b fg=#eceff4 bg=#2e3440
+c fg=#d8dee9 bg=#383d49
+d fg=#d8dee9 bg=#2e3440
+e fg=#4c566a bg=#272c36
+f fg=#d8dee9 bg=#272c36
+g fg=#ebcb8b bg=#272c36
+h fg=#d8dee9 bg=#272c36 bold
+i fg=#eceff4 bg=#434c5e
+j fg=#d8dee9 bg=#434c5e

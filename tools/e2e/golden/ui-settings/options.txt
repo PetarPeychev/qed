@@ -8,9 +8,9 @@ qed-e2e snapshot 80x24 cursor 21,6
         ├──────────────────────────────────────────────────────────────┤
         │ > tab_width                                                  │
         ├──────────────────────────────────────────────────────────────┤
-        │ Key                             Value                        │
+        │ Key                               Value                      │
         ├──────────────────────────────────────────────────────────────┤
-        │ tab_width                       4                            │
+        │ tab_width                         4                          │
         │                                                              │
         │                                                              │
         ├──────────────────────────────────────────────────────────────┤
@@ -33,7 +33,7 @@ ddddddddefgggggggeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddegggfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
-ddddddddehhhhfffffffffffffffffffffffffffhhhhhhhffffffffffffffffffffffffedddddddd
+ddddddddehhhhfffffffffffffffffffffffffffffhhhhhhhffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddeiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiedddddddd
 ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd

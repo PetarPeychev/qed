@@ -10,6 +10,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import vmem "core:mem/virtual"
 import lua "lib:lua"
 import "lib:tb2"
 
@@ -33,8 +34,9 @@ Plugin :: struct {
 	state:      PluginState,
 	env:        c.int,
 	cfg:        c.int,
-	defaults:   c.int,
-	info:       c.int,
+	options:    c.int,
+	schema:     ^Option,
+	schema_arena: vmem.Arena,
 	load_ms:    f64,
 	last_error: string,
 	stamp:      u64,
@@ -103,6 +105,9 @@ Plugins :: struct {
 	bound:    bool,
 	applying: bool,
 	setup:    ^Plugin,
+	keybinds_override: Maybe(json.Object),
+	keybinds_due: bool,
+	keybinds_sig: string,
 	colors:   [dynamic]string,
 	deco_ns:  [dynamic]PluginNs,
 	ns_seq:   u32,
@@ -301,6 +306,10 @@ plugins_open :: proc(p: ^Plugins, mem_cap: int) -> bool {
 		lua.pushcfunction(p.L, plugin_prelude_c)
 		ok = lua.pcall(p.L, 0, 0, 0) == .OK
 	}
+	if ok {
+		lua.pushcfunction(p.L, plugin_core_options_c)
+		ok = lua.pcall(p.L, 0, 0, 0) == .OK
+	}
 	if !ok {
 		lua.close(p.L)
 		p.L = nil
@@ -326,6 +335,7 @@ plugins_shutdown :: proc(p: ^Plugins) {
 	}
 	delete(p.commands)
 	for &pl in p.list {
+		plugin_options_clear(p, &pl)
 		plugin_strings_free(&pl)
 	}
 	delete(p.list)
@@ -334,6 +344,7 @@ plugins_shutdown :: proc(p: ^Plugins) {
 	}
 	delete(p.names)
 	delete(p.user_dir)
+	delete(p.keybinds_sig)
 	for k in p.colors {
 		delete(k)
 	}
@@ -370,6 +381,7 @@ editor_plugins_start :: proc(editor: ^Editor, bundled: []PluginFile, user_dir: s
 	}
 	plugins_config_warn(editor)
 	p.startup_due = true
+	p.keybinds_due = true
 	editor_log(
 		editor,
 		.Debug,
@@ -434,7 +446,15 @@ plugins_scan :: proc(editor: ^Editor, user_dir: string, warn: bool) -> []Plugin 
 		}
 		append(&out, pl)
 	}
-	return out[:]
+	kept := make([dynamic]Plugin, context.temp_allocator)
+	for pl in out {
+		if pl.name != "core" {
+			append(&kept, pl)
+		} else if warn {
+			editor_log(editor, .Error, "Plugins", fmt.tprintf("the plugin id 'core' is reserved for core's keybinds, %s is not loaded", pl.main))
+		}
+	}
+	return kept[:]
 }
 
 plugin_stat_follow :: proc(info: os.File_Info) -> os.File_Info {
@@ -518,8 +538,7 @@ plugins_add :: proc(p: ^Plugins, pl: Plugin, bundled: bool) -> ^Plugin {
 		stamp   = pl.stamp,
 		env      = lua.NOREF,
 		cfg      = lua.NOREF,
-		defaults = lua.NOREF,
-		info     = lua.NOREF,
+		options  = lua.NOREF,
 		exports  = lua.NOREF,
 	})
 	pl := &p.list[len(p.list) - 1]
@@ -632,41 +651,85 @@ plugins_keybinds_check :: proc(editor: ^Editor) {
 	if p.startup_due {
 		return
 	}
+	due := p.keybinds_due
+	p.keybinds_due = false
 	for &pl in p.list {
-		if pl.keys_due {
-			pl.keys_due = false
-			plugin_keybinds_warn(editor, &pl)
-		}
+		due ||= pl.keys_due
+		pl.keys_due = false
+	}
+	if due {
+		keybinds_plugin_warn(editor)
 	}
 }
 
-plugin_keybinds_warn :: proc(editor: ^Editor, pl: ^Plugin) {
-	if pl.state != .Enabled {
+// core's ids are checked at load (keybinds_load); a plugin's group once it registered its commands, once per change of the file or the plugin set
+keybinds_plugin_warn :: proc(editor: ^Editor) {
+	p := &editor.plugins
+	user := editor_keybinds_user(editor)
+	sb := strings.builder_make(context.temp_allocator)
+	json_write_value(&sb, user, 0)
+	for pl in p.list {
+		fmt.sbprintf(&sb, "\n%s %v", pl.name, pl.state)
+	}
+	for cmd in p.commands {
+		fmt.sbprintf(&sb, "\n%s/%s", cmd.owner, cmd.id)
+	}
+	if strings.to_string(sb) == p.keybinds_sig {
 		return
 	}
+	delete(p.keybinds_sig)
+	p.keybinds_sig = strings.clone(strings.to_string(sb))
 	problems := make([dynamic]string, context.temp_allocator)
-	kb_v, has_kb := plugin_cfg_entry(editor_config_user(editor), pl.name)["keybinds"]
-	kb, kb_ok := kb_v.(json.Object)
-	if has_kb && !kb_ok {
-		append(&problems, fmt.tprintf("plugins/%s/keybinds", pl.name))
-	}
-	unknown := make([dynamic]string, context.temp_allocator)
-	for key in kb {
-		found := false
-		for cmd in editor.plugins.commands {
-			found ||= cmd.owner == pl.name && cmd.config_name == key
+	for group, v in user {
+		if group == "core" {
+			continue
 		}
-		if !found {
-			append(&unknown, config_unknown_msg(fmt.tprintf("plugins/%s/keybinds/%s", pl.name, key)))
+		pl := plugin_find(p, group)
+		if pl == nil {
+			append(&problems, config_unknown_msg(fmt.tprintf("keybinds.json/%s", group)))
+			continue
 		}
-	}
-	if len(unknown) > 0 {
-		slice.sort(unknown[:])
-		append(&problems, strings.join(unknown[:], ", ", context.temp_allocator))
+		if pl.state != .Enabled {
+			continue
+		}
+		ids: for id in v.(json.Object) or_else nil {
+			for cmd in p.commands {
+				if cmd.owner == group && cmd.id == id {
+					continue ids
+				}
+			}
+			append(&problems, config_unknown_msg(fmt.tprintf("keybinds.json/%s/%s", group, id)))
+		}
 	}
 	if len(problems) > 0 {
-		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
+		slice.sort(problems[:])
+		editor_log(editor, .Warn, "", fmt.tprintf("keybinds.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
 	}
+}
+
+editor_keybinds_user :: proc(editor: ^Editor) -> json.Object {
+	if o, ok := editor.plugins.keybinds_override.?; ok {
+		return o
+	}
+	return nil if editor.headless else g_keybinds_user
+}
+
+plugin_keybind_user :: proc(editor: ^Editor, cmd: ^Command) -> (json.Value, bool) {
+	group := editor_keybinds_user(editor)[cmd.owner].(json.Object) or_else nil
+	v, ok := group[cmd.id]
+	return v, ok
+}
+
+keybind_id_ok :: proc(id: string) -> bool {
+	if id == "" || id[0] < 'a' || id[0] > 'z' {
+		return false
+	}
+	for ch in id {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 plugin_enter :: proc(editor: ^Editor, entry: ^PluginEntry) -> rawptr {
@@ -790,6 +853,7 @@ plugin_load :: proc(editor: ^Editor, pl: ^Plugin, check_enabled := true) {
 	p := &editor.plugins
 	delete(pl.cfg_sig)
 	pl.cfg_sig = strings.clone(plugin_cfg_sig(pl.name, editor_config_user(editor)))
+	plugin_options_clear(p, pl)
 	if check_enabled && !plugin_cfg_enabled(pl.name, editor_config_user(editor)) {
 		pl.state = .Disabled
 		return
@@ -931,7 +995,7 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 			}
 		}
 		if found < 0 {
-			append(&next, Plugin{name = plugin_name_intern(p, w.name), bundled = w.bundled, dir = strings.clone(w.dir), main = strings.clone(w.main), stamp = w.stamp, env = lua.NOREF, cfg = lua.NOREF, defaults = lua.NOREF, info = lua.NOREF, exports = lua.NOREF})
+			append(&next, Plugin{name = plugin_name_intern(p, w.name), bundled = w.bundled, dir = strings.clone(w.dir), main = strings.clone(w.main), stamp = w.stamp, env = lua.NOREF, cfg = lua.NOREF, options = lua.NOREF, exports = lua.NOREF})
 			plugin_display_reset(&next[len(next) - 1])
 			append(&loads, w.name)
 			append(&reloads, false)
@@ -947,6 +1011,7 @@ plugins_sync :: proc(editor: ^Editor, want: []Plugin) {
 	}
 	for &pl, i in p.list {
 		if kept[i] < 0 {
+			plugin_options_clear(p, &pl)
 			plugin_strings_free(&pl)
 		}
 	}
@@ -1000,6 +1065,7 @@ plugins_config_apply :: proc(editor: ^Editor, theme_changed: bool, parsed := tru
 	for &pl in p.list {
 		pl.keys_due = pl.state == .Enabled
 	}
+	p.keybinds_due = true
 	plugin_flush(editor)
 	p.applying = false
 	plugins_rebind(editor)
@@ -1030,8 +1096,7 @@ plugin_load_c :: proc "c" (L: ^lua.State) -> c.int {
 	if setup_type != .FUNCTION && setup_type != .NIL {
 		return plugin_raise(L, "spec.setup must be a function")
 	}
-	lua.pushnil(L)
-	plugin_config_push(entry.editor, pl, lua.gettop(L))
+	plugin_config_push(entry.editor, pl)
 	lua.settop(L, spec + 1)
 	if setup_type == .NIL {
 		return 0
@@ -1045,13 +1110,7 @@ plugin_load_c :: proc "c" (L: ^lua.State) -> c.int {
 plugin_config_refresh_c :: proc "c" (L: ^lua.State) -> c.int {
 	entry := plugin_entry(L)
 	context = entry.ctx
-	pl := (^Plugin)(lua.touserdata(L, 1))
-	if pl.defaults != lua.NOREF {
-		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.defaults))
-	} else {
-		lua.pushnil(L)
-	}
-	plugin_config_push(entry.editor, pl, lua.gettop(L))
+	plugin_config_push(entry.editor, (^Plugin)(lua.touserdata(L, 1)))
 	return 0
 }
 
@@ -1066,7 +1125,13 @@ plugins_config_refresh :: proc(editor: ^Editor) {
 		}
 		lua.pushcfunction(p.L, plugin_config_refresh_c)
 		lua.pushlightuserdata(p.L, &pl)
-		if ok, msg, tb := plugin_call(editor, 1, 0); !ok {
+		prev_slice := plugin_slice_begin(p, .Setup)
+		previous_owner := p.entry_owner
+		p.entry_owner = pl.name
+		ok, msg, tb := plugin_call(editor, 1, 0)
+		p.entry_owner = previous_owner
+		plugin_slice_end(editor, prev_slice, pl.name, .Setup, "config refresh")
+		if !ok {
 			plugin_error(editor, &pl, msg, tb, false)
 		}
 	}
@@ -1109,18 +1174,11 @@ plugin_unload :: proc(editor: ^Editor, pl: ^Plugin) {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.cfg)
 		pl.cfg = lua.NOREF
 	}
-	if pl.defaults != lua.NOREF {
-		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.defaults)
-		pl.defaults = lua.NOREF
-	}
-	if pl.info != lua.NOREF {
-		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.info)
-		pl.info = lua.NOREF
-	}
 	if pl.exports != lua.NOREF {
 		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.exports)
 		pl.exports = lua.NOREF
 	}
+	plugin_options_clear(p, pl)
 	if p.bound && !p.startup_due {
 		plugin_queue(editor, {event = .Plugin_Unloaded, a = pl.name})
 	}
@@ -1394,13 +1452,10 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		return lua.L_argerror(L, 1, "welcome must be a boolean")
 	}
 	welcome := bool(lua.toboolean(L, 7))
-	keybind_t := lua.getfield(L, 1, "keybind")
-	if keybind_t != .STRING && keybind_t != .NIL {
-		return lua.L_argerror(L, 1, "keybind must be a string")
-	}
-	keybind_s, _ := lua.toodinstring(L, 8)
-	if keybind_t == .STRING && keybind_s == "" {
-		return lua.L_argerror(L, 1, "keybind must not be empty")
+	lua.getfield(L, 1, "id")
+	cmd_id, _ := lua.toodinstring(L, 8)
+	if lua.type(L, 8) != .STRING || !keybind_id_ok(cmd_id) {
+		return lua.L_argerror(L, 1, "id must be a snake_case string")
 	}
 	from_t := lua.getfield(L, 1, "bind_from")
 	from_s, _ := lua.toodinstring(L, 9)
@@ -1410,10 +1465,10 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if from_t == .STRING {
 		found := false
 		for c in commands {
-			found ||= c.name == from_s
+			found ||= c.id == from_s
 		}
 		if !found {
-			return plugin_raise(L, fmt.tprintf("bind_from: no core command '%s'", from_s))
+			return plugin_raise(L, fmt.tprintf("bind_from: no core command id '%s'", from_s))
 		}
 	}
 	if pl == nil || pl.state != .Enabled {
@@ -1426,6 +1481,11 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	if plugin_command_taken(p, visible, scope) {
 		return plugin_raise(L, fmt.tprintf("command '%s' already exists", visible))
 	}
+	for other in p.commands {
+		if other.owner == pl.name && other.id == cmd_id && other.scope == scope {
+			return plugin_raise(L, fmt.tprintf("command id '%s' already exists", cmd_id))
+		}
+	}
 	lua.pushvalue(L, 3)
 	ref := i32(lua.L_ref(L, lua.REGISTRYINDEX))
 	when_ref: i32
@@ -1433,23 +1493,23 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 		lua.pushvalue(L, 4)
 		when_ref = i32(lua.L_ref(L, lua.REGISTRYINDEX))
 	}
-	id := plugin_next_id(p)
+	serial := plugin_next_id(p)
 	cmd := Command {
 		name        = strings.clone(visible),
 		bare        = strings.clone(name),
 		owner       = pl.name,
-		id          = id,
+		id          = strings.clone(cmd_id),
+		serial      = serial,
 		scope       = strings.clone(scope),
 		welcome     = welcome,
 		key_default = strings.clone(key_s) if key_t == .STRING else "",
-		config_name = strings.clone(keybind_s if keybind_t == .STRING else name),
 		bind_from   = strings.clone(from_s) if from_t == .STRING else "",
 		ref         = ref,
 		when_ref    = when_ref,
 	}
-	if problem, from_user := plugin_command_bind(p, &cmd, editor_config_user(editor)); problem != "" && p.bound && !p.applying {
+	if problem, from_user := plugin_command_bind(editor, &cmd); problem != "" && p.bound && !p.applying {
 		if from_user {
-			editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", problem))
+			editor_log(editor, .Warn, "", fmt.tprintf("keybinds.json: ignoring %s", problem))
 		} else {
 			editor_log(editor, .Warn, pl.display, fmt.tprintf("ignoring key for %s", problem))
 		}
@@ -1457,12 +1517,12 @@ qed_command :: proc "c" (L: ^lua.State) -> c.int {
 	append(&p.commands, cmd)
 	if cmd.key_default != "" {
 		for &other in p.commands {
-			if other.id != id && other.owner == pl.name && other.config_name == cmd.config_name && other.key_default == "" {
-				plugin_command_bind(p, &other, editor_config_user(editor))
+			if other.serial != serial && other.owner == pl.name && other.id == cmd.id && other.key_default == "" {
+				plugin_command_bind(editor, &other)
 			}
 		}
 	}
-	api_handle_push(L, id, {{"remove", qed_command_remove}})
+	api_handle_push(L, serial, {{"remove", qed_command_remove}})
 	return 1
 }
 
@@ -1473,7 +1533,7 @@ qed_command_remove :: proc "c" (L: ^lua.State) -> c.int {
 	p := &editor.plugins
 	id := api_handle_id(L)
 	for cmd, i in p.commands {
-		if cmd.id == id {
+		if cmd.serial == id {
 			plugin_command_remove(editor, i)
 			return 0
 		}
@@ -1550,13 +1610,13 @@ qed_run :: proc "c" (L: ^lua.State) -> c.int {
 plugin_command_core :: proc(name: string, scope: string) -> bool {
 	if scope == "" {
 		for cmd in commands {
-			if cmd.name == name || command_config_name(cmd) == name {
+			if cmd.name == name {
 				return true
 			}
 		}
 	}
 	for cmd in scoped_commands {
-		if cmd.scope == scope && (cmd.name == name || command_config_name(cmd) == name) {
+		if cmd.scope == scope && cmd.name == name {
 			return true
 		}
 	}
@@ -1570,7 +1630,7 @@ plugin_command_taken :: proc(p: ^Plugins, name: string, scope: string) -> bool {
 		}
 	}
 	for cmd in scoped_commands {
-		if command_config_name(cmd) == name || (cmd.scope == scope && cmd.name == name) {
+		if cmd.scope == scope && cmd.name == name {
 			return true
 		}
 	}
@@ -1587,7 +1647,7 @@ plugin_command_free :: proc(cmd: ^Command) {
 	delete(cmd.bare)
 	delete(cmd.shortcut)
 	delete(cmd.key_default)
-	delete(cmd.config_name)
+	delete(cmd.id)
 	delete(cmd.bind_from)
 	delete(cmd.scope)
 }
@@ -1599,20 +1659,15 @@ editor_config_user :: proc(editor: ^Editor) -> json.Object {
 	return nil if editor.headless else g_config_user
 }
 
-plugin_keybind :: proc(cfg: json.Object, owner, key: string) -> (json.Value, bool) {
-	kb, _ := plugin_cfg_entry(cfg, owner)["keybinds"].(json.Object)
-	v, ok := kb[key]
-	return v, ok
-}
 
-plugin_bind_taken :: proc(key: tb2.Key, alt_ch, ch: rune, scope: string) -> string {
+plugin_bind_taken :: proc(key: tb2.Key, alt_ch, ch: rune, scope: string) -> (name, id: string) {
 	for cmd in (commands[:] if scope == "" else scoped_commands[:]) {
 		k, a, sc := command_effective_bind(cmd)
 		if cmd.scope == scope && sc != "" && a == alt_ch && cmd.ch == ch && (alt_ch != 0 || ch != 0 || k == key) {
-			return cmd.name
+			return cmd.name, cmd.bind_from if cmd.bind_from != "" else cmd.id
 		}
 	}
-	return ""
+	return "", ""
 }
 
 plugin_command_default :: proc(p: ^Plugins, cmd: ^Command) -> string {
@@ -1620,7 +1675,7 @@ plugin_command_default :: proc(p: ^Plugins, cmd: ^Command) -> string {
 	// a borrowed bind is read from the core command at every rebind, so it follows that command's config
 	if bind == "" && cmd.bind_from != "" {
 		for c in commands {
-			if c.name == cmd.bind_from {
+			if c.id == cmd.bind_from {
 				bind = c.shortcut
 			}
 		}
@@ -1629,17 +1684,18 @@ plugin_command_default :: proc(p: ^Plugins, cmd: ^Command) -> string {
 		if bind != "" {
 			break
 		}
-		if other.owner == cmd.owner && other.config_name == cmd.config_name {
+		if other.owner == cmd.owner && other.id == cmd.id {
 			bind = other.key_default
 		}
 	}
 	return bind
 }
 
-plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -> (problem: string, from_user: bool) {
-	label := fmt.tprintf("plugins/%s/keybinds/%s", cmd.owner, cmd.config_name)
+plugin_command_bind :: proc(editor: ^Editor, cmd: ^Command) -> (problem: string, from_user: bool) {
+	p := &editor.plugins
+	label := fmt.tprintf("%q", fmt.tprintf("keybinds.json/%s/%s", cmd.owner, cmd.id))
 	bind := plugin_command_default(p, cmd)
-	if v, ok := plugin_keybind(cfg_user, cmd.owner, cmd.config_name); ok {
+	if v, ok := plugin_keybind_user(editor, cmd); ok {
 		s, is_str := v.(json.String)
 		_, _, ch, parses := parse_bind(string(s))
 		if !is_str || (s != "" && (!parses || (ch != 0 && !bind_bare_ok(cmd.scope)))) {
@@ -1661,11 +1717,11 @@ plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -
 	if !ok || (ch != 0 && !bind_bare_ok(cmd.scope)) {
 		return label, from_user
 	}
-	if taken := plugin_bind_taken(key, alt_ch, ch, cmd.scope); taken != "" && taken != cmd.bind_from {
+	if taken, taken_id := plugin_bind_taken(key, alt_ch, ch, cmd.scope); taken != "" && taken_id != cmd.bind_from {
 		return fmt.tprintf("%s (%s is %q)", label, bind, taken), from_user
 	}
 	for other in p.commands {
-		if other.id != cmd.id && other.scope == cmd.scope && other.shortcut != "" && ui_chord_normalize(other.shortcut) == ui_chord_normalize(bind) {
+		if other.serial != cmd.serial && other.scope == cmd.scope && other.shortcut != "" && ui_chord_normalize(other.shortcut) == ui_chord_normalize(bind) {
 			return fmt.tprintf("%s (%s is %q)", label, bind, other.name), from_user
 		}
 	}
@@ -1678,17 +1734,16 @@ plugin_command_bind :: proc(p: ^Plugins, cmd: ^Command, cfg_user: json.Object) -
 
 plugins_rebind :: proc(editor: ^Editor) {
 	p := &editor.plugins
-	cfg_user := editor_config_user(editor)
 	if p.mem != nil {
 		p.mem.cap = PLUGIN_MEMORY_MB * 1024 * 1024
 	}
-	problems := config_keybinds_unknown(cfg_user, p.commands[:])
+	problems := make([dynamic]string, context.temp_allocator)
 	for &cmd in p.commands {
 		delete(cmd.shortcut)
 		cmd.shortcut = ""
 	}
 	for &cmd in p.commands {
-		problem, from_user := plugin_command_bind(p, &cmd, cfg_user)
+		problem, from_user := plugin_command_bind(editor, &cmd)
 		if problem == "" {
 			continue
 		}
@@ -1700,7 +1755,7 @@ plugins_rebind :: proc(editor: ^Editor) {
 	}
 	if len(problems) > 0 {
 		slice.sort(problems[:])
-		editor_log(editor, .Warn, "", fmt.tprintf("config.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
+		editor_log(editor, .Warn, "", fmt.tprintf("keybinds.json: ignoring %s", strings.join(problems[:], ", ", context.temp_allocator)))
 	}
 	p.bound = true
 }
@@ -1868,7 +1923,7 @@ plugin_command_when :: proc(editor: ^Editor, cmd: Command) -> bool {
 }
 
 plugin_command_run :: proc(editor: ^Editor, cmd: Command) {
-	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.id, user = true})
+	plugin_task_start(editor, cmd.owner, .Command, {ref = cmd.ref, args = .Ctx, command = cmd.serial, user = true})
 }
 
 plugin_json_push :: proc(L: ^lua.State, v: json.Value) {
@@ -1919,28 +1974,6 @@ plugin_table_copy :: proc(L: ^lua.State, idx: c.int, depth := 0) {
 	}
 }
 
-plugin_table_merge :: proc(L: ^lua.State, idx: c.int, src: json.Object, path: string, problems: ^[dynamic]string) {
-	lua.L_checkstack(L, 4, "config nested too deeply")
-	idx := lua.absindex(L, idx)
-	for k, v in src {
-		lua.pushodinstring(L, k)
-		have := lua.rawget(L, idx)
-		if sub, is_obj := v.(json.Object); is_obj && have == .TABLE {
-			plugin_table_merge(L, -1, sub, fmt.tprintf("%s/%s", path, k), problems)
-			lua.pop(L, 1)
-			continue
-		}
-		lua.pop(L, 1)
-		if want, got := plugin_config_type(have), plugin_json_type(v); want != "" && got != "" && want != got {
-			append(problems, fmt.tprintf("%q (expected %s)", fmt.tprintf("%s/%s", path, k), want))
-			continue
-		}
-		lua.pushodinstring(L, k)
-		plugin_json_push(L, v)
-		lua.rawset(L, idx)
-	}
-}
-
 plugin_lua_equal :: proc(L: ^lua.State, a, b: c.int, depth: int) -> bool {
 	a, b := lua.absindex(L, a), lua.absindex(L, b)
 	if lua.type(L, a) != .TABLE || lua.type(L, b) != .TABLE {
@@ -1966,66 +1999,52 @@ plugin_lua_equal :: proc(L: ^lua.State, a, b: c.int, depth: int) -> bool {
 	return true
 }
 
-plugin_config_type :: proc(t: lua.Type) -> string {
-	#partial switch t {
-	case .BOOLEAN:
-		return "a boolean"
-	case .NUMBER:
-		return "a number"
-	case .STRING:
-		return "a string"
-	case .TABLE:
-		return "a list or object"
-	}
-	return ""
-}
-
-plugin_json_type :: proc(v: json.Value) -> string {
-	switch _ in v {
-	case json.Boolean:
-		return "a boolean"
-	case json.Integer, json.Float:
-		return "a number"
-	case json.String:
-		return "a string"
-	case json.Array, json.Object:
-		return "a list or object"
-	case json.Null:
-	}
-	return ""
-}
-
-plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
-	L := editor.plugins.L
-	has_defaults := lua.type(L, defaults_idx) == .TABLE
-	if has_defaults {
-		plugin_table_copy(L, defaults_idx)
-	} else {
-		lua.newtable(L)
-	}
-	cfg := lua.gettop(L)
+plugin_config_resolve :: proc(pl: ^Plugin, cfg: json.Object) -> (json.Value, string) {
 	user := make(json.Object, context.temp_allocator)
-	unknown := make([dynamic]string, context.temp_allocator)
-	for k, v in plugin_cfg_entry(editor_config_user(editor), pl.name) {
-		if k == "enabled" || k == "keybinds" {
-			continue
-		}
-		known := false
-		if has_defaults {
-			lua.pushodinstring(L, k)
-			known = lua.rawget(L, defaults_idx) != .NIL
-			lua.pop(L, 1)
-		}
-		if known {
-			user[k] = v
-		} else {
-			append(&unknown, config_unknown_msg(fmt.tprintf("plugins/%s/%s", pl.name, k)))
+	problems := make([dynamic]string, context.temp_allocator)
+	path := fmt.tprintf("plugins/%s", pl.name)
+	for k, v in plugin_cfg_entry(cfg, pl.name) {
+		switch k {
+		case "enabled":
+			if _, ok := v.(json.Boolean); !ok {
+				append(&problems, fmt.tprintf("%q (expected a boolean)", fmt.tprintf("%s/enabled", path)))
+			}
+		case "keybinds":
+			kb, is_obj := v.(json.Object)
+			if !is_obj {
+				append(&problems, config_unknown_msg(fmt.tprintf("%s/keybinds", path)))
+			}
+			for name in kb {
+				append(&problems, fmt.tprintf("%q moved to %q", fmt.tprintf("%s/keybinds/%s", path, name), keybind_legacy_dest(pl.name, name)))
+			}
+		case:
+			if pl.schema == nil {
+				append(&problems, config_unknown_msg(fmt.tprintf("%s/%s", path, k)))
+			} else {
+				user[k] = v
+			}
 		}
 	}
-	plugin_table_merge(L, cfg, user, fmt.tprintf("plugins/%s", pl.name), &unknown)
-	lua.pushodinstring(L, "enabled")
-	lua.pushnil(L)
-	lua.rawset(L, cfg)
+	merged: json.Value = make(json.Object, context.temp_allocator)
+	if pl.schema != nil {
+		merged = option_merge(pl.schema, pl.schema.default, user, path, &problems)
+	}
+	slice.sort(problems[:])
+	return merged, strings.join(problems[:], ", ", context.temp_allocator)
+}
+
+plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin) {
+	L := editor.plugins.L
+	if pl.schema != nil {
+		failures := make([dynamic]string, context.temp_allocator)
+		option_resolve(L, pl.schema, fmt.tprintf("plugins/%s", pl.name), &failures)
+		for failure in failures {
+			editor_log(editor, .Warn, pl.display, failure)
+		}
+	}
+	merged, unknown := plugin_config_resolve(pl, editor_config_user(editor))
+	plugin_json_push(L, merged)
+	cfg := lua.gettop(L)
 	changed := make([dynamic]string, context.temp_allocator)
 	if pl.cfg != lua.NOREF {
 		lua.rawgeti(L, lua.REGISTRYINDEX, lua.Integer(pl.cfg))
@@ -2053,10 +2072,58 @@ plugin_config_push :: proc(editor: ^Editor, pl: ^Plugin, defaults_idx: c.int) {
 	pl.changed = strings.join(changed[:], "\n")
 	plugin_table_copy(L, cfg)
 	pl.cfg = lua.L_ref(L, lua.REGISTRYINDEX)
-	slice.sort(unknown[:])
 	delete(pl.unknown)
-	pl.unknown = strings.join(unknown[:], ", ")
+	pl.unknown = strings.clone(unknown)
 }
+
+plugin_options_clear :: proc(p: ^Plugins, pl: ^Plugin) {
+	if pl.options != lua.NOREF && p.L != nil {
+		lua.L_unref(p.L, lua.REGISTRYINDEX, pl.options)
+	}
+	pl.options = lua.NOREF
+	if pl.schema != nil && p.L != nil {
+		option_unref(p.L, pl.schema)
+	}
+	vmem.arena_destroy(&pl.schema_arena)
+	pl.schema = nil
+}
+
+plugin_core_options_c :: proc "c" (L: ^lua.State) -> c.int {
+	context = runtime.default_context()
+	lua.createtable(L, 0, 1)
+	env := lua.gettop(L)
+	lua.createtable(L, 0, 3)
+	lua.pushcfunction(L, plugin_core_options_capture)
+	lua.setfield(L, -2, "options")
+	lua.pushodinstring(L, PLUGIN_CALLER_KEY)
+	lua.pushcclosure(L, qed_languages, 1)
+	lua.setfield(L, -2, "languages")
+	lua.createtable(L, 0, 1)
+	lua.pushodinstring(L, PLUGIN_CALLER_KEY)
+	lua.pushcclosure(L, qed_theme_list, 1)
+	lua.setfield(L, -2, "list")
+	lua.setfield(L, -2, "theme")
+	lua.setfield(L, env, "qed")
+	if lua.L_loadbuffer(L, raw_data(embedded_options_data), c.size_t(len(embedded_options_data)), "=config/options.lua", "t") != .OK {
+		return lua.error(L)
+	}
+	lua.pushvalue(L, env)
+	lua.setupvalue(L, -2, 1)
+	lua.call(L, 0, 0)
+	return 0
+}
+
+plugin_core_options_capture :: proc "c" (L: ^lua.State) -> c.int {
+	context = runtime.default_context()
+	context.allocator = context.temp_allocator
+	if _, err := options_declare(L, 1, "config/options.lua"); err != "" {
+		return plugin_raise(L, err)
+	}
+	lua.setfield(L, lua.REGISTRYINDEX, PLUGIN_CORE_OPTIONS)
+	return 0
+}
+
+PLUGIN_CORE_OPTIONS :: "qed.core_options"
 
 plugin_requests_run :: proc(editor: ^Editor) {
 	p := &editor.plugins

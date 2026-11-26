@@ -8,14 +8,14 @@ qed-e2e snapshot 80x24 cursor 12,6
         ├──────────────────────────────────────────────────────────────┤
         │ > type to filter                                             │
         ├──────────────────────────────────────────────────────────────┤
-        │ Command                                 Chord                │
+        │ Key                               Value                      │
         ├──────────────────────────────────────────────────────────────┤
-        │ Close Buffer                            Ctrl+w               ┃
-        │ Command Palette                         Ctrl+p               │
-        │ Copy                                    Ctrl+c               │
-        │ Cut                                     Ctrl+x               │
+        │ alt_esc_timeout_ms                25                         ┃
+        │ auto_close_pairs                  true                       │
+        │ big_file_bytes                    2097152                    │
+        │ cursor_accel                      true                       │
         ├──────────────────────────────────────────────────────────────┤
-        │ Close Buffer. Default: Ctrl+w. Scope: global                 │
+        │ Wait after Esc for a key to read as Alt+key. Default: 25     │
         ├──────────────────────────────────────────────────────────────┤
         │ Tab tabs  Enter edit  Ctrl+d reset                           │
         └──────────────────────────────────────────────────────────────┘
@@ -29,11 +29,11 @@ abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
-ddddddddefeeeeeeeeeeggggggggfffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddefgggggggeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddeggghhhhhhhhhhhhhhfffffffffffffffffffffffffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
-ddddddddeiiiiiiiifffffffffffffffffffffffffffffffiiiiiiiffffffffffffffffedddddddd
+ddddddddeiiiifffffffffffffffffffffffffffffiiiiiiiffffffffffffffffffffffedddddddd
 ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
 ddddddddejjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfdddddddd
 ddddddddegfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd

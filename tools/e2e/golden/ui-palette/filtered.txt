@@ -13,9 +13,9 @@ qed-e2e snapshot 80x24 cursor 16,6
          │ AI: Toggle Inline Completion                               ┃
          │ Markdown: Toggle Split                                     ┃
          │ Terminal: Toggle                                     Alt+t ┃
-         │ Settings: Open Config                                      ┃
+         │ Settings: Open Config UI                                   │
+         │ Settings: Open Config JSON                                 │
          │ Git: Toggle Diff View                                      │
-         │ Format: Toggle on Save                                     │
          └────────────────────────────────────────────────────────────┘
 
 
@@ -38,9 +38,9 @@ dddddddddegjjjgggggggggggggggggggggggggggggggggggggggggggggggggggggggegddddddddd
 dddddddddegggggjjjgggggggggggggggggggggggggggggggggggggggggggggggggggegddddddddd
 dddddddddegggggggggggjjjgggggggggggggggggggggggggggggggggggggggggggggegddddddddd
 dddddddddegjggggggggggjjggggggggggggggggggggggggggggggggggggggggeeeeeegddddddddd
-dddddddddegggjgggggggjgggggggggjgggggggggggggggggggggggggggggggggggggegddddddddd
+dddddddddegggjgggggggjgggggggggjgggggggggggggggggggggggggggggggggggggeeddddddddd
+dddddddddegggjgggggggjgggggggggjgggggggggggggggggggggggggggggggggggggeeddddddddd
 dddddddddegggjgggjjggggggggggggggggggggggggggggggggggggggggggggggggggeeddddddddd
-dddddddddeggggggjgggjjgggggggggggggggggggggggggggggggggggggggggggggggeeddddddddd
 dddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

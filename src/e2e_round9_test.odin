@@ -112,7 +112,7 @@ R9_SWAP :: `return {setup = function()
 		for i = 1, 5 do list:append{name = prefix .. i} end
 		return list
 	end
-	qed.command{name = "Swap Open", run = function(ctx)
+	qed.command{id = "swap_open", name = "Swap Open", run = function(ctx)
 		view = {query = qed.buf.create{internal = true}, mode = ctx and ctx.line or "replace"}
 		view.handle = ui.mount("pane", build(list_of("old ")))
 		view.query:on("change", function()
@@ -124,7 +124,7 @@ R9_SWAP :: `return {setup = function()
 		end)
 		ui.node("swap_query"):focus()
 	end}
-	qed.command{name = "Swap Unmounting", run = function() view.mode = "unmount" end}
+	qed.command{id = "swap_unmounting", name = "Swap Unmounting", run = function() view.mode = "unmount" end}
 end}`
 
 @(test)
@@ -217,9 +217,9 @@ e2e_round9_settings_picks_a_plugin_declared_choice :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "choicey", `return {setup = function()
-		qed.options({mode = "beta"}, {mode = {description = "A mode", choices = {"alpha", "beta", "gamma"}}})
+		qed.options{mode = {type = "choice", choices = {"alpha", "beta", "gamma"}, default = "beta", description = "A mode"}}
 	end}`)
-	ft_run(&e.ed, "Settings: Open")
+	ft_run(&e.ed, "Settings: Open Config UI")
 	e2e_ui_settle(&e)
 	e2e_type(&e, "choicey.mode")
 	e2e_ui_settle(&e)
@@ -276,7 +276,7 @@ e2e_round9_a_borrowed_bind_follows_the_core_command :: proc(t: ^testing.T) {
 	plugins_rebind(&e.ed)
 	log_copy := ""
 	for cmd in e.ed.plugins.commands {
-		if cmd.owner == "log" && cmd.config_name == "Copy" {
+		if cmd.owner == "log" && cmd.id == "copy" {
 			log_copy = cmd.shortcut
 		}
 	}
@@ -468,8 +468,8 @@ e2e_round9_welcome_keys_respect_when :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "wa", `local on = false
 	return {setup = function()
-		qed.command{name = "Gate", key = "F6", welcome = true, when = function() return on end, run = function() qed.message("ran") end}
-		qed.command{name = "Arm", run = function() on = true end}
+		qed.command{id = "gate", name = "Gate", key = "F6", welcome = true, when = function() return on end, run = function() qed.message("ran") end}
+		qed.command{id = "arm", name = "Arm", run = function() on = true end}
 	end}`)
 	e2e_key(&e, .F6)
 	e2e_ui_settle(&e)
@@ -485,8 +485,8 @@ e2e_round9_palette_takes_pane_scopes_from_the_commands :: proc(t: ^testing.T) {
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "scoped", `return {setup = function()
-		qed.command{name = "Only Here", scope = "scoped_pane", key = "F7", run = function() end}
-		qed.command{name = "Scoped Open", run = function()
+		qed.command{id = "only_here", name = "Only Here", scope = "scoped_pane", key = "F7", run = function() end}
+		qed.command{id = "scoped_open", name = "Scoped Open", run = function()
 			qed.ui.mount("pane", qed.ui.box{float = "screen", width = 20, height = 3, scope = {"scoped_pane", "list"},
 				qed.ui.text{id = "scoped_field", "pane"}})
 			qed.ui.node("scoped_field"):focus()

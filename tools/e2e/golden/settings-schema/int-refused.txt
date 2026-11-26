@@ -1,0 +1,87 @@
+qed-e2e snapshot 90x36 cursor 21,6
+-- text
+ 1 x
+ 2
+
+        ┌────────────────────────────────────────────────────────────────────────┐
+        │ Options │ Keybinds                                                     │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ > tab_width                                                            │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Key                               Value                                │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ tab_width                         4                                    │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        │                                                                        │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Display width of a literal tab and the default indent width. Default:  │
+        │ 4                                                                      │
+        ├────────────────────────────────────────────────────────────────────────┤
+        │ Tab tabs  Enter edit  Ctrl+d reset                                     │
+        └────────────────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/a.txt  1/2                                                     ◆ text  ⇥ Spaces:4
+Settings: tab_width must be at least 1
+-- style
+abbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddefgggggggeeeeeeeeeeefffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddegggfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddehhhhfffffffffffffffffffffffffffffhhhhhhhffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeiiiiiiiiiijjjjjjjjjjjjjjjjjjjjjjjiiijjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeefffffffffffffffffffffffffffffffffffffedddddddd
+ddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddd
+-- legend
+a fg=#4c566a bg=#2e3440
+b fg=#eceff4 bg=#2e3440
+c fg=#d8dee9 bg=#383d49
+d fg=#d8dee9 bg=#2e3440
+e fg=#4c566a bg=#272c36
+f fg=#d8dee9 bg=#272c36
+g fg=#ebcb8b bg=#272c36
+h fg=#d8dee9 bg=#272c36 bold
+i fg=#eceff4 bg=#434c5e
+j fg=#d8dee9 bg=#434c5e
+k fg=#bf616a bg=#2e3440

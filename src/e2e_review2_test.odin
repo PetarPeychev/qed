@@ -79,17 +79,17 @@ e2e_review2_orphaned_mount_drops_its_parent :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "segment", `
 return {setup = function()
-	qed.command{name = "Add", run = function() qed.ui.mount("bar_slot", qed.ui.text{"[seg]"}) end}
+	qed.command{id = "add", name = "Add", run = function() qed.ui.mount("bar_slot", qed.ui.text{"[seg]"}) end}
 end}`)
 	ut_run_owner(&e, "segment", "Add")
 	e2e_plugin(&e, "uitest", `
 local handle
 return {setup = function()
-	qed.command{name = "Open", run = function()
+	qed.command{id = "open", name = "Open", run = function()
 		handle = qed.ui.mount("pane", qed.ui.row{float = "screen", anchor = "top_left", width = 40, height = 1,
 			qed.ui.text{"left"}, qed.ui.outlet{id = "bar_slot"}})
 	end}
-	qed.command{name = "Close", run = function() handle:unmount() end}
+	qed.command{id = "close", name = "Close", run = function() handle:unmount() end}
 end}`)
 	ut_run(&e, "Open")
 	testing.expect(t, e2e_ui_find_row(&e, "[seg]") >= 0, "the mount shows in its outlet")

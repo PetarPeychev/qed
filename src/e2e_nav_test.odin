@@ -1335,7 +1335,7 @@ e2e_nav_filetree_rebound_bind_toggles :: proc(t: ^testing.T) {
 	e := e2e_root_start("main body")
 	defer e2e_stop(&e)
 
-	e2e_plugin_config(&e, "filetree", `{"keybinds": {"All": "Alt+j"}}`, hot = true)
+	e2e_keybinds(&e, `{"filetree": {"all": "Alt+j"}}`)
 	nav_alt(&e, 'j')
 	testing.expect(t, filetree_active(&e.ed), "rebound chord opens the pane")
 	nav_alt(&e, 'j')

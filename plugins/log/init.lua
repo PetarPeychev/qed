@@ -179,16 +179,16 @@ end
 return {
 	setup = function()
 		qed.meta{display_name = "Message Log", description = "The message log on qed.ui"}
-		qed.command{name = "Open", key = "Alt+l", welcome = true, run = function() open_log(nil) end}
+		qed.command{id = "open", name = "Open", key = "Alt+l", welcome = true, run = function() open_log(nil) end}
 		qed.export{show = function(source) open_log(source) end}
-		qed.command{name = "Copy", scope = "log", bind_from = "Copy", run = copy}
-		qed.command{name = "Full Text", scope = "log", key = "Enter", run = show_full}
-		qed.command{name = "Close", scope = "log", key = "Esc", run = close_log}
-		qed.command{name = "Back", scope = "log_detail", key = "Esc", run = close_log}
-		qed.command{name = "Toggle Debug", scope = "log", key = "d", run = function() toggle("debug") end}
-		qed.command{name = "Toggle Info", scope = "log", key = "i", run = function() toggle("info") end}
-		qed.command{name = "Toggle Warn", scope = "log", key = "w", run = function() toggle("warn") end}
-		qed.command{name = "Toggle Error", scope = "log", key = "e", run = function() toggle("error") end}
-		qed.command{name = "Toggle History", scope = "log", key = "h", run = function() toggle("history") end}
+		qed.command{id = "copy", name = "Copy", scope = "log", bind_from = "copy", run = copy}
+		qed.command{id = "full_text", name = "Full Text", scope = "log", key = "Enter", run = show_full}
+		qed.command{id = "close", name = "Close", scope = "log", key = "Esc", run = close_log}
+		qed.command{id = "back", name = "Back", scope = "log_detail", key = "Esc", run = close_log}
+		qed.command{id = "toggle_debug", name = "Toggle Debug", scope = "log", key = "d", run = function() toggle("debug") end}
+		qed.command{id = "toggle_info", name = "Toggle Info", scope = "log", key = "i", run = function() toggle("info") end}
+		qed.command{id = "toggle_warn", name = "Toggle Warn", scope = "log", key = "w", run = function() toggle("warn") end}
+		qed.command{id = "toggle_error", name = "Toggle Error", scope = "log", key = "e", run = function() toggle("error") end}
+		qed.command{id = "toggle_history", name = "Toggle History", scope = "log", key = "h", run = function() toggle("history") end}
 	end,
 }

@@ -66,9 +66,9 @@ e2e_plugin_reload_teardown :: proc(t: ^testing.T) {
 	reload_write(dir, "t.lua", `
 		big = string.rep("z", 2 * 1024 * 1024)
 		return {setup = function()
-			qed.command{name = "Pick", run = function() picked = qed.pick{items = {"a", "b"}} end}
-			qed.command{name = "Sleep", run = function() qed.sleep(60000) end}
-			qed.command{name = "Proc", run = function() proc = qed.spawn_bg{cmd = "sleep 30 & sleep 30; wait"} end}
+			qed.command{id = "pick", name = "Pick", run = function() picked = qed.pick{items = {"a", "b"}} end}
+			qed.command{id = "sleep", name = "Sleep", run = function() qed.sleep(60000) end}
+			qed.command{id = "proc", name = "Proc", run = function() proc = qed.spawn_bg{cmd = "sleep 30 & sleep 30; wait"} end}
 			qed.every(20, function() end)
 		end}`)
 	testing.expect(t, plugins_poll(&e.ed), "the new user plugin loads")
@@ -128,7 +128,7 @@ e2e_plugin_pane_actions :: proc(t: ^testing.T) {
 
 	reload_write(dir, "alpha.lua", `return {setup = function()
 		qed.log("alpha says hi")
-		qed.command{name = "Cmd", run = function() end}
+		qed.command{id = "cmd", name = "Cmd", run = function() end}
 	end}`)
 	plugins_poll(&e.ed)
 	editor_log(&e.ed, .Info, "other", "not alpha")

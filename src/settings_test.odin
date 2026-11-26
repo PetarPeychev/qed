@@ -263,15 +263,15 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, found, "embedded theme names a bundled theme")
-	kb, kb_ok := g_config_defaults["keybinds"].(json.Object)
-	testing.expect(t, kb_ok, "embedded keybinds object")
+	kb := g_keybind_defaults
+	testing.expect(t, kb != nil, "embedded keybinds object")
 	for table in ([?][]Command{commands[:], scoped_commands[:]}) {
 		for cmd in table {
 			if cmd.bind_from != "" {
 				continue
 			}
-			name := command_config_name(cmd)
-			s, ok := kb[name].(json.String)
+			name := cmd.id
+			s, ok := (kb["core"].(json.Object) or_else nil)[name].(json.String)
 			testing.expectf(t, ok, "embedded keybind %q present", name)
 			if ok && s != "" {
 				_, _, ch, pok := parse_bind(string(s))
@@ -287,7 +287,7 @@ test_embedded_config_complete :: proc(t: ^testing.T) {
 		}
 		found := false
 		for g in commands {
-			if g.name == cmd.bind_from {
+			if g.id == cmd.bind_from {
 				found = true
 				break
 			}
@@ -455,32 +455,26 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expectf(t, strings.contains(msg, `"code_list_max_width" moved to "split_code_max_width"`), "a renamed core knob: %s", msg)
 
 	kb_path := fmt.tprintf("%s/keybinds.json", dir)
-	_ = os.write_entire_file(
-		kb_path,
-		transmute([]byte)string(`{"keybinds": {"Command Palette": "Ctrl+g", "Copy": "Ctrl+b", "File Tree: New": "Ctrl+t"}}`),
-	)
-	_, is_err = config_load_from(kb_path)
-	testing.expect(t, !is_err, "rebind load is not an error")
-	kb_json, _ := json.parse_string(`{"keybinds": {"File Tree: New": "Ctrl+t"}}`, allocator = context.temp_allocator)
-	moved := config_keybinds_unknown(kb_json.(json.Object), nil)
-	testing.expect(t, len(moved) == 1 && moved[0] == `"keybinds/File Tree: New" moved to "plugins/filetree/keybinds/New"`, "a moved tree bind says where")
-	kb_json, _ = json.parse_string(`{"keybinds": {"Git: Resolve Conflict": "Alt+m"}}`, allocator = context.temp_allocator)
-	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
-	testing.expect(t, len(moved) == 1 && moved[0] == `"keybinds/Git: Resolve Conflict" moved to "plugins/conflict/keybinds/Resolve"`, "the resolve bind moved to the conflict plugin")
-	kb_json, _ = json.parse_string(`{"keybinds": {"AI: Edit Selection": "Ctrl+k"}}`, allocator = context.temp_allocator)
-	ai_cmd := []Command{{name = "AI: Edit Selection", bare = "Edit Selection", owner = "ai", config_name = "Edit Selection"}}
-	want := `"keybinds/AI: Edit Selection" moved to "plugins/ai/keybinds/Edit Selection"`
-	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
-	testing.expect(t, len(moved) == 1 && moved[0] == want, "a disabled plugin's moved bind falls back to the table")
-	moved = config_keybinds_unknown(kb_json.(json.Object), ai_cmd)
-	testing.expect(t, len(moved) == 1 && moved[0] == want, "a loaded plugin's command gives the same exact hint")
-	kb_json, _ = json.parse_string(`{"keybinds": {"Debug: Message Log": "Alt+m"}}`, allocator = context.temp_allocator)
-	moved = config_keybinds_unknown(kb_json.(json.Object), nil)
-	testing.expect(t, len(moved) == 1 && moved[0] == `"keybinds/Debug: Message Log" moved to "plugins/log/keybinds/Open"`, "a renamed core bind says where")
-	testing.expect(t, command_shortcut("Command Palette") == "Ctrl+g", "palette hint renders the configured string verbatim")
+	kb_cfg := fmt.tprintf("%s/kbcfg.json", dir)
+	_ = os.write_entire_file(kb_cfg, transmute([]byte)string(`{}`))
+	_ = os.write_entire_file(kb_path, transmute([]byte)string(`{"core": {"command_palette": "Ctrl+g", "copy": "Ctrl+b", "copyy": "Ctrl+j"}}`))
+	msg, _ = config_load_from(kb_cfg)
+	testing.expectf(t, msg == `keybinds.json: ignoring unknown "keybinds.json/core/copyy"`, "a core id typo warns at load, without plugins: %s", msg)
+	_ = os.write_entire_file(kb_cfg, transmute([]byte)string(`{"keybinds": {"File Tree: New": "Ctrl+t", "Git: Resolve Conflict": "Alt+m", "Debug: Message Log": "Alt+m", "Copy": "Ctrl+c"}}`))
+	msg, _ = config_load_from(kb_cfg)
+	for want in ([?]string{
+		`"keybinds/File Tree: New" moved to "keybinds.json/filetree/new"`,
+		`"keybinds/Git: Resolve Conflict" moved to "keybinds.json/conflict/resolve"`,
+		`"keybinds/Debug: Message Log" moved to "keybinds.json/log/open"`,
+		`"keybinds/Copy" moved to "keybinds.json/core/copy"`,
+	}) {
+		testing.expectf(t, strings.contains(msg, want), "a bind left in config.json says where it moved: %s in %s", want, msg)
+	}
+	testing.expect(t, command_shortcut("copy") == "Ctrl+b", "a bind left in config.json is not applied")
+	testing.expect(t, command_shortcut("command_palette") == "Ctrl+g", "palette hint renders the configured string verbatim")
 	pcmd, pok := command_for_key(.Ctrl_G)
 	testing.expect(t, pok && pcmd.name == "Command Palette", "rebound palette bind dispatches")
-	testing.expect(t, command_matches(tb2.Event{type = .Key, key = .Ctrl_G}, "Command Palette"), "command_matches honors the rebind")
+	testing.expect(t, command_matches(tb2.Event{type = .Key, key = .Ctrl_G}, "command_palette"), "command_matches honors the rebind")
 	copy_shortcut := ""
 	for cmd in scoped_commands {
 		if cmd.scope == "editor" && cmd.name == "Copy" {
@@ -490,20 +484,23 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect_value(t, copy_shortcut, "Ctrl+b")
 
 	// Pane-scoped binds: a collision in one scope is reported and dropped, a swap is fine.
-	clash_path := fmt.tprintf("%s/clash.json", dir)
-	_ = os.write_entire_file(clash_path, transmute([]byte)string(`{"keybinds": {"Editor: Word Left": "Left", "Editor: Word Right": "Alt+q"}}`))
-	msg, is_err = config_load_from(clash_path)
+	_ = os.write_entire_file(kb_cfg, transmute([]byte)string(`{}`))
+	_ = os.write_entire_file(kb_path, transmute([]byte)string(`{"core": "Ctrl+s", "git": []}`))
+	msg, _ = config_load_from(kb_cfg)
+	testing.expectf(t, strings.contains(msg, `"keybinds.json/core" (expected an object of id to chord)`) && strings.contains(msg, `"keybinds.json/git" (expected an object`), "a group that is not an object warns: %s", msg)
+	_ = os.write_entire_file(kb_path, transmute([]byte)string(`{"core": {"editor_word_left": "Left", "editor_word_right": "Alt+q"}}`))
+	msg, is_err = config_load_from(kb_cfg)
 	testing.expect(t, is_err, "a clash is reported")
-	testing.expectf(t, strings.contains(msg, `keybinds/Editor: Word Left (Left is "Left")`), "names the clash: %s", msg)
-	testing.expect_value(t, command_shortcut("Editor: Word Left"), "")
-	testing.expect_value(t, command_shortcut("Editor: Left"), "Left")
-	testing.expect_value(t, command_shortcut("Editor: Word Right"), "Alt+q")
-	swap_path := fmt.tprintf("%s/swap.json", dir)
-	_ = os.write_entire_file(swap_path, transmute([]byte)string(`{"keybinds": {"Editor: Word Left": "Ctrl+Right", "Editor: Word Right": "Ctrl+Left", "Editor: Left": "Ctrl+c"}}`))
-	msg, is_err = config_load_from(swap_path)
-	testing.expectf(t, strings.contains(msg, `keybinds/Editor: Left (Ctrl+c is "Copy")`) && !strings.contains(msg, "Word Left"), "a swap is fine, a borrowed bind counts: %s", msg)
-	testing.expect_value(t, command_shortcut("Editor: Word Left"), "Ctrl+Right")
-	testing.expect_value(t, command_shortcut("Editor: Word Right"), "Ctrl+Left")
+	testing.expectf(t, strings.contains(msg, `keybinds.json: ignoring "keybinds.json/core/editor_word_left" (Left is "Left")`), "names the clash: %s", msg)
+	testing.expect_value(t, command_shortcut("editor_word_left"), "")
+	testing.expect_value(t, command_shortcut("editor_left"), "Left")
+	testing.expect_value(t, command_shortcut("editor_word_right"), "Alt+q")
+	_ = os.write_entire_file(kb_path, transmute([]byte)string(`{"core": {"editor_word_left": "Ctrl+Right", "editor_word_right": "Ctrl+Left", "editor_left": "Ctrl+c"}}`))
+	msg, is_err = config_load_from(kb_cfg)
+	testing.expectf(t, strings.contains(msg, `"keybinds.json/core/editor_left" (Ctrl+c is "Copy")`) && !strings.contains(msg, "word_left"), "a swap is fine, a borrowed bind counts: %s", msg)
+	testing.expect_value(t, command_shortcut("editor_word_left"), "Ctrl+Right")
+	testing.expect_value(t, command_shortcut("editor_word_right"), "Ctrl+Left")
+	os.remove(kb_path)
 
 	// Language overrides: per-key merge, patterns drive detection, invalid subkey
 	// reported, unknown key untouched in file.
@@ -640,7 +637,7 @@ test_config_files :: proc(t: ^testing.T) {
 	_ = os.write_entire_file(nf_path, transmute([]byte)string(`{"theme": "nope"}`))
 	msg, is_err = config_load_from(nf_path)
 	testing.expect(t, is_err, "missing named theme reports an error")
-	testing.expect(t, strings.contains(msg, "nope"), "names the missing theme")
+	testing.expect(t, strings.contains(msg, `"theme" (expected one of `), "an unknown theme is outside the choices")
 	_, nope_err := os.stat(fmt.tprintf("%s/themes/nope.json", dir), context.temp_allocator)
 	testing.expect(t, nope_err != nil, "non-default theme is not materialized")
 
@@ -724,70 +721,3 @@ test_config_files :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(fmt.tprintf("%s.qed-tmp", fresh_path)), "the atomic temp file is gone")
 }
 
-@(private = "file")
-schema_leaves :: proc(obj: json.Object, prefix: string, out: ^map[string]json.Value) {
-	for k, v in obj {
-		path := k if prefix == "" else fmt.tprintf("%s.%s", prefix, k)
-		if path == "keybinds" {
-			continue
-		}
-		if sub, ok := v.(json.Object); ok {
-			schema_leaves(sub, path, out)
-		} else {
-			out[path] = v
-		}
-	}
-}
-
-@(private = "file")
-schema_matches :: proc(pattern, path: string) -> bool {
-	ps := strings.split(pattern, ".", context.temp_allocator)
-	ks := strings.split(path, ".", context.temp_allocator)
-	if len(ps) != len(ks) {
-		return false
-	}
-	for p, i in ps {
-		if p != "*" && p != ks[i] {
-			return false
-		}
-	}
-	return true
-}
-
-@(test)
-test_config_schema_complete :: proc(t: ^testing.T) {
-	v, err := json.parse(embedded_schema_data, parse_integers = true, allocator = context.temp_allocator)
-	testing.expect(t, err == nil, "config/schema.json parses")
-	schema, ok := v.(json.Object)
-	testing.expect(t, ok, "config/schema.json is an object")
-	leaves := make(map[string]json.Value, context.temp_allocator)
-	schema_leaves(g_config_defaults, "", &leaves)
-	for path, val in leaves {
-		found := false
-		for pattern, entry in schema {
-			if !schema_matches(pattern, path) {
-				continue
-			}
-			found = true
-			e, eok := entry.(json.Object)
-			desc, dok := e["description"].(json.String)
-			testing.expectf(t, eok && dok && desc != "", "schema %q has a description", pattern)
-			if choices, cok := e["choices"].(json.Array); cok {
-				def := val.(json.String) or_else ""
-				in_choices := false
-				for c in choices {
-					in_choices = in_choices || (c.(json.String) or_else "") == def
-				}
-				testing.expectf(t, in_choices, "default of %q is one of its choices", path)
-			}
-		}
-		testing.expectf(t, found, "config key %q has a schema entry", path)
-	}
-	for pattern in schema {
-		used := false
-		for path in leaves {
-			used = used || schema_matches(pattern, path)
-		}
-		testing.expectf(t, used, "schema entry %q names a config key", pattern)
-	}
-}

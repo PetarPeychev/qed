@@ -453,26 +453,26 @@ end
 return {
 	setup = function()
 		qed.meta{description = "Rendered markdown preview"}
-		qed.options({split = false, split_width = 50}, {
-			split = "Show the side-by-side preview at launch (Markdown: Toggle Split changes it for the session)",
-			split_width = "Width of the side-by-side preview in percent of the editor row",
-		})
+		qed.options{
+			split = {type = "bool", default = false, description = "Show the side-by-side preview at launch (Markdown: Toggle Split changes it for the session)"},
+			split_width = {type = "int", default = 50, min = 1, max = 99, description = "Width of the side-by-side preview in percent of the editor row"},
+		}
 		qed.command{
-			name = "Preview",
+			id = "preview", name = "Preview",
 			key = "Alt+p",
 			when = function(ctx) return views.overlay ~= nil or ctx.language == "markdown" end,
 			run = toggle_overlay,
 		}
-		qed.command{name = "Toggle Split", run = function() split_set(not split_on) end}
-		qed.command{name = "Back", scope = "markdown", bind_from = "Jump Back", run = function() step(-1) end}
-		qed.command{name = "Forward", scope = "markdown", bind_from = "Jump Forward", run = function() step(1) end}
-		qed.command{name = "Close", scope = "markdown", key = "Esc",
+		qed.command{id = "toggle_split", name = "Toggle Split", run = function() split_set(not split_on) end}
+		qed.command{id = "back", name = "Back", scope = "markdown", bind_from = "jump_back", run = function() step(-1) end}
+		qed.command{id = "forward", name = "Forward", scope = "markdown", bind_from = "jump_forward", run = function() step(1) end}
+		qed.command{id = "close", name = "Close", scope = "markdown", key = "Esc",
 			when = function() return views.overlay ~= nil end,
 			run = function()
 				sync_back()
 				close("overlay")
 			end}
-		qed.command{name = "Focus Editor", scope = "markdown_split", key = "Esc", run = function()
+		qed.command{id = "focus_editor", name = "Focus Editor", scope = "markdown_split", key = "Esc", run = function()
 			if views.split then
 				views.split.buffer:focus()
 			end

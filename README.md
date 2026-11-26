@@ -170,12 +170,14 @@ can be swapped in config (see the configuration reference for
 ## Configuration
 
 Defaults are compiled into the binary. `~/.config/qed/config.json` overrides them
-as a sparse per-key diff (only the keys you set), hot-reloaded on save. qed writes
-only two keys there: `theme` from the *Settings: Theme* picker and a plugin's
-`enabled` from the Plugins pane (`e`). Colors live in themes; set `"theme"` or use
+as a sparse per-key diff (only the keys you set) and `~/.config/qed/keybinds.json` the binds, grouped by `"core"` or plugin id
+and keyed by command id; both hot-reload on save. qed writes them one key at a
+time: the settings menu (*Settings: Open Config UI* / *Open Keybinds UI*), the
+*Settings: Theme* picker and the Plugins pane (`e`). Colors live in themes; set `"theme"` or use
 the *Settings: Theme* picker.
 
 Full reference of knobs, keybinds, languages, and theme keys:
 [configuration reference](docs/CONFIG.md). It links to the canonical defaults,
-[`config/config.json`](config/config.json) and
+[`config/options.lua`](config/options.lua) (typed option declarations),
+[`config/keybinds.json`](config/keybinds.json) (keybinds) and
 [`config/themes/default.json`](config/themes/default.json).

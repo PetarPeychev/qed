@@ -250,10 +250,10 @@ e2e_round8_a_command_that_does_not_apply_lets_its_key_pass :: proc(t: ^testing.T
 	e := e2e_start("x")
 	defer e2e_stop(&e)
 	e2e_plugin(&e, "gate", `return {setup = function()
-		qed.command{name = "Inner", scope = "gate_inner", key = "Esc", when = function() return false end,
+		qed.command{id = "inner", name = "Inner", scope = "gate_inner", key = "Esc", when = function() return false end,
 			run = function() qed.message("inner") end}
-		qed.command{name = "Outer", scope = "gate_outer", key = "Esc", run = function() qed.message("outer") end}
-		qed.command{name = "Gate Open", run = function()
+		qed.command{id = "outer", name = "Outer", scope = "gate_outer", key = "Esc", run = function() qed.message("outer") end}
+		qed.command{id = "gate_open", name = "Gate Open", run = function()
 			qed.ui.mount("pane", qed.ui.box{float = "screen", width = 20, height = 3, scope = "gate_outer",
 				qed.ui.text{id = "gate_field", scope = "gate_inner", "gate"}})
 			qed.ui.node("gate_field"):focus()
@@ -300,6 +300,6 @@ e2e_round8_state_keys_follow_the_list_kind :: proc(t: ^testing.T) {
 
 @(test)
 test_round8_old_list_binds_point_at_the_core_ones :: proc(t: ^testing.T) {
-	testing.expect_value(t, config_unknown_msg("plugins/palette/keybinds/Next"), `"plugins/palette/keybinds/Next" moved to "keybinds/List: Next"`)
-	testing.expect_value(t, config_unknown_msg("plugins/filetree/keybinds/Extend Up"), `"plugins/filetree/keybinds/Extend Up" moved to "keybinds/List: Extend Up"`)
+	testing.expect_value(t, config_unknown_msg("plugins/palette/keybinds/Next"), `"plugins/palette/keybinds/Next" moved to "keybinds.json/core/list_next"`)
+	testing.expect_value(t, config_unknown_msg("plugins/filetree/keybinds/Extend Up"), `"plugins/filetree/keybinds/Extend Up" moved to "keybinds.json/core/list_extend_up"`)
 }

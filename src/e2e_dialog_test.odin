@@ -3,18 +3,18 @@ package main
 import "core:testing"
 
 DIALOG_ASKER :: `return {setup = function()
-	qed.command{name = "Pick", run = function()
+	qed.command{id = "pick", name = "Pick", run = function()
 		local choice, err = qed.pick{items = {"one", "two"}}
 		qed.message("pick " .. tostring(choice) .. " " .. tostring(err))
 	end}
-	qed.command{name = "Confirm", run = function()
+	qed.command{id = "confirm", name = "Confirm", run = function()
 		local choice, err = qed.confirm{question = "Sure?"}
 		qed.message("confirm " .. tostring(choice) .. " " .. tostring(err))
 	end}
-	qed.command{name = "Prompt", run = function()
+	qed.command{id = "prompt", name = "Prompt", run = function()
 		qed.message("prompt " .. tostring(qed.prompt{prompt = "Name:"}))
 	end}
-	qed.command{name = "Wait", run = function()
+	qed.command{id = "wait", name = "Wait", run = function()
 		local handle = qed.ui.mount("pane", qed.ui.text{float = "screen", width = 10, height = 1, "waiting"})
 		qed.defer(0, function() handle:unmount({answer = 42}) end)
 		qed.message("waited " .. tostring(handle:wait().answer))
