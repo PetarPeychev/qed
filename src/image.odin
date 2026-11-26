@@ -12,6 +12,7 @@ import "core:sys/posix"
 import "core:thread"
 import "lib:pty"
 import "lib:tb2"
+import "vendor:zlib"
 
 ImageSetting :: enum {
 	Auto,
@@ -32,26 +33,25 @@ ImageState :: enum {
 }
 
 Image :: struct {
-	path:   string,
-	stamp:  DiskStamp,
-	id:     u32,
-	w, h:   int,
-	state:  ImageState,
-	rgba:   []u8,
-	rw, rh: int,
-	sent:   bool,
-	placed: [2]i32,
-	used:   u64,
+	path:    string,
+	stamp:   DiskStamp,
+	id:      u32,
+	w, h:    int,
+	state:   ImageState,
+	payload: []u8,
+	sent:    bool,
+	placed:  [2]i32,
+	used:    u64,
 }
 
 ImageJob :: struct {
-	thread: ^thread.Thread,
-	id:     u32,
-	path:   string,
-	box:    [2]int,
-	rgba:   []u8,
-	w, h:   int,
-	ok:     bool,
+	thread:  ^thread.Thread,
+	id:      u32,
+	path:    string,
+	box:     [2]int,
+	tmux:    bool,
+	payload: []u8,
+	ok:      bool,
 }
 
 ImageDetect :: struct {
@@ -81,6 +81,7 @@ IMAGE_CACHE_MAX :: 16
 IMAGE_ENTRIES_MAX :: 512
 IMAGE_CHUNK :: 4096
 IMAGE_PLACEHOLDER :: rune(0x10EEEE)
+IMAGE_PNG_MAGIC :: "\x89PNG\r\n\x1a\n"
 
 g_images: [dynamic]Image
 g_image_job: ^ImageJob
@@ -263,6 +264,24 @@ image_placeholder_row :: proc(row, cols: int) -> string {
 	return strings.to_string(sb)
 }
 
+image_box_row :: proc(row, cols, rows: int, alt: string) -> string {
+	if cols <= 0 {
+		return ""
+	}
+	framed := rows >= 3 && cols >= 2
+	if framed && (row == 0 || row == rows - 1) {
+		return strings.concatenate({"┌" if row == 0 else "└", strings.repeat("─", cols - 2, context.temp_allocator), "┐" if row == 0 else "┘"}, context.temp_allocator)
+	}
+	inner := cols - 2 if framed else cols
+	text := ""
+	if row == (rows - 1) / 2 && alt != "" {
+		text = status_clip(strings.concatenate({"⋯ ", alt}, context.temp_allocator), inner)
+	}
+	pad := inner - visual_width(transmute([]u8)text)
+	middle := strings.concatenate({strings.repeat(" ", pad / 2, context.temp_allocator), text, strings.repeat(" ", pad - pad / 2, context.temp_allocator)}, context.temp_allocator)
+	return strings.concatenate({"│", middle, "│"}, context.temp_allocator) if framed else middle
+}
+
 image_resolve :: proc(dir, src: string) -> string {
 	if src == "" || strings.contains(src, "://") || strings.has_prefix(src, "data:") {
 		return ""
@@ -282,14 +301,14 @@ image_resolve :: proc(dir, src: string) -> string {
 }
 
 image_magic :: proc(data: []u8) -> bool {
-	return strings.has_prefix(string(data), "\x89PNG\r\n\x1a\n") || strings.has_prefix(string(data), "\xff\xd8\xff")
+	return strings.has_prefix(string(data), IMAGE_PNG_MAGIC) || strings.has_prefix(string(data), "\xff\xd8\xff")
 }
 
 image_header_size :: proc(data: []u8) -> (w, h: int, ok: bool) {
 	be16 :: proc(b: []u8, at: int) -> int {
 		return int(b[at]) << 8 | int(b[at + 1])
 	}
-	if strings.has_prefix(string(data), "\x89PNG\r\n\x1a\n") {
+	if strings.has_prefix(string(data), IMAGE_PNG_MAGIC) {
 		if len(data) < 24 || string(data[12:16]) != "IHDR" {
 			return
 		}
@@ -383,9 +402,9 @@ image_frame_begin :: proc() {
 	g_image_floor = g_image_tick
 }
 
-// entries keep their ids for the lines that drew them; only pixels and terminal copies are bounded
+// entries keep their ids for the lines that drew them; only payloads and terminal copies are bounded
 image_heavy :: proc(img: Image) -> bool {
-	return img.state == .Loading || img.rgba != nil || img.sent
+	return img.state == .Loading || img.payload != nil || img.sent
 }
 
 image_unload_oldest :: proc() -> bool {
@@ -423,8 +442,8 @@ image_forget :: proc(img: ^Image) {
 	if img.sent {
 		image_send(fmt.tprintf("\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", img.id))
 	}
-	delete(img.rgba, os.heap_allocator())
-	img.rgba, img.sent, img.placed, img.rw, img.rh = nil, false, {}, 0, 0
+	delete(img.payload, os.heap_allocator())
+	img.payload, img.sent, img.placed = nil, false, {}
 }
 
 image_state :: proc(id: u32) -> (ImageState, bool) {
@@ -448,7 +467,7 @@ image_busy :: proc() -> bool {
 	return false
 }
 
-// decodes one image at a time off the main thread, the most recently wanted first
+// prepares one image at a time off the main thread, the most recently wanted first
 image_pump :: proc(editor: ^Editor) -> (redraw: bool) {
 	if job := g_image_job; job != nil {
 		if !thread.is_done(job.thread) {
@@ -475,6 +494,7 @@ image_pump :: proc(editor: ^Editor) -> (redraw: bool) {
 	job.id = g_images[next].id
 	job.path = strings.clone(g_images[next].path, os.heap_allocator())
 	job.box = {max(1, int(tb2.width())) * cw, max(IMAGE_MAX_ROWS, int(tb2.height())) * ch}
+	job.tmux = g_image_detect.tmux
 	job.thread = thread.create(image_job_run)
 	job.thread.data = job
 	g_image_job = job
@@ -490,12 +510,58 @@ image_job_run :: proc(t: ^thread.Thread) {
 		return
 	}
 	defer delete(data, os.heap_allocator())
-	job.rgba, job.w, job.h, job.ok = image_decode(data, os.heap_allocator())
-	for job.ok && (job.w >= 2 * job.box.x || job.h >= 2 * job.box.y) {
-		half, hw, hh := image_halve(job.rgba, job.w, job.h, os.heap_allocator())
-		delete(job.rgba, os.heap_allocator())
-		job.rgba, job.w, job.h = half, hw, hh
+	job.payload, job.ok = image_payload(data, job.id, job.box, job.tmux, os.heap_allocator())
+}
+
+image_payload :: proc(data: []u8, id: u32, box: [2]int, tmux: bool, allocator := context.allocator) -> (payload: []u8, ok: bool) {
+	w, h, sized := image_header_size(data)
+	if sized && strings.has_prefix(string(data), IMAGE_PNG_MAGIC) && w <= box.x && h <= box.y {
+		// q=2 hides the terminal's decode error, so a broken file must fail here to show its alt text
+		if !image_png_whole(data) {
+			return nil, false
+		}
+		return image_kitty_payload(data, fmt.tprintf("a=t,f=100,i=%d,q=2", id), tmux, allocator), true
 	}
+	rgba, rw, rh, decoded := image_decode(data, os.heap_allocator())
+	if !decoded {
+		return nil, false
+	}
+	if rw > box.x || rh > box.y {
+		fit, fw, fh := image_fit(rgba, rw, rh, box, os.heap_allocator())
+		delete(rgba, os.heap_allocator())
+		rgba, rw, rh = fit, fw, fh
+	}
+	packed := image_deflate(rgba, os.heap_allocator())
+	delete(rgba, os.heap_allocator())
+	if packed == nil {
+		return nil, false
+	}
+	defer delete(packed, os.heap_allocator())
+	return image_kitty_payload(packed, fmt.tprintf("a=t,f=32,o=z,s=%d,v=%d,i=%d,q=2", rw, rh, id), tmux, allocator), true
+}
+
+image_png_whole :: proc(data: []u8) -> bool {
+	for at := len(IMAGE_PNG_MAGIC); at + 12 <= len(data); {
+		size := int(data[at]) << 24 | int(data[at + 1]) << 16 | int(data[at + 2]) << 8 | int(data[at + 3])
+		if size > len(data) - at - 12 {
+			return false
+		}
+		if string(data[at + 4:at + 8]) == "IEND" {
+			return true
+		}
+		at += 12 + size
+	}
+	return false
+}
+
+image_deflate :: proc(data: []u8, allocator := context.allocator) -> []u8 {
+	size := zlib.uLongf(zlib.compressBound(zlib.uLong(len(data))))
+	out := make([]u8, size, allocator)
+	if zlib.compress2(raw_data(out), &size, raw_data(data), zlib.uLong(len(data)), zlib.BEST_SPEED) != zlib.OK {
+		delete(out, allocator)
+		return nil
+	}
+	return out[:size]
 }
 
 image_job_adopt :: proc(editor: ^Editor, job: ^ImageJob) {
@@ -506,7 +572,7 @@ image_job_adopt :: proc(editor: ^Editor, job: ^ImageJob) {
 	for &img in g_images {
 		if img.id == job.id && img.state == .Loading {
 			if job.ok {
-				img.rgba, img.rw, img.rh, img.state = job.rgba, job.w, job.h, .Ready
+				img.payload, img.state = job.payload, .Ready
 			} else {
 				img.state = .Failed
 				image_panes_reset(editor)
@@ -514,7 +580,7 @@ image_job_adopt :: proc(editor: ^Editor, job: ^ImageJob) {
 			return
 		}
 	}
-	delete(job.rgba, os.heap_allocator())
+	delete(job.payload, os.heap_allocator())
 }
 
 image_decode :: proc(data: []u8, allocator := context.allocator) -> (rgba: []u8, w, h: int, ok: bool) {
@@ -553,35 +619,58 @@ image_decode :: proc(data: []u8, allocator := context.allocator) -> (rgba: []u8,
 	return rgba, w, h, true
 }
 
-image_halve :: proc(rgba: []u8, w, h: int, allocator := context.allocator) -> (out: []u8, ow, oh: int) {
-	ow, oh = max(1, w / 2), max(1, h / 2)
+image_fit :: proc(rgba: []u8, w, h: int, box: [2]int, allocator := context.allocator) -> (out: []u8, ow, oh: int) {
+	if w * box.y <= h * box.x {
+		oh = max(1, min(h, box.y))
+		ow = max(1, w * oh / h)
+	} else {
+		ow = max(1, min(w, box.x))
+		oh = max(1, h * ow / w)
+	}
 	out = make([]u8, ow * oh * 4, allocator)
 	for y in 0 ..< oh {
+		y0, y1 := y * h / oh, max((y + 1) * h / oh, y * h / oh + 1)
 		for x in 0 ..< ow {
-			x0, y0 := min(2 * x, w - 1), min(2 * y, h - 1)
-			x1, y1 := min(x0 + 1, w - 1), min(y0 + 1, h - 1)
+			x0, x1 := x * w / ow, max((x + 1) * w / ow, x * w / ow + 1)
+			sum: [4]u32
+			for sy in y0 ..< y1 {
+				row := rgba[(sy * w + x0) * 4:(sy * w + x1) * 4]
+				for k := 0; k < len(row); k += 4 {
+					sum += {u32(row[k]), u32(row[k + 1]), u32(row[k + 2]), u32(row[k + 3])}
+				}
+			}
+			n := u32((y1 - y0) * (x1 - x0))
 			for c in 0 ..< 4 {
-				s := int(rgba[(y0 * w + x0) * 4 + c]) + int(rgba[(y0 * w + x1) * 4 + c]) + int(rgba[(y1 * w + x0) * 4 + c]) + int(rgba[(y1 * w + x1) * 4 + c])
-				out[(y * ow + x) * 4 + c] = u8((s + 2) / 4)
+				out[(y * ow + x) * 4 + c] = u8((sum[c] + n / 2) / n)
 			}
 		}
 	}
 	return
 }
 
-image_kitty_transmit :: proc(img: ^Image) -> []string {
-	b64, _ := base64.encode(img.rgba, allocator = context.temp_allocator)
-	out := make([dynamic]string, context.temp_allocator)
+image_kitty_payload :: proc(data: []u8, keys: string, tmux: bool, allocator := context.allocator) -> []u8 {
+	b64, _ := base64.encode(data, allocator = context.temp_allocator)
+	esc := "\x1b\x1b" if tmux else "\x1b"
+	sb := strings.builder_make_len_cap(0, len(b64) + (len(b64) / IMAGE_CHUNK + 1) * 32 + len(keys), allocator)
 	for at := 0; at < len(b64) || at == 0; at += IMAGE_CHUNK {
-		chunk := b64[at:min(at + IMAGE_CHUNK, len(b64))]
-		more := 1 if at + IMAGE_CHUNK < len(b64) else 0
+		if tmux {
+			strings.write_string(&sb, "\x1bPtmux;")
+		}
+		strings.write_string(&sb, esc)
+		strings.write_string(&sb, "_G")
 		if at == 0 {
-			append(&out, fmt.tprintf("\x1b_Ga=t,f=32,s=%d,v=%d,i=%d,q=2,m=%d;%s\x1b\\", img.rw, img.rh, img.id, more, chunk))
-		} else {
-			append(&out, fmt.tprintf("\x1b_Gm=%d;%s\x1b\\", more, chunk))
+			strings.write_string(&sb, keys)
+			strings.write_byte(&sb, ',')
+		}
+		strings.write_string(&sb, "m=1;" if at + IMAGE_CHUNK < len(b64) else "m=0;")
+		strings.write_string(&sb, b64[at:min(at + IMAGE_CHUNK, len(b64))])
+		strings.write_string(&sb, esc)
+		strings.write_byte(&sb, '\\')
+		if tmux {
+			strings.write_string(&sb, "\x1b\\")
 		}
 	}
-	return out[:]
+	return sb.buf[:]
 }
 
 // one fixed placement id: a put with the same image and placement id replaces it, so placeholders never pick a stale size
@@ -594,9 +683,9 @@ image_send :: proc(seq: string) {
 	tb2.send(raw_data(s), uint(len(s)))
 }
 
-image_show :: proc(ref: ImageRef) {
+image_show :: proc(ref: ImageRef) -> bool {
 	if !image_enabled() {
-		return
+		return false
 	}
 	for &img in g_images {
 		if img.id != ref.id {
@@ -608,29 +697,28 @@ image_show :: proc(ref: ImageRef) {
 			img.state = .Loading
 		}
 		if img.state != .Ready {
-			return
+			return false
 		}
 		if !img.sent {
-			for chunk in image_kitty_transmit(&img) {
-				image_send(chunk)
-			}
+			tb2.send(raw_data(img.payload), uint(len(img.payload)))
 			img.sent = true
-			delete(img.rgba, os.heap_allocator())
-			img.rgba = nil
+			delete(img.payload, os.heap_allocator())
+			img.payload = nil
 		}
 		if img.placed != {ref.cols, ref.rows} {
 			image_send(image_kitty_place(img.id, ref.cols, ref.rows))
 			img.placed = {ref.cols, ref.rows}
 		}
-		return
+		return true
 	}
+	return false
 }
 
 image_shutdown :: proc() {
 	if job := g_image_job; job != nil {
 		thread.join(job.thread)
 		thread.destroy(job.thread)
-		delete(job.rgba, os.heap_allocator())
+		delete(job.payload, os.heap_allocator())
 		delete(job.path, os.heap_allocator())
 		free(job, os.heap_allocator())
 		g_image_job = nil

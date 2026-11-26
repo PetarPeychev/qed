@@ -16,6 +16,7 @@ MdSpan :: struct {
 	fg, bg: tb2.Color,
 	link:   string,
 	image:  string,
+	alt:    string,
 }
 
 MdLine :: struct {
@@ -25,6 +26,7 @@ MdLine :: struct {
 	slug:             string,
 	src, block:       int,
 	image:            ImageRef,
+	loading:          MdSpan,
 }
 
 MdCell :: struct {
@@ -982,9 +984,12 @@ md_emit_images :: proc(r: ^MdRender, spans: []MdSpan, imgs: []ImageRef) {
 		if i == len(spans) {
 			break
 		}
-		for row in 0 ..< int(imgs[i].rows) {
-			md_emit(r, {MdSpan{text = image_placeholder_row(row, int(imgs[i].cols)), fg = image_color(imgs[i].id)}})
-			r.out[len(r.out) - 1].image = imgs[i]
+		cols, rows := int(imgs[i].cols), int(imgs[i].rows)
+		for row in 0 ..< rows {
+			md_emit(r, {MdSpan{text = image_placeholder_row(row, cols), fg = image_color(imgs[i].id)}})
+			line := &r.out[len(r.out) - 1]
+			line.image = imgs[i]
+			line.loading = {text = image_box_row(row, cols, rows, spans[i].alt), fg = r.style.dim}
 		}
 		start = i + 1
 	}
@@ -1323,7 +1328,7 @@ md_inline_into :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, text: string, fg: 
 				if label_end, dest, end, ok := md_link_at(r, text, i + 1); ok {
 					md_inline_flush(r, spans, &sb, fg)
 					alt := md_plain(text[i + 2:label_end])
-					append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, link = r.link, image = dest})
+					append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, link = r.link, image = dest, alt = alt})
 					i = end
 					continue
 				}
@@ -1656,7 +1661,7 @@ md_html_tag :: proc(r: ^MdRender, spans: ^[dynamic]MdSpan, sb: ^strings.Builder,
 	case "img":
 		md_inline_flush(r, spans, sb, fg)
 		alt := md_html_attr(attrs, "alt")
-		append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, image = md_html_attr(attrs, "src")})
+		append(spans, MdSpan{text = fmt.tprintf("[image: %s]", alt) if alt != "" else "[image]", fg = r.style.dim, image = md_html_attr(attrs, "src"), alt = alt})
 	case "em", "i":
 		md_inline_flush(r, spans, sb, fg)
 		r.em = max(0, r.em + (-1 if closing else 1))

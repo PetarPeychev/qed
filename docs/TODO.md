@@ -60,6 +60,7 @@ daily-drives it for programming.** Every item here blocks that.
 Enhancements beyond the daily-driver baseline; none blocks 1.0.
 
 ### Features
+- A split markdown preview hidden behind an overlay still loads images in its covered viewport.
 
 - [ ] Discontinuous file-tree selection (pick non-adjacent files for a command) — deferred: mouse Ctrl/Shift-click is blocked (vendored termbox2 drops mouse modifier bits — patchable — and Windows Terminal itself eats Ctrl/Shift-click), so it needs a keyboard mark key (likely Ctrl+Space toggles the current row) and/or the termbox mouse-mod patch; sound data model is a path-keyed selection set + prune-to-visible on rebuild.
 - [ ] Multi-line find (regex `\n` spanning rows) — current find is single-line, matching the per-line data model; needs whole-buffer scan + cross-row match/highlight.

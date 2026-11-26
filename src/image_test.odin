@@ -1,7 +1,9 @@
 package main
 
+import "core:encoding/base64"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import "core:sync"
 import "core:sys/posix"
@@ -9,6 +11,7 @@ import "core:testing"
 import "core:time"
 import "core:unicode/utf8"
 import "lib:tb2"
+import "vendor:zlib"
 
 @(private = "file")
 TEST_PNG_RGBA8 := [?]u8{
@@ -175,28 +178,106 @@ image_decode_formats :: proc(t: ^testing.T) {
 }
 
 @(test)
-image_halve_averages :: proc(t: ^testing.T) {
+image_fit_averages :: proc(t: ^testing.T) {
 	src := []u8{0, 0, 0, 255, 100, 100, 100, 255, 200, 200, 200, 255, 100, 100, 100, 255}
-	out, w, h := image_halve(src, 2, 2, context.temp_allocator)
+	out, w, h := image_fit(src, 2, 2, {1, 1}, context.temp_allocator)
 	testing.expect_value(t, w, 1)
 	testing.expect_value(t, h, 1)
 	testing.expect_value(t, out[0], 100)
 	testing.expect_value(t, out[3], 255)
+	wide := []u8{0, 0, 0, 255, 60, 60, 60, 255, 120, 120, 120, 255, 180, 180, 180, 255}
+	out, w, h = image_fit(wide, 4, 1, {3, 3}, context.temp_allocator)
+	testing.expect_value(t, w, 3)
+	testing.expect_value(t, h, 1)
+	testing.expect_value(t, out[0], 0)
+	testing.expect_value(t, out[8], 150)
+	_, w, h = image_fit(make([]u8, 48 * 32 * 4, context.temp_allocator), 48, 32, {100, 20}, context.temp_allocator)
+	testing.expect(t, w == 30 && h == 20, "fits the tighter side, keeps the aspect")
+}
+
+@(private = "file")
+image_payload_chunks :: proc(payload: []u8) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	rest := string(payload)
+	for rest != "" {
+		end := strings.index(rest, "\x1b\\")
+		if end < 0 {
+			append(&out, rest)
+			break
+		}
+		append(&out, rest[:end + 2])
+		rest = rest[end + 2:]
+	}
+	return out[:]
+}
+
+@(private = "file")
+image_payload_data :: proc(payload: []u8) -> []u8 {
+	sb := strings.builder_make(context.temp_allocator)
+	for c in image_payload_chunks(payload) {
+		strings.write_string(&sb, c[strings.index_byte(c, ';') + 1:len(c) - 2])
+	}
+	data, _ := base64.decode(strings.to_string(sb), allocator = context.temp_allocator)
+	return data
 }
 
 @(test)
-image_transmit_chunks :: proc(t: ^testing.T) {
-	img := Image{id = 0x123456, rw = 40, rh = 40, rgba = make([]u8, 40 * 40 * 4, context.temp_allocator)}
-	chunks := image_kitty_transmit(&img)
+image_payload_chunks_wrap :: proc(t: ^testing.T) {
+	chunks := image_payload_chunks(image_kitty_payload(make([]u8, 40 * 40 * 4, context.temp_allocator), "a=t,f=100,i=7,q=2", false, context.temp_allocator))
 	testing.expect_value(t, len(chunks), 3)
-	testing.expect(t, strings.has_prefix(chunks[0], "\x1b_Ga=t,f=32,s=40,v=40,i=1193046,q=2,m=1;"), "first chunk carries the format")
+	testing.expect(t, strings.has_prefix(chunks[0], "\x1b_Ga=t,f=100,i=7,q=2,m=1;"), "first chunk carries the keys")
 	testing.expect(t, strings.has_prefix(chunks[1], "\x1b_Gm=1;"), "middle chunk continues")
 	testing.expect(t, strings.has_prefix(chunks[2], "\x1b_Gm=0;"), "last chunk ends")
 	for c in chunks {
 		testing.expect(t, strings.has_suffix(c, "\x1b\\"), "chunk terminated")
 		testing.expect(t, len(c) <= IMAGE_CHUNK + 64, "chunk within the protocol's size")
 	}
+	wrapped := string(image_kitty_payload(make([]u8, 40 * 40 * 4, context.temp_allocator), "a=t,f=100,i=7,q=2", true, context.temp_allocator))
+	want := strings.concatenate({image_tmux_wrap(chunks[0]), image_tmux_wrap(chunks[1]), image_tmux_wrap(chunks[2])}, context.temp_allocator)
+	testing.expect_value(t, wrapped, want)
 	testing.expect_value(t, image_kitty_place(7, 10, 4), "\x1b_Ga=p,U=1,i=7,p=1,c=10,r=4,q=2\x1b\\")
+}
+
+@(test)
+image_payload_png_passthrough :: proc(t: ^testing.T) {
+	payload, ok := image_payload(TEST_PNG_RGBA8[:], 0x123456, {100, 100}, false, context.temp_allocator)
+	testing.expect(t, ok, "a PNG prepares")
+	b64, _ := base64.encode(TEST_PNG_RGBA8[:], allocator = context.temp_allocator)
+	testing.expect_value(t, string(payload), fmt.tprintf("\x1b_Ga=t,f=100,i=1193046,q=2,m=0;%s\x1b\\", b64))
+
+	payload, ok = image_payload(TEST_SHOT, 9, {48, 32}, false, context.temp_allocator)
+	testing.expect(t, ok && strings.has_prefix(string(payload), "\x1b_Ga=t,f=100,i=9,q=2,"), "a PNG exactly its box goes as its file")
+	payload, ok = image_payload(TEST_SHOT, 9, {47, 100}, false, context.temp_allocator)
+	testing.expect(t, ok, "a PNG over its box prepares")
+	testing.expect(t, strings.has_prefix(string(payload), "\x1b_Ga=t,f=32,o=z,s=47,v=31,i=9,q=2,"), "a PNG a pixel over its box is decoded and scaled to fit")
+}
+
+@(test)
+image_payload_jpeg_deflated :: proc(t: ^testing.T) {
+	payload, ok := image_payload(TEST_JPEG[:], 5, {100, 100}, false, context.temp_allocator)
+	testing.expect(t, ok, "a JPEG prepares")
+	testing.expect(t, strings.has_prefix(string(payload), "\x1b_Ga=t,f=32,o=z,s=8,v=8,i=5,q=2,m=0;"), "decoded RGBA goes deflated")
+	packed := image_payload_data(payload)
+	rgba, _, _, _ := image_decode(TEST_JPEG[:], context.temp_allocator)
+	out := make([]u8, len(rgba) + 16, context.temp_allocator)
+	size := zlib.uLongf(len(out))
+	testing.expect_value(t, zlib.uncompress(raw_data(out), &size, raw_data(packed), zlib.uLong(len(packed))), zlib.OK)
+	testing.expect_value(t, int(size), len(rgba))
+	testing.expect(t, string(out[:size]) == string(rgba), "inflates to the decoded pixels")
+	_, ok = image_payload(transmute([]u8)string("not an image"), 5, {100, 100}, false, context.temp_allocator)
+	testing.expect(t, !ok, "garbage fails")
+}
+
+@(test)
+image_box_rows :: proc(t: ^testing.T) {
+	testing.expect_value(t, image_box_row(0, 12, 3, "Welcome"), "┌──────────┐")
+	testing.expect_value(t, image_box_row(1, 12, 3, "Welcome"), "│⋯ Welcome │")
+	testing.expect_value(t, image_box_row(2, 12, 3, "Welcome"), "└──────────┘")
+	testing.expect_value(t, image_box_row(1, 8, 4, "Welcome screen"), "│⋯ Wel…│")
+	testing.expect_value(t, image_box_row(2, 8, 4, "Welcome screen"), "│      │")
+	testing.expect_value(t, image_box_row(1, 6, 3, ""), "│    │")
+	testing.expect_value(t, image_box_row(0, 9, 1, "pic"), "  ⋯ pic  ")
+	testing.expect_value(t, image_box_row(1, 9, 2, "pic"), "         ")
 }
 
 @(test)
@@ -431,7 +512,7 @@ e2e_image_preview :: proc(t: ^testing.T) {
 				testing.expect_value(t, (cast([^]rune)below.ech)[1], IMAGE_DIACRITICS[1])
 			}
 			id := u32(e2e_rgb(cell.fg))
-			testing.expect(t, strings.contains(out, fmt.tprintf("\x1b_Ga=t,f=32,s=2,v=2,i=%d,q=2,m=0;", id)), "the image goes out once")
+			testing.expect(t, strings.contains(out, fmt.tprintf("\x1b_Ga=t,f=100,i=%d,q=2,m=0;", id)), "the PNG goes out once, as its file")
 			testing.expect(t, strings.contains(out, fmt.tprintf("\x1b_Ga=p,U=1,i=%d,p=1,c=2,r=2,q=2\x1b\\", id)), "with a virtual placement of its cell size")
 			testing.expect(t, strings.contains(out, "\U0010EEEE"), "the placeholder cells reach the terminal")
 		}
@@ -555,4 +636,167 @@ end}}`, fmt.tprintf("%s/pic.png", dir)))
 		time.sleep(time.Millisecond * 10)
 	}
 	testing.expect_value(t, e2e_cell(&e, 0, 0), IMAGE_PLACEHOLDER)
+}
+
+@(private = "file")
+TEST_SHOT := #load("../tools/e2e/assets/shot-a.png")
+
+@(private = "file")
+image_find_row :: proc(e: ^E2E, text: string) -> int {
+	for y in 0 ..< E2E_H {
+		if strings.contains(e2e_row_text(e, y), text) {
+			return y
+		}
+	}
+	return -1
+}
+
+@(test)
+e2e_image_loading_box :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+	saved, saved_cell, saved_tmux := IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux
+	defer {
+		IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = saved, saved_cell, saved_tmux
+		image_shutdown()
+	}
+	IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = .Kitty, {4, 8}, false
+	dir := image_fixture_dir("box")
+	defer image_fixture_drop(dir)
+	_ = os.write_entire_file(fmt.tprintf("%s/pic.png", dir), TEST_SHOT)
+	md := fmt.tprintf("%s/README.md", dir)
+	_ = os.write_entire_file(md, transmute([]u8)string("# Pics\n\n![Welcome screen](pic.png)\n\nafter\n"))
+	testing.expect(t, editor_open_path(&e.ed, md), "opens the doc")
+	e2e_key(&e, tb2.Key(0), .Alt, 'p')
+	testing.expect(t, e2e_pump_while(&e, image_md_pending), "the preview renders")
+	e2e_render(&e)
+	top := image_find_row(&e, "┌──────────┐")
+	testing.expect(t, top >= 0, "a box holds the image's 12x4 cells while it loads")
+	if top < 0 {
+		return
+	}
+	x := 0
+	for e2e_cell(&e, x, top) != '┌' {
+		x += 1
+	}
+	testing.expect(t, strings.contains(e2e_row_text(&e, top + 1), "│⋯ Welcome…│"), "the alt text centered, cut to fit")
+	testing.expect(t, strings.contains(e2e_row_text(&e, top + 3), "└──────────┘"), "the box spans the image's rows")
+	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, x, top)), e2e_rgb(md_style().dim))
+	testing.expect_value(t, image_find_row(&e, "│ after"), top + 5)
+
+	image_pump_idle(&e.ed)
+	e2e_render(&e)
+	testing.expect_value(t, e2e_cell(&e, x, top), IMAGE_PLACEHOLDER)
+	testing.expect_value(t, e2e_cell(&e, x + 11, top + 3), IMAGE_PLACEHOLDER)
+	testing.expect(t, image_find_row(&e, "┌──────────┐") < 0, "the box goes once the terminal has the image")
+	testing.expect_value(t, image_find_row(&e, "│ after"), top + 5)
+}
+
+@(test)
+e2e_image_offscreen_stays_probed :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+	saved, saved_cell, saved_tmux := IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux
+	defer {
+		IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = saved, saved_cell, saved_tmux
+		image_shutdown()
+	}
+	IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = .Kitty, {4, 8}, false
+	dir := image_fixture_dir("offscreen")
+	defer image_fixture_drop(dir)
+	N :: 4
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, "# Pics\n\n")
+	for i in 0 ..< N {
+		_ = os.write_entire_file(fmt.tprintf("%s/s%d.png", dir, i), TEST_SHOT)
+		fmt.sbprintf(&sb, "![s%d](s%d.png)\n\n", i, i)
+		for k in 0 ..< 30 {
+			fmt.sbprintf(&sb, "line %d.%d\n\n", i, k)
+		}
+	}
+	defer for i in 0 ..< N {
+		os.remove(fmt.tprintf("%s/s%d.png", dir, i))
+	}
+	md := fmt.tprintf("%s/README.md", dir)
+	_ = os.write_entire_file(md, transmute([]u8)strings.to_string(sb))
+	testing.expect(t, editor_open_path(&e.ed, md), "opens the doc")
+	e2e_key(&e, tb2.Key(0), .Alt, 'p')
+	testing.expect(t, e2e_pump_while(&e, image_md_pending), "the preview renders")
+	e2e_render(&e)
+	image_pump_idle(&e.ed)
+	e2e_render(&e)
+	state :: proc(name: string) -> ImageState {
+		for img in g_images {
+			if filepath.base(img.path) == name {
+				return img.state
+			}
+		}
+		return .Failed
+	}
+	testing.expect_value(t, state("s0.png"), ImageState.Ready)
+	for i in 1 ..< N {
+		testing.expectf(t, state(fmt.tprintf("s%d.png", i)) == .Probed, "s%d.png below the screen is not loaded", i)
+	}
+	ui_markdown_scroller(&e.ed, ui_find(&e.ed.ui, "#markdown/markdown_body")).offset = 64
+	e2e_render(&e)
+	testing.expect(t, image_find_row(&e, "⋯ s1") >= 0, "scrolled to s1, loading")
+	image_pump_idle(&e.ed)
+	testing.expect_value(t, state("s1.png"), ImageState.Ready)
+	testing.expect_value(t, state("s2.png"), ImageState.Probed)
+}
+
+@(test)
+image_payload_truncated_png_fails :: proc(t: ^testing.T) {
+	testing.expect(t, image_png_whole(TEST_SHOT), "a whole PNG reaches IEND")
+	_, ok := image_payload(TEST_SHOT[:len(TEST_SHOT) - 20], 3, {1000, 1000}, false, context.temp_allocator)
+	testing.expect(t, !ok, "a PNG cut before IEND fails instead of going out")
+	_, ok = image_payload(TEST_PNG_RGBA8[:40], 3, {1000, 1000}, false, context.temp_allocator)
+	testing.expect(t, !ok, "a PNG with only its header fails")
+}
+
+@(test)
+e2e_image_stale_entry_rerenders :: proc(t: ^testing.T) {
+	e := e2e_start()
+	defer e2e_stop(&e)
+	saved, saved_cell, saved_tmux := IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux
+	defer {
+		IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = saved, saved_cell, saved_tmux
+		image_shutdown()
+	}
+	IMAGE_PROTOCOL, g_image_cell, g_image_detect.tmux = .Kitty, {4, 8}, false
+	dir := image_fixture_dir("stale")
+	defer image_fixture_drop(dir)
+	pic := fmt.tprintf("%s/pic.png", dir)
+	_ = os.write_entire_file(pic, TEST_SHOT)
+	md := fmt.tprintf("%s/README.md", dir)
+	_ = os.write_entire_file(md, transmute([]u8)string("# Pics\n\n![Shot](pic.png)\n\nafter\n"))
+	testing.expect(t, editor_open_path(&e.ed, md), "opens the doc")
+	e2e_key(&e, tb2.Key(0), .Alt, 'p')
+	testing.expect(t, e2e_pump_while(&e, image_md_pending), "the preview renders")
+	e2e_render(&e)
+	image_pump_idle(&e.ed)
+	e2e_render(&e)
+	testing.expect(t, image_find_row(&e, "⋯ Shot") < 0, "loaded")
+
+	image_shutdown()
+	for _ in 0 ..< 3 {
+		e2e_render(&e)
+	}
+	testing.expect(t, e2e_pump_while(&e, image_md_pending), "a dropped entry renders the doc again")
+	e2e_render(&e)
+	image_pump_idle(&e.ed)
+	e2e_render(&e)
+	testing.expect(t, image_find_row(&e, "⋯ Shot") < 0, "the path re-resolves under a new entry and loads, no box left")
+	testing.expect(t, len(g_images) == 1 && g_images[0].state == .Ready, "one fresh entry")
+
+	_ = os.write_entire_file(pic, transmute([]u8)string("no longer an image"))
+	image_frame_begin()
+	testing.expect(t, image_get(pic) == nil, "another view of the path reprobes it to a failure")
+	for _ in 0 ..< 3 {
+		e2e_render(&e)
+		e2e_pump_while(&e, image_md_pending)
+	}
+	e2e_render(&e)
+	testing.expect(t, image_find_row(&e, "⋯ Shot") < 0, "an entry reprobed to a failure leaves no box")
+	testing.expect(t, image_find_row(&e, "[image: Shot]") >= 0, "its alt text shows")
 }

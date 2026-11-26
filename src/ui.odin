@@ -2236,9 +2236,13 @@ ui_render_image :: proc(paint: ^UiPaint, node: ^UiNode) {
 		return
 	}
 	cols, rows := image_cells(image.w, image.h, rect.w, rect.h, g_image_cell.x, g_image_cell.y)
-	image_show({image.id, i32(cols), i32(rows)})
+	shown := image_show({image.id, i32(cols), i32(rows)})
 	for row in 0 ..< rows {
-		ui_draw_text(paint, rect.x, rect.y + row, cols, image_placeholder_row(row, cols), image_color(image.id), paint.bg)
+		if shown {
+			ui_draw_text(paint, rect.x, rect.y + row, cols, image_placeholder_row(row, cols), image_color(image.id), paint.bg)
+		} else {
+			ui_draw_text(paint, rect.x, rect.y + row, cols, image_box_row(row, cols, rows, filepath.base(node.path)), COLOR_PANE_DIM_FG, paint.bg)
+		}
 	}
 }
 

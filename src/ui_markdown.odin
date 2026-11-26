@@ -2,6 +2,7 @@ package main
 
 import "core:math"
 import vmem "core:mem/virtual"
+import "core:slice"
 import "core:strings"
 import "core:time"
 
@@ -208,15 +209,25 @@ ui_render_markdown :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	if rect.w <= 0 || rect.h <= 0 {
 		return
 	}
-	lines := ui_markdown_lines(ui_markdown_of(editor, node), rect.w)
+	md := ui_markdown_of(editor, node)
+	lines := ui_markdown_lines(md, rect.w)
 	first := clamp(paint.clip.y - rect.y, 0, len(lines))
 	last := clamp(paint.clip.y + paint.clip.h - rect.y, first, len(lines))
+	stale := false
 	for i in first ..< last {
 		line := lines[i]
-		if line.image.id != 0 {
-			image_show(line.image)
+		if line.image.id != 0 && !image_show(line.image) && len(line.spans) > 0 {
+			state, known := image_state(line.image.id)
+			stale ||= !known || state == .Failed
+			spans := slice.clone(line.spans, context.temp_allocator)
+			spans[len(spans) - 1] = line.loading
+			line.spans = spans
 		}
 		md_draw_line(rect.x, rect.y + i, rect.w, line, paint.bg)
+	}
+	// an entry dropped or reprobed to a failure since this render: render again to re-resolve the path
+	if stale && md.job == nil {
+		ui_markdown_reset(md)
 	}
 }
 

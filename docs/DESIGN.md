@@ -653,8 +653,12 @@ lines.
 `image.odin`: kitty graphics with Unicode placeholders, so termbox's diff owns every cell and images scroll,
 clip and hide under overlays like text. A `markdown` body with `markdown_dir` shows local PNG/JPEG images in
 paragraphs and HTML blocks as placeholder rows, the text between them wrapped in source order (anything else
-stays `[image: alt]`); the file preview shows image files. Size comes from the file header at render time; decoding runs on one background thread (`image_pump`),
-only images drawn recently keep pixels or a terminal copy (`IMAGE_CACHE_MAX`, LRU outside the current frame). Detection (config
+stays `[image: alt]`); the file preview shows image files. Size comes from the file header at render time, so layout
+reserves the rows at once; until the terminal has the image they draw a dim box with the alt text. Only drawn rows
+load; one background thread (`image_pump`) prepares the transmit bytes (a PNG within the largest box it can show at as its own
+file, else decoded, scaled down to fit that box and deflated), so the render path only writes them. qed links the
+system libz (`vendor:zlib`) for that compression. Only images drawn recently keep a payload or a terminal copy
+(`IMAGE_CACHE_MAX`, LRU outside the current frame). Detection (config
 `image_protocol`) and the protocol details are in [notes/images.md](notes/images.md).
 
 ## AI plugin
