@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:time"
@@ -20,7 +21,7 @@ e2e_round7_long_jump_with_wrap_is_fast :: proc(t: ^testing.T) {
 	e := e2e_start(r7_lines(100000))
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
-	testing.expect(t, b.wrap, "wrap is on by default")
+	testing.expect(t, g_line_wrap, "wrap is on by default")
 	e2e_render(&e)
 	b.cursor = {99990, 0}
 	start := time.tick_now()
@@ -164,6 +165,7 @@ e2e_round7_file_tree_reopens_on_its_row :: proc(t: ^testing.T) {
 	for name in ([]string{"a.txt", "b.txt", "c.txt"}) {
 		nav_write(fmt.tprintf("%s/%s", e.ed.working_root, name), "x")
 	}
+	os.remove(e.path) // a current file the tree lists would win over the remembered row
 	nav_alt(&e, 'f')
 	ft_select_path(&e.ed, fmt.tprintf("%s/c.txt", e.ed.working_root))
 	sel, _ := ft_selected(&e.ed)
@@ -238,10 +240,10 @@ e2e_round7_core_list_navigation :: proc(t: ^testing.T) {
 	for ch in "line wrap" {
 		editor_dispatch(&e.ed, tb2.Event{type = .Key, ch = ch})
 	}
-	wrap := editor_buffer(&e.ed).wrap
+	wrap := g_line_wrap
 	editor_dispatch(&e.ed, tb2.Event{type = .Key, key = .Enter})
 	plugin_flush(&e.ed)
-	testing.expect(t, editor_buffer(&e.ed).wrap != wrap, "Enter right after typing runs the match for the typed query")
+	testing.expect(t, g_line_wrap != wrap, "Enter right after typing runs the match for the typed query")
 }
 
 @(test)

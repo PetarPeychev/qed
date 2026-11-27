@@ -56,11 +56,11 @@ e2e_ui_palette_filters_and_runs :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	row := e2e_ui_find_row(&e, "Toggle Line Wrap")
 	testing.expect(t, row >= 0, "the fuzzy list shows the match")
-	wrap_before := editor_buffer(&e.ed).wrap
+	wrap_before := g_line_wrap
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_palette_row(&e) < 0, "Enter closes the palette")
-	testing.expect_value(t, editor_buffer(&e.ed).wrap, !wrap_before)
+	testing.expect_value(t, g_line_wrap, !wrap_before)
 	testing.expect_value(t, e2e_row_text(&e, 0), " 1 alpha")
 }
 
@@ -360,13 +360,13 @@ e2e_ui_palette_row_clicks :: proc(t: ^testing.T) {
 	e2e_ui_settle(&e)
 	row := e2e_ui_find_row(&e, "Toggle Line Wrap")
 	testing.expect(t, row > box, "typing still reaches the query after a click on the border")
-	wrap_before := editor_buffer(&e.ed).wrap
+	wrap_before := g_line_wrap
 	e2e_mouse(&e, 20, row)
 	e2e_ui_settle(&e)
 	e2e_mouse(&e, 20, row)
 	e2e_ui_settle(&e)
 	testing.expect(t, e2e_ui_palette_row(&e) < 0, "a double click runs the row")
-	testing.expect_value(t, editor_buffer(&e.ed).wrap, !wrap_before)
+	testing.expect_value(t, g_line_wrap, !wrap_before)
 }
 
 @(test)

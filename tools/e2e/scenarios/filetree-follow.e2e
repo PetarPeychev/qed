@@ -1,0 +1,50 @@
+# Every file tree tab follows the current file: it expands down to it and highlights it, else lands on the tab's last row.
+requires git
+file src/app/core/engine.py
+def run():
+    return 1
+end
+file src/app/util.py
+X = 1
+end
+file src/main.py
+print("main")
+end
+file docs/guide.md
+# guide
+end
+file README.md
+# demo
+end
+sh git init -q && git add -A && git commit -q -m seed && echo '    # tuned' >> src/app/core/engine.py
+run README.md
+wait # demo
+key alt+f
+wait README.md
+snap repo A repo whose only change is src/app/core/engine.py, three dirs deep; All highlights the current README.md
+key esc
+key alt+g
+wait engine.py
+snap git-tab The Git tab lists the change; README.md is not in it, so the first row is highlighted
+key down*3
+key enter
+wait # tuned
+snap opened engine.py is open and the tree closed
+key alt+g
+wait engine.py
+snap git-follows Reopened on Git, the tree highlights engine.py
+key alt+f
+wait README.md
+snap all-follows Switched to All, the collapsed dirs expand down to engine.py and it is highlighted
+key alt+e
+key esc
+key alt+f
+wait engine.py
+snap all-open Collapsed and reopened directly on All, the tree expands down to engine.py again
+type README
+wait README.md
+key enter
+wait # demo
+key alt+g
+wait engine.py
+snap git-fallback README.md is unchanged, so the Git tab lands on its last row, engine.py

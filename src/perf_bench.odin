@@ -984,7 +984,7 @@ bench_conflict_keystroke :: proc(t: ^testing.T) {
 		plugin_pump(&e.ed)
 		plugin_flush(&e.ed)
 		b := editor_buffer(&e.ed)
-		b.wrap = huge < 0
+		g_line_wrap = huge < 0
 		b.cursor = {row, 0}
 		KEYS := 50 if huge < 0 else 10
 		test_slice_on = true

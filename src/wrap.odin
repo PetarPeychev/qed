@@ -57,6 +57,9 @@ WrapMemo :: struct {
 	segs:             [dynamic]int,
 }
 
+// the session's soft wrap: seeded from line_wrap, flipped by Toggle Line Wrap for every view
+g_line_wrap: bool
+
 @(thread_local)
 g_wrap_memo: [4]WrapMemo
 @(thread_local)
@@ -108,8 +111,9 @@ wrap_segment :: proc(segs: []int, text_len, sub: int) -> (start, end: int) {
 	return
 }
 
+// width is the view's wrap width: 0 when the view does not wrap
 line_rows :: proc(b: ^Buffer, width, row: int) -> int {
-	if b.wrap && width > 0 {
+	if width > 0 {
 		return len(buffer_line_wrap(b, row, width))
 	}
 	return 1
@@ -124,19 +128,17 @@ vpos_up :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 			k -= 1
 			continue
 		}
-		if row == 0 {
+		prev := row_shown_prev(b, row - 1)
+		if prev < 0 {
 			break
 		}
-		ghosts := ghost_above(b, row) + ghost_below(b, row - 1)
-		if k <= ghosts {
-			row -= 1
-			sub = line_rows(b, width, row) - 1
-			break
-		}
-		k -= ghosts
-		row -= 1
+		ghosts := ghost_above(b, row) + ghost_below(b, prev)
+		row = prev
 		sub = line_rows(b, width, row) - 1
-		k -= 1
+		if k <= ghosts {
+			break
+		}
+		k -= ghosts + 1
 	}
 	return row, sub
 }
@@ -151,19 +153,17 @@ vpos_down :: proc(b: ^Buffer, width, row, sub, k: int) -> (int, int) {
 			k -= 1
 			continue
 		}
-		if row >= len(b.lines) - 1 {
+		next := row_shown_next(b, row + 1)
+		if next >= len(b.lines) {
 			break
 		}
-		ghosts := ghost_below(b, row) + ghost_above(b, row + 1)
-		if k <= ghosts {
-			row += 1
-			sub = 0
-			break
-		}
-		k -= ghosts
-		row += 1
+		ghosts := ghost_below(b, row) + ghost_above(b, next)
+		row = next
 		sub = 0
-		k -= 1
+		if k <= ghosts {
+			break
+		}
+		k -= ghosts + 1
 	}
 	return row, sub
 }
@@ -175,6 +175,9 @@ vpos_dist :: proc(b: ^Buffer, width, r0, s0, r1, s1: int, limit := max(int)) -> 
 	}
 	total := line_rows(b, width, r0) - s0 + ghost_below(b, r0)
 	for r in r0 + 1 ..< r1 {
+		if !row_shown(b, r) {
+			continue
+		}
 		total += ghost_above(b, r) + line_rows(b, width, r) + ghost_below(b, r)
 		if total >= limit {
 			return total

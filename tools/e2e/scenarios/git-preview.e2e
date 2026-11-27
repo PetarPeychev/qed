@@ -1,0 +1,39 @@
+# The file tree's Git tab previews a change in color: ghost rows for removed lines, tinted added and modified rows, real line numbers.
+requires git
+size 120x32
+sh git init -q && for i in $(seq 1 60); do printf 'value_%02d = %d\n' $i $i; done > app.py && sed -i 's/^value_10 = 10$/value_10 = 10  # a comment long enough to wrap in the preview and to scroll it sideways/' app.py && printf 'gone\nfor good\n' > old.txt && git add . && git commit -qm base
+sh sed -i -e 's/^value_10 = 10 /value_10 = 1000 /' -e '30a extra = 30' -e '/^value_50 /d' app.py && rm old.txt
+run
+wait qed dev
+snap welcome A repo where app.py has a modification at line 10, an addition at line 31 and a deletion near line 50, and old.txt is deleted.
+key alt+g
+wait ⋮
+snap diff-only Alt+g opens the Git tab: only the hunks with their context, the old value_10 as a red ghost above the tinted line (wrapped, following line_wrap) with the changed word emphasized, the added line tinted, the removed value_50 as a ghost, real line numbers and a ⋮ gap row between runs.
+wheel 80 20 down 2
+wait value_50 = 50
+snap diff-only-scrolled The wheel scrolls the elided view down to the last hunk: value_50's removal as a ghost under line 50.
+key alt+d
+wait-gone ⋮
+snap whole-file Alt+d shows the whole file from the top, still colored.
+key down
+wait for good
+snap deleted A deleted file previews its old text tinted as removed.
+config
+{"lsp": {"enabled": false}, "line_wrap": false}
+end
+wait reloaded
+key up
+wait value_01
+wheel 80 12 right 1
+wait-gone value_01
+snap sideways With line_wrap off the preview scrolls sideways (Alt+wheel or the sideways wheel); the ghost row scrolls with the text and its changed word stays in place.
+key enter
+wait-gone Unsaved
+key ctrl+p
+type Toggle Line Wrap
+key enter
+wait Line wrap: on
+snap editor-wrap Enter opens app.py; Toggle Line Wrap from the palette turns wrap back on for the session, without touching config.json.
+key alt+g
+wait scroll it sideways
+snap preview-follows Alt+g again: the preview follows the toggle and wraps the long line, ghost row included above it.

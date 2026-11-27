@@ -265,10 +265,16 @@ deco_ghost_count :: proc(b: ^Buffer, row: int, above: bool) -> int {
 }
 
 ghost_above :: proc(b: ^Buffer, row: int) -> int {
-	return diff_above(b, row) + deco_ghost_count(b, row, true)
+	if !row_shown(b, row) {
+		return 0
+	}
+	return diff_gap_above(b, row) + diff_above(b, row) + deco_ghost_count(b, row, true)
 }
 
 ghost_below :: proc(b: ^Buffer, row: int) -> int {
+	if !row_shown(b, row) {
+		return 0
+	}
 	return diff_below(b, row) + deco_ghost_count(b, row, false)
 }
 
@@ -354,8 +360,8 @@ editor_render_deco_ghosts :: proc(b: ^Buffer, view: ^EditorView, row: int, above
 			for &c in ccol {
 				c = fg
 			}
-			editor_render_ghost_gutter(view.x, sy, gutter, ' ')
-			editor_render_text_row(view.x + gutter, sy, w, text, ccol, 0, view.bg, -1, -1, nil, 0, len(text))
+			editor_render_ghost_gutter(view.x, sy, gutter, view.gutter_bg, ' ')
+			editor_render_text_row(view.x + gutter, sy, w, text, ccol, view.scroll_col, view.bg, -1, -1, nil, 0, len(text))
 			sy += 1
 		}
 	}
@@ -488,7 +494,7 @@ inline_render :: proc(editor: ^Editor, cx, cy: int) {
 	vh := area.y + area.h
 	full_w := gutter + area.w
 	drow := deco_rows(b, b.cursor.row, b.cursor.row + 1, deco_palette(editor.plugins.colors[:]))
-	line_bg := editor_line_bg(true, diff_mark_at(b, b.cursor.row), diff_view_on(), drow[0].tints[:])
+	line_bg := editor_line_bg(true, diff_mark_at(b, b.cursor.row), diff_view_on(b), drow[0].tints[:])
 
 	emit :: proc(text: string, gutter, full_w, y, bx: int, fg, bg: tb2.Color) -> int {
 		bx := bx

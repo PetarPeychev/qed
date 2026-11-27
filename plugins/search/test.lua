@@ -139,6 +139,9 @@ function tests.dash_scope(test)
 	write("-dash/f.txt", "needle_xyz in dash")
 	test.key("Alt+f")
 	test.settle()
+	for _ = 1, 4 do
+		test.key("Up")
+	end
 	open(test)
 	test.type("needle_xyz")
 	local ui = results(test)
@@ -175,6 +178,9 @@ function tests.tree_dir_scope(test)
 	write("outside.txt", "needle_xyz at root")
 	test.key("Alt+f")
 	test.settle()
+	for _ = 1, 4 do
+		test.key("Up")
+	end
 	open(test)
 	test.ok(test.editor().tree, "the tree stays open underneath")
 	test.type("needle_xyz")
@@ -194,6 +200,9 @@ function tests.tree_open_result_closes_tree(test)
 	write("hay.txt", "first line\nneedle_xyz here\n")
 	test.key("Alt+f")
 	test.settle()
+	for _ = 1, 4 do
+		test.key("Up")
+	end
 	open(test)
 	test.type("needle_xyz")
 	results(test)

@@ -246,6 +246,7 @@ ICON_LSP_FAILED: string
 ICON_DIAG_ERROR: string
 ICON_DIAG_WARN: string
 ICON_DIAG_INFO: string
+ICON_DIFF_GAP: string
 
 config_icons := [?]Config_Str {
 	{"status_file", &ICON_STATUS_FILE},
@@ -265,6 +266,7 @@ config_icons := [?]Config_Str {
 	{"diagnostic_error", &ICON_DIAG_ERROR},
 	{"diagnostic_warning", &ICON_DIAG_WARN},
 	{"diagnostic_info", &ICON_DIAG_INFO},
+	{"diff_gap", &ICON_DIFF_GAP},
 }
 
 CURRENT_LINE_TINT: f32

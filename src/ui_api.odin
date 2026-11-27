@@ -29,7 +29,7 @@ ui_kind_props := [UiKind][]string {
 	.Box            = {"border", "title"},
 	.Scroll         = {"header", "follow"},
 	.Text           = {"wrap", "align"},
-	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly", "highlight_style"},
+	.Editor         = {"buffer", "placeholder", "line_numbers", "syntax", "wrap", "readonly", "highlight_style", "diff"},
 	.Virtual_Column = {"data", "item", "highlight_style"},
 	.Outlet         = {},
 	.Image          = {"path"},
@@ -517,6 +517,19 @@ ui_marshal :: proc(marshal: ^UiMarshal, idx: c.int, depth: int) -> ^UiNode {
 		case "wrap":
 			node.wrap = bool(lua.toboolean(L, value_index))
 			node.wrap_set = true
+		case "diff":
+			node.diff_set = true
+			if lua.type(L, value_index) == .STRING {
+				if text, _ := lua.toodinstring(L, value_index); text == "changes" {
+					node.diff = .Changes
+				} else {
+					ui_marshal_fail(marshal, `diff: true, false or "changes" expected`)
+				}
+			} else if lua.type(L, value_index) == .BOOLEAN {
+				node.diff = .Inline if lua.toboolean(L, value_index) else .Global
+			} else {
+				ui_marshal_fail(marshal, `diff: true, false or "changes" expected`)
+			}
 		case "line_numbers":
 			node.line_numbers = bool(lua.toboolean(L, value_index))
 		case "syntax":

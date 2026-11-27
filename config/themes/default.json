@@ -115,7 +115,8 @@
     "lsp_failed": "✗",
     "diagnostic_error": "»",
     "diagnostic_warning": "›",
-    "diagnostic_info": "~"
+    "diagnostic_info": "~",
+    "diff_gap": "⋮"
   },
   "tints": {
     "current_line": 0.06,

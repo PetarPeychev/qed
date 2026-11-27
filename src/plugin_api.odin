@@ -852,11 +852,11 @@ qed_buf_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 	}
 	// a cursor set since the last frame scrolls first, as the next frame would
 	ui_buffer_view_reveal(editor, node, b)
-	w, h := ui_editor_text_width(node, b), node.rect.h
+	w, h := ui_editor_wrap_width(node, b), node.rect.h
 	row, sub := b.cursor.row, 0
 	if lua.type(L, 2) > .NIL {
 		row = api_int(L, 2, "row must be an integer") - 1
-	} else if b.wrap && w > 0 {
+	} else if w > 0 {
 		sub = wrap_subrow(buffer_line_wrap(b, row, w), b.cursor.col)
 	}
 	if row < 0 || row >= len(b.lines) || vpos_cmp(row, sub, state.scroll_row, state.scroll_sub) < 0 {
@@ -881,18 +881,18 @@ qed_buf_set_screen_row :: proc "c" (L: ^lua.State) -> c.int {
 		lua.L_argerror(L, 2, "row must be a number")
 	}
 	position := clamp(f64(lua.tonumberx(L, 2, nil)) - 1, 0, f64(len(b.lines) - 1))
-	row := int(position)
+	row := row_shown_near(b, int(position))
 	at := api_int(L, 3, "screen row must be an integer")
 	node, state := ui_buffer_view(editor, b)
 	if node == nil {
 		return api_fail(L, "not shown")
 	}
-	w, h := ui_editor_text_width(node, b), node.rect.h
+	w, h := ui_editor_wrap_width(node, b), node.rect.h
 	// a fraction of the row picks its wrapped sub-row; the epsilon keeps top_row's own thirds from flooring a row short
 	rows := line_rows(b, w, row)
 	sub := clamp(int(math.floor((position - f64(row)) * f64(rows) + 1e-6)), 0, rows - 1)
 	top_r, top_s := vpos_up(b, w, row, sub, clamp(at, 1, max(1, h)) - 1)
-	last := len(b.lines) - 1
+	last := row_shown_prev(b, len(b.lines) - 1)
 	max_r, max_s := vpos_up(b, w, last, line_rows(b, w, last) - 1, h - 1)
 	if vpos_cmp(top_r, top_s, max_r, max_s) > 0 {
 		top_r, top_s = max_r, max_s

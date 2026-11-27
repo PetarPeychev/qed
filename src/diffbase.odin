@@ -9,6 +9,12 @@ DIFF_MAX_D :: 2000
 
 g_diff_view: bool
 
+DiffView :: enum u8 {
+	Global,
+	Inline,
+	Changes,
+}
+
 DiffMark :: enum u8 {
 	None,
 	Added,
@@ -44,6 +50,9 @@ DiffBase :: struct {
 	below:     [dynamic]int,
 	hunks:     [dynamic]DiffHunk,
 	changes:   [dynamic]DiffChange,
+	shown:     [dynamic]bool,
+	shown_ctx: int,
+	first:     int,
 }
 
 diffbase_destroy :: proc(g: ^DiffBase) {
@@ -59,6 +68,7 @@ diffbase_destroy :: proc(g: ^DiffBase) {
 	delete(g.below)
 	delete(g.hunks)
 	delete(g.changes)
+	delete(g.shown)
 }
 
 diff_hash :: proc(bytes: []u8) -> u64 {
@@ -135,12 +145,86 @@ diffbase_invalidate :: proc(b: ^Buffer) {
 
 diffbase_update :: proc(b: ^Buffer) {
 	g := &b.base
-	if g.computed && g.rev == b.rev {
+	shown_ctx := PREVIEW_DIFF_CONTEXT if b.diff_view == .Changes else -1
+	if g.computed && g.rev == b.rev && g.shown_ctx == shown_ctx {
 		return
 	}
 	diffbase_recompute(b)
+	diffbase_elide(b, shown_ctx)
 	g.computed = true
 	g.rev = b.rev
+}
+
+// diff view `.Changes` shows only the changed rows and shown_ctx rows around them; a diff with no change shows all
+diffbase_elide :: proc(b: ^Buffer, shown_ctx: int) {
+	g := &b.base
+	g.shown_ctx = shown_ctx
+	g.first = 0
+	clear(&g.shown)
+	if shown_ctx < 0 || len(g.changes) == 0 {
+		return
+	}
+	resize(&g.shown, len(b.lines))
+	for i in 0 ..< len(b.lines) {
+		g.shown[i] = false
+	}
+	for mark, row in g.marks {
+		if mark != .None {
+			for i in max(0, row - shown_ctx) ..= min(len(g.shown) - 1, row + shown_ctx) {
+				g.shown[i] = true
+			}
+		}
+	}
+	g.first = row_shown_next(b, 0)
+}
+
+row_shown :: proc(b: ^Buffer, row: int) -> bool {
+	return row < 0 || row >= len(b.base.shown) || b.base.shown[row]
+}
+
+// the first shown row at or after row; len(b.lines) when none
+row_shown_next :: proc(b: ^Buffer, row: int) -> int {
+	row := max(row, 0)
+	for row < len(b.lines) && !row_shown(b, row) {
+		row += 1
+	}
+	return row
+}
+
+// the last shown row at or before row; -1 when none
+row_shown_prev :: proc(b: ^Buffer, row: int) -> int {
+	row := min(row, len(b.lines) - 1)
+	for row >= 0 && !row_shown(b, row) {
+		row -= 1
+	}
+	return row
+}
+
+row_shown_near :: proc(b: ^Buffer, row: int) -> int {
+	next := row_shown_next(b, row)
+	return next if next < len(b.lines) else max(row_shown_prev(b, row), 0)
+}
+
+// count shown rows from row, clamped at either end
+row_shown_step :: proc(b: ^Buffer, row, count: int) -> int {
+	row := row
+	for _ in 0 ..< abs(count) {
+		next := row_shown_next(b, row + 1) if count > 0 else row_shown_prev(b, row - 1)
+		if next < 0 || next >= len(b.lines) {
+			break
+		}
+		row = next
+	}
+	return row
+}
+
+// one gap row stands for each run of hidden rows between two shown ones
+diff_gap_above :: proc(b: ^Buffer, row: int) -> int {
+	g := &b.base
+	if row <= g.first || row >= len(g.shown) || !g.shown[row] || g.shown[row - 1] {
+		return 0
+	}
+	return 1
 }
 
 diffbase_unload :: proc(editor: ^Editor, owner: string) {
@@ -569,26 +653,26 @@ diff_mark_at :: proc(b: ^Buffer, row: int) -> DiffMark {
 	return b.base.marks[row]
 }
 
-diff_view_on :: proc() -> bool {
-	return g_diff_view
+diff_view_on :: proc(b: ^Buffer) -> bool {
+	return g_diff_view || b.diff_view != .Global
 }
 
 diff_above :: proc(b: ^Buffer, row: int) -> int {
-	if !diff_view_on() || row < 0 || row >= len(b.base.above) {
+	if !diff_view_on(b) || row < 0 || row >= len(b.base.above) {
 		return 0
 	}
 	return b.base.above[row]
 }
 
 diff_below :: proc(b: ^Buffer, row: int) -> int {
-	if !diff_view_on() || row < 0 || row >= len(b.base.below) {
+	if !diff_view_on(b) || row < 0 || row >= len(b.base.below) {
 		return 0
 	}
 	return b.base.below[row]
 }
 
 diff_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (DiffHunk, bool) {
-	if !diff_view_on() {
+	if !diff_view_on(b) {
 		return {}, false
 	}
 	for h in b.base.hunks {
@@ -600,7 +684,7 @@ diff_hunk_at :: proc(b: ^Buffer, row: int, above: bool) -> (DiffHunk, bool) {
 }
 
 diff_pair_old :: proc(b: ^Buffer, row: int) -> (string, bool) {
-	if !diff_view_on() {
+	if !diff_view_on(b) {
 		return "", false
 	}
 	for h in b.base.hunks {

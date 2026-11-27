@@ -98,7 +98,7 @@ e2e_mouse_wheel_sideways :: proc(t: ^testing.T) {
 	e := e2e_start(fmt.tprintf("short\n\n\n%s\n%s", long, strings.repeat("y\n", 60, context.temp_allocator)))
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
-	b.wrap = false
+	g_line_wrap = false
 	e2e_render(&e)
 	g := editor_gutter_width(&e.ed)
 	node := ui_find(&e.ed.ui, "#layout/main_editor")
@@ -136,7 +136,7 @@ e2e_mouse_wheel_sideways :: proc(t: ^testing.T) {
 
 	b.cursor = {0, 0}
 	e2e_render(&e)
-	b.wrap = true
+	g_line_wrap = true
 	e2e_render(&e)
 	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Down, mod = .Alt)
 	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Right)

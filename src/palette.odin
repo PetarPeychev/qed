@@ -79,9 +79,8 @@ cmd_toggle_diff_view :: proc(editor: ^Editor) {
 }
 
 cmd_toggle_line_wrap :: proc(editor: ^Editor) {
-	b := editor_buffer(editor)
-	b.wrap = !b.wrap
-	editor_log(editor, .Info, "", fmt.tprintf("Line wrap: %s", "on" if b.wrap else "off"))
+	g_line_wrap = !g_line_wrap
+	editor_log(editor, .Info, "", fmt.tprintf("Line wrap: %s", "on" if g_line_wrap else "off"))
 }
 
 cmd_inspect_tokens :: proc(editor: ^Editor) {inspect_toggle(editor)}

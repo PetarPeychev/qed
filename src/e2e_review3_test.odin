@@ -175,7 +175,7 @@ e2e_caret_area_follows_the_node :: proc(t: ^testing.T) {
 	area := editor_caret_area(&e.ed)
 	testing.expect_value(t, area.h, E2E_H - 2)
 	testing.expect_value(t, area.gutter, 3)
-	clips := highlight_clips_view(editor_buffer(&e.ed), 10, 5, 0, 0, 0, false, 0, 1)
+	clips := highlight_clips_view(editor_buffer(&e.ed), 10, 5, 0, 0, 0, true, false, 0, 1)
 	testing.expect_value(t, len(clips), 0)
 }
 

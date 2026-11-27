@@ -83,7 +83,7 @@ Positional values are children, named values are props. Common props: `id`, `key
 | `box` | exactly one laid out | `border`, `title` |
 | `scroll` | exactly one laid out | `header` (a laid-out node pinned above), `follow` (opens at the end and stays there; a user highlight off the list's last row parks it, until the user reaches the end again by any means or the parked row leaves the data); the wheel and the `list` keys fire `on.state{offset}` when the offset moves |
 | `text` | strings and spans `{fg =, bold =, "text", ...}` | `wrap` (by cluster), `align`; overflow clips with `…` |
-| `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (writes the buffer's flag; absent = the buffer's), `readonly`, `highlight_style` (its cursor row while unfocused) |
+| `editor` | floating only | `buffer`, `placeholder`, `line_numbers` (gutter with diff marks and diagnostics, current-line tint), `syntax`, `wrap` (forces soft wrap on or off for this view; absent = the session's *Toggle Line Wrap* state, seeded from `line_wrap`; a one-row field never wraps), `readonly`, `highlight_style` (its cursor row while unfocused), `diff` (writes the buffer's flag: `true` forces the inline diff view, `"changes"` also shows only changed rows plus `preview_diff_context` around them, a `diff_gap` row per hidden run, line numbers kept) |
 | `virtual_column` | none | `data` (a `qed.List` or `qed.FuzzyList`), `item = function(record) -> node`, `highlight_style` |
 | `outlet` | none | `id` |
 | `terminal` | none | `session` (a `qed.term` name); takes keys not bound in its own scope, paste and the mouse; Esc goes to the program in alt-screen |

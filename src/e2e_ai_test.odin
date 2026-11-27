@@ -23,7 +23,7 @@ coexist_start :: proc(t: ^testing.T) -> (E2E, bool) {
 	e2e_spawn_fake(&e, "curl", `{"choices":[{"message":{"content":"ha\nGHOST"}}]}`)
 	testing.expect(t, e2e_lsp_wait(&e, pred_ready), "server should be ready")
 	b := editor_buffer(&e.ed)
-	b.wrap = false
+	g_line_wrap = false
 	b.cursor = {10, 0}
 	plugin_flush(&e.ed)
 	e2e_type(&e, "alp")

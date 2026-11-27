@@ -494,7 +494,7 @@ function qed.ui.scroll(props) end
 ---@return qed.Node
 function qed.ui.text(props) end
 
----A view over a buffer. Props: `buffer`, `placeholder`, `line_numbers`, `syntax`, `wrap`, `readonly`. With `scope = "editor"` typing inserts and the `editor` scope's commands move and edit; one row high it is a field (no indent, pairs or newlines; pastes flatten).
+---A view over a buffer. Props: `buffer`, `placeholder`, `line_numbers`, `syntax`, `wrap` (forces wrap on or off; absent follows *Toggle Line Wrap*, one-row fields never wrap), `readonly`, `diff` (`true`: the inline diff view whatever the global toggle; `"changes"`: that, showing only the changed rows and `preview_diff_context` rows around them, one gap row per hidden run). With `scope = "editor"` typing inserts and the `editor` scope's commands move and edit; one row high it is a field (no indent, pairs or newlines; pastes flatten).
 ---@param props table
 ---@return qed.Node
 function qed.ui.editor(props) end

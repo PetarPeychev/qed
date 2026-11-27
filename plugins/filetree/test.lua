@@ -43,7 +43,7 @@ function tests.opens_on_a_tab_and_switches(test)
 	test.key("Shift+Tab")
 	test.eq(labels(test), "", "Shift+Tab wraps to the empty Unsaved tab")
 	test.key("Tab")
-	test.eq(test.ui().selected, "sub", "back on All from an empty tab, the first row is highlighted")
+	test.eq(test.ui().selected, "a.txt", "back on All from an empty tab, the current file is highlighted")
 	test.key("Tab")
 	test.key("Alt+u")
 	test.eq(labels(test), "", "the Unsaved tab")
@@ -201,6 +201,126 @@ function tests.close_discards_only_approved_ids(test)
 	buffer:insert({row = 1, col = 1}, "y")
 	test.ok(not qed.close(buffer, {discard = {}}), "an unapproved unsaved buffer stays")
 	test.ok(qed.close(buffer, {discard = {buffer}}), "an approved one closes")
+end
+
+local function screen_find(test, needle)
+	for screen_row = 0, 39 do
+		local row = test.screen(screen_row)
+		local at = row:find(needle, 1, true)
+		if at then
+			return screen_row, utf8.len(row:sub(1, at - 1))
+		end
+	end
+end
+
+function tests.git_preview_colors_the_diff(test)
+	test.resize(160, 40)
+	local base, text = {}, {}
+	for i = 1, 40 do
+		base[i] = "row " .. i
+		text[#text + 1] = i == 10 and "row 10 changed" or "row " .. i
+		if i == 30 then
+			text[#text + 1] = "added"
+		end
+	end
+	qed.fs.write(qed.path.join(qed.root(), "app.txt"), table.concat(base, "\n") .. "\n")
+	qed.fs.write(qed.path.join(qed.root(), "old.txt"), "gone\nfor good\n")
+	test.ok(test.sh("git init -q && git config user.email e2e@qed.test && git config user.name qed && git config commit.gpgsign false && git add -A && git commit -q -m seed"), "seed commit")
+	qed.fs.write(qed.path.join(qed.root(), "app.txt"), table.concat(text, "\n") .. "\n")
+	test.ok(test.sh("rm old.txt"))
+	test.settle()
+	test.key("Alt+g")
+	test.wait(function() return screen_find(test, "⋮") ~= nil end)
+
+	local live, x = screen_find(test, "row 10 changed")
+	local ghost = screen_find(test, "row 10 ")
+	local plain = screen_find(test, "row 11")
+	test.eq(ghost, live - 1, "diff-only: the old line is a ghost row above the change")
+	test.ok(test.bg(x, ghost) ~= test.bg(x, plain), "the ghost row is tinted")
+	test.ok(test.bg(x, live) ~= test.bg(x, plain), "the modified row is tinted")
+	test.ok(test.bg(x + 7, live) ~= test.bg(x, live), "its changed word is emphasized")
+	test.ok(test.screen(live):find("10 row 10 changed", 1, true), "real line numbers")
+	test.ok(screen_find(test, "28 row 28"), "real line numbers after the gap")
+	local added, added_x = screen_find(test, "31 added")
+	test.ok(added and test.bg(added_x + 3, added) ~= test.bg(added_x + 3, added + 1), "the added row is tinted")
+	test.ok(not screen_find(test, "row 20"), "rows away from the changes are hidden")
+
+	test.key("Alt+d")
+	test.wait(function() return screen_find(test, "⋮") == nil end)
+	test.ok(screen_find(test, " 1 row 1 "), "the whole file from the top")
+	live, x = screen_find(test, "row 10 changed")
+	ghost = screen_find(test, "row 10 ")
+	test.eq(ghost, live - 1, "whole file: the ghost row stays")
+	test.ok(test.bg(x, live) ~= test.bg(x, live + 1), "and the tint")
+	test.ok(test.screen(live):find("10 row 10 changed", 1, true), "real line numbers")
+
+	test.key("Down")
+	test.wait(function() return screen_find(test, "for good") ~= nil end)
+	local gone, gone_x = screen_find(test, "1 gone")
+	test.ok(test.bg(gone_x + 2, gone) ~= test.bg(gone_x + 2, gone + 3), "a deleted file shows its old text tinted as removed")
+end
+
+function tests.open_reveals_the_current_file(test)
+	test.sh("mkdir -p x/y && echo z > x/y/z.txt && echo w > w.txt")
+	test.open("x/y/z.txt")
+	qed.run("File Tree: All")
+	test.eq(labels(test), "x,y,z.txt,start.txt,w.txt", "its dirs expand")
+	test.eq(test.ui().selected, "z.txt", "and it is highlighted")
+end
+
+function tests.git_to_all_reveals_the_current_file(test)
+	test.ok(test.sh("git init -q && git config user.email e2e@qed.test && git config user.name qed && git config commit.gpgsign false"), "git init")
+	test.sh("mkdir -p a/b/c && echo one > a/b/c/deep.txt && echo top > top.txt")
+	test.ok(test.sh("git add -A && git commit -q -m seed"), "seed commit")
+	test.sh("echo two >> a/b/c/deep.txt")
+	test.open("a/b/c/deep.txt")
+	test.settle()
+	test.key("Alt+g")
+	test.wait(function() return test.ui().selected == "deep.txt" end)
+	test.eq(qed.plugin("filetree").state().tab, "Git", "the Git tab highlights the changed current file")
+	test.key("Alt+f")
+	test.eq(qed.plugin("filetree").state().tab, "All")
+	test.eq(labels(test), "a,b,c,deep.txt,start.txt,top.txt", "All expands down to it")
+	test.eq(test.ui().selected, "deep.txt")
+end
+
+function tests.a_tab_without_the_current_file_falls_back_to_its_last_row(test)
+	test.sh("echo a > a.txt && echo b > b.txt && echo c > c.txt")
+	for _, name in ipairs({"a.txt", "b.txt"}) do
+		test.open(name):insert({row = 1, col = 1}, "x")
+	end
+	test.open("c.txt")
+	qed.run("File Tree: Unsaved")
+	test.eq(labels(test), "a.txt,b.txt")
+	test.eq(test.ui().selected, "a.txt", "the first row without a last row")
+	test.key("Down")
+	test.key("Esc")
+	qed.run("File Tree: Unsaved")
+	test.eq(test.ui().selected, "b.txt", "reopened on its last row")
+	test.key("Alt+f")
+	test.eq(test.ui().selected, "c.txt", "All lands on the current file")
+	test.key("Alt+u")
+	test.eq(test.ui().selected, "b.txt", "switching back lands on the last row again")
+end
+
+function tests.a_tab_that_lists_the_current_file_later_still_lands_on_it(test)
+	test.sh("mkdir -p x/y && echo z > x/y/z.txt && echo w > w.txt")
+	test.open("x/y/z.txt")
+	local tree = qed.plugin("filetree")
+	tree.set_tab{label = "Late", paths = {}, empty = "loading"}
+	test.settle()
+	tree.open("Late")
+	test.settle()
+	test.eq(labels(test), "", "nothing listed yet")
+	local root = qed.root()
+	tree.set_tab{label = "Late", paths = {root .. "/w.txt", root .. "/x/y/z.txt"}}
+	test.settle()
+	test.eq(test.ui().selected, "z.txt", "the file is highlighted once the tab lists it")
+	test.key("Up")
+	tree.set_tab{label = "Late", paths = {root .. "/w.txt", root .. "/x/y/z.txt"}, empty = "again"}
+	test.settle()
+	test.eq(test.ui().selected, "y", "a moved highlight stays put")
+	tree.remove_tab("Late")
 end
 
 return tests

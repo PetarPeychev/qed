@@ -68,7 +68,6 @@ test_wrap_subrow :: proc(t: ^testing.T) {
 test_cursor_visual_down_stays_in_line :: proc(t: ^testing.T) {
 	b := test_buffer("the quick brown fox")
 	defer buffer_destroy(&b)
-	b.wrap = true
 	b.wrap_width = 10
 	b.cursor = {0, 0}
 	b.goal_col = 0
@@ -84,7 +83,6 @@ test_cursor_visual_down_stays_in_line :: proc(t: ^testing.T) {
 test_cursor_visual_end :: proc(t: ^testing.T) {
 	b := test_buffer("the quick brown fox")
 	defer buffer_destroy(&b)
-	b.wrap = true
 	b.wrap_width = 10
 
 	b.cursor = {0, 10}
@@ -98,7 +96,6 @@ test_cursor_smart_home_wrap :: proc(t: ^testing.T) {
 	// second -> logical line start.
 	b := test_buffer("the quick brown fox")
 	defer buffer_destroy(&b)
-	b.wrap = true
 	b.wrap_width = 10
 	b.cursor = {0, 13} // inside "brown" on the 2nd visual row
 
@@ -110,7 +107,6 @@ test_cursor_smart_home_wrap :: proc(t: ^testing.T) {
 	// First visual row stays indent-aware.
 	b2 := test_buffer("    hi there")
 	defer buffer_destroy(&b2)
-	b2.wrap = true
 	b2.wrap_width = 40
 	b2.cursor = {0, 8}
 	cursor_move_home_smart(&b2)

@@ -20,7 +20,7 @@ e2e_long_line_wrapped_segments_render :: proc(t: ^testing.T) {
 	e := e2e_start(fmt.tprintf("%s\n\tté́xt\t😀 tail\n", line))
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
-	b.wrap = true
+	g_line_wrap = true
 	b.cursor = {0, len(line) / 2}
 	e2e_render(&e)
 	gutter := editor_gutter_width(&e.ed)
@@ -127,7 +127,7 @@ e2e_highlight_clip_matches_full :: proc(t: ^testing.T) {
 	b := editor_buffer(&e.ed)
 	b.language = .C
 
-	b.wrap = false
+	g_line_wrap = false
 	main_view(&e).scroll_row, main_view(&e).scroll_sub = 2, 0
 	b.cursor = {4, 0}
 	clip_check(t, &e, "wrap off, column 0")
@@ -138,7 +138,7 @@ e2e_highlight_clip_matches_full :: proc(t: ^testing.T) {
 		clip_check(t, &e, fmt.tprintf("wrap off, second long row at %d", col))
 	}
 
-	b.wrap = true
+	g_line_wrap = true
 	main_view(&e).scroll_row, main_view(&e).scroll_sub = 2, 0
 	b.cursor = {2, 0}
 	clip_check(t, &e, "wrap on, comment above")

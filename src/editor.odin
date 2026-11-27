@@ -113,6 +113,7 @@ editor_init :: proc(path: string = "", headless := false) -> Editor {
 		headless       = headless,
 	}
 	g_diff_view = DIFF_VIEW
+	g_line_wrap = LINE_WRAP
 	if !headless {
 		editor_log_seed(&editor)
 	}
@@ -828,7 +829,11 @@ editor_maybe_reload_config :: proc(editor: ^Editor) -> bool {
 		return false
 	}
 	editor_log(editor, .Debug, "Config", fmt.tprintf("hot-reload: config=%v theme=%v (%s)", cfg_changed, theme_changed, path))
+	line_wrap := LINE_WRAP
 	message, is_error := config_load_from(path)
+	if LINE_WRAP != line_wrap {
+		g_line_wrap = LINE_WRAP
+	}
 	// a theme previewed from an open plugin pane (the theme picker) stays shown over a reload
 	picker := ui_layer_used(&editor.ui, "pane") || ui_layer_used(&editor.ui, "alert")
 	if !picker || editor.theme_shown == "" || !theme_preview(path, editor.theme_shown) {
@@ -894,7 +899,7 @@ editor_goto :: proc(editor: ^Editor, row, col: int) {
 	}
 }
 
-highlight_clips_view :: proc(b: ^Buffer, w, h, scroll_row, scroll_sub, scroll_col: int, ghost: bool, top, bot: int) -> []HighlightClip {
+highlight_clips_view :: proc(b: ^Buffer, w, h, scroll_row, scroll_sub, scroll_col: int, wrap, ghost: bool, top, bot: int) -> []HighlightClip {
 	clips := make([dynamic]HighlightClip, context.temp_allocator)
 	if w <= 0 {
 		return nil
@@ -905,7 +910,7 @@ highlight_clips_view :: proc(b: ^Buffer, w, h, scroll_row, scroll_sub, scroll_co
 			continue
 		}
 		lo, hi: int
-		if b.wrap {
+		if wrap {
 			// A ghost line wraps from its start, its text only pushing the line's bytes further down.
 			segs := buffer_line_wrap(b, row, w)
 			sub := clamp(scroll_sub, 0, len(segs) - 1) if row == scroll_row && !(ghost && row == b.cursor.row) else 0
@@ -1071,13 +1076,13 @@ editor_render_ghost_line :: proc(editor: ^Editor, b: ^Buffer, view: ^EditorView,
 	return sy
 }
 
-editor_render_ghost_gutter :: proc(left, y, width: int, mark: rune = '▌') {
+editor_render_ghost_gutter :: proc(left, y, width: int, bg: tb2.Color, mark: rune = '▌') {
 	if width <= 0 {
 		return
 	}
-	tb2.set_cell(i32(left), i32(y), mark, COLOR_GIT_DEL, COLOR_GUTTER_BG)
+	tb2.set_cell(i32(left), i32(y), mark, COLOR_GIT_DEL, bg)
 	for x in 1 ..< width {
-		tb2.set_cell(i32(left + x), i32(y), ' ', COLOR_GUTTER_FG, COLOR_GUTTER_BG)
+		tb2.set_cell(i32(left + x), i32(y), ' ', COLOR_GUTTER_FG, bg)
 	}
 }
 
@@ -1090,8 +1095,8 @@ editor_render_hunk_ghosts :: proc(b: ^Buffer, view: ^EditorView, row: int, above
 	if !ok {
 		return screen_y
 	}
-	ghost_bg := color_over(COLOR_BG, COLOR_GIT_DEL, GIT_DIFF_GHOST_TINT)
-	word_bg := color_over(COLOR_BG, COLOR_GIT_DEL, GIT_DIFF_WORD_TINT)
+	ghost_bg := color_over(view.bg, COLOR_GIT_DEL, GIT_DIFF_GHOST_TINT)
+	word_bg := color_over(view.bg, COLOR_GIT_DEL, GIT_DIFF_WORD_TINT)
 	sy := screen_y
 	for gi in 0 ..< hunk.hi - hunk.lo {
 		if sy >= h {
@@ -1107,11 +1112,31 @@ editor_render_hunk_ghosts :: proc(b: ^Buffer, view: ^EditorView, row: int, above
 		for i in 0 ..< len(old) {
 			ccol[i] = COLOR_GHOST_FG
 		}
-		editor_render_ghost_gutter(view.x, sy, gutter)
-		editor_render_text_row(view.x + gutter, sy, w, old, ccol, 0, ghost_bg, -1, -1, nil, 0, len(old), df, dt, word_bg)
+		editor_render_ghost_gutter(view.x, sy, gutter, view.gutter_bg)
+		editor_render_text_row(view.x + gutter, sy, w, old, ccol, view.scroll_col, ghost_bg, -1, -1, nil, 0, len(old), df, dt, word_bg)
 		sy += 1
 	}
 	return sy
+}
+
+editor_render_gap_row :: proc(view: ^EditorView, y: int) {
+	for x in 0 ..< view.gutter {
+		tb2.set_cell(i32(view.x + x), i32(y), ' ', COLOR_GUTTER_FG, view.gutter_bg)
+	}
+	icon := transmute([]u8)ICON_DIFF_GAP
+	colors := make([]tb2.Color, len(icon), context.temp_allocator)
+	slice.fill(colors, COLOR_PANE_SHORTCUT_FG)
+	editor_render_text_row(view.x + view.gutter, y, view.w, icon, colors, 0, view.bg, -1, -1, nil, 0, len(icon))
+}
+
+// elided rows put more buffer rows on screen than its height
+view_bottom_row :: proc(b: ^Buffer, width, row, sub, height: int) -> int {
+	bottom := row + height - 1
+	if len(b.base.shown) > 0 {
+		last, _ := vpos_down(b, width, row, sub, height - 1)
+		bottom = max(bottom, last)
+	}
+	return bottom
 }
 
 EditorView :: struct {
@@ -1127,6 +1152,7 @@ EditorView :: struct {
 	// an unfocused editor with a highlight_style marks its cursor row (a preview's target) in that background
 	target_bg:                          Maybe(tb2.Color),
 	find, inline:                       bool,
+	wrap:                               bool,
 }
 
 editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
@@ -1145,15 +1171,19 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 	}
 
 	pal := deco_palette(editor.plugins.colors[:])
-	drows := deco_rows(b, view.scroll_row, view.scroll_row + view.h, pal)
+	wrapping := view.wrap && w > 0
+	wrap_width := w if wrapping else 0
+	drows := deco_rows(b, view.scroll_row, view_bottom_row(b, wrap_width, view.scroll_row, view.scroll_sub, view.h) + 1, pal)
 
-	b.wrap_width = w
-	wrapping := b.wrap && w > 0
+	b.wrap_width = wrap_width
 	gap := inline_gap(editor) if view.inline else 0
 	// inline_render draws the cursor line's suffix after the ghost, so the line stops at the caret
 	ghost_cut := view.inline && inline_active(editor)
 	screen_y := view.y
 	for row := view.scroll_row; row < len(b.lines) && screen_y < bottom; row += 1 {
+		if !row_shown(b, row) {
+			continue
+		}
 		current := row == b.cursor.row
 		severity := 0
 		for d in b.diags {
@@ -1200,7 +1230,7 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 			slice.fill(colors, view.fg)
 		}
 		drow := drows[row - view.scroll_row] if row - view.scroll_row < len(drows) else DecoRow{}
-		line_bg := editor_line_bg(current && view.current_line, mark, diff_view_on(), drow.tints[:], view.bg)
+		line_bg := editor_line_bg(current && view.current_line, mark, diff_view_on(b), drow.tints[:], view.bg)
 		if target, marked := view.target_bg.?; current && marked {
 			line_bg = target
 		}
@@ -1208,7 +1238,7 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 		// A modification's changed span on the live line, emphasized against its base pair.
 		diff_from, diff_to := -1, -1
 		diff_bg := tb2.Color(0)
-		if diff_view_on() && mark == .Modified {
+		if diff_view_on(b) && mark == .Modified {
 			if old, ok := diff_pair_old(b, row); ok {
 				_, nspan := diff_word_span(old, string(text[:]))
 				diff_from, diff_to = nspan[0], nspan[1]
@@ -1224,6 +1254,10 @@ editor_render_view :: proc(editor: ^Editor, view: ^EditorView) {
 		// Deleted/replaced base lines render as dim-red ghost rows: above a
 		// modification, below a pure deletion. Hidden for the top line.
 		if row != view.scroll_row {
+			if diff_gap_above(b, row) > 0 {
+				editor_render_gap_row(view, screen_y)
+				screen_y += 1
+			}
 			screen_y = editor_render_deco_ghosts(b, view, row, true, screen_y, pal)
 			screen_y = editor_render_hunk_ghosts(b, view, row, true, screen_y)
 			if screen_y >= bottom {

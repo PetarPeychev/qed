@@ -330,7 +330,7 @@ build = function()
 					},
 				},
 				view.preview and view.preview.buffer and ui.editor{id = "filetree_preview", buffer = view.preview.buffer,
-					readonly = true, syntax = true, line_numbers = true}
+					readonly = true, syntax = true, line_numbers = true, diff = show.diff and "changes" or true}
 				or view.preview and ui.image{id = "filetree_preview", path = view.preview.path}
 				or ui.text{""},
 			},
@@ -352,63 +352,6 @@ local function preview_close()
 	end
 end
 
-local function split_lines(text)
-	local out = {}
-	for line in (text .. "\n"):gmatch("([^\n]*)\n") do
-		out[#out + 1] = line
-	end
-	if out[#out] == "" then
-		out[#out] = nil
-	end
-	return out
-end
-
--- set_text takes UTF-8 only: a Latin-1 or binary byte shows as U+FFFD
-local function utf8_repair(text)
-	if utf8.len(text) then
-		return text
-	end
-	local out, at = {}, 1
-	while at <= #text do
-		local ok, bad = utf8.len(text, at)
-		if ok then
-			out[#out + 1] = text:sub(at)
-			break
-		end
-		out[#out + 1] = text:sub(at, bad - 1) .. "\u{FFFD}"
-		at = bad + 1
-	end
-	return table.concat(out)
-end
-
--- diff-only: the changed rows of the file with a little context, runs apart marked by an ellipsis
-local function changed_rows(buffer, base)
-	local current = split_lines(buffer:text())
-	local hunks = qed.text.diff(split_lines(base), current)
-	if not hunks or #hunks == 0 then
-		return nil
-	end
-	local keep = {}
-	for _, hunk in ipairs(hunks) do
-		local first = math.max(1, hunk.b - qed.opt("preview_diff_context"))
-		local last = math.min(#current, hunk.b + math.max(hunk.b_count, 1) - 1 + qed.opt("preview_diff_context"))
-		for row = first, last do
-			keep[row] = true
-		end
-	end
-	local out, previous = {}, 0
-	for row = 1, #current do
-		if keep[row] then
-			if previous ~= 0 and row > previous + 1 then
-				out[#out + 1] = "…"
-			end
-			out[#out + 1] = current[row]
-			previous = row
-		end
-	end
-	return utf8_repair(table.concat(out, "\n"))
-end
-
 -- a deleted file previews its base: what the change removed
 local function preview_load(path, base)
 	preview_close()
@@ -420,11 +363,7 @@ local function preview_load(path, base)
 	end
 	if exists(path) then
 		buffer = qed.buf.create{internal = true, from = path}
-		local only = base and show.diff and changed_rows(buffer, base)
-		if only then
-			buffer:set_text(only)
-			buffer:set_cursor({row = 1, col = 1})
-		elseif base then
+		if base and not base:find("\0", 1, true) then
 			buffer:set_base(base)
 		end
 	else
@@ -480,6 +419,9 @@ local function follow_loading()
 	qed.defer(30, function()
 		current.following = false
 		if view == current then
+			if current.follow then
+				current.land()
+			end
 			rebuild()
 			if current.tree:loading() then
 				follow_loading()
@@ -531,22 +473,88 @@ local function close()
 	end
 end
 
-local function sync()
+local function place(path)
+	ui.node("filetree_rows"):set_state{highlighted = path or false, extend_from = false}
+	if view.follow then
+		view.follow.placed = path or false
+	end
+end
+
+local function closed_ancestors(path)
+	local out, root = {}, qed.root()
+	local prefix = root:sub(-1) == "/" and root or root .. "/"
+	local dir = parent(path)
+	while dir:sub(1, #prefix) == prefix do
+		if not view.tree:expanded(dir) then
+			out[#out + 1] = dir
+		end
+		dir = parent(dir)
+	end
+	return out
+end
+
+-- dirs opened toward a file the tab lacks close again, but not while the tree may still read it in
+local function follow_try()
+	local follow = view.follow
+	if not follow.opened then
+		follow.opened = closed_ancestors(follow.path)
+		view.tree:reveal(follow.path)
+	end
+	-- every tree call may read one more slice, so loading is asked before the final lookup
+	local loading = view.tree:loading()
+	if view.tree:get(follow.path) then
+		place(follow.path)
+		view.follow = nil
+		return true
+	end
+	if not loading then
+		for _, dir in ipairs(follow.opened) do
+			view.tree:expand(dir, false)
+		end
+		follow.opened = nil
+	end
+	return false
+end
+
+-- a follow lasts until the file shows or the highlight moves away from where it put it: a tab may list it only later
+local function land(remembered)
+	local state = ui.node("filetree_rows"):state()
+	local kept = state and state.highlighted
+	if view.follow and ((kept or false) ~= view.follow.placed or view.query:text() ~= "") then
+		view.follow = nil
+	end
+	if view.follow and follow_try() then
+		return
+	end
+	if remembered and view.tree:reveal(remembered) then
+		place(remembered)
+	elseif not kept or not view.tree:get(kept) then
+		local first = view.tree:at(1)
+		place(first and first.path)
+	end
+end
+
+local function sync(arriving)
 	if not view then
 		return
 	end
 	if not builtin(scope) and not tab_of(scope) then
 		scope = "All"
 	end
-	view.tree = source()
+	local tree = source()
+	if view.follow and tree ~= view.tree then
+		view.follow.opened = nil
+	end
+	view.tree = tree
 	view.applied = view.query:text()
 	view.tree:set_query(view.applied)
 	view.buffers = buffers_by_path()
-	local first = view.tree:at(1)
-	local state = ui.node("filetree_rows"):state()
-	local path = state and state.highlighted
-	if not path or not view.tree:get(path) then
-		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false}
+	if arriving then
+		ui.node("filetree_rows"):set_state{highlighted = false, extend_from = false}
+		view.follow = (view.current or "") ~= "" and view.applied == "" and {path = view.current, placed = false} or nil
+		land(last_row[scope])
+	else
+		land()
 	end
 	changed()
 end
@@ -632,11 +640,12 @@ local function open(tab)
 	end
 	local current_buffer = qed.buf.current()
 	view = {query = qed.buf.create{internal = true}, current = current_buffer and current_buffer:path() or "",
-		changed = changed, activate = activate, close = close}
+		changed = changed, activate = activate, close = close, land = function() land() end}
 	view.switch = function(label)
+		local state = ui.node("filetree_rows"):state()
+		last_row[scope] = state and state.highlighted or nil
 		scope = label
-		ui.node("filetree_rows"):set_state{extend_from = false}
-		sync()
+		sync(true)
 	end
 	view.tree = source()
 	view.tree:set_query("")
@@ -652,15 +661,8 @@ local function open(tab)
 		changed(true)
 	end)
 	ui.node("filetree_query"):focus()
-	local remembered = last_row[scope]
-	if remembered and view.tree:reveal(remembered) then
-		ui.node("filetree_rows"):set_state{highlighted = remembered, extend_from = false}
-	else
-		local first = view.tree:at(1)
-		ui.node("filetree_rows"):set_state{highlighted = first and first.path or false, extend_from = false}
-	end
+	sync(true)
 	refresh()
-	changed()
 end
 
 local function switch_tab(step)

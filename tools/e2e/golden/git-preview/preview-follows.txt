@@ -1,0 +1,92 @@
+qed-e2e snapshot 120x32 cursor 12,6
+-- text
+  1 value_01 = 1
+  2 value_02 = 2
+  3 value_03 = 3
+  4 valu┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  5 valu│ All │ Open │ Git │ Unsaved                                                                           │
+  6 valu├───────────────────────────────┬──────────────────────────────────────────────────────────────────────┤
+  7 valu│ > type to filter              │  1 value_01 = 1                                                      │
+  8 valu├───────────────────────────────┤  2 value_02 = 2                                                      │
+  9 valu│▌  app.py               +2  -2 │  3 value_03 = 3                                                      │
+▌10 valu│▌  old.txt              +0  -2 │  4 value_04 = 4                                                      │
+ 11 valu│                               │  5 value_05 = 5                                                      │
+ 12 valu│                               │  6 value_06 = 6                                                      │
+ 13 valu│                               │  7 value_07 = 7                                                      │
+ 14 valu│                               │  8 value_08 = 8                                                      │
+ 15 valu│                               │  9 value_09 = 9                                                      │
+ 16 valu│                               │▌   value_10 = 10  # a comment long enough to wrap in the preview and │
+ 17 valu│                               │▌10 value_10 = 1000  # a comment long enough to wrap in the preview   │
+ 18 valu│                               │    and to scroll it sideways                                         │
+ 19 valu│                               │ 11 value_11 = 11                                                     │
+ 20 valu│                               │ 12 value_12 = 12                                                     │
+ 21 valu│                               │ 13 value_13 = 13                                                     │
+ 22 valu│                               │ 14 value_14 = 14                                                     │
+ 23 valu│                               │ 15 value_15 = 15                                                     │
+ 24 valu│                               │ 16 value_16 = 16                                                     │
+ 25 valu├───────────────────────────────┴──────────────────────────────────────────────────────────────────────┤
+ 26 valu│ Tab tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+p commands                                     Alt+d diff │
+ 27 valu└──────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 28 value_28 = 28
+ 29 value_29 = 29
+ 30 value_30 = 30
+ ≡ root/app.py  1/61  ⎇ main  +2 -4                                                                ◆ python  ⇥ Spaces:4
+
+-- style
+abbbcccccccccccdcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaeeeeeeeeeeefeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaeeeeeeeeeeefeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaeeeeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggeeeeeeee
+aaaaeeeeghgggggggggggggiiigggggggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggeeeeeeee
+aaaaeeeegiiijjjjjjjjjjjjjjhhhhhhhhhhhhhhggkkkhhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeggggggggggggggggggggggggggggggggggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeegmmmmmmmmmnnnnnnnnnnnnnnnoonnpphggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+qaaaeeeegrrrrrrrrrrhhhhhhhhhhhhhhsshhrrhggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhlhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgrgggttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgiggguuuuuuuuuuuvvwwuuxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxuugeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgggggxxxxxxxxxxxxxxxxxxxxxxxxxuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuugeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhggggghhhhhhhhhhhllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgeeeeeeee
+aaaaeeeeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggeeeeeeee
+aaaaeeeeggggggggggggggggggggggggggggggggggggggggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgggggggggggghgeeeeeeee
+aaaaeeeeggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggeeeeeeee
+aaaaeeeeeeeeeeeffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaeeeeeeeeeeeffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaaeeeeeeeeeeeffeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhssrrrhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#f4f4ff bg=#262626
+d fg=#95a99f bg=#262626
+e fg=#f4f4ff bg=#181818
+f fg=#95a99f bg=#181818
+g fg=#868686 bg=#2b2b2b
+h fg=#f4f4ff bg=#2b2b2b
+i fg=#ffdd33 bg=#2b2b2b
+j fg=#686868 bg=#2b2b2b
+k fg=#d8d8d8 bg=#2b2b2b
+l fg=#95a99f bg=#2b2b2b
+m fg=#ffdd33 bg=#4a4a4a
+n fg=#f4f4ff bg=#4a4a4a
+o fg=#73c936 bg=#4a4a4a
+p fg=#f43841 bg=#4a4a4a
+q fg=#ffdd33 bg=#1b1b1b
+r fg=#f43841 bg=#2b2b2b
+s fg=#73c936 bg=#2b2b2b
+t fg=#9e9e9e bg=#432d2e
+u fg=#f4f4ff bg=#44402c
+v fg=#95a99f bg=#44402c
+w fg=#95a99f bg=#84752e
+x fg=#cc8c3c bg=#44402c

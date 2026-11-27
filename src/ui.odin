@@ -164,6 +164,8 @@ UiNode :: struct {
 	spans:           [dynamic]UiSpan,
 	wrap:            bool,
 	wrap_set:        bool,
+	diff:            DiffView,
+	diff_set:        bool,
 	text_align:      UiAlign,
 	buffer:          u64,
 	placeholder:     string,
@@ -826,7 +828,6 @@ ui_internal_create :: proc(editor: ^Editor, owner: string) -> ^Buffer {
 	buffer := new(Buffer)
 	buffer^ = buffer_new()
 	buffer.internal = true
-	buffer.wrap = false
 	buffer.plugin_seen = true
 	buffer.plugin_rev = buffer.rev
 	append(&editor.ui.internal, buffer)
@@ -1535,7 +1536,7 @@ ui_buffer_view :: proc(editor: ^Editor, buffer: ^Buffer) -> (^UiNode, ^UiState) 
 // clamps, since callers read it before the next layout reveals
 ui_view_top :: proc(buffer: ^Buffer, node: ^UiNode, state: ^UiState) -> f64 {
 	row := clamp(state.scroll_row, 0, len(buffer.lines) - 1)
-	rows := line_rows(buffer, ui_editor_text_width(node, buffer), row)
+	rows := line_rows(buffer, ui_editor_wrap_width(node, buffer), row)
 	sub := clamp(state.scroll_sub, 0, rows - 1) if row == state.scroll_row else 0
 	return f64(row) + f64(sub) / f64(rows)
 }
@@ -1551,6 +1552,15 @@ ui_buffer_view_reveal :: proc(editor: ^Editor, node: ^UiNode, buffer: ^Buffer) {
 ui_editor_text_width :: proc(node: ^UiNode, buffer: ^Buffer) -> int {
 	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
 	return max(node.rect.w - gutter, 0)
+}
+
+ui_editor_wraps :: proc(node: ^UiNode) -> bool {
+	return node.wrap if node.wrap_set else g_line_wrap && !ui_node_one_line(node)
+}
+
+// the width the view's lines wrap at: 0 when it does not wrap
+ui_editor_wrap_width :: proc(node: ^UiNode, buffer: ^Buffer) -> int {
+	return ui_editor_text_width(node, buffer) if ui_editor_wraps(node) else 0
 }
 
 ui_editor_pos_cell :: proc(editor: ^Editor, node: ^UiNode, pos: Cursor) -> (cell_x, cell_y: int, known, on_screen: bool) {
@@ -1570,7 +1580,7 @@ ui_editor_pos_cell :: proc(editor: ^Editor, node: ^UiNode, pos: Cursor) -> (cell
 		return
 	}
 	cx, cy: int
-	if buffer.wrap && width > 0 {
+	if ui_editor_wraps(node) && width > 0 {
 		segs := buffer_line_wrap(buffer, pos.row, width)
 		sub := wrap_subrow(segs, col)
 		if pos.row == state.scroll_row && sub < state.scroll_sub {
@@ -1580,7 +1590,7 @@ ui_editor_pos_cell :: proc(editor: ^Editor, node: ^UiNode, pos: Cursor) -> (cell
 		cy = vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, pos.row, sub, node.rect.h + 1)
 	} else {
 		cx = visual_col(text, col) - state.scroll_col
-		cy = pos.row - state.scroll_row
+		cy = vpos_dist(buffer, 0, state.scroll_row, 0, pos.row, 0, node.rect.h + 1)
 	}
 	return node.rect.x + gutter + cx, node.rect.y + cy, true, cy >= 0 && cy < node.rect.h && cx >= 0 && cx < width
 }
@@ -1617,17 +1627,21 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 		state.cursor_seen = buffer.cursor
 		state.reveal = true
 	}
-	state.scroll_row = clamp(state.scroll_row, 0, len(buffer.lines) - 1)
+	if top := row_shown_near(buffer, clamp(state.scroll_row, 0, len(buffer.lines) - 1)); top != state.scroll_row {
+		state.scroll_row, state.scroll_sub = top, 0
+	}
 	width := ui_editor_text_width(node, buffer)
+	wraps := ui_editor_wraps(node)
+	wrap_width := width if wraps else 0
 	height := node.rect.h
 	if !state.reveal || height <= 0 || width <= 0 {
 		return
 	}
 	state.reveal = false
 	sub := 0
-	if buffer.wrap {
+	if wraps {
 		state.scroll_col = 0
-		sub = wrap_subrow(buffer_line_wrap(buffer, buffer.cursor.row, width), buffer.cursor.col)
+		sub = wrap_subrow(buffer_line_wrap(buffer, buffer.cursor.row, wrap_width), buffer.cursor.col)
 	} else {
 		state.scroll_sub = 0
 	}
@@ -1635,21 +1649,21 @@ ui_editor_reveal :: proc(editor: ^Editor, node: ^UiNode) {
 	// cursor keeps scroll_margin rows to the nearer edge
 	margin := clamp(SCROLL_MARGIN, 0, (height - 1) / 2)
 	row, sub_row := buffer.cursor.row, sub
-	top_limit_row, top_limit_sub := vpos_down(buffer, width, state.scroll_row, state.scroll_sub, margin)
+	top_limit_row, top_limit_sub := vpos_down(buffer, wrap_width, state.scroll_row, state.scroll_sub, margin)
 	if state.center {
 		state.center = false
-		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, height / 2)
+		state.scroll_row, state.scroll_sub = vpos_up(buffer, wrap_width, row, sub_row, height / 2)
 	} else if vpos_cmp(row, sub_row, top_limit_row, top_limit_sub) < 0 {
-		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, margin)
-	} else if vpos_dist(buffer, width, state.scroll_row, state.scroll_sub, row, sub_row, height) >= height - margin {
-		state.scroll_row, state.scroll_sub = vpos_up(buffer, width, row, sub_row, height - 1 - margin)
+		state.scroll_row, state.scroll_sub = vpos_up(buffer, wrap_width, row, sub_row, margin)
+	} else if vpos_dist(buffer, wrap_width, state.scroll_row, state.scroll_sub, row, sub_row, height) >= height - margin {
+		state.scroll_row, state.scroll_sub = vpos_up(buffer, wrap_width, row, sub_row, height - 1 - margin)
 	}
-	last := len(buffer.lines) - 1
-	max_row, max_sub := vpos_up(buffer, width, last, line_rows(buffer, width, last) - 1, height - 1)
+	last := row_shown_prev(buffer, len(buffer.lines) - 1)
+	max_row, max_sub := vpos_up(buffer, wrap_width, last, line_rows(buffer, wrap_width, last) - 1, height - 1)
 	if vpos_cmp(state.scroll_row, state.scroll_sub, max_row, max_sub) > 0 && vpos_cmp(row, sub_row, max_row, max_sub) >= 0 {
 		state.scroll_row, state.scroll_sub = max_row, max_sub
 	}
-	if !buffer.wrap {
+	if !wraps {
 		state.scroll_sub = 0
 	} else {
 		return
@@ -1760,8 +1774,10 @@ ui_prepare :: proc(editor: ^Editor) {
 		}
 	}
 	for node in ui.editors {
-		if buffer := ui_buffer(editor, node.buffer); buffer != nil && node.wrap_set {
-			buffer.wrap = node.wrap
+		buffer := ui_buffer(editor, node.buffer)
+		if buffer != nil && node.diff_set {
+			buffer.diff_view = node.diff
+			diffbase_update(buffer)
 		}
 	}
 	for pass in 0 ..< 3 {
@@ -1805,9 +1821,9 @@ ui_prepare :: proc(editor: ^Editor) {
 		if buffer != nil && node.syntax && !buffer.big && node.rect.h > 0 {
 			state := ui_node_state(ui, node)
 			width := ui_editor_text_width(node, buffer)
-			top, bottom := state.scroll_row, state.scroll_row + node.rect.h - 1
+			top, bottom := state.scroll_row, view_bottom_row(buffer, ui_editor_wrap_width(node, buffer), state.scroll_row, state.scroll_sub, node.rect.h)
 			ghost := inline_active(editor) && ui_editor_shows_current(editor, buffer)
-			highlight_update(buffer, top, bottom, highlight_clips_view(buffer, width, node.rect.h, state.scroll_row, state.scroll_sub, state.scroll_col, ghost, top, bottom))
+			highlight_update(buffer, top, bottom, highlight_clips_view(buffer, width, node.rect.h, state.scroll_row, state.scroll_sub, state.scroll_col, ui_editor_wraps(node), ghost, top, bottom))
 			diffbase_update(buffer)
 		}
 	}
@@ -2102,7 +2118,7 @@ ui_render_caret :: proc(editor: ^Editor, popups: bool) {
 			ui.caret = {cell_x, cell_y}
 			ui.caret_shown = true
 			buffer := ui_buffer(editor, focused.buffer)
-			if popups && ui_editor_shows_current(editor, buffer) && inline_active(editor) && !buffer.wrap {
+			if popups && ui_editor_shows_current(editor, buffer) && inline_active(editor) && !ui_editor_wraps(focused) {
 				inline_render(editor, cell_x, cell_y)
 			}
 		}
@@ -2369,10 +2385,10 @@ ui_render_text :: proc(paint: ^UiPaint, node: ^UiNode) {
 ui_editor_advance :: proc(buffer: ^Buffer, width, row, sub_row, rows: int) -> (int, int) {
 	row, sub_row := row, sub_row
 	for _ in 0 ..< max(rows, 0) {
-		if buffer.wrap && width > 0 && sub_row + 1 < line_rows(buffer, width, row) {
+		if sub_row + 1 < line_rows(buffer, width, row) {
 			sub_row += 1
-		} else if row + 1 < len(buffer.lines) {
-			row += 1
+		} else if next := row_shown_next(buffer, row + 1); next < len(buffer.lines) {
+			row = next
 			sub_row = 0
 		}
 	}
@@ -2404,7 +2420,7 @@ ui_render_editor :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 	state := ui_node_state(&editor.ui, node)
 	gutter := digit_count(len(buffer.lines)) + 2 if node.line_numbers else 0
 	width := ui_editor_text_width(node, buffer)
-	row, sub_row := ui_editor_advance(buffer, width, state.scroll_row, state.scroll_sub, visible.y - node.rect.y)
+	row, sub_row := ui_editor_advance(buffer, ui_editor_wrap_width(node, buffer), state.scroll_row, state.scroll_sub, visible.y - node.rect.y)
 	base := ui_style_over(paint.inherit, paint.override)
 	foreground, background := ui_style_colors(base, COLOR_FG, paint.bg)
 	shows_current := ui_editor_shows_current(editor, buffer)
@@ -2424,6 +2440,7 @@ ui_render_editor :: proc(editor: ^Editor, paint: ^UiPaint, node: ^UiNode) {
 		// an editor inside a pane draws its gutter on the pane
 		gutter_bg    = paint.bg if paint.bg != COLOR_BG else COLOR_GUTTER_BG,
 		fg_set       = .Fg in base.set,
+		wrap         = ui_editor_wraps(node),
 		syntax       = node.syntax && !buffer.big,
 		current_line = node.line_numbers && (focused || shows_current),
 

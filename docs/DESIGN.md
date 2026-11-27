@@ -59,8 +59,9 @@ and stray child stderr, don't vanish with the alt screen), and `crash_restore` (
 async-signal-safe) restores the saved termios and modes, writes one line naming that file to the original fd 2,
 then re-raises; shutdown and the Lua panic handler put fd 2 back first.
 
-**Soft wrap** (`wrap.odin`, per-buffer `Buffer.wrap`, config `line_wrap`, default
-on; *Toggle Line Wrap* flips the current buffer): a logical line spills over
+**Soft wrap** (`wrap.odin`, session-global `g_line_wrap` seeded and hot-reloaded from config `line_wrap`, default
+on; *Toggle Line Wrap* flips it for every view, never written to config; each editor view resolves its own wrap:
+the node's `wrap`, else off for a one-row field, else the global): a logical line spills over
 consecutive visual rows, breaking at word boundaries (a word wider than the width
 hard-breaks), tab/grapheme-width aware. Continuation rows get a blank gutter.
 `line_wrap` yields per-line segment start offsets (buffer lines go through
@@ -964,14 +965,11 @@ byte in its head renders as a hexdump-style view (offset + hex + ASCII, unwrappe
 rows); an empty file/buffer renders a dim `PREVIEW_EMPTY_TEXT` placeholder —
 both in every consumer. (`os.read` quirk: EOF arrives as `io.Error.EOF`, not a
 nil error with 0 bytes.) A file-tree tab with a `preview` callback (the Git tab)
-previews a diff instead: changed hunks + `preview_diff_context` lines of context in the
-inline-diff-view style (dim-red ghost rows, added/modified tint, word-level highlight),
-built by `preview_diff_file` (the callback's base text vs the file on disk, reusing the gutter's
-line-hash diff; a deleted file previews entirely as ghost rows; a `nil` base previews the file plainly).
-*File Tree: Toggle Diff* (`Alt+d`, a session flag of the `filetree` plugin seeded from
-`plugins.filetree.diff_only`, default on) switches between this collapsed view and the
-whole file with the same diff annotations (`preview_set_diff`'s `diff_only`: off → every row visible,
-gap-collapsing never fires).
+previews a diff instead: the file with the callback's text as its base, in an editor node with `diff = "changes"`
+(hunks + `preview_diff_context` rows, a `diff_gap` row between runs, real line numbers) or `diff = true` (whole file),
+both forcing the inline diff view (ghost rows, tints, word spans) whatever the global toggle; a deleted file previews
+its base tinted as removed. *File Tree: Toggle Diff* (`Alt+d`, a session flag of the `filetree` plugin seeded from
+`plugins.filetree.diff_only`, default on) switches between the two.
 Preview loading is **debounced** (`WALK_PREVIEW_DEBOUNCE_MS`) for walk lists: a selection change arms
 `Pane.preview_due` and `pane_stack_pump` loads once it settles, so a held arrow can't back up the input queue
 or flood the tab's plugin with base requests.
@@ -1009,7 +1007,8 @@ scopes `filetree` and `list`): tab row, query field, a `virtual_column` over `wa
 (`split_tree_*`), over a `qed.fs.walk` handle made at each open and toggle; a jump closes it. Tabs are
 `within` handles (Open, Unsaved: buffer paths; an added tab: its `paths` plus `union` of its `virtual` ones); each
 tab's `cmd` is an editor command (*File Tree: All/Open/Unsaved*, *Git: Changes*), so a chord switches tabs (Tab/Shift+Tab cycle them) and the
-active tab's closes. Other plugins reach the tree only through its exports (`qed.plugin("filetree")`): `set_tab{label,
+active tab's closes. A shown tab (open or switch) expands to and highlights the current file if it lists it, retrying
+while dirs load or the tab's paths arrive, else its last row, else its first. Other plugins reach the tree only through its exports (`qed.plugin("filetree")`): `set_tab{label,
 paths, virtual?, cmd?, detail?, preview?, missing?}` adds or replaces the caller's tab (between Open and Unsaved; the
 same `paths`/`virtual` tables keep the cached narrowed handle), `remove_tab(label)`, `set_marks(marks)` (shown on every
 tab; several callers merge, later id wins per path), `set_ignored(paths|false)` (fed to the walks' ignore set; `false`

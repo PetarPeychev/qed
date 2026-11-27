@@ -1,0 +1,66 @@
+qed-e2e snapshot 80x24 cursor 12,6
+-- text
+ 1 # demo
+ 2
+
+        ┌──────────────────────────────────────────────────────────────┐
+        │ All │ Open │ Git │ Unsaved                                   │
+        ├──────────────────────────────────────────────────────────────┤
+        │ > type to filter                                             │
+        ├──────────────────────────────────────────────────────────────┤
+        │ ▸ docs/                                                      │
+        │▌▸ src/                                                       │
+        │   README.md                                                  │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        │                                                              │
+        ├──────────────────────────────────────────────────────────────┤
+        │ Tab tabs  ↑↓ select            Alt+i ignored  Alt+. dotfiles │
+        └──────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/README.md  1/2  ⎇ main  +1 -0                    ◆ markdown  ⇥ Spaces:4
+
+-- style
+abbcdeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaafffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggffffffff
+ffffffffghiiiggggggggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggffffffff
+ffffffffgiiijjjjjjjjjjjjjjhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggffffffff
+ffffffffghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffgihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffgklllllllllllkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkgffffffff
+ffffffffghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhgffffffff
+ffffffffggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggffffffff
+ffffffffggggggggggggggggggggghhhhhhhhhhggggggggggggggggggggggggggggggghgffffffff
+ffffffffggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhmmnnnhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#ffdd33 bg=#262626
+d fg=#f4f4ff bg=#262626
+e fg=#ffdd33 bg=#262626 bold
+f fg=#f4f4ff bg=#181818
+g fg=#868686 bg=#2b2b2b
+h fg=#f4f4ff bg=#2b2b2b
+i fg=#ffdd33 bg=#2b2b2b
+j fg=#686868 bg=#2b2b2b
+k fg=#f4f4ff bg=#4a4a4a
+l fg=#ffdd33 bg=#4a4a4a
+m fg=#73c936 bg=#2b2b2b
+n fg=#f43841 bg=#2b2b2b

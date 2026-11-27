@@ -5,6 +5,7 @@ import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "core:testing"
+import "core:time"
 
 @(private = "file")
 walk_tree_fixture :: proc(dir: string) {
@@ -391,4 +392,26 @@ expand_sel_row :: proc(e: ^E2E) -> (x, y: int, ok: bool) {
 	}
 	row := node.rect.y + at
 	return node.rect.x, row, row >= node.clip.y && row < node.clip.y + node.clip.h
+}
+
+@(test)
+e2e_walk_tree_follows_the_current_file_into_streamed_dirs :: proc(t: ^testing.T) {
+	e := e2e_root_start("m")
+	defer e2e_stop(&e)
+	os.make_directory_all(fmt.tprintf("%s/a/b/c/d/e/f/g/h/i/j", e.dir))
+	nav_write(fmt.tprintf("%s/a/b/c/d/e/f/g/h/i/j/deep.txt", e.dir), "x\n")
+	ft_lua(&e.ed, `qed.open("a/b/c/d/e/f/g/h/i/j/deep.txt")`)
+	saved := walk_fill_slice_ms
+	walk_fill_slice_ms = 0
+	defer walk_fill_slice_ms = saved
+	filetree_open_all(&e.ed)
+	testing.expect(t, walk_trees_busy(&e.ed), "one dir per fill: the dirs down to the file are still pending")
+	sel, _ := ft_selected(&e.ed)
+	for i := 0; sel.name != "deep.txt" && i < 400; i += 1 {
+		time.sleep(5 * time.Millisecond)
+		e2e_ui_settle(&e)
+		sel, _ = ft_selected(&e.ed)
+	}
+	testing.expect_value(t, sel.name, "deep.txt")
+	testing.expect_value(t, len(ft_entries(&e.ed)), 12)
 }

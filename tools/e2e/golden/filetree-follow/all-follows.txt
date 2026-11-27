@@ -1,0 +1,69 @@
+qed-e2e snapshot 80x24 cursor 12,6
+-- text
+ 1 def run():
+ 2     return 1
+▌3     # tuned
+ 4      ┌──────────────────────────────────────────────────────────────┐
+        │ All │ Open │ Git │ Unsaved                                   │
+        ├──────────────────────────────────────────────────────────────┤
+        │ > type to filter                                             │
+        ├──────────────────────────────────────────────────────────────┤
+        │ ▸ docs/                                                      │
+        │▌▾ src/                                                       │
+        │▌  ▾ app/                                                     │
+        │▌    ▾ core/                                                  │
+        │▌        engine.py                                            │
+        │       util.py                                                │
+        │     main.py                                                  │
+        │   README.md                                                  │
+        ├──────────────────────────────────────────────────────────────┤
+        │ Tab tabs  ↑↓ select            Alt+i ignored  Alt+. dotfiles │
+        └──────────────────────────────────────────────────────────────┘
+
+
+
+ ≡ root/src/app/core/engine.py  1/4  ⎇ main  +1 -0  [2/2]  ◆ python  ⇥ Spaces:4
+
+-- style
+abbcccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+aaaeeeeffffffegeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+haaeeeeiiiiiiieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+aaaeeeeejjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeee
+eeeeeeeejkllljjjjjjjjjjjjjjjjjjjjjjjkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeee
+eeeeeeeejlllmmmmmmmmmmmmmmkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeee
+eeeeeeeejkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejlkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejlkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejlkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejnnnnnnnnnnnnnnnnnnoooooooooooooooooooooooooooooooooooooooooooojeeeeeeee
+eeeeeeeejkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkjeeeeeeee
+eeeeeeeejjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeee
+eeeeeeeejjjjjjjjjjjjjjjjjjjjjkkkkkkkkkkjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjkjeeeeeeee
+eeeeeeeejjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeee
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkppqqqkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+-- legend
+a fg=#868686 bg=#1b1b1b
+b fg=#d8d8d8 bg=#1b1b1b
+c fg=#ffdd33 bg=#262626
+d fg=#f4f4ff bg=#262626
+e fg=#f4f4ff bg=#181818
+f fg=#ffdd33 bg=#181818
+g fg=#95a99f bg=#181818
+h fg=#73c936 bg=#1b1b1b
+i fg=#cc8c3c bg=#181818
+j fg=#868686 bg=#2b2b2b
+k fg=#f4f4ff bg=#2b2b2b
+l fg=#ffdd33 bg=#2b2b2b
+m fg=#686868 bg=#2b2b2b
+n fg=#ffdd33 bg=#4a4a4a
+o fg=#f4f4ff bg=#4a4a4a
+p fg=#73c936 bg=#2b2b2b
+q fg=#f43841 bg=#2b2b2b

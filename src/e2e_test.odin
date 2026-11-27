@@ -512,7 +512,7 @@ e2e_resize_rewraps :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	b := editor_buffer(&e.ed)
-	testing.expect(t, b.wrap, "line wrap is on by default")
+	testing.expect(t, g_line_wrap, "line wrap is on by default")
 	gutter := editor_gutter_width(&e.ed)
 
 	// At full width the long line fits one row, so "tail" is the second row.

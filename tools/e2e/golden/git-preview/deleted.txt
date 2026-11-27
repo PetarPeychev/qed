@@ -1,0 +1,80 @@
+qed-e2e snapshot 120x32 cursor 12,6
+-- text
+
+
+
+        ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
+        │ All │ Open │ Git │ Unsaved                                                                           │
+        ├───────────────────────────────┬──────────────────────────────────────────────────────────────────────┤
+        │ > type to filter              │ 1 gone                                                               │
+        ├───────────────────────────────┤ 2 for good                                                           │
+        │▌  app.py               +2  -2 │ 3                                                                    │
+        │▌  old.txt              +0  -2 │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        │                               │                                                                      │
+        ├───────────────────────────────┴──────────────────────────────────────────────────────────────────────┤
+        │ Tab tabs  ↑↓ select  Shift+↑↓ extend  Ctrl+p commands                                     Alt+d diff │
+        └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ /tmp/qed-e2e-XXXXXX/root  ⎇ main  +2 -4                                                                        qed dev
+
+-- style
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaabcbbbbbbbbbbbbbdddbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaabdddeeeeeeeeeeeeeeccccccccccccccbbbbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbaaaaaaaa
+aaaaaaaabdcccccccccccccccccccccccggcchhcbbiifffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbaaaaaaaa
+aaaaaaaabjjjjjjjjjjkkkkkkkkkkkkkkllkkjjcbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabcccccccccccccccccccccccccccccccbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccbbbbbbbbbbbbcbaaaaaaaa
+aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+cccccccccccccccccccccccccccccccccccgghhhcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+-- legend
+a fg=#f4f4ff bg=#181818
+b fg=#868686 bg=#2b2b2b
+c fg=#f4f4ff bg=#2b2b2b
+d fg=#ffdd33 bg=#2b2b2b
+e fg=#686868 bg=#2b2b2b
+f fg=#f4f4ff bg=#432d2e
+g fg=#73c936 bg=#2b2b2b
+h fg=#f43841 bg=#2b2b2b
+i fg=#d8d8d8 bg=#2b2b2b
+j fg=#f43841 bg=#4a4a4a
+k fg=#f4f4ff bg=#4a4a4a
+l fg=#73c936 bg=#4a4a4a

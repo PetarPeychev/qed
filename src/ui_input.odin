@@ -458,14 +458,15 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		state := ui_node_state(ui, node)
 		if wheel {
 			width := ui_editor_text_width(node, buffer)
+			wraps := ui_editor_wraps(node)
 			if ev_wheel_sideways(ev) {
-				if !buffer.wrap && width > 0 {
+				if !wraps && width > 0 {
 					ui_editor_scroll_sideways(state, buffer, width, ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Left)
 				}
 				return true
 			}
-			if !buffer.wrap || width <= 0 {
-				state.scroll_row = clamp(state.scroll_row + step, 0, len(buffer.lines) - 1)
+			if !wraps || width <= 0 {
+				state.scroll_row = row_shown_step(buffer, state.scroll_row, step)
 				state.scroll_sub = 0
 				return true
 			}
@@ -473,7 +474,7 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 				state.scroll_row, state.scroll_sub = vpos_up(buffer, width, state.scroll_row, state.scroll_sub, -step)
 				return true
 			}
-			last := len(buffer.lines) - 1
+			last := row_shown_prev(buffer, len(buffer.lines) - 1)
 			max_row, max_sub := vpos_up(buffer, width, last, line_rows(buffer, width, last) - 1, node.rect.h - 1)
 			row, sub := vpos_down(buffer, width, state.scroll_row, state.scroll_sub, step)
 			if vpos_cmp(row, sub, max_row, max_sub) > 0 {
@@ -526,11 +527,11 @@ ui_editor_point :: proc(editor: ^Editor, node: ^UiNode, cell_x, cell_y: int) -> 
 	dy := max(cell_y - node.rect.y, 0)
 	dx := cell_x - node.rect.x
 	// vpos steps over ghost rows as the renderer draws them
-	if buffer.wrap && width > 0 {
+	if ui_editor_wraps(node) && width > 0 {
 		row, sub := vpos_down(buffer, width, state.scroll_row, state.scroll_sub, dy)
 		return {row, editor_wrap_col(buffer, width, row, sub, gutter, dx)}
 	}
-	row, _ := vpos_down(buffer, width, state.scroll_row, 0, dy)
+	row, _ := vpos_down(buffer, 0, state.scroll_row, 0, dy)
 	text := buffer.lines[row].text[:]
 	return {row, col_at_visual(text, state.scroll_col + max(dx - gutter, 0))}
 }

@@ -134,7 +134,7 @@ e2e_nav_arrow_clamp_buffer_edges :: proc(t: ^testing.T) {
 	e2e_key(&e, .Ctrl_P)
 	e2e_type(&e, "line wrap")
 	e2e_key(&e, .Enter)
-	testing.expect(t, !b.wrap, "wrap turned off")
+	testing.expect(t, !g_line_wrap, "wrap turned off")
 
 	// Down on the last line clamps to line end and resets the goal column.
 	b.cursor = {1, 2}
@@ -176,7 +176,7 @@ e2e_nav_arrow_clamp_wrapped_last_line :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	b := editor_buffer(&e.ed)
-	testing.expect(t, b.wrap, "wrap on by default")
+	testing.expect(t, g_line_wrap, "wrap on by default")
 
 	e2e_resize(&e, 22, E2E_H)
 	e2e_render(&e)
@@ -223,13 +223,13 @@ e2e_nav_horizontal_scroll :: proc(t: ^testing.T) {
 	defer e2e_stop(&e)
 
 	b := editor_buffer(&e.ed)
-	testing.expect(t, b.wrap, "wrap is on by default")
+	testing.expect(t, g_line_wrap, "wrap is on by default")
 
 	// Flip wrap off via the *Toggle Line Wrap* command (no default keybind).
 	e2e_key(&e, .Ctrl_P)
 	e2e_type(&e, "line wrap")
 	e2e_key(&e, .Enter)
-	testing.expect(t, !b.wrap, "palette command should turn wrap off")
+	testing.expect(t, !g_line_wrap, "palette command should turn wrap off")
 
 	long := strings.repeat("a", 100, context.temp_allocator)
 	e2e_type(&e, long)
@@ -335,7 +335,7 @@ e2e_nav_palette :: proc(t: ^testing.T) {
 	e2e_key(&e, .Enter)
 	e2e_ui_settle(&e)
 	testing.expect(t, !palette_open_now(&e), "Enter closes the palette")
-	testing.expect(t, !b.wrap, "the selected command actually ran")
+	testing.expect(t, !g_line_wrap, "the selected command actually ran")
 
 	e2e_key(&e, .Ctrl_P)
 	e2e_type(&e, "zzzzqqq")
@@ -413,6 +413,7 @@ e2e_nav_scrollbar :: proc(t: ^testing.T) {
 
 	e2e_resize(&e, 200, E2E_H)
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect(t, filetree_active(&e.ed), "Alt+f opens the file tree")
 	nav_preview(&e)
 
@@ -616,6 +617,7 @@ e2e_nav_filetree_expand_open :: proc(t: ^testing.T) {
 	nav_write(inner, "inner body")
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect(t, filetree_active(&e.ed), "Alt+f opens the file tree")
 
 	testing.expect_value(t, ft_entries(&e.ed)[0].name, "sub") // dirs sort first
@@ -903,15 +905,25 @@ e2e_nav_filetree_git_diff_toggle :: proc(t: ^testing.T) {
 	nav_preview(&e)
 
 	testing.expect(t, ft_chip(&e.ed, "diff"), "diff-only on by default")
-	testing.expect(t, ft_preview(&e.ed) != nil && ft_preview_line(&e.ed, 0) != "line 01", "the collapsed view starts at the change's context")
-	collapsed := len(ft_preview(&e.ed).lines) if ft_preview(&e.ed) != nil else 0
+	preview_top :: proc(e: ^E2E) -> (int, DiffView) {
+		e2e_render(e)
+		node := ui_find(&e.ed.ui, "#filetree/filetree_preview")
+		buffer := ft_preview(&e.ed)
+		if node == nil || buffer == nil {
+			return -1, .Global
+		}
+		return ui_node_state(&e.ed.ui, node).scroll_row, buffer.diff_view
+	}
+	top, mode := preview_top(&e)
+	testing.expect_value(t, mode, DiffView.Changes)
+	testing.expect_value(t, top, 9 - PREVIEW_DIFF_CONTEXT)
 
 	nav_alt(&e, 'd') // File Tree: Toggle Diff
 	testing.expect(t, !ft_chip(&e.ed, "diff"), "Alt+d turns full diff on (diff-only off)")
 	nav_preview(&e)
-	full := len(ft_preview(&e.ed).lines) if ft_preview(&e.ed) != nil else 0
-
-	testing.expect(t, full > collapsed, "full diff shows more rows than the collapsed view")
+	top, mode = preview_top(&e)
+	testing.expect_value(t, mode, DiffView.Inline)
+	testing.expect_value(t, top, 0)
 	e2e_key(&e, .Esc)
 }
 
@@ -926,6 +938,7 @@ e2e_nav_filetree_shift_range :: proc(t: ^testing.T) {
 	}
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect_value(t, ft_entries(&e.ed)[0].name, "a.txt")
 
 	// Shift+Down twice extends a contiguous range a..c.
@@ -953,6 +966,7 @@ e2e_nav_filetree_copy_paste :: proc(t: ^testing.T) {
 	nav_write(src, "original")
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect_value(t, ft_entries(&e.ed)[0].name, "a.txt")
 
 	e2e_key(&e, .Ctrl_C) // copy a.txt
@@ -990,6 +1004,7 @@ e2e_nav_filetree_cut_paste_repaths_buffer :: proc(t: ^testing.T) {
 	testing.expect(t, editor_find_buffer(&e.ed, foo) >= 0, "foo.txt is open")
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect_value(t, ft_entries(&e.ed)[0].name, "sub") // dirs sort first
 
 	e2e_key(&e, .Arrow_Down) // onto foo.txt
@@ -1141,6 +1156,7 @@ e2e_nav_filetree_palette_runs_command :: proc(t: ^testing.T) {
 	nav_write(src, "original")
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect_value(t, ft_entries(&e.ed)[0].name, "a.txt")
 
 	// Ctrl+P over the tree lists file commands, not the global set.
@@ -1210,6 +1226,7 @@ e2e_nav_filetree_batch_delete :: proc(t: ^testing.T) {
 	}
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift)
 	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift) // range a..c
 
@@ -1248,6 +1265,7 @@ e2e_nav_filetree_batch_open :: proc(t: ^testing.T) {
 	nav_write(b, "b body")
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect_value(t, ft_entries(&e.ed)[0].name, "a.txt")
 
 	e2e_key(&e, .Arrow_Down, tb2.Mod.Shift) // range a..b
@@ -1510,6 +1528,7 @@ e2e_nav_filetree_delete_dialog_directory :: proc(t: ^testing.T) {
 	nav_write(inner, "inner body")
 
 	nav_alt(&e, 'f')
+	ft_set_sel(&e.ed, 0)
 	testing.expect_value(t, ft_entries(&e.ed)[0].name, "sub") // dirs sort first
 
 	e2e_key(&e, .Ctrl_D)

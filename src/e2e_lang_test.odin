@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:os"
+import "core:strconv"
 import "core:strings"
 import "core:sys/posix"
 import "core:testing"
@@ -179,6 +180,176 @@ e2e_git_diff_view_ghost :: proc(t: ^testing.T) {
 	testing.expect_value(t, e2e_cell(&e, 0, 2), '▌')
 	testing.expect_value(t, e2e_cell(&e, gutter+0, 2), 'c')
 	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, gutter+0, 2)), e2e_rgb(COLOR_GHOST_FG))
+}
+
+@(private = "file")
+diff_node_row :: proc(e: ^E2E, needle: string) -> (y, x: int) {
+	for y in 0 ..< int(tb2.height()) {
+		row := e2e_row(e, y)
+		if at := strings.index(row, needle); at >= 0 {
+			return y, strings.rune_count(row[:at])
+		}
+	}
+	return -1, -1
+}
+
+@(private = "file")
+diff_node_mount :: proc(e: ^E2E, diff: string) {
+	ft_lua(&e.ed, fmt.tprintf(`
+		if not _G.dn_buffer then
+			local base, text = {{}}, {{}}
+			for i = 1, 40 do
+				base[i] = "row " .. i
+				text[#text + 1] = i == 10 and "row 10 changed" or "row " .. i
+				if i == 30 then text[#text + 1] = "added" end
+			end
+			_G.dn_buffer = qed.buf.create{{internal = true}}
+			dn_buffer:set_text(table.concat(text, "\n"))
+			dn_buffer:set_base(table.concat(base, "\n"))
+		end
+		if _G.dn_mount then dn_mount:unmount() end
+		_G.dn_mount = qed.ui.mount("pane", qed.ui.box{{float = "screen", width = 40, height = 22,
+			qed.ui.editor{{id = "dn_view", buffer = dn_buffer, line_numbers = true, diff = %s}}}})
+		return 0`, diff))
+	e2e_render(e)
+	e2e_render(e)
+}
+
+@(test)
+e2e_editor_node_diff_view :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	saved := g_diff_view
+	defer g_diff_view = saved
+	g_diff_view = false
+
+	diff_node_mount(&e, "false")
+	testing.expect(t, !e2e_grid_has(&e, "⋮"), "no gap rows without diff")
+	y, _ := diff_node_row(&e, "row 10 changed")
+	ghost, _ := diff_node_row(&e, "row 10 ")
+	testing.expect(t, y > 0 && ghost == y, "no ghost row: the global diff view is off")
+
+	diff_node_mount(&e, "true")
+	y, _ = diff_node_row(&e, "row 10 changed")
+	ghost_y, ghost_x := diff_node_row(&e, "row 10 ")
+	testing.expect_value(t, ghost_y, y - 1)
+	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, ghost_x, ghost_y)), e2e_rgb(COLOR_GHOST_FG))
+	testing.expect(t, strings.contains(e2e_row(&e, y), "10 row 10 changed"), "the live line keeps its line number")
+	_, x := diff_node_row(&e, "row 10 changed")
+	tinted := e2e_rgb(e2e_cell_bg(&e, x, y))
+	testing.expect(t, tinted != e2e_rgb(e2e_cell_bg(&e, x, y + 1)), "the modified row is tinted")
+	testing.expect(t, e2e_rgb(e2e_cell_bg(&e, x + 7, y)) != tinted, "its changed span is emphasized")
+	testing.expect(t, e2e_grid_has(&e, " 1 row 1 "), "the whole file from the top")
+
+	diff_node_mount(&e, `"changes"`)
+	testing.expect(t, !e2e_grid_has(&e, " row 1 "), "rows far from a change are hidden")
+	first, _ := diff_node_row(&e, "row 7")
+	testing.expect(t, strings.contains(e2e_row(&e, first), " 7 row 7"), "the view starts at the first change's context")
+	testing.expect(t, !e2e_grid_has(&e, "row 6"), "nothing above the first change's context")
+	ghost_y, ghost_x = diff_node_row(&e, "row 10 ")
+	y, _ = diff_node_row(&e, "row 10 changed")
+	testing.expect_value(t, ghost_y, y - 1)
+	testing.expect_value(t, e2e_rgb(e2e_cell_fg(&e, ghost_x, ghost_y)), e2e_rgb(COLOR_GHOST_FG))
+	gap, _ := diff_node_row(&e, "⋮")
+	testing.expect_value(t, gap, y + 4)
+	testing.expect(t, strings.contains(e2e_row(&e, gap + 1), "28 row 28"), "real line numbers after the gap")
+	added, added_x := diff_node_row(&e, "added")
+	testing.expect(t, strings.contains(e2e_row(&e, added), "31 added"), "the added line keeps its number")
+	testing.expect(t, e2e_rgb(e2e_cell_bg(&e, added_x, added)) != e2e_rgb(e2e_cell_bg(&e, added_x, added + 1)), "the added row is tinted")
+	testing.expect(t, !e2e_grid_has(&e, "row 20"), "a hidden run is one gap row")
+}
+
+@(test)
+e2e_editor_node_diff_scrolls_sideways :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	ft_lua(&e.ed, `
+		local buffer = qed.buf.create{internal = true}
+		buffer:set_text("top\n0123456789ABCDEFGH new tail\nend")
+		buffer:set_base("top\n0123456789ABCDEFGH old tail\nend")
+		_G.ds_mount = qed.ui.mount("pane", qed.ui.box{float = "screen", width = 40, height = 8,
+			qed.ui.editor{id = "ds_view", buffer = buffer, line_numbers = true, wrap = false, diff = true}})
+		return 0`)
+	e2e_render(&e)
+	e2e_render(&e)
+	node := ui_find(&e.ed.ui, "#fthelper/ds_view")
+	testing.expect(t, node != nil, "the view is mounted")
+	if node == nil {
+		return
+	}
+	ui_node_state(&e.ed.ui, node).scroll_col = 10
+	e2e_render(&e)
+	live_y, live_x := diff_node_row(&e, "ABCDEFGH new")
+	ghost_y, ghost_x := diff_node_row(&e, "ABCDEFGH old")
+	testing.expect(t, live_y > 0, "the live row scrolled")
+	testing.expect_value(t, ghost_y, live_y - 1)
+	testing.expect_value(t, ghost_x, live_x)
+	testing.expect(t, !e2e_grid_has(&e, "0123"), "nothing left of the scroll shows")
+	testing.expect(t, e2e_rgb(e2e_cell_bg(&e, ghost_x + 9, ghost_y)) != e2e_rgb(e2e_cell_bg(&e, ghost_x, ghost_y)), "the ghost's changed word stays on it")
+	testing.expect(t, e2e_rgb(e2e_cell_bg(&e, live_x + 9, live_y)) != e2e_rgb(e2e_cell_bg(&e, live_x, live_y)), "the live row's changed word stays on it")
+}
+
+@(test)
+e2e_line_wrap_toggle_is_global :: proc(t: ^testing.T) {
+	e := e2e_start("main")
+	defer e2e_stop(&e)
+	testing.expect_value(t, g_line_wrap, LINE_WRAP)
+	ft_lua(&e.ed, `
+		local buffer = qed.buf.create{internal = true}
+		buffer:set_text("alpha bravo charlie delta echo foxtrot golf hotel india juliet")
+		_G.lw_mount = qed.ui.mount("pane", qed.ui.box{float = "screen", width = 30, height = 14, qed.ui.column{
+			qed.ui.editor{id = "lw_field", buffer = buffer, height = 1},
+			qed.ui.editor{id = "lw_view", buffer = buffer, height = 4},
+			qed.ui.editor{id = "lw_on", buffer = buffer, height = 4, wrap = true},
+			qed.ui.editor{id = "lw_off", buffer = buffer, height = 4, wrap = false}}})
+		return 0`)
+	// the second screen row of each view shows the line's tail only when that view wraps
+	wraps :: proc(e: ^E2E, id: string) -> bool {
+		e2e_render(e)
+		node := ui_find(&e.ed.ui, fmt.tprintf("#fthelper/%s", id))
+		return node != nil && strings.contains(e2e_row(e, node.rect.y + 1), "golf")
+	}
+	for on in ([2]bool{false, true}) {
+		if g_line_wrap != on {
+			cmd_toggle_line_wrap(&e.ed)
+		}
+		testing.expect_value(t, wraps(&e, "lw_view"), on)
+		testing.expect(t, wraps(&e, "lw_on"), "wrap = true forces it, beside other views of the same buffer")
+		testing.expect(t, !wraps(&e, "lw_off"), "wrap = false forces it off")
+		testing.expect(t, !wraps(&e, "lw_field"), "a one-row field never wraps")
+	}
+}
+
+@(test)
+e2e_editor_node_diff_changes_wraps :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	ft_lua(&e.ed, `
+		local base, text = {}, {}
+		for i = 1, 30 do
+			base[i] = "row " .. i
+			text[i] = i == 10 and "row 10 alpha bravo charlie delta echo foxtrot golf hotel india" or "row " .. i
+		end
+		text[25] = "row 25 changed"
+		local buffer = qed.buf.create{internal = true}
+		buffer:set_text(table.concat(text, "\n"))
+		buffer:set_base(table.concat(base, "\n"))
+		_G.dw_mount = qed.ui.mount("pane", qed.ui.box{float = "screen", width = 40, height = 22,
+			qed.ui.editor{id = "dw_view", buffer = buffer, line_numbers = true, wrap = true, diff = "changes"}})
+		return 0`)
+	e2e_render(&e)
+	e2e_render(&e)
+	live, _ := diff_node_row(&e, "row 10 alpha")
+	ghost, _ := diff_node_row(&e, "row 10 ")
+	testing.expect_value(t, ghost, live - 1)
+	tail, _ := diff_node_row(&e, "india")
+	testing.expect(t, tail > live, "the long changed line wraps onto continuation rows")
+	next, _ := diff_node_row(&e, "11 row 11")
+	testing.expect_value(t, next, tail + 1)
+	gap, _ := diff_node_row(&e, "⋮")
+	testing.expect_value(t, gap, next + 3)
+	testing.expect(t, strings.contains(e2e_row(&e, gap + 1), "22 row 22"), "real line numbers after the gap")
+	testing.expect(t, !e2e_grid_has(&e, "row 18"), "rows away from the changes stay hidden while wrapping")
 }
 
 @(test)

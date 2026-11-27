@@ -37,7 +37,7 @@ e2e_review2_shift_arrows_accelerate :: proc(t: ^testing.T) {
 e2e_review2_horizontal_scroll_keeps_a_margin :: proc(t: ^testing.T) {
 	e := e2e_start(strings.repeat("x", 300, context.temp_allocator))
 	defer e2e_stop(&e)
-	editor_buffer(&e.ed).wrap = false
+	g_line_wrap = false
 	e2e_new_ui(&e)
 	e2e_key(&e, .End)
 	e2e_ui_settle(&e)

@@ -861,6 +861,12 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			path := fmt.tprintf("%s/%s", root_dir, step.args[1])
 			os.make_directory_all(filepath.dir(path))
 			_ = os.write_entire_file(path, data)
+		case "sh":
+			state, _, stderr, err := os.process_exec({working_dir = root_dir, command = {"/bin/sh", "-c", step.rest}, env = env_build(run)}, context.temp_allocator)
+			if err != nil || state.exit_code != 0 {
+				scenario_fail(run, sc, step, &s, fmt.tprintf("sh %q failed (exit %d): %s", step.rest, state.exit_code, string(stderr)))
+				return false
+			}
 		case "config":
 			_ = os.write_entire_file(fmt.tprintf("%s/.config/qed/config.json", home_dir), step.body)
 			session_cast_event(&s, "i", "edit config.json")

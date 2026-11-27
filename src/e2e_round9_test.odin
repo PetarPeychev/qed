@@ -383,7 +383,7 @@ e2e_round9_completion_box_stays_at_the_word :: proc(t: ^testing.T) {
 		testing.expect(t, popup != nil && popup.rect.x == word_x, "typing keeps the box at the word start")
 	}
 	// wrap off, the word scrolled out on the left: the box starts at the text's left edge
-	b.wrap = false
+	g_line_wrap = false
 	line := strings.concatenate({strings.repeat("y", 150, context.temp_allocator), " al"}, context.temp_allocator)
 	buffer_set_text(b, line)
 	b.cursor = {0, len(line)}
@@ -393,7 +393,7 @@ e2e_round9_completion_box_stays_at_the_word :: proc(t: ^testing.T) {
 	left := node.rect.x + node.rect.w - ui_editor_text_width(node, b)
 	testing.expect(t, popup != nil && popup.rect.x == left, "a word start scrolled out puts the box at the text's left edge")
 	// wrap on, the word starting on an earlier segment: the left edge too
-	b.wrap = true
+	g_line_wrap = true
 	b.cursor = {0, len(line)}
 	popup = r9_popup(&e)
 	testing.expect(t, popup != nil && popup.rect.x == left, "a word start on an earlier wrap segment puts the box at the left edge")

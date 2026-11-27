@@ -21,7 +21,7 @@ e2e_deco_gutter_tint_eol_span :: proc(t: ^testing.T) {
 	e := e2e_start("alpha\nbravo\ncharlie\ndelta\n")
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
-	b.wrap = false
+	g_line_wrap = false
 	pl := deco_plugin(&e, "dp", `
 		qed.deco.gutter(qed.buf.current(), ns, 2, "●", {color = "git_added"})
 		qed.deco.tint(qed.buf.current(), ns, 3, 4, {color = "error_foreground", alpha = 0.5})
@@ -72,7 +72,7 @@ e2e_deco_eol_wide_and_wrap :: proc(t: ^testing.T) {
 	e := e2e_start(fmt.tprintf("%s\nshort\n", long))
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
-	b.wrap = false
+	g_line_wrap = false
 	b.cursor = {1, 0}
 	deco_plugin(&e, "dw", `qed.deco.eol(qed.buf.current(), ns, 1, "x日本", {color = "warn_foreground"})`)
 	e2e_render(&e)
@@ -87,7 +87,7 @@ e2e_deco_eol_wide_and_wrap :: proc(t: ^testing.T) {
 	testing.expect_value(t, e2e_cell(&e, gutter + w - 10, 0), '本')
 	main_view(&e).scroll_col = 0
 
-	b.wrap = true
+	g_line_wrap = true
 	wide := strings.repeat("word ", 20, context.temp_allocator)
 	buffer_insert(b, {1, 5}, fmt.tprintf(" %s", wide))
 	deco_plugin(&e, "dw2", `qed.deco.eol(qed.buf.current(), ns, 2, "tail", {color = "warn_foreground"})`)
@@ -528,7 +528,7 @@ e2e_deco_tint_theme_key :: proc(t: ^testing.T) {
 	e := e2e_start("alpha\nbravo\n")
 	defer e2e_stop(&e)
 	b := editor_buffer(&e.ed)
-	b.wrap = false
+	g_line_wrap = false
 	pl := deco_plugin(&e, "tk", `
 		qed.deco.tint(qed.buf.current(), ns, 2, 2, {color = "ai_edit_background", alpha = "ai_edit"})
 		assert(not pcall(qed.deco.tint, nil, ns, 1, 1, {color = "ai_edit_background", alpha = "nope"}), "unknown tint")`)
@@ -546,7 +546,7 @@ e2e_deco_tint_theme_key :: proc(t: ^testing.T) {
 @(private = "file")
 inline_start :: proc(t: ^testing.T, e: ^E2E, name := "gh") -> ^Buffer {
 	b := editor_buffer(&e.ed)
-	b.wrap = false
+	g_line_wrap = false
 	b.cursor = {0, 2}
 	pl := deco_plugin(e, name, `
 		assert(not qed.deco.inline(qed.buf.current(), ns, {row = 1, col = 1}, "X"), "not at the cursor")
@@ -699,7 +699,7 @@ conflict_keystroke_ms :: proc(blocks, filler, row: int, huge := false) -> f64 {
 	plugin_pump(&e.ed)
 	plugin_flush(&e.ed)
 	b := editor_buffer(&e.ed)
-	b.wrap = false
+	g_line_wrap = false
 	b.cursor = {row, 0}
 	KEYS :: 10
 	start := time.tick_now()
