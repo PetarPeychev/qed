@@ -33,6 +33,7 @@ Config_Color :: struct {
 SCROLL_MARGIN: int
 TAB_WIDTH: int
 WHEEL_SCROLL_LINES: int
+WHEEL_SCROLL_COLUMNS: int
 DOUBLE_CLICK_MS: int
 CURSOR_ACCEL_INTERVAL_MS: int
 CURSOR_ACCEL_RAMP_PRESSES: int
@@ -63,6 +64,7 @@ config_ints := [?]Config_Int {
 	{"scroll_margin", &SCROLL_MARGIN},
 	{"tab_width", &TAB_WIDTH},
 	{"wheel_scroll_lines", &WHEEL_SCROLL_LINES},
+	{"wheel_scroll_columns", &WHEEL_SCROLL_COLUMNS},
 	{"double_click_ms", &DOUBLE_CLICK_MS},
 	{"cursor_accel_interval_ms", &CURSOR_ACCEL_INTERVAL_MS},
 	{"cursor_accel_ramp_presses", &CURSOR_ACCEL_RAMP_PRESSES},

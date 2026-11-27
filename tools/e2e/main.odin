@@ -632,6 +632,24 @@ size_parse :: proc(s: string) -> (w, h: int) {
 	return int_parse(a), int_parse(b)
 }
 
+wheel_parse :: proc(name: string) -> (button: c.int, mod: vterm.Modifier, ok: bool) {
+	direction := strings.trim_prefix(name, "alt+")
+	if direction != name {
+		mod = vterm.MOD_ALT
+	}
+	switch direction {
+	case "up":
+		return 4, mod, true
+	case "down":
+		return 5, mod, true
+	case "left":
+		return 6, mod, true
+	case "right":
+		return 7, mod, true
+	}
+	return
+}
+
 session_key :: proc(s: ^Session, name: string) -> bool {
 	parts := strings.split(name, "+", context.temp_allocator)
 	key := parts[len(parts) - 1]
@@ -853,12 +871,12 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 			_ = os.write_entire_file(path, step.body)
 			session_cast_event(&s, "i", fmt.tprintf("edit ~/%s", step.rest))
 		case "wheel":
-			if len(step.args) < 3 {
-				scenario_fail(run, sc, step, &s, "wheel needs X Y up|down [count]")
+			button, mod, ok := wheel_parse(step.args[2] if len(step.args) >= 3 else "")
+			if !ok {
+				scenario_fail(run, sc, step, &s, "wheel needs X Y [alt+]up|down|left|right [count]")
 				return false
 			}
 			x, y := int_parse(step.args[0]), int_parse(step.args[1])
-			button := c.int(4 if step.args[2] == "up" else 5)
 			count := max(1, int_parse(step.args[3]) if len(step.args) > 3 else 1)
 			vterm.mouse_move(s.vt, c.int(y), c.int(x), vterm.MOD_NONE)
 			for i in 0 ..< count {
@@ -866,7 +884,7 @@ scenario_run :: proc(run: ^Run, sc: ^Scenario) -> bool {
 				if i == 0 {
 					session_cast_event(&s, "i", fmt.tprintf("wheel %s ×%d at %d,%d", step.args[2], count, x, y) if count > 1 else fmt.tprintf("wheel %s at %d,%d", step.args[2], x, y))
 				}
-				vterm.mouse_button(s.vt, button, true, vterm.MOD_NONE)
+				vterm.mouse_button(s.vt, button, true, mod)
 				session_flush_output(&s)
 				session_pump(&s, 10, 100)
 			}

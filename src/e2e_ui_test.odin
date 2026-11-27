@@ -623,3 +623,34 @@ end}`)
 	e2e_ui_settle(&e)
 	testing.expect_value(t, len(editor_buffer(&e.ed).lines), 4)
 }
+
+@(test)
+e2e_ui_wheel_handler_skips_sideways :: proc(t: ^testing.T) {
+	e := e2e_start("x")
+	defer e2e_stop(&e)
+	e2e_plugin(&e, "uitest", `
+local ui = qed.ui
+return {setup = function()
+	qed.command{id = "open", name = "Open", run = function()
+		local rows = {}
+		for i = 1, 50 do rows[i] = ui.text{"row " .. i} end
+		ui.mount("pane", ui.scroll{id = "scroller", float = "screen", anchor = "top_left", width = 30, height = 10,
+			on = {wheel = function() qed.message("wheel") return true end}, ui.column(rows)})
+	end}
+end}`)
+	ut_run(&e, "Open")
+	sideways := []tb2.Event {
+		{type = .Mouse, key = .Mouse_Wheel_Down, mod = .Alt, x = 3, y = 3},
+		{type = .Mouse, key = .Mouse_Wheel_Left, x = 3, y = 3},
+		{type = .Mouse, key = .Mouse_Wheel_Right, x = 3, y = 3},
+	}
+	for ev in sideways {
+		e2e_step(&e, ev)
+		e2e_ui_settle(&e)
+		testing.expectf(t, e.ed.message == "", "%v reached on.wheel", ev.key)
+	}
+	testing.expect(t, e2e_ui_find_row(&e, "row 1") >= 0, "a sideways wheel leaves the scroll put")
+	e2e_mouse(&e, 3, 3, .Mouse_Wheel_Down)
+	e2e_ui_settle(&e)
+	testing.expect_value(t, e.ed.message, "wheel")
+}

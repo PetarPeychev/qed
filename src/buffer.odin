@@ -53,6 +53,9 @@ Buffer :: struct {
 	bulk_min:      int,
 	bulk_row:      int,
 	bulk_off:      int,
+	width_max:     int,
+	width_rev:     u64,
+	width_tab:     int,
 }
 
 DiskStamp :: struct {
@@ -170,6 +173,17 @@ buffer_byte_offset :: proc(buffer: ^Buffer, at: Cursor) -> int {
 		off += len(buffer.lines[i].text) + 1
 	}
 	return off + at.col
+}
+
+buffer_width_max :: proc(buffer: ^Buffer) -> int {
+	if buffer.width_tab != TAB_WIDTH || buffer.width_rev != buffer.rev {
+		buffer.width_max = 0
+		for line in buffer.lines {
+			buffer.width_max = max(buffer.width_max, visual_width(line.text[:]))
+		}
+		buffer.width_rev, buffer.width_tab = buffer.rev, TAB_WIDTH
+	}
+	return buffer.width_max
 }
 
 buffer_bulk_begin :: proc(buffer: ^Buffer) {

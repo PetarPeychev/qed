@@ -95,6 +95,7 @@ still goes ahead, unformatted). A save waits for formatting up to
 |-----|---------|---------|
 | `scroll_margin` | `3` | Rows kept between the cursor and the viewport edge when scrolling. |
 | `wheel_scroll_lines` | `3` | Lines per mouse-wheel notch. |
+| `wheel_scroll_columns` | `6` | Columns per horizontal wheel notch (Alt+wheel or the sideways wheel, wrap off). |
 | `double_click_ms` | `400` | Max gap (ms) for a double/triple click. |
 
 ## Panes & layout

@@ -615,6 +615,10 @@ term_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) {
 			} else {
 				t.sb_view = max(0, t.sb_view - WHEEL_SCROLL_LINES)
 			}
+		case .Mouse_Wheel_Left, .Mouse_Wheel_Right:
+			if t.altscreen {
+				vterm.mouse_button(t.vt, 6 if ev.key == .Mouse_Wheel_Left else 7, true, mod)
+			}
 		}
 	}
 	term_flush_output(t)

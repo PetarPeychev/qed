@@ -47,7 +47,7 @@ anything under `src`/`plugins`/`config`/`lib` is newer.
 Scenario lines (`#` comments): `size WxH`, `requires TOOL`, `timeout MS`, `file PATH` / `config` /
 `expect-file PATH` (body up to a line `end`, each line newline-terminated), `copy SRC DEST` (a repo file into the root), `run [ARGS]`, `wait TEXT`,
 `key K...` (`ctrl+s alt+F shift+right down*3 esc enter tab pgdn`), `type TEXT`, `click X Y`,
-`dclick X Y`, `drag X1 Y1 X2 Y2`, `wheel X Y up|down [COUNT]`, `snap NAME [SENTENCE]` (the optional sentence says what the step shows; demo pages only).
+`dclick X Y`, `drag X1 Y1 X2 Y2`, `wheel X Y [alt+]up|down|left|right [COUNT]`, `snap NAME [SENTENCE]` (the optional sentence says what the step shows; demo pages only).
 Coordinates are 0-based cells.
 
 Snapshot file: header (size, cursor), `-- text` rows (right-trimmed), `-- style` rows (one symbol

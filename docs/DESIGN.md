@@ -232,7 +232,8 @@ member group is no longer on top).
   `set_screen_row(top_row())` is exact) and `focus` (an id'd view only) act on the view showing the buffer (`ui_buffer_view`). When the caret is scrolled out of
   the view it is hidden, not clamped to an edge.
 - Mouse: click positions, drag extends (auto-scrolls past the edge), wheel
-  scrolls, double/triple-click selects word/line. `editor_step` coalesces a
+  scrolls; with wrap off Alt+wheel or the sideways wheel moves `scroll_col` by `wheel_scroll_columns`, up to the
+  buffer's widest line (`buffer_width_max`, cached per `rev`); double/triple-click selects word/line. `editor_step` coalesces a
   burst of queued same-direction wheel events (0 ms peek) into one dispatch run
   with a single render, for every consumer.
 
@@ -889,7 +890,7 @@ pairs (brackets/quotes/backtick: surround selection, type-over, backspace-delete
 
 Navigation & UI: per-buffer soft wrap (word-boundary, config `line_wrap` default on,
 *Toggle Line Wrap*; visual-row cursor motion + sub-row scroll; wraps ghost-text too),
-line-number + git gutter, mouse (position/drag/wheel/multi-click,
+line-number + git gutter, mouse (position/drag/wheel/Alt+wheel horizontal/multi-click,
 drag auto-scroll), status + message line (relative path, git branch + ahead/behind + diff size, segment icons;
 narrow-width fitting), narrow-width panes (preview hides below the list/preview minimums),
 structured message log (level/source-tagged ring + disk log at `~/.local/state/qed/qed.log`,

@@ -96,6 +96,21 @@ ev_motion :: proc(ev: tb2.Event) -> bool {
 	return (u8(ev.mod) & u8(tb2.Mod.Motion)) != 0
 }
 
+ev_wheel :: proc(ev: tb2.Event) -> bool {
+	if ev.type != .Mouse {
+		return false
+	}
+	#partial switch ev.key {
+	case .Mouse_Wheel_Up, .Mouse_Wheel_Down, .Mouse_Wheel_Left, .Mouse_Wheel_Right:
+		return true
+	}
+	return false
+}
+
+ev_wheel_sideways :: proc(ev: tb2.Event) -> bool {
+	return ev.type == .Mouse && (ev.key == .Mouse_Wheel_Left || ev.key == .Mouse_Wheel_Right || (ev_alt(ev) && ev_wheel(ev)))
+}
+
 ev_ctrl :: proc(ev: tb2.Event) -> bool {
 	return (u8(ev.mod) & u8(tb2.Mod.Ctrl)) != 0
 }

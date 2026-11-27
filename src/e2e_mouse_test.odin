@@ -93,6 +93,61 @@ e2e_mouse_wheel_coalesce :: proc(t: ^testing.T) {
 }
 
 @(test)
+e2e_mouse_wheel_sideways :: proc(t: ^testing.T) {
+	long := strings.repeat("x", 200, context.temp_allocator)
+	e := e2e_start(fmt.tprintf("short\n\n\n%s\n%s", long, strings.repeat("y\n", 60, context.temp_allocator)))
+	defer e2e_stop(&e)
+	b := editor_buffer(&e.ed)
+	b.wrap = false
+	e2e_render(&e)
+	g := editor_gutter_width(&e.ed)
+	node := ui_find(&e.ed.ui, "#layout/main_editor")
+	width := ui_editor_text_width(node, b)
+	limit := 200 - width + min(SCROLL_MARGIN, width / 4) + 1
+
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Down, mod = .Alt)
+	testing.expect_value(t, main_view(&e).scroll_col, WHEEL_SCROLL_COLUMNS)
+	testing.expect_value(t, main_view(&e).scroll_row, 0)
+	testing.expect_value(t, b.cursor, Cursor{0, 0})
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Right)
+	testing.expect_value(t, main_view(&e).scroll_col, 2 * WHEEL_SCROLL_COLUMNS)
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Left)
+	testing.expect_value(t, main_view(&e).scroll_col, WHEEL_SCROLL_COLUMNS)
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Up, mod = .Alt)
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Up, mod = .Alt)
+	testing.expect_value(t, main_view(&e).scroll_col, 0)
+
+	right := tb2.Event{type = .Mouse, key = .Mouse_Wheel_Right, x = i32(g + 1), y = 3}
+	for _ in 0 ..< 60 {
+		e2e_step(&e, right)
+	}
+	testing.expect_value(t, main_view(&e).scroll_col, limit)
+	testing.expect_value(t, b.cursor, Cursor{0, 0})
+
+	e2e_key(&e, .Arrow_Right)
+	testing.expect_value(t, b.cursor, Cursor{0, 1})
+	testing.expect_value(t, main_view(&e).scroll_col, 0)
+
+	b.cursor = {3, 200}
+	e2e_render(&e)
+	testing.expect_value(t, main_view(&e).scroll_col, limit)
+	e2e_step(&e, right)
+	testing.expect_value(t, main_view(&e).scroll_col, limit)
+
+	b.cursor = {0, 0}
+	e2e_render(&e)
+	b.wrap = true
+	e2e_render(&e)
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Down, mod = .Alt)
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Right)
+	testing.expect_value(t, main_view(&e).scroll_col, 0)
+	testing.expect_value(t, main_view(&e).scroll_row, 0)
+	testing.expect_value(t, main_view(&e).scroll_sub, 0)
+	e2e_mouse(&e, g + 1, 3, .Mouse_Wheel_Down)
+	testing.expect(t, main_view(&e).scroll_row > 0, "with wrap on the plain wheel still scrolls")
+}
+
+@(test)
 e2e_mouse_triple_click_line :: proc(t: ^testing.T) {
 	e := e2e_start("hello world")
 	defer e2e_stop(&e)

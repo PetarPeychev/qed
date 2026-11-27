@@ -2,6 +2,7 @@ qed.options{
 	scroll_margin = {type = "int", default = 3, min = 0, description = "Rows kept visible above and below the cursor when scrolling"},
 	tab_width = {type = "int", default = 4, min = 1, description = "Display width of a literal tab and the default indent width"},
 	wheel_scroll_lines = {type = "int", default = 3, min = 1, description = "Lines scrolled per mouse wheel step"},
+	wheel_scroll_columns = {type = "int", default = 6, min = 1, description = "Columns scrolled per horizontal mouse wheel step"},
 	double_click_ms = {type = "int", default = 400, min = 1, description = "Max gap between clicks for a double or triple click"},
 	cursor_accel = {type = "bool", default = true, description = "Speed up held arrow keys"},
 	cursor_accel_interval_ms = {type = "int", default = 55, min = 1, description = "Key repeat gap that still counts as holding an arrow"},

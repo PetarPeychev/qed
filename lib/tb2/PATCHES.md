@@ -173,3 +173,21 @@ bytes already queued on the fd (`esc_pull_pending`), never by waiting: a typed
 `Alt+_` or `Alt+P` stays a key at once, and anything that does not finish
 within the 256-byte reply buffer parses as keys. The Odin side is
 `Event_Kind.Reply`, `tb2.reply` and `tb2.send` (queries and image data).
+
+## Mouse Alt bit and the horizontal wheel
+
+Upstream kept only the motion bit of an xterm mouse report and read buttons
+66/67 (the sideways wheel: trackpad swipe, tilt wheel) as right button and
+release. `extract_esc_mouse` now maps the button byte through
+`mouse_key_from_button` and `mouse_mod_from_button`, in the X10 and the
+SGR/urxvt branches alike:
+
+- `64|2` and `64|3` become `TB_KEY_MOUSE_WHEEL_LEFT` / `_RIGHT`
+  (`0xffff - 29` / `- 30`, mirrored as `Key.Mouse_Wheel_Left` / `_Right` in
+  `tb2.odin`).
+- xterm bit 8 (Meta) becomes `TB_MOD_ALT`; bit 32 (motion) stays
+  `TB_MOD_MOTION`. Shift (4) and Ctrl (16) are still dropped, as upstream.
+
+qed scrolls an unwrapped editor sideways on Alt+wheel: Windows Terminal keeps
+Shift+wheel for itself (Shift overrides mouse mode) but reports Alt+wheel as
+SGR 72/73. Fixtures: `e2e_input_fixtures` (`src/e2e_input_test.odin`).

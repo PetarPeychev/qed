@@ -73,8 +73,10 @@ Key :: enum u16 {
 	Mouse_Right      = (0xffff - 24),
 	Mouse_Middle     = (0xffff - 25),
 	Mouse_Release    = (0xffff - 26),
-	Mouse_Wheel_Up   = (0xffff - 27),
-	Mouse_Wheel_Down = (0xffff - 28),
+	Mouse_Wheel_Up    = (0xffff - 27),
+	Mouse_Wheel_Down  = (0xffff - 28),
+	Mouse_Wheel_Left  = (0xffff - 29),
+	Mouse_Wheel_Right = (0xffff - 30),
 }
 
 Event_Kind :: enum u8 {

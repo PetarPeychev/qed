@@ -291,7 +291,7 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 	// the wheel over the hover scrolls it; any other click or wheel closes the caret popups, and a wheel over the
 	// completion menu or the diagnostic box only closes it (the editor under it does not scroll)
 	popup := caret_popup_root(editor)
-	wheel_over_popup := popup != nil && ui_rect_has(popup.rect, cell_x, cell_y) && (ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down)
+	wheel_over_popup := popup != nil && ui_rect_has(popup.rect, cell_x, cell_y) && ev_wheel(ev)
 	if wheel_over_popup && popup.id != "caret_hover" {
 		completion_dismiss(editor)
 		caret_diagnostic_close(editor)
@@ -344,7 +344,7 @@ ui_dispatch_mouse :: proc(editor: ^Editor, ev: tb2.Event) -> bool {
 		}
 		return true
 	}
-	wheel := ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Down
+	wheel := ev_wheel(ev)
 	event := UiEvent.Wheel if wheel else UiEvent.Click
 	if !wheel {
 		if editor.click_count > 0 && editor.last_click_pos == {cell_y, cell_x} && ms_since(editor.last_click_tick) < f64(DOUBLE_CLICK_MS) {
@@ -379,7 +379,8 @@ ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, cell_x, cell_y: int, eve
 			}
 			visited[node] = true
 			args := UiHandlerArgs{mouse = true, x = cell_x - node.rect.x + 1, y = cell_y - node.rect.y + 1, button = ui_mouse_button(ev.key)}
-			if node.handlers[event] != 0 && ui_handler_call(editor, node.owner, node.handlers[event], args) {
+			// on.wheel carries no direction, so a sideways wheel would read as a vertical one
+			if node.handlers[event] != 0 && !ev_wheel_sideways(ev) && ui_handler_call(editor, node.owner, node.handlers[event], args) {
 				return true
 			}
 			if native && node.core_event != nil && node.core_event(editor, ev) {
@@ -394,6 +395,18 @@ ui_mouse_bubble :: proc(editor: ^Editor, ev: tb2.Event, cell_x, cell_y: int, eve
 		}
 	}
 	return false
+}
+
+ui_editor_scroll_sideways :: proc(state: ^UiState, buffer: ^Buffer, width: int, left: bool) {
+	if left {
+		state.scroll_col = max(state.scroll_col - WHEEL_SCROLL_COLUMNS, 0)
+		return
+	}
+	// as far as revealing the caret at the end of the longest line would scroll
+	limit := buffer_width_max(buffer) - width + min(SCROLL_MARGIN, width / 4) + 1
+	if state.scroll_col < limit {
+		state.scroll_col = min(state.scroll_col + WHEEL_SCROLL_COLUMNS, limit)
+	}
 }
 
 ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, cell_y: int, wheel: bool) -> bool {
@@ -432,7 +445,9 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		return true
 	case .Scroll:
 		if wheel {
-			ui_scroll_by(editor, node, step, true)
+			if !ev_wheel_sideways(ev) {
+				ui_scroll_by(editor, node, step, true)
+			}
 			return true
 		}
 	case .Editor:
@@ -443,6 +458,12 @@ ui_mouse_native :: proc(editor: ^Editor, node: ^UiNode, ev: tb2.Event, cell_x, c
 		state := ui_node_state(ui, node)
 		if wheel {
 			width := ui_editor_text_width(node, buffer)
+			if ev_wheel_sideways(ev) {
+				if !buffer.wrap && width > 0 {
+					ui_editor_scroll_sideways(state, buffer, width, ev.key == .Mouse_Wheel_Up || ev.key == .Mouse_Wheel_Left)
+				}
+				return true
+			}
 			if !buffer.wrap || width <= 0 {
 				state.scroll_row = clamp(state.scroll_row + step, 0, len(buffer.lines) - 1)
 				state.scroll_sub = 0

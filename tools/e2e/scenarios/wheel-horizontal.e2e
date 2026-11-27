@@ -1,0 +1,32 @@
+# Horizontal wheel: with wrap off, Alt+wheel and the sideways wheel scroll the view left and right, from column 0 to
+# the end of the longest line; the cursor stays put until it moves. With wrap on both are ignored.
+size 80x24
+file wide.txt
+Horizontal wheel scrolling
+
+........10........20........30........40........50........60........70........80........90.......100.......110.......120.......130.......140.......150.......160.......170.......180.......190.......200 END
+
+the cursor stays on this line
+end
+run wide.txt
+wait Horizontal
+snap wrapped Wrap is on by default, so the long line wraps.
+wheel 30 6 alt+down 2
+wheel 30 6 right 2
+snap wrap-ignores With wrap on, Alt+wheel and the sideways wheel change nothing.
+key ctrl+p
+type line wrap
+key enter
+snap unwrapped Wrap is off: the long line runs past the right edge.
+wheel 30 6 alt+down 2
+snap alt-right Alt+wheel down scrolled the view right by 12 columns; the cursor did not move, so it is scrolled out of view.
+wheel 30 6 right 2
+snap wheel-right The sideways wheel scrolls right too, 6 columns per step.
+wheel 30 6 left
+snap wheel-left The sideways wheel to the left scrolls back 6 columns.
+wheel 30 6 alt+up 10
+snap left-limit Alt+wheel up scrolls left and stops at column 0.
+wheel 30 6 right 50
+snap right-limit Scrolling right stops once the end of the longest line sits near the right edge.
+key right
+snap reveal Moving the cursor scrolls the view back to show it.

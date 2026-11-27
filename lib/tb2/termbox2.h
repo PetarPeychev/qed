@@ -204,6 +204,9 @@ extern "C" {
 #define TB_KEY_MOUSE_RELEASE    (0xffff - 26)
 #define TB_KEY_MOUSE_WHEEL_UP   (0xffff - 27)
 #define TB_KEY_MOUSE_WHEEL_DOWN (0xffff - 28)
+/* qed patch: horizontal wheel, xterm buttons 6/7 (see lib/tb2/PATCHES.md) */
+#define TB_KEY_MOUSE_WHEEL_LEFT  (0xffff - 29)
+#define TB_KEY_MOUSE_WHEEL_RIGHT (0xffff - 30)
 
 #define TB_CAP_F1               0
 #define TB_CAP_F2               1
@@ -3941,6 +3944,33 @@ static int extract_esc_cap(struct tb_event *event) {
     return TB_ERR;
 }
 
+/* qed patch: xterm button byte to key; 64|2 and 64|3 are the horizontal
+ * wheel, which upstream read as right button and release */
+static uint16_t mouse_key_from_button(int b) {
+    if ((b & 64) != 0) {
+        switch (b & 3) {
+            case 0: return TB_KEY_MOUSE_WHEEL_UP;
+            case 1: return TB_KEY_MOUSE_WHEEL_DOWN;
+            case 2: return TB_KEY_MOUSE_WHEEL_LEFT;
+            default: return TB_KEY_MOUSE_WHEEL_RIGHT;
+        }
+    }
+    switch (b & 3) {
+        case 0: return TB_KEY_MOUSE_LEFT;
+        case 1: return TB_KEY_MOUSE_MIDDLE;
+        case 2: return TB_KEY_MOUSE_RIGHT;
+        default: return TB_KEY_MOUSE_RELEASE;
+    }
+}
+
+/* qed patch: xterm meta bit 8 to TB_MOD_ALT; upstream kept only motion (32) */
+static uint8_t mouse_mod_from_button(int b) {
+    uint8_t mod = 0;
+    if ((b & 8) != 0) mod |= TB_MOD_ALT;
+    if ((b & 32) != 0) mod |= TB_MOD_MOTION;
+    return mod;
+}
+
 static int extract_esc_mouse(struct tb_event *event) {
     struct bytebuf *in = &global.in;
     size_t buf_shift = 0;
@@ -3977,26 +4007,9 @@ static int extract_esc_mouse(struct tb_event *event) {
 
             int b = in->buf[3] - 0x20;
 
-            switch (b & 3) {
-                case 0:
-                    event->key = ((b & 64) != 0) ? TB_KEY_MOUSE_WHEEL_UP
-                                                 : TB_KEY_MOUSE_LEFT;
-                    break;
-                case 1:
-                    event->key = ((b & 64) != 0) ? TB_KEY_MOUSE_WHEEL_DOWN
-                                                 : TB_KEY_MOUSE_MIDDLE;
-                    break;
-                case 2:
-                    event->key = TB_KEY_MOUSE_RIGHT;
-                    break;
-                case 3:
-                    event->key = TB_KEY_MOUSE_RELEASE;
-                    break;
-                default:
-                    return TB_ERR;
-            }
-
-            if ((b & 32) != 0) event->mod |= TB_MOD_MOTION;
+            /* qed patch: wheel left/right and the Alt bit (see lib/tb2/PATCHES.md) */
+            event->key = mouse_key_from_button(b);
+            event->mod |= mouse_mod_from_button(b);
 
             // the coord is 1,1 for upper left
             event->x = ((uint8_t)in->buf[4]) - 0x21;
@@ -4052,29 +4065,13 @@ static int extract_esc_mouse(struct tb_event *event) {
 
             if (type == TYPE_1015) num[0] -= 0x20;
 
-            switch (num[0] & 3) {
-                case 0:
-                    event->key = ((num[0] & 64) != 0) ? TB_KEY_MOUSE_WHEEL_UP
-                                                      : TB_KEY_MOUSE_LEFT;
-                    break;
-                case 1:
-                    event->key = ((num[0] & 64) != 0) ? TB_KEY_MOUSE_WHEEL_DOWN
-                                                      : TB_KEY_MOUSE_MIDDLE;
-                    break;
-                case 2:
-                    event->key = TB_KEY_MOUSE_RIGHT;
-                    break;
-                case 3:
-                    event->key = TB_KEY_MOUSE_RELEASE;
-                    break;
-                default:
-                    return TB_ERR;
-            }
+            /* qed patch: wheel left/right and the Alt bit (see lib/tb2/PATCHES.md) */
+            event->key = mouse_key_from_button(num[0]);
 
             // on xterm mouse release is signaled by lowercase m
             if (trail == 'm') event->key = TB_KEY_MOUSE_RELEASE;
 
-            if ((num[0] & 32) != 0) event->mod |= TB_MOD_MOTION;
+            event->mod |= mouse_mod_from_button(num[0]);
 
             event->x = (num[1] - 1 < 0) ? 0 : num[1] - 1;
             event->y = (num[2] - 1 < 0) ? 0 : num[2] - 1;
