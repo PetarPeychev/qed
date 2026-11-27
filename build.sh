@@ -97,16 +97,16 @@ MIN=""
 if [ "$(uname)" = Darwin ]; then MIN="-mmacosx-version-min=11.0"; fi
 CM=lib/cmark_gfm
 if [ ! -f "$CM/libcmarkgfm.a" ] || [ -n "$(find "$CM" -newer "$CM/libcmarkgfm.a" -name '*.[ch]')" ]; then
-   ls "$CM"/*.c | xargs -P "$JOBS" -I{} sh -c 'f={}; cc -c -w -O2 '"$MIN"' -I '"$CM"' "$f" -o "${f%.c}.o"'
+   ls "$CM"/*.c | xargs -P "$JOBS" -n1 sh -c 'f=$1; cc -c -w -O2 '"$MIN"' -I '"$CM"' "$f" -o "${f%.c}.o"' _
    rm -f "$CM/libcmarkgfm.a"
    ar rcs "$CM/libcmarkgfm.a" "$CM"/*.o
 fi
 LH=lib/litehtml
 if [ ! -f "$LH/liblitehtml.a" ] || [ -n "$(find "$LH" -newer "$LH/liblitehtml.a" \( -name '*.[ch]' -o -name '*.cpp' \))" ]; then
-   { ls "$LH"/src/gumbo/src/*.c; ls "$LH"/src/*.cpp "$LH"/qlh.cpp; } | xargs -P "$JOBS" -I{} sh -c 'f={}; case "$f" in
+   { ls "$LH"/src/gumbo/src/*.c; ls "$LH"/src/*.cpp "$LH"/qlh.cpp; } | xargs -P "$JOBS" -n1 sh -c 'f=$1; case "$f" in
       *.c) cc -c -w -O2 '"$MIN"' -I '"$LH"'/src/gumbo/src "$f" -o "${f%.c}.o" ;;
       *) c++ -c -w -O2 '"$MIN"' -std=c++17 -I '"$LH"'/include -I '"$LH"'/include/litehtml -I '"$LH"'/src/gumbo/src "$f" -o "${f%.cpp}.o" ;;
-   esac'
+   esac' _
    rm -f "$LH/liblitehtml.a"
    ar rcs "$LH/liblitehtml.a" "$LH"/src/gumbo/src/*.o "$LH"/src/*.o "$LH"/qlh.o
 fi
