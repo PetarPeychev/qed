@@ -71,7 +71,7 @@ cmd_diag_next :: proc(editor: ^Editor) {diag_goto(editor, +1)}
 cmd_diag_prev :: proc(editor: ^Editor) {diag_goto(editor, -1)}
 cmd_diff_next :: proc(editor: ^Editor) {diffbase_goto(editor, +1)}
 cmd_diff_prev :: proc(editor: ^Editor) {diffbase_goto(editor, -1)}
-cmd_diff_revert :: proc(editor: ^Editor) {diffbase_revert(editor)}
+cmd_diff_restore :: proc(editor: ^Editor) {diffbase_restore(editor)}
 
 cmd_toggle_diff_view :: proc(editor: ^Editor) {
 	g_diff_view = !g_diff_view
@@ -108,7 +108,7 @@ commands := [?]Command {
 	{name = "Git: Toggle Diff View", id = "git_toggle_diff_view", run = cmd_toggle_diff_view},
 	{name = "Git: Next Change", id = "git_next_change", run = cmd_diff_next},
 	{name = "Git: Previous Change", id = "git_previous_change", run = cmd_diff_prev},
-	{name = "Git: Revert Hunk", id = "git_revert_hunk", run = cmd_diff_revert},
+	{name = "Git: Restore Hunk", id = "git_restore_hunk", run = cmd_diff_restore},
 	{name = "Toggle Line Wrap", id = "toggle_line_wrap", run = cmd_toggle_line_wrap},
 	{name = "LSP: Next Diagnostic", id = "lsp_next_diagnostic", lsp = true, run = cmd_diag_next},
 	{name = "LSP: Previous Diagnostic", id = "lsp_previous_diagnostic", lsp = true, run = cmd_diag_prev},
@@ -201,7 +201,7 @@ command_available :: proc(editor: ^Editor, name: string, scope := "") -> bool {
 		}
 	}
 	switch name {
-	case "Git: Next Change", "Git: Previous Change", "Git: Revert Hunk":
+	case "Git: Next Change", "Git: Previous Change", "Git: Restore Hunk":
 		return diffbase_active(editor_buffer(editor)) != nil
 	}
 	return true

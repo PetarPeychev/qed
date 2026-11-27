@@ -13,6 +13,7 @@ local scanning, dirty, job = false, false, nil
 local renames = {}
 local published, ft
 local inrepo = false
+local checkpoint
 
 local function fetch(buffer)
 	local path = buffer:path()
@@ -145,7 +146,7 @@ local function show()
 		ab = ab .. icon("status_behind") .. stat.behind
 	end
 	qed.status.set("ahead_behind", {text = ab, sep = " ", drop = 7, early = true})
-	local label = on and base.ref and (icon("status_diff_base") .. base.label) or ""
+	local label = on and base.label and (icon("status_diff_base") .. base.label) or ""
 	qed.status.set("base", {text = label, drop = 8, early = true})
 	local diff = ""
 	if on and (stat.added > 0 or stat.deleted > 0) then
@@ -169,7 +170,7 @@ local function poll()
 		behind, ahead = tonumber(behind_text) or 0, tonumber(ahead_text) or 0
 		local rev = repo.rev(top, base)
 		sha = repo.out(root, {"rev-parse", "-q", "--verify", rev})
-		added, deleted = repo.diffsize(top, rev)
+		added, deleted = repo.diffsize(top, rev, rev ~= "HEAD" and repo.env(top, base) or nil)
 	end
 	if mine ~= stat.gen then
 		return
@@ -206,45 +207,164 @@ local function restart(new)
 end
 
 local function set_base()
-	local new, err = picker.pick(qed.root())
+	local new, err = picker.pick(qed.root(), checkpoint)
 	if err then
 		qed.message(err, "error")
 	end
 	if not new then
 		return
 	end
-	qed.message("Diff base: " .. (new.ref and new.label or "HEAD"))
+	qed.message("Diff base: " .. (new.label or "HEAD"))
 	restart(new)
 	scan()
 end
 
-restore_path = function(path)
-	if not path or qed.fs.exists(path) then
-		qed.message("Not a deleted file")
+local function drop_checkpoint()
+	if checkpoint then
+		qed.fs.remove(checkpoint.index)
+		checkpoint = nil
+	end
+end
+
+local function adopt(snap)
+	local stale = checkpoint and checkpoint.index
+	checkpoint = checkpoint or {label = "checkpoint"}
+	checkpoint.top, checkpoint.index, checkpoint.tree = snap.top, snap.index, snap.tree
+	if stale then
+		qed.fs.remove(stale)
+	end
+	restart(checkpoint)
+	scan()
+end
+
+local function take_checkpoint()
+	local root = qed.root()
+	if repo.out(root, {"rev-parse", "--show-toplevel"}) == "" then
+		qed.message("Working directory is not a git repository", "error")
 		return
 	end
-	local dir, rel = repo.anchor(path)
-	local rev = repo.rev(dir, base)
-	if repo.out(dir, {"cat-file", "-t", rev .. ":./" .. rel}) ~= "blob" then
-		qed.message("Not a deleted file")
+	local snap, err = repo.snapshot(root)
+	if not snap then
+		qed.message("Checkpoint failed: " .. tostring(err), "error")
+		return
+	end
+	if root ~= qed.root() then
+		qed.fs.remove(snap.index)
+		return
+	end
+	adopt(snap)
+	qed.message("Checkpoint " .. snap.tree:sub(1, 7))
+end
+
+local function accept_path(path)
+	local from = checkpoint
+	if not path or not from or base ~= from or path:sub(1, #from.top + 1) ~= from.top .. "/" then
+		return
+	end
+	local tree_before = from.tree
+	local snap, err = repo.snapshot(qed.root(), from, path:sub(#from.top + 2))
+	if not snap then
+		qed.message("Accept failed: " .. tostring(err), "error")
+		return
+	end
+	if checkpoint ~= from or from.tree ~= tree_before then
+		qed.fs.remove(snap.index)
+		return
+	end
+	adopt(snap)
+	qed.message("Accepted " .. qed.path.base(path))
+end
+
+local function buffers_at(path)
+	local out = {}
+	for _, buffer in ipairs(qed.buf.list()) do
+		if buffer:valid() and buffer:path() == path then
+			out[#out + 1] = buffer
+		end
+	end
+	return out
+end
+
+local function unsaved(path)
+	for _, buffer in ipairs(buffers_at(path)) do
+		if buffer:modified() then
+			return true
+		end
+	end
+	return false
+end
+
+restore_path = function(path)
+	if not path then
 		return
 	end
 	local name = qed.path.base(path)
-	local choice = qed.confirm{question = ("Restore %s from %s?"):format(name, base.ref and base.label or "HEAD"), choices = {"Cancel", "Restore"}}
-	if choice ~= 2 then
+	local label = base.label or "HEAD"
+	local head = not (base.ref or base.tree)
+	local dir, rel = repo.anchor(path)
+	local rev = head and "HEAD" or repo.resolve(dir, base)
+	if rev == "" then
+		qed.message("Cannot resolve " .. label, "error")
 		return
 	end
-	-- a staged deletion has no index entry; restoring the worktree alone would leave the file untracked
-	local tracked = repo.git(dir, {"--literal-pathspecs", "ls-files", "--error-unmatch", "--", rel}).code == 0
-	local args = {"--literal-pathspecs", "restore", "--source=" .. rev, "--worktree", "--", rel}
-	if not tracked then
-		table.insert(args, 4, "--staged")
-	end
-	if repo.git(dir, args).code ~= 0 then
-		qed.message("Restore failed: " .. name, "error")
+	local kind = repo.entry(dir, rev, rel)
+	if kind == nil then
+		qed.message("Restore failed: cannot read " .. label, "error")
 		return
 	end
-	qed.message("Restored " .. name)
+	local st = qed.fs.stat(path)
+	local present = qed.fs.exists(path, {follow = false})
+	if (kind and kind ~= "blob") or (st and st.type == "dir") then
+		qed.message("Not a file: " .. name)
+		return
+	end
+	if not kind and not present then
+		qed.message("Nothing to restore: " .. name)
+		return
+	end
+	if unsaved(path) then
+		qed.message("Unsaved edits in " .. name, "warn")
+		return
+	end
+	local question, verb
+	if not kind then
+		question, verb = ("Delete %s? It is not in %s"):format(name, label), "Delete"
+	elseif present then
+		question, verb = ("Restore %s to %s?"):format(name, label), "Restore"
+	else
+		question, verb = ("Restore %s from %s?"):format(name, label), "Restore"
+	end
+	if qed.confirm{question = question, choices = {"Cancel", verb}} ~= 2 then
+		return
+	end
+	if unsaved(path) then
+		qed.message("Unsaved edits in " .. name, "warn")
+		return
+	end
+	-- against HEAD the index is reset too, or a staged change keeps the file listed
+	local tracked = head and repo.git(dir, {"--literal-pathspecs", "ls-files", "--error-unmatch", "--", rel}).code == 0
+	if kind or tracked then
+		local args = {"--literal-pathspecs", "restore", "--source=" .. rev, "--worktree", "--", rel}
+		if head then
+			table.insert(args, 4, "--staged")
+		end
+		if repo.git(dir, args).code ~= 0 then
+			qed.message("Restore failed: " .. name, "error")
+			return
+		end
+	else
+		local ok, err = qed.fs.remove(path)
+		if not ok then
+			qed.message(("Delete failed: %s: %s"):format(name, tostring(err)), "error")
+			return
+		end
+	end
+	if not kind then
+		for _, buffer in ipairs(buffers_at(path)) do
+			qed.close(buffer)
+		end
+	end
+	qed.message((kind and "Restored " or "Deleted ") .. name)
 	qed.defer(0, scan)
 end
 
@@ -252,15 +372,43 @@ local function when()
 	return ready
 end
 
+local function on_git_tab()
+	if not (ready and ft) then
+		return false
+	end
+	local ok, state = pcall(ft.state)
+	return ok and state ~= nil and state.tab == "Git"
+end
+
+local function git_tab_path()
+	if not on_git_tab() then
+		return nil
+	end
+	local selection = ft.selection()
+	return selection and selection.item and selection.item.path
+end
+
+local function on_checkpoint()
+	return checkpoint ~= nil and base == checkpoint
+end
+
 return {
 	setup = function()
 		qed.meta{description = "Diff base, gutter marks and status for git repos"}
 		show()
 		qed.command{id = "set_diff_base", name = "Set Diff Base", run = set_base, when = when}
+		qed.command{id = "checkpoint", name = "Checkpoint", welcome = true, run = take_checkpoint, when = when}
 		qed.command{id = "restore_file", name = "Restore File", scope = "filetree", run = function()
-			local selection = ft and ft.selection()
-			restore_path(selection and selection.item and selection.item.path)
-		end, when = when}
+			restore_path(git_tab_path())
+		end, when = function() return git_tab_path() ~= nil end}
+		qed.command{id = "accept_file", name = "Accept File", scope = "filetree", run = function()
+			accept_path(git_tab_path())
+		end, when = function() return on_checkpoint() and git_tab_path() ~= nil end}
+		qed.command{id = "accept_all", name = "Accept All", scope = "filetree", run = function()
+			if on_checkpoint() then
+				take_checkpoint()
+			end
+		end, when = function() return on_checkpoint() and on_git_tab() end}
 		qed.command{id = "changes", name = "Changes", key = "Alt+g", welcome = true, when = function() return ready and ft ~= nil end, run = function()
 			ft.open("Git")
 		end}
@@ -291,10 +439,12 @@ return {
 				published, renames = nil, {}
 				inrepo = repo.out(qed.root(), {"rev-parse", "--show-toplevel"}) ~= ""
 				push()
+				drop_checkpoint()
 				restart({})
 				scan()
 			end
 		end)
+		qed:on("quit", drop_checkpoint)
 		qed:on("theme_changed", show)
 		qed:on("filetree:refresh", function()
 			if ready then

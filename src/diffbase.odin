@@ -542,7 +542,7 @@ diff_change_touched :: proc(c: DiffChange, r0, r1: int) -> bool {
 	return anchor >= r0 && anchor <= r1
 }
 
-diffbase_revert_change :: proc(b: ^Buffer, g: ^DiffBase, c: DiffChange) {
+diffbase_restore_change :: proc(b: ^Buffer, g: ^DiffBase, c: DiffChange) {
 	lo := clamp(c.old_lo, 0, len(g.base_text))
 	hi := clamp(c.old_hi, 0, len(g.base_text))
 	base := g.base_text[lo:hi]
@@ -584,7 +584,7 @@ diffbase_revert_change :: proc(b: ^Buffer, g: ^DiffBase, c: DiffChange) {
 	}
 }
 
-diffbase_revert :: proc(editor: ^Editor) {
+diffbase_restore :: proc(editor: ^Editor) {
 	b := editor_buffer(editor)
 	if b.big {
 		editor_log(editor, .Info, "Diff", "Disabled for big files")
@@ -621,7 +621,7 @@ diffbase_revert :: proc(editor: ^Editor) {
 	edit_open(b, .Atomic)
 	#reverse for c in g.changes {
 		if diff_change_touched(c, r0, r1) {
-			diffbase_revert_change(b, g, c)
+			diffbase_restore_change(b, g, c)
 		}
 	}
 	buffer_undo_commit(b)

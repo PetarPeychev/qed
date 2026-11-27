@@ -113,18 +113,28 @@ the screen-mapping walkers (`vpos_up`/`down`/`dist` via `line_rows` + `ghost_abo
 add plugin decoration ghosts to the diff ones).
 `diff_lines` also emits a flat `DiffChange` list (`{new_lo,new_hi,old_lo,old_hi}`, current
 rows ↔ base rows) as the **revert unit** — independent of `g_diff_view`, consumed by
-*Git: Revert Hunk*;
+*Git: Restore Hunk*;
 cursor *motion* is unaffected (it walks real rows via `cursor_visual_*`). All ghost math
 no-ops when `g_diff_view` is off, so the viewport behaves exactly as before.
 
 **Git diff base** (`plugins/git`, session-only): the "old" side of every git surface, picked by
 *Git: Set Diff Base* (`qed.pick`: HEAD, merge base with the default branch, local + remote refs,
-last 50 commits). Branch and merge-base picks are live refs, re-resolved per fetch (falls back to
+last 50 commits, the session's checkpoint). Branch and merge-base picks are live refs, re-resolved per fetch (falls back to
 HEAD in a repo where the ref doesn't resolve); commit picks are a fixed sha. The base lives only in
 the plugin, which also feeds the file tree's Git tab (see Git tab): with a base,
 each repo's `diff --name-status <base>` replaces its tracked `status` lines. A working-root change
-resets the base. The plugin's 2 s stat poll also resolves the base sha; when it changes (a moved
+resets the base and drops the checkpoint. The plugin's 2 s stat poll also resolves the base sha; when it changes (a moved
 branch, or HEAD under the default base) it refetches every buffer's base and rescans the tree.
+*Git: Checkpoint* (unbound) snapshots the root's repo, tracked and untracked minus ignored, into a tree object
+through a copy of the index in `$TMPDIR` (`add -A`, `write-tree`; HEAD and the real index untouched) and makes it
+the base. That temp index is kept as the checkpoint's index: the scan and diff size run with `GIT_INDEX_FILE` on it,
+so a file untracked now but in the checkpoint diffs as tracked and a file new since it shows as `??`. *Accept File*
+(Git tab) writes a new tree from a copy of that index with the path re-added (`add -A -- path`, deletions too); *Accept All*
+takes a fresh checkpoint. Each snapshot gets a new index file (a running scan's `git status` may still rewrite the
+old one); the old one is removed, as is the last on quit. *Restore File* (Git tab, also Enter on a deleted row,
+confirmed, refused while the file has unsaved edits) puts the file back as in any base: `restore --source --worktree`
+(plus `--staged` against HEAD, so it drops off the list), a file absent in the base is deleted and its buffers closed.
+A failed git step writes no file and changes no base.
 
 **Merge conflicts** (`plugins/conflict`): content-driven, no git dependency. `buf_open`, `buf_reload`,
 `buf_save` and `startup` scan the buffer (`qed.buf.find_lines` with the marker list and `word`, one core
@@ -1070,12 +1080,12 @@ incremental filter, `Tab` accept, `additionalTextEdits` auto-import),
 document formatting (`format` plugin: external command e.g. `ruff format -`, else LSP) + format-on-save
 (config `plugins.format.on_save`, toggleable), `LSP: Restart`, state-colored status segment
 (dim `…` starting / plain ready / red `✗` failed) + server stderr piped into the
-`.Debug` message log; diff gutter against any diff base (the `git` plugin's: live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit, `±label` status segment)
+`.Debug` message log; diff gutter against any diff base (the `git` plugin's: live vs `HEAD` or a session diff base, *Git: Set Diff Base*: merge base / branch / commit / checkpoint, `±label` status segment; *Git: Checkpoint* with *Accept File* / *Accept All*, *Restore File* against any base)
 + optional inline diff view (`Git: Toggle Diff View`, config `diff_view`): row
 tint plus dim-red ghost rows for removed/replaced lines with word-level change highlight;
 hunk navigation (`Git: Next/Previous Change`, `Alt+'`/`Alt+;`, `diffbase_goto`): jumps the cursor,
 centered, to the first line of the next/previous changed block off the gutter marks, no wrap;
-hunk revert (`Git: Revert Hunk`, `Alt+z`, `diffbase_revert`): restores the base lines for the
+hunk restore (`Git: Restore Hunk`, `Alt+z`, `diffbase_restore`): restores the base lines for the
 hunk(s) the cursor/selection touches (whole-hunk atomic, buffer-vs-base) as one undo group;
 merge-conflict highlighting (`conflict` plugin: ours green / theirs blue / diff3 base gray, marker lines
 emphasized, ours↔theirs word-level diff on both sides) + resolve (*Conflict: Resolve*, `Alt+m`: keep ours /

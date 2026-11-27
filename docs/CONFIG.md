@@ -296,10 +296,10 @@ jump list too. LSP hover uses the same renderer (plaintext hovers render verbati
 ### Git
 
 The bundled `git` plugin fetches each buffer's diff base (the gutter, diff view,
-*Git: Next/Previous Change*, *Git: Revert Hunk*), polls the branch, ahead/behind
+*Git: Next/Previous Change*, *Git: Restore Hunk*), polls the branch, ahead/behind
 and repo diff size into the status bar every 2 s, adds the file tree's **Git** tab
-(*Git: Changes*, `Alt+g`, shown only while the `filetree` plugin is loaded), and owns *Git: Set Diff Base* and the tree's
-*Git: Restore File* (also `Enter` on a deleted file). A moved branch or HEAD is followed within a poll. It
+(*Git: Changes*, `Alt+g`, shown only while the `filetree` plugin is loaded), and owns *Git: Set Diff Base*, *Git: Checkpoint* and the Git tab's
+*Git: Restore File* (any changed file, against any base; also `Enter` on a deleted file), *Accept File* and *Accept All* (checkpoint base only). A moved branch or HEAD is followed within a poll. It
 does nothing when the `git` binary isn't on `PATH`. The old `modules.git` keys warn
 and are ignored: `enabled` moved here, `diff_view` to the top level, `filetree_diff_only` to `plugins.filetree.diff_only`.
 

@@ -1161,7 +1161,7 @@ function BufferObject:set_indent(style, width) end
 ---@return integer width
 function BufferObject:indent() end
 
----Diff base: drives the gutter marks, diff-view ghost rows, change navigation and revert hunk.
+---Diff base: drives the gutter marks, diff-view ghost rows, change navigation and restore hunk.
 ---Each plugin keeps its own base per buffer; the base of the plugin that first set one most recently wins,
 ---and clearing it with `nil` (or unloading) reveals the one beneath. Another plugin's base is never touched.
 ---@param text string|nil raw bytes (need not be UTF-8)

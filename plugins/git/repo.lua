@@ -6,12 +6,12 @@ local function trim(text)
 	return (text:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
-function repo.git(dir, args)
+function repo.git(dir, args, env)
 	local argv = {"git", "-C", dir}
 	for _, arg in ipairs(args) do
 		argv[#argv + 1] = arg
 	end
-	local result, err = qed.spawn{argv = argv, cwd = dir}
+	local result, err = qed.spawn{argv = argv, cwd = dir, env = env}
 	return result or {code = -1, stdout = "", stderr = err}
 end
 
@@ -21,6 +21,9 @@ function repo.out(dir, args)
 end
 
 function repo.resolve(dir, base)
+	if base.tree then
+		return repo.out(dir, {"rev-parse", "-q", "--verify", base.tree .. "^{tree}"})
+	end
 	if base.merge then
 		return repo.out(dir, {"merge-base", base.ref, "HEAD"})
 	end
@@ -28,7 +31,7 @@ function repo.resolve(dir, base)
 end
 
 function repo.rev(dir, base)
-	local sha = base.ref and repo.resolve(dir, base) or ""
+	local sha = (base.ref or base.tree) and repo.resolve(dir, base) or ""
 	return sha ~= "" and sha or "HEAD"
 end
 
@@ -91,16 +94,64 @@ end
 
 repo.UNTRACKED = "git ls-files -o --exclude-standard -z | xargs -0 -r grep -IcH -e '' -- 2>/dev/null"
 
-function repo.untracked(top)
-	local result = qed.spawn{cmd = repo.UNTRACKED, cwd = top}
+function repo.untracked(top, env)
+	local result = qed.spawn{cmd = repo.UNTRACKED, cwd = top, env = env}
 	return result and result.stdout or ""
 end
 
-function repo.diffsize(top, rev)
-	local tracked = repo.git(top, {"-c", "core.quotePath=false", "diff", rev, "--numstat", "--find-renames"})
+function repo.diffsize(top, rev, env)
+	local tracked = repo.git(top, {"-c", "core.quotePath=false", "diff", rev, "--numstat", "--find-renames"}, env)
 	local a1, d1 = repo.numstat(tracked.code == 0 and tracked.stdout or "", false)
-	local a2 = repo.numstat(repo.untracked(top), true)
+	local a2 = repo.numstat(repo.untracked(top, env), true)
 	return a1 + a2, d1
+end
+
+-- the checkpoint as an index: files untracked now but in the checkpoint diff as tracked, files new since it as untracked
+function repo.env(top, base)
+	if base.tree and base.top == top then
+		return {GIT_INDEX_FILE = base.index}
+	end
+end
+
+-- each snapshot gets a fresh index file: a scan's git status still writing the old one cannot undo it
+local SNAPSHOT = [[
+set -e
+index=$(mktemp "${TMPDIR:-/tmp}/qed-checkpoint.XXXXXX")
+tree=
+trap '[ -n "$tree" ] || rm -f "$index"' EXIT
+top=$(git rev-parse --show-toplevel)
+if [ -n "$1" ]; then
+	cp "$1" "$index"
+	cd "$top"
+	GIT_INDEX_FILE="$index" git --literal-pathspecs add -A -- "$2"
+else
+	real=$(git rev-parse --path-format=absolute --git-path index)
+	if [ -f "$real" ]; then cp "$real" "$index"; else rm -f "$index"; fi
+	cd "$top"
+	GIT_INDEX_FILE="$index" git --literal-pathspecs add -A
+fi
+tree=$(GIT_INDEX_FILE="$index" git write-tree)
+printf '%s\n%s\n%s\n' "$top" "$index" "$tree"
+]]
+
+function repo.snapshot(root, from, rel)
+	local result, err = qed.spawn{argv = {"sh", "-c", SNAPSHOT, "sh", from and from.index or "", rel or ""}, cwd = root}
+	if not result then
+		return nil, err
+	end
+	local top, index, tree = result.stdout:match("^([^\n]+)\n([^\n]+)\n(%x+)\n$")
+	if result.code ~= 0 or not tree then
+		return nil, result.stderr:match("[^\n]+") or ("exit " .. result.code)
+	end
+	return {top = top, index = index, tree = tree}
+end
+
+function repo.entry(dir, rev, rel)
+	local result = repo.git(dir, {"--literal-pathspecs", "ls-tree", rev, "--", rel})
+	if result.code ~= 0 then
+		return nil
+	end
+	return result.stdout:match("^%d+ (%a+) ") or false
 end
 
 function repo.lines(text)

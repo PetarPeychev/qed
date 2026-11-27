@@ -410,6 +410,232 @@ local function tree_labels(test)
 	return table.concat(test.ui().labels, ",")
 end
 
+local function root_path(name)
+	return qed.path.join(qed.root(), name)
+end
+
+local function git_tab(test)
+	if not test.editor().tree then
+		test.wait(function() return qed.run("Git: Changes") end)
+	end
+	test.settle()
+	test.wait(function() local state = qed.plugin("filetree").state(); return state ~= nil and state.tab == "Git" end)
+end
+
+local function bar(test, name)
+	git_tab(test)
+	local entry = qed.plugin("filetree").mark(root_path(name))
+	return entry and entry.bar or ""
+end
+
+local function git_select(test, name)
+	git_tab(test)
+	if test.ui().query ~= "" then
+		test.key("Esc")
+	end
+	test.type(name)
+	test.settle()
+	test.wait(function() return test.ui().selected == name end)
+end
+
+local function tree_run(test, command, name)
+	if name then
+		git_select(test, name)
+	else
+		git_tab(test)
+	end
+	test.ok(qed.run(command, {scope = "filetree"}), command .. " available")
+end
+
+local function confirm(test, choice)
+	test.wait(function() local ui = test.ui(); return ui ~= nil and ui.kind == "confirm" end)
+	if choice == 2 then
+		test.key("Down")
+	end
+	test.key("Enter")
+	test.settle()
+end
+
+local function checkpoint(test)
+	test.wait(function() return qed.run("Git: Checkpoint") end)
+	test.wait(function() return ((test.message()) or ""):match("^Checkpoint %x+$") ~= nil end)
+	test.settle()
+end
+
+local function reviewed(test)
+	init(test, {["a.txt"] = "one\ntwo\n", ["keep.txt"] = "keep\n"})
+	qed.fs.write(root_path("u.txt"), "untracked\n")
+	checkpoint(test)
+	qed.fs.write(root_path("a.txt"), "one\nTWO\n")
+	qed.fs.write(root_path("u.txt"), "untracked\nmore\n")
+	qed.fs.write(root_path("new.txt"), "fresh\n")
+	test.ok(test.sh("rm keep.txt"))
+end
+
+function tests.checkpoint_is_a_diff_base(test)
+	init(test, {["a.txt"] = "one\ntwo\n", ["keep.txt"] = "keep\n"})
+	qed.fs.write(root_path("u.txt"), "untracked\n")
+	qed.fs.write(root_path("a.txt"), "one\nTWO\n")
+	local buffer = open(test, "a.txt", "one\nTWO\n")
+	test.eq(test.marks(buffer)[2], "modified", "modified against HEAD")
+	checkpoint(test)
+	test.eq(base(test), "checkpoint")
+	test.eq(test.marks(buffer)[2], "", "clean against the checkpoint")
+	test.eq(bar(test, "a.txt"), "", "a.txt unchanged since the checkpoint")
+	test.eq(bar(test, "u.txt"), "", "an untracked file in the checkpoint is not added")
+	test.key("Esc")
+	test.ok(test.sh("test \"$(git status --porcelain)\" = \"$(printf ' M a.txt\\n?? u.txt')\""), "HEAD and the index untouched")
+
+	buffer:insert({row = 1, col = 1}, "zero\n")
+	save(test, buffer)
+	test.eq(test.marks(buffer)[1], "added", "an edit marks against the checkpoint")
+	qed.fs.write(root_path("u.txt"), "untracked\nmore\n")
+	qed.fs.write(root_path("new.txt"), "fresh\n")
+	test.ok(test.sh("rm keep.txt"))
+	test.eq(bar(test, "a.txt"), "git_modified")
+	test.eq(bar(test, "u.txt"), "git_modified", "an untracked file changed since the checkpoint")
+	test.eq(bar(test, "new.txt"), "git_added", "a file created since the checkpoint")
+	test.eq(bar(test, "keep.txt"), "git_deleted", "a file deleted since the checkpoint")
+	test.key("Esc")
+	test.tick()
+	test.wait(function() return seg(test, "diff").text == "+3 -1" end, 5000)
+
+	pick_base(test, "", "HEAD")
+	test.eq(base(test), "")
+	test.eq(test.marks(buffer)[3], "modified", "back on HEAD")
+	pick_base(test, "Checkpoint", nil)
+	test.eq(base(test), "checkpoint", "the picker lists the checkpoint")
+	test.eq(test.marks(buffer)[3], "")
+end
+
+function tests.accept_file_and_all(test)
+	reviewed(test)
+	test.eq(bar(test, "new.txt"), "git_added")
+	tree_run(test, "Git: Accept File", "new.txt")
+	test.wait(function() return (test.message()) == "Accepted new.txt" end)
+	test.key("Esc")
+	test.eq(bar(test, "new.txt"), "", "an accepted file drops off")
+	test.eq(bar(test, "a.txt"), "git_modified", "the others stay")
+	tree_run(test, "Git: Accept File", "keep.txt")
+	test.wait(function() return (test.message()) == "Accepted keep.txt" end)
+	test.key("Esc")
+	test.eq(bar(test, "keep.txt"), "", "an accepted deletion drops off")
+	test.ok(test.sh("test \"$(git status --porcelain)\" = \"$(printf ' M a.txt\\n D keep.txt\\n?? new.txt\\n?? u.txt')\""), "HEAD and the index untouched")
+
+	tree_run(test, "Git: Accept All")
+	test.wait(function() return ((test.message()) or ""):match("^Checkpoint ") ~= nil end)
+	test.settle()
+	test.eq(bar(test, "a.txt"), "")
+	test.eq(bar(test, "u.txt"), "")
+	test.eq(test.ui().hint, "No changes")
+end
+
+function tests.accept_needs_a_checkpoint_base(test)
+	reviewed(test)
+	pick_base(test, "", "HEAD")
+	git_select(test, "a.txt")
+	test.eq(qed.run("Git: Accept File", {scope = "filetree"}), nil, "unavailable against HEAD")
+	test.eq(qed.run("Git: Accept All", {scope = "filetree"}), nil)
+end
+
+function tests.restore_against_head(test)
+	init(test, {["a.txt"] = "one\n", ["gone.txt"] = "alpha\n"})
+	qed.fs.write(root_path("a.txt"), "changed\n")
+	test.ok(test.sh("echo staged > staged.txt && git add staged.txt && echo x > b.txt && git add b.txt && echo mod >> a.txt && git add a.txt && rm gone.txt"))
+	tree_run(test, "Git: Restore File", "a.txt")
+	confirm(test, 1)
+	test.eq(qed.fs.read(root_path("a.txt")), "changed\nmod\n", "Cancel keeps the file")
+	tree_run(test, "Git: Restore File", "a.txt")
+	confirm(test, 2)
+	test.wait(function() return (test.message()) == "Restored a.txt" end)
+	test.eq(qed.fs.read(root_path("a.txt")), "one\n")
+	test.key("Esc")
+	tree_run(test, "Git: Restore File", "staged.txt")
+	confirm(test, 2)
+	test.wait(function() return (test.message()) == "Deleted staged.txt" end)
+	test.ok(not qed.fs.exists(root_path("staged.txt")), "an added file is deleted")
+	test.key("Esc")
+	tree_run(test, "Git: Restore File", "gone.txt")
+	confirm(test, 2)
+	test.wait(function() return (test.message()) == "Restored gone.txt" end)
+	test.eq(qed.fs.read(root_path("gone.txt")), "alpha\n", "a deleted file is recreated")
+	test.ok(test.sh("test \"$(git status --porcelain)\" = 'A  b.txt'"), "restored files match HEAD in the index too")
+end
+
+function tests.restore_against_checkpoint(test)
+	reviewed(test)
+	local buffer = open(test, "u.txt", "untracked\nmore\n")
+	open(test, "new.txt", "fresh\n")
+	tree_run(test, "Git: Restore File", "u.txt")
+	confirm(test, 2)
+	test.wait(function() return (test.message()) == "Restored u.txt" end)
+	test.eq(qed.fs.read(root_path("u.txt")), "untracked\n", "back to its checkpoint content")
+	test.key("Esc")
+	tree_run(test, "Git: Restore File", "new.txt")
+	confirm(test, 2)
+	test.wait(function() return (test.message()) == "Deleted new.txt" end)
+	test.ok(not qed.fs.exists(root_path("new.txt")), "a file new since the checkpoint is deleted")
+	test.key("Esc")
+	tree_run(test, "Git: Restore File", "keep.txt")
+	confirm(test, 2)
+	test.wait(function() return (test.message()) == "Restored keep.txt" end)
+	test.eq(qed.fs.read(root_path("keep.txt")), "keep\n")
+	test.key("Esc")
+	test.ok(test.sh("test \"$(git status --porcelain)\" = \"$(printf ' M a.txt\\n?? u.txt')\""), "the index untouched")
+	test.poll_disk()
+	test.eq(buffer:text(), "untracked\n", "the clean buffer reloads")
+	for _, open_buffer in ipairs(qed.buf.list()) do
+		test.ok(open_buffer:path() ~= root_path("new.txt"), "the deleted file's buffer is closed")
+	end
+end
+
+function tests.restore_refuses_unsaved(test)
+	reviewed(test)
+	local buffer = open(test, "a.txt", "one\nTWO\n")
+	buffer:insert({row = 1, col = 1}, "x")
+	tree_run(test, "Git: Restore File", "a.txt")
+	test.wait(function() return (test.message()) == "Unsaved edits in a.txt" end)
+	test.eq(test.ui().kind ~= "confirm", true, "no confirm")
+	test.eq(qed.fs.read(root_path("a.txt")), "one\nTWO\n")
+end
+
+function tests.checkpoint_failures_change_nothing(test)
+	reviewed(test)
+	test.fake_spawn("write-tree", {code = 1, stderr = "fatal: broken"})
+	tree_run(test, "Git: Accept File", "new.txt")
+	test.wait(function() return (test.message()) == "Accept failed: fatal: broken" end)
+	test.key("Esc")
+	test.eq(bar(test, "new.txt"), "git_added", "a failed accept keeps the checkpoint")
+	test.key("Esc")
+	test.ok(qed.run("Git: Checkpoint"))
+	test.wait(function() return (test.message()) == "Checkpoint failed: fatal: broken" end)
+	test.eq(base(test), "checkpoint", "a failed checkpoint keeps the base")
+	test.fake_spawn("ls-tree", {code = 128, stderr = "fatal: broken"})
+	tree_run(test, "Git: Restore File", "u.txt")
+	test.wait(function() return (test.message()) == "Restore failed: cannot read checkpoint" end)
+	test.eq(qed.fs.read(root_path("u.txt")), "untracked\nmore\n", "a failed lookup writes nothing")
+end
+
+function tests.checkpoint_outside_a_repo(test)
+	test.wait(function() return qed.run("Git: Checkpoint") end)
+	test.wait(function() return (test.message()) == "Working directory is not a git repository" end)
+	test.eq(base(test), "")
+end
+
+function tests.checkpoint_resets_on_root_change(test)
+	reviewed(test)
+	test.ok(test.sh("mkdir -p sub"))
+	test.ok(qed.set_root(root_path("sub")))
+	test.settle()
+	test.eq(base(test), "", "a root change drops the checkpoint base")
+	test.wait(function() return qed.run("Git: Set Diff Base") end)
+	test.wait(function() local ui = test.ui(); return ui ~= nil and ui.kind == "pick" end)
+	for _, label in ipairs(test.ui().labels) do
+		test.ok(not label:match("^Checkpoint"), "and the picker entry")
+	end
+	test.key("Esc")
+end
+
 function tests.walk_starts_outside_a_repo(test)
 	test.ok(test.sh("mkdir -p proj/sub && echo x > proj/sub/b.txt"))
 	test.fake_spawn("find ", {delay_ms = 2500})

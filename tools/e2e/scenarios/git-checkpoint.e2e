@@ -1,0 +1,55 @@
+# Git: Checkpoint makes the whole working tree a diff base; the Git tab lists what changed since, Accept File moves the checkpoint for one file, Restore File puts a file back, Accept All takes a fresh checkpoint, Set Diff Base switches back to HEAD.
+requires git
+size 120x32
+sh git init -q && printf 'def main():\n    print("hi")\n' > app.py && printf 'old notes\n' > old.txt && git add . && git commit -qm base && printf 'draft\n' > draft.txt
+run
+wait qed dev
+snap welcome A repo with app.py and old.txt committed and draft.txt untracked.
+key ctrl+p
+type Git: Checkpoint
+key enter
+wait checkpoint
+snap checkpoint Git: Checkpoint snapshots the tree, untracked draft.txt included, and the status bar shows the checkpoint as the diff base.
+sh printf 'def main():\n    print("hello")\n' > app.py && printf 'brand new\n' > new.txt && rm old.txt
+key alt+g
+wait new.txt
+snap changes After editing app.py, creating new.txt and deleting old.txt, the Git tab lists exactly those three against the checkpoint; draft.txt is not listed.
+key down
+wait brand new
+key ctrl+p
+type Accept File
+key enter
+wait Accepted new.txt
+wait-gone brand new
+snap accept-file Accept File on new.txt moves the checkpoint forward for it, so it drops off the list.
+key up
+wait print("hello")
+key ctrl+p
+type Restore File
+key enter
+wait Restore app.py to checkpoint?
+snap restore-confirm Restore File on app.py asks first.
+key down
+key enter
+wait Restored app.py
+wait-gone print("hello")
+snap restore-file Confirming puts app.py back as it was at the checkpoint, so only old.txt is left.
+key ctrl+p
+type Accept All
+key enter
+wait No changes
+snap accept-all Accept All takes a fresh checkpoint: nothing is listed.
+key alt+f
+wait draft.txt
+key enter
+wait print("hi")
+key ctrl+p
+type Set Diff Base
+key enter
+wait Merge base
+snap picker From app.py, Set Diff Base lists the checkpoint next to HEAD.
+key enter
+wait Diff base: HEAD
+key alt+g
+wait draft.txt
+snap head Picking HEAD switches back: the Git tab lists draft.txt and new.txt as added and old.txt as deleted against HEAD.

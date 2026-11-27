@@ -336,13 +336,13 @@ e2e_deco_set_base_no_git :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.cursor.row, 3)
 
 	b.cursor = {1, 0}
-	diffbase_revert(&e.ed)
+	diffbase_restore(&e.ed)
 	testing.expect_value(t, string(b.lines[1].text[:]), "two")
 	b.cursor = {3, 0}
-	diffbase_revert(&e.ed)
+	diffbase_restore(&e.ed)
 	testing.expect_value(t, len(b.lines), 5)
 	b.cursor = {0, 0}
-	diffbase_revert(&e.ed)
+	diffbase_restore(&e.ed)
 	testing.expect_value(t, buffer_snapshot_tmp(b), "zero\none\ntwo\nthree\nfive\n")
 	e2e_render(&e)
 	for r in 0 ..< len(b.lines) {

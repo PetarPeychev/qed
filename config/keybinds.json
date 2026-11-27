@@ -21,7 +21,7 @@
     "git_toggle_diff_view": "",
     "git_next_change": "Alt+'",
     "git_previous_change": "Alt+;",
-    "git_revert_hunk": "Alt+z",
+    "git_restore_hunk": "Alt+z",
     "toggle_line_wrap": "",
     "lsp_next_diagnostic": "Alt+>",
     "lsp_previous_diagnostic": "Alt+<",

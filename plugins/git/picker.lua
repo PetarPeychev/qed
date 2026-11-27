@@ -4,8 +4,11 @@ local picker = {}
 
 local LOG_COUNT = 50
 
-function picker.entries(default, refs, log)
+function picker.entries(default, refs, log, checkpoint)
 	local out = {{label = "HEAD"}}
+	if checkpoint then
+		out[#out + 1] = {label = "Checkpoint " .. checkpoint.tree:sub(1, 7), checkpoint = true}
+	end
 	if default ~= "" then
 		out[#out + 1] = {label = "Merge base with " .. default, ref = default, name = default .. "...", merge = true}
 	end
@@ -34,14 +37,14 @@ local function default_branch(root)
 	return ""
 end
 
-function picker.pick(root)
+function picker.pick(root, checkpoint)
 	if repo.git(root, {"rev-parse", "--show-toplevel"}).code ~= 0 then
 		return nil, "Working directory is not a git repository"
 	end
 	local refs = repo.lines(repo.git(root, {"for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads", "refs/remotes"}).stdout)
 	local log = repo.lines(repo.git(root, {"log", "-n", tostring(LOG_COUNT), "--format=%h %s"}).stdout)
 	local items = {}
-	for _, entry in ipairs(picker.entries(default_branch(root), refs, log)) do
+	for _, entry in ipairs(picker.entries(default_branch(root), refs, log, checkpoint)) do
 		items[#items + 1] = {label = entry.label, value = entry}
 	end
 	local item = qed.pick{items = items}
@@ -49,6 +52,9 @@ function picker.pick(root)
 		return nil
 	end
 	local entry = item.value
+	if entry.checkpoint then
+		return checkpoint
+	end
 	if not entry.ref then
 		return {}
 	end

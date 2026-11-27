@@ -203,12 +203,12 @@ local function run(job, spec, partial)
 	return (result.code == 0 or partial) and result.stdout or "", result.code == 0
 end
 
-local function git(job, top, args)
+local function git(job, top, args, env)
 	local argv = {"git", "-C", top, "-c", "core.quotePath=false"}
 	for _, arg in ipairs(args) do
 		argv[#argv + 1] = arg
 	end
-	return run(job, {argv = argv, cwd = top})
+	return run(job, {argv = argv, cwd = top, env = env})
 end
 
 -- pruned at each repo so an ignored node_modules is never walked; find fails on any unreadable dir but its hits still count
@@ -232,27 +232,28 @@ function tree.scan(root, base, job)
 		local st = state(files, ignored, top)
 		st.count = count
 		local rev = repo.rev(top, base)
+		local env = rev ~= "HEAD" and repo.env(top, base) or nil
 		local text
 		if rev ~= "HEAD" then
-			text = git(job, top, {"diff", "--name-status", "--find-renames", rev})
+			text = git(job, top, {"diff", "--name-status", "--find-renames", rev}, env)
 			if not text then
 				return nil
 			end
 			parse_base(st, text)
 		end
 		local ok
-		text, ok = git(job, top, {"status", "--porcelain", "--find-renames", "--ignored=matching", "--untracked-files=all"})
+		text, ok = git(job, top, {"status", "--porcelain", "--find-renames", "--ignored=matching", "--untracked-files=all"}, env)
 		if not text then
 			return nil
 		end
 		failed = failed or not ok
 		parse_status(st, text)
-		text = git(job, top, {"diff", rev, "--numstat", "--find-renames"})
+		text = git(job, top, {"diff", rev, "--numstat", "--find-renames"}, env)
 		if not text then
 			return nil
 		end
 		parse_sizes(st, text, false)
-		text = run(job, {cmd = repo.UNTRACKED, cwd = top})
+		text = run(job, {cmd = repo.UNTRACKED, cwd = top, env = env})
 		if not text then
 			return nil
 		end

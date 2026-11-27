@@ -43,7 +43,7 @@ qed-e2e snapshot 140x45 cursor 12,0
       into lines[row]                                                │
    28 ```                                                            │ • lines is never empty; an empty buffer is one empty line.
    29                                                                │ • Line.text holds no \n/\r\n; line breaks are the array boundary.
- ≡ root/DESIGN.md ●  1/1105  [3/3]                                                                                   ◆ markdown  ⇥ Spaces:2
+ ≡ root/DESIGN.md ●  1/1115  [3/3]                                                                                   ◆ markdown  ⇥ Spaces:2
 
 -- style
 abbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeed
